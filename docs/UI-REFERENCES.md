@@ -76,6 +76,15 @@ Quản lý nhân viên:
 - Phân quyền
 - Chấm công
 
+### 9. Sơ Đồ Căn Hộ (sodocanho.png)
+Giao diện sơ đồ tòa nhà và căn hộ:
+- Hiển thị theo tầng (Tầng G, Tầng 1, 2, 3...)
+- Trạng thái căn hộ (Đang thuê, Đang trống)
+- Mã căn hộ (101, 102, 103...)
+- Màu sắc phân biệt trạng thái
+  - Xanh lá: Đang thuê
+  - Đỏ: Đang trống
+
 ## Cấu trúc Menu Tổng Quan
 
 ```
