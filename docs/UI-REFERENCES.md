@@ -76,6 +76,35 @@ Quản lý nhân viên:
 - Phân quyền
 - Chấm công
 
+### 9. Sơ Đồ Căn Hộ (sodocanho.png)
+Giao diện sơ đồ tòa nhà và căn hộ:
+- Hiển thị theo tầng (Tầng G, Tầng 1, 2, 3...)
+- Trạng thái căn hộ (Đang thuê, Đang trống)
+- Mã căn hộ (101, 102, 103...)
+- Màu sắc phân biệt trạng thái
+  - Xanh lá: Đang thuê
+  - Đỏ: Đang trống
+
+**Tài liệu chi tiết**: Xem [09-SETTINGS-ADVANCED.md - Section 7: Building Map Visualization](./09-SETTINGS-ADVANCED.md#7-building-map-visualization)
+
+### 10. Mẫu Chữ Ký (mauchuky.png)
+Giao diện quản lý mẫu chữ ký:
+- Danh sách mẫu chữ ký với tìm kiếm
+- Cột Mã (ID chữ ký)
+- Cột Thao tác (Edit/Delete buttons)
+- Cột Tên chủ ký
+- Cột Hình ảnh chữ ký (hiển thị ảnh chữ ký)
+- Phân trang với số bản ghi hiển thị
+
+**Tài liệu chi tiết**: Xem [09-SETTINGS-ADVANCED.md - Section 2.5: Signature Templates](./09-SETTINGS-ADVANCED.md#25-mẫu-chữ-ký-signature-templates)
+
+### 11. Biên Bản Bàn Giao (bienbanbangiao1.docx, bienbanbangiao2.docx, bienbanbangiao3.docx)
+Mẫu biên bản bàn giao căn hộ (Word documents):
+- 3 phiên bản mẫu biên bản bàn giao
+- Sử dụng làm template khi tạo biên bản bàn giao căn hộ cho khách thuê
+
+**Tài liệu chi tiết**: Xem [UI-ANALYSIS-ANSWERS.md](./UI-ANALYSIS-ANSWERS.md#3-biên-bản-bàn-giao-handover-documents)
+
 ## Cấu trúc Menu Tổng Quan
 
 ```
