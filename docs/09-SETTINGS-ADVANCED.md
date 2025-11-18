@@ -367,6 +367,201 @@ class TemplateEngine {
 }
 ```
 
+### 2.5 Mẫu Chữ Ký (Signature Templates)
+
+Quản lý mẫu chữ ký điện tử để sử dụng trong hợp đồng, biên bản bàn giao, và các tài liệu khác.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  MẪU CHỮ KÝ                       [+] Thêm mẫu mới     │
+├──────┬──────────┬────────────────┬──────────────────────┤
+│ Code │ Actions  │ Tên mẫu        │ Chữ ký (Preview)     │
+├──────┼──────────┼────────────────┼──────────────────────┤
+│ CK01 │ [✏️] [🗑️] │ Chữ ký Giám đốc│ [Hình ảnh chữ ký]   │
+│ CK02 │ [✏️] [🗑️] │ Chữ ký Kế toán │ [Hình ảnh chữ ký]   │
+│ CK03 │ [✏️] [🗑️] │ Chữ ký Quản lý │ [Hình ảnh chữ ký]   │
+│ CK04 │ [✏️] [🗑️] │ Chữ ký Nhân viên│ [Hình ảnh chữ ký]   │
+└──────┴──────────┴────────────────┴──────────────────────┘
+```
+
+**Tính năng chính**:
+- Quản lý CRUD (Create, Read, Update, Delete) mẫu chữ ký
+- Tạo mẫu chữ ký bằng 3 cách:
+  1. **Upload hình ảnh**: Tải lên file PNG/JPG chữ ký viết tay scan
+  2. **Vẽ chữ ký**: Dùng canvas vẽ chữ ký điện tử trực tiếp
+  3. **Chữ ký text**: Nhập tên, tự động tạo chữ ký từ font chữ đặc biệt
+- Mã code tự động generate (CK01, CK02, ...)
+- Preview chữ ký trước khi lưu
+- Sử dụng trong templates (hợp đồng, biên bản, phiếu thu)
+
+#### Database Schema
+
+```sql
+CREATE TABLE signature_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  code TEXT NOT NULL, -- CK01, CK02, auto-generated
+  name TEXT NOT NULL, -- "Chữ ký Giám đốc"
+  signature_type TEXT NOT NULL CHECK (signature_type IN ('UPLOAD', 'DRAW', 'TEXT')),
+  signature_url TEXT, -- URL to uploaded image or generated signature
+  signature_data JSONB, -- Raw data for canvas-drawn signatures
+  text_content TEXT, -- Text for text-based signatures
+  font_style TEXT, -- Font for text-based signatures
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(user_id, code)
+);
+
+CREATE INDEX idx_signature_templates_user_id ON signature_templates(user_id);
+CREATE INDEX idx_signature_templates_code ON signature_templates(code);
+```
+
+#### User Journey: Tạo Mẫu Chữ Ký
+
+```
+Vào Settings → Mẫu Chữ Ký
+      │
+      ├─→ Click [+ Thêm mẫu mới]
+      │
+      ├─→ Dialog mở: "Thêm Mẫu Chữ Ký"
+      │   ├─ Tên mẫu: "Chữ ký Giám đốc" (*)
+      │   ├─ Code: [Auto CK01] hoặc nhập thủ công
+      │   │
+      │   ├─→ Chọn phương thức tạo chữ ký:
+      │   │
+      │   │   Option 1: UPLOAD
+      │   │   ├─ Click "Tải lên hình ảnh"
+      │   │   ├─ Chọn file PNG/JPG
+      │   │   ├─ Preview
+      │   │   └─ Upload to Supabase Storage
+      │   │
+      │   │   Option 2: DRAW
+      │   │   ├─ Canvas area (400x200px)
+      │   │   ├─ Vẽ chữ ký bằng chuột/stylus
+      │   │   ├─ [Clear] [Undo]
+      │   │   ├─ Preview
+      │   │   └─ Convert canvas to base64/PNG
+      │   │
+      │   │   Option 3: TEXT
+      │   │   ├─ Nhập text: "Nguyễn Văn A"
+      │   │   ├─ Chọn font: [Dancing Script ▼]
+      │   │   ├─ Chọn size: [24px ▼]
+      │   │   ├─ Preview
+      │   │   └─ Generate image from text
+      │
+      ├─→ Click [Lưu]
+      │   ├─ Validate: Tên không rỗng, Code unique
+      │   ├─ Upload signature to storage
+      │   ├─ Save to database
+      │   └─ Refresh list
+      │
+      └─→ Hiển thị trong bảng với preview
+```
+
+#### API Endpoints
+
+```typescript
+// GET /signature-templates
+export function useSignatureTemplates() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['signature-templates', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('signature_templates')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('is_active', true)
+        .order('code');
+
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+// POST /signature-templates
+export function useCreateSignatureTemplate() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (data: CreateSignatureInput) => {
+      // Upload signature image if provided
+      let signature_url = null;
+      if (data.signature_file) {
+        const { data: upload, error: uploadError } = await supabase.storage
+          .from('signatures')
+          .upload(`${user?.id}/${Date.now()}-${data.signature_file.name}`, data.signature_file);
+
+        if (uploadError) throw uploadError;
+        signature_url = supabase.storage.from('signatures').getPublicUrl(upload.path).data.publicUrl;
+      }
+
+      const { data: template, error } = await supabase
+        .from('signature_templates')
+        .insert([{
+          user_id: user?.id,
+          code: data.code,
+          name: data.name,
+          signature_type: data.signature_type,
+          signature_url,
+          signature_data: data.signature_data,
+          text_content: data.text_content,
+          font_style: data.font_style,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return template;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['signature-templates'] });
+    },
+  });
+}
+
+// DELETE /signature-templates/:id
+export function useDeleteSignatureTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('signature_templates')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['signature-templates'] });
+    },
+  });
+}
+```
+
+#### Sử dụng trong Templates
+
+Sau khi tạo mẫu chữ ký, có thể sử dụng trong template bằng cách:
+
+```
+Trong mẫu hợp đồng:
+────────────────────────────
+BÊN CHO THUÊ                BÊN THUÊ
+
+{signature:CK01}           {signature:tenant}
+_________________          _________________
+Nguyễn Văn A               {tenant_name}
+Giám đốc                   Khách thuê
+```
+
+Template engine sẽ tự động thay thế `{signature:CK01}` bằng hình ảnh chữ ký từ database.
+
 ---
 
 ## 3. NHÂN VIÊN & PHÂN QUYỀN (STAFF & PERMISSIONS)
@@ -918,42 +1113,189 @@ cron.schedule('0 * * * *', async () => {
 
 ## 7. BUILDING MAP VISUALIZATION
 
-### 7.1 Grid View vs Floor Plan View
+Sơ đồ căn hộ (Building Map) là trang **riêng biệt** (top-level page) cho phép xem trực quan tất cả căn hộ trong tòa nhà theo từng tầng với màu sắc phân biệt trạng thái.
+
+**Vị trí**: Menu chính → Sơ đồ căn hộ (cùng cấp với Tòa nhà, Căn hộ, Hợp đồng)
+
+### 7.1 Layout & Structure
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  BUILDING MAP - Tòa A                 [Grid] [Plan]    │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  GRID VIEW (Dạng lưới)                                  │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ Tầng 3:                                          │   │
-│  │ ┌────┬────┬────┬────┐                             │   │
-│  │ │ 301│ 302│ 303│ 304│ = Đang cho thuê (90%)     │   │
-│  │ │ ✓  │ ✓  │ ✓  │ ✓  │                           │   │
-│  │ └────┴────┴────┴────┘                            │   │
-│  │ ┌────┬────┬────┬────┐                             │   │
-│  │ │ 305│ 306│ 307│ 308│                             │   │
-│  │ │ ✓  │ ✓  │    │ ✓  │ = Trống (10%)             │   │
-│  │ └────┴────┴────┴────┘                             │   │
-│  │                                                   │   │
-│  │ Tầng 2:                                            │   │
-│  │ ┌────┬────┬────┬────┐                             │   │
-│  │ │ 201│ 202│ 203│ 204│                             │   │
-│  │ │ ✓  │ ✓  │ ✓  │ ✓  │                             │   │
-│  │ └────┴────┴────┴────┘                             │   │
-│  │ ┌────┬────┬────┬────┐                             │   │
-│  │ │ 205│ 206│ 207│ 208│                             │   │
-│  │ │ ✓  │ ✓  │    │ ✓  │                             │   │
-│  │ └────┴────┴────┴────┘                             │   │
-│  │                                                   │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                         │
-│  FLOOR PLAN VIEW (Sơ đồ tầng - 2D)                      │
-│  [Display SVG/Canvas floor plan diagram]                │
-│  Room 301 với các chi tiết vị trí, kích thước, ...      │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  SƠ ĐỒ CĂN HỘ                                                      │
+├─────────────────────────────────────────────────────────────────────┤
+│  Chọn Tòa nhà: [Tòa A ▼]     [Grid View] [List View]              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  LEGEND (Chú thích):                                                │
+│  🟢 Đang cho thuê    🔴 Còn trống    🟡 Nợ    🟠 Bảo trì           │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │ Tầng 3:                                              (5 phòng)│ │
+│  │ ┌─────┬─────┬─────┬─────┬─────┐                              │ │
+│  │ │ 301 │ 302 │ 303 │ 304 │ 305 │                              │ │
+│  │ │ 🟢  │ 🟢  │ 🔴  │ 🟢  │ 🟢  │                              │ │
+│  │ └─────┴─────┴─────┴─────┴─────┘                              │ │
+│  │                                                               │ │
+│  │ Tầng 2:                                              (5 phòng)│ │
+│  │ ┌─────┬─────┬─────┬─────┬─────┐                              │ │
+│  │ │ 201 │ 202 │ 203 │ 204 │ 205 │                              │ │
+│  │ │ 🟢  │ 🔴  │ 🟢  │ 🟢  │ 🟢  │                              │ │
+│  │ └─────┴─────┴─────┴─────┴─────┘                              │ │
+│  │                                                               │ │
+│  │ Tầng 1:                                              (5 phòng)│ │
+│  │ ┌─────┬─────┬─────┬─────┬─────┐                              │ │
+│  │ │ 101 │ 102 │ 103 │ 104 │ 105 │                              │ │
+│  │ │ 🟢  │ 🟢  │ 🟢  │ 🔴  │ 🟢  │                              │ │
+│  │ └─────┴─────┴─────┴─────┴─────┘                              │ │
+│  │                                                               │ │
+│  │ Tầng G (Ground):                                     (5 phòng)│ │
+│  │ ┌─────┬─────┬─────┬─────┬─────┐                              │ │
+│  │ │ G01 │ G02 │ G03 │ G04 │ G05 │                              │ │
+│  │ │ 🟢  │ 🔴  │ 🟢  │ 🟢  │ 🔴  │                              │ │
+│  │ └─────┴─────┴─────┴─────┴─────┘                              │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  SUMMARY STATS:                                                     │
+│  Tổng phòng: 20    |  Đang cho thuê: 15 (75%)  |  Còn trống: 5   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Đặc điểm cấu trúc**:
+- **Layout grid**: 5 phòng/hàng (có thể điều chỉnh: 4, 6, 8 tùy building)
+- **Thứ tự tầng**: Từ trên xuống (Cao nhất → Tầng G)
+- **Tên tầng**: Tầng G, Tầng 1, Tầng 2, Tầng 3, ...
+- **Số phòng**: Format tự động theo tầng (301, 302, ... hoặc 3A, 3B, ...)
+- **Click phòng**: Mở dialog chi tiết phòng
+- **Hover**: Hiển thị tooltip (Tên khách, Giá thuê, Trạng thái)
+
+### 7.1.1 Implementation với React
+
+```typescript
+// BuildingMapPage.tsx
+import { useBuildings } from '@/hooks/useBuildings';
+import { useRooms } from '@/hooks/useRooms';
+
+export function BuildingMapPage() {
+  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
+  const { data: buildings } = useBuildings();
+  const { data: rooms } = useRooms(selectedBuilding);
+
+  // Group rooms by floor
+  const roomsByFloor = useMemo(() => {
+    if (!rooms) return {};
+
+    return rooms.reduce((acc, room) => {
+      const floor = room.floor;
+      if (!acc[floor]) acc[floor] = [];
+      acc[floor].push(room);
+      return acc;
+    }, {} as Record<number, Room[]>);
+  }, [rooms]);
+
+  // Sort floors descending (highest first)
+  const floors = Object.keys(roomsByFloor)
+    .map(Number)
+    .sort((a, b) => b - a);
+
+  return (
+    <div className="building-map-page">
+      <div className="header">
+        <h1>Sơ đồ căn hộ</h1>
+        <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
+          {buildings?.map(b => (
+            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+          ))}
+        </Select>
+      </div>
+
+      <div className="legend">
+        <span className="legend-item">
+          <div className="dot green"></div> Đang cho thuê
+        </span>
+        <span className="legend-item">
+          <div className="dot red"></div> Còn trống
+        </span>
+        {/* More legend items */}
+      </div>
+
+      <div className="floors-container">
+        {floors.map(floor => (
+          <FloorSection
+            key={floor}
+            floor={floor}
+            rooms={roomsByFloor[floor]}
+          />
+        ))}
+      </div>
+
+      <div className="summary-stats">
+        <StatCard label="Tổng phòng" value={rooms?.length ?? 0} />
+        <StatCard label="Đang cho thuê" value={occupiedCount} />
+        <StatCard label="Còn trống" value={vacantCount} />
+      </div>
+    </div>
+  );
+}
+
+// FloorSection.tsx
+function FloorSection({ floor, rooms }: { floor: number; rooms: Room[] }) {
+  const floorName = floor === 0 ? 'Tầng G' : `Tầng ${floor}`;
+
+  // Layout: 5 rooms per row
+  const ROOMS_PER_ROW = 5;
+  const rows = chunk(rooms, ROOMS_PER_ROW);
+
+  return (
+    <div className="floor-section">
+      <h3>{floorName}: <span className="count">({rooms.length} phòng)</span></h3>
+
+      {rows.map((row, idx) => (
+        <div key={idx} className="room-row">
+          {row.map(room => (
+            <RoomCard key={room.id} room={room} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// RoomCard.tsx
+function RoomCard({ room }: { room: Room }) {
+  const [showDialog, setShowDialog] = useState(false);
+
+  // Determine color based on room status
+  const getStatusColor = (room: Room) => {
+    if (room.status === 'occupied') {
+      if (room.has_overdue_invoice) return 'yellow'; // Nợ tiền
+      return 'green'; // Đang thuê
+    }
+    if (room.status === 'maintenance') return 'orange';
+    if (room.status === 'available') return 'red'; // Còn trống
+    return 'gray';
+  };
+
+  const statusColor = getStatusColor(room);
+
+  return (
+    <>
+      <div
+        className={`room-card ${statusColor}`}
+        onClick={() => setShowDialog(true)}
+      >
+        <div className="room-number">{room.room_number}</div>
+        <div className={`status-indicator ${statusColor}`}></div>
+      </div>
+
+      <RoomDetailDialog
+        open={showDialog}
+        onClose={() => setShowDialog(false)}
+        room={room}
+      />
+    </>
+  );
+}
 ```
 
 ### 7.2 Color Coding (5 Màu Theo Trạng Thái)
