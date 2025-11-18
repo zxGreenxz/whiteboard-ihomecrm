@@ -19,7 +19,7 @@
 ## 🎯 TỔNG QUAN
 
 ### Nguyên tắc thiết kế
-1. **Phân cấp rõ ràng**: Building → Room → Bed (optional)
+1. **Phân cấp rõ ràng**: Area → Building → Room → Bed (optional)
 2. **Audit trail**: Tất cả bảng có `created_at`, `updated_at`
 3. **Soft delete**: Sử dụng `deleted_at` thay vì xóa thật
 4. **User isolation**: Mỗi user chỉ thấy dữ liệu của mình (RLS)
@@ -45,19 +45,19 @@
                            │
                            │ user_id
                            │
-        ┌──────────────────┼──────────────────┬─────────────────┐
-        │                  │                  │                 │
-        ▼                  ▼                  ▼                 ▼
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│   profiles   │   │  buildings   │   │   tenants    │   │   expenses   │
-└──────────────┘   └──────┬───────┘   └──────┬───────┘   └──────────────┘
-                          │                   │
-                          │ building_id       │ tenant_id
-                          │                   │
-                          ▼                   │
-                   ┌──────────────┐          │
-                   │    rooms     │          │
-                   └──────┬───────┘          │
+        ┌──────────────────┼──────────────────┬─────────────────┬──────────────────┐
+        │                  │                  │                 │                  │
+        ▼                  ▼                  ▼                 ▼                  ▼
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  ┌────────────────┐
+│   profiles   │   │    areas     │   │  buildings   │   │   tenants    │  │   expenses     │
+└──────────────┘   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘  └────────────────┘
+                          │                   │                   │
+                          │ area_id           │ building_id       │ tenant_id
+                          └───────────────────┤                   │
+                                              ▼                   │
+                                       ┌──────────────┐          │
+                                       │    rooms     │          │
+                                       └──────┬───────┘          │
                           │                   │
                           │ room_id           │
               ┬───────────┴───────────┬       │
@@ -91,6 +91,10 @@
 ┌──────────────┐
 │  settings    │ (System configuration)
 └──────────────┘
+
+┌────────────────────┐
+│ signature_templates│ (Mẫu chữ ký điện tử)
+└────────────────────┘
 ```
 
 ---
@@ -142,7 +146,69 @@ CREATE POLICY "Users can update own profile"
 
 ---
 
-### 2. BUILDINGS (Tòa nhà)
+### 2. AREAS (Khu vực)
+
+Khu vực là cấp quản lý cao nhất, dùng để nhóm các tòa nhà theo khu vực địa lý (Quận 1, Quận 2, Khu A, Khu B, ...).
+
+```sql
+CREATE TABLE areas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+
+  -- Basic info
+  name TEXT NOT NULL, -- "Khu vực Quận 1", "Khu A"
+  code TEXT, -- Mã khu vực (Q1, KHA, ...) - auto-generated hoặc manual
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+
+  CONSTRAINT areas_name_not_empty CHECK (char_length(name) > 0)
+);
+
+-- Indexes
+CREATE INDEX idx_areas_user_id ON areas(user_id);
+CREATE INDEX idx_areas_status ON areas(status);
+CREATE INDEX idx_areas_code ON areas(code);
+CREATE INDEX idx_areas_deleted_at ON areas(deleted_at);
+
+-- Full-text search
+CREATE INDEX idx_areas_search ON areas USING GIN (
+  to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(code, '') || ' ' || coalesce(description, ''))
+);
+
+-- RLS
+ALTER TABLE areas ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own areas"
+  ON areas FOR SELECT
+  USING (auth.uid() = user_id AND deleted_at IS NULL);
+
+CREATE POLICY "Users can insert own areas"
+  ON areas FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own areas"
+  ON areas FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own areas"
+  ON areas FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Trigger for updated_at
+CREATE TRIGGER set_areas_updated_at
+  BEFORE UPDATE ON areas
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+```
+
+---
+
+### 3. BUILDINGS (Tòa nhà)
 
 ```sql
 CREATE TYPE building_status AS ENUM ('ACTIVE', 'INACTIVE', 'MAINTENANCE');
@@ -151,6 +217,7 @@ CREATE TYPE building_type AS ENUM ('APARTMENT', 'DORMITORY', 'HOUSE', 'OFFICE', 
 CREATE TABLE buildings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  area_id UUID REFERENCES areas(id) ON DELETE SET NULL, -- NEW: Thuộc khu vực nào (optional)
 
   -- Basic info
   name TEXT NOT NULL,
@@ -184,6 +251,7 @@ CREATE TABLE buildings (
 
 -- Indexes
 CREATE INDEX idx_buildings_user_id ON buildings(user_id);
+CREATE INDEX idx_buildings_area_id ON buildings(area_id);
 CREATE INDEX idx_buildings_status ON buildings(status);
 CREATE INDEX idx_buildings_type ON buildings(type);
 CREATE INDEX idx_buildings_deleted_at ON buildings(deleted_at);
@@ -1051,6 +1119,81 @@ ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage own settings"
   ON settings FOR ALL
   USING (auth.uid() = user_id);
+```
+
+---
+
+### 16. SIGNATURE_TEMPLATES (Mẫu chữ ký điện tử)
+
+Lưu trữ các mẫu chữ ký để sử dụng trong hợp đồng, biên bản, phiếu thu.
+
+```sql
+CREATE TABLE signature_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+
+  -- Basic info
+  code TEXT NOT NULL, -- CK01, CK02, ... (auto-generated)
+  name TEXT NOT NULL, -- "Chữ ký Giám đốc", "Chữ ký Kế toán"
+
+  -- Signature data
+  signature_type TEXT NOT NULL CHECK (signature_type IN ('UPLOAD', 'DRAW', 'TEXT')),
+  signature_url TEXT, -- URL to uploaded/generated image in Supabase Storage
+  signature_data JSONB, -- Raw canvas data for DRAW type (base64, strokes, etc.)
+  text_content TEXT, -- Text for TEXT type
+  font_style TEXT, -- Font for TEXT type (Dancing Script, Pacifico, etc.)
+
+  -- Status
+  is_active BOOLEAN DEFAULT true,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(user_id, code),
+  CONSTRAINT signature_name_not_empty CHECK (char_length(name) > 0),
+  CONSTRAINT signature_code_not_empty CHECK (char_length(code) > 0)
+);
+
+-- Indexes
+CREATE INDEX idx_signature_templates_user_id ON signature_templates(user_id);
+CREATE INDEX idx_signature_templates_code ON signature_templates(code);
+CREATE INDEX idx_signature_templates_is_active ON signature_templates(is_active);
+
+-- RLS
+ALTER TABLE signature_templates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own signature templates"
+  ON signature_templates FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own signature templates"
+  ON signature_templates FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own signature templates"
+  ON signature_templates FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own signature templates"
+  ON signature_templates FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Trigger for updated_at
+CREATE TRIGGER set_signature_templates_updated_at
+  BEFORE UPDATE ON signature_templates
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+```
+
+**Sử dụng trong template**:
+```sql
+-- Example: Get signature URL for template rendering
+SELECT signature_url
+FROM signature_templates
+WHERE user_id = auth.uid()
+  AND code = 'CK01'
+  AND is_active = true;
 ```
 
 ---
