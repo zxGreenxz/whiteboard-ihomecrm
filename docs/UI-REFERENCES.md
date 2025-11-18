@@ -85,6 +85,15 @@ Giao diện sơ đồ tòa nhà và căn hộ:
   - Xanh lá: Đang thuê
   - Đỏ: Đang trống
 
+### 10. Mẫu Chữ Ký (mauchuky.png)
+Giao diện quản lý mẫu chữ ký:
+- Danh sách mẫu chữ ký với tìm kiếm
+- Cột Mã (ID chữ ký)
+- Cột Thao tác (Edit/Delete buttons)
+- Cột Tên chủ ký
+- Cột Hình ảnh chữ ký (hiển thị ảnh chữ ký)
+- Phân trang với số bản ghi hiển thị
+
 ## Cấu trúc Menu Tổng Quan
 
 ```
