@@ -94,6 +94,11 @@ Giao diện quản lý mẫu chữ ký:
 - Cột Hình ảnh chữ ký (hiển thị ảnh chữ ký)
 - Phân trang với số bản ghi hiển thị
 
+### 11. Biên Bản Bàn Giao (bienbanbangiao1.docx, bienbanbangiao2.docx, bienbanbangiao3.docx)
+Mẫu biên bản bàn giao căn hộ (Word documents):
+- 3 phiên bản mẫu biên bản bàn giao
+- Sử dụng làm template khi tạo biên bản bàn giao căn hộ cho khách thuê
+
 ## Cấu trúc Menu Tổng Quan
 
 ```
