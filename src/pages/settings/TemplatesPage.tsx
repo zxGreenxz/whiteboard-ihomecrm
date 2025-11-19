@@ -5,8 +5,8 @@ const TemplatesPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Mẫu biểu"
-      icon=FileText
-      phase=20
+      icon={FileText}
+      phase={20}
     />
   );
 };

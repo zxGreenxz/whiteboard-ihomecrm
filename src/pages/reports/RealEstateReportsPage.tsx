@@ -5,8 +5,8 @@ const RealEstateReportsPage = () => {
   return (
     <PlaceholderPage
       title="Báo cáo Bất động sản"
-      icon=Building2
-      phase=19
+      icon={Building2}
+      phase={19}
     />
   );
 };

@@ -5,8 +5,8 @@ const SignaturesPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Mẫu chữ ký"
-      icon=FileSignature
-      phase=20
+      icon={FileSignature}
+      phase={20}
     />
   );
 };

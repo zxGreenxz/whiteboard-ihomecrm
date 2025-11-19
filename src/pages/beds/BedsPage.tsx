@@ -5,8 +5,8 @@ const BedsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Giường"
-      icon=Bed
-      phase=7
+      icon={Bed}
+      phase={7}
     />
   );
 };

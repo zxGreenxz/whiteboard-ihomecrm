@@ -5,8 +5,8 @@ const StaffPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Nhân viên"
-      icon=UserCog
-      phase=20
+      icon={UserCog}
+      phase={20}
     />
   );
 };

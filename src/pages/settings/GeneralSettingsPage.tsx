@@ -5,8 +5,8 @@ const GeneralSettingsPage = () => {
   return (
     <PlaceholderPage
       title="Cài đặt chung"
-      icon=Settings
-      phase=20
+      icon={Settings}
+      phase={20}
     />
   );
 };

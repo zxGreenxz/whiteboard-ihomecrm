@@ -5,8 +5,8 @@ const MeterReadingsPage = () => {
   return (
     <PlaceholderPage
       title="Ghi chỉ số điện nước"
-      icon=Gauge
-      phase=13
+      icon={Gauge}
+      phase={13}
     />
   );
 };
