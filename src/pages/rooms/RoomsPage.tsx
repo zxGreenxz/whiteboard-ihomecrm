@@ -20,10 +20,11 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Home, RefreshCw } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Home, RefreshCw, Layers } from "lucide-react";
 import { CreateRoomDialog } from "@/components/rooms/CreateRoomDialog";
 import { EditRoomDialog } from "@/components/rooms/EditRoomDialog";
 import { DeleteRoomDialog } from "@/components/rooms/DeleteRoomDialog";
+import { BulkCreateRoomsDialog } from "@/components/rooms/BulkCreateRoomsDialog";
 import type { Database } from "@/integrations/supabase/types";
 
 type RoomWithBuilding = Database["public"]["Tables"]["rooms"]["Row"] & {
@@ -35,6 +36,7 @@ export default function RoomsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [bulkCreateDialogOpen, setBulkCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithBuilding | null>(null);
@@ -132,10 +134,16 @@ export default function RoomsPage() {
           <Home className="h-8 w-8" />
           <h1 className="text-3xl font-bold">Quản lý Phòng</h1>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tạo phòng
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBulkCreateDialogOpen(true)}>
+            <Layers className="mr-2 h-4 w-4" />
+            Tạo hàng loạt
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo phòng
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -291,6 +299,10 @@ export default function RoomsPage() {
       <CreateRoomDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
+      />
+      <BulkCreateRoomsDialog
+        open={bulkCreateDialogOpen}
+        onOpenChange={setBulkCreateDialogOpen}
       />
       {selectedRoom && (
         <>
