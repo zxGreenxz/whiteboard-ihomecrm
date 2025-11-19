@@ -14,16 +14,2029 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      areas: {
+        Row: {
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      asset_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      asset_handovers: {
+        Row: {
+          contract_id: string
+          created_at: string
+          handover_date: string
+          id: string
+          items: Json
+          landlord_signature: string | null
+          notes: string | null
+          tenant_signature: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          contract_id: string
+          created_at?: string
+          handover_date: string
+          id?: string
+          items: Json
+          landlord_signature?: string | null
+          notes?: string | null
+          tenant_signature?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          contract_id?: string
+          created_at?: string
+          handover_date?: string
+          id?: string
+          items?: Json
+          landlord_signature?: string | null
+          notes?: string | null
+          tenant_signature?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_handovers_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      asset_maintenance: {
+        Row: {
+          asset_id: string
+          assigned_to: string | null
+          cost: number | null
+          created_at: string
+          id: string
+          issue_description: string
+          maintenance_date: string
+          notes: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          asset_id: string
+          assigned_to?: string | null
+          cost?: number | null
+          created_at?: string
+          id?: string
+          issue_description: string
+          maintenance_date: string
+          notes?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          asset_id?: string
+          assigned_to?: string | null
+          cost?: number | null
+          created_at?: string
+          id?: string
+          issue_description?: string
+          maintenance_date?: string
+          notes?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_maintenance_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_maintenance_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      asset_movements: {
+        Row: {
+          asset_id: string
+          created_at: string
+          from_location: string | null
+          from_room_id: string | null
+          id: string
+          movement_date: string
+          quantity: number
+          reason: string | null
+          to_location: string | null
+          to_room_id: string | null
+          user_id: string
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          from_location?: string | null
+          from_room_id?: string | null
+          id?: string
+          movement_date: string
+          quantity: number
+          reason?: string | null
+          to_location?: string | null
+          to_room_id?: string | null
+          user_id: string
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          from_location?: string | null
+          from_room_id?: string | null
+          id?: string
+          movement_date?: string
+          quantity?: number
+          reason?: string | null
+          to_location?: string | null
+          to_room_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_movements_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_movements_from_room_id_fkey"
+            columns: ["from_room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_movements_to_room_id_fkey"
+            columns: ["to_room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assets: {
+        Row: {
+          building_id: string | null
+          category_id: string | null
+          code: string | null
+          condition: Database["public"]["Enums"]["asset_condition"] | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          images: Json | null
+          name: string
+          purchase_date: string | null
+          purchase_price: number | null
+          quantity: number | null
+          room_id: string | null
+          supplier_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          building_id?: string | null
+          category_id?: string | null
+          code?: string | null
+          condition?: Database["public"]["Enums"]["asset_condition"] | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          images?: Json | null
+          name: string
+          purchase_date?: string | null
+          purchase_price?: number | null
+          quantity?: number | null
+          room_id?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          building_id?: string | null
+          category_id?: string | null
+          code?: string | null
+          condition?: Database["public"]["Enums"]["asset_condition"] | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          images?: Json | null
+          name?: string
+          purchase_date?: string | null
+          purchase_price?: number | null
+          quantity?: number | null
+          room_id?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assets_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "asset_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assets_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assets_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      beds: {
+        Row: {
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          deposit_amount: number
+          description: string | null
+          id: string
+          name: string
+          rent_price: number
+          room_id: string
+          status: Database["public"]["Enums"]["bed_status"]
+          updated_at: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deposit_amount: number
+          description?: string | null
+          id?: string
+          name: string
+          rent_price: number
+          room_id: string
+          status?: Database["public"]["Enums"]["bed_status"]
+          updated_at?: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deposit_amount?: number
+          description?: string | null
+          id?: string
+          name?: string
+          rent_price?: number
+          room_id?: string
+          status?: Database["public"]["Enums"]["bed_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "beds_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      buildings: {
+        Row: {
+          amenities: Json | null
+          area_id: string | null
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          district: string
+          id: string
+          images: Json | null
+          name: string
+          province: string
+          status: Database["public"]["Enums"]["building_status"]
+          street_address: string | null
+          total_floors: number | null
+          total_rooms: number | null
+          type: Database["public"]["Enums"]["building_type"]
+          updated_at: string
+          user_id: string
+          ward: string
+        }
+        Insert: {
+          amenities?: Json | null
+          area_id?: string | null
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          district: string
+          id?: string
+          images?: Json | null
+          name: string
+          province: string
+          status?: Database["public"]["Enums"]["building_status"]
+          street_address?: string | null
+          total_floors?: number | null
+          total_rooms?: number | null
+          type?: Database["public"]["Enums"]["building_type"]
+          updated_at?: string
+          user_id: string
+          ward: string
+        }
+        Update: {
+          amenities?: Json | null
+          area_id?: string | null
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          district?: string
+          id?: string
+          images?: Json | null
+          name?: string
+          province?: string
+          status?: Database["public"]["Enums"]["building_status"]
+          street_address?: string | null
+          total_floors?: number | null
+          total_rooms?: number | null
+          type?: Database["public"]["Enums"]["building_type"]
+          updated_at?: string
+          user_id?: string
+          ward?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buildings_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      code_sequences: {
+        Row: {
+          created_at: string
+          current_sequence: number | null
+          date_format: string | null
+          id: string
+          last_reset_at: string | null
+          object_type: string
+          prefix: string
+          reset_period: string | null
+          separator: string | null
+          sequence_length: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_sequence?: number | null
+          date_format?: string | null
+          id?: string
+          last_reset_at?: string | null
+          object_type: string
+          prefix: string
+          reset_period?: string | null
+          separator?: string | null
+          sequence_length?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_sequence?: number | null
+          date_format?: string | null
+          id?: string
+          last_reset_at?: string | null
+          object_type?: string
+          prefix?: string
+          reset_period?: string | null
+          separator?: string | null
+          sequence_length?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      contract_services: {
+        Row: {
+          contract_id: string
+          created_at: string
+          id: string
+          initial_reading: number | null
+          service_id: string
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          contract_id: string
+          created_at?: string
+          id?: string
+          initial_reading?: number | null
+          service_id: string
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          contract_id?: string
+          created_at?: string
+          id?: string
+          initial_reading?: number | null
+          service_id?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_services_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_services_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contracts: {
+        Row: {
+          actual_end_date: string | null
+          bed_id: string | null
+          contract_file_url: string | null
+          contract_number: string | null
+          created_at: string
+          deleted_at: string | null
+          deposit_paid: number | null
+          deposit_remaining: number | null
+          discounts: Json | null
+          end_date: string
+          id: string
+          initial_electricity_reading: number | null
+          initial_water_reading: number | null
+          notes: string | null
+          parent_contract_id: string | null
+          payment_cycle: Database["public"]["Enums"]["payment_cycle"] | null
+          rent_price: number
+          room_id: string | null
+          signed_date: string
+          start_date: string
+          status: Database["public"]["Enums"]["contract_status"]
+          tenant_id: string
+          total_deposit: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_end_date?: string | null
+          bed_id?: string | null
+          contract_file_url?: string | null
+          contract_number?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deposit_paid?: number | null
+          deposit_remaining?: number | null
+          discounts?: Json | null
+          end_date: string
+          id?: string
+          initial_electricity_reading?: number | null
+          initial_water_reading?: number | null
+          notes?: string | null
+          parent_contract_id?: string | null
+          payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
+          rent_price: number
+          room_id?: string | null
+          signed_date: string
+          start_date: string
+          status?: Database["public"]["Enums"]["contract_status"]
+          tenant_id: string
+          total_deposit?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_end_date?: string | null
+          bed_id?: string | null
+          contract_file_url?: string | null
+          contract_number?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deposit_paid?: number | null
+          deposit_remaining?: number | null
+          discounts?: Json | null
+          end_date?: string
+          id?: string
+          initial_electricity_reading?: number | null
+          initial_water_reading?: number | null
+          notes?: string | null
+          parent_contract_id?: string | null
+          payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
+          rent_price?: number
+          room_id?: string | null
+          signed_date?: string
+          start_date?: string
+          status?: Database["public"]["Enums"]["contract_status"]
+          tenant_id?: string
+          total_deposit?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_parent_contract_id_fkey"
+            columns: ["parent_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deposits: {
+        Row: {
+          amount: number
+          bed_id: string | null
+          contract_id: string | null
+          created_at: string
+          deposit_date: string
+          hold_until: string | null
+          id: string
+          notes: string | null
+          receipt_image_url: string | null
+          room_id: string | null
+          status: Database["public"]["Enums"]["deposit_status"]
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          bed_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          deposit_date?: string
+          hold_until?: string | null
+          id?: string
+          notes?: string | null
+          receipt_image_url?: string | null
+          room_id?: string | null
+          status?: Database["public"]["Enums"]["deposit_status"]
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          bed_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          deposit_date?: string
+          hold_until?: string | null
+          id?: string
+          notes?: string | null
+          receipt_image_url?: string | null
+          room_id?: string | null
+          status?: Database["public"]["Enums"]["deposit_status"]
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deposits_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposits_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposits_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deposits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          building_id: string | null
+          category: Database["public"]["Enums"]["expense_category"]
+          created_at: string
+          deleted_at: string | null
+          description: string
+          expense_date: string
+          id: string
+          notes: string | null
+          receipt_image_url: string | null
+          room_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          building_id?: string | null
+          category: Database["public"]["Enums"]["expense_category"]
+          created_at?: string
+          deleted_at?: string | null
+          description: string
+          expense_date?: string
+          id?: string
+          notes?: string | null
+          receipt_image_url?: string | null
+          room_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          building_id?: string | null
+          category?: Database["public"]["Enums"]["expense_category"]
+          created_at?: string
+          deleted_at?: string | null
+          description?: string
+          expense_date?: string
+          id?: string
+          notes?: string | null
+          receipt_image_url?: string | null
+          room_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_items: {
+        Row: {
+          amount: number
+          created_at: string
+          current_reading: number | null
+          description: string
+          id: string
+          invoice_id: string
+          previous_reading: number | null
+          quantity: number | null
+          service_id: string | null
+          type: Database["public"]["Enums"]["invoice_item_type"]
+          unit_price: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          current_reading?: number | null
+          description: string
+          id?: string
+          invoice_id: string
+          previous_reading?: number | null
+          quantity?: number | null
+          service_id?: string | null
+          type: Database["public"]["Enums"]["invoice_item_type"]
+          unit_price: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          current_reading?: number | null
+          description?: string
+          id?: string
+          invoice_id?: string
+          previous_reading?: number | null
+          quantity?: number | null
+          service_id?: string | null
+          type?: Database["public"]["Enums"]["invoice_item_type"]
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          billing_period_end: string
+          billing_period_start: string
+          contract_id: string
+          created_at: string
+          deleted_at: string | null
+          discount_amount: number | null
+          due_date: string
+          id: string
+          invoice_number: string | null
+          issue_date: string
+          notes: string | null
+          paid_amount: number | null
+          paid_date: string | null
+          previous_debt: number | null
+          remaining_amount: number | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal: number
+          tax_amount: number | null
+          title: string
+          total_amount: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          billing_period_end: string
+          billing_period_start: string
+          contract_id: string
+          created_at?: string
+          deleted_at?: string | null
+          discount_amount?: number | null
+          due_date: string
+          id?: string
+          invoice_number?: string | null
+          issue_date?: string
+          notes?: string | null
+          paid_amount?: number | null
+          paid_date?: string | null
+          previous_debt?: number | null
+          remaining_amount?: number | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          subtotal?: number
+          tax_amount?: number | null
+          title: string
+          total_amount?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          billing_period_end?: string
+          billing_period_start?: string
+          contract_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          discount_amount?: number | null
+          due_date?: string
+          id?: string
+          invoice_number?: string | null
+          issue_date?: string
+          notes?: string | null
+          paid_amount?: number | null
+          paid_date?: string | null
+          previous_debt?: number | null
+          remaining_amount?: number | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          subtotal?: number
+          tax_amount?: number | null
+          title?: string
+          total_amount?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      issue_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      issue_comments: {
+        Row: {
+          comment: string
+          created_at: string
+          id: string
+          images: Json | null
+          issue_id: string
+          user_id: string
+        }
+        Insert: {
+          comment: string
+          created_at?: string
+          id?: string
+          images?: Json | null
+          issue_id: string
+          user_id: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string
+          id?: string
+          images?: Json | null
+          issue_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "issue_comments_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      issues: {
+        Row: {
+          actual_cost: number | null
+          assigned_at: string | null
+          assigned_to: string | null
+          attachments: Json | null
+          building_id: string | null
+          category_id: string | null
+          closed_at: string | null
+          contract_id: string | null
+          created_at: string
+          description: string
+          due_date: string | null
+          estimated_cost: number | null
+          feedback: string | null
+          id: string
+          images: Json | null
+          priority: Database["public"]["Enums"]["issue_priority"] | null
+          rating: number | null
+          reported_by_staff_id: string | null
+          reported_by_tenant_id: string | null
+          resolved_at: string | null
+          room_id: string | null
+          status: Database["public"]["Enums"]["issue_status"] | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_cost?: number | null
+          assigned_at?: string | null
+          assigned_to?: string | null
+          attachments?: Json | null
+          building_id?: string | null
+          category_id?: string | null
+          closed_at?: string | null
+          contract_id?: string | null
+          created_at?: string
+          description: string
+          due_date?: string | null
+          estimated_cost?: number | null
+          feedback?: string | null
+          id?: string
+          images?: Json | null
+          priority?: Database["public"]["Enums"]["issue_priority"] | null
+          rating?: number | null
+          reported_by_staff_id?: string | null
+          reported_by_tenant_id?: string | null
+          resolved_at?: string | null
+          room_id?: string | null
+          status?: Database["public"]["Enums"]["issue_status"] | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_cost?: number | null
+          assigned_at?: string | null
+          assigned_to?: string | null
+          attachments?: Json | null
+          building_id?: string | null
+          category_id?: string | null
+          closed_at?: string | null
+          contract_id?: string | null
+          created_at?: string
+          description?: string
+          due_date?: string | null
+          estimated_cost?: number | null
+          feedback?: string | null
+          id?: string
+          images?: Json | null
+          priority?: Database["public"]["Enums"]["issue_priority"] | null
+          rating?: number | null
+          reported_by_staff_id?: string | null
+          reported_by_tenant_id?: string | null
+          resolved_at?: string | null
+          room_id?: string | null
+          status?: Database["public"]["Enums"]["issue_status"] | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "issues_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "issue_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_reported_by_staff_id_fkey"
+            columns: ["reported_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_reported_by_tenant_id_fkey"
+            columns: ["reported_by_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "issues_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          appointment_date: string | null
+          assigned_staff_id: string | null
+          building_id: string | null
+          contract_id: string | null
+          created_at: string
+          customer_name: string
+          deposit_id: string | null
+          email: string | null
+          id: string
+          notes: string | null
+          phone: string
+          room_id: string | null
+          source: Database["public"]["Enums"]["lead_source"] | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          appointment_date?: string | null
+          assigned_staff_id?: string | null
+          building_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          customer_name: string
+          deposit_id?: string | null
+          email?: string | null
+          id?: string
+          notes?: string | null
+          phone: string
+          room_id?: string | null
+          source?: Database["public"]["Enums"]["lead_source"] | null
+          status?: Database["public"]["Enums"]["lead_status"] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          appointment_date?: string | null
+          assigned_staff_id?: string | null
+          building_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          customer_name?: string
+          deposit_id?: string | null
+          email?: string | null
+          id?: string
+          notes?: string | null
+          phone?: string
+          room_id?: string | null
+          source?: Database["public"]["Enums"]["lead_source"] | null
+          status?: Database["public"]["Enums"]["lead_status"] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_deposit_id_fkey"
+            columns: ["deposit_id"]
+            isOneToOne: false
+            referencedRelation: "deposits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meter_readings: {
+        Row: {
+          consumption: number | null
+          contract_id: string
+          created_at: string
+          current_reading: number
+          id: string
+          meter_image_url: string | null
+          meter_type: Database["public"]["Enums"]["meter_type"]
+          notes: string | null
+          previous_reading: number
+          reading_date: string
+          service_id: string
+          user_id: string
+        }
+        Insert: {
+          consumption?: number | null
+          contract_id: string
+          created_at?: string
+          current_reading: number
+          id?: string
+          meter_image_url?: string | null
+          meter_type: Database["public"]["Enums"]["meter_type"]
+          notes?: string | null
+          previous_reading?: number
+          reading_date: string
+          service_id: string
+          user_id: string
+        }
+        Update: {
+          consumption?: number | null
+          contract_id?: string
+          created_at?: string
+          current_reading?: number
+          id?: string
+          meter_image_url?: string | null
+          meter_type?: Database["public"]["Enums"]["meter_type"]
+          notes?: string | null
+          previous_reading?: number
+          reading_date?: string
+          service_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meter_readings_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meter_readings_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_logs: {
+        Row: {
+          channel: Database["public"]["Enums"]["notification_channel"]
+          created_at: string
+          error_message: string | null
+          id: string
+          notification_id: string
+          provider_response: Json | null
+          recipient_email: string | null
+          recipient_id: string | null
+          recipient_phone: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["notification_status"]
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["notification_channel"]
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          notification_id: string
+          provider_response?: Json | null
+          recipient_email?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string | null
+          sent_at?: string | null
+          status: Database["public"]["Enums"]["notification_status"]
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["notification_channel"]
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          notification_id?: string
+          provider_response?: Json | null
+          recipient_email?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["notification_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_logs_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_templates: {
+        Row: {
+          created_at: string
+          email_body: string | null
+          email_subject: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          push_body: string | null
+          push_title: string | null
+          sms_content: string | null
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+          zalo_template_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email_body?: string | null
+          email_subject?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          push_body?: string | null
+          push_title?: string | null
+          sms_content?: string | null
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+          zalo_template_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email_body?: string | null
+          email_subject?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          push_body?: string | null
+          push_title?: string | null
+          sms_content?: string | null
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id?: string
+          zalo_template_id?: string | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          channel: Database["public"]["Enums"]["notification_channel"]
+          content: string
+          contract_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          invoice_id: string | null
+          issue_id: string | null
+          recipient_emails: string[] | null
+          recipient_phones: string[] | null
+          recipient_tenant_ids: string[] | null
+          scheduled_at: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["notification_status"] | null
+          subject: string | null
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["notification_channel"]
+          content: string
+          contract_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          invoice_id?: string | null
+          issue_id?: string | null
+          recipient_emails?: string[] | null
+          recipient_phones?: string[] | null
+          recipient_tenant_ids?: string[] | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["notification_status"] | null
+          subject?: string | null
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["notification_channel"]
+          content?: string
+          contract_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          invoice_id?: string | null
+          issue_id?: string | null
+          recipient_emails?: string[] | null
+          recipient_phones?: string[] | null
+          recipient_tenant_ids?: string[] | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["notification_status"] | null
+          subject?: string | null
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_issue_id_fkey"
+            columns: ["issue_id"]
+            isOneToOne: false
+            referencedRelation: "issues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          invoice_id: string
+          notes: string | null
+          payment_date: string
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          receipt_image_url: string | null
+          receipt_number: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          invoice_id: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_image_url?: string | null
+          receipt_number?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_image_url?: string | null
+          receipt_number?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          address: string | null
+          avatar_url: string | null
+          company_name: string | null
+          created_at: string
+          default_payment_due_days: number | null
+          email: string | null
+          full_name: string
+          id: string
+          language: string | null
+          phone: string | null
+          subscription_expires_at: string | null
+          subscription_plan: string | null
+          timezone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          avatar_url?: string | null
+          company_name?: string | null
+          created_at?: string
+          default_payment_due_days?: number | null
+          email?: string | null
+          full_name: string
+          id: string
+          language?: string | null
+          phone?: string | null
+          subscription_expires_at?: string | null
+          subscription_plan?: string | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          avatar_url?: string | null
+          company_name?: string | null
+          created_at?: string
+          default_payment_due_days?: number | null
+          email?: string | null
+          full_name?: string
+          id?: string
+          language?: string | null
+          phone?: string | null
+          subscription_expires_at?: string | null
+          subscription_plan?: string | null
+          timezone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rooms: {
+        Row: {
+          amenities: Json | null
+          area: number | null
+          building_id: string
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          deposit_amount: number
+          description: string | null
+          floor: number
+          id: string
+          images: Json | null
+          max_occupants: number | null
+          name: string
+          rent_price: number
+          status: Database["public"]["Enums"]["room_status"]
+          updated_at: string
+        }
+        Insert: {
+          amenities?: Json | null
+          area?: number | null
+          building_id: string
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deposit_amount: number
+          description?: string | null
+          floor?: number
+          id?: string
+          images?: Json | null
+          max_occupants?: number | null
+          name: string
+          rent_price: number
+          status?: Database["public"]["Enums"]["room_status"]
+          updated_at?: string
+        }
+        Update: {
+          amenities?: Json | null
+          area?: number | null
+          building_id?: string
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          deposit_amount?: number
+          description?: string | null
+          floor?: number
+          id?: string
+          images?: Json | null
+          max_occupants?: number | null
+          name?: string
+          rent_price?: number
+          status?: Database["public"]["Enums"]["room_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rooms_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          is_mandatory: boolean | null
+          name: string
+          type: Database["public"]["Enums"]["service_type"]
+          unit: string | null
+          unit_price: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          is_mandatory?: boolean | null
+          name: string
+          type: Database["public"]["Enums"]["service_type"]
+          unit?: string | null
+          unit_price?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          is_mandatory?: boolean | null
+          name?: string
+          type?: Database["public"]["Enums"]["service_type"]
+          unit?: string | null
+          unit_price?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      settings: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          updated_at: string
+          user_id: string
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          updated_at?: string
+          user_id: string
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          updated_at?: string
+          user_id?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      signature_templates: {
+        Row: {
+          code: string
+          created_at: string
+          font_style: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          signature_data: Json | null
+          signature_type: string
+          signature_url: string | null
+          text_content: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          font_style?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          signature_data?: Json | null
+          signature_type: string
+          signature_url?: string | null
+          text_content?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          font_style?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          signature_data?: Json | null
+          signature_type?: string
+          signature_url?: string | null
+          text_content?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          created_at: string
+          deleted_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tenants: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          date_of_birth: string | null
+          deleted_at: string | null
+          email: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_relationship: string | null
+          full_name: string
+          gender: string | null
+          id: string
+          id_images: Json | null
+          id_number: string | null
+          id_type: Database["public"]["Enums"]["id_type"] | null
+          notes: string | null
+          permanent_address: string | null
+          phone: string
+          status: Database["public"]["Enums"]["tenant_status"] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          date_of_birth?: string | null
+          deleted_at?: string | null
+          email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          full_name: string
+          gender?: string | null
+          id?: string
+          id_images?: Json | null
+          id_number?: string | null
+          id_type?: Database["public"]["Enums"]["id_type"] | null
+          notes?: string | null
+          permanent_address?: string | null
+          phone: string
+          status?: Database["public"]["Enums"]["tenant_status"] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          date_of_birth?: string | null
+          deleted_at?: string | null
+          email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          full_name?: string
+          gender?: string | null
+          id?: string
+          id_images?: Json | null
+          id_number?: string | null
+          id_type?: Database["public"]["Enums"]["id_type"] | null
+          notes?: string | null
+          permanent_address?: string | null
+          phone?: string
+          status?: Database["public"]["Enums"]["tenant_status"] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vehicles: {
+        Row: {
+          brand: string | null
+          color: string | null
+          contract_id: string | null
+          created_at: string
+          deleted_at: string | null
+          id: string
+          images: Json | null
+          license_plate: string | null
+          model: string | null
+          notes: string | null
+          parking_fee: number | null
+          tenant_id: string
+          updated_at: string
+          user_id: string
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+        }
+        Insert: {
+          brand?: string | null
+          color?: string | null
+          contract_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          images?: Json | null
+          license_plate?: string | null
+          model?: string | null
+          notes?: string | null
+          parking_fee?: number | null
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+        }
+        Update: {
+          brand?: string | null
+          color?: string | null
+          contract_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          images?: Json | null
+          license_plate?: string | null
+          model?: string | null
+          notes?: string | null
+          parking_fee?: number | null
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+          vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicles_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_code: {
+        Args: { p_object_type: string; p_user_id: string }
+        Returns: string
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
-      [_ in never]: never
+      asset_condition: "NEW" | "GOOD" | "FAIR" | "POOR" | "BROKEN"
+      bed_status:
+        | "AVAILABLE"
+        | "OCCUPIED"
+        | "RESERVED"
+        | "MAINTENANCE"
+        | "UNAVAILABLE"
+      building_status: "ACTIVE" | "INACTIVE" | "MAINTENANCE"
+      building_type:
+        | "APARTMENT"
+        | "DORMITORY"
+        | "HOUSE"
+        | "OFFICE"
+        | "SLEEPBOX"
+        | "HOMESTAY"
+      contract_status:
+        | "DRAFT"
+        | "ACTIVE"
+        | "EXTENDED"
+        | "TRANSFERRED"
+        | "TERMINATED"
+        | "EXPIRED"
+      deposit_status:
+        | "PENDING"
+        | "CONFIRMED"
+        | "CONVERTED"
+        | "REFUNDED"
+        | "FORFEITED"
+      expense_category:
+        | "MAINTENANCE"
+        | "REPAIR"
+        | "UTILITIES"
+        | "SALARY"
+        | "SUPPLIES"
+        | "OTHER"
+      id_type: "CCCD" | "CMND" | "PASSPORT" | "OTHER"
+      invoice_item_type: "RENT" | "SERVICE" | "PENALTY" | "DISCOUNT" | "OTHER"
+      invoice_status:
+        | "DRAFT"
+        | "PENDING_APPROVAL"
+        | "APPROVED"
+        | "PAID"
+        | "PARTIAL_PAID"
+        | "OVERDUE"
+        | "CANCELLED"
+      issue_priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT"
+      issue_status:
+        | "NEW"
+        | "ASSIGNED"
+        | "IN_PROGRESS"
+        | "RESOLVED"
+        | "CLOSED"
+        | "CANCELLED"
+      lead_source:
+        | "FACEBOOK"
+        | "ZALO"
+        | "PHONE"
+        | "REFERRAL"
+        | "WALK_IN"
+        | "WEBSITE"
+        | "OTHER"
+      lead_status:
+        | "B1_LEAD"
+        | "B2_APPOINTMENT"
+        | "B3_CONSULTATION"
+        | "CONVERTED"
+        | "FAILED"
+      meter_type: "ELECTRICITY" | "WATER" | "GAS" | "OTHER"
+      notification_channel: "IN_APP" | "EMAIL" | "SMS" | "ZALO" | "PUSH"
+      notification_status: "PENDING" | "SENT" | "FAILED" | "CANCELLED"
+      notification_type:
+        | "NEW_INVOICE"
+        | "PAYMENT_REMINDER"
+        | "OVERDUE_INVOICE"
+        | "CONTRACT_EXPIRING"
+        | "ISSUE_RESOLVED"
+        | "GENERAL_ANNOUNCEMENT"
+        | "CUSTOM"
+      payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
+      payment_method:
+        | "CASH"
+        | "BANK_TRANSFER"
+        | "MOMO"
+        | "VNPAY"
+        | "ZALO_PAY"
+        | "OTHER"
+      room_status:
+        | "AVAILABLE"
+        | "OCCUPIED"
+        | "RESERVED"
+        | "MAINTENANCE"
+        | "UNAVAILABLE"
+      service_type: "FIXED" | "PER_PERSON" | "PER_ROOM" | "METER_READING"
+      tenant_status:
+        | "PROSPECT"
+        | "DEPOSITED"
+        | "ACTIVE"
+        | "INACTIVE"
+        | "BLACKLIST"
+      vehicle_type: "MOTORBIKE" | "CAR" | "BICYCLE" | "OTHER"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +2163,120 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      asset_condition: ["NEW", "GOOD", "FAIR", "POOR", "BROKEN"],
+      bed_status: [
+        "AVAILABLE",
+        "OCCUPIED",
+        "RESERVED",
+        "MAINTENANCE",
+        "UNAVAILABLE",
+      ],
+      building_status: ["ACTIVE", "INACTIVE", "MAINTENANCE"],
+      building_type: [
+        "APARTMENT",
+        "DORMITORY",
+        "HOUSE",
+        "OFFICE",
+        "SLEEPBOX",
+        "HOMESTAY",
+      ],
+      contract_status: [
+        "DRAFT",
+        "ACTIVE",
+        "EXTENDED",
+        "TRANSFERRED",
+        "TERMINATED",
+        "EXPIRED",
+      ],
+      deposit_status: [
+        "PENDING",
+        "CONFIRMED",
+        "CONVERTED",
+        "REFUNDED",
+        "FORFEITED",
+      ],
+      expense_category: [
+        "MAINTENANCE",
+        "REPAIR",
+        "UTILITIES",
+        "SALARY",
+        "SUPPLIES",
+        "OTHER",
+      ],
+      id_type: ["CCCD", "CMND", "PASSPORT", "OTHER"],
+      invoice_item_type: ["RENT", "SERVICE", "PENALTY", "DISCOUNT", "OTHER"],
+      invoice_status: [
+        "DRAFT",
+        "PENDING_APPROVAL",
+        "APPROVED",
+        "PAID",
+        "PARTIAL_PAID",
+        "OVERDUE",
+        "CANCELLED",
+      ],
+      issue_priority: ["LOW", "MEDIUM", "HIGH", "URGENT"],
+      issue_status: [
+        "NEW",
+        "ASSIGNED",
+        "IN_PROGRESS",
+        "RESOLVED",
+        "CLOSED",
+        "CANCELLED",
+      ],
+      lead_source: [
+        "FACEBOOK",
+        "ZALO",
+        "PHONE",
+        "REFERRAL",
+        "WALK_IN",
+        "WEBSITE",
+        "OTHER",
+      ],
+      lead_status: [
+        "B1_LEAD",
+        "B2_APPOINTMENT",
+        "B3_CONSULTATION",
+        "CONVERTED",
+        "FAILED",
+      ],
+      meter_type: ["ELECTRICITY", "WATER", "GAS", "OTHER"],
+      notification_channel: ["IN_APP", "EMAIL", "SMS", "ZALO", "PUSH"],
+      notification_status: ["PENDING", "SENT", "FAILED", "CANCELLED"],
+      notification_type: [
+        "NEW_INVOICE",
+        "PAYMENT_REMINDER",
+        "OVERDUE_INVOICE",
+        "CONTRACT_EXPIRING",
+        "ISSUE_RESOLVED",
+        "GENERAL_ANNOUNCEMENT",
+        "CUSTOM",
+      ],
+      payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
+      payment_method: [
+        "CASH",
+        "BANK_TRANSFER",
+        "MOMO",
+        "VNPAY",
+        "ZALO_PAY",
+        "OTHER",
+      ],
+      room_status: [
+        "AVAILABLE",
+        "OCCUPIED",
+        "RESERVED",
+        "MAINTENANCE",
+        "UNAVAILABLE",
+      ],
+      service_type: ["FIXED", "PER_PERSON", "PER_ROOM", "METER_READING"],
+      tenant_status: [
+        "PROSPECT",
+        "DEPOSITED",
+        "ACTIVE",
+        "INACTIVE",
+        "BLACKLIST",
+      ],
+      vehicle_type: ["MOTORBIKE", "CAR", "BICYCLE", "OTHER"],
+    },
   },
 } as const
