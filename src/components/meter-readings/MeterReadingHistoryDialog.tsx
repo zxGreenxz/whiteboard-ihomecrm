@@ -14,11 +14,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { History, Zap, Droplet, TrendingUp, TrendingDown } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { History, Zap, Droplet, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 import { useMeterReadings } from '@/hooks/useInvoices';
 import { useContract } from '@/hooks/useContracts';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 
 interface MeterReadingHistoryDialogProps {
   open: boolean;
@@ -61,6 +74,24 @@ const MeterReadingHistoryDialog = ({
 
   const electricStats = calculateStats(electricReadings);
   const waterStats = calculateStats(waterReadings);
+
+  // Prepare chart data (reverse to show oldest to newest)
+  const prepareChartData = (readings: typeof meterReadings) => {
+    if (!readings || readings.length === 0) return [];
+
+    return [...readings]
+      .reverse()
+      .map((reading) => ({
+        date: format(new Date(reading.reading_date), 'dd/MM', { locale: vi }),
+        fullDate: format(new Date(reading.reading_date), 'dd/MM/yyyy', { locale: vi }),
+        consumption: parseFloat((reading.current_reading - reading.previous_reading).toFixed(2)),
+        current: reading.current_reading,
+        previous: reading.previous_reading,
+      }));
+  };
+
+  const electricChartData = prepareChartData(electricReadings);
+  const waterChartData = prepareChartData(waterReadings);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -108,41 +139,96 @@ const MeterReadingHistoryDialog = ({
                 </div>
               </div>
 
-              <div className="border rounded-md">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ngày ghi</TableHead>
-                      <TableHead>Chỉ số cũ</TableHead>
-                      <TableHead>Chỉ số mới</TableHead>
-                      <TableHead>Tiêu thụ</TableHead>
-                      <TableHead>Ghi chú</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {electricReadings.map((reading) => {
-                      const consumption = reading.current_reading - reading.previous_reading;
-                      return (
-                        <TableRow key={reading.id}>
-                          <TableCell>
-                            {format(new Date(reading.reading_date), 'dd/MM/yyyy', { locale: vi })}
-                          </TableCell>
-                          <TableCell>{reading.previous_reading.toFixed(2)}</TableCell>
-                          <TableCell className="font-medium">{reading.current_reading.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge variant={consumption > electricStats.avgConsumption ? 'destructive' : 'default'}>
-                              {consumption.toFixed(2)} kWh
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm text-gray-600">
-                            {reading.notes || '-'}
-                          </TableCell>
+              <Tabs defaultValue="chart" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 max-w-md">
+                  <TabsTrigger value="chart">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Biểu đồ
+                  </TabsTrigger>
+                  <TabsTrigger value="table">Bảng dữ liệu</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="chart" className="mt-4">
+                  {electricChartData.length > 0 && (
+                    <div className="border rounded-md p-4 bg-white">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={electricChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 12 }}
+                            label={{ value: 'kWh', angle: -90, position: 'insideLeft' }}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-white border rounded-md p-3 shadow-lg">
+                                    <p className="font-medium">{data.fullDate}</p>
+                                    <p className="text-sm text-yellow-600">
+                                      Tiêu thụ: <strong>{data.consumption} kWh</strong>
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                      Cũ: {data.previous} → Mới: {data.current}
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="consumption" fill="#ca8a04" name="Tiêu thụ (kWh)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <div className="mt-2 text-center text-sm text-gray-600">
+                        Biểu đồ tiêu thụ điện theo thời gian
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="table" className="mt-4">
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Ngày ghi</TableHead>
+                          <TableHead>Chỉ số cũ</TableHead>
+                          <TableHead>Chỉ số mới</TableHead>
+                          <TableHead>Tiêu thụ</TableHead>
+                          <TableHead>Ghi chú</TableHead>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {electricReadings.map((reading) => {
+                          const consumption = reading.current_reading - reading.previous_reading;
+                          return (
+                            <TableRow key={reading.id}>
+                              <TableCell>
+                                {format(new Date(reading.reading_date), 'dd/MM/yyyy', { locale: vi })}
+                              </TableCell>
+                              <TableCell>{reading.previous_reading.toFixed(2)}</TableCell>
+                              <TableCell className="font-medium">{reading.current_reading.toFixed(2)}</TableCell>
+                              <TableCell>
+                                <Badge variant={consumption > electricStats.avgConsumption ? 'destructive' : 'default'}>
+                                  {consumption.toFixed(2)} kWh
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-600">
+                                {reading.notes || '-'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 
@@ -178,41 +264,96 @@ const MeterReadingHistoryDialog = ({
                 </div>
               </div>
 
-              <div className="border rounded-md">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ngày ghi</TableHead>
-                      <TableHead>Chỉ số cũ</TableHead>
-                      <TableHead>Chỉ số mới</TableHead>
-                      <TableHead>Tiêu thụ</TableHead>
-                      <TableHead>Ghi chú</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {waterReadings.map((reading) => {
-                      const consumption = reading.current_reading - reading.previous_reading;
-                      return (
-                        <TableRow key={reading.id}>
-                          <TableCell>
-                            {format(new Date(reading.reading_date), 'dd/MM/yyyy', { locale: vi })}
-                          </TableCell>
-                          <TableCell>{reading.previous_reading.toFixed(2)}</TableCell>
-                          <TableCell className="font-medium">{reading.current_reading.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge variant={consumption > waterStats.avgConsumption ? 'destructive' : 'default'}>
-                              {consumption.toFixed(2)} m³
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm text-gray-600">
-                            {reading.notes || '-'}
-                          </TableCell>
+              <Tabs defaultValue="chart" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 max-w-md">
+                  <TabsTrigger value="chart">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Biểu đồ
+                  </TabsTrigger>
+                  <TabsTrigger value="table">Bảng dữ liệu</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="chart" className="mt-4">
+                  {waterChartData.length > 0 && (
+                    <div className="border rounded-md p-4 bg-white">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={waterChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 12 }}
+                            label={{ value: 'm³', angle: -90, position: 'insideLeft' }}
+                          />
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-white border rounded-md p-3 shadow-lg">
+                                    <p className="font-medium">{data.fullDate}</p>
+                                    <p className="text-sm text-blue-600">
+                                      Tiêu thụ: <strong>{data.consumption} m³</strong>
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                      Cũ: {data.previous} → Mới: {data.current}
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="consumption" fill="#2563eb" name="Tiêu thụ (m³)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <div className="mt-2 text-center text-sm text-gray-600">
+                        Biểu đồ tiêu thụ nước theo thời gian
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="table" className="mt-4">
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Ngày ghi</TableHead>
+                          <TableHead>Chỉ số cũ</TableHead>
+                          <TableHead>Chỉ số mới</TableHead>
+                          <TableHead>Tiêu thụ</TableHead>
+                          <TableHead>Ghi chú</TableHead>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {waterReadings.map((reading) => {
+                          const consumption = reading.current_reading - reading.previous_reading;
+                          return (
+                            <TableRow key={reading.id}>
+                              <TableCell>
+                                {format(new Date(reading.reading_date), 'dd/MM/yyyy', { locale: vi })}
+                              </TableCell>
+                              <TableCell>{reading.previous_reading.toFixed(2)}</TableCell>
+                              <TableCell className="font-medium">{reading.current_reading.toFixed(2)}</TableCell>
+                              <TableCell>
+                                <Badge variant={consumption > waterStats.avgConsumption ? 'destructive' : 'default'}>
+                                  {consumption.toFixed(2)} m³
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-600">
+                                {reading.notes || '-'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 

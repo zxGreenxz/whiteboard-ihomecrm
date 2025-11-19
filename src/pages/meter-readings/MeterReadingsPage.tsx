@@ -123,6 +123,51 @@ const MeterReadingsPage = () => {
     });
   };
 
+  const handleSaveContract = (contractId: string) => {
+    const contractInputs = Object.entries(meterInputs)
+      .filter(([key, value]) => key.startsWith(contractId) && value.has_changes && value.is_valid)
+      .map(([_, value]) => value);
+
+    if (contractInputs.length === 0) {
+      alert('Không có chỉ số nào thay đổi cho hợp đồng này!');
+      return;
+    }
+
+    const invalidInputs = contractInputs.filter((input) => !input.is_valid);
+    if (invalidInputs.length > 0) {
+      alert('Vẫn còn chỉ số không hợp lệ! Vui lòng kiểm tra lại.');
+      return;
+    }
+
+    const readings: BulkMeterReadingData[] = contractInputs.map((input) => ({
+      contract_id: input.contract_id,
+      service_id: input.service_id,
+      meter_type: input.meter_type,
+      reading_date: readingDate,
+      previous_reading: input.previous_reading,
+      current_reading: input.current_reading,
+    }));
+
+    bulkCreateMutation.mutate(readings, {
+      onSuccess: () => {
+        // Reset has_changes flag for this contract only
+        setMeterInputs((prev) => {
+          const updated = { ...prev };
+          Object.keys(updated).forEach((key) => {
+            if (key.startsWith(contractId)) {
+              updated[key] = {
+                ...updated[key],
+                previous_reading: updated[key].current_reading,
+                has_changes: false,
+              };
+            }
+          });
+          return updated;
+        });
+      },
+    });
+  };
+
   const handleSaveAll = () => {
     const changedInputs = Object.values(meterInputs).filter((input) => input.has_changes && input.is_valid);
 
@@ -238,6 +283,9 @@ const MeterReadingsPage = () => {
 
             if (meterInputsForContract.length === 0) return null;
 
+            const contractHasChanges = meterInputsForContract.some((m) => m.has_changes && m.is_valid);
+            const contractHasInvalid = meterInputsForContract.some((m) => !m.is_valid && m.has_changes);
+
             return (
               <Card key={contract.id}>
                 <CardHeader className="pb-3">
@@ -255,17 +303,28 @@ const MeterReadingsPage = () => {
                         </div>
                       </CardDescription>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedContractId(contract.id);
-                        setHistoryDialogOpen(true);
-                      }}
-                    >
-                      <History className="h-4 w-4 mr-2" />
-                      Lịch sử
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedContractId(contract.id);
+                          setHistoryDialogOpen(true);
+                        }}
+                      >
+                        <History className="h-4 w-4 mr-2" />
+                        Lịch sử
+                      </Button>
+                      <Button
+                        variant={contractHasChanges ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => handleSaveContract(contract.id)}
+                        disabled={!contractHasChanges || contractHasInvalid || bulkCreateMutation.isPending}
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Lưu
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
