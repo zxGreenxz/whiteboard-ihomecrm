@@ -5,8 +5,8 @@ const DepositsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Đặt cọc"
-      icon=DollarSign
-      phase=10
+      icon={DollarSign}
+      phase={10}
     />
   );
 };

@@ -5,8 +5,8 @@ const CashBookPage = () => {
   return (
     <PlaceholderPage
       title="Sổ quỹ"
-      icon=BookOpen
-      phase=15
+      icon={BookOpen}
+      phase={15}
     />
   );
 };

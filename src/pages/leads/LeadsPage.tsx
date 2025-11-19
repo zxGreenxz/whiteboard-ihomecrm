@@ -5,8 +5,8 @@ const LeadsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Khách hẹn"
-      icon=UserPlus
-      phase=10
+      icon={UserPlus}
+      phase={10}
     />
   );
 };

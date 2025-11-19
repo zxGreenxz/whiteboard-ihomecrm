@@ -5,8 +5,8 @@ const AreasPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Khu vực"
-      icon=MapPin
-      phase=4
+      icon={MapPin}
+      phase={4}
     />
   );
 };

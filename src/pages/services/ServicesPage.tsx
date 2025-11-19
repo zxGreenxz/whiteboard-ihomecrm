@@ -5,8 +5,8 @@ const ServicesPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Dịch vụ"
-      icon=Wrench
-      phase=8
+      icon={Wrench}
+      phase={8}
     />
   );
 };
