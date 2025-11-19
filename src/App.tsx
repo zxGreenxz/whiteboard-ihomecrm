@@ -24,6 +24,7 @@ import ServicesPage from "./pages/services/ServicesPage";
 import LeadsPage from "./pages/leads/LeadsPage";
 import DepositsPage from "./pages/deposits/DepositsPage";
 import ContractsPage from "./pages/contracts/ContractsPage";
+import ContractDetailPage from "./pages/contracts/ContractDetailPage";
 import TenantsPage from "./pages/tenants/TenantsPage";
 import VehiclesPage from "./pages/vehicles/VehiclesPage";
 
@@ -116,6 +117,7 @@ const App = () => (
           <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
           <Route path="/deposits" element={<ProtectedRoute><DepositsPage /></ProtectedRoute>} />
           <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
+          <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetailPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
           <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
 

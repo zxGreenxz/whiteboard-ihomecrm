@@ -160,7 +160,12 @@ const ContractsPage = () => {
               {filteredContracts.map((contract) => (
                 <TableRow key={contract.id}>
                   <TableCell className="font-medium">
-                    {contract.contract_number || contract.id.slice(0, 8)}
+                    <button
+                      onClick={() => navigate(`/contracts/${contract.id}`)}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {contract.contract_number || contract.id.slice(0, 8)}
+                    </button>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -200,7 +205,9 @@ const ContractsPage = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => navigate(`/contracts/${contract.id}`)}
+                        >
                           <Eye className="h-4 w-4 mr-2" />
                           Xem chi tiết
                         </DropdownMenuItem>
