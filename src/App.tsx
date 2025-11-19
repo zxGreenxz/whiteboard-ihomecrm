@@ -33,6 +33,7 @@ import InvoicesPage from "./pages/invoices/InvoicesPage";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import PaymentsPage from "./pages/payments/PaymentsPage";
 import CashBookPage from "./pages/cash-book/CashBookPage";
+import CashFlowPage from "./pages/cash-flow/CashFlowPage";
 
 // Assets & Issues Pages
 import AssetsPage from "./pages/assets/AssetsPage";
@@ -124,6 +125,7 @@ const App = () => (
           <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
           <Route path="/payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
           <Route path="/cash-book" element={<ProtectedRoute><CashBookPage /></ProtectedRoute>} />
+          <Route path="/cash-flow" element={<ProtectedRoute><CashFlowPage /></ProtectedRoute>} />
 
           {/* Assets & Issues Routes */}
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
