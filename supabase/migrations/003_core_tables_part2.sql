@@ -167,7 +167,7 @@ CREATE TABLE deposits (
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
   room_id UUID REFERENCES rooms(id) ON DELETE RESTRICT,
   bed_id UUID REFERENCES beds(id) ON DELETE RESTRICT,
-  contract_id UUID REFERENCES contracts(id), -- NULL until converted
+  contract_id UUID, -- Foreign key will be added in migration 004
 
   -- Deposit info
   amount DECIMAL(15, 2) NOT NULL,
@@ -236,7 +236,7 @@ CREATE TABLE vehicles (
 
   -- Links
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-  contract_id UUID REFERENCES contracts(id) ON DELETE SET NULL,
+  contract_id UUID, -- Foreign key will be added in migration 004
 
   -- Vehicle info
   vehicle_type vehicle_type NOT NULL,
