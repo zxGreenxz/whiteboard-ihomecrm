@@ -5,8 +5,8 @@ const TasksReportsPage = () => {
   return (
     <PlaceholderPage
       title="Báo cáo Công việc"
-      icon=CheckSquare
-      phase=19
+      icon={CheckSquare}
+      phase={19}
     />
   );
 };

@@ -5,8 +5,8 @@ const TenantsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Khách thuê"
-      icon=Users
-      phase=9
+      icon={Users}
+      phase={9}
     />
   );
 };

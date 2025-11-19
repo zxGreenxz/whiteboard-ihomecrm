@@ -5,8 +5,8 @@ const IssuesPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Sự cố"
-      icon=AlertCircle
-      phase=17
+      icon={AlertCircle}
+      phase={17}
     />
   );
 };

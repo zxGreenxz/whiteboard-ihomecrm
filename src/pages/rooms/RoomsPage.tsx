@@ -5,8 +5,8 @@ const RoomsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Phòng"
-      icon=Home
-      phase=6
+      icon={Home}
+      phase={6}
     />
   );
 };

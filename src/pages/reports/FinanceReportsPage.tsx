@@ -5,8 +5,8 @@ const FinanceReportsPage = () => {
   return (
     <PlaceholderPage
       title="Báo cáo Tài chính"
-      icon=DollarSign
-      phase=19
+      icon={DollarSign}
+      phase={19}
     />
   );
 };

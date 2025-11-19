@@ -5,8 +5,8 @@ const ContractsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Hợp đồng"
-      icon=FileText
-      phase=11
+      icon={FileText}
+      phase={11}
     />
   );
 };

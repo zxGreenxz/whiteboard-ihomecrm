@@ -5,8 +5,8 @@ const InvoicesPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Hóa đơn"
-      icon=Receipt
-      phase=14
+      icon={Receipt}
+      phase={14}
     />
   );
 };

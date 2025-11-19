@@ -5,8 +5,8 @@ const AssetsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Tài sản"
-      icon=Package
-      phase=16
+      icon={Package}
+      phase={16}
     />
   );
 };

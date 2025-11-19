@@ -5,8 +5,8 @@ const BuildingsPage = () => {
   return (
     <PlaceholderPage
       title="Quản lý Tòa nhà"
-      icon=Building2
-      phase=5
+      icon={Building2}
+      phase={5}
     />
   );
 };
