@@ -39,7 +39,7 @@ const buildingSchema = z.object({
   name: z.string().min(1, "Tên tòa nhà là bắt buộc"),
   code: z.string().optional(),
   area_id: z.string().optional(),
-  type: z.enum(["APARTMENT", "DORMITORY", "HOUSE", "OFFICE", "SLEEPBOX"]),
+  type: z.enum(["APARTMENT", "DORMITORY", "HOUSE", "OFFICE", "SLEEPBOX", "HOMESTAY"]),
   status: z.enum(["ACTIVE", "INACTIVE", "MAINTENANCE"]),
   province: z.string().min(1, "Tỉnh/Thành phố là bắt buộc"),
   district: z.string().min(1, "Quận/Huyện là bắt buộc"),
@@ -177,22 +177,21 @@ export function EditBuildingDialog({
                     name="area_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Khu vực</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn khu vực" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="">Không chọn</SelectItem>
-                            {areas?.map((area) => (
-                              <SelectItem key={area.id} value={area.id}>
-                                {area.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <FormLabel>Khu vực</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn khu vực (tùy chọn)" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {areas?.map((area) => (
+                            <SelectItem key={area.id} value={area.id}>
+                              {area.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                         <FormMessage />
                       </FormItem>
                     )}
