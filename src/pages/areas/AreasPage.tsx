@@ -23,6 +23,11 @@ import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 import { CreateAreaDialog } from "@/components/areas/CreateAreaDialog";
 import { EditAreaDialog } from "@/components/areas/EditAreaDialog";
 import { DeleteAreaDialog } from "@/components/areas/DeleteAreaDialog";
+import type { Database } from "@/integrations/supabase/types";
+
+type AreaWithCount = Database["public"]["Tables"]["areas"]["Row"] & {
+  buildings_count?: number;
+};
 
 export default function AreasPage() {
   const { data: areas, isLoading } = useAreas();
@@ -31,7 +36,7 @@ export default function AreasPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedArea, setSelectedArea] = useState<any>(null);
+  const [selectedArea, setSelectedArea] = useState<AreaWithCount | null>(null);
 
   // Filter areas based on search and status
   const filteredAreas = areas?.filter((area) => {
@@ -46,12 +51,12 @@ export default function AreasPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const handleEdit = (area: any) => {
+  const handleEdit = (area: AreaWithCount) => {
     setSelectedArea(area);
     setEditDialogOpen(true);
   };
 
-  const handleDelete = (area: any) => {
+  const handleDelete = (area: AreaWithCount) => {
     setSelectedArea(area);
     setDeleteDialogOpen(true);
   };

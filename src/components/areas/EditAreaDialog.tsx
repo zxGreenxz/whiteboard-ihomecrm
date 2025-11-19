@@ -75,7 +75,8 @@ export function EditAreaDialog({
         status: area.status as "active" | "inactive" | "maintenance",
       });
     }
-  }, [area, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [area]);
 
   const onSubmit = async (data: AreaFormValues) => {
     try {
