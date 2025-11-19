@@ -30,6 +30,7 @@ import VehiclesPage from "./pages/vehicles/VehiclesPage";
 // Finance Pages
 import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
 import InvoicesPage from "./pages/invoices/InvoicesPage";
+import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import PaymentsPage from "./pages/payments/PaymentsPage";
 import CashBookPage from "./pages/cash-book/CashBookPage";
 
@@ -120,6 +121,7 @@ const App = () => (
           {/* Finance Routes */}
           <Route path="/meter-readings" element={<ProtectedRoute><MeterReadingsPage /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
+          <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
           <Route path="/payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
           <Route path="/cash-book" element={<ProtectedRoute><CashBookPage /></ProtectedRoute>} />
 

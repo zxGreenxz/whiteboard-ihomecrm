@@ -568,3 +568,185 @@ export const useDeleteInvoice = () => {
     },
   });
 };
+
+// =============================================
+// Auto-Generate Invoices (Bulk)
+// =============================================
+
+export interface AutoGenerateInvoicesData {
+  billing_period_start: string;
+  billing_period_end: string;
+  issue_date: string;
+  due_date: string;
+  contract_ids?: string[]; // Optional: specific contracts, or all active if not provided
+}
+
+export const useAutoGenerateInvoices = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: AutoGenerateInvoicesData) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Get active contracts
+      let query = supabase
+        .from('contracts')
+        .select(`
+          id,
+          contract_number,
+          tenant_id,
+          room_id,
+          bed_id,
+          rent_price,
+          payment_cycle,
+          contract_services (
+            service_id,
+            unit_price,
+            service:services (
+              id,
+              name,
+              billing_type,
+              unit
+            )
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('status', 'ACTIVE');
+
+      if (data.contract_ids && data.contract_ids.length > 0) {
+        query = query.in('id', data.contract_ids);
+      }
+
+      const { data: contracts, error: contractsError } = await query;
+      if (contractsError) throw contractsError;
+      if (!contracts || contracts.length === 0) {
+        return { created_count: 0 };
+      }
+
+      // Create invoices for each contract
+      const invoicesToCreate = contracts.map((contract) => ({
+        user_id: user.id,
+        contract_id: contract.id,
+        title: `Hóa đơn ${contract.contract_number || contract.id.slice(0, 8)} - ${new Date(data.billing_period_start).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })}`,
+        billing_period_start: data.billing_period_start,
+        billing_period_end: data.billing_period_end,
+        issue_date: data.issue_date,
+        due_date: data.due_date,
+        status: 'DRAFT',
+        total_amount: contract.rent_price, // Will be updated after items are created
+        paid_amount: 0,
+      }));
+
+      const { data: createdInvoices, error: invoicesError } = await supabase
+        .from('invoices')
+        .insert(invoicesToCreate)
+        .select();
+
+      if (invoicesError) throw invoicesError;
+
+      // Create invoice items for each invoice
+      const invoiceItems: any[] = [];
+
+      for (let i = 0; i < createdInvoices.length; i++) {
+        const invoice = createdInvoices[i];
+        const contract = contracts[i];
+
+        // Add rent item
+        invoiceItems.push({
+          invoice_id: invoice.id,
+          type: 'RENT',
+          description: 'Tiền thuê phòng',
+          quantity: 1,
+          unit_price: contract.rent_price,
+          amount: contract.rent_price,
+        });
+
+        // Add fixed service items
+        if (contract.contract_services) {
+          for (const cs of contract.contract_services) {
+            if (cs.service?.billing_type === 'FIXED') {
+              invoiceItems.push({
+                invoice_id: invoice.id,
+                type: 'SERVICE',
+                description: cs.service.name,
+                quantity: 1,
+                unit_price: cs.unit_price,
+                amount: cs.unit_price,
+              });
+            }
+          }
+        }
+      }
+
+      if (invoiceItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('invoice_items')
+          .insert(invoiceItems);
+
+        if (itemsError) throw itemsError;
+      }
+
+      return { created_count: createdInvoices.length };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+
+      toast({
+        title: 'Tạo hóa đơn tự động thành công!',
+        description: `Đã tạo ${result?.created_count || 0} hóa đơn mới.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Tạo hóa đơn tự động thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Bulk Approve Invoices
+// =============================================
+
+export const useBulkApproveInvoices = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceIds: string[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .update({ status: 'APPROVED' })
+        .in('id', invoiceIds)
+        .eq('user_id', user.id)
+        .eq('status', 'DRAFT')
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+
+      toast({
+        title: 'Duyệt hóa đơn thành công!',
+        description: `Đã duyệt ${data.length} hóa đơn.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Duyệt hóa đơn thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
