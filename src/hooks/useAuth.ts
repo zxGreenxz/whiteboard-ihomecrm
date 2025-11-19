@@ -12,11 +12,11 @@ export interface RegisterData {
   email: string;
   password: string;
   fullName: string;
-  phone?: string;
+  phone: string; // Required
 }
 
 export interface LoginData {
-  email: string;
+  identifier: string; // Can be phone or email
   password: string;
   rememberMe?: boolean;
 }
@@ -24,6 +24,35 @@ export interface LoginData {
 export interface ForgotPasswordData {
   email: string;
 }
+
+// =============================================
+// Helper Functions
+// =============================================
+
+/**
+ * Checks if input is a phone number (10-11 digits)
+ */
+const isPhoneNumber = (input: string): boolean => {
+  return /^[0-9]{10,11}$/.test(input.trim());
+};
+
+/**
+ * Converts phone number to email format for Supabase Auth
+ * Example: 0901234567 → 0901234567@phone.ihomecrm.local
+ */
+const phoneToEmail = (phone: string): string => {
+  return `${phone.trim()}@phone.ihomecrm.local`;
+};
+
+/**
+ * Normalizes identifier (phone or email) to email format
+ */
+const normalizeIdentifier = (identifier: string): string => {
+  if (isPhoneNumber(identifier)) {
+    return phoneToEmail(identifier);
+  }
+  return identifier.trim();
+};
 
 // =============================================
 // Get Current User
@@ -67,13 +96,17 @@ export const useRegister = () => {
 
   return useMutation({
     mutationFn: async (data: RegisterData) => {
+      // Convert phone to email format if user registers with phone
+      const authEmail = data.email ? data.email : phoneToEmail(data.phone);
+
       const { data: authData, error } = await supabase.auth.signUp({
-        email: data.email,
+        email: authEmail,
         password: data.password,
         options: {
           data: {
             full_name: data.fullName,
             phone: data.phone,
+            email: data.email || null, // Store actual email if provided
           },
         },
       });
@@ -84,7 +117,7 @@ export const useRegister = () => {
     onSuccess: () => {
       toast({
         title: 'Đăng ký thành công!',
-        description: 'Vui lòng kiểm tra email để xác nhận tài khoản.',
+        description: 'Bạn đã tạo tài khoản thành công. Đăng nhập để bắt đầu.',
       });
       navigate('/login');
     },
@@ -109,8 +142,11 @@ export const useLogin = () => {
 
   return useMutation({
     mutationFn: async (data: LoginData) => {
+      // Normalize identifier (phone → email format, or keep email as-is)
+      const email = normalizeIdentifier(data.identifier);
+
       const { data: authData, error } = await supabase.auth.signInWithPassword({
-        email: data.email,
+        email,
         password: data.password,
       });
 
@@ -133,7 +169,7 @@ export const useLogin = () => {
         variant: 'destructive',
         title: 'Đăng nhập thất bại',
         description: error.message === 'Invalid login credentials'
-          ? 'Email hoặc mật khẩu không đúng'
+          ? 'Số điện thoại/Email hoặc mật khẩu không đúng'
           : error.message,
       });
     },
