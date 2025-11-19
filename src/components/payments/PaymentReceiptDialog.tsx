@@ -74,7 +74,7 @@ const PaymentReceiptDialog = ({ open, onOpenChange, payment }: PaymentReceiptDia
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Phiếu thu ${payment.id.slice(0, 8).toUpperCase()}</title>
+  <title>Phiếu thu ${payment.receipt_number || payment.id.slice(0, 8).toUpperCase()}</title>
   <style>
     @page {
       size: A4;
@@ -251,7 +251,7 @@ const PaymentReceiptDialog = ({ open, onOpenChange, payment }: PaymentReceiptDia
   </div>
 
   <div class="receipt-title">PHIẾU THU</div>
-  <div class="receipt-code">Số phiếu: <strong>${payment.id.slice(0, 8).toUpperCase()}</strong></div>
+  <div class="receipt-code">Số phiếu: <strong>${payment.receipt_number || payment.id.slice(0, 8).toUpperCase()}</strong></div>
 
   <div class="receipt-info">
     <div class="info-row">
@@ -325,7 +325,7 @@ const PaymentReceiptDialog = ({ open, onOpenChange, payment }: PaymentReceiptDia
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Phiếu thu ${payment.id.slice(0, 8).toUpperCase()}</title>
+  <title>Phiếu thu ${payment.receipt_number || payment.id.slice(0, 8).toUpperCase()}</title>
   <style>
     @page {
       size: 80mm auto;
@@ -437,7 +437,7 @@ const PaymentReceiptDialog = ({ open, onOpenChange, payment }: PaymentReceiptDia
   </div>
 
   <div class="title">PHIẾU THU</div>
-  <div class="receipt-code">Số: ${payment.id.slice(0, 8).toUpperCase()}</div>
+  <div class="receipt-code">Số: ${payment.receipt_number || payment.id.slice(0, 8).toUpperCase()}</div>
 
   <div class="info-row">
     <span>Ngày:</span>
@@ -532,7 +532,7 @@ const PaymentReceiptDialog = ({ open, onOpenChange, payment }: PaymentReceiptDia
           <div className="bg-green-50 border border-green-200 rounded-md p-3 text-sm">
             <div className="font-medium text-green-900 mb-2">Thông tin phiếu thu:</div>
             <div className="space-y-1 text-green-800">
-              <div>Số phiếu: <strong>{payment.id.slice(0, 8).toUpperCase()}</strong></div>
+              <div>Số phiếu: <strong>{payment.receipt_number || payment.id.slice(0, 8).toUpperCase()}</strong></div>
               <div>Khách hàng: <strong>{payment.invoice?.contract?.tenant?.full_name}</strong></div>
               <div>Số tiền: <strong className="text-lg">{formatCurrency(payment.amount)}</strong></div>
             </div>
