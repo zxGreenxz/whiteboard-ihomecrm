@@ -10,7 +10,7 @@ import { Eye, EyeOff, Building2 } from 'lucide-react';
 
 const Login = () => {
   const [formData, setFormData] = useState({
-    email: '',
+    identifier: '', // Can be phone or email
     password: '',
     rememberMe: false,
   });
@@ -22,10 +22,17 @@ const Login = () => {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email không được để trống';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Email không hợp lệ';
+    if (!formData.identifier.trim()) {
+      newErrors.identifier = 'Số điện thoại hoặc Email không được để trống';
+    } else {
+      // Check if it's a phone number (10-11 digits)
+      const isPhone = /^[0-9]{10,11}$/.test(formData.identifier.trim());
+      // Check if it's an email
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.identifier.trim());
+
+      if (!isPhone && !isEmail) {
+        newErrors.identifier = 'Vui lòng nhập số điện thoại (10-11 số) hoặc email hợp lệ';
+      }
     }
 
     if (!formData.password) {
@@ -42,7 +49,7 @@ const Login = () => {
     if (!validateForm()) return;
 
     loginMutation.mutate({
-      email: formData.email,
+      identifier: formData.identifier, // Can be phone or email
       password: formData.password,
       rememberMe: formData.rememberMe,
     });
@@ -72,20 +79,20 @@ const Login = () => {
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            {/* Email */}
+            {/* Phone or Email */}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Số điện thoại hoặc Email</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="email@example.com"
-                value={formData.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                className={errors.email ? 'border-red-500' : ''}
-                autoComplete="email"
+                id="identifier"
+                type="text"
+                placeholder="0901234567 hoặc email@example.com"
+                value={formData.identifier}
+                onChange={(e) => handleChange('identifier', e.target.value)}
+                className={errors.identifier ? 'border-red-500' : ''}
+                autoComplete="username"
               />
-              {errors.email && (
-                <p className="text-sm text-red-500">{errors.email}</p>
+              {errors.identifier && (
+                <p className="text-sm text-red-500">{errors.identifier}</p>
               )}
             </div>
 

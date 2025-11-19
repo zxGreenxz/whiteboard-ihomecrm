@@ -28,14 +28,18 @@ const Register = () => {
       newErrors.fullName = 'Họ tên không được để trống';
     }
 
+    // Phone is required
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Số điện thoại không được để trống';
+    } else if (!/^[0-9]{10,11}$/.test(formData.phone)) {
+      newErrors.phone = 'Số điện thoại phải có 10-11 chữ số';
+    }
+
+    // Email is required
     if (!formData.email.trim()) {
       newErrors.email = 'Email không được để trống';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Email không hợp lệ';
-    }
-
-    if (formData.phone && !/^[0-9]{10,11}$/.test(formData.phone)) {
-      newErrors.phone = 'Số điện thoại phải có 10-11 chữ số';
     }
 
     if (!formData.password) {
@@ -61,7 +65,7 @@ const Register = () => {
       email: formData.email,
       password: formData.password,
       fullName: formData.fullName,
-      phone: formData.phone || undefined,
+      phone: formData.phone,
     });
   };
 
@@ -106,6 +110,24 @@ const Register = () => {
               )}
             </div>
 
+            {/* Phone */}
+            <div className="space-y-2">
+              <Label htmlFor="phone">
+                Số điện thoại <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="phone"
+                placeholder="0901234567"
+                value={formData.phone}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                className={errors.phone ? 'border-red-500' : ''}
+                autoComplete="tel"
+              />
+              {errors.phone && (
+                <p className="text-sm text-red-500">{errors.phone}</p>
+              )}
+            </div>
+
             {/* Email */}
             <div className="space-y-2">
               <Label htmlFor="email">
@@ -118,24 +140,10 @@ const Register = () => {
                 value={formData.email}
                 onChange={(e) => handleChange('email', e.target.value)}
                 className={errors.email ? 'border-red-500' : ''}
+                autoComplete="email"
               />
               {errors.email && (
                 <p className="text-sm text-red-500">{errors.email}</p>
-              )}
-            </div>
-
-            {/* Phone */}
-            <div className="space-y-2">
-              <Label htmlFor="phone">Số điện thoại</Label>
-              <Input
-                id="phone"
-                placeholder="0901234567"
-                value={formData.phone}
-                onChange={(e) => handleChange('phone', e.target.value)}
-                className={errors.phone ? 'border-red-500' : ''}
-              />
-              {errors.phone && (
-                <p className="text-sm text-red-500">{errors.phone}</p>
               )}
             </div>
 
