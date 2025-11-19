@@ -117,10 +117,8 @@ CREATE TABLE contract_terminations (
   -- Constraints
   CONSTRAINT terminations_refund_method_required_if_refund CHECK (
     (refund_amount <= 0) OR (refund_method IS NOT NULL)
-  ),
-  CONSTRAINT terminations_move_out_after_start CHECK (
-    actual_move_out_date >= (SELECT start_date FROM contracts WHERE id = contract_id)
   )
+  -- Note: Move-out date validation is done in trigger (can't use subquery in CHECK constraint)
 );
 
 -- Indexes
@@ -188,10 +186,20 @@ BEGIN
   FROM contracts c
   WHERE c.id = NEW.contract_id;
 
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Contract not found: %', NEW.contract_id;
+  END IF;
+
   v_contract_start_date := v_contract.start_date;
   v_contract_end_date := v_contract.end_date;
   v_rent_price := v_contract.rent_price;
   v_total_deposit := v_contract.total_deposit;
+
+  -- Validate: Move-out date must be >= contract start date
+  IF NEW.actual_move_out_date < v_contract_start_date THEN
+    RAISE EXCEPTION 'Move-out date (%) cannot be before contract start date (%)',
+      NEW.actual_move_out_date, v_contract_start_date;
+  END IF;
 
   -- ================================================
   -- 1. Calculate outstanding debt from unpaid invoices
