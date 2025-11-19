@@ -29,13 +29,22 @@ import {
   XCircle,
   Eye,
 } from 'lucide-react';
-import { useContracts } from '@/hooks/useContracts';
+import { useContracts, type ContractWithRelations } from '@/hooks/useContracts';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import CreateContractDialog from '@/components/contracts/CreateContractDialog';
+import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
+import TransferContractDialog from '@/components/contracts/TransferContractDialog';
+import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 
 const ContractsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
 
   const { data: contracts, isLoading } = useContracts({
     status: statusFilter || undefined,
@@ -116,7 +125,7 @@ const ContractsPage = () => {
           <option value="EXPIRED">Hết hạn</option>
         </select>
 
-        <Button>
+        <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Tạo hợp đồng
         </Button>
@@ -197,16 +206,32 @@ const ContractsPage = () => {
                         </DropdownMenuItem>
                         {contract.status === 'ACTIVE' && (
                           <>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedContract(contract);
+                                setExtendDialogOpen(true);
+                              }}
+                            >
                               <RefreshCw className="h-4 w-4 mr-2" />
                               Gia hạn
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedContract(contract);
+                                setTransferDialogOpen(true);
+                              }}
+                            >
                               <ArrowRightLeft className="h-4 w-4 mr-2" />
                               Chuyển phòng/Nhượng HĐ
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => {
+                                setSelectedContract(contract);
+                                setTerminateDialogOpen(true);
+                              }}
+                            >
                               <XCircle className="h-4 w-4 mr-2" />
                               Thanh lý hợp đồng
                             </DropdownMenuItem>
@@ -256,6 +281,30 @@ const ContractsPage = () => {
           </div>
         </div>
       )}
+
+      {/* Dialogs */}
+      <CreateContractDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+      />
+
+      <ExtendContractDialog
+        open={extendDialogOpen}
+        onOpenChange={setExtendDialogOpen}
+        contract={selectedContract}
+      />
+
+      <TransferContractDialog
+        open={transferDialogOpen}
+        onOpenChange={setTransferDialogOpen}
+        contract={selectedContract}
+      />
+
+      <TerminateContractDialog
+        open={terminateDialogOpen}
+        onOpenChange={setTerminateDialogOpen}
+        contract={selectedContract}
+      />
     </MainLayout>
   );
 };
