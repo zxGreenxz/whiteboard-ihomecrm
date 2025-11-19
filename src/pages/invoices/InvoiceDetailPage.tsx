@@ -31,11 +31,13 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState } from 'react';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
+import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 
 const InvoiceDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const approveMutation = useApproveInvoice();
@@ -145,7 +147,7 @@ const InvoiceDetailPage = () => {
           </Button>
         )}
 
-        <Button variant="outline">
+        <Button variant="outline" onClick={() => setPrintDialogOpen(true)}>
           <Printer className="h-4 w-4 mr-2" />
           In hóa đơn
         </Button>
@@ -351,6 +353,13 @@ const InvoiceDetailPage = () => {
       <RecordPaymentDialog
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
+        invoice={invoice}
+      />
+
+      {/* Print Dialog */}
+      <PrintInvoiceDialog
+        open={printDialogOpen}
+        onOpenChange={setPrintDialogOpen}
         invoice={invoice}
       />
     </MainLayout>
