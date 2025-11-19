@@ -469,6 +469,67 @@ export const useMeterReadings = (contractId?: string) => {
 };
 
 // =============================================
+// Bulk Create Meter Readings
+// =============================================
+
+export interface BulkMeterReadingData {
+  contract_id: string;
+  service_id: string;
+  meter_type: 'ELECTRIC' | 'WATER' | 'GAS' | 'OTHER';
+  reading_date: string;
+  previous_reading: number;
+  current_reading: number;
+  notes?: string;
+}
+
+export const useBulkCreateMeterReadings = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (readings: BulkMeterReadingData[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const readingsToInsert = readings.map((reading) => ({
+        user_id: user.id,
+        contract_id: reading.contract_id,
+        service_id: reading.service_id,
+        meter_type: reading.meter_type,
+        reading_date: reading.reading_date,
+        previous_reading: reading.previous_reading,
+        current_reading: reading.current_reading,
+        notes: reading.notes,
+      }));
+
+      const { data, error } = await supabase
+        .from('meter_readings')
+        .insert(readingsToInsert)
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['meter_readings'] });
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+
+      toast({
+        title: 'Ghi nhận chỉ số thành công!',
+        description: `Đã ghi nhận ${data.length} chỉ số công tơ.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Ghi nhận chỉ số thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
 // Delete Invoice (Soft Delete)
 // =============================================
 
