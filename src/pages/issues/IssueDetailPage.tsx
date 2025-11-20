@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, User, MapPin, Calendar, DollarSign, Clock, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, User, MapPin, Calendar, DollarSign, Clock, CheckCircle2, Star, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,8 @@ import { Separator } from "@/components/ui/separator";
 import { useIssue, useIssueComments, useUpdateIssue } from "@/hooks/useIssues";
 import { AssignIssueDialog } from "@/components/issues/AssignIssueDialog";
 import { IssueCommentForm } from "@/components/issues/IssueCommentForm";
-import { format } from "date-fns";
+import { IssueRatingDialog } from "@/components/issues/IssueRatingDialog";
+import { format, formatDistanceStrict } from "date-fns";
 import { vi } from "date-fns/locale";
 import { formatCurrency } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ const IssueDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
 
   const { data: issue, isLoading } = useIssue(id || "");
   const { data: comments = [] } = useIssueComments(id);
@@ -70,6 +72,14 @@ const IssueDetailPage = () => {
 
   const priorityConfig = PRIORITY_CONFIG[issue.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.MEDIUM;
   const statusConfig = STATUS_CONFIG[issue.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.NEW;
+
+  // Calculate resolution time
+  let resolutionTime = null;
+  if (issue.resolved_at) {
+    const start = new Date(issue.created_at);
+    const end = new Date(issue.resolved_at);
+    resolutionTime = formatDistanceStrict(start, end, { locale: vi });
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -142,7 +152,11 @@ const IssueDetailPage = () => {
               <Separator />
 
               {/* Comment Form */}
-              <IssueCommentForm issueId={id || ""} />
+              <IssueCommentForm
+                issueId={id || ""}
+                currentStatus={issue.status || undefined}
+                canChangeStatus={true}
+              />
             </CardContent>
           </Card>
         </div>
@@ -179,6 +193,17 @@ const IssueDetailPage = () => {
               >
                 {issue.assigned_to ? "Phân công lại" : "Phân công"}
               </Button>
+
+              {issue.status === "RESOLVED" && (
+                <Button
+                  className="w-full"
+                  variant={issue.rating ? "outline" : "default"}
+                  onClick={() => setRatingDialogOpen(true)}
+                >
+                  <Star className="w-4 h-4 mr-2" />
+                  {issue.rating ? "Chỉnh sửa đánh giá" : "Đánh giá & Đóng"}
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -272,6 +297,42 @@ const IssueDetailPage = () => {
                   </div>
                 </div>
               )}
+
+              {resolutionTime && (
+                <div className="flex items-start gap-2">
+                  <Timer className="w-5 h-5 text-blue-600" />
+                  <div className="flex-1">
+                    <div className="text-xs text-muted-foreground">Thời gian xử lý</div>
+                    <div className="text-sm font-medium">{resolutionTime}</div>
+                  </div>
+                </div>
+              )}
+
+              {issue.rating && (
+                <div className="flex items-start gap-2">
+                  <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                  <div className="flex-1">
+                    <div className="text-xs text-muted-foreground">Đánh giá</div>
+                    <div className="flex items-center gap-1">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          className={`w-4 h-4 ${
+                            i < (issue.rating || 0)
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-gray-300"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    {issue.feedback && (
+                      <div className="text-sm mt-1 text-muted-foreground italic">
+                        "{issue.feedback}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -282,6 +343,14 @@ const IssueDetailPage = () => {
         open={assignDialogOpen}
         onOpenChange={setAssignDialogOpen}
         issueId={id || ""}
+      />
+
+      <IssueRatingDialog
+        open={ratingDialogOpen}
+        onOpenChange={setRatingDialogOpen}
+        issueId={id || ""}
+        currentRating={issue.rating}
+        currentFeedback={issue.feedback}
       />
     </div>
   );
