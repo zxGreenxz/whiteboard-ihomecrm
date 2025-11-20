@@ -50,7 +50,7 @@ const MeterReadingHistoryDialog = ({
   if (!contractId || !contract) return null;
 
   // Group readings by meter type
-  const electricReadings = meterReadings?.filter((r) => r.meter_type === 'ELECTRIC') || [];
+  const electricReadings = meterReadings?.filter((r) => r.meter_type === 'ELECTRICITY') || [];
   const waterReadings = meterReadings?.filter((r) => r.meter_type === 'WATER') || [];
 
   // Calculate statistics

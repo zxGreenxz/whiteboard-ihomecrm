@@ -35,14 +35,14 @@ const tenantSchema = z.object({
   phone: z.string().optional(),
   email: z.string().email("Email không hợp lệ").optional().or(z.literal("")),
   id_number: z.string().optional(),
-  id_type: z.enum(["CCCD", "CMND", "PASSPORT"]).optional(),
+  id_type: z.enum(["CCCD", "CMND", "PASSPORT", "OTHER"]).optional(),
   date_of_birth: z.string().optional(),
   gender: z.enum(["MALE", "FEMALE", "OTHER"]).optional(),
   permanent_address: z.string().optional(),
   emergency_contact_name: z.string().optional(),
   emergency_contact_phone: z.string().optional(),
   emergency_contact_relationship: z.string().optional(),
-  status: z.enum(["PROSPECT", "DEPOSITED", "ACTIVE", "MOVED_OUT", "BLACKLISTED"]),
+  status: z.enum(["PROSPECT", "DEPOSITED", "ACTIVE", "INACTIVE", "BLACKLIST"]),
   notes: z.string().optional(),
 });
 
