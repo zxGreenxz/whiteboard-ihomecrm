@@ -37,6 +37,7 @@ import CashBookPage from "./pages/cash-book/CashBookPage";
 // Assets & Issues Pages
 import AssetsPage from "./pages/assets/AssetsPage";
 import IssuesPage from "./pages/issues/IssuesPage";
+import IssueDetailPage from "./pages/issues/IssueDetailPage";
 
 // Reports Pages
 import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
@@ -128,6 +129,7 @@ const App = () => (
           {/* Assets & Issues Routes */}
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
           <Route path="/issues" element={<ProtectedRoute><IssuesPage /></ProtectedRoute>} />
+          <Route path="/issues/:id" element={<ProtectedRoute><IssueDetailPage /></ProtectedRoute>} />
 
           {/* Reports Routes */}
           <Route path="/reports/real-estate" element={<ProtectedRoute><RealEstateReportsPage /></ProtectedRoute>} />
