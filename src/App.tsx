@@ -45,6 +45,31 @@ import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
 import FinanceReportsPage from "./pages/reports/FinanceReportsPage";
 import TasksReportsPage from "./pages/reports/TasksReportsPage";
 
+// Real Estate Reports
+import VacantRoomsReport from "./pages/reports/real-estate/VacantRoomsReport";
+import ExpiringContractsReport from "./pages/reports/real-estate/ExpiringContractsReport";
+import OccupancyReport from "./pages/reports/real-estate/OccupancyReport";
+import PromotionsReport from "./pages/reports/real-estate/PromotionsReport";
+import NewLeasesReport from "./pages/reports/real-estate/NewLeasesReport";
+import TerminationsReport from "./pages/reports/real-estate/TerminationsReport";
+import PriceHistoryReport from "./pages/reports/real-estate/PriceHistoryReport";
+import ContractChangesReport from "./pages/reports/real-estate/ContractChangesReport";
+
+// Finance Reports
+import CashBookReport from "./pages/reports/finance/CashBookReport";
+import CashFlowReport from "./pages/reports/finance/CashFlowReport";
+import DebtReport from "./pages/reports/finance/DebtReport";
+import CustomerDebtReport from "./pages/reports/finance/CustomerDebtReport";
+import PaymentScheduleReport from "./pages/reports/finance/PaymentScheduleReport";
+import OverpaymentReport from "./pages/reports/finance/OverpaymentReport";
+import DepositsReport from "./pages/reports/finance/DepositsReport";
+import ProfitDistributionReport from "./pages/reports/finance/ProfitDistributionReport";
+
+// Task Reports
+import TasksOverviewReport from "./pages/reports/tasks/TasksOverviewReport";
+import TasksByStaffReport from "./pages/reports/tasks/TasksByStaffReport";
+import TasksByRoomReport from "./pages/reports/tasks/TasksByRoomReport";
+
 // Settings Pages
 import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
 import TemplatesPage from "./pages/settings/TemplatesPage";
@@ -135,8 +160,29 @@ const App = () => (
 
           {/* Reports Routes */}
           <Route path="/reports/real-estate" element={<ProtectedRoute><RealEstateReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/vacant-rooms" element={<ProtectedRoute><VacantRoomsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/expiring-contracts" element={<ProtectedRoute><ExpiringContractsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/occupancy" element={<ProtectedRoute><OccupancyReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/promotions" element={<ProtectedRoute><PromotionsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/new-leases" element={<ProtectedRoute><NewLeasesReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><TerminationsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/price-history" element={<ProtectedRoute><PriceHistoryReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/contract-changes" element={<ProtectedRoute><ContractChangesReport /></ProtectedRoute>} />
+
           <Route path="/reports/finance" element={<ProtectedRoute><FinanceReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/finance/cash-book" element={<ProtectedRoute><CashBookReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><CashFlowReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/debt" element={<ProtectedRoute><DebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/customer-debt" element={<ProtectedRoute><CustomerDebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><PaymentScheduleReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/overpayment" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/deposits" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitDistributionReport /></ProtectedRoute>} />
+
           <Route path="/reports/tasks" element={<ProtectedRoute><TasksReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/tasks/overview" element={<ProtectedRoute><TasksOverviewReport /></ProtectedRoute>} />
+          <Route path="/reports/tasks/by-staff" element={<ProtectedRoute><TasksByStaffReport /></ProtectedRoute>} />
+          <Route path="/reports/tasks/by-room" element={<ProtectedRoute><TasksByRoomReport /></ProtectedRoute>} />
 
           {/* Settings Routes */}
           <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />
