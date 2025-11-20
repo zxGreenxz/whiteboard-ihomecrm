@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, FileText } from "lucide-react";
+import { Plus, Search, FileText, ArrowRightLeft, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,6 +25,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { CreateAssetDialog } from "@/components/assets/CreateAssetDialog";
 import { EditAssetDialog } from "@/components/assets/EditAssetDialog";
 import { AssetHandoverDialog } from "@/components/assets/AssetHandoverDialog";
+import { AssetMovementDialog } from "@/components/assets/AssetMovementDialog";
+import { AssetMaintenanceDialog } from "@/components/assets/AssetMaintenanceDialog";
 import { formatCurrency } from "@/lib/utils";
 
 const CONDITION_CONFIG = {
@@ -39,6 +41,8 @@ const AssetsPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [handoverDialogOpen, setHandoverDialogOpen] = useState(false);
+  const [movementDialogOpen, setMovementDialogOpen] = useState(false);
+  const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetWithRelations | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [conditionFilter, setConditionFilter] = useState<string>("");
@@ -116,6 +120,14 @@ const AssetsPage = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setMovementDialogOpen(true)}>
+            <ArrowRightLeft className="w-4 h-4 mr-2" />
+            Di chuyển
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setMaintenanceDialogOpen(true)}>
+            <Wrench className="w-4 h-4 mr-2" />
+            Bảo trì
+          </Button>
           <Button variant="outline" onClick={handleHandover}>
             <FileText className="w-4 h-4 mr-2" />
             Biên bản bàn giao
@@ -300,6 +312,16 @@ const AssetsPage = () => {
       <AssetHandoverDialog
         open={handoverDialogOpen}
         onOpenChange={setHandoverDialogOpen}
+      />
+
+      <AssetMovementDialog
+        open={movementDialogOpen}
+        onOpenChange={setMovementDialogOpen}
+      />
+
+      <AssetMaintenanceDialog
+        open={maintenanceDialogOpen}
+        onOpenChange={setMaintenanceDialogOpen}
       />
     </div>
   );

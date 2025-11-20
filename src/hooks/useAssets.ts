@@ -8,6 +8,11 @@ type AssetInsert = Database["public"]["Tables"]["assets"]["Insert"];
 type AssetUpdate = Database["public"]["Tables"]["assets"]["Update"];
 type AssetHandover = Database["public"]["Tables"]["asset_handovers"]["Row"];
 type AssetHandoverInsert = Database["public"]["Tables"]["asset_handovers"]["Insert"];
+type AssetMovement = Database["public"]["Tables"]["asset_movements"]["Row"];
+type AssetMovementInsert = Database["public"]["Tables"]["asset_movements"]["Insert"];
+type AssetMaintenance = Database["public"]["Tables"]["asset_maintenance"]["Row"];
+type AssetMaintenanceInsert = Database["public"]["Tables"]["asset_maintenance"]["Insert"];
+type AssetMaintenanceUpdate = Database["public"]["Tables"]["asset_maintenance"]["Update"];
 
 export interface AssetWithRelations extends Asset {
   category?: {
@@ -36,6 +41,42 @@ export interface AssetHandoverWithRelations extends AssetHandover {
       id: string;
       full_name: string;
     };
+  };
+}
+
+export interface AssetMovementWithRelations extends AssetMovement {
+  asset?: {
+    id: string;
+    name: string;
+    code: string | null;
+  };
+  from_room?: {
+    id: string;
+    name: string;
+    building?: {
+      id: string;
+      name: string;
+    };
+  };
+  to_room?: {
+    id: string;
+    name: string;
+    building?: {
+      id: string;
+      name: string;
+    };
+  };
+}
+
+export interface AssetMaintenanceWithRelations extends AssetMaintenance {
+  asset?: {
+    id: string;
+    name: string;
+    code: string | null;
+  };
+  assigned_profile?: {
+    id: string;
+    full_name: string | null;
   };
 }
 
@@ -280,6 +321,185 @@ export const useCreateAssetHandover = () => {
     },
     onError: (error: Error) => {
       toast.error("Tạo biên bản thất bại: " + error.message);
+    },
+  });
+};
+
+// Fetch asset movements
+export const useAssetMovements = (asset_id?: string) => {
+  return useQuery({
+    queryKey: ["asset-movements", asset_id],
+    queryFn: async (): Promise<AssetMovementWithRelations[]> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      let query = supabase
+        .from("asset_movements")
+        .select(`
+          *,
+          asset:assets!asset_movements_asset_id_fkey (
+            id, name, code
+          ),
+          from_room:rooms!asset_movements_from_room_id_fkey (
+            id, name,
+            building:buildings!rooms_building_id_fkey (
+              id, name
+            )
+          ),
+          to_room:rooms!asset_movements_to_room_id_fkey (
+            id, name,
+            building:buildings!rooms_building_id_fkey (
+              id, name
+            )
+          )
+        `)
+        .eq('user_id', user.id)
+        .order("movement_date", { ascending: false });
+
+      if (asset_id) {
+        query = query.eq("asset_id", asset_id);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        toast.error("Không thể tải lịch sử di chuyển");
+        throw error;
+      }
+
+      return (data as AssetMovementWithRelations[]) || [];
+    },
+  });
+};
+
+// Create asset movement
+export const useCreateAssetMovement = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: AssetMovementInsert) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: movement, error } = await supabase
+        .from("asset_movements")
+        .insert({
+          ...data,
+          user_id: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return movement;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-movements"] });
+      toast.success("Ghi nhận di chuyển tài sản thành công");
+    },
+    onError: (error: Error) => {
+      toast.error("Ghi nhận di chuyển thất bại: " + error.message);
+    },
+  });
+};
+
+// Fetch asset maintenance records
+export const useAssetMaintenance = (filters?: {
+  asset_id?: string;
+  status?: string;
+}) => {
+  return useQuery({
+    queryKey: ["asset-maintenance", filters],
+    queryFn: async (): Promise<AssetMaintenanceWithRelations[]> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      let query = supabase
+        .from("asset_maintenance")
+        .select(`
+          *,
+          asset:assets!asset_maintenance_asset_id_fkey (
+            id, name, code
+          ),
+          assigned_profile:profiles!asset_maintenance_assigned_to_fkey (
+            id, full_name
+          )
+        `)
+        .eq('user_id', user.id)
+        .order("maintenance_date", { ascending: false });
+
+      if (filters?.asset_id) {
+        query = query.eq("asset_id", filters.asset_id);
+      }
+      if (filters?.status) {
+        query = query.eq("status", filters.status);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        toast.error("Không thể tải lịch sử bảo trì");
+        throw error;
+      }
+
+      return (data as AssetMaintenanceWithRelations[]) || [];
+    },
+  });
+};
+
+// Create asset maintenance
+export const useCreateAssetMaintenance = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: AssetMaintenanceInsert) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: maintenance, error } = await supabase
+        .from("asset_maintenance")
+        .insert({
+          ...data,
+          user_id: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return maintenance;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
+      toast.success("Tạo phiếu bảo trì thành công");
+    },
+    onError: (error: Error) => {
+      toast.error("Tạo phiếu bảo trì thất bại: " + error.message);
+    },
+  });
+};
+
+// Update asset maintenance
+export const useUpdateAssetMaintenance = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: AssetMaintenanceUpdate & { id: string }) => {
+      const { data: maintenance, error } = await supabase
+        .from("asset_maintenance")
+        .update(data)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return maintenance;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
+      toast.success("Cập nhật phiếu bảo trì thành công");
+    },
+    onError: (error: Error) => {
+      toast.error("Cập nhật phiếu bảo trì thất bại: " + error.message);
     },
   });
 };
