@@ -127,7 +127,7 @@ export const useInvoices = (filters?: {
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
-        query = query.eq('status', filters.status);
+        query = query.eq('status', filters.status as any);
       }
       if (filters?.contract_id) {
         query = query.eq('contract_id', filters.contract_id);
@@ -224,7 +224,7 @@ export const useCreateInvoice = () => {
       // Add invoice items
       const invoiceItems = items.map(item => ({
         invoice_id: invoice.id,
-        type: item.type,
+        type: item.type as any,
         description: item.description,
         quantity: item.quantity,
         unit_price: item.unit_price,
@@ -318,14 +318,14 @@ export const useRecordPayment = () => {
       // Create payment record
       const { data: payment, error: paymentError } = await supabase
         .from('payments')
-        .insert({
+        .insert([{
           user_id: user.id,
           invoice_id: data.invoice_id,
           amount: data.amount,
-          payment_method: data.payment_method,
+          payment_method: data.payment_method as any,
           payment_date: data.payment_date,
           notes: data.notes,
-        })
+        }])
         .select()
         .single();
 
@@ -394,16 +394,16 @@ export const useRecordMeterReading = () => {
 
       const { data: reading, error } = await supabase
         .from('meter_readings')
-        .insert({
+        .insert([{
           user_id: user.id,
           contract_id: data.contract_id,
           service_id: data.service_id,
-          meter_type: data.meter_type,
+          meter_type: data.meter_type as any,
           reading_date: data.reading_date,
           previous_reading: data.previous_reading,
           current_reading: data.current_reading,
           notes: data.notes,
-        })
+        }])
         .select()
         .single();
 
@@ -495,7 +495,7 @@ export const useBulkCreateMeterReadings = () => {
         user_id: user.id,
         contract_id: reading.contract_id,
         service_id: reading.service_id,
-        meter_type: reading.meter_type,
+        meter_type: reading.meter_type as any,
         reading_date: reading.reading_date,
         previous_reading: reading.previous_reading,
         current_reading: reading.current_reading,
@@ -666,7 +666,7 @@ export const useAutoGenerateInvoices = () => {
         // Add fixed service items
         if (contract.contract_services) {
           for (const cs of contract.contract_services) {
-            if (cs.service?.billing_type === 'FIXED') {
+            if (cs.service?.type === 'FIXED') {
               invoiceItems.push({
                 invoice_id: invoice.id,
                 type: 'SERVICE',

@@ -113,7 +113,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
       // Add contract services
       selectedContract.contract_services?.forEach((cs) => {
-        if (cs.service?.billing_type === 'FIXED') {
+        if (cs.service?.type === 'FIXED') {
           append({
             type: 'SERVICE',
             description: cs.service.name,
@@ -155,7 +155,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     if (!selectedContract || !meterReadings) return;
 
     const latestElectric = meterReadings
-      .filter((r) => r.meter_type === 'ELECTRIC')
+      .filter((r) => r.meter_type === 'ELECTRICITY')
       .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
 
     if (latestElectric) {

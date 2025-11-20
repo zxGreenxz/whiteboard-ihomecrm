@@ -500,6 +500,96 @@ export type Database = {
         }
         Relationships: []
       }
+      contract_extensions: {
+        Row: {
+          additional_deposit_required: number | null
+          approved_at: string | null
+          approved_by: string | null
+          contract_id: string
+          created_at: string
+          deposit_changed: boolean | null
+          extension_date: string
+          extension_months: number
+          extension_type: string
+          id: string
+          new_contract_id: string | null
+          new_deposit: number | null
+          new_end_date: string
+          new_rent_price: number | null
+          new_services: Json | null
+          notes: string | null
+          old_end_date: string
+          rent_price_changed: boolean | null
+          services_changed: boolean | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_deposit_required?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          contract_id: string
+          created_at?: string
+          deposit_changed?: boolean | null
+          extension_date?: string
+          extension_months: number
+          extension_type: string
+          id?: string
+          new_contract_id?: string | null
+          new_deposit?: number | null
+          new_end_date: string
+          new_rent_price?: number | null
+          new_services?: Json | null
+          notes?: string | null
+          old_end_date: string
+          rent_price_changed?: boolean | null
+          services_changed?: boolean | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_deposit_required?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          contract_id?: string
+          created_at?: string
+          deposit_changed?: boolean | null
+          extension_date?: string
+          extension_months?: number
+          extension_type?: string
+          id?: string
+          new_contract_id?: string | null
+          new_deposit?: number | null
+          new_end_date?: string
+          new_rent_price?: number | null
+          new_services?: Json | null
+          notes?: string | null
+          old_end_date?: string
+          rent_price_changed?: boolean | null
+          services_changed?: boolean | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_extensions_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_extensions_new_contract_id_fkey"
+            columns: ["new_contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_services: {
         Row: {
           contract_id: string
@@ -541,6 +631,274 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_terminations: {
+        Row: {
+          actual_move_out_date: string
+          approved_at: string | null
+          approved_by: string | null
+          cleaning_fee: number | null
+          contract_id: string
+          created_at: string
+          damage_description: string | null
+          damage_fee: number | null
+          damage_images: Json | null
+          early_termination_fee: number | null
+          id: string
+          internal_notes: string | null
+          notes: string | null
+          notice_date: string | null
+          notice_violation_fee: number | null
+          other_fees: number | null
+          other_fees_description: string | null
+          outstanding_debt: number | null
+          prorated_days: number | null
+          prorated_rent: number | null
+          prorated_services: number | null
+          refund_amount: number | null
+          refund_date: string | null
+          refund_method: Database["public"]["Enums"]["payment_method"] | null
+          refund_receipt_url: string | null
+          status: string
+          termination_date: string
+          termination_type: string
+          total_deductions: number | null
+          total_deposit: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_move_out_date: string
+          approved_at?: string | null
+          approved_by?: string | null
+          cleaning_fee?: number | null
+          contract_id: string
+          created_at?: string
+          damage_description?: string | null
+          damage_fee?: number | null
+          damage_images?: Json | null
+          early_termination_fee?: number | null
+          id?: string
+          internal_notes?: string | null
+          notes?: string | null
+          notice_date?: string | null
+          notice_violation_fee?: number | null
+          other_fees?: number | null
+          other_fees_description?: string | null
+          outstanding_debt?: number | null
+          prorated_days?: number | null
+          prorated_rent?: number | null
+          prorated_services?: number | null
+          refund_amount?: number | null
+          refund_date?: string | null
+          refund_method?: Database["public"]["Enums"]["payment_method"] | null
+          refund_receipt_url?: string | null
+          status?: string
+          termination_date?: string
+          termination_type: string
+          total_deductions?: number | null
+          total_deposit: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_move_out_date?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          cleaning_fee?: number | null
+          contract_id?: string
+          created_at?: string
+          damage_description?: string | null
+          damage_fee?: number | null
+          damage_images?: Json | null
+          early_termination_fee?: number | null
+          id?: string
+          internal_notes?: string | null
+          notes?: string | null
+          notice_date?: string | null
+          notice_violation_fee?: number | null
+          other_fees?: number | null
+          other_fees_description?: string | null
+          outstanding_debt?: number | null
+          prorated_days?: number | null
+          prorated_rent?: number | null
+          prorated_services?: number | null
+          refund_amount?: number | null
+          refund_date?: string | null
+          refund_method?: Database["public"]["Enums"]["payment_method"] | null
+          refund_receipt_url?: string | null
+          status?: string
+          termination_date?: string
+          termination_type?: string
+          total_deductions?: number | null
+          total_deposit?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_terminations_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_transfers: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          contract_id: string
+          created_at: string
+          deposit_transfer_type: string | null
+          id: string
+          move_in_date: string | null
+          move_out_date: string | null
+          new_bed_id: string | null
+          new_deposit: number | null
+          new_end_date: string | null
+          new_rent_price: number | null
+          new_room_id: string | null
+          new_services: Json | null
+          new_start_date: string | null
+          new_tenant_deposit_paid: number | null
+          new_tenant_id: string | null
+          notes: string | null
+          old_bed_id: string | null
+          old_room_id: string | null
+          old_tenant_deposit_refund: number | null
+          old_tenant_id: string | null
+          old_tenant_outstanding: number | null
+          old_tenant_settlement_amount: number | null
+          old_tenant_settlement_date: string | null
+          reason: string | null
+          status: string
+          transfer_date: string
+          transfer_fee: number | null
+          transfer_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contract_id: string
+          created_at?: string
+          deposit_transfer_type?: string | null
+          id?: string
+          move_in_date?: string | null
+          move_out_date?: string | null
+          new_bed_id?: string | null
+          new_deposit?: number | null
+          new_end_date?: string | null
+          new_rent_price?: number | null
+          new_room_id?: string | null
+          new_services?: Json | null
+          new_start_date?: string | null
+          new_tenant_deposit_paid?: number | null
+          new_tenant_id?: string | null
+          notes?: string | null
+          old_bed_id?: string | null
+          old_room_id?: string | null
+          old_tenant_deposit_refund?: number | null
+          old_tenant_id?: string | null
+          old_tenant_outstanding?: number | null
+          old_tenant_settlement_amount?: number | null
+          old_tenant_settlement_date?: string | null
+          reason?: string | null
+          status?: string
+          transfer_date?: string
+          transfer_fee?: number | null
+          transfer_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contract_id?: string
+          created_at?: string
+          deposit_transfer_type?: string | null
+          id?: string
+          move_in_date?: string | null
+          move_out_date?: string | null
+          new_bed_id?: string | null
+          new_deposit?: number | null
+          new_end_date?: string | null
+          new_rent_price?: number | null
+          new_room_id?: string | null
+          new_services?: Json | null
+          new_start_date?: string | null
+          new_tenant_deposit_paid?: number | null
+          new_tenant_id?: string | null
+          notes?: string | null
+          old_bed_id?: string | null
+          old_room_id?: string | null
+          old_tenant_deposit_refund?: number | null
+          old_tenant_id?: string | null
+          old_tenant_outstanding?: number | null
+          old_tenant_settlement_amount?: number | null
+          old_tenant_settlement_date?: string | null
+          reason?: string | null
+          status?: string
+          transfer_date?: string
+          transfer_fee?: number | null
+          transfer_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_transfers_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfers_new_bed_id_fkey"
+            columns: ["new_bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfers_new_room_id_fkey"
+            columns: ["new_room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfers_new_tenant_id_fkey"
+            columns: ["new_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfers_old_bed_id_fkey"
+            columns: ["old_bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfers_old_room_id_fkey"
+            columns: ["old_room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_transfers_old_tenant_id_fkey"
+            columns: ["old_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1926,12 +2284,107 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      contract_extension_history: {
+        Row: {
+          approved_at: string | null
+          contract_id: string | null
+          contract_number: string | null
+          created_at: string | null
+          extension_date: string | null
+          extension_id: string | null
+          extension_months: number | null
+          extension_type: string | null
+          new_end_date: string | null
+          old_end_date: string | null
+          rent_price: number | null
+          rent_price_changed: boolean | null
+          status: string | null
+          tenant_id: string | null
+          tenant_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_extensions_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      create_new_contract_extension: {
+        Args: {
+          p_contract_id: string
+          p_extension_months: number
+          p_new_deposit?: number
+          p_new_rent_price?: number
+          p_notes?: string
+        }
+        Returns: string
+      }
+      create_room_transfer: {
+        Args: {
+          p_contract_id: string
+          p_move_date?: string
+          p_new_bed_id?: string
+          p_new_rent_price?: number
+          p_new_room_id?: string
+          p_reason?: string
+        }
+        Returns: string
+      }
+      create_simple_extension: {
+        Args: {
+          p_contract_id: string
+          p_extension_months: number
+          p_new_rent_price?: number
+          p_notes?: string
+        }
+        Returns: string
+      }
+      create_tenant_transfer: {
+        Args: {
+          p_contract_id: string
+          p_new_tenant_id: string
+          p_reason?: string
+          p_transfer_date?: string
+          p_transfer_fee?: number
+        }
+        Returns: string
+      }
+      estimate_termination_costs: {
+        Args: {
+          p_cleaning_fee?: number
+          p_contract_id: string
+          p_damage_fee?: number
+          p_early_termination_fee?: number
+          p_move_out_date: string
+        }
+        Returns: {
+          outstanding_debt: number
+          prorated_rent: number
+          prorated_services: number
+          refund_amount: number
+          total_deposit: number
+          total_fees: number
+        }[]
+      }
       generate_code: {
         Args: { p_object_type: string; p_user_id: string }
         Returns: string
+      }
+      get_contract_extension_count: {
+        Args: { p_contract_id: string }
+        Returns: number
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
