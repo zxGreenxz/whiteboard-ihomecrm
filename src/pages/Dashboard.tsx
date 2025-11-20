@@ -1,43 +1,16 @@
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, Home, Users, DollarSign, TrendingUp, AlertCircle } from 'lucide-react';
+import { Building2, Home, TrendingUp, DollarSign, AlertTriangle, FileText, Users2 } from 'lucide-react';
+import { useDashboardStats } from '@/hooks/useDashboard';
+import { RevenueChart } from '@/components/dashboard/RevenueChart';
+import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
+import { AlertsList } from '@/components/dashboard/AlertsList';
+import { RecentActivities } from '@/components/dashboard/RecentActivities';
+import { formatCurrency } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Dashboard = () => {
-  // Placeholder stats - will be replaced with real data in Phase 18
-  const stats = [
-    {
-      title: 'Tổng số phòng',
-      value: '0',
-      description: 'Phòng đang quản lý',
-      icon: Home,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
-    },
-    {
-      title: 'Phòng đã cho thuê',
-      value: '0',
-      description: 'Tỷ lệ lấp đầy 0%',
-      icon: Building2,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-    },
-    {
-      title: 'Khách thuê',
-      value: '0',
-      description: 'Khách hàng hiện tại',
-      icon: Users,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
-    },
-    {
-      title: 'Doanh thu tháng này',
-      value: '0 đ',
-      description: 'Chưa có dữ liệu',
-      icon: DollarSign,
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-100',
-    },
-  ];
+  const { data: stats, isLoading } = useDashboardStats();
 
   return (
     <MainLayout>
@@ -52,78 +25,110 @@ const Dashboard = () => {
 
         {/* Stats Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <Card key={stat.title}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">
-                    {stat.title}
-                  </CardTitle>
-                  <div className={`h-10 w-10 rounded-full ${stat.bgColor} flex items-center justify-center`}>
-                    <Icon className={`h-5 w-5 ${stat.color}`} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stat.value}</div>
+          {/* Total Rooms */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Tổng số phòng</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <Home className="h-5 w-5 text-blue-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats?.totalRooms || 0}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {stat.description}
+                    {stats?.availableRooms || 0} phòng còn trống
                   </p>
-                </CardContent>
-              </Card>
-            );
-          })}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Occupied Rooms */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Phòng đã cho thuê</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                <Building2 className="h-5 w-5 text-green-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{stats?.occupiedRooms || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tỷ lệ lấp đầy {stats?.occupancyRate.toFixed(1) || 0}%
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Revenue This Month */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Doanh thu tháng này</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                <DollarSign className="h-5 w-5 text-emerald-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(stats?.revenueThisMonth || 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stats?.newContractsThisMonth || 0} hợp đồng mới
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Total Debt */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Tổng công nợ</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-orange-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {formatCurrency(stats?.totalDebt || 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stats?.unresolvedIssues || 0} sự cố chưa xử lý
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Welcome Message */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Bắt đầu sử dụng
-            </CardTitle>
-            <CardDescription>
-              Hệ thống đang được phát triển theo 20 phases
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div>
-                <p className="font-medium">Phase 1: Database Foundation - ✅ Hoàn thành</p>
-                <p className="text-sm text-muted-foreground">
-                  32 tables, 28 enums, RLS policies, triggers & functions
-                </p>
-              </div>
-            </div>
+        {/* Charts Row */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <RevenueChart />
+          <OccupancyChart />
+        </div>
 
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div>
-                <p className="font-medium">Phase 2: Authentication System - ✅ Hoàn thành</p>
-                <p className="text-sm text-muted-foreground">
-                  Register, Login, Forgot Password, Protected Routes
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-green-600 mt-0.5" />
-              <div>
-                <p className="font-medium">Phase 3: Main Layout & Navigation - 🚧 Đang thực hiện</p>
-                <p className="text-sm text-muted-foreground">
-                  Header, Sidebar, MainLayout, Breadcrumbs, Routing
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm">
-                <strong>Tiến độ:</strong> 2/20 phases hoàn thành (10%). Dự kiến hoàn thành trong 10-14 tuần.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Alerts & Activities Row */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <AlertsList />
+          <RecentActivities />
+        </div>
       </div>
     </MainLayout>
   );
