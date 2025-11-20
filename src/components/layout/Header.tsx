@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Building2, Bell, User, Settings, LogOut, Menu } from 'lucide-react';
+import { Building2, User, Settings, LogOut, Menu } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -64,17 +64,8 @@ const Header = ({ onMenuClick }: HeaderProps) => {
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
-          {/* Notifications Button (Placeholder) */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5" />
-            {/* Notification badge - placeholder for future */}
-            <Badge
-              variant="destructive"
-              className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-            >
-              3
-            </Badge>
-          </Button>
+          {/* Notifications Bell */}
+          <NotificationBell />
 
           {/* User Menu */}
           <DropdownMenu>
