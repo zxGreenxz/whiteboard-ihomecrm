@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 interface ExportButtonsProps {
   data: any[];
@@ -26,11 +27,14 @@ export function ExportButtons({ data, filename, onExport }: ExportButtonsProps) 
       if (onExport) {
         await onExport(format);
       } else {
-        // Default export logic for CSV (simple fallback)
+        // Default export logic
         if (format === "csv") {
           exportToCSV(data, filename);
-        } else {
-          toast.info(`Export ${format.toUpperCase()} sẽ được triển khai trong tương lai`);
+        } else if (format === "excel") {
+          exportToExcel(data, filename);
+        } else if (format === "pdf") {
+          toast.info(`Export PDF sẽ được triển khai trong tương lai`);
+          return; // Don't show success toast for unimplemented features
         }
       }
       toast.success(`Đã xuất file ${format.toUpperCase()} thành công!`);
@@ -68,6 +72,40 @@ export function ExportButtons({ data, filename, onExport }: ExportButtonsProps) 
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+// Excel export helper using xlsx library
+function exportToExcel(data: any[], filename: string) {
+  if (!data || data.length === 0) {
+    toast.error("Không có dữ liệu để xuất");
+    return;
+  }
+
+  try {
+    // Create worksheet from data
+    const worksheet = XLSX.utils.json_to_sheet(data);
+
+    // Create workbook and add worksheet
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Báo cáo");
+
+    // Auto-size columns (optional)
+    const maxWidth = 50;
+    const colWidths = Object.keys(data[0]).map(key => {
+      const maxLength = Math.max(
+        key.length,
+        ...data.map(row => String(row[key] || "").length)
+      );
+      return { wch: Math.min(maxLength + 2, maxWidth) };
+    });
+    worksheet["!cols"] = colWidths;
+
+    // Write file
+    XLSX.writeFile(workbook, `${filename}.xlsx`);
+  } catch (error) {
+    console.error("Excel export error:", error);
+    toast.error("Lỗi khi xuất file Excel");
+  }
 }
 
 // Simple CSV export helper

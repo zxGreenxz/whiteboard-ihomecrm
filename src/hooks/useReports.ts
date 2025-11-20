@@ -727,13 +727,32 @@ export function useProfitDistributionReport(startDate?: Date, endDate?: Date) {
 
       const totalRevenue = invoices?.reduce((sum, inv) => sum + (inv.amount_paid || inv.amount), 0) || 0;
 
-      // For now, we'll return basic profit data
-      // In a real system, you'd query expenses, costs, etc.
+      // Get total expenses
+      let expensesQuery = supabase
+        .from("expenses")
+        .select("amount, category");
+
+      if (startDate) {
+        expensesQuery = expensesQuery.gte("expense_date", startDate.toISOString().split('T')[0]);
+      }
+      if (endDate) {
+        expensesQuery = expensesQuery.lte("expense_date", endDate.toISOString().split('T')[0]);
+      }
+
+      const { data: expenses, error: expensesError } = await expensesQuery;
+      if (expensesError) throw expensesError;
+
+      const totalExpenses = expenses?.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0;
+      const netProfit = totalRevenue - totalExpenses;
+      const profitMargin = totalRevenue > 0 ? Number(((netProfit / totalRevenue) * 100).toFixed(2)) : 0;
+
+      // Calculate revenue breakdown by invoice type (if available)
+      // For now, treat all as rent revenue
       return {
         totalRevenue,
-        totalExpenses: 0, // TODO: Query from expenses table
-        netProfit: totalRevenue,
-        profitMargin: 100,
+        totalExpenses,
+        netProfit,
+        profitMargin,
         breakdown: {
           rent: totalRevenue,
           services: 0,

@@ -1,6 +1,9 @@
 import { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 
 interface ReportLayoutProps {
   title: string;
@@ -10,6 +13,7 @@ interface ReportLayoutProps {
   filters?: ReactNode;
   children: ReactNode;
   stats?: ReactNode;
+  backPath?: string;
 }
 
 export function ReportLayout({
@@ -20,9 +24,25 @@ export function ReportLayout({
   filters,
   children,
   stats,
+  backPath,
 }: ReportLayoutProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-6">
+      {/* Back Button (if provided) */}
+      {backPath && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(backPath)}
+          className="gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Quay lại
+        </Button>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-start">
         <div className="space-y-1">

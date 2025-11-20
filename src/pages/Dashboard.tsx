@@ -1,6 +1,6 @@
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, Home, TrendingUp, DollarSign, AlertTriangle, FileText, Users2 } from 'lucide-react';
+import { Building2, Home, TrendingUp, DollarSign, AlertTriangle, FileText, Users2, BarChart3, Wallet, CheckSquare, ArrowRight } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
@@ -9,6 +9,8 @@ import { AlertsList } from '@/components/dashboard/AlertsList';
 import { RecentActivities } from '@/components/dashboard/RecentActivities';
 import { formatCurrency } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
   const { data: stats, isLoading } = useDashboardStats();
@@ -124,6 +126,96 @@ const Dashboard = () => {
           <RevenueChart />
           <OccupancyChart />
           <DebtChart />
+        </div>
+
+        {/* Reports Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Báo cáo & Phân tích</h2>
+              <p className="text-muted-foreground">Truy cập 19 loại báo cáo chuyên sâu</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Real Estate Reports */}
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <Building2 className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Báo cáo BĐS</CardTitle>
+                    <CardDescription>8 loại báo cáo</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Phòng trống, hợp đồng, tỷ lệ lấp đầy, khuyến mại và nhiều hơn nữa
+                </p>
+                <Button asChild variant="outline" className="w-full group">
+                  <Link to="/reports/real-estate" className="flex items-center justify-between">
+                    <span>Xem báo cáo</span>
+                    <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Finance Reports */}
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
+                    <Wallet className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Báo cáo Tài chính</CardTitle>
+                    <CardDescription>8 loại báo cáo</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Sổ quỹ, dòng tiền, công nợ, thanh toán và phân tích lợi nhuận
+                </p>
+                <Button asChild variant="outline" className="w-full group">
+                  <Link to="/reports/finance" className="flex items-center justify-between">
+                    <span>Xem báo cáo</span>
+                    <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Task Reports */}
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <CheckSquare className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Báo cáo Công việc</CardTitle>
+                    <CardDescription>3 loại báo cáo</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Tổng quan, phân tích theo nhân viên và theo từng phòng
+                </p>
+                <Button asChild variant="outline" className="w-full group">
+                  <Link to="/reports/tasks" className="flex items-center justify-between">
+                    <span>Xem báo cáo</span>
+                    <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Alerts & Activities Row */}
