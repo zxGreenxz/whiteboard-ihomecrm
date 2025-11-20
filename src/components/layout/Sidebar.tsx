@@ -32,6 +32,7 @@ import {
   FileSignature,
   UserCog,
   ChevronDown,
+  Map,
 } from 'lucide-react';
 
 interface NavItem {
@@ -52,6 +53,11 @@ const navigationSections: (NavItem | NavSection)[] = [
     title: 'Tổng quan',
     href: '/',
     icon: LayoutDashboard,
+  },
+  {
+    title: 'Sơ đồ Tòa nhà',
+    href: '/building-map',
+    icon: Map,
   },
   {
     title: 'Danh mục dữ liệu',

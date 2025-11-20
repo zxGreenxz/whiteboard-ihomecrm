@@ -4,6 +4,7 @@ import { Building2, Home, TrendingUp, DollarSign, AlertTriangle, FileText, Users
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
+import { DebtChart } from '@/components/dashboard/DebtChart';
 import { AlertsList } from '@/components/dashboard/AlertsList';
 import { RecentActivities } from '@/components/dashboard/RecentActivities';
 import { formatCurrency } from '@/lib/utils';
@@ -119,9 +120,10 @@ const Dashboard = () => {
         </div>
 
         {/* Charts Row */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <RevenueChart />
           <OccupancyChart />
+          <DebtChart />
         </div>
 
         {/* Alerts & Activities Row */}
