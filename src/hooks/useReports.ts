@@ -376,7 +376,373 @@ export function useContractChangesReport(startDate?: Date, endDate?: Date) {
 }
 
 // ==================== FINANCE REPORTS ====================
-// Will be implemented in Phase 19B
+
+/**
+ * Get cash book report
+ * Returns daily cash transactions with running balance
+ */
+export function useCashBookReport(startDate?: Date, endDate?: Date) {
+  return useQuery({
+    queryKey: ["reports", "cash-book", startDate?.toISOString(), endDate?.toISOString()],
+    queryFn: async () => {
+      // Get payments (income)
+      let paymentsQuery = supabase
+        .from("payments")
+        .select(`
+          id,
+          amount,
+          payment_date,
+          payment_method,
+          notes,
+          invoices (
+            invoice_number,
+            tenants (full_name)
+          )
+        `)
+        .order("payment_date", { ascending: true });
+
+      if (startDate) {
+        paymentsQuery = paymentsQuery.gte("payment_date", startDate.toISOString());
+      }
+      if (endDate) {
+        paymentsQuery = paymentsQuery.lte("payment_date", endDate.toISOString());
+      }
+
+      const { data: payments, error: paymentsError } = await paymentsQuery;
+      if (paymentsError) throw paymentsError;
+
+      // Transform into cash book entries
+      const entries = payments?.map(payment => ({
+        date: payment.payment_date,
+        type: "INCOME" as const,
+        description: `Thanh toán từ ${payment.invoices?.tenants?.full_name || "N/A"} - ${payment.invoices?.invoice_number || ""}`,
+        amount: payment.amount,
+        method: payment.payment_method,
+        notes: payment.notes,
+      })) || [];
+
+      // Calculate running balance
+      let runningBalance = 0;
+      return entries.map(entry => {
+        runningBalance += entry.type === "INCOME" ? entry.amount : -entry.amount;
+        return {
+          ...entry,
+          balance: runningBalance,
+        };
+      });
+    },
+  });
+}
+
+/**
+ * Get cash flow report
+ * Returns income vs expense with net flow
+ */
+export function useCashFlowReport(startDate?: Date, endDate?: Date) {
+  return useQuery({
+    queryKey: ["reports", "cash-flow", startDate?.toISOString(), endDate?.toISOString()],
+    queryFn: async () => {
+      // Get payments (income)
+      let paymentsQuery = supabase
+        .from("payments")
+        .select("amount, payment_date")
+        .order("payment_date", { ascending: true });
+
+      if (startDate) {
+        paymentsQuery = paymentsQuery.gte("payment_date", startDate.toISOString());
+      }
+      if (endDate) {
+        paymentsQuery = paymentsQuery.lte("payment_date", endDate.toISOString());
+      }
+
+      const { data: payments, error: paymentsError } = await paymentsQuery;
+      if (paymentsError) throw paymentsError;
+
+      // Group by month
+      const monthlyData: Record<string, { income: number; expense: number }> = {};
+
+      payments?.forEach(payment => {
+        const month = payment.payment_date.substring(0, 7); // YYYY-MM
+        if (!monthlyData[month]) {
+          monthlyData[month] = { income: 0, expense: 0 };
+        }
+        monthlyData[month].income += payment.amount;
+      });
+
+      return Object.entries(monthlyData).map(([month, data]) => ({
+        month,
+        income: data.income,
+        expense: data.expense,
+        netFlow: data.income - data.expense,
+      }));
+    },
+  });
+}
+
+/**
+ * Get debt report with aging analysis
+ * Returns debts categorized by age (0-30, 31-60, 61-90, >90 days)
+ */
+export function useDebtReport() {
+  return useQuery({
+    queryKey: ["reports", "debt"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          id,
+          invoice_number,
+          amount,
+          amount_paid,
+          due_date,
+          status,
+          created_at,
+          tenants (
+            id,
+            full_name,
+            phone
+          ),
+          rooms (
+            room_number,
+            buildings (name)
+          )
+        `)
+        .eq("status", "PENDING")
+        .order("due_date", { ascending: true });
+
+      if (error) throw error;
+
+      const today = new Date();
+      return data.map(invoice => {
+        const daysOverdue = differenceInDays(today, new Date(invoice.due_date));
+        const remainingAmount = invoice.amount - (invoice.amount_paid || 0);
+
+        let agingCategory = "0-30";
+        if (daysOverdue > 90) agingCategory = ">90";
+        else if (daysOverdue > 60) agingCategory = "61-90";
+        else if (daysOverdue > 30) agingCategory = "31-60";
+
+        return {
+          ...invoice,
+          days_overdue: Math.max(0, daysOverdue),
+          remaining_amount: remainingAmount,
+          aging_category: agingCategory,
+        };
+      });
+    },
+  });
+}
+
+/**
+ * Get customer debt report
+ * Returns customers with outstanding debts
+ */
+export function useCustomerDebtReport() {
+  return useQuery({
+    queryKey: ["reports", "customer-debt"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          id,
+          amount,
+          amount_paid,
+          due_date,
+          tenants (
+            id,
+            full_name,
+            phone,
+            email
+          ),
+          rooms (
+            room_number,
+            buildings (name)
+          )
+        `)
+        .eq("status", "PENDING")
+        .order("due_date", { ascending: true });
+
+      if (error) throw error;
+
+      // Group by tenant
+      const tenantDebts: Record<string, any> = {};
+      data.forEach(invoice => {
+        const tenantId = invoice.tenants?.id;
+        if (!tenantId) return;
+
+        if (!tenantDebts[tenantId]) {
+          tenantDebts[tenantId] = {
+            tenant: invoice.tenants,
+            room: invoice.rooms,
+            totalDebt: 0,
+            invoiceCount: 0,
+            oldestDueDate: invoice.due_date,
+            invoices: [],
+          };
+        }
+
+        const remaining = invoice.amount - (invoice.amount_paid || 0);
+        tenantDebts[tenantId].totalDebt += remaining;
+        tenantDebts[tenantId].invoiceCount++;
+        tenantDebts[tenantId].invoices.push(invoice);
+      });
+
+      return Object.values(tenantDebts).map((debt: any) => ({
+        ...debt,
+        daysOverdue: differenceInDays(new Date(), new Date(debt.oldestDueDate)),
+      }));
+    },
+  });
+}
+
+/**
+ * Get payment schedule report
+ * Returns upcoming and past due invoices
+ */
+export function usePaymentScheduleReport(daysAhead: number = 30) {
+  return useQuery({
+    queryKey: ["reports", "payment-schedule", daysAhead],
+    queryFn: async () => {
+      const today = new Date();
+      const futureDate = addDays(today, daysAhead);
+
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          *,
+          tenants (full_name, phone),
+          rooms (room_number, buildings (name))
+        `)
+        .lte("due_date", futureDate.toISOString())
+        .order("due_date", { ascending: true });
+
+      if (error) throw error;
+
+      return data.map(invoice => ({
+        ...invoice,
+        days_until_due: differenceInDays(new Date(invoice.due_date), today),
+        remaining_amount: invoice.amount - (invoice.amount_paid || 0),
+      }));
+    },
+  });
+}
+
+/**
+ * Get overpayment report
+ * Returns customers who have overpaid
+ */
+export function useOverpaymentReport() {
+  return useQuery({
+    queryKey: ["reports", "overpayment"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select(`
+          id,
+          amount,
+          amount_paid,
+          tenants (
+            id,
+            full_name,
+            phone
+          ),
+          rooms (
+            room_number,
+            buildings (name)
+          )
+        `)
+        .gt("amount_paid", 0);
+
+      if (error) throw error;
+
+      // Filter for overpayments
+      return data
+        .filter(invoice => (invoice.amount_paid || 0) > invoice.amount)
+        .map(invoice => ({
+          ...invoice,
+          overpaid_amount: (invoice.amount_paid || 0) - invoice.amount,
+        }));
+    },
+  });
+}
+
+/**
+ * Get deposits report
+ * Returns list of customer deposits
+ */
+export function useDepositsReport() {
+  return useQuery({
+    queryKey: ["reports", "deposits"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("deposits")
+        .select(`
+          *,
+          leads (
+            id,
+            full_name,
+            phone,
+            email
+          ),
+          rooms (
+            room_number,
+            buildings (name)
+          )
+        `)
+        .order("deposit_date", { ascending: false });
+
+      if (error) throw error;
+
+      return data.map(deposit => ({
+        ...deposit,
+        days_held: differenceInDays(new Date(), new Date(deposit.deposit_date)),
+      }));
+    },
+  });
+}
+
+/**
+ * Get profit distribution report
+ * Returns revenue breakdown and profit analysis
+ */
+export function useProfitDistributionReport(startDate?: Date, endDate?: Date) {
+  return useQuery({
+    queryKey: ["reports", "profit-distribution", startDate?.toISOString(), endDate?.toISOString()],
+    queryFn: async () => {
+      // Get total revenue (paid invoices)
+      let revenueQuery = supabase
+        .from("invoices")
+        .select("amount, amount_paid")
+        .eq("status", "PAID");
+
+      if (startDate) {
+        revenueQuery = revenueQuery.gte("created_at", startDate.toISOString());
+      }
+      if (endDate) {
+        revenueQuery = revenueQuery.lte("created_at", endDate.toISOString());
+      }
+
+      const { data: invoices, error: invoicesError } = await revenueQuery;
+      if (invoicesError) throw invoicesError;
+
+      const totalRevenue = invoices?.reduce((sum, inv) => sum + (inv.amount_paid || inv.amount), 0) || 0;
+
+      // For now, we'll return basic profit data
+      // In a real system, you'd query expenses, costs, etc.
+      return {
+        totalRevenue,
+        totalExpenses: 0, // TODO: Query from expenses table
+        netProfit: totalRevenue,
+        profitMargin: 100,
+        breakdown: {
+          rent: totalRevenue,
+          services: 0,
+          other: 0,
+        },
+      };
+    },
+  });
+}
 
 // ==================== TASK REPORTS ====================
 // Will be implemented in Phase 19C

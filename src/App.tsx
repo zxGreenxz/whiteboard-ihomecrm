@@ -55,6 +55,16 @@ import TerminationsReport from "./pages/reports/real-estate/TerminationsReport";
 import PriceHistoryReport from "./pages/reports/real-estate/PriceHistoryReport";
 import ContractChangesReport from "./pages/reports/real-estate/ContractChangesReport";
 
+// Finance Reports
+import CashBookReport from "./pages/reports/finance/CashBookReport";
+import CashFlowReport from "./pages/reports/finance/CashFlowReport";
+import DebtReport from "./pages/reports/finance/DebtReport";
+import CustomerDebtReport from "./pages/reports/finance/CustomerDebtReport";
+import PaymentScheduleReport from "./pages/reports/finance/PaymentScheduleReport";
+import OverpaymentReport from "./pages/reports/finance/OverpaymentReport";
+import DepositsReport from "./pages/reports/finance/DepositsReport";
+import ProfitDistributionReport from "./pages/reports/finance/ProfitDistributionReport";
+
 // Settings Pages
 import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
 import TemplatesPage from "./pages/settings/TemplatesPage";
@@ -155,6 +165,15 @@ const App = () => (
           <Route path="/reports/real-estate/contract-changes" element={<ProtectedRoute><ContractChangesReport /></ProtectedRoute>} />
 
           <Route path="/reports/finance" element={<ProtectedRoute><FinanceReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/finance/cash-book" element={<ProtectedRoute><CashBookReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><CashFlowReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/debt" element={<ProtectedRoute><DebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/customer-debt" element={<ProtectedRoute><CustomerDebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><PaymentScheduleReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/overpayment" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/deposits" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitDistributionReport /></ProtectedRoute>} />
+
           <Route path="/reports/tasks" element={<ProtectedRoute><TasksReportsPage /></ProtectedRoute>} />
 
           {/* Settings Routes */}
