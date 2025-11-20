@@ -65,6 +65,11 @@ import OverpaymentReport from "./pages/reports/finance/OverpaymentReport";
 import DepositsReport from "./pages/reports/finance/DepositsReport";
 import ProfitDistributionReport from "./pages/reports/finance/ProfitDistributionReport";
 
+// Task Reports
+import TasksOverviewReport from "./pages/reports/tasks/TasksOverviewReport";
+import TasksByStaffReport from "./pages/reports/tasks/TasksByStaffReport";
+import TasksByRoomReport from "./pages/reports/tasks/TasksByRoomReport";
+
 // Settings Pages
 import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
 import TemplatesPage from "./pages/settings/TemplatesPage";
@@ -175,6 +180,9 @@ const App = () => (
           <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitDistributionReport /></ProtectedRoute>} />
 
           <Route path="/reports/tasks" element={<ProtectedRoute><TasksReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/tasks/overview" element={<ProtectedRoute><TasksOverviewReport /></ProtectedRoute>} />
+          <Route path="/reports/tasks/by-staff" element={<ProtectedRoute><TasksByStaffReport /></ProtectedRoute>} />
+          <Route path="/reports/tasks/by-room" element={<ProtectedRoute><TasksByRoomReport /></ProtectedRoute>} />
 
           {/* Settings Routes */}
           <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />

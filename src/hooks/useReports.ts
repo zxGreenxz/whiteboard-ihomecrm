@@ -745,4 +745,182 @@ export function useProfitDistributionReport(startDate?: Date, endDate?: Date) {
 }
 
 // ==================== TASK REPORTS ====================
-// Will be implemented in Phase 19C
+
+/**
+ * Get tasks overview report
+ * Returns summary statistics of all tasks
+ */
+export function useTasksOverviewReport() {
+  return useQuery({
+    queryKey: ["reports", "tasks-overview"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("issues")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const total = data.length;
+      const completed = data.filter(t => t.status === "RESOLVED").length;
+      const inProgress = data.filter(t => t.status === "IN_PROGRESS").length;
+      const pending = data.filter(t => t.status === "OPEN").length;
+      const overdue = data.filter(t => {
+        if (!t.due_date || t.status === "RESOLVED") return false;
+        return new Date(t.due_date) < new Date();
+      }).length;
+
+      // Group by priority
+      const byPriority = {
+        HIGH: data.filter(t => t.priority === "HIGH").length,
+        MEDIUM: data.filter(t => t.priority === "MEDIUM").length,
+        LOW: data.filter(t => t.priority === "LOW").length,
+      };
+
+      // Group by category
+      const byCategory = data.reduce((acc: Record<string, number>, task) => {
+        const category = task.category || "OTHER";
+        acc[category] = (acc[category] || 0) + 1;
+        return acc;
+      }, {});
+
+      return {
+        summary: {
+          total,
+          completed,
+          inProgress,
+          pending,
+          overdue,
+          completionRate: total > 0 ? Number(((completed / total) * 100).toFixed(1)) : 0,
+        },
+        byPriority,
+        byCategory,
+        recentTasks: data.slice(0, 10),
+      };
+    },
+  });
+}
+
+/**
+ * Get tasks by staff report
+ * Returns task distribution and performance by staff member
+ */
+export function useTasksByStaffReport() {
+  return useQuery({
+    queryKey: ["reports", "tasks-by-staff"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("issues")
+        .select(`
+          *,
+          assigned_to_user:assigned_to (
+            id,
+            email,
+            raw_user_meta_data
+          )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Group by staff
+      const staffTasks: Record<string, any> = {};
+
+      data.forEach(task => {
+        const staffId = task.assigned_to || "unassigned";
+        const staffName = task.assigned_to_user?.raw_user_meta_data?.full_name ||
+                         task.assigned_to_user?.email ||
+                         "Chưa phân công";
+
+        if (!staffTasks[staffId]) {
+          staffTasks[staffId] = {
+            staffId,
+            staffName,
+            total: 0,
+            completed: 0,
+            inProgress: 0,
+            pending: 0,
+            overdue: 0,
+            tasks: [],
+          };
+        }
+
+        staffTasks[staffId].total++;
+        staffTasks[staffId].tasks.push(task);
+
+        if (task.status === "RESOLVED") staffTasks[staffId].completed++;
+        else if (task.status === "IN_PROGRESS") staffTasks[staffId].inProgress++;
+        else if (task.status === "OPEN") staffTasks[staffId].pending++;
+
+        if (task.due_date && new Date(task.due_date) < new Date() && task.status !== "RESOLVED") {
+          staffTasks[staffId].overdue++;
+        }
+      });
+
+      return Object.values(staffTasks).map((staff: any) => ({
+        ...staff,
+        completionRate: staff.total > 0 ? Number(((staff.completed / staff.total) * 100).toFixed(1)) : 0,
+      }));
+    },
+  });
+}
+
+/**
+ * Get tasks by room report
+ * Returns maintenance and repair history for each room
+ */
+export function useTasksByRoomReport() {
+  return useQuery({
+    queryKey: ["reports", "tasks-by-room"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("issues")
+        .select(`
+          *,
+          rooms (
+            id,
+            room_number,
+            buildings (name)
+          )
+        `)
+        .not("room_id", "is", null)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Group by room
+      const roomTasks: Record<string, any> = {};
+
+      data.forEach(task => {
+        const roomId = task.room_id;
+        if (!roomId) return;
+
+        const roomKey = `${task.rooms?.buildings?.name} - ${task.rooms?.room_number}`;
+
+        if (!roomTasks[roomKey]) {
+          roomTasks[roomKey] = {
+            room: task.rooms,
+            roomDisplay: roomKey,
+            total: 0,
+            completed: 0,
+            inProgress: 0,
+            pending: 0,
+            tasks: [],
+          };
+        }
+
+        roomTasks[roomKey].total++;
+        roomTasks[roomKey].tasks.push(task);
+
+        if (task.status === "RESOLVED") roomTasks[roomKey].completed++;
+        else if (task.status === "IN_PROGRESS") roomTasks[roomKey].inProgress++;
+        else if (task.status === "OPEN") roomTasks[roomKey].pending++;
+      });
+
+      return Object.values(roomTasks).map((room: any) => ({
+        ...room,
+        completionRate: room.total > 0 ? Number(((room.completed / room.total) * 100).toFixed(1)) : 0,
+      }));
+    },
+  });
+}
