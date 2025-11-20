@@ -168,6 +168,7 @@ export const useRevenueChart = (months: number = 12) => {
 
       return data;
     },
+    refetchInterval: 60000, // Refresh every minute
   });
 };
 
@@ -212,6 +213,7 @@ export const useOccupancyChart = () => {
         },
       ];
     },
+    refetchInterval: 60000, // Refresh every minute
   });
 };
 
@@ -306,6 +308,7 @@ export const useAlerts = () => {
         return severityOrder[a.severity] - severityOrder[b.severity];
       });
     },
+    refetchInterval: 60000, // Refresh every minute
   });
 };
 
@@ -382,5 +385,6 @@ export const useRecentActivities = () => {
 
       return activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
     },
+    refetchInterval: 60000, // Refresh every minute
   });
 };
