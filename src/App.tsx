@@ -45,6 +45,16 @@ import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
 import FinanceReportsPage from "./pages/reports/FinanceReportsPage";
 import TasksReportsPage from "./pages/reports/TasksReportsPage";
 
+// Real Estate Reports
+import VacantRoomsReport from "./pages/reports/real-estate/VacantRoomsReport";
+import ExpiringContractsReport from "./pages/reports/real-estate/ExpiringContractsReport";
+import OccupancyReport from "./pages/reports/real-estate/OccupancyReport";
+import PromotionsReport from "./pages/reports/real-estate/PromotionsReport";
+import NewLeasesReport from "./pages/reports/real-estate/NewLeasesReport";
+import TerminationsReport from "./pages/reports/real-estate/TerminationsReport";
+import PriceHistoryReport from "./pages/reports/real-estate/PriceHistoryReport";
+import ContractChangesReport from "./pages/reports/real-estate/ContractChangesReport";
+
 // Settings Pages
 import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
 import TemplatesPage from "./pages/settings/TemplatesPage";
@@ -135,6 +145,15 @@ const App = () => (
 
           {/* Reports Routes */}
           <Route path="/reports/real-estate" element={<ProtectedRoute><RealEstateReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/vacant-rooms" element={<ProtectedRoute><VacantRoomsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/expiring-contracts" element={<ProtectedRoute><ExpiringContractsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/occupancy" element={<ProtectedRoute><OccupancyReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/promotions" element={<ProtectedRoute><PromotionsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/new-leases" element={<ProtectedRoute><NewLeasesReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><TerminationsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/price-history" element={<ProtectedRoute><PriceHistoryReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/contract-changes" element={<ProtectedRoute><ContractChangesReport /></ProtectedRoute>} />
+
           <Route path="/reports/finance" element={<ProtectedRoute><FinanceReportsPage /></ProtectedRoute>} />
           <Route path="/reports/tasks" element={<ProtectedRoute><TasksReportsPage /></ProtectedRoute>} />
 
