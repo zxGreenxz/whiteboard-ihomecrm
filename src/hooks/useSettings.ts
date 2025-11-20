@@ -180,7 +180,7 @@ export const useSettings = () => {
  * useAllSettings - Get all settings grouped by category
  */
 export const useAllSettings = () => {
-  const { data: settings = [] } = useSettings();
+  const { data: settings = [], isLoading, isError, error } = useSettings();
 
   const groupedSettings: Partial<AllSettings> = {
     company: {} as CompanySettings,
@@ -199,7 +199,12 @@ export const useAllSettings = () => {
     }
   });
 
-  return groupedSettings as AllSettings;
+  return {
+    data: groupedSettings as AllSettings,
+    isLoading,
+    isError,
+    error,
+  };
 };
 
 /**

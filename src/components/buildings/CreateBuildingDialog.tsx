@@ -1,6 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateBuilding } from "@/hooks/useBuildings";
 import { useAreas } from "@/hooks/useAreas";
+import { useGenerateCode } from "@/hooks/useCodeGeneration";
 
 const buildingSchema = z.object({
   name: z.string().min(1, "Tên tòa nhà là bắt buộc"),
@@ -55,6 +57,7 @@ interface CreateBuildingDialogProps {
 export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialogProps) {
   const createBuilding = useCreateBuilding();
   const { data: areas } = useAreas();
+  const generateCodeMutation = useGenerateCode();
 
   const form = useForm<BuildingFormValues>({
     resolver: zodResolver(buildingSchema),
@@ -72,6 +75,15 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
       description: "",
     },
   });
+
+  const handleGenerateCode = async () => {
+    try {
+      const generatedCode = await generateCodeMutation.mutateAsync('building');
+      form.setValue('code', generatedCode);
+    } catch (error) {
+      // Error is handled by the mutation
+    }
+  };
 
   const onSubmit = async (data: BuildingFormValues) => {
     try {
@@ -97,17 +109,17 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh]" aria-describedby="create-building-description">
         <DialogHeader>
-          <DialogTitle>Tạo Tòa nhà mới</DialogTitle>
-          <DialogDescription>
+          <DialogTitle id="create-building-title">Tạo Tòa nhà mới</DialogTitle>
+          <DialogDescription id="create-building-description">
             Nhập thông tin tòa nhà để quản lý phòng và khách thuê
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
+        <ScrollArea className="max-h-[calc(90vh-120px)] pr-4" aria-labelledby="create-building-title">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" aria-label="Form tạo tòa nhà mới">
               {/* Basic Info */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm">Thông tin cơ bản</h3>
@@ -126,26 +138,40 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
                   )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="code"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Mã tòa nhà</FormLabel>
+                <FormField
+                  control={form.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Mã tòa nhà</FormLabel>
+                      <div className="flex gap-2">
                         <FormControl>
                           <Input placeholder="TN-A" {...field} />
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleGenerateCode}
+                          disabled={generateCodeMutation.isPending}
+                          title="Tự động tạo mã"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <FormDescription>
+                        Click nút ⚡ để tự động tạo mã tòa nhà
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-                  <FormField
-                    control={form.control}
-                    name="area_id"
-                    render={({ field }) => (
-                      <FormItem>
+                <FormField
+                  control={form.control}
+                  name="area_id"
+                  render={({ field }) => (
+                    <FormItem>
                       <FormLabel>Khu vực</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value || undefined}>
                         <FormControl>
@@ -161,11 +187,10 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
                           ))}
                         </SelectContent>
                       </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField

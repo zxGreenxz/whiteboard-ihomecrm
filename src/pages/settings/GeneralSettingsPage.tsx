@@ -108,7 +108,24 @@ const notificationSchema = z.object({
 
 const GeneralSettingsPage = () => {
   const [activeTab, setActiveTab] = useState('company');
-  const settings = useAllSettings();
+  const { data: settings, isLoading } = useAllSettings();
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Cài đặt chung</h1>
+          <p className="text-muted-foreground mt-2">
+            Quản lý cấu hình hệ thống, công ty, hợp đồng, hóa đơn và thông báo
+          </p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

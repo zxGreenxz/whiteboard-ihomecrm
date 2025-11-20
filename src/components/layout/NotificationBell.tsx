@@ -43,21 +43,29 @@ const NotificationBell = () => {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label={hasUnread ? `Thông báo (${unreadCount} chưa đọc)` : 'Thông báo'}
+          aria-expanded={isOpen}
+          aria-haspopup="menu"
+        >
+          <Bell className="h-5 w-5" aria-hidden="true" />
           {hasUnread && (
             <Badge
               variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+              aria-label={`${unreadCount} thông báo chưa đọc`}
             >
               {unreadCount > 99 ? '99+' : unreadCount}
             </Badge>
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-96 p-0" align="end">
+      <DropdownMenuContent className="w-96 p-0" align="end" role="menu" aria-label="Danh sách thông báo">
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="font-semibold text-lg">Thông báo</h3>
+          <h3 className="font-semibold text-lg" id="notification-menu-title">Thông báo</h3>
           {hasUnread && (
             <Button
               variant="ghost"
@@ -65,25 +73,26 @@ const NotificationBell = () => {
               className="h-8 text-xs"
               onClick={handleMarkAllAsRead}
               disabled={markAllAsReadMutation.isPending}
+              aria-label="Đánh dấu tất cả thông báo đã đọc"
             >
-              <CheckCheck className="h-4 w-4 mr-1" />
+              <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />
               Đánh dấu tất cả đã đọc
             </Button>
           )}
         </div>
 
-        <ScrollArea className="h-[400px]">
+        <ScrollArea className="h-[400px]" aria-labelledby="notification-menu-title">
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" aria-label="Đang tải thông báo"></div>
             </div>
           ) : notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Bell className="h-12 w-12 mb-3 opacity-50" />
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground" role="status">
+              <Bell className="h-12 w-12 mb-3 opacity-50" aria-hidden="true" />
               <p className="text-sm">Không có thông báo nào</p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y" role="list" aria-label="Danh sách thông báo">
               {notifications.map((notification) => (
                 <NotificationItem
                   key={notification.id}
@@ -179,10 +188,19 @@ const NotificationItem = ({
         !notification.is_read && 'bg-blue-50/50'
       )}
       onClick={handleClick}
+      role="listitem"
+      aria-label={`Thông báo: ${notification.subject || notification.content}`}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
     >
       {/* Unread indicator dot */}
       {!notification.is_read && (
-        <div className="absolute left-2 top-6 w-2 h-2 bg-blue-600 rounded-full" />
+        <div className="absolute left-2 top-6 w-2 h-2 bg-blue-600 rounded-full" aria-label="Chưa đọc" />
       )}
 
       <div className="flex gap-3 pl-3">
@@ -229,8 +247,9 @@ const NotificationItem = ({
               className="h-8 w-8"
               onClick={handleMarkAsRead}
               title="Đánh dấu đã đọc"
+              aria-label="Đánh dấu thông báo đã đọc"
             >
-              <Check className="h-4 w-4" />
+              <Check className="h-4 w-4" aria-hidden="true" />
             </Button>
           )}
           <Button
@@ -239,8 +258,9 @@ const NotificationItem = ({
             className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={handleDelete}
             title="Xóa thông báo"
+            aria-label="Xóa thông báo"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
