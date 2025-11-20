@@ -11,6 +11,7 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 
 // Main Pages
 import Dashboard from "./pages/Dashboard";
+import BuildingMapPage from "./pages/building-map/BuildingMapPage";
 import NotFound from "./pages/NotFound";
 
 // Master Data Pages
@@ -104,6 +105,7 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+          <Route path="/building-map" element={<ProtectedRoute><BuildingMapPage /></ProtectedRoute>} />
 
           {/* Master Data Routes */}
           <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
