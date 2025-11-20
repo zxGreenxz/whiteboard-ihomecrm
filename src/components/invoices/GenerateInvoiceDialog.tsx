@@ -24,6 +24,7 @@ import {
 import { useCreateInvoice } from '@/hooks/useInvoices';
 import { useContracts } from '@/hooks/useContracts';
 import { useMeterReadings } from '@/hooks/useInvoices';
+import { useVehicles } from '@/hooks/useVehicles';
 import { Receipt, Plus, Trash2, Home, Zap, Droplet } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -60,6 +61,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const createMutation = useCreateInvoice();
   const { data: contracts } = useContracts({ status: 'ACTIVE' });
   const { data: meterReadings } = useMeterReadings(selectedContractId);
+  const { data: vehicles } = useVehicles({ contract_id: selectedContractId });
 
   const {
     register,
@@ -124,8 +126,21 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
           });
         }
       });
+
+      // Add vehicle parking fees
+      vehicles?.forEach((vehicle) => {
+        if (vehicle.parking_fee && vehicle.parking_fee > 0) {
+          append({
+            type: 'SERVICE',
+            description: `Phí gửi xe ${vehicle.license_plate || vehicle.vehicle_type}`,
+            quantity: 1,
+            unit_price: vehicle.parking_fee,
+            amount: vehicle.parking_fee,
+          });
+        }
+      });
     }
-  }, [selectedContract, append, fields.length]);
+  }, [selectedContract, vehicles, append, fields.length]);
 
   const handleClose = () => {
     reset();
