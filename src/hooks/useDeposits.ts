@@ -104,3 +104,72 @@ export const useCreateDeposit = () => {
     },
   });
 };
+
+// Update deposit
+export const useUpdateDeposit = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, ...data }: Partial<Deposit> & { id: string }) => {
+      const { data: deposit, error } = await supabase
+        .from('deposits')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return deposit;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deposits'] });
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['beds'] });
+      toast({
+        title: 'Cập nhật thành công!',
+        description: 'Thông tin đặt cọc đã được cập nhật.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Cập nhật thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// Delete deposit
+export const useDeleteDeposit = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('deposits')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deposits'] });
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['beds'] });
+      toast({
+        title: 'Xóa thành công!',
+        description: 'Phiếu đặt cọc đã được xóa.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Xóa thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
