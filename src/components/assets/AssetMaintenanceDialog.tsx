@@ -65,11 +65,18 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
 
   const onSubmit = async (data: MaintenanceFormValues) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       await createMaintenance.mutateAsync({
-        ...data,
+        asset_id: data.asset_id,
+        issue_description: data.issue_description,
+        maintenance_date: data.maintenance_date,
+        status: data.status,
         cost: data.cost || null,
         assigned_to: data.assigned_to || null,
         notes: data.notes || null,
+        user_id: user.id,
       });
       form.reset();
       onOpenChange(false);
