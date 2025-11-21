@@ -31,7 +31,7 @@ export function IssueCommentForm({ issueId, currentStatus, canChangeStatus = tru
     resolver: zodResolver(commentSchema),
     defaultValues: {
       comment: "",
-      newStatus: "",
+      newStatus: "NO_CHANGE",
     },
   });
 
@@ -45,7 +45,7 @@ export function IssueCommentForm({ issueId, currentStatus, canChangeStatus = tru
       });
 
       // Update status if changed
-      if (data.newStatus && data.newStatus !== currentStatus) {
+      if (data.newStatus && data.newStatus !== "NO_CHANGE" && data.newStatus !== currentStatus) {
         await updateIssue.mutateAsync({
           id: issueId,
           status: data.newStatus,
@@ -97,7 +97,7 @@ export function IssueCommentForm({ issueId, currentStatus, canChangeStatus = tru
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Không thay đổi</SelectItem>
+                        <SelectItem value="NO_CHANGE">Không thay đổi</SelectItem>
                         <SelectItem value="IN_PROGRESS">Đang xử lý</SelectItem>
                         <SelectItem value="RESOLVED">Đã giải quyết</SelectItem>
                         <SelectItem value="CLOSED">Đóng sự cố</SelectItem>
