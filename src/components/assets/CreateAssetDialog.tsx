@@ -81,14 +81,22 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
 
   const onSubmit = async (data: AssetFormValues) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       await createAsset.mutateAsync({
-        ...data,
+        name: data.name,
         code: data.code || null,
+        category_id: data.category_id,
         supplier_id: data.supplier_id || null,
+        quantity: data.quantity,
+        condition: data.condition,
         purchase_date: data.purchase_date || null,
+        purchase_price: data.purchase_price,
         building_id: data.building_id || null,
         room_id: data.room_id || null,
         description: data.description || null,
+        user_id: user.id,
       });
       form.reset();
       onOpenChange(false);

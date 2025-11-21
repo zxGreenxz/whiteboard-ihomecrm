@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { useCreateAssetHandover } from "@/hooks/useAssets";
 import { useContracts } from "@/hooks/useContracts";
+import { supabase } from "@/integrations/supabase/client";
 
 const handoverSchema = z.object({
   contract_id: z.string().min(1, "Phải chọn hợp đồng"),
@@ -39,11 +40,15 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
 
   const onSubmit = async (data: HandoverFormValues) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       await createHandover.mutateAsync({
         contract_id: data.contract_id,
-        handover_type: data.handover_type,
+        type: data.handover_type,
         handover_date: data.handover_date,
         items: data.items as any,
+        user_id: user.id,
       });
       form.reset();
       onOpenChange(false);
