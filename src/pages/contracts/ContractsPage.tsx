@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,7 @@ import TransferContractDialog from '@/components/contracts/TransferContractDialo
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 
 const ContractsPage = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
@@ -200,7 +202,7 @@ const ContractsPage = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/contracts/${contract.id}`)}>
                           <Eye className="h-4 w-4 mr-2" />
                           Xem chi tiết
                         </DropdownMenuItem>
