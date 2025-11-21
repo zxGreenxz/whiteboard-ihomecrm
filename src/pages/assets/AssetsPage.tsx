@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Search, FileText, ArrowRightLeft, Wrench } from "lucide-react";
+import { Plus, Search, FileText, ArrowRightLeft, Wrench, Package } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -110,33 +111,29 @@ const AssetsPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Quản lý Tài sản</h1>
-          <p className="text-muted-foreground mt-1">
-            Theo dõi và quản lý tài sản nội thất
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setMovementDialogOpen(true)}>
-            <ArrowRightLeft className="w-4 h-4 mr-2" />
-            Di chuyển
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setMaintenanceDialogOpen(true)}>
-            <Wrench className="w-4 h-4 mr-2" />
-            Bảo trì
-          </Button>
-          <Button variant="outline" onClick={handleHandover}>
-            <FileText className="w-4 h-4 mr-2" />
-            Biên bản bàn giao
-          </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Tạo tài sản
-          </Button>
-        </div>
+    <MainLayout
+      title="Quản lý Tài sản"
+      subtitle="Theo dõi và quản lý tài sản nội thất"
+      icon={Package}
+    >
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-2 mb-6">
+        <Button variant="outline" size="sm" onClick={() => setMovementDialogOpen(true)}>
+          <ArrowRightLeft className="w-4 h-4 mr-2" />
+          Di chuyển
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setMaintenanceDialogOpen(true)}>
+          <Wrench className="w-4 h-4 mr-2" />
+          Bảo trì
+        </Button>
+        <Button variant="outline" onClick={handleHandover}>
+          <FileText className="w-4 h-4 mr-2" />
+          Biên bản bàn giao
+        </Button>
+        <Button onClick={() => setCreateDialogOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Tạo tài sản
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -323,7 +320,7 @@ const AssetsPage = () => {
         open={maintenanceDialogOpen}
         onOpenChange={setMaintenanceDialogOpen}
       />
-    </div>
+    </MainLayout>
   );
 };
 
