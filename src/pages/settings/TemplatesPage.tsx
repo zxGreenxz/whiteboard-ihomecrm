@@ -1,218 +1,286 @@
-import { FileText, Upload, Download, Eye } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
+import { useState, useMemo } from "react";
+import {
+  FileText,
+  Plus,
+  Pencil,
+  Trash2,
+  Download,
+  Eye,
+  Search,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  useDocumentTemplates,
+  useUpdateDocumentTemplate,
+  useDownloadTemplate,
+  DocumentTemplate,
+  CATEGORY_LABELS,
+} from "@/hooks/useDocumentTemplates";
+import { CreateTemplateDialog } from "@/components/document-templates/CreateTemplateDialog";
+import { EditTemplateDialog } from "@/components/document-templates/EditTemplateDialog";
+import { DeleteTemplateDialog } from "@/components/document-templates/DeleteTemplateDialog";
 
 const TemplatesPage = () => {
-  const templates = {
-    contract: [
-      { id: 1, name: 'Hợp đồng thuê phòng trọ', type: 'DOCX', size: '45 KB', isDefault: true },
-      { id: 2, name: 'Hợp đồng thuê KTX', type: 'DOCX', size: '42 KB', isDefault: false },
-    ],
-    invoice: [
-      { id: 3, name: 'Hóa đơn A4', type: 'PDF', size: '28 KB', isDefault: true },
-      { id: 4, name: 'Hóa đơn Thermal 80mm', type: 'PDF', size: '25 KB', isDefault: false },
-    ],
-    receipt: [
-      { id: 5, name: 'Biên lai thu tiền', type: 'PDF', size: '22 KB', isDefault: true },
-    ],
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const { data: templates, isLoading } = useDocumentTemplates();
+  const updateMutation = useUpdateDocumentTemplate();
+  const downloadMutation = useDownloadTemplate();
+
+  // Filter templates by search term
+  const filteredTemplates = useMemo(() => {
+    if (!templates) return [];
+    if (!searchTerm) return templates;
+
+    const search = searchTerm.toLowerCase();
+    return templates.filter(
+      (template) =>
+        template.name.toLowerCase().includes(search) ||
+        template.code.toLowerCase().includes(search) ||
+        CATEGORY_LABELS[template.category].toLowerCase().includes(search)
+    );
+  }, [templates, searchTerm]);
+
+  const handleEdit = (template: DocumentTemplate) => {
+    setSelectedTemplate(template);
+    setEditDialogOpen(true);
   };
 
-  const variables = [
-    { name: '{company_name}', desc: 'Tên công ty' },
-    { name: '{company_address}', desc: 'Địa chỉ công ty' },
-    { name: '{tenant_name}', desc: 'Tên khách thuê' },
-    { name: '{room_name}', desc: 'Tên phòng' },
-    { name: '{contract_number}', desc: 'Số hợp đồng' },
-    { name: '{rent_price}', desc: 'Giá thuê' },
-    { name: '{deposit_amount}', desc: 'Tiền cọc' },
-    { name: '{start_date}', desc: 'Ngày bắt đầu' },
-    { name: '{end_date}', desc: 'Ngày kết thúc' },
-    { name: '{invoice_number}', desc: 'Số hóa đơn' },
-    { name: '{total_amount}', desc: 'Tổng tiền' },
-    { name: '{payment_due_date}', desc: 'Hạn thanh toán' },
-  ];
+  const handleDelete = (template: DocumentTemplate) => {
+    setSelectedTemplate(template);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleToggleDefault = async (template: DocumentTemplate) => {
+    try {
+      await updateMutation.mutateAsync({
+        id: template.id,
+        is_default: !template.is_default,
+      });
+    } catch (error) {
+      // Error handled by mutation
+    }
+  };
+
+  const handleDownload = (template: DocumentTemplate) => {
+    downloadMutation.mutate({
+      fileUrl: template.file_url,
+      fileName: template.file_name,
+    });
+  };
+
+  const handleView = (template: DocumentTemplate) => {
+    window.open(template.file_url, "_blank");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-6 max-w-7xl">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Đang tải...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
+    <div className="container mx-auto p-6 max-w-7xl">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-          <FileText className="h-5 w-5 text-purple-600" />
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
+            <FileText className="h-5 w-5 text-purple-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Mẫu biểu</h1>
+            <p className="text-sm text-muted-foreground">
+              Quản lý mẫu hợp đồng, hóa đơn và biên lai
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">Mẫu biểu</h1>
-          <p className="text-sm text-muted-foreground">
-            Quản lý mẫu hợp đồng, hóa đơn và biên lai
-          </p>
-        </div>
+
+        <Button
+          onClick={() => setCreateDialogOpen(true)}
+          className="bg-green-600 hover:bg-green-700"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Thêm mẫu
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Templates Section */}
-        <div className="lg:col-span-2">
-          <Tabs defaultValue="contract">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="contract">Hợp đồng</TabsTrigger>
-              <TabsTrigger value="invoice">Hóa đơn</TabsTrigger>
-              <TabsTrigger value="receipt">Biên lai</TabsTrigger>
-            </TabsList>
+      {/* Search */}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Tìm kiếm..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-            {/* Contract Templates */}
-            <TabsContent value="contract" className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-semibold">Mẫu hợp đồng ({templates.contract.length})</h3>
-                <Button size="sm">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Tải lên mẫu mới
-                </Button>
-              </div>
+      {/* Templates Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[120px]">Mã</TableHead>
+                <TableHead className="w-[100px]">Thao tác</TableHead>
+                <TableHead>Tên mẫu</TableHead>
+                <TableHead>Loại</TableHead>
+                <TableHead className="w-[120px]">Xem mẫu PDF</TableHead>
+                <TableHead className="w-[120px] text-center">Mặc định</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTemplates.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    <div className="flex flex-col items-center gap-2">
+                      <FileText className="h-12 w-12 text-gray-300" />
+                      <p className="text-muted-foreground">
+                        {searchTerm
+                          ? "Không tìm thấy mẫu nào"
+                          : "Chưa có mẫu nào. Nhấn 'Thêm mẫu' để tạo mới."}
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredTemplates.map((template) => (
+                  <TableRow key={template.id}>
+                    {/* Code */}
+                    <TableCell className="font-medium text-green-600">
+                      {template.code}
+                    </TableCell>
 
-              {templates.contract.map((template) => (
-                <Card key={template.id}>
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-8 w-8 text-blue-600" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{template.name}</p>
-                          {template.isDefault && (
-                            <Badge variant="default" className="text-xs">Mặc định</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {template.type} • {template.size}
-                        </p>
+                    {/* Actions */}
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          onClick={() => handleEdit(template)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDelete(template)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4 mr-2" />
-                        Xem trước
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Tải xuống
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </TabsContent>
+                    </TableCell>
 
-            {/* Invoice Templates */}
-            <TabsContent value="invoice" className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-semibold">Mẫu hóa đơn ({templates.invoice.length})</h3>
-                <Button size="sm">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Tải lên mẫu mới
-                </Button>
-              </div>
-
-              {templates.invoice.map((template) => (
-                <Card key={template.id}>
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-8 w-8 text-green-600" />
+                    {/* Name */}
+                    <TableCell>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{template.name}</p>
-                          {template.isDefault && (
-                            <Badge variant="default" className="text-xs">Mặc định</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {template.type} • {template.size}
-                        </p>
+                        <p className="font-medium">{template.name}</p>
+                        {template.description && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {template.description}
+                          </p>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4 mr-2" />
-                        Xem trước
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Tải xuống
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </TabsContent>
+                    </TableCell>
 
-            {/* Receipt Templates */}
-            <TabsContent value="receipt" className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-semibold">Mẫu biên lai ({templates.receipt.length})</h3>
-                <Button size="sm">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Tải lên mẫu mới
-                </Button>
-              </div>
+                    {/* Category */}
+                    <TableCell>
+                      <Badge variant="outline">
+                        {CATEGORY_LABELS[template.category]}
+                      </Badge>
+                    </TableCell>
 
-              {templates.receipt.map((template) => (
-                <Card key={template.id}>
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-8 w-8 text-orange-600" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{template.name}</p>
-                          {template.isDefault && (
-                            <Badge variant="default" className="text-xs">Mặc định</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {template.type} • {template.size}
-                        </p>
+                    {/* View/Download */}
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-green-600"
+                          onClick={() => handleView(template)}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Xem mẫu
+                        </Button>
+                        <span className="text-gray-300">|</span>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-green-600"
+                          onClick={() => handleDownload(template)}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Tải xuống
+                        </Button>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4 mr-2" />
-                        Xem trước
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Tải xuống
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </TabsContent>
-          </Tabs>
-        </div>
+                    </TableCell>
 
-        {/* Variables Reference */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Biến động (Variables)</CardTitle>
-              <CardDescription>
-                Sử dụng các biến này trong mẫu
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {variables.map((variable, index) => (
-                  <div key={index} className="border-b pb-2">
-                    <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
-                      {variable.name}
-                    </code>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {variable.desc}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                    {/* Default Toggle */}
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={template.is_default}
+                        onCheckedChange={() => handleToggleDefault(template)}
+                        disabled={updateMutation.isPending}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+
+          {/* Footer with pagination info */}
+          {filteredTemplates.length > 0 && (
+            <div className="px-4 py-3 border-t text-sm text-muted-foreground text-right">
+              1 - {filteredTemplates.length} trên tổng số {filteredTemplates.length} bản ghi
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <CreateTemplateDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+      />
+
+      <EditTemplateDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        template={selectedTemplate}
+      />
+
+      <DeleteTemplateDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        template={selectedTemplate}
+      />
     </div>
   );
 };
