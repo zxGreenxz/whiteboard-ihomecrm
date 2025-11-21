@@ -37,7 +37,7 @@ const areaSchema = z.object({
   name: z.string().min(1, "Tên khu vực là bắt buộc"),
   code: z.string().optional(),
   description: z.string().optional(),
-  status: z.enum(["active", "inactive", "maintenance"]),
+  status: z.enum(["ACTIVE", "INACTIVE"]),
 });
 
 type AreaFormValues = z.infer<typeof areaSchema>;
@@ -61,7 +61,7 @@ export function EditAreaDialog({
       name: area.name,
       code: area.code || "",
       description: area.description || "",
-      status: area.status as "active" | "inactive" | "maintenance",
+      status: area.status as "ACTIVE" | "INACTIVE",
     },
   });
 
@@ -72,7 +72,7 @@ export function EditAreaDialog({
         name: area.name,
         code: area.code || "",
         description: area.description || "",
-        status: area.status as "active" | "inactive" | "maintenance",
+        status: area.status as "ACTIVE" | "INACTIVE",
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,9 +171,8 @@ export function EditAreaDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="active">Hoạt động</SelectItem>
-                      <SelectItem value="inactive">Không hoạt động</SelectItem>
-                      <SelectItem value="maintenance">Bảo trì</SelectItem>
+                      <SelectItem value="ACTIVE">Hoạt động</SelectItem>
+                      <SelectItem value="INACTIVE">Không hoạt động</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

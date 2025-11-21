@@ -33,7 +33,7 @@ const areaSchema = z.object({
   name: z.string().min(1, "Tên khu vực là bắt buộc"),
   code: z.string().optional(),
   description: z.string().optional(),
-  status: z.enum(["active", "inactive", "maintenance"]).default("active"),
+  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
 
 type AreaFormValues = z.infer<typeof areaSchema>;
@@ -52,7 +52,7 @@ export function CreateAreaDialog({ open, onOpenChange }: CreateAreaDialogProps) 
       name: "",
       code: "",
       description: "",
-      status: "active",
+      status: "ACTIVE",
     },
   });
 
@@ -147,9 +147,8 @@ export function CreateAreaDialog({ open, onOpenChange }: CreateAreaDialogProps) 
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="active">Hoạt động</SelectItem>
-                      <SelectItem value="inactive">Không hoạt động</SelectItem>
-                      <SelectItem value="maintenance">Bảo trì</SelectItem>
+                      <SelectItem value="ACTIVE">Hoạt động</SelectItem>
+                      <SelectItem value="INACTIVE">Không hoạt động</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

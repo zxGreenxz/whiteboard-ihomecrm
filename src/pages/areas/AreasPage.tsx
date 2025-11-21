@@ -63,15 +63,13 @@ export default function AreasPage() {
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive"> = {
-      active: "default",
-      inactive: "secondary",
-      maintenance: "destructive",
+      ACTIVE: "default",
+      INACTIVE: "secondary",
     };
 
     const labels: Record<string, string> = {
-      active: "Hoạt động",
-      inactive: "Không hoạt động",
-      maintenance: "Bảo trì",
+      ACTIVE: "Hoạt động",
+      INACTIVE: "Không hoạt động",
     };
 
     return (
@@ -113,9 +111,8 @@ export default function AreasPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="active">Hoạt động</SelectItem>
-                <SelectItem value="inactive">Không hoạt động</SelectItem>
-                <SelectItem value="maintenance">Bảo trì</SelectItem>
+                <SelectItem value="ACTIVE">Hoạt động</SelectItem>
+                <SelectItem value="INACTIVE">Không hoạt động</SelectItem>
               </SelectContent>
             </Select>
           </div>
