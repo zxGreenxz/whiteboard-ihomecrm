@@ -1,0 +1,457 @@
+-- =============================================
+-- Migration 017: Job Workflow Seed Data
+-- Created: 2025-11-21
+-- Description: Sample data for job workflows, phases, and departments
+-- =============================================
+
+-- Note: This seed data uses placeholder user_id
+-- In production, these should be inserted with actual user_id values
+
+-- =============================================
+-- SAMPLE DEPARTMENTS
+-- =============================================
+
+-- Sample departments (these would typically be created by each organization)
+-- INSERT INTO departments (user_id, code, name, description, is_active)
+-- SELECT
+--   auth.uid(),
+--   code,
+--   name,
+--   description,
+--   is_active
+-- FROM (VALUES
+--   ('TECH', 'Kỹ thuật', 'Bộ phận kỹ thuật xử lý sự cố về điện, nước, máy móc', true),
+--   ('CLEAN', 'Vệ sinh', 'Bộ phận vệ sinh và bảo trì chung', true),
+--   ('SECURITY', 'Bảo vệ', 'Bộ phận bảo vệ an ninh', true),
+--   ('ADMIN', 'Hành chính', 'Bộ phận hành chính văn phòng', true),
+--   ('CUSTOMER_SERVICE', 'Chăm sóc khách hàng', 'Bộ phận CSKH và tiếp nhận yêu cầu', true)
+-- ) AS t(code, name, description, is_active);
+
+
+-- =============================================
+-- SAMPLE JOB GROUPS
+-- =============================================
+
+-- Common job groups for property management
+-- INSERT INTO job_groups (user_id, name, description, color, icon)
+-- SELECT
+--   auth.uid(),
+--   name,
+--   description,
+--   color,
+--   icon
+-- FROM (VALUES
+--   ('Điện', 'Các công việc liên quan đến hệ thống điện', '#FFC107', '⚡'),
+--   ('Nước', 'Các công việc liên quan đến hệ thống nước', '#2196F3', '💧'),
+--   ('Cơ khí', 'Sửa chữa cơ khí, máy móc', '#9E9E9E', '🔧'),
+--   ('Vệ sinh', 'Công việc vệ sinh, dọn dẹp', '#4CAF50', '🧹'),
+--   ('An ninh', 'Các vấn đề về an ninh, an toàn', '#F44336', '🚨'),
+--   ('Khác', 'Các công việc khác', '#607D8B', '📋')
+-- ) AS t(name, description, color, icon);
+
+
+-- =============================================
+-- SAMPLE JOB TYPES
+-- =============================================
+
+-- Common job types with deadlines
+-- These reference job_groups and departments created above
+--
+-- Deadline examples:
+-- - customer_contact_deadline: 15 minutes for urgent issues
+-- - acceptance_deadline: 30 minutes to accept the job
+-- - completion_deadline: 120 minutes (2 hours) to complete
+--
+-- INSERT INTO job_types (
+--   user_id,
+--   name,
+--   job_group_id,
+--   default_priority,
+--   customer_contact_deadline,
+--   acceptance_deadline,
+--   completion_deadline,
+--   business_hours_only,
+--   default_department_id,
+--   auto_assign,
+--   is_active
+-- )
+-- SELECT
+--   auth.uid(),
+--   jt.name,
+--   jg.id,
+--   jt.default_priority::issue_priority,
+--   jt.customer_contact_deadline,
+--   jt.acceptance_deadline,
+--   jt.completion_deadline,
+--   jt.business_hours_only,
+--   d.id,
+--   jt.auto_assign,
+--   jt.is_active
+-- FROM (VALUES
+--   ('Mất điện toàn bộ', 'Điện', 'URGENT', 5, 10, 30, false, 'TECH', true, true),
+--   ('Chập điện', 'Điện', 'URGENT', 10, 15, 60, false, 'TECH', true, true),
+--   ('Bóng đèn hỏng', 'Điện', 'LOW', 0, 60, 480, true, 'TECH', false, true),
+--   ('Mất nước', 'Nước', 'HIGH', 15, 20, 120, false, 'TECH', true, true),
+--   ('Rò rỉ nước', 'Nước', 'HIGH', 20, 30, 240, false, 'TECH', true, true),
+--   ('Vòi nước hỏng', 'Nước', 'MEDIUM', 0, 120, 480, true, 'TECH', false, true),
+--   ('Thang máy kẹt', 'Cơ khí', 'URGENT', 5, 10, 60, false, 'TECH', true, true),
+--   ('Cửa khóa hỏng', 'Cơ khí', 'MEDIUM', 0, 60, 240, true, 'TECH', false, true),
+--   ('Vệ sinh phòng', 'Vệ sinh', 'LOW', 0, 0, 120, true, 'CLEAN', false, true),
+--   ('Cháy nổ', 'An ninh', 'URGENT', 0, 5, 10, false, 'SECURITY', true, true),
+--   ('Khách gây rối', 'An ninh', 'HIGH', 5, 10, 30, false, 'SECURITY', true, true)
+-- ) AS jt(
+--   name,
+--   job_group_name,
+--   default_priority,
+--   customer_contact_deadline,
+--   acceptance_deadline,
+--   completion_deadline,
+--   business_hours_only,
+--   dept_code,
+--   auto_assign,
+--   is_active
+-- )
+-- LEFT JOIN job_groups jg ON jg.name = jt.job_group_name AND jg.user_id = auth.uid()
+-- LEFT JOIN departments d ON d.code = jt.dept_code AND d.user_id = auth.uid();
+
+
+-- =============================================
+-- SAMPLE TASK FLOWS
+-- =============================================
+
+-- Standard workflow for handling issues
+-- This creates a basic flow that can be customized
+--
+-- INSERT INTO task_flows (user_id, name, description, is_active, is_default)
+-- SELECT
+--   auth.uid(),
+--   name,
+--   description,
+--   is_active,
+--   is_default
+-- FROM (VALUES
+--   (
+--     'Quy trình xử lý sự cố chuẩn',
+--     'Quy trình chuẩn để xử lý các sự cố và yêu cầu từ khách hàng',
+--     true,
+--     true
+--   ),
+--   (
+--     'Quy trình khẩn cấp',
+--     'Quy trình rút gọn cho các sự cố khẩn cấp (cháy, điện giật, v.v.)',
+--     true,
+--     false
+--   ),
+--   (
+--     'Quy trình bảo trì định kỳ',
+--     'Quy trình cho công việc bảo trì theo kế hoạch',
+--     true,
+--     false
+--   )
+-- ) AS t(name, description, is_active, is_default);
+
+
+-- =============================================
+-- SAMPLE TASK PHASES
+-- =============================================
+
+-- Standard phases for issue handling workflow
+--
+-- Flow 1: Quy trình xử lý sự cố chuẩn
+-- Phases: Tiếp nhận -> Liên hệ khách -> Phân công -> Đang xử lý -> Kiểm tra -> Hoàn thành
+--
+-- INSERT INTO task_phases (
+--   flow_id,
+--   name,
+--   description,
+--   sequence_order,
+--   phase_type,
+--   auto_transition,
+--   time_limit,
+--   require_comment,
+--   require_attachment,
+--   require_rating,
+--   color,
+--   icon
+-- )
+-- SELECT
+--   tf.id,
+--   tp.name,
+--   tp.description,
+--   tp.sequence_order,
+--   tp.phase_type,
+--   tp.auto_transition,
+--   tp.time_limit,
+--   tp.require_comment,
+--   tp.require_attachment,
+--   tp.require_rating,
+--   tp.color,
+--   tp.icon
+-- FROM task_flows tf
+-- CROSS JOIN (VALUES
+--   (1, 'Tiếp nhận', 'Tiếp nhận và ghi nhận sự cố từ khách hàng', 'START', false, 30, false, false, false, '#9E9E9E', '📝'),
+--   (2, 'Liên hệ khách hàng', 'Liên hệ xác nhận thông tin với khách hàng', 'PROCESS', false, 60, true, false, false, '#2196F3', '📞'),
+--   (3, 'Phân công', 'Phân công nhiệm vụ cho bộ phận/nhân viên phụ trách', 'PROCESS', false, 30, false, false, false, '#FF9800', '👷'),
+--   (4, 'Đang xử lý', 'Nhân viên đang tiến hành xử lý sự cố', 'PROCESS', false, 480, true, true, false, '#FFC107', '🔧'),
+--   (5, 'Kiểm tra', 'Kiểm tra kết quả xử lý', 'REVIEW', false, 60, true, false, false, '#9C27B0', '🔍'),
+--   (6, 'Hoàn thành', 'Sự cố đã được xử lý xong', 'COMPLETE', false, NULL, false, false, true, '#4CAF50', '✅'),
+--   (7, 'Hủy', 'Hủy xử lý sự cố', 'CANCEL', false, NULL, true, false, false, '#F44336', '❌')
+-- ) AS tp(
+--   sequence_order,
+--   name,
+--   description,
+--   phase_type,
+--   auto_transition,
+--   time_limit,
+--   require_comment,
+--   require_attachment,
+--   require_rating,
+--   color,
+--   icon
+-- )
+-- WHERE tf.name = 'Quy trình xử lý sự cố chuẩn'
+--   AND tf.user_id = auth.uid();
+
+
+-- Flow 2: Quy trình khẩn cấp
+-- Phases: Tiếp nhận -> Xử lý ngay -> Hoàn thành
+--
+-- INSERT INTO task_phases (
+--   flow_id,
+--   name,
+--   description,
+--   sequence_order,
+--   phase_type,
+--   auto_transition,
+--   time_limit,
+--   require_comment,
+--   require_attachment,
+--   require_rating,
+--   color,
+--   icon
+-- )
+-- SELECT
+--   tf.id,
+--   tp.name,
+--   tp.description,
+--   tp.sequence_order,
+--   tp.phase_type,
+--   tp.auto_transition,
+--   tp.time_limit,
+--   tp.require_comment,
+--   tp.require_attachment,
+--   tp.require_rating,
+--   tp.color,
+--   tp.icon
+-- FROM task_flows tf
+-- CROSS JOIN (VALUES
+--   (1, 'Tiếp nhận khẩn cấp', 'Tiếp nhận sự cố khẩn cấp', 'START', true, 5, false, false, false, '#F44336', '🚨'),
+--   (2, 'Xử lý ngay', 'Xử lý sự cố khẩn cấp ngay lập tức', 'PROCESS', false, 30, true, true, false, '#FF5722', '⚡'),
+--   (3, 'Hoàn thành', 'Sự cố khẩn cấp đã được xử lý', 'COMPLETE', false, NULL, true, false, true, '#4CAF50', '✅')
+-- ) AS tp(
+--   sequence_order,
+--   name,
+--   description,
+--   phase_type,
+--   auto_transition,
+--   time_limit,
+--   require_comment,
+--   require_attachment,
+--   require_rating,
+--   color,
+--   icon
+-- )
+-- WHERE tf.name = 'Quy trình khẩn cấp'
+--   AND tf.user_id = auth.uid();
+
+
+-- Flow 3: Quy trình bảo trì định kỳ
+-- Phases: Lập kế hoạch -> Thực hiện -> Báo cáo -> Hoàn thành
+--
+-- INSERT INTO task_phases (
+--   flow_id,
+--   name,
+--   description,
+--   sequence_order,
+--   phase_type,
+--   auto_transition,
+--   time_limit,
+--   require_comment,
+--   require_attachment,
+--   require_rating,
+--   color,
+--   icon
+-- )
+-- SELECT
+--   tf.id,
+--   tp.name,
+--   tp.description,
+--   tp.sequence_order,
+--   tp.phase_type,
+--   tp.auto_transition,
+--   tp.time_limit,
+--   tp.require_comment,
+--   tp.require_attachment,
+--   tp.require_rating,
+--   tp.color,
+--   tp.icon
+-- FROM task_flows tf
+-- CROSS JOIN (VALUES
+--   (1, 'Lập kế hoạch', 'Lập kế hoạch bảo trì', 'START', false, NULL, false, false, false, '#9E9E9E', '📋'),
+--   (2, 'Thực hiện', 'Thực hiện công việc bảo trì', 'PROCESS', false, 480, true, true, false, '#FFC107', '🔧'),
+--   (3, 'Báo cáo', 'Báo cáo kết quả bảo trì', 'REVIEW', false, 60, true, true, false, '#2196F3', '📊'),
+--   (4, 'Hoàn thành', 'Công việc bảo trì hoàn thành', 'COMPLETE', false, NULL, false, false, false, '#4CAF50', '✅')
+-- ) AS tp(
+--   sequence_order,
+--   name,
+--   description,
+--   phase_type,
+--   auto_transition,
+--   time_limit,
+--   require_comment,
+--   require_attachment,
+--   require_rating,
+--   color,
+--   icon
+-- )
+-- WHERE tf.name = 'Quy trình bảo trì định kỳ'
+--   AND tf.user_id = auth.uid();
+
+
+-- =============================================
+-- SAMPLE PHASE TRANSITIONS
+-- =============================================
+
+-- Define allowed transitions between phases for standard workflow
+--
+-- INSERT INTO phase_transitions (
+--   from_phase_id,
+--   to_phase_id,
+--   name,
+--   description,
+--   require_approval,
+--   button_label,
+--   button_color
+-- )
+-- SELECT
+--   from_phase.id,
+--   to_phase.id,
+--   t.name,
+--   t.description,
+--   t.require_approval,
+--   t.button_label,
+--   t.button_color
+-- FROM (VALUES
+--   ('Tiếp nhận', 'Liên hệ khách hàng', 'Chuyển liên hệ', 'Chuyển sang bước liên hệ khách hàng', false, 'Liên hệ', '#2196F3'),
+--   ('Tiếp nhận', 'Hủy', 'Hủy', 'Hủy xử lý sự cố', false, 'Hủy', '#F44336'),
+--   ('Liên hệ khách hàng', 'Phân công', 'Phân công', 'Phân công cho bộ phận xử lý', false, 'Phân công', '#FF9800'),
+--   ('Liên hệ khách hàng', 'Hủy', 'Hủy', 'Hủy xử lý sự cố', false, 'Hủy', '#F44336'),
+--   ('Phân công', 'Đang xử lý', 'Bắt đầu xử lý', 'Bắt đầu xử lý sự cố', false, 'Xử lý', '#FFC107'),
+--   ('Đang xử lý', 'Kiểm tra', 'Gửi kiểm tra', 'Gửi kết quả để kiểm tra', false, 'Kiểm tra', '#9C27B0'),
+--   ('Đang xử lý', 'Phân công', 'Chuyển lại', 'Chuyển lại cho bộ phận khác', false, 'Chuyển', '#FF9800'),
+--   ('Kiểm tra', 'Hoàn thành', 'Duyệt hoàn thành', 'Duyệt và hoàn thành sự cố', true, 'Hoàn thành', '#4CAF50'),
+--   ('Kiểm tra', 'Đang xử lý', 'Yêu cầu sửa', 'Yêu cầu xử lý lại', false, 'Sửa lại', '#FFC107')
+-- ) AS t(
+--   from_phase_name,
+--   to_phase_name,
+--   name,
+--   description,
+--   require_approval,
+--   button_label,
+--   button_color
+-- )
+-- JOIN task_flows tf ON tf.name = 'Quy trình xử lý sự cố chuẩn' AND tf.user_id = auth.uid()
+-- JOIN task_phases from_phase ON from_phase.flow_id = tf.id AND from_phase.name = t.from_phase_name
+-- JOIN task_phases to_phase ON to_phase.flow_id = tf.id AND to_phase.name = t.to_phase_name;
+
+
+-- =============================================
+-- DOCUMENTATION
+-- =============================================
+
+COMMENT ON TABLE departments IS 'Departments for job assignment and organization';
+COMMENT ON TABLE job_groups IS 'Job groups for categorizing job types';
+COMMENT ON TABLE job_types IS 'Job types with deadlines and auto-assignment rules';
+COMMENT ON TABLE task_flows IS 'Workflow definitions for tasks/issues';
+COMMENT ON TABLE task_phases IS 'Phases/stages within a workflow';
+COMMENT ON TABLE phase_transitions IS 'Allowed transitions between workflow phases';
+COMMENT ON TABLE issue_phase_history IS 'Track phase transitions for each issue';
+
+-- =============================================
+-- USAGE EXAMPLES
+-- =============================================
+
+-- Example 1: Create a new issue with job type and automatic flow assignment
+--
+-- INSERT INTO issues (
+--   user_id,
+--   title,
+--   description,
+--   priority,
+--   status,
+--   job_type_id,
+--   flow_id,
+--   current_phase_id
+-- )
+-- SELECT
+--   auth.uid(),
+--   'Mất điện phòng 301',
+--   'Khách hàng báo mất điện toàn bộ trong phòng',
+--   'URGENT',
+--   'NEW',
+--   jt.id,
+--   tf.id,
+--   tp.id
+-- FROM job_types jt
+-- JOIN task_flows tf ON tf.is_default = true AND tf.user_id = auth.uid()
+-- JOIN task_phases tp ON tp.flow_id = tf.id AND tp.sequence_order = 1
+-- WHERE jt.name = 'Mất điện toàn bộ'
+--   AND jt.user_id = auth.uid();
+
+
+-- Example 2: Transition an issue to the next phase
+--
+-- WITH current_issue AS (
+--   SELECT id, current_phase_id
+--   FROM issues
+--   WHERE id = 'issue-uuid-here'
+-- ),
+-- next_phase AS (
+--   SELECT tp.id, tp.sequence_order
+--   FROM task_phases tp
+--   JOIN current_issue ci ON tp.flow_id = (
+--     SELECT flow_id FROM issues WHERE id = ci.id
+--   )
+--   WHERE tp.sequence_order = (
+--     SELECT sequence_order + 1
+--     FROM task_phases
+--     WHERE id = ci.current_phase_id
+--   )
+-- )
+-- -- Update issue phase
+-- UPDATE issues
+-- SET current_phase_id = (SELECT id FROM next_phase),
+--     updated_at = NOW()
+-- WHERE id = (SELECT id FROM current_issue);
+--
+-- -- Record phase history
+-- INSERT INTO issue_phase_history (
+--   issue_id,
+--   from_phase_id,
+--   to_phase_id,
+--   user_id
+-- )
+-- SELECT
+--   ci.id,
+--   ci.current_phase_id,
+--   np.id,
+--   auth.uid()
+-- FROM current_issue ci
+-- CROSS JOIN next_phase np;
+
+
+-- Migration completed
+-- =============================================
+-- Note: All INSERT statements are commented out and provided as templates
+-- Users should uncomment and run these after authentication is set up
+-- or modify them to insert data for specific user_id values
