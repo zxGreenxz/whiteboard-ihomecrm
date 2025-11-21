@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Search, FileText } from "lucide-react";
+import { Plus, Search, FileText, DollarSign } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -79,15 +80,13 @@ const PaymentsPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Quản lý Thu tiền</h1>
-          <p className="text-muted-foreground mt-1">
-            Ghi nhận các khoản thu từ khách thuê
-          </p>
-        </div>
+    <MainLayout
+      title="Quản lý Thu tiền"
+      subtitle="Ghi nhận các khoản thu từ khách thuê"
+      icon={DollarSign}
+    >
+      {/* Action Button */}
+      <div className="flex justify-end mb-6">
         <Button onClick={() => setCollectDialogOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Thu tiền
@@ -280,7 +279,7 @@ const PaymentsPage = () => {
           payment={selectedPayment}
         />
       )}
-    </div>
+    </MainLayout>
   );
 };
 
