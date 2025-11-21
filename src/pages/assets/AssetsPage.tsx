@@ -45,13 +45,13 @@ const AssetsPage = () => {
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetWithRelations | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
-  const [conditionFilter, setConditionFilter] = useState<string>("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [conditionFilter, setConditionFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: assets = [], isLoading } = useAssets({
-    category_id: categoryFilter || undefined,
-    condition: conditionFilter || undefined,
+    category_id: categoryFilter !== "ALL" ? categoryFilter : undefined,
+    condition: conditionFilter !== "ALL" ? conditionFilter : undefined,
   });
 
   // Fetch categories for filter
@@ -206,7 +206,7 @@ const AssetsPage = () => {
             <SelectValue placeholder="Lọc theo loại" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả loại</SelectItem>
+            <SelectItem value="ALL">Tất cả loại</SelectItem>
             {categories.map((cat) => (
               <SelectItem key={cat.id} value={cat.id}>
                 {cat.name}
@@ -220,7 +220,7 @@ const AssetsPage = () => {
             <SelectValue placeholder="Tình trạng" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả</SelectItem>
+            <SelectItem value="ALL">Tất cả</SelectItem>
             {Object.entries(CONDITION_CONFIG).map(([key, config]) => (
               <SelectItem key={key} value={key}>
                 {config.label}

@@ -39,7 +39,7 @@ const PaymentsPage = () => {
   const [collectDialogOpen, setCollectDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentWithRelations | null>(null);
-  const [methodFilter, setMethodFilter] = useState<string>("");
+  const [methodFilter, setMethodFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -49,7 +49,7 @@ const PaymentsPage = () => {
   const { data: payments = [], isLoading } = usePayments({
     start_date: dateRange.start,
     end_date: dateRange.end,
-    payment_method: methodFilter || undefined,
+    payment_method: methodFilter !== "ALL" ? methodFilter : undefined,
   });
 
   const { data: summary } = usePaymentsSummary(dateRange.start, dateRange.end);
@@ -186,7 +186,7 @@ const PaymentsPage = () => {
             <SelectValue placeholder="Phương thức" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả</SelectItem>
+            <SelectItem value="ALL">Tất cả</SelectItem>
             {Object.entries(PAYMENT_METHODS).map(([key, config]) => (
               <SelectItem key={key} value={key}>
                 {config.label}

@@ -34,16 +34,16 @@ const PRIORITY_CONFIG = {
 
 const IssuesPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [priorityFilter, setPriorityFilter] = useState<string>("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
-  const [buildingFilter, setBuildingFilter] = useState<string>("");
+  const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [buildingFilter, setBuildingFilter] = useState<string>("ALL");
 
   const navigate = useNavigate();
 
   const { data: issues = [], isLoading } = useIssues({
-    priority: priorityFilter || undefined,
-    category_id: categoryFilter || undefined,
-    building_id: buildingFilter || undefined,
+    priority: priorityFilter !== "ALL" ? priorityFilter : undefined,
+    category_id: categoryFilter !== "ALL" ? categoryFilter : undefined,
+    building_id: buildingFilter !== "ALL" ? buildingFilter : undefined,
   });
 
   const { data: categories = [] } = useIssueCategories();
@@ -142,7 +142,7 @@ const IssuesPage = () => {
             <SelectValue placeholder="Độ ưu tiên" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả độ ưu tiên</SelectItem>
+            <SelectItem value="ALL">Tất cả độ ưu tiên</SelectItem>
             {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
               <SelectItem key={key} value={key}>
                 {config.label}
@@ -156,7 +156,7 @@ const IssuesPage = () => {
             <SelectValue placeholder="Danh mục" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả danh mục</SelectItem>
+            <SelectItem value="ALL">Tất cả danh mục</SelectItem>
             {categories.map((category) => (
               <SelectItem key={category.id} value={category.id}>
                 {category.name}
@@ -170,7 +170,7 @@ const IssuesPage = () => {
             <SelectValue placeholder="Tòa nhà" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả tòa nhà</SelectItem>
+            <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
             {buildings.map((building) => (
               <SelectItem key={building.id} value={building.id}>
                 {building.name}
@@ -179,7 +179,7 @@ const IssuesPage = () => {
           </SelectContent>
         </Select>
 
-        {(priorityFilter || categoryFilter || buildingFilter) && (
+        {(priorityFilter !== "ALL" || categoryFilter !== "ALL" || buildingFilter !== "ALL") && (
           <Button
             variant="ghost"
             size="sm"
