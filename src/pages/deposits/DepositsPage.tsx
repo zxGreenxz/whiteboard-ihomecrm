@@ -38,11 +38,11 @@ const DepositsPage = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [selectedDeposit, setSelectedDeposit] = useState<DepositWithRelations | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: deposits = [], isLoading } = useDeposits({
-    status: statusFilter || undefined,
+    status: statusFilter !== "ALL" ? statusFilter : undefined,
   });
 
   const handleEdit = (deposit: DepositWithRelations) => {
@@ -122,7 +122,7 @@ const DepositsPage = () => {
             <SelectValue placeholder="Lọc theo trạng thái" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả</SelectItem>
+            <SelectItem value="ALL">Tất cả</SelectItem>
             {Object.entries(STATUS_CONFIG).map(([key, config]) => (
               <SelectItem key={key} value={key}>
                 {config.label}

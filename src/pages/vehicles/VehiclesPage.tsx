@@ -37,11 +37,11 @@ const VehiclesPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleWithRelations | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: vehicles = [], isLoading } = useVehicles({
-    vehicle_type: typeFilter || undefined,
+    vehicle_type: typeFilter !== "ALL" ? typeFilter : undefined,
   });
 
   const { data: buildings = [] } = useBuildings();
@@ -181,7 +181,7 @@ const VehiclesPage = () => {
             <SelectValue placeholder="Lọc theo loại" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Tất cả loại</SelectItem>
+            <SelectItem value="ALL">Tất cả loại</SelectItem>
             {Object.entries(VEHICLE_TYPE_CONFIG).map(([key, config]) => (
               <SelectItem key={key} value={key}>
                 {config.icon} {config.label}
