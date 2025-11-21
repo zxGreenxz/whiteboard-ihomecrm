@@ -11,9 +11,13 @@ import { formatCurrency } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { useScheduledNotifications } from '@/hooks/useScheduledNotifications';
 
 const Dashboard = () => {
   const { data: stats, isLoading } = useDashboardStats();
+
+  // Run scheduled notification checks
+  useScheduledNotifications();
 
   return (
     <MainLayout>
