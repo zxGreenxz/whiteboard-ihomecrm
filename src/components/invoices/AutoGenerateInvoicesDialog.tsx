@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -15,11 +15,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useAutoGenerateInvoices, type AutoGenerateInvoicesData } from '@/hooks/useInvoices';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Sparkles, AlertCircle, CheckCircle2, Building2 } from 'lucide-react';
+import { useAutoGenerateInvoices, type AutoGenerateInvoicesData, type InvoiceGenerationType } from '@/hooks/useInvoices';
 import { useContracts } from '@/hooks/useContracts';
-import { format, startOfMonth, endOfMonth, addMonths } from 'date-fns';
+import { useBuildings } from '@/hooks/useBuildings';
+import { format, startOfMonth, endOfMonth, addDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { useInvoiceConfig } from '@/hooks/useSettings';
 
 interface AutoGenerateInvoicesDialogProps {
   open: boolean;
@@ -31,6 +41,8 @@ const autoGenerateSchema = z.object({
   billing_period_end: z.string().min(1, 'Vui lòng chọn ngày kết thúc'),
   issue_date: z.string().min(1, 'Vui lòng chọn ngày phát hành'),
   due_date: z.string().min(1, 'Vui lòng chọn hạn thanh toán'),
+  building_id: z.string().optional(),
+  invoice_type: z.enum(['RENT_ONLY', 'SERVICE_ONLY', 'RENT_AND_SERVICE']),
 });
 
 type AutoGenerateFormData = z.infer<typeof autoGenerateSchema>;
@@ -41,24 +53,47 @@ const AutoGenerateInvoicesDialog = ({
 }: AutoGenerateInvoicesDialogProps) => {
   const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(true);
+  const [selectedBuilding, setSelectedBuilding] = useState<string>('all');
+  const [invoiceType, setInvoiceType] = useState<InvoiceGenerationType>('RENT_AND_SERVICE');
 
   const generateMutation = useAutoGenerateInvoices();
   const { data: contracts } = useContracts({ status: 'ACTIVE' });
+  const { data: buildings } = useBuildings();
+  const { data: invoiceConfig } = useInvoiceConfig();
 
-  const activeContracts = contracts || [];
+  // Filter contracts by selected building
+  const activeContracts = useMemo(() => {
+    if (!contracts) return [];
+    if (selectedBuilding === 'all') return contracts;
+
+    return contracts.filter((contract) => {
+      const buildingId = contract.room?.building?.id || contract.bed?.room?.building?.id;
+      return buildingId === selectedBuilding;
+    });
+  }, [contracts, selectedBuilding]);
+
+  // Calculate default due date based on settings
+  const defaultDueDate = useMemo(() => {
+    const paymentDueDays = invoiceConfig?.payment_due_days || 7;
+    return addDays(new Date(), paymentDueDays).toISOString().split('T')[0];
+  }, [invoiceConfig]);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
+    setValue,
+    watch,
   } = useForm<AutoGenerateFormData>({
     resolver: zodResolver(autoGenerateSchema),
     defaultValues: {
       billing_period_start: startOfMonth(new Date()).toISOString().split('T')[0],
       billing_period_end: endOfMonth(new Date()).toISOString().split('T')[0],
       issue_date: new Date().toISOString().split('T')[0],
-      due_date: addMonths(new Date(), 1).toISOString().split('T')[0],
+      due_date: defaultDueDate,
+      building_id: 'all',
+      invoice_type: 'RENT_AND_SERVICE',
     },
   });
 
@@ -66,7 +101,22 @@ const AutoGenerateInvoicesDialog = ({
     reset();
     setSelectedContracts([]);
     setSelectAll(true);
+    setSelectedBuilding('all');
+    setInvoiceType('RENT_AND_SERVICE');
     onOpenChange(false);
+  };
+
+  const handleBuildingChange = (value: string) => {
+    setSelectedBuilding(value);
+    setValue('building_id', value);
+    // Reset contract selection when building changes
+    setSelectedContracts([]);
+    setSelectAll(true);
+  };
+
+  const handleInvoiceTypeChange = (value: InvoiceGenerationType) => {
+    setInvoiceType(value);
+    setValue('invoice_type', value);
   };
 
   const handleSelectAllChange = (checked: boolean) => {
@@ -88,17 +138,24 @@ const AutoGenerateInvoicesDialog = ({
   };
 
   const onSubmit = (data: AutoGenerateFormData) => {
-    const contractIds = selectAll ? undefined : selectedContracts.length > 0 ? selectedContracts : undefined;
+    const contractIds = selectAll
+      ? activeContracts.map(c => c.id)
+      : selectedContracts.length > 0 ? selectedContracts : undefined;
 
-    if (!selectAll && selectedContracts.length === 0) {
+    if (!contractIds || contractIds.length === 0) {
       alert('Vui lòng chọn ít nhất 1 hợp đồng hoặc chọn "Tất cả hợp đồng"');
       return;
     }
 
     generateMutation.mutate(
       {
-        ...data,
+        billing_period_start: data.billing_period_start,
+        billing_period_end: data.billing_period_end,
+        issue_date: data.issue_date,
+        due_date: data.due_date,
         contract_ids: contractIds,
+        building_id: selectedBuilding === 'all' ? undefined : selectedBuilding,
+        invoice_type: invoiceType,
       },
       {
         onSuccess: () => {
@@ -109,6 +166,20 @@ const AutoGenerateInvoicesDialog = ({
   };
 
   const targetContractsCount = selectAll ? activeContracts.length : selectedContracts.length;
+
+  // Get invoice type description
+  const getInvoiceTypeDescription = () => {
+    switch (invoiceType) {
+      case 'RENT_ONLY':
+        return 'Chỉ tạo tiền thuê nhà';
+      case 'SERVICE_ONLY':
+        return 'Chỉ tạo tiền dịch vụ (điện, nước, phí cố định...)';
+      case 'RENT_AND_SERVICE':
+        return 'Tạo đầy đủ tiền thuê và dịch vụ';
+      default:
+        return '';
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -124,6 +195,59 @@ const AutoGenerateInvoicesDialog = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Building Selection */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Tòa nhà
+            </Label>
+            <Select value={selectedBuilding} onValueChange={handleBuildingChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Chọn tòa nhà" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tòa nhà</SelectItem>
+                {buildings?.map((building) => (
+                  <SelectItem key={building.id} value={building.id}>
+                    {building.name} ({building.code || building.id.slice(0, 6)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Invoice Type Selection */}
+          <div className="space-y-3">
+            <Label>Hình thức tạo hóa đơn *</Label>
+            <RadioGroup
+              value={invoiceType}
+              onValueChange={(value) => handleInvoiceTypeChange(value as InvoiceGenerationType)}
+              className="grid grid-cols-1 gap-2"
+            >
+              <div className="flex items-center space-x-3 rounded-md border p-3 hover:bg-gray-50">
+                <RadioGroupItem value="RENT_ONLY" id="rent_only" />
+                <Label htmlFor="rent_only" className="flex-1 cursor-pointer">
+                  <div className="font-medium">Chỉ tiền nhà</div>
+                  <div className="text-xs text-gray-500">Hệ thống chỉ sinh hóa đơn tiền thuê nhà</div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-3 rounded-md border p-3 hover:bg-gray-50">
+                <RadioGroupItem value="SERVICE_ONLY" id="service_only" />
+                <Label htmlFor="service_only" className="flex-1 cursor-pointer">
+                  <div className="font-medium">Chỉ tiền dịch vụ</div>
+                  <div className="text-xs text-gray-500">Hệ thống chỉ sinh hóa đơn tiền dịch vụ (điện, nước, phí cố định...)</div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-3 rounded-md border p-3 hover:bg-gray-50 bg-blue-50 border-blue-200">
+                <RadioGroupItem value="RENT_AND_SERVICE" id="rent_and_service" />
+                <Label htmlFor="rent_and_service" className="flex-1 cursor-pointer">
+                  <div className="font-medium">Tiền nhà & Dịch vụ</div>
+                  <div className="text-xs text-gray-500">Hệ thống sinh hóa đơn gồm cả tiền thuê nhà và tiền dịch vụ</div>
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
           {/* Date Inputs */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -151,7 +275,7 @@ const AutoGenerateInvoicesDialog = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="issue_date">Ngày phát hành *</Label>
+              <Label htmlFor="issue_date">Ngày lập *</Label>
               <Input
                 id="issue_date"
                 type="date"
@@ -172,6 +296,9 @@ const AutoGenerateInvoicesDialog = ({
               {errors.due_date && (
                 <p className="text-sm text-red-500">{errors.due_date.message}</p>
               )}
+              <p className="text-xs text-gray-500">
+                Mặc định: {invoiceConfig?.payment_due_days || 7} ngày sau ngày lập
+              </p>
             </div>
           </div>
 
@@ -233,8 +360,15 @@ const AutoGenerateInvoicesDialog = ({
           <Alert className="bg-blue-50 border-blue-200">
             <CheckCircle2 className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-900">
-              Sẽ tạo hóa đơn cho <strong>{targetContractsCount}</strong> hợp đồng
-              {selectAll && ' (tất cả hợp đồng đang hoạt động)'}
+              <div>
+                Sẽ tạo hóa đơn cho <strong>{targetContractsCount}</strong> hợp đồng
+                {selectedBuilding !== 'all' && buildings?.find(b => b.id === selectedBuilding) && (
+                  <> trong tòa <strong>{buildings.find(b => b.id === selectedBuilding)?.name}</strong></>
+                )}
+              </div>
+              <div className="text-sm mt-1">
+                Loại hóa đơn: <strong>{getInvoiceTypeDescription()}</strong>
+              </div>
             </AlertDescription>
           </Alert>
 
@@ -244,10 +378,16 @@ const AutoGenerateInvoicesDialog = ({
             <AlertDescription className="text-yellow-900 text-sm">
               <strong>Lưu ý:</strong> Hóa đơn sẽ tự động tính toán:
               <ul className="list-disc list-inside mt-1 ml-2">
-                <li>Tiền thuê theo chu kỳ thanh toán</li>
-                <li>Dịch vụ cố định từ hợp đồng</li>
-                <li>Điện/nước từ chỉ số công tơ gần nhất</li>
-                <li>Công nợ tồn đọng (nếu có)</li>
+                {(invoiceType === 'RENT_ONLY' || invoiceType === 'RENT_AND_SERVICE') && (
+                  <li>Tiền thuê theo chu kỳ thanh toán</li>
+                )}
+                {(invoiceType === 'SERVICE_ONLY' || invoiceType === 'RENT_AND_SERVICE') && (
+                  <>
+                    <li>Dịch vụ cố định từ hợp đồng</li>
+                    <li>Điện/nước từ chỉ số công tơ gần nhất</li>
+                  </>
+                )}
+                <li>Công nợ tồn đọng (nếu bật trong cài đặt)</li>
               </ul>
             </AlertDescription>
           </Alert>

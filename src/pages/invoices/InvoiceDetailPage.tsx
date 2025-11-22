@@ -17,12 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Receipt,
@@ -31,32 +25,22 @@ import {
   DollarSign,
   Printer,
   AlertCircle,
-  Send,
-  Download,
-  Image,
-  FileText,
-  XCircle,
-  ChevronDown,
 } from 'lucide-react';
-import { useInvoice, useApproveInvoice, useUnapproveInvoice } from '@/hooks/useInvoices';
+import { useInvoice, useApproveInvoice } from '@/hooks/useInvoices';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState } from 'react';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
-import SendInvoiceDialog from '@/components/invoices/SendInvoiceDialog';
-import { toast } from 'sonner';
 
 const InvoiceDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
-  const [sendDialogOpen, setSendDialogOpen] = useState(false);
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const approveMutation = useApproveInvoice();
-  const unapproveMutation = useUnapproveInvoice();
 
   if (!id) {
     return (
@@ -124,30 +108,6 @@ const InvoiceDetailPage = () => {
     }
   };
 
-  const handleUnapprove = () => {
-    if (confirm('Xác nhận bỏ duyệt hóa đơn này? Hóa đơn sẽ chuyển về trạng thái nháp.')) {
-      unapproveMutation.mutate(invoice.id);
-    }
-  };
-
-  const handleDownloadPDF = () => {
-    // In production, this would generate a PDF
-    toast.info('Đang tạo file PDF...');
-    // Simulate download
-    setTimeout(() => {
-      toast.success('Đã tải xuống file PDF');
-    }, 1000);
-  };
-
-  const handleDownloadImage = () => {
-    // In production, this would generate an image
-    toast.info('Đang tạo file ảnh...');
-    // Simulate download
-    setTimeout(() => {
-      toast.success('Đã tải xuống file ảnh');
-    }, 1000);
-  };
-
   return (
     <MainLayout
       title={`Hóa đơn ${invoice.title || invoice.id.slice(0, 8)}`}
@@ -155,7 +115,7 @@ const InvoiceDetailPage = () => {
       icon={Receipt}
     >
       {/* Header Actions */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6">
         <Button
           variant="outline"
           onClick={() => navigate('/invoices')}
@@ -166,40 +126,6 @@ const InvoiceDetailPage = () => {
 
         <div className="flex-1" />
 
-        {/* Send Invoice Button */}
-        <Button variant="outline" onClick={() => setSendDialogOpen(true)}>
-          <Send className="h-4 w-4 mr-2" />
-          Gửi hóa đơn
-        </Button>
-
-        {/* Download Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Tải hóa đơn
-              <ChevronDown className="h-4 w-4 ml-2" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleDownloadImage}>
-              <Image className="h-4 w-4 mr-2" />
-              Tải xuống Ảnh
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleDownloadPDF}>
-              <FileText className="h-4 w-4 mr-2" />
-              Tải xuống PDF
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Print Button */}
-        <Button variant="outline" onClick={() => setPrintDialogOpen(true)}>
-          <Printer className="h-4 w-4 mr-2" />
-          In hóa đơn
-        </Button>
-
-        {/* Approve/Unapprove Button */}
         {invoice.status === 'DRAFT' && (
           <Button
             variant="default"
@@ -211,18 +137,6 @@ const InvoiceDetailPage = () => {
           </Button>
         )}
 
-        {invoice.status === 'APPROVED' && (invoice.paid_amount || 0) === 0 && (
-          <Button
-            variant="outline"
-            onClick={handleUnapprove}
-            disabled={unapproveMutation.isPending}
-          >
-            <XCircle className="h-4 w-4 mr-2" />
-            {unapproveMutation.isPending ? 'Đang bỏ duyệt...' : 'Bỏ duyệt'}
-          </Button>
-        )}
-
-        {/* Record Payment Button */}
         {(invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID') && (
           <Button
             variant="default"
@@ -232,6 +146,11 @@ const InvoiceDetailPage = () => {
             Ghi nhận thanh toán
           </Button>
         )}
+
+        <Button variant="outline" onClick={() => setPrintDialogOpen(true)}>
+          <Printer className="h-4 w-4 mr-2" />
+          In hóa đơn
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -262,10 +181,6 @@ const InvoiceDetailPage = () => {
                 <div>
                   <div className="text-gray-600">Số điện thoại</div>
                   <div className="font-medium">{invoice.contract?.tenant?.phone || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Email</div>
-                  <div className="font-medium">{invoice.contract?.tenant?.email || 'Chưa có'}</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Phòng</div>
@@ -431,31 +346,6 @@ const InvoiceDetailPage = () => {
               )}
             </CardContent>
           </Card>
-
-          {/* Quick Actions Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Thao tác nhanh</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start" onClick={() => setSendDialogOpen(true)}>
-                <Send className="h-4 w-4 mr-2" />
-                Gửi hóa đơn cho khách
-              </Button>
-              <Button variant="outline" className="w-full justify-start" onClick={handleDownloadPDF}>
-                <FileText className="h-4 w-4 mr-2" />
-                Tải xuống PDF
-              </Button>
-              <Button variant="outline" className="w-full justify-start" onClick={handleDownloadImage}>
-                <Image className="h-4 w-4 mr-2" />
-                Tải xuống Ảnh
-              </Button>
-              <Button variant="outline" className="w-full justify-start" onClick={() => setPrintDialogOpen(true)}>
-                <Printer className="h-4 w-4 mr-2" />
-                In hóa đơn
-              </Button>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -470,13 +360,6 @@ const InvoiceDetailPage = () => {
       <PrintInvoiceDialog
         open={printDialogOpen}
         onOpenChange={setPrintDialogOpen}
-        invoice={invoice}
-      />
-
-      {/* Send Dialog */}
-      <SendInvoiceDialog
-        open={sendDialogOpen}
-        onOpenChange={setSendDialogOpen}
         invoice={invoice}
       />
     </MainLayout>
