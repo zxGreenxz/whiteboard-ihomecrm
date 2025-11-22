@@ -39,6 +39,7 @@ import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
 import TransferContractDialog from '@/components/contracts/TransferContractDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
+import BulkImportContractsDialog from '@/components/contracts/BulkImportContractsDialog';
 import { toast } from 'sonner';
 
 const ContractsPage = () => {
@@ -46,6 +47,7 @@ const ContractsPage = () => {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [bulkImportDialogOpen, setBulkImportDialogOpen] = useState(false);
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
@@ -135,7 +137,7 @@ const ContractsPage = () => {
           <option value="EXPIRED">Hết hạn</option>
         </select>
 
-        <Button variant="outline" onClick={() => toast.info('Tính năng đang phát triển')}>
+        <Button variant="outline" onClick={() => setBulkImportDialogOpen(true)}>
           <Upload className="h-4 w-4 mr-2" />
           Nhập từ file
         </Button>
@@ -345,6 +347,11 @@ const ContractsPage = () => {
         open={registerMoveOutDialogOpen}
         onOpenChange={setRegisterMoveOutDialogOpen}
         contract={selectedContract}
+      />
+
+      <BulkImportContractsDialog
+        open={bulkImportDialogOpen}
+        onOpenChange={setBulkImportDialogOpen}
       />
     </MainLayout>
   );

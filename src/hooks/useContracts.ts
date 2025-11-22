@@ -625,3 +625,256 @@ export const useUploadContractFile = () => {
     },
   });
 };
+
+// =============================================
+// Bulk Import Contracts from Excel
+// =============================================
+
+export interface BulkImportRow {
+  building: string;
+  room: string;
+  bed?: string;
+  rent_price: number;
+  deposit: number;
+  signed_date: string;
+  start_date: string;
+  billing_start_date: string;
+  end_date: string;
+  payment_cycle: string;
+  notes?: string;
+  tenant_name: string;
+  tenant_phone: string;
+  services: Array<{
+    name: string;
+    use: boolean;
+    has_meter?: boolean;
+    initial_reading?: number;
+    quantity?: number;
+    unit_price: number;
+    billing_date: string;
+  }>;
+  rowIndex: number;
+}
+
+export interface BulkImportResult {
+  success: number;
+  failed: number;
+  errors: Array<{
+    row: number;
+    message: string;
+  }>;
+}
+
+export const useBulkImportContracts = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (rows: BulkImportRow[]): Promise<BulkImportResult> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const result: BulkImportResult = {
+        success: 0,
+        failed: 0,
+        errors: [],
+      };
+
+      // Process each row sequentially to maintain order and error tracking
+      for (const row of rows) {
+        try {
+          // 1. Find or create tenant
+          let tenantId: string | null = null;
+
+          // Try to find existing tenant by phone
+          const { data: existingTenants } = await supabase
+            .from('tenants')
+            .select('id')
+            .eq('phone', row.tenant_phone)
+            .eq('user_id', user.id)
+            .limit(1);
+
+          if (existingTenants && existingTenants.length > 0) {
+            tenantId = existingTenants[0].id;
+          } else {
+            // Create new tenant
+            const { data: newTenant, error: tenantError } = await supabase
+              .from('tenants')
+              .insert({
+                full_name: row.tenant_name,
+                phone: row.tenant_phone,
+                user_id: user.id,
+              })
+              .select('id')
+              .single();
+
+            if (tenantError) throw new Error(`Lỗi tạo khách hàng: ${tenantError.message}`);
+            tenantId = newTenant.id;
+          }
+
+          if (!tenantId) throw new Error('Không thể tạo hoặc tìm khách hàng');
+
+          // 2. Find building by name
+          const { data: buildings } = await supabase
+            .from('buildings')
+            .select('id')
+            .eq('user_id', user.id)
+            .or(`name.eq.${row.building},code.eq.${row.building}`)
+            .limit(1);
+
+          if (!buildings || buildings.length === 0) {
+            throw new Error(`Không tìm thấy tòa nhà: ${row.building}`);
+          }
+
+          const buildingId = buildings[0].id;
+
+          // 3. Find room or bed
+          let roomId: string | null = null;
+          let bedId: string | null = null;
+
+          if (row.bed) {
+            // Find bed
+            const { data: beds } = await supabase
+              .from('beds')
+              .select('id, room_id')
+              .eq('name', row.bed)
+              .eq('status', 'AVAILABLE');
+
+            if (!beds || beds.length === 0) {
+              throw new Error(`Không tìm thấy giường trống: ${row.bed}`);
+            }
+
+            // Find bed in the correct room
+            const { data: rooms } = await supabase
+              .from('rooms')
+              .select('id')
+              .eq('building_id', buildingId)
+              .or(`name.eq.${row.room},code.eq.${row.room}`);
+
+            const targetRoom = rooms?.find(r => beds.some(b => b.room_id === r.id));
+            if (!targetRoom) {
+              throw new Error(`Không tìm thấy phòng ${row.room} có giường ${row.bed}`);
+            }
+
+            const targetBed = beds.find(b => b.room_id === targetRoom.id);
+            bedId = targetBed!.id;
+            roomId = null;
+          } else {
+            // Find room
+            const { data: rooms } = await supabase
+              .from('rooms')
+              .select('id')
+              .eq('building_id', buildingId)
+              .or(`name.eq.${row.room},code.eq.${row.room}`)
+              .eq('status', 'AVAILABLE')
+              .limit(1);
+
+            if (!rooms || rooms.length === 0) {
+              throw new Error(`Không tìm thấy phòng trống: ${row.room}`);
+            }
+
+            roomId = rooms[0].id;
+            bedId = null;
+          }
+
+          // 4. Create contract
+          const { data: contract, error: contractError } = await supabase
+            .from('contracts')
+            .insert({
+              user_id: user.id,
+              tenant_id: tenantId,
+              room_id: roomId,
+              bed_id: bedId,
+              signed_date: row.signed_date,
+              start_date: row.start_date,
+              start_billing_date: row.billing_start_date,
+              end_date: row.end_date,
+              rent_price: row.rent_price,
+              payment_cycle: row.payment_cycle,
+              total_deposit: row.deposit,
+              deposit_paid: 0,
+              status: 'ACTIVE',
+              notes: row.notes,
+            })
+            .select('id')
+            .single();
+
+          if (contractError) throw new Error(`Lỗi tạo hợp đồng: ${contractError.message}`);
+
+          // 5. Update room/bed status to OCCUPIED
+          if (roomId) {
+            await supabase
+              .from('rooms')
+              .update({ status: 'OCCUPIED' })
+              .eq('id', roomId);
+          }
+          if (bedId) {
+            await supabase
+              .from('beds')
+              .update({ status: 'OCCUPIED' })
+              .eq('id', bedId);
+          }
+
+          // 6. Create contract services
+          if (row.services && row.services.length > 0) {
+            for (const svc of row.services) {
+              if (!svc.use) continue;
+
+              // Find service by name
+              const { data: services } = await supabase
+                .from('services')
+                .select('id, type')
+                .eq('user_id', user.id)
+                .ilike('name', `%${svc.name}%`)
+                .limit(1);
+
+              if (services && services.length > 0) {
+                const serviceId = services[0].id;
+                const serviceType = services[0].type;
+
+                await supabase
+                  .from('contract_services')
+                  .insert({
+                    contract_id: contract.id,
+                    service_id: serviceId,
+                    unit_price: svc.unit_price,
+                    initial_reading: svc.has_meter && svc.initial_reading !== undefined
+                      ? svc.initial_reading
+                      : null,
+                  });
+              }
+            }
+          }
+
+          result.success++;
+        } catch (error) {
+          result.failed++;
+          result.errors.push({
+            row: row.rowIndex,
+            message: error instanceof Error ? error.message : 'Lỗi không xác định',
+          });
+        }
+      }
+
+      return result;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['beds'] });
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+
+      toast({
+        title: 'Import hoàn tất',
+        description: `Thành công: ${result.success} | Thất bại: ${result.failed}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Import thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
