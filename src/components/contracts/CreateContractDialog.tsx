@@ -39,6 +39,14 @@ interface CreateContractDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Helper to convert NaN/empty to undefined for optional numbers
+const optionalNumber = z.preprocess((val) => {
+  if (val === '' || val === undefined || val === null || Number.isNaN(val)) {
+    return undefined;
+  }
+  return Number(val);
+}, z.number().optional());
+
 const contractSchema = z.object({
   // General Info
   building_id: z.string().optional(), // Helper for filtering rooms
@@ -60,13 +68,13 @@ const contractSchema = z.object({
   payment_cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
   start_billing_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu tính tiền'),
   total_deposit: z.number().min(0, 'Tiền cọc phải >= 0'),
-  deposit_paid: z.number().min(0).optional(),
-  discount_months: z.number().min(0).optional(),
-  discount_amount_per_month: z.number().min(0).optional(),
+  deposit_paid: optionalNumber,
+  discount_months: optionalNumber,
+  discount_amount_per_month: optionalNumber,
 
   // Services
-  initial_electricity_reading: z.number().optional(),
-  initial_water_reading: z.number().optional(),
+  initial_electricity_reading: optionalNumber,
+  initial_water_reading: optionalNumber,
   services: z.array(z.object({
     service_id: z.string(),
     unit_price: z.number(),
