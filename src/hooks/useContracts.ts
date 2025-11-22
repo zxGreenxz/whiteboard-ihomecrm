@@ -239,8 +239,9 @@ export const useCreateContract = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Extract services before creating contract
-      const { services, ...contractData } = data;
+      // Extract services and start_billing_date before creating contract
+      // Note: start_billing_date is excluded until migration 024 is run on the database
+      const { services, start_billing_date, ...contractData } = data;
 
       // Create contract
       // We cast to any to avoid TS errors with new fields until types are regenerated
