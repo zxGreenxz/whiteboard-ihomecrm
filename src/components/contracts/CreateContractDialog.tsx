@@ -208,9 +208,12 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
       console.log('File to upload:', contractFile);
     }
 
+    // Remove building_id (helper field only, not in DB schema)
+    const { building_id, ...contractData } = data;
+
     createContractMutation.mutate(
       {
-        ...data,
+        ...contractData,
         services: servicesData,
         discounts,
         contract_file_url: fileUrl,
