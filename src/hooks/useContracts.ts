@@ -154,7 +154,6 @@ export const useContracts = (filters?: {
           )
         `)
         .eq('user_id', user.id)
-        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       // Apply filters
@@ -216,7 +215,6 @@ export const useContract = (contractId?: string) => {
         `)
         .eq('id', contractId)
         .eq('user_id', user.id)
-        .is('deleted_at', null)
         .single();
 
       if (error) throw error;
@@ -369,9 +367,10 @@ export const useDeleteContract = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Use hard delete since deleted_at column doesn't exist yet
       const { error } = await supabase
         .from('contracts')
-        .update({ deleted_at: new Date().toISOString() })
+        .delete()
         .eq('id', contractId)
         .eq('user_id', user.id);
 
