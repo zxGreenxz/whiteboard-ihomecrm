@@ -51,8 +51,8 @@ const TransferContractDialog = ({ open, onOpenChange, contract }: TransferContra
   const transferMutation = useTransferContract();
 
   const { data: tenants } = useTenants();
-  const { data: rooms } = useRooms({ status: 'AVAILABLE' });
-  const { data: beds } = useBeds({ status: 'AVAILABLE' });
+  const { data: rooms } = useRooms();
+  const { data: beds } = useBeds();
 
   const {
     register,

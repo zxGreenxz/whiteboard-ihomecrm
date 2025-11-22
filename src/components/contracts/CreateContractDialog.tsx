@@ -241,7 +241,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
           <DialogTitle className="text-xl text-green-700 uppercase">Hợp đồng</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit, (errors) => console.error("Form validation errors:", errors))} className="space-y-6 p-6 pt-2">
+        <form onSubmit={handleSubmit(onSubmit, (errors) => console.error("Form validation errors:", JSON.stringify(errors, null, 2)))} className="space-y-6 p-6 pt-2">
 
           {/* 1. THÔNG TIN CHUNG */}
           <div className="space-y-4">
@@ -284,9 +284,10 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     setValue('bed_id', undefined);
                     setSelectedBedId('');
                     setRentalType('room');
+                    setValue('rental_type', 'room');
                     // Auto-set building from room
                     const room = availableRooms?.find(r => r.id === value);
-                    if (room) {
+                    if (room && !selectedBuildingId) {
                       setSelectedBuildingId(room.building_id);
                       setValue('building_id', room.building_id);
                     }
