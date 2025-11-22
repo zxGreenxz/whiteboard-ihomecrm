@@ -23,6 +23,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { useCreateContract } from '@/hooks/useContracts';
 import { useTenants } from '@/hooks/useTenants';
+import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useBeds } from '@/hooks/useBeds';
 import { useServices } from '@/hooks/useServices';
@@ -82,6 +83,7 @@ type ContractFormData = z.infer<typeof contractSchema>;
 const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps) => {
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [rentalType, setRentalType] = useState<'room' | 'bed'>('room');
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
   const [selectedBedId, setSelectedBedId] = useState<string>('');
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
@@ -89,8 +91,9 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
   const createContractMutation = useCreateContract();
   const { data: tenants } = useTenants();
-  const { data: rooms } = useRooms({ status: 'AVAILABLE' });
-  const { data: beds } = useBeds({ status: 'AVAILABLE' });
+  const { data: buildings } = useBuildings();
+  const { data: allRooms } = useRooms(); // Load all rooms
+  const { data: allBeds } = useBeds(); // Load all beds
   const { data: services } = useServices();
   const { data: deposits } = useDeposits({
     tenant_id: selectedTenantId,
@@ -98,6 +101,17 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   });
   const { data: contractTemplates } = useDocumentTemplates('CONTRACT_NEW');
   const { data: invoiceTemplates } = useDocumentTemplates('INVOICE');
+
+  // Filter rooms and beds based on building selection and availability
+  const availableRooms = allRooms?.filter(room =>
+    (!selectedBuildingId || room.building_id === selectedBuildingId) &&
+    room.status === 'AVAILABLE'
+  );
+
+  const availableBeds = allBeds?.filter(bed =>
+    bed.status === 'AVAILABLE' &&
+    (!selectedBuildingId || bed.room?.building_id === selectedBuildingId)
+  );
 
   const {
     register,
@@ -137,6 +151,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const handleClose = () => {
     reset();
     setSelectedTenantId('');
+    setSelectedBuildingId('');
     setSelectedRoomId('');
     setSelectedBedId('');
     setSelectedServices(new Set());
@@ -198,8 +213,8 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const totalDepositPaid = deposits?.reduce((sum, d) => sum + (d.amount || 0), 0) || 0;
 
   // Auto-fill rent price from selected room/bed
-  const selectedRoom = rooms?.find(r => r.id === selectedRoomId);
-  const selectedBed = beds?.find(b => b.id === selectedBedId);
+  const selectedRoom = availableRooms?.find(r => r.id === selectedRoomId);
+  const selectedBed = availableBeds?.find(b => b.id === selectedBedId);
   const autoRentPrice = rentalType === 'room' ? selectedRoom?.rent_price : selectedBed?.rent_price;
   const autoDeposit = rentalType === 'room' ? selectedRoom?.deposit_amount : selectedBed?.deposit_amount;
 
@@ -228,12 +243,27 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Tòa nhà *</Label>
-                <Select disabled value={selectedRoom?.building?.id || selectedBed?.room?.building?.id}>
+                <Select
+                  value={selectedBuildingId}
+                  onValueChange={(value) => {
+                    setSelectedBuildingId(value);
+                    setValue('building_id', value);
+                    // Reset room/bed selection when building changes
+                    setSelectedRoomId('');
+                    setSelectedBedId('');
+                    setValue('room_id', undefined);
+                    setValue('bed_id', undefined);
+                  }}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Tự động theo phòng" />
+                    <SelectValue placeholder="Chọn tòa nhà..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Placeholder */}
+                    {buildings?.map((building) => (
+                      <SelectItem key={building.id} value={building.id}>
+                        {building.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -246,16 +276,23 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     setSelectedRoomId(value);
                     setValue('room_id', value);
                     setValue('bed_id', undefined);
+                    setSelectedBedId('');
                     setRentalType('room');
+                    // Auto-set building from room
+                    const room = availableRooms?.find(r => r.id === value);
+                    if (room) {
+                      setSelectedBuildingId(room.building_id);
+                      setValue('building_id', room.building_id);
+                    }
                   }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn phòng..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {rooms?.map((room) => (
+                    {availableRooms?.map((room) => (
                       <SelectItem key={room.id} value={room.id}>
-                        {room.name}
+                        {room.building?.name} - {room.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -270,7 +307,14 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     setSelectedBedId(value);
                     setValue('bed_id', value);
                     setValue('room_id', undefined);
+                    setSelectedRoomId('');
                     setRentalType('bed');
+                    // Auto-set building from bed
+                    const bed = availableBeds?.find(b => b.id === value);
+                    if (bed?.room) {
+                      setSelectedBuildingId(bed.room.building_id);
+                      setValue('building_id', bed.room.building_id);
+                    }
                   }}
                   disabled={!!selectedRoomId}
                 >
@@ -278,9 +322,9 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     <SelectValue placeholder="Chọn giường..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {beds?.map((bed) => (
+                    {availableBeds?.map((bed) => (
                       <SelectItem key={bed.id} value={bed.id}>
-                        {bed.name} ({bed.room?.name})
+                        {bed.room?.building?.name} - {bed.room?.name} - {bed.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
