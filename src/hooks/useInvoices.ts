@@ -20,6 +20,7 @@ export interface InvoiceWithRelations extends Invoice {
       id: string;
       full_name: string;
       phone: string;
+      email?: string | null;
     };
     room?: {
       id: string;
@@ -745,6 +746,61 @@ export const useBulkApproveInvoices = () => {
       toast({
         variant: 'destructive',
         title: 'Duyệt hóa đơn thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Unapprove Invoice (Back to Draft)
+// =============================================
+
+export const useUnapproveInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Check if invoice has any payments - cannot unapprove if has payments
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('paid_amount')
+        .eq('id', invoiceId)
+        .single();
+
+      if (invoice && invoice.paid_amount && invoice.paid_amount > 0) {
+        throw new Error('Không thể bỏ duyệt hóa đơn đã có thanh toán');
+      }
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .update({ status: 'DRAFT' })
+        .eq('id', invoiceId)
+        .eq('user_id', user.id)
+        .eq('status', 'APPROVED')
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+
+      toast({
+        title: 'Bỏ duyệt hóa đơn thành công!',
+        description: 'Hóa đơn đã được chuyển về trạng thái nháp.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bỏ duyệt hóa đơn thất bại',
         description: error.message,
       });
     },
