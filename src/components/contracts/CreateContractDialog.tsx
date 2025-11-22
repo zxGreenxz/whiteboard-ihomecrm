@@ -208,8 +208,19 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
       console.log('File to upload:', contractFile);
     }
 
-    // Remove building_id (helper field only, not in DB schema)
-    const { building_id, ...contractData } = data;
+    // Remove helper fields that are not in DB schema
+    // building_id: helper for filtering rooms
+    // rental_type: UI helper (room/bed)
+    // discount_months, discount_amount_per_month: converted to discounts array above
+    // start_billing_date: not yet in DB schema
+    const {
+      building_id,
+      rental_type,
+      discount_months,
+      discount_amount_per_month,
+      start_billing_date,
+      ...contractData
+    } = data;
 
     createContractMutation.mutate(
       {
