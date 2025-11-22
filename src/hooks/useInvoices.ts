@@ -573,12 +573,16 @@ export const useDeleteInvoice = () => {
 // Auto-Generate Invoices (Bulk)
 // =============================================
 
+export type InvoiceGenerationType = 'RENT_ONLY' | 'SERVICE_ONLY' | 'RENT_AND_SERVICE';
+
 export interface AutoGenerateInvoicesData {
   billing_period_start: string;
   billing_period_end: string;
   issue_date: string;
   due_date: string;
   contract_ids?: string[]; // Optional: specific contracts, or all active if not provided
+  building_id?: string; // Filter by building
+  invoice_type: InvoiceGenerationType; // Type of invoice to generate
 }
 
 export const useAutoGenerateInvoices = () => {
@@ -590,7 +594,20 @@ export const useAutoGenerateInvoices = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get active contracts
+      const { invoice_type = 'RENT_AND_SERVICE' } = data;
+
+      // Get invoice config for settings
+      const { data: invoiceSettings } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('user_id', user.id)
+        .eq('key', 'invoice_config')
+        .maybeSingle();
+
+      const invoiceConfig = invoiceSettings?.value as any;
+      const includePreviousDebt = invoiceConfig?.include_previous_debt ?? true;
+
+      // Get active contracts with full details
       let query = supabase
         .from('contracts')
         .select(`
@@ -601,10 +618,27 @@ export const useAutoGenerateInvoices = () => {
           bed_id,
           rent_price,
           payment_cycle,
+          start_billing_date,
+          room:rooms!contracts_room_id_fkey (
+            id,
+            name,
+            building_id
+          ),
+          bed:beds!contracts_bed_id_fkey (
+            id,
+            name,
+            room:rooms!beds_room_id_fkey (
+              id,
+              name,
+              building_id
+            )
+          ),
           contract_services (
+            id,
             service_id,
             unit_price,
-            service:services (
+            initial_reading,
+            service:services!contract_services_service_id_fkey (
               id,
               name,
               billing_type,
@@ -613,7 +647,8 @@ export const useAutoGenerateInvoices = () => {
           )
         `)
         .eq('user_id', user.id)
-        .eq('status', 'ACTIVE');
+        .eq('status', 'ACTIVE')
+        .is('deleted_at', null);
 
       if (data.contract_ids && data.contract_ids.length > 0) {
         query = query.in('id', data.contract_ids);
@@ -622,81 +657,272 @@ export const useAutoGenerateInvoices = () => {
       const { data: contracts, error: contractsError } = await query;
       if (contractsError) throw contractsError;
       if (!contracts || contracts.length === 0) {
-        return { created_count: 0 };
+        return { created_count: 0, skipped_count: 0 };
       }
 
-      // Create invoices for each contract
-      const invoicesToCreate = contracts.map((contract) => ({
-        user_id: user.id,
-        contract_id: contract.id,
-        title: `Hóa đơn ${contract.contract_number || contract.id.slice(0, 8)} - ${new Date(data.billing_period_start).toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })}`,
-        billing_period_start: data.billing_period_start,
-        billing_period_end: data.billing_period_end,
-        issue_date: data.issue_date,
-        due_date: data.due_date,
-        status: 'DRAFT',
-        total_amount: contract.rent_price, // Will be updated after items are created
-        paid_amount: 0,
-      }));
+      // Filter by building if specified
+      let filteredContracts = contracts;
+      if (data.building_id) {
+        filteredContracts = contracts.filter((contract) => {
+          const buildingId = contract.room?.building_id || contract.bed?.room?.building_id;
+          return buildingId === data.building_id;
+        });
+      }
 
-      const { data: createdInvoices, error: invoicesError } = await supabase
+      if (filteredContracts.length === 0) {
+        return { created_count: 0, skipped_count: 0 };
+      }
+
+      // Check for existing invoices in the same billing period to avoid duplicates
+      const contractIds = filteredContracts.map(c => c.id);
+      const { data: existingInvoices } = await supabase
         .from('invoices')
-        .insert(invoicesToCreate)
-        .select();
+        .select('contract_id')
+        .in('contract_id', contractIds)
+        .gte('billing_period_start', data.billing_period_start)
+        .lte('billing_period_end', data.billing_period_end)
+        .is('deleted_at', null);
 
-      if (invoicesError) throw invoicesError;
+      const existingContractIds = new Set((existingInvoices || []).map(i => i.contract_id));
+      const contractsToProcess = filteredContracts.filter(c => !existingContractIds.has(c.id));
+      const skippedCount = filteredContracts.length - contractsToProcess.length;
 
-      // Create invoice items for each invoice
-      const invoiceItems: any[] = [];
+      if (contractsToProcess.length === 0) {
+        return { created_count: 0, skipped_count: skippedCount };
+      }
 
-      for (let i = 0; i < createdInvoices.length; i++) {
-        const invoice = createdInvoices[i];
-        const contract = contracts[i];
+      // Get meter readings for utility calculations
+      const { data: meterReadings } = await supabase
+        .from('meter_readings')
+        .select('*')
+        .in('contract_id', contractsToProcess.map(c => c.id))
+        .order('reading_date', { ascending: false });
+
+      // Group meter readings by contract
+      const meterReadingsByContract = new Map<string, any[]>();
+      (meterReadings || []).forEach(reading => {
+        if (!meterReadingsByContract.has(reading.contract_id)) {
+          meterReadingsByContract.set(reading.contract_id, []);
+        }
+        meterReadingsByContract.get(reading.contract_id)!.push(reading);
+      });
+
+      // Get previous debts if enabled
+      const previousDebts = new Map<string, number>();
+      if (includePreviousDebt) {
+        const { data: unpaidInvoices } = await supabase
+          .from('invoices')
+          .select('contract_id, total_amount, paid_amount')
+          .in('contract_id', contractsToProcess.map(c => c.id))
+          .in('status', ['APPROVED', 'PARTIAL_PAID', 'OVERDUE'])
+          .is('deleted_at', null);
+
+        (unpaidInvoices || []).forEach(invoice => {
+          const debt = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
+          if (debt > 0) {
+            const currentDebt = previousDebts.get(invoice.contract_id) || 0;
+            previousDebts.set(invoice.contract_id, currentDebt + debt);
+          }
+        });
+      }
+
+      // Generate invoice numbers
+      const { generateInvoiceNumber } = await import('@/lib/codeGenerator');
+      const prefix = invoiceConfig?.invoice_number_prefix || 'INV';
+      const format = invoiceConfig?.invoice_number_format || '{prefix}{year}{month}{seq:4}';
+      const autoGenerateNumber = invoiceConfig?.auto_generate_invoice_number !== false;
+
+      // Create invoices and items
+      const createdInvoices: any[] = [];
+      const allInvoiceItems: any[] = [];
+
+      for (const contract of contractsToProcess) {
+        // Calculate invoice items based on type
+        const items: Array<{
+          type: string;
+          description: string;
+          quantity: number;
+          unit_price: number;
+          amount: number;
+          service_id?: string;
+          previous_reading?: number;
+          current_reading?: number;
+        }> = [];
 
         // Add rent item
-        invoiceItems.push({
-          invoice_id: invoice.id,
-          type: 'RENT',
-          description: 'Tiền thuê phòng',
-          quantity: 1,
-          unit_price: contract.rent_price,
-          amount: contract.rent_price,
-        });
+        if (invoice_type === 'RENT_ONLY' || invoice_type === 'RENT_AND_SERVICE') {
+          const rentPrice = contract.rent_price || 0;
+          items.push({
+            type: 'RENT',
+            description: 'Tiền thuê phòng',
+            quantity: 1,
+            unit_price: rentPrice,
+            amount: rentPrice,
+          });
+        }
 
-        // Add fixed service items
-        if (contract.contract_services) {
-          for (const cs of contract.contract_services) {
-            if (cs.service?.type === 'FIXED') {
-              invoiceItems.push({
-                invoice_id: invoice.id,
+        // Add service items
+        if (invoice_type === 'SERVICE_ONLY' || invoice_type === 'RENT_AND_SERVICE') {
+          const services = contract.contract_services || [];
+
+          for (const cs of services) {
+            const service = cs.service;
+            if (!service) continue;
+
+            const billingType = service.billing_type;
+
+            // Fixed services
+            if (billingType === 'FIXED' || billingType === 'PER_ROOM') {
+              items.push({
                 type: 'SERVICE',
-                description: cs.service.name,
+                description: service.name,
                 quantity: 1,
                 unit_price: cs.unit_price,
                 amount: cs.unit_price,
+                service_id: cs.service_id,
               });
+            }
+
+            // Meter reading services (ELECTRIC, WATER)
+            if (billingType === 'METER_READING') {
+              const contractReadings = meterReadingsByContract.get(contract.id) || [];
+              const serviceReadings = contractReadings
+                .filter((r: any) => r.service_id === cs.service_id)
+                .sort((a: any, b: any) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime());
+
+              if (serviceReadings.length > 0) {
+                const latestReading = serviceReadings[0];
+                const usage = (latestReading.current_reading || 0) - (latestReading.previous_reading || 0);
+                if (usage > 0) {
+                  items.push({
+                    type: 'SERVICE',
+                    description: `${service.name} (${usage} ${service.unit || 'kWh'})`,
+                    quantity: usage,
+                    unit_price: cs.unit_price,
+                    amount: usage * cs.unit_price,
+                    service_id: cs.service_id,
+                    previous_reading: latestReading.previous_reading,
+                    current_reading: latestReading.current_reading,
+                  });
+                }
+              }
             }
           }
         }
+
+        // Calculate totals
+        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+        const previousDebt = previousDebts.get(contract.id) || 0;
+        const totalAmount = subtotal + previousDebt;
+
+        // Generate invoice number
+        let invoiceNumber = null;
+        if (autoGenerateNumber) {
+          try {
+            invoiceNumber = await generateInvoiceNumber(prefix, format, user.id, 'YEARLY');
+          } catch (e) {
+            console.error('Error generating invoice number:', e);
+          }
+        }
+
+        // Create invoice title
+        const billingMonth = new Date(data.billing_period_start).toLocaleDateString('vi-VN', {
+          month: '2-digit',
+          year: 'numeric'
+        });
+        const invoiceTypeLabel = invoice_type === 'RENT_ONLY' ? 'Tiền nhà' :
+                                 invoice_type === 'SERVICE_ONLY' ? 'Dịch vụ' :
+                                 'Tiền nhà & Dịch vụ';
+
+        // Create invoice
+        const { data: invoice, error: invoiceError } = await supabase
+          .from('invoices')
+          .insert({
+            user_id: user.id,
+            contract_id: contract.id,
+            invoice_number: invoiceNumber,
+            title: `${invoiceTypeLabel} - ${billingMonth}`,
+            billing_period_start: data.billing_period_start,
+            billing_period_end: data.billing_period_end,
+            issue_date: data.issue_date,
+            due_date: data.due_date,
+            status: 'DRAFT',
+            subtotal,
+            previous_debt: previousDebt,
+            total_amount: totalAmount,
+            paid_amount: 0,
+            remaining_amount: totalAmount,
+          })
+          .select()
+          .single();
+
+        if (invoiceError) {
+          console.error('Error creating invoice:', invoiceError);
+          continue;
+        }
+
+        createdInvoices.push(invoice);
+
+        // Prepare invoice items
+        for (const item of items) {
+          allInvoiceItems.push({
+            invoice_id: invoice.id,
+            type: item.type as any,
+            description: item.description,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            amount: item.amount,
+            service_id: item.service_id,
+            previous_reading: item.previous_reading,
+            current_reading: item.current_reading,
+          });
+        }
+
+        // Add previous debt as an item if exists
+        if (previousDebt > 0) {
+          allInvoiceItems.push({
+            invoice_id: invoice.id,
+            type: 'OTHER',
+            description: 'Công nợ tồn đọng kỳ trước',
+            quantity: 1,
+            unit_price: previousDebt,
+            amount: previousDebt,
+          });
+        }
       }
 
-      if (invoiceItems.length > 0) {
+      // Insert all invoice items in batch
+      if (allInvoiceItems.length > 0) {
         const { error: itemsError } = await supabase
           .from('invoice_items')
-          .insert(invoiceItems);
+          .insert(allInvoiceItems);
 
-        if (itemsError) throw itemsError;
+        if (itemsError) {
+          console.error('Error creating invoice items:', itemsError);
+        }
       }
 
-      return { created_count: createdInvoices.length };
+      return {
+        created_count: createdInvoices.length,
+        skipped_count: skippedCount
+      };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
+      const createdCount = result?.created_count || 0;
+      const skippedCount = result?.skipped_count || 0;
+
+      let description = `Đã tạo ${createdCount} hóa đơn mới.`;
+      if (skippedCount > 0) {
+        description += ` Bỏ qua ${skippedCount} hợp đồng đã có hóa đơn trong kỳ.`;
+      }
+
       toast({
-        title: 'Tạo hóa đơn tự động thành công!',
-        description: `Đã tạo ${result?.created_count || 0} hóa đơn mới.`,
+        title: createdCount > 0 ? 'Tạo hóa đơn tự động thành công!' : 'Không có hóa đơn mới được tạo',
+        description,
+        variant: createdCount > 0 ? 'default' : 'destructive',
       });
     },
     onError: (error: Error) => {

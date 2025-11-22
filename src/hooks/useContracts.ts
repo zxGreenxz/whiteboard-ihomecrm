@@ -275,6 +275,18 @@ export const useCreateContract = () => {
         if (servicesError) throw servicesError;
       }
 
+      // Auto-create invoice if enabled in settings
+      try {
+        const { autoCreateInvoiceForContract } = await import('@/lib/contractHelpers');
+        const invoiceId = await autoCreateInvoiceForContract(contract.id, user.id);
+        if (invoiceId) {
+          console.log('Auto-created invoice:', invoiceId);
+        }
+      } catch (e) {
+        console.error('Error auto-creating invoice:', e);
+        // Don't throw - contract creation was successful
+      }
+
       return contract;
     },
     onSuccess: () => {
@@ -283,6 +295,7 @@ export const useCreateContract = () => {
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] }); // Also refresh invoices
 
       toast({
         title: 'Tạo hợp đồng thành công!',

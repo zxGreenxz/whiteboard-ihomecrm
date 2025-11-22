@@ -115,18 +115,24 @@ export async function autoCreateInvoiceForContract(
   // Check if auto-create is enabled
   if (!config.auto_create_invoice) return null;
 
-  // Fetch contract details
+  // Fetch contract details with services
   const { data: contract } = await supabase
     .from('contracts')
     .select(`
       *,
-      tenant:tenants(*),
-      room:rooms(*),
+      tenant:tenants!contracts_tenant_id_fkey(*),
+      room:rooms!contracts_room_id_fkey(*),
       contract_services(
+        id,
         service_id,
         unit_price,
         initial_reading,
-        service:services(*)
+        service:services!contract_services_service_id_fkey(
+          id,
+          name,
+          billing_type,
+          unit
+        )
       )
     `)
     .eq('id', contractId)
@@ -134,7 +140,7 @@ export async function autoCreateInvoiceForContract(
 
   if (!contract) return null;
 
-  // Fetch invoice config for numbering
+  // Fetch invoice config for numbering and settings
   const { data: invoiceSettings } = await supabase
     .from('settings')
     .select('value')
@@ -143,49 +149,119 @@ export async function autoCreateInvoiceForContract(
     .maybeSingle();
 
   const invoiceConfig = invoiceSettings?.value as any;
+  const paymentDueDays = invoiceConfig?.payment_due_days || 7;
 
-  // Auto-generate invoice number (will be implemented in invoiceHelpers)
+  // Generate invoice number
   let invoiceNumber = null;
-  if (invoiceConfig?.auto_generate_invoice_number) {
-    // This will be handled by invoiceHelpers.ts
-    invoiceNumber = 'AUTO'; // Placeholder
+  if (invoiceConfig?.auto_generate_invoice_number !== false) {
+    const { generateInvoiceNumber } = await import('./codeGenerator');
+    const prefix = invoiceConfig?.invoice_number_prefix || 'INV';
+    const format = invoiceConfig?.invoice_number_format || '{prefix}{year}{month}{seq:4}';
+    try {
+      invoiceNumber = await generateInvoiceNumber(prefix, format, userId, 'YEARLY');
+    } catch (e) {
+      console.error('Error generating invoice number:', e);
+    }
   }
 
-  // Calculate invoice amounts
-  const rentAmount = contract.rent_price || 0;
-  let totalAmount = rentAmount;
+  // Calculate billing period (first month from start_billing_date or start_date)
+  const startDate = new Date(contract.start_billing_date || contract.start_date);
+  const billingPeriodStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const billingPeriodEnd = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
 
-  // Add service fees
+  // Prepare invoice items
+  const invoiceItems: Array<{
+    type: string;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+    service_id?: string;
+  }> = [];
+
+  // Add rent item
+  const rentAmount = contract.rent_price || 0;
+  invoiceItems.push({
+    type: 'RENT',
+    description: 'Tiền thuê phòng',
+    quantity: 1,
+    unit_price: rentAmount,
+    amount: rentAmount,
+  });
+
+  // Add fixed service fees
   if (contract.contract_services && contract.contract_services.length > 0) {
     for (const cs of contract.contract_services) {
       const service = cs.service;
-      if (service.billing_type === 'FIXED' || service.billing_type === 'PER_ROOM') {
-        totalAmount += cs.unit_price;
+      if (service && (service.billing_type === 'FIXED' || service.billing_type === 'PER_ROOM')) {
+        invoiceItems.push({
+          type: 'SERVICE',
+          description: service.name,
+          quantity: 1,
+          unit_price: cs.unit_price,
+          amount: cs.unit_price,
+          service_id: cs.service_id,
+        });
       }
     }
   }
 
+  // Calculate totals
+  const subtotal = invoiceItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalAmount = subtotal;
+
   // Create invoice
-  const { data: invoice, error } = await supabase
+  const issueDate = new Date();
+  const dueDate = new Date(issueDate.getTime() + paymentDueDays * 24 * 60 * 60 * 1000);
+  const billingMonth = billingPeriodStart.toLocaleDateString('vi-VN', {
+    month: '2-digit',
+    year: 'numeric'
+  });
+
+  const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
     .insert({
       user_id: userId,
       contract_id: contractId,
-      tenant_id: contract.tenant_id,
-      room_id: contract.room_id,
       invoice_number: invoiceNumber,
-      issue_date: new Date().toISOString(),
-      due_date: new Date(Date.now() + (invoiceConfig?.payment_due_days || 7) * 24 * 60 * 60 * 1000).toISOString(),
-      amount: totalAmount,
-      amount_paid: 0,
+      title: `Tiền nhà & Dịch vụ - ${billingMonth}`,
+      billing_period_start: billingPeriodStart.toISOString().split('T')[0],
+      billing_period_end: billingPeriodEnd.toISOString().split('T')[0],
+      issue_date: issueDate.toISOString().split('T')[0],
+      due_date: dueDate.toISOString().split('T')[0],
       status: 'DRAFT',
+      subtotal,
+      total_amount: totalAmount,
+      paid_amount: 0,
+      remaining_amount: totalAmount,
     })
     .select('id')
     .single();
 
-  if (error) {
-    console.error('Error auto-creating invoice:', error);
+  if (invoiceError) {
+    console.error('Error auto-creating invoice:', invoiceError);
     return null;
+  }
+
+  // Create invoice items
+  if (invoiceItems.length > 0) {
+    const itemsToInsert = invoiceItems.map(item => ({
+      invoice_id: invoice.id,
+      type: item.type as any,
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      amount: item.amount,
+      service_id: item.service_id,
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('invoice_items')
+      .insert(itemsToInsert);
+
+    if (itemsError) {
+      console.error('Error creating invoice items:', itemsError);
+    }
   }
 
   return invoice.id;
