@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCreateContract } from '@/hooks/useContracts';
+import { useCreateContract, useUploadContractFile } from '@/hooks/useContracts';
 import { useTenants } from '@/hooks/useTenants';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
@@ -102,6 +102,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const [selectedBedId, setSelectedBedId] = useState<string>('');
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [contractFile, setContractFile] = useState<File | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<Array<{
     asset_id: string;
     asset_name: string;
@@ -112,6 +113,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
   const createContractMutation = useCreateContract();
   const createAssetHandoverMutation = useCreateAssetHandover();
+  const uploadFileMutation = useUploadContractFile();
   const { data: tenants } = useTenants();
   const { data: buildings } = useBuildings();
   const { data: allRooms } = useRooms(); // Load all rooms
@@ -215,14 +217,21 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
       }
     }
 
-    // Handle file upload (mock for now as we don't have direct upload in useCreateContract yet, 
-    // but we added contract_file_url to the type)
+    // Handle file upload
     let fileUrl = undefined;
     if (contractFile) {
-      // In a real app, we would upload here. For now, we'll skip or simulate.
-      // We can't easily upload without a proper hook exposed.
-      // We'll just log it.
-      console.log('File to upload:', contractFile);
+      try {
+        setIsUploadingFile(true);
+        const uploadResult = await uploadFileMutation.mutateAsync({
+          file: contractFile,
+        });
+        fileUrl = uploadResult.url;
+        setIsUploadingFile(false);
+      } catch (error) {
+        setIsUploadingFile(false);
+        toast.error('Upload file thất bại. Hợp đồng sẽ được tạo không có file đính kèm.');
+        // Continue without file
+      }
     }
 
     // Remove helper fields that are not in DB schema
@@ -830,8 +839,12 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <Button type="button" variant="outline" onClick={handleClose}>
               Hủy
             </Button>
-            <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={createContractMutation.isPending}>
-              {createContractMutation.isPending ? 'Đang lưu...' : 'Lưu'}
+            <Button
+              type="submit"
+              className="bg-green-600 hover:bg-green-700"
+              disabled={createContractMutation.isPending || isUploadingFile}
+            >
+              {isUploadingFile ? 'Đang upload file...' : createContractMutation.isPending ? 'Đang lưu...' : 'Lưu'}
             </Button>
           </DialogFooter>
         </form >
