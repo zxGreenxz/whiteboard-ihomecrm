@@ -927,7 +927,6 @@ export type Database = {
           rent_price: number
           room_id: string | null
           signed_date: string
-          start_billing_date: string | null
           start_date: string
           status: Database["public"]["Enums"]["contract_status"]
           tenant_id: string
@@ -958,7 +957,6 @@ export type Database = {
           rent_price: number
           room_id?: string | null
           signed_date: string
-          start_billing_date?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["contract_status"]
           tenant_id: string
@@ -989,7 +987,6 @@ export type Database = {
           rent_price?: number
           room_id?: string | null
           signed_date?: string
-          start_billing_date?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["contract_status"]
           tenant_id?: string

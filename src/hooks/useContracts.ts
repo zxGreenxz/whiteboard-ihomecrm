@@ -61,7 +61,6 @@ export interface CreateContractData {
   bed_id?: string;
   signed_date: string;
   start_date: string;
-  start_billing_date?: string;
   end_date: string;
   rent_price: number;
   payment_cycle: string;
@@ -558,57 +557,6 @@ export const useEstimateTerminationCosts = () => {
         total_deductions: (data.damage_fee || 0) + (data.cleaning_fee || 0) + (data.early_termination_fee || 0),
         refund_amount: 0,
       };
-    },
-  });
-};
-
-// =============================================
-// Upload Contract File
-// =============================================
-
-export const useUploadContractFile = () => {
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ file, contractId }: { file: File; contractId?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Generate file path: {user_id}/{contract_id || timestamp}_{filename}
-      const timestamp = Date.now();
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${contractId || timestamp}_${file.name}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('contract-files')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (error) throw error;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('contract-files')
-        .getPublicUrl(data.path);
-
-      return {
-        path: data.path,
-        url: publicUrl,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: fileExt,
-      };
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Upload thất bại',
-        description: error.message,
-      });
     },
   });
 };
