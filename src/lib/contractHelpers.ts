@@ -189,17 +189,33 @@ export async function autoCreateInvoiceForContract(
     amount: rentAmount,
   });
 
-  // Add fixed service fees
+  // Add service fees
   if (contract.contract_services && contract.contract_services.length > 0) {
     for (const cs of contract.contract_services) {
       const service = cs.service;
-      if (service && (service.billing_type === 'FIXED' || service.billing_type === 'PER_ROOM')) {
+      if (!service) continue;
+
+      // Fixed services and per-room services
+      if (service.billing_type === 'FIXED' || service.billing_type === 'PER_ROOM') {
         invoiceItems.push({
           type: 'SERVICE',
           description: service.name,
           quantity: 1,
           unit_price: cs.unit_price,
           amount: cs.unit_price,
+          service_id: cs.service_id,
+        });
+      }
+
+      // Per-person services (assumes 1 person if no quantity specified)
+      if (service.billing_type === 'PER_PERSON') {
+        const quantity = 1; // Default to 1 person per contract
+        invoiceItems.push({
+          type: 'SERVICE',
+          description: service.name,
+          quantity: quantity,
+          unit_price: cs.unit_price,
+          amount: quantity * cs.unit_price,
           service_id: cs.service_id,
         });
       }

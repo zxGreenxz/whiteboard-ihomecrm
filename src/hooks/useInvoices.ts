@@ -619,6 +619,8 @@ export const useAutoGenerateInvoices = () => {
           rent_price,
           payment_cycle,
           start_billing_date,
+          start_date,
+          discounts,
           room:rooms!contracts_room_id_fkey (
             id,
             name,
@@ -771,7 +773,7 @@ export const useAutoGenerateInvoices = () => {
 
             const billingType = service.billing_type;
 
-            // Fixed services
+            // Fixed services and per-room services
             if (billingType === 'FIXED' || billingType === 'PER_ROOM') {
               items.push({
                 type: 'SERVICE',
@@ -779,6 +781,19 @@ export const useAutoGenerateInvoices = () => {
                 quantity: 1,
                 unit_price: cs.unit_price,
                 amount: cs.unit_price,
+                service_id: cs.service_id,
+              });
+            }
+
+            // Per-person services (assumes 1 person if no quantity specified)
+            if (billingType === 'PER_PERSON') {
+              const quantity = 1; // Default to 1 person per contract
+              items.push({
+                type: 'SERVICE',
+                description: service.name,
+                quantity: quantity,
+                unit_price: cs.unit_price,
+                amount: quantity * cs.unit_price,
                 service_id: cs.service_id,
               });
             }
@@ -810,10 +825,31 @@ export const useAutoGenerateInvoices = () => {
           }
         }
 
-        // Calculate totals
+        // Calculate subtotal
         const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+
+        // Calculate contract discount (promotional discounts based on billing month)
+        let discountAmount = 0;
+        if (contract.discounts && Array.isArray(contract.discounts)) {
+          const contractStartDate = new Date(contract.start_billing_date || contract.start_date);
+          const billingStartDate = new Date(data.billing_period_start);
+
+          // Calculate which month of the contract this billing period is
+          const monthsDiff = (billingStartDate.getFullYear() - contractStartDate.getFullYear()) * 12 +
+                            (billingStartDate.getMonth() - contractStartDate.getMonth()) + 1;
+
+          // Find discount for this month
+          const discountForMonth = (contract.discounts as Array<{ month: number; amount: number }>)
+            .find(d => d.month === monthsDiff);
+
+          if (discountForMonth) {
+            discountAmount = discountForMonth.amount || 0;
+          }
+        }
+
+        // Calculate totals
         const previousDebt = previousDebts.get(contract.id) || 0;
-        const totalAmount = subtotal + previousDebt;
+        const totalAmount = Math.max(0, subtotal - discountAmount + previousDebt);
 
         // Generate invoice number
         let invoiceNumber = null;
@@ -848,7 +884,8 @@ export const useAutoGenerateInvoices = () => {
             due_date: data.due_date,
             status: 'DRAFT',
             subtotal,
-            previous_debt: previousDebt,
+            discount_amount: discountAmount > 0 ? discountAmount : null,
+            previous_debt: previousDebt > 0 ? previousDebt : null,
             total_amount: totalAmount,
             paid_amount: 0,
             remaining_amount: totalAmount,
@@ -875,6 +912,18 @@ export const useAutoGenerateInvoices = () => {
             service_id: item.service_id,
             previous_reading: item.previous_reading,
             current_reading: item.current_reading,
+          });
+        }
+
+        // Add discount as an item if exists
+        if (discountAmount > 0) {
+          allInvoiceItems.push({
+            invoice_id: invoice.id,
+            type: 'DISCOUNT',
+            description: 'Giảm giá khuyến mại',
+            quantity: 1,
+            unit_price: -discountAmount,
+            amount: -discountAmount,
           });
         }
 
