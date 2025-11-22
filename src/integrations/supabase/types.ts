@@ -909,15 +909,18 @@ export type Database = {
           bed_id: string | null
           contract_file_url: string | null
           contract_number: string | null
+          contract_template_id: string | null
           created_at: string
           deleted_at: string | null
           deposit_paid: number | null
           deposit_remaining: number | null
           discounts: Json | null
           end_date: string
+          expected_move_out_date: string | null
           id: string
           initial_electricity_reading: number | null
           initial_water_reading: number | null
+          invoice_template_id: string | null
           notes: string | null
           parent_contract_id: string | null
           payment_cycle: Database["public"]["Enums"]["payment_cycle"] | null
@@ -936,15 +939,18 @@ export type Database = {
           bed_id?: string | null
           contract_file_url?: string | null
           contract_number?: string | null
+          contract_template_id?: string | null
           created_at?: string
           deleted_at?: string | null
           deposit_paid?: number | null
           deposit_remaining?: number | null
           discounts?: Json | null
           end_date: string
+          expected_move_out_date?: string | null
           id?: string
           initial_electricity_reading?: number | null
           initial_water_reading?: number | null
+          invoice_template_id?: string | null
           notes?: string | null
           parent_contract_id?: string | null
           payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
@@ -963,15 +969,18 @@ export type Database = {
           bed_id?: string | null
           contract_file_url?: string | null
           contract_number?: string | null
+          contract_template_id?: string | null
           created_at?: string
           deleted_at?: string | null
           deposit_paid?: number | null
           deposit_remaining?: number | null
           discounts?: Json | null
           end_date?: string
+          expected_move_out_date?: string | null
           id?: string
           initial_electricity_reading?: number | null
           initial_water_reading?: number | null
+          invoice_template_id?: string | null
           notes?: string | null
           parent_contract_id?: string | null
           payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
@@ -991,6 +1000,20 @@ export type Database = {
             columns: ["bed_id"]
             isOneToOne: false
             referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_contract_template_id_fkey"
+            columns: ["contract_template_id"]
+            isOneToOne: false
+            referencedRelation: "document_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_invoice_template_id_fkey"
+            columns: ["invoice_template_id"]
+            isOneToOne: false
+            referencedRelation: "document_templates"
             referencedColumns: ["id"]
           },
           {
