@@ -74,6 +74,14 @@ export interface CreateContractData {
     unit_price: number;
     initial_reading?: number;
   }>;
+  contract_template_id?: string;
+  invoice_template_id?: string;
+  discounts?: Array<{
+    month: number;
+    amount: number;
+    reason?: string;
+  }>;
+  contract_file_url?: string;
 }
 
 export interface ExtendContractData {
@@ -234,14 +242,17 @@ export const useCreateContract = () => {
       const { services, ...contractData } = data;
 
       // Create contract
+      // We cast to any to avoid TS errors with new fields until types are regenerated
+      const insertData: any = {
+        ...contractData,
+        user_id: user.id,
+        status: 'ACTIVE',
+        payment_cycle: contractData.payment_cycle,
+      };
+
       const { data: contract, error: contractError } = await supabase
         .from('contracts')
-        .insert([{
-          ...contractData,
-          user_id: user.id,
-          status: 'ACTIVE' as any,
-          payment_cycle: contractData.payment_cycle as any,
-        }])
+        .insert([insertData])
         .select()
         .single();
 

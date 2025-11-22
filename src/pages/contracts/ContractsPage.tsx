@@ -28,6 +28,8 @@ import {
   ArrowRightLeft,
   XCircle,
   Eye,
+  Upload,
+  LogOut,
 } from 'lucide-react';
 import { useContracts, type ContractWithRelations } from '@/hooks/useContracts';
 import { format } from 'date-fns';
@@ -36,6 +38,8 @@ import CreateContractDialog from '@/components/contracts/CreateContractDialog';
 import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
 import TransferContractDialog from '@/components/contracts/TransferContractDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
+import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
+import { toast } from 'sonner';
 
 const ContractsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,6 +49,7 @@ const ContractsPage = () => {
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
+  const [registerMoveOutDialogOpen, setRegisterMoveOutDialogOpen] = useState(false);
 
   const { data: contracts, isLoading } = useContracts({
     status: statusFilter || undefined,
@@ -62,7 +67,12 @@ const ContractsPage = () => {
     );
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (contract: ContractWithRelations) => {
+    // Check for expected move out date
+    if (contract.status === 'ACTIVE' && (contract as any).expected_move_out_date) {
+      return <Badge className="bg-orange-500 hover:bg-orange-600">Sắp chuyển đi</Badge>;
+    }
+
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       DRAFT: { variant: 'outline', label: 'Nháp' },
       ACTIVE: { variant: 'default', label: 'Đang hoạt động' },
@@ -72,7 +82,7 @@ const ContractsPage = () => {
       EXPIRED: { variant: 'destructive', label: 'Hết hạn' },
     };
 
-    const config = variants[status] || { variant: 'outline' as const, label: status };
+    const config = variants[contract.status] || { variant: 'outline' as const, label: contract.status };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
@@ -124,6 +134,11 @@ const ContractsPage = () => {
           <option value="TERMINATED">Đã thanh lý</option>
           <option value="EXPIRED">Hết hạn</option>
         </select>
+
+        <Button variant="outline" onClick={() => toast.info('Tính năng đang phát triển')}>
+          <Upload className="h-4 w-4 mr-2" />
+          Nhập từ file
+        </Button>
 
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -179,7 +194,9 @@ const ContractsPage = () => {
                       <div className="text-gray-500">
                         {contract.actual_end_date
                           ? `Kết thúc: ${format(new Date(contract.actual_end_date), 'dd/MM/yyyy', { locale: vi })}`
-                          : `Còn ${Math.ceil((new Date(contract.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ngày`}
+                          : (contract as any).expected_move_out_date
+                            ? `Dự kiến ra: ${format(new Date((contract as any).expected_move_out_date), 'dd/MM/yyyy', { locale: vi })}`
+                            : `Còn ${Math.ceil((new Date(contract.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ngày`}
                       </div>
                     </div>
                   </TableCell>
@@ -189,7 +206,7 @@ const ContractsPage = () => {
                       {contract.payment_cycle?.toLowerCase()}
                     </div>
                   </TableCell>
-                  <TableCell>{getStatusBadge(contract.status)}</TableCell>
+                  <TableCell>{getStatusBadge(contract)}</TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -213,7 +230,7 @@ const ContractsPage = () => {
                               }}
                             >
                               <RefreshCw className="h-4 w-4 mr-2" />
-                              Gia hạn
+                              Gia hạn hợp đồng
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -222,7 +239,25 @@ const ContractsPage = () => {
                               }}
                             >
                               <ArrowRightLeft className="h-4 w-4 mr-2" />
-                              Chuyển phòng/Nhượng HĐ
+                              Chuyển Phòng/Giường
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedContract(contract);
+                                setTransferDialogOpen(true); // Reusing transfer dialog for "Nhượng hợp đồng" as it supports both
+                              }}
+                            >
+                              <ArrowRightLeft className="h-4 w-4 mr-2" />
+                              Nhượng hợp đồng
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedContract(contract);
+                                setRegisterMoveOutDialogOpen(true);
+                              }}
+                            >
+                              <LogOut className="h-4 w-4 mr-2" />
+                              Đăng ký ngày chuyển đi
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -268,7 +303,7 @@ const ContractsPage = () => {
                   (c) =>
                     c.status === 'ACTIVE' &&
                     new Date(c.end_date).getTime() - new Date().getTime() <
-                      30 * 24 * 60 * 60 * 1000
+                    30 * 24 * 60 * 60 * 1000
                 ).length
               }
             </div>
@@ -303,6 +338,12 @@ const ContractsPage = () => {
       <TerminateContractDialog
         open={terminateDialogOpen}
         onOpenChange={setTerminateDialogOpen}
+        contract={selectedContract}
+      />
+
+      <RegisterMoveOutDialog
+        open={registerMoveOutDialogOpen}
+        onOpenChange={setRegisterMoveOutDialogOpen}
         contract={selectedContract}
       />
     </MainLayout>

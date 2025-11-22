@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -28,8 +27,11 @@ import { useRooms } from '@/hooks/useRooms';
 import { useBeds } from '@/hooks/useBeds';
 import { useServices } from '@/hooks/useServices';
 import { useDeposits } from '@/hooks/useDeposits';
-import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { useDocumentTemplates } from '@/hooks/useDocumentTemplates';
+import { Plus, Trash2, Upload } from 'lucide-react';
 import { format } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 
 interface CreateContractDialogProps {
   open: boolean;
@@ -37,36 +39,53 @@ interface CreateContractDialogProps {
 }
 
 const contractSchema = z.object({
-  tenant_id: z.string().min(1, 'Vui lòng chọn khách thuê'),
-  rental_type: z.enum(['room', 'bed']),
+  // General Info
+  building_id: z.string().optional(), // Helper for filtering rooms
   room_id: z.string().optional(),
   bed_id: z.string().optional(),
+  rental_type: z.enum(['room', 'bed']),
   signed_date: z.string().min(1, 'Vui lòng chọn ngày ký'),
   start_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu'),
   end_date: z.string().min(1, 'Vui lòng chọn ngày kết thúc'),
+  contract_template_id: z.string().optional(),
+  invoice_template_id: z.string().optional(),
+  notes: z.string().optional(),
+
+  // Customer
+  tenant_id: z.string().min(1, 'Vui lòng chọn khách thuê'),
+
+  // Rent & Deposit
   rent_price: z.number().min(0, 'Giá thuê phải >= 0'),
   payment_cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
+  start_billing_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu tính tiền'),
   total_deposit: z.number().min(0, 'Tiền cọc phải >= 0'),
   deposit_paid: z.number().min(0).optional(),
+  discount_months: z.number().min(0).optional(),
+  discount_amount_per_month: z.number().min(0).optional(),
+
+  // Services
   initial_electricity_reading: z.number().optional(),
   initial_water_reading: z.number().optional(),
-  notes: z.string().optional(),
   services: z.array(z.object({
     service_id: z.string(),
     unit_price: z.number(),
     initial_reading: z.number().optional(),
+    quantity: z.number().optional(),
   })).optional(),
+
+  // Attachments
+  contract_file_url: z.string().optional(),
 });
 
 type ContractFormData = z.infer<typeof contractSchema>;
 
 const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps) => {
-  const [step, setStep] = useState(1);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
   const [rentalType, setRentalType] = useState<'room' | 'bed'>('room');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
   const [selectedBedId, setSelectedBedId] = useState<string>('');
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
+  const [contractFile, setContractFile] = useState<File | null>(null);
 
   const createContractMutation = useCreateContract();
   const { data: tenants } = useTenants();
@@ -77,6 +96,8 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
     tenant_id: selectedTenantId,
     status: 'CONFIRMED',
   });
+  const { data: contractTemplates } = useDocumentTemplates('CONTRACT_NEW');
+  const { data: invoiceTemplates } = useDocumentTemplates('INVOICE');
 
   const {
     register,
@@ -90,35 +111,80 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
     defaultValues: {
       payment_cycle: 'MONTHLY',
       rental_type: 'room',
+      signed_date: format(new Date(), 'yyyy-MM-dd'),
+      start_date: format(new Date(), 'yyyy-MM-dd'),
+      start_billing_date: format(new Date(), 'yyyy-MM-dd'),
+      end_date: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd'),
+      discount_months: 0,
+      discount_amount_per_month: 0,
     },
   });
 
   const watchedValues = watch();
 
+  // Auto-select mandatory services
+  useEffect(() => {
+    if (services) {
+      const mandatoryServices = services.filter(s => s.is_mandatory).map(s => s.id);
+      const newSet = new Set(selectedServices);
+      mandatoryServices.forEach(id => newSet.add(id));
+      if (newSet.size !== selectedServices.size) {
+        setSelectedServices(newSet);
+      }
+    }
+  }, [services]);
+
   const handleClose = () => {
     reset();
-    setStep(1);
     setSelectedTenantId('');
     setSelectedRoomId('');
     setSelectedBedId('');
     setSelectedServices(new Set());
+    setContractFile(null);
     onOpenChange(false);
   };
 
-  const onSubmit = (data: ContractFormData) => {
+  const onSubmit = async (data: ContractFormData) => {
     const servicesData = Array.from(selectedServices).map(serviceId => {
       const service = services?.find(s => s.id === serviceId);
       return {
         service_id: serviceId,
         unit_price: service?.unit_price || 0,
-        initial_reading: service?.type === 'METER_READING' ? 0 : undefined,
+        initial_reading: service?.type === 'METER_READING' ?
+          (service.name.toLowerCase().includes('điện') ? data.initial_electricity_reading :
+            service.name.toLowerCase().includes('nước') ? data.initial_water_reading : 0)
+          : undefined,
       };
     });
+
+    // Handle discounts
+    const discounts = [];
+    if (data.discount_months && data.discount_amount_per_month) {
+      for (let i = 1; i <= data.discount_months; i++) {
+        discounts.push({
+          month: i,
+          amount: data.discount_amount_per_month,
+          reason: 'Khuyến mãi hợp đồng mới'
+        });
+      }
+    }
+
+    // Handle file upload (mock for now as we don't have direct upload in useCreateContract yet, 
+    // but we added contract_file_url to the type)
+    let fileUrl = undefined;
+    if (contractFile) {
+      // In a real app, we would upload here. For now, we'll skip or simulate.
+      // We can't easily upload without a proper hook exposed.
+      // We'll just log it.
+      console.log('File to upload:', contractFile);
+    }
 
     createContractMutation.mutate(
       {
         ...data,
         services: servicesData,
+        discounts,
+        contract_file_url: fileUrl,
       },
       {
         onSuccess: () => {
@@ -127,9 +193,6 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
       }
     );
   };
-
-  const nextStep = () => setStep(prev => Math.min(prev + 1, 4));
-  const prevStep = () => setStep(prev => Math.max(prev - 1, 1));
 
   // Auto-fill deposit paid from deposits table
   const totalDepositPaid = deposits?.reduce((sum, d) => sum + (d.amount || 0), 0) || 0;
@@ -140,28 +203,198 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const autoRentPrice = rentalType === 'room' ? selectedRoom?.rent_price : selectedBed?.rent_price;
   const autoDeposit = rentalType === 'room' ? selectedRoom?.deposit_amount : selectedBed?.deposit_amount;
 
+  // Update form values when room/bed changes
+  useEffect(() => {
+    if (autoRentPrice !== undefined) setValue('rent_price', autoRentPrice);
+    if (autoDeposit !== undefined) setValue('total_deposit', autoDeposit);
+  }, [autoRentPrice, autoDeposit, setValue]);
+
+  useEffect(() => {
+    if (totalDepositPaid > 0) setValue('deposit_paid', totalDepositPaid);
+  }, [totalDepositPaid, setValue]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Tạo hợp đồng mới - Bước {step}/4
-          </DialogTitle>
-          <DialogDescription>
-            {step === 1 && 'Chọn hoặc tạo khách thuê'}
-            {step === 2 && 'Chọn phòng hoặc giường'}
-            {step === 3 && 'Nhập thông tin hợp đồng'}
-            {step === 4 && 'Chọn dịch vụ'}
-          </DialogDescription>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="p-6 pb-2">
+          <DialogTitle className="text-xl text-green-700 uppercase">Hợp đồng</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {/* Step 1: Select Tenant */}
-          {step === 1 && (
-            <div className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6 pt-2">
+
+          {/* 1. THÔNG TIN CHUNG */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-gray-900">1. THÔNG TIN CHUNG</h3>
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Chọn khách thuê *</Label>
+                <Label>Tòa nhà *</Label>
+                <Select disabled value={selectedRoom?.building?.id || selectedBed?.room?.building?.id}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tự động theo phòng" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Placeholder */}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Phòng *</Label>
+                <Select
+                  value={selectedRoomId}
+                  onValueChange={(value) => {
+                    setSelectedRoomId(value);
+                    setValue('room_id', value);
+                    setValue('bed_id', undefined);
+                    setRentalType('room');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn phòng..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rooms?.map((room) => (
+                      <SelectItem key={room.id} value={room.id}>
+                        {room.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Giường</Label>
+                <Select
+                  value={selectedBedId}
+                  onValueChange={(value) => {
+                    setSelectedBedId(value);
+                    setValue('bed_id', value);
+                    setValue('room_id', undefined);
+                    setRentalType('bed');
+                  }}
+                  disabled={!!selectedRoomId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn giường..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {beds?.map((bed) => (
+                      <SelectItem key={bed.id} value={bed.id}>
+                        {bed.name} ({bed.room?.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Ngày ký *</Label>
+                <Input type="date" {...register('signed_date')} />
+                {errors.signed_date && <p className="text-xs text-red-500">{errors.signed_date.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Ngày bắt đầu *</Label>
+                <Input type="date" {...register('start_date')} />
+                {errors.start_date && <p className="text-xs text-red-500">{errors.start_date.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Hạn hợp đồng *</Label>
+                <Input type="date" {...register('end_date')} />
+                {errors.end_date && <p className="text-xs text-red-500">{errors.end_date.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Mẫu hợp đồng thuê</Label>
+                <Select onValueChange={(val) => setValue('contract_template_id', val)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn mẫu..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contractTemplates?.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Mẫu in hóa đơn</Label>
+                <Select onValueChange={(val) => setValue('invoice_template_id', val)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn mẫu..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {invoiceTemplates?.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ghi chú</Label>
+              <Textarea {...register('notes')} placeholder="Khuyến mãi, mã đề xuất, lưu ý" />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* 2. KHÁCH HÀNG */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-medium text-gray-900">2. KHÁCH HÀNG</h3>
+              <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => {
+                // Focus on tenant select or show toast
+                const select = document.getElementById('tenant-select-trigger');
+                if (select) select.click();
+                else toast.info('Vui lòng chọn khách hàng từ danh sách bên dưới');
+              }}>
+                <Plus className="h-4 w-4 mr-1" />
+                Thêm khách hàng
+              </Button>
+            </div>
+
+            <div className="border rounded-md">
+              <div className="grid grid-cols-12 gap-4 p-3 bg-gray-50 border-b text-sm font-medium text-gray-500">
+                <div className="col-span-1">Thao tác</div>
+                <div className="col-span-4">Khách hàng</div>
+                <div className="col-span-3">Ngày vào</div>
+                <div className="col-span-4">Đại diện</div>
+              </div>
+
+              {selectedTenantId ? (
+                <div className="grid grid-cols-12 gap-4 p-3 items-center text-sm">
+                  <div className="col-span-1">
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => {
+                      setSelectedTenantId('');
+                      setValue('tenant_id', '');
+                    }}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="col-span-4 font-medium">
+                    {tenants?.find(t => t.id === selectedTenantId)?.full_name}
+                  </div>
+                  <div className="col-span-3">
+                    {watchedValues.start_date}
+                  </div>
+                  <div className="col-span-4">
+                    <Checkbox checked disabled />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-gray-500 text-sm">
+                  Danh sách trống
+                </div>
+              )}
+            </div>
+
+            {!selectedTenantId && (
+              <div className="max-w-md">
+                <Label>Chọn khách thuê từ danh sách *</Label>
                 <Select
                   value={selectedTenantId}
                   onValueChange={(value) => {
@@ -169,7 +402,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     setValue('tenant_id', value);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="tenant-select-trigger">
                     <SelectValue placeholder="Chọn khách thuê..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -180,332 +413,177 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.tenant_id && (
-                  <p className="text-sm text-red-500">{errors.tenant_id.message}</p>
-                )}
+                {errors.tenant_id && <p className="text-xs text-red-500 mt-1">{errors.tenant_id.message}</p>}
               </div>
+            )}
+          </div>
 
-              {selectedTenantId && totalDepositPaid > 0 && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-                  <p className="text-sm font-medium text-blue-900">
-                    Tiền cọc đã có: {totalDepositPaid.toLocaleString('vi-VN')} VND
-                  </p>
-                  <p className="text-xs text-blue-700 mt-1">
-                    Số tiền này sẽ được tự động trừ vào tiền cọc hợp đồng
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+          <Separator />
 
-          {/* Step 2: Select Room/Bed */}
-          {step === 2 && (
-            <div className="space-y-4">
+          {/* 3. TIỀN THUÊ & TIỀN CỌC */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-gray-900">3. TIỀN THUÊ & TIỀN CỌC</h3>
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Loại thuê *</Label>
+                <Label>Tiền thuê *</Label>
+                <Input type="number" {...register('rent_price', { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Chu kỳ thanh toán *</Label>
                 <Select
-                  value={rentalType}
-                  onValueChange={(value: 'room' | 'bed') => {
-                    setRentalType(value);
-                    setValue('rental_type', value);
-                    setSelectedRoomId('');
-                    setSelectedBedId('');
-                  }}
+                  defaultValue="MONTHLY"
+                  onValueChange={(value) => setValue('payment_cycle', value as any)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="room">Thuê nguyên phòng</SelectItem>
-                    <SelectItem value="bed">Thuê giường (KTX/Sleepbox)</SelectItem>
+                    <SelectItem value="MONTHLY">Hàng tháng</SelectItem>
+                    <SelectItem value="QUARTERLY">3 tháng</SelectItem>
+                    <SelectItem value="SEMI_ANNUAL">6 tháng</SelectItem>
+                    <SelectItem value="ANNUAL">1 năm</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              {rentalType === 'room' && (
-                <div className="space-y-2">
-                  <Label>Chọn phòng *</Label>
-                  <Select
-                    value={selectedRoomId}
-                    onValueChange={(value) => {
-                      setSelectedRoomId(value);
-                      setValue('room_id', value);
-                      setValue('bed_id', undefined);
-                      // Auto-fill rent price
-                      const room = rooms?.find(r => r.id === value);
-                      if (room) {
-                        setValue('rent_price', room.rent_price || 0);
-                        setValue('total_deposit', room.deposit_amount || 0);
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn phòng trống..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rooms?.map((room) => (
-                        <SelectItem key={room.id} value={room.id}>
-                          {room.building?.name} - {room.name} ({room.rent_price?.toLocaleString('vi-VN')} VND/tháng)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!watchedValues.room_id && (
-                    <p className="text-sm text-red-500">Vui lòng chọn phòng</p>
-                  )}
-                </div>
-              )}
-
-              {rentalType === 'bed' && (
-                <div className="space-y-2">
-                  <Label>Chọn giường *</Label>
-                  <Select
-                    value={selectedBedId}
-                    onValueChange={(value) => {
-                      setSelectedBedId(value);
-                      setValue('bed_id', value);
-                      setValue('room_id', undefined);
-                      // Auto-fill rent price
-                      const bed = beds?.find(b => b.id === value);
-                      if (bed) {
-                        setValue('rent_price', bed.rent_price || 0);
-                        setValue('total_deposit', bed.deposit_amount || 0);
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn giường trống..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {beds?.map((bed) => (
-                        <SelectItem key={bed.id} value={bed.id}>
-                          {bed.room?.building?.name} - {bed.room?.name} - {bed.name} ({bed.rent_price?.toLocaleString('vi-VN')} VND/tháng)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!watchedValues.bed_id && (
-                    <p className="text-sm text-red-500">Vui lòng chọn giường</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 3: Contract Details */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signed_date">Ngày ký *</Label>
-                  <Input
-                    id="signed_date"
-                    type="date"
-                    {...register('signed_date')}
-                    defaultValue={format(new Date(), 'yyyy-MM-dd')}
-                  />
-                  {errors.signed_date && (
-                    <p className="text-sm text-red-500">{errors.signed_date.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="start_date">Ngày bắt đầu *</Label>
-                  <Input
-                    id="start_date"
-                    type="date"
-                    {...register('start_date')}
-                  />
-                  {errors.start_date && (
-                    <p className="text-sm text-red-500">{errors.start_date.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="end_date">Ngày kết thúc *</Label>
-                  <Input
-                    id="end_date"
-                    type="date"
-                    {...register('end_date')}
-                  />
-                  {errors.end_date && (
-                    <p className="text-sm text-red-500">{errors.end_date.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="rent_price">Giá thuê (VND/tháng) *</Label>
-                  <Input
-                    id="rent_price"
-                    type="number"
-                    {...register('rent_price', { valueAsNumber: true })}
-                    defaultValue={autoRentPrice}
-                  />
-                  {errors.rent_price && (
-                    <p className="text-sm text-red-500">{errors.rent_price.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="payment_cycle">Chu kỳ thanh toán *</Label>
-                  <Select
-                    defaultValue="MONTHLY"
-                    onValueChange={(value) => setValue('payment_cycle', value as any)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MONTHLY">Hàng tháng</SelectItem>
-                      <SelectItem value="QUARTERLY">3 tháng</SelectItem>
-                      <SelectItem value="SEMI_ANNUAL">6 tháng</SelectItem>
-                      <SelectItem value="ANNUAL">1 năm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="total_deposit">Tổng tiền cọc (VND) *</Label>
-                  <Input
-                    id="total_deposit"
-                    type="number"
-                    {...register('total_deposit', { valueAsNumber: true })}
-                    defaultValue={autoDeposit}
-                  />
-                  {errors.total_deposit && (
-                    <p className="text-sm text-red-500">{errors.total_deposit.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="deposit_paid">Đã cọc trước (VND)</Label>
-                  <Input
-                    id="deposit_paid"
-                    type="number"
-                    {...register('deposit_paid', { valueAsNumber: true })}
-                    defaultValue={totalDepositPaid}
-                    disabled
-                  />
-                  <p className="text-xs text-gray-500">Tự động tính từ tiền cọc giữ chỗ</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="initial_electricity_reading">Chỉ số điện ban đầu</Label>
-                  <Input
-                    id="initial_electricity_reading"
-                    type="number"
-                    {...register('initial_electricity_reading', { valueAsNumber: true })}
-                    placeholder="0"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="initial_water_reading">Chỉ số nước ban đầu</Label>
-                  <Input
-                    id="initial_water_reading"
-                    type="number"
-                    {...register('initial_water_reading', { valueAsNumber: true })}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <Label htmlFor="notes">Ghi chú</Label>
-                <Textarea
-                  id="notes"
-                  {...register('notes')}
-                  placeholder="Ghi chú về hợp đồng..."
-                  rows={3}
+                <Label>Ngày bắt đầu tính tiền *</Label>
+                <Input type="date" {...register('start_billing_date')} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Tiền cọc *</Label>
+                <Input type="number" {...register('total_deposit', { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Đã đặt cọc</Label>
+                <Input type="number" {...register('deposit_paid', { valueAsNumber: true })} disabled />
+              </div>
+              <div className="space-y-2">
+                <Label>Tiền cọc phải đóng</Label>
+                <Input
+                  value={(watchedValues.total_deposit || 0) - (watchedValues.deposit_paid || 0)}
+                  disabled
+                  className="bg-gray-100"
                 />
               </div>
             </div>
-          )}
 
-          {/* Step 4: Select Services */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <div className="border rounded-md p-4 space-y-3 max-h-96 overflow-y-auto">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Số tháng giảm</Label>
+                <Input type="number" {...register('discount_months', { valueAsNumber: true })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Số tiền giảm mỗi tháng</Label>
+                <Input type="number" {...register('discount_amount_per_month', { valueAsNumber: true })} />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* 4. TIỀN PHÍ DỊCH VỤ */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-medium text-gray-900">4. TIỀN PHÍ DỊCH VỤ</h3>
+              <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700">
+                <Plus className="h-4 w-4 mr-1" />
+                Thêm dịch vụ
+              </Button>
+            </div>
+
+            <div className="border rounded-md overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 p-3 bg-gray-50 border-b text-sm font-medium text-gray-500">
+                <div className="col-span-1">Thao tác</div>
+                <div className="col-span-3">Dịch vụ</div>
+                <div className="col-span-2">Công tơ</div>
+                <div className="col-span-2">Chỉ số đầu</div>
+                <div className="col-span-2">Số lượng</div>
+                <div className="col-span-2">Ngày tính phí</div>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto p-2 space-y-2">
                 {services?.map((service) => (
-                  <div key={service.id} className="flex items-start space-x-3">
-                    <Checkbox
-                      id={service.id}
-                      checked={selectedServices.has(service.id)}
-                      onCheckedChange={(checked) => {
-                        const newSet = new Set(selectedServices);
-                        if (checked) {
-                          newSet.add(service.id);
-                        } else {
-                          newSet.delete(service.id);
-                        }
-                        setSelectedServices(newSet);
-                      }}
-                    />
-                    <div className="flex-1">
-                      <label
-                        htmlFor={service.id}
-                        className="text-sm font-medium cursor-pointer"
-                      >
-                        {service.name}
-                        {service.is_mandatory && (
-                          <span className="text-red-500 ml-1">*</span>
-                        )}
-                      </label>
-                      <p className="text-xs text-gray-500">
-                        {service.unit_price?.toLocaleString('vi-VN')} VND
-                        {service.unit && ` / ${service.unit}`}
-                        {' • '}
-                        {service.type === 'FIXED' && 'Cố định'}
-                        {service.type === 'PER_PERSON' && 'Theo người'}
-                        {service.type === 'PER_ROOM' && 'Theo phòng'}
-                        {service.type === 'METER_READING' && 'Theo công tơ'}
-                      </p>
+                  <div key={service.id} className="grid grid-cols-12 gap-2 items-center text-sm">
+                    <div className="col-span-1">
+                      <Checkbox
+                        checked={selectedServices.has(service.id)}
+                        onCheckedChange={(checked) => {
+                          const newSet = new Set(selectedServices);
+                          if (checked) newSet.add(service.id);
+                          else newSet.delete(service.id);
+                          setSelectedServices(newSet);
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-3 font-medium">{service.name}</div>
+                    <div className="col-span-2 text-xs text-gray-500">{service.type === 'METER_READING' ? 'Có' : 'Không'}</div>
+                    <div className="col-span-2">
+                      {service.type === 'METER_READING' && selectedServices.has(service.id) && (
+                        <Input
+                          type="number"
+                          className="h-8 text-xs"
+                          placeholder="0"
+                          {...register(
+                            service.name.toLowerCase().includes('điện') ? 'initial_electricity_reading' : 'initial_water_reading',
+                            { valueAsNumber: true }
+                          )}
+                        />
+                      )}
+                    </div>
+                    <div className="col-span-2">
+                      <Input type="number" className="h-8 text-xs" defaultValue={1} disabled={service.type === 'METER_READING'} />
+                    </div>
+                    <div className="col-span-2 text-xs">
+                      {watchedValues.start_billing_date}
                     </div>
                   </div>
                 ))}
               </div>
-
-              <p className="text-xs text-gray-500">
-                * Dịch vụ bắt buộc sẽ được tự động chọn
-              </p>
             </div>
-          )}
+          </div>
 
-          <DialogFooter className="gap-2">
-            {step > 1 && (
-              <Button type="button" variant="outline" onClick={prevStep}>
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Quay lại
-              </Button>
-            )}
+          <Separator />
 
-            {step < 4 ? (
-              <Button
-                type="button"
-                onClick={nextStep}
-                disabled={
-                  (step === 1 && !selectedTenantId) ||
-                  (step === 2 && rentalType === 'room' && !selectedRoomId) ||
-                  (step === 2 && rentalType === 'bed' && !selectedBedId)
-                }
-              >
-                Tiếp theo
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                disabled={createContractMutation.isPending}
-              >
-                {createContractMutation.isPending ? 'Đang tạo...' : 'Tạo hợp đồng'}
-              </Button>
-            )}
+          {/* 5. ĐÍNH KÈM HỢP ĐỒNG */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-gray-900">5. ĐÍNH KÈM HỢP ĐỒNG</h3>
+            <div className="space-y-2">
+              <Label>Tệp đính kèm</Label>
+              <div className="border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors">
+                <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                <p className="text-sm text-gray-600">Kéo thả file hoặc click để chọn</p>
+                <Input
+                  type="file"
+                  className="hidden"
+                  id="file-upload"
+                  onChange={(e) => setContractFile(e.target.files?.[0] || null)}
+                />
+                <label htmlFor="file-upload" className="absolute inset-0 cursor-pointer"></label>
+                {contractFile && (
+                  <p className="text-sm font-medium text-green-600 mt-2">{contractFile.name}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 6. BÀN GIAO TÀI SẢN */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-gray-900">6. BÀN GIAO TÀI SẢN</h3>
+            <div className="border rounded-md p-8 text-center text-gray-500 text-sm">
+              Không có dữ liệu
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Hủy
+            </Button>
+            <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={createContractMutation.isPending}>
+              {createContractMutation.isPending ? 'Đang lưu...' : 'Lưu'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
