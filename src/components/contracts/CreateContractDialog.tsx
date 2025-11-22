@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCreateContract } from '@/hooks/useContracts';
+import { useCreateContract, useUploadContractFile } from '@/hooks/useContracts';
 import { useTenants } from '@/hooks/useTenants';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
@@ -29,6 +29,7 @@ import { useBeds } from '@/hooks/useBeds';
 import { useServices } from '@/hooks/useServices';
 import { useDeposits } from '@/hooks/useDeposits';
 import { useDocumentTemplates } from '@/hooks/useDocumentTemplates';
+import { useAssets, useCreateAssetHandover } from '@/hooks/useAssets';
 import { Plus, Trash2, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
@@ -101,8 +102,18 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const [selectedBedId, setSelectedBedId] = useState<string>('');
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [contractFile, setContractFile] = useState<File | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [selectedAssets, setSelectedAssets] = useState<Array<{
+    asset_id: string;
+    asset_name: string;
+    quantity: number;
+    condition: string;
+    notes: string;
+  }>>([]);
 
   const createContractMutation = useCreateContract();
+  const createAssetHandoverMutation = useCreateAssetHandover();
+  const uploadFileMutation = useUploadContractFile();
   const { data: tenants } = useTenants();
   const { data: buildings } = useBuildings();
   const { data: allRooms } = useRooms(); // Load all rooms
@@ -114,6 +125,13 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   });
   const { data: contractTemplates } = useDocumentTemplates('CONTRACT_NEW');
   const { data: invoiceTemplates } = useDocumentTemplates('INVOICE');
+
+  // Get room_id for assets filter (from room or bed)
+  const roomIdForAssets = selectedRoomId || (selectedBedId ? allBeds?.find(b => b.id === selectedBedId)?.room_id : undefined);
+
+  const { data: assets } = useAssets({
+    room_id: roomIdForAssets,
+  });
 
   // Filter rooms and beds based on building selection and availability
   const availableRooms = allRooms?.filter(room =>
@@ -169,6 +187,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
     setSelectedBedId('');
     setSelectedServices(new Set());
     setContractFile(null);
+    setSelectedAssets([]);
     onOpenChange(false);
   };
 
@@ -198,27 +217,32 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
       }
     }
 
-    // Handle file upload (mock for now as we don't have direct upload in useCreateContract yet, 
-    // but we added contract_file_url to the type)
+    // Handle file upload
     let fileUrl = undefined;
     if (contractFile) {
-      // In a real app, we would upload here. For now, we'll skip or simulate.
-      // We can't easily upload without a proper hook exposed.
-      // We'll just log it.
-      console.log('File to upload:', contractFile);
+      try {
+        setIsUploadingFile(true);
+        const uploadResult = await uploadFileMutation.mutateAsync({
+          file: contractFile,
+        });
+        fileUrl = uploadResult.url;
+        setIsUploadingFile(false);
+      } catch (error) {
+        setIsUploadingFile(false);
+        toast.error('Upload file thất bại. Hợp đồng sẽ được tạo không có file đính kèm.');
+        // Continue without file
+      }
     }
 
     // Remove helper fields that are not in DB schema
     // building_id: helper for filtering rooms
     // rental_type: UI helper (room/bed)
     // discount_months, discount_amount_per_month: converted to discounts array above
-    // start_billing_date: not yet in DB schema
     const {
       building_id,
       rental_type,
       discount_months,
       discount_amount_per_month,
-      start_billing_date,
       ...contractData
     } = data;
 
@@ -230,8 +254,35 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
         contract_file_url: fileUrl,
       },
       {
-        onSuccess: () => {
-          handleClose();
+        onSuccess: (contract) => {
+          // Create asset handover if there are selected assets
+          if (selectedAssets.length > 0) {
+            const handoverItems = selectedAssets.map(asset => ({
+              asset_id: asset.asset_id,
+              quantity: asset.quantity,
+              condition: asset.condition,
+              notes: asset.notes,
+            }));
+
+            createAssetHandoverMutation.mutate({
+              contract_id: contract.id,
+              type: 'CHECK_IN',
+              handover_date: data.start_date,
+              items: handoverItems as any, // JSONB type
+              notes: 'Biên bản bàn giao tài sản khi vào ở',
+            }, {
+              onSuccess: () => {
+                handleClose();
+              },
+              onError: () => {
+                // Contract created but handover failed - still close dialog
+                toast.warning('Hợp đồng đã tạo nhưng biên bản bàn giao thất bại. Vui lòng tạo lại biên bản.');
+                handleClose();
+              }
+            });
+          } else {
+            handleClose();
+          }
         },
       }
     );
@@ -646,9 +697,141 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
           {/* 6. BÀN GIAO TÀI SẢN */}
           <div className="space-y-4">
-            <h3 className="font-medium text-gray-900">6. BÀN GIAO TÀI SẢN</h3>
-            <div className="border rounded-md p-8 text-center text-gray-500 text-sm">
-              Không có dữ liệu
+            <div className="flex justify-between items-center">
+              <h3 className="font-medium text-gray-900">6. BÀN GIAO TÀI SẢN</h3>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  if (!assets || assets.length === 0) {
+                    toast.info('Không có tài sản nào trong phòng này. Vui lòng thêm tài sản trước.');
+                    return;
+                  }
+                  // Add empty row - user will select asset from dropdown
+                  const firstAvailableAsset = assets[0];
+                  setSelectedAssets([...selectedAssets, {
+                    asset_id: firstAvailableAsset.id,
+                    asset_name: firstAvailableAsset.name,
+                    quantity: 1,
+                    condition: 'GOOD',
+                    notes: ''
+                  }]);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Thêm tài sản
+              </Button>
+            </div>
+
+            <div className="border rounded-md overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 p-3 bg-gray-50 border-b text-sm font-medium text-gray-500">
+                <div className="col-span-1">Thao tác</div>
+                <div className="col-span-4">Tài sản</div>
+                <div className="col-span-2">Số lượng</div>
+                <div className="col-span-2">Tình trạng</div>
+                <div className="col-span-3">Ghi chú</div>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto p-2 space-y-2">
+                {selectedAssets.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 text-sm">
+                    Chưa có tài sản nào được thêm
+                  </div>
+                ) : (
+                  selectedAssets.map((asset, index) => (
+                    <div key={asset.asset_id} className="grid grid-cols-12 gap-2 items-center text-sm">
+                      <div className="col-span-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-red-500"
+                          onClick={() => {
+                            setSelectedAssets(selectedAssets.filter((_, i) => i !== index));
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="col-span-4">
+                        <Select
+                          value={asset.asset_id}
+                          onValueChange={(value) => {
+                            const newAsset = assets?.find(a => a.id === value);
+                            if (newAsset) {
+                              const updated = [...selectedAssets];
+                              updated[index] = {
+                                ...updated[index],
+                                asset_id: value,
+                                asset_name: newAsset.name
+                              };
+                              setSelectedAssets(updated);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {assets?.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name} {a.code ? `(${a.code})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-2">
+                        <Input
+                          type="number"
+                          className="h-8"
+                          min="1"
+                          value={asset.quantity}
+                          onChange={(e) => {
+                            const updated = [...selectedAssets];
+                            updated[index].quantity = parseInt(e.target.value) || 1;
+                            setSelectedAssets(updated);
+                          }}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Select
+                          value={asset.condition}
+                          onValueChange={(value) => {
+                            const updated = [...selectedAssets];
+                            updated[index].condition = value;
+                            setSelectedAssets(updated);
+                          }}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NEW">Mới</SelectItem>
+                            <SelectItem value="GOOD">Tốt</SelectItem>
+                            <SelectItem value="FAIR">Khá</SelectItem>
+                            <SelectItem value="POOR">Kém</SelectItem>
+                            <SelectItem value="BROKEN">Hư hỏng</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-3">
+                        <Input
+                          className="h-8"
+                          placeholder="Ghi chú..."
+                          value={asset.notes}
+                          onChange={(e) => {
+                            const updated = [...selectedAssets];
+                            updated[index].notes = e.target.value;
+                            setSelectedAssets(updated);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
@@ -656,8 +839,12 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <Button type="button" variant="outline" onClick={handleClose}>
               Hủy
             </Button>
-            <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={createContractMutation.isPending}>
-              {createContractMutation.isPending ? 'Đang lưu...' : 'Lưu'}
+            <Button
+              type="submit"
+              className="bg-green-600 hover:bg-green-700"
+              disabled={createContractMutation.isPending || isUploadingFile}
+            >
+              {isUploadingFile ? 'Đang upload file...' : createContractMutation.isPending ? 'Đang lưu...' : 'Lưu'}
             </Button>
           </DialogFooter>
         </form >
