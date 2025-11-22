@@ -552,7 +552,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <h3 className="font-medium text-gray-900">5. ĐÍNH KÈM HỢP ĐỒNG</h3>
             <div className="space-y-2">
               <Label>Tệp đính kèm</Label>
-              <div className="border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors">
+              <div className="relative border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-gray-50 transition-colors">
                 <Upload className="h-8 w-8 text-gray-400 mb-2" />
                 <p className="text-sm text-gray-600">Kéo thả file hoặc click để chọn</p>
                 <Input
@@ -568,6 +568,8 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
               </div>
             </div>
           </div>
+
+          <Separator />
 
           {/* 6. BÀN GIAO TÀI SẢN */}
           <div className="space-y-4">
@@ -585,9 +587,9 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
               {createContractMutation.isPending ? 'Đang lưu...' : 'Lưu'}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </form >
+      </DialogContent >
+    </Dialog >
   );
 };
 
