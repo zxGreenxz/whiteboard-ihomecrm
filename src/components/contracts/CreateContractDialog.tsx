@@ -76,6 +76,11 @@ const contractSchema = z.object({
 
   // Attachments
   contract_file_url: z.string().optional(),
+}).refine((data) => {
+  return !!(data.room_id || data.bed_id);
+}, {
+  message: "Vui lòng chọn phòng hoặc giường",
+  path: ["room_id"],
 });
 
 type ContractFormData = z.infer<typeof contractSchema>;
@@ -160,6 +165,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   };
 
   const onSubmit = async (data: ContractFormData) => {
+    console.log("Submitting contract data:", data);
     const servicesData = Array.from(selectedServices).map(serviceId => {
       const service = services?.find(s => s.id === serviceId);
       return {
@@ -235,7 +241,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
           <DialogTitle className="text-xl text-green-700 uppercase">Hợp đồng</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6 pt-2">
+        <form onSubmit={handleSubmit(onSubmit, (errors) => console.error("Form validation errors:", errors))} className="space-y-6 p-6 pt-2">
 
           {/* 1. THÔNG TIN CHUNG */}
           <div className="space-y-4">
