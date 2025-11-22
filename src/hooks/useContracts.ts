@@ -61,6 +61,7 @@ export interface CreateContractData {
   bed_id?: string;
   signed_date: string;
   start_date: string;
+  start_billing_date?: string;
   end_date: string;
   rent_price: number;
   payment_cycle: string;
