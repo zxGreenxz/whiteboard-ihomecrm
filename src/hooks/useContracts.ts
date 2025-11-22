@@ -512,15 +512,27 @@ export const useTerminateContract = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Fetch contract to get total_deposit
+      const { data: contract, error: contractError } = await supabase
+        .from('contracts')
+        .select('total_deposit, rent_price, tenant_id')
+        .eq('id', data.contract_id)
+        .single();
+
+      if (contractError) throw contractError;
+      if (!contract) throw new Error('Contract not found');
+
       // Create termination record
+      // Note: The database trigger auto_calculate_termination_financials will
+      // calculate outstanding_debt, prorated_rent, prorated_services
       const { data: termination, error } = await supabase
         .from('contract_terminations')
         .insert([{
           user_id: user.id,
           contract_id: data.contract_id,
           termination_type: data.termination_type,
-          termination_date: new Date().toISOString(),
-          total_deposit: 0,
+          termination_date: new Date().toISOString().split('T')[0],
+          total_deposit: contract.total_deposit || 0,
           actual_move_out_date: data.actual_move_out_date,
           early_termination_fee: data.early_termination_fee || 0,
           damage_fee: data.damage_fee || 0,
@@ -529,7 +541,14 @@ export const useTerminateContract = () => {
           notes: data.notes,
           status: 'DRAFT',
         }])
-        .select()
+        .select(`
+          *,
+          contract:contracts!contract_terminations_contract_id_fkey(
+            contract_number,
+            rent_price,
+            tenant:tenants!contracts_tenant_id_fkey(full_name)
+          )
+        `)
         .single();
 
       if (error) throw error;
@@ -537,6 +556,7 @@ export const useTerminateContract = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['contract_terminations'] });
 
       toast({
         title: 'Tạo yêu cầu thanh lý thành công!',
@@ -557,6 +577,15 @@ export const useTerminateContract = () => {
 // Estimate Termination Costs (Preview)
 // =============================================
 
+export interface TerminationCostEstimate {
+  outstanding_debt: number;
+  prorated_rent: number;
+  prorated_services: number;
+  total_fees: number;
+  total_deposit: number;
+  refund_amount: number;
+}
+
 export const useEstimateTerminationCosts = () => {
   return useMutation({
     mutationFn: async (data: {
@@ -565,12 +594,19 @@ export const useEstimateTerminationCosts = () => {
       damage_fee?: number;
       cleaning_fee?: number;
       early_termination_fee?: number;
-    }) => {
-      // Return a mock estimation for now
-      return {
-        total_deductions: (data.damage_fee || 0) + (data.cleaning_fee || 0) + (data.early_termination_fee || 0),
-        refund_amount: 0,
-      };
+    }): Promise<TerminationCostEstimate[]> => {
+      // Call the database function estimate_termination_costs
+      const { data: result, error } = await supabase.rpc('estimate_termination_costs', {
+        p_contract_id: data.contract_id,
+        p_move_out_date: data.move_out_date,
+        p_damage_fee: data.damage_fee || 0,
+        p_cleaning_fee: data.cleaning_fee || 0,
+        p_early_termination_fee: data.early_termination_fee || 0,
+      });
+
+      if (error) throw error;
+
+      return result as TerminationCostEstimate[];
     },
   });
 };
@@ -620,6 +656,356 @@ export const useUploadContractFile = () => {
       toast({
         variant: 'destructive',
         title: 'Upload thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Get Contract Termination
+// =============================================
+
+export interface ContractTerminationWithRelations {
+  id: string;
+  user_id: string;
+  contract_id: string;
+  termination_date: string;
+  actual_move_out_date: string;
+  notice_date: string | null;
+  termination_type: string;
+  outstanding_debt: number;
+  prorated_days: number;
+  prorated_rent: number;
+  prorated_services: number;
+  early_termination_fee: number;
+  notice_violation_fee: number;
+  damage_fee: number;
+  damage_description: string | null;
+  damage_images: string[];
+  cleaning_fee: number;
+  other_fees: number;
+  other_fees_description: string | null;
+  total_deposit: number;
+  total_deductions: number;
+  refund_amount: number;
+  refund_method: string | null;
+  refund_date: string | null;
+  refund_receipt_url: string | null;
+  status: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  notes: string | null;
+  internal_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  contract?: {
+    contract_number: string | null;
+    tenant: { full_name: string } | null;
+    room: { name: string; building: { name: string } | null } | null;
+  };
+}
+
+export const useContractTermination = (contractId?: string) => {
+  return useQuery({
+    queryKey: ['contract_termination', contractId],
+    queryFn: async (): Promise<ContractTerminationWithRelations | null> => {
+      if (!contractId) return null;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('contract_terminations')
+        .select(`
+          *,
+          contract:contracts!contract_terminations_contract_id_fkey(
+            contract_number,
+            tenant:tenants!contracts_tenant_id_fkey(full_name),
+            room:rooms!contracts_room_id_fkey(
+              name,
+              building:buildings!rooms_building_id_fkey(name)
+            )
+          )
+        `)
+        .eq('contract_id', contractId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as ContractTerminationWithRelations | null;
+    },
+    enabled: !!contractId,
+  });
+};
+
+// =============================================
+// Approve Contract Termination (Creates Invoice)
+// =============================================
+
+export const useApproveTermination = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: {
+      termination_id: string;
+      create_invoice?: boolean;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Fetch termination details
+      const { data: termination, error: termError } = await supabase
+        .from('contract_terminations')
+        .select(`
+          *,
+          contract:contracts!contract_terminations_contract_id_fkey(
+            id,
+            contract_number,
+            tenant_id,
+            tenant:tenants!contracts_tenant_id_fkey(full_name)
+          )
+        `)
+        .eq('id', data.termination_id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (termError) throw termError;
+      if (!termination) throw new Error('Termination not found');
+
+      // Update termination status to APPROVED
+      // The database trigger will update contract status to TERMINATED
+      const { error: updateError } = await supabase
+        .from('contract_terminations')
+        .update({
+          status: 'APPROVED',
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', data.termination_id);
+
+      if (updateError) throw updateError;
+
+      // Create termination settlement invoice if needed
+      if (data.create_invoice !== false && termination.refund_amount < 0) {
+        // Tenant owes money - create invoice for the amount owed
+        const amountOwed = Math.abs(termination.refund_amount);
+
+        // Fetch invoice config for numbering
+        const { data: invoiceSettings } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('user_id', user.id)
+          .eq('key', 'invoice_config')
+          .maybeSingle();
+
+        const invoiceConfig = invoiceSettings?.value as any;
+        let invoiceNumber = null;
+
+        if (invoiceConfig?.auto_generate_invoice_number !== false) {
+          const { generateInvoiceNumber } = await import('@/lib/codeGenerator');
+          const prefix = invoiceConfig?.invoice_number_prefix || 'INV';
+          const format = invoiceConfig?.invoice_number_format || '{prefix}{year}{month}{seq:4}';
+          try {
+            invoiceNumber = await generateInvoiceNumber(prefix, format, user.id, 'YEARLY');
+          } catch (e) {
+            console.error('Error generating invoice number:', e);
+          }
+        }
+
+        // Create termination settlement invoice
+        const today = new Date();
+        const dueDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        const { data: invoice, error: invoiceError } = await supabase
+          .from('invoices')
+          .insert({
+            user_id: user.id,
+            contract_id: termination.contract_id,
+            invoice_number: invoiceNumber,
+            title: `Thanh toán thanh lý hợp đồng - ${termination.contract?.contract_number || ''}`,
+            billing_period_start: termination.actual_move_out_date,
+            billing_period_end: termination.actual_move_out_date,
+            issue_date: today.toISOString().split('T')[0],
+            due_date: dueDate.toISOString().split('T')[0],
+            status: 'UNPAID',
+            subtotal: amountOwed,
+            total_amount: amountOwed,
+            paid_amount: 0,
+            remaining_amount: amountOwed,
+          })
+          .select('id')
+          .single();
+
+        if (invoiceError) {
+          console.error('Error creating termination invoice:', invoiceError);
+        } else if (invoice) {
+          // Create invoice items
+          const invoiceItems: Array<{
+            invoice_id: string;
+            type: string;
+            description: string;
+            quantity: number;
+            unit_price: number;
+            amount: number;
+          }> = [];
+
+          // Add outstanding debt
+          if (termination.outstanding_debt > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'OTHER',
+              description: 'Công nợ chưa thanh toán',
+              quantity: 1,
+              unit_price: termination.outstanding_debt,
+              amount: termination.outstanding_debt,
+            });
+          }
+
+          // Add prorated rent
+          if (termination.prorated_rent > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'RENT',
+              description: `Tiền phòng ${termination.prorated_days} ngày lẻ`,
+              quantity: termination.prorated_days,
+              unit_price: termination.prorated_rent / termination.prorated_days,
+              amount: termination.prorated_rent,
+            });
+          }
+
+          // Add prorated services
+          if (termination.prorated_services > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'SERVICE',
+              description: 'Dịch vụ ngày lẻ',
+              quantity: 1,
+              unit_price: termination.prorated_services,
+              amount: termination.prorated_services,
+            });
+          }
+
+          // Add fees
+          if (termination.early_termination_fee > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'PENALTY',
+              description: 'Phí chấm dứt hợp đồng sớm',
+              quantity: 1,
+              unit_price: termination.early_termination_fee,
+              amount: termination.early_termination_fee,
+            });
+          }
+
+          if (termination.damage_fee > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'PENALTY',
+              description: termination.damage_description || 'Phí hư hỏng/sửa chữa',
+              quantity: 1,
+              unit_price: termination.damage_fee,
+              amount: termination.damage_fee,
+            });
+          }
+
+          if (termination.cleaning_fee > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'OTHER',
+              description: 'Phí vệ sinh',
+              quantity: 1,
+              unit_price: termination.cleaning_fee,
+              amount: termination.cleaning_fee,
+            });
+          }
+
+          // Subtract deposit used
+          if (termination.total_deposit > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              type: 'DISCOUNT',
+              description: 'Trừ tiền cọc',
+              quantity: 1,
+              unit_price: -termination.total_deposit,
+              amount: -termination.total_deposit,
+            });
+          }
+
+          if (invoiceItems.length > 0) {
+            await supabase.from('invoice_items').insert(invoiceItems);
+          }
+        }
+      }
+
+      return termination;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['contract_terminations'] });
+      queryClient.invalidateQueries({ queryKey: ['contract_termination'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+
+      toast({
+        title: 'Duyệt thanh lý thành công!',
+        description: 'Hợp đồng đã được chấm dứt.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Duyệt thanh lý thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Complete Termination (Mark Refund Processed)
+// =============================================
+
+export const useCompleteTermination = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: {
+      termination_id: string;
+      refund_method?: string;
+      refund_date?: string;
+      refund_receipt_url?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('contract_terminations')
+        .update({
+          status: 'COMPLETED',
+          refund_method: data.refund_method,
+          refund_date: data.refund_date || new Date().toISOString().split('T')[0],
+          refund_receipt_url: data.refund_receipt_url,
+        })
+        .eq('id', data.termination_id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contract_terminations'] });
+      queryClient.invalidateQueries({ queryKey: ['contract_termination'] });
+
+      toast({
+        title: 'Hoàn tất thanh lý!',
+        description: 'Đã xác nhận hoàn trả tiền cọc.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Cập nhật thất bại',
         description: error.message,
       });
     },

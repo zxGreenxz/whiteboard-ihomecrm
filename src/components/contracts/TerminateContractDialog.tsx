@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -22,11 +22,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useTerminateContract, useEstimateTerminationCosts } from '@/hooks/useContracts';
-import { XCircle, AlertTriangle, DollarSign } from 'lucide-react';
+import {
+  useTerminateContract,
+  useEstimateTerminationCosts,
+  type ContractWithRelations,
+  type TerminationCostEstimate,
+} from '@/hooks/useContracts';
+import { XCircle, AlertTriangle, DollarSign, Calculator } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import type { ContractWithRelations } from '@/hooks/useContracts';
 
 interface TerminateContractDialogProps {
   open: boolean;
@@ -48,7 +52,7 @@ type TerminateFormData = z.infer<typeof terminateSchema>;
 
 const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateContractDialogProps) => {
   const [showPreview, setShowPreview] = useState(false);
-  const [costEstimate, setCostEstimate] = useState<any>(null);
+  const [costEstimate, setCostEstimate] = useState<TerminationCostEstimate | null>(null);
 
   const terminateMutation = useTerminateContract();
   const estimateMutation = useEstimateTerminationCosts();
@@ -96,8 +100,14 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
       },
       {
         onSuccess: (data) => {
-          setCostEstimate(data);
+          // Database function returns array, get first item
+          const estimate = Array.isArray(data) && data.length > 0 ? data[0] : null;
+          setCostEstimate(estimate);
           setShowPreview(true);
+        },
+        onError: (error) => {
+          console.error('Error estimating termination costs:', error);
+          setShowPreview(false);
         },
       }
     );
@@ -284,49 +294,69 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
           {/* Cost Estimate Preview */}
           {showPreview && costEstimate && (
             <div className="border-2 border-blue-200 rounded-md p-4 space-y-3 bg-blue-50">
-              <h4 className="font-bold text-blue-900">Dự tính thanh toán</h4>
+              <h4 className="font-bold text-blue-900 flex items-center gap-2">
+                <Calculator className="h-4 w-4" />
+                Dự tính thanh toán
+              </h4>
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-700">Tiền cọc ban đầu:</span>
-                  <span className="font-medium">{formatCurrency(costEstimate[0]?.total_deposit || 0)}</span>
+                  <span className="font-medium">{formatCurrency(costEstimate.total_deposit || 0)}</span>
                 </div>
 
                 <div className="border-t pt-2 space-y-1">
                   <p className="font-medium text-gray-700">Các khoản trừ:</p>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-gray-600">- Công nợ cũ:</span>
-                    <span>{formatCurrency(costEstimate[0]?.outstanding_debt || 0)}</span>
-                  </div>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-gray-600">- Tiền phòng ngày lẻ:</span>
-                    <span>{formatCurrency(costEstimate[0]?.prorated_rent || 0)}</span>
-                  </div>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-gray-600">- Dịch vụ ngày lẻ:</span>
-                    <span>{formatCurrency(costEstimate[0]?.prorated_services || 0)}</span>
-                  </div>
-                  <div className="flex justify-between pl-4">
-                    <span className="text-gray-600">- Phí phạt/hư hỏng:</span>
-                    <span>{formatCurrency(costEstimate[0]?.total_fees || 0)}</span>
-                  </div>
+                  {costEstimate.outstanding_debt > 0 && (
+                    <div className="flex justify-between pl-4">
+                      <span className="text-gray-600">- Công nợ chưa thanh toán:</span>
+                      <span className="text-red-600">{formatCurrency(costEstimate.outstanding_debt)}</span>
+                    </div>
+                  )}
+                  {costEstimate.prorated_rent > 0 && (
+                    <div className="flex justify-between pl-4">
+                      <span className="text-gray-600">- Tiền phòng ngày lẻ:</span>
+                      <span>{formatCurrency(costEstimate.prorated_rent)}</span>
+                    </div>
+                  )}
+                  {costEstimate.prorated_services > 0 && (
+                    <div className="flex justify-between pl-4">
+                      <span className="text-gray-600">- Dịch vụ ngày lẻ:</span>
+                      <span>{formatCurrency(costEstimate.prorated_services)}</span>
+                    </div>
+                  )}
+                  {costEstimate.total_fees > 0 && (
+                    <div className="flex justify-between pl-4">
+                      <span className="text-gray-600">- Phí phạt/hư hỏng/vệ sinh:</span>
+                      <span>{formatCurrency(costEstimate.total_fees)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t-2 pt-2 flex justify-between font-bold text-lg">
                   <span>
-                    {(costEstimate[0]?.refund_amount || 0) >= 0 ? 'Hoàn trả khách:' : 'Khách phải trả thêm:'}
+                    {(costEstimate.refund_amount || 0) >= 0 ? 'Hoàn trả khách:' : 'Khách phải trả thêm:'}
                   </span>
-                  <span className={(costEstimate[0]?.refund_amount || 0) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    {formatCurrency(Math.abs(costEstimate[0]?.refund_amount || 0))}
+                  <span className={(costEstimate.refund_amount || 0) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {formatCurrency(Math.abs(costEstimate.refund_amount || 0))}
                   </span>
                 </div>
               </div>
 
-              {(costEstimate[0]?.refund_amount || 0) < 0 && (
+              {(costEstimate.refund_amount || 0) < 0 && (
                 <Alert className="bg-red-50 border-red-200">
                   <AlertTriangle className="h-4 w-4 text-red-600" />
                   <AlertDescription className="text-red-800 text-sm">
-                    Khách thuê còn nợ. Cần thu thêm trước khi thanh lý.
+                    Khách thuê còn nợ. Khi duyệt thanh lý, hệ thống sẽ tự động tạo hóa đơn thu nợ.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {(costEstimate.refund_amount || 0) >= 0 && (
+                <Alert className="bg-green-50 border-green-200">
+                  <DollarSign className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800 text-sm">
+                    Khách thuê được hoàn lại tiền cọc. Sau khi duyệt, vui lòng hoàn trả tiền cho khách.
                   </AlertDescription>
                 </Alert>
               )}

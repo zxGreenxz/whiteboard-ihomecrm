@@ -74,17 +74,18 @@ const InvoicesPage = () => {
   });
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      DRAFT: { variant: 'outline', label: 'Nháp' },
-      APPROVED: { variant: 'default', label: 'Đã duyệt' },
-      PARTIAL_PAID: { variant: 'secondary', label: 'Trả 1 phần' },
-      PAID: { variant: 'default', label: 'Đã thanh toán' },
+    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; className?: string }> = {
+      DRAFT: { variant: 'outline', label: 'Nháp', className: 'border-gray-400 text-gray-600' },
+      APPROVED: { variant: 'default', label: 'Chờ thanh toán', className: 'bg-blue-500 hover:bg-blue-600' },
+      UNPAID: { variant: 'default', label: 'Chưa thanh toán', className: 'bg-orange-500 hover:bg-orange-600' },
+      PARTIAL_PAID: { variant: 'secondary', label: 'Trả một phần', className: 'bg-yellow-500 hover:bg-yellow-600 text-white' },
+      PAID: { variant: 'default', label: 'Đã thanh toán', className: 'bg-green-500 hover:bg-green-600' },
       OVERDUE: { variant: 'destructive', label: 'Quá hạn' },
-      CANCELLED: { variant: 'destructive', label: 'Đã hủy' },
+      CANCELLED: { variant: 'outline', label: 'Đã hủy', className: 'border-red-400 text-red-600' },
     };
 
     const config = variants[status] || { variant: 'outline' as const, label: status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return <Badge variant={config.variant} className={config.className}>{config.label}</Badge>;
   };
 
   const formatCurrency = (amount: number) => {
@@ -173,8 +174,9 @@ const InvoicesPage = () => {
         >
           <option value="">Tất cả trạng thái</option>
           <option value="DRAFT">Nháp</option>
-          <option value="APPROVED">Đã duyệt</option>
-          <option value="PARTIAL_PAID">Trả 1 phần</option>
+          <option value="APPROVED">Chờ thanh toán</option>
+          <option value="UNPAID">Chưa thanh toán</option>
+          <option value="PARTIAL_PAID">Trả một phần</option>
           <option value="PAID">Đã thanh toán</option>
           <option value="OVERDUE">Quá hạn</option>
         </select>
@@ -380,21 +382,30 @@ const InvoicesPage = () => {
 
       {/* Summary Stats */}
       {invoices && invoices.length > 0 && (
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-6 gap-4">
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Tổng hóa đơn</div>
             <div className="text-2xl font-bold mt-1">{invoices.length}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Chờ duyệt</div>
-            <div className="text-2xl font-bold mt-1 text-orange-600">
+            <div className="text-2xl font-bold mt-1 text-gray-600">
               {invoices.filter((i) => i.status === 'DRAFT').length}
             </div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Chưa thanh toán</div>
-            <div className="text-2xl font-bold mt-1 text-blue-600">
-              {invoices.filter((i) => i.status === 'APPROVED').length}
+            <div className="text-2xl font-bold mt-1 text-orange-600">
+              {invoices.filter((i) => ['APPROVED', 'UNPAID'].includes(i.status)).length}
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border">
+            <div className="text-sm text-gray-500">Quá hạn</div>
+            <div className="text-2xl font-bold mt-1 text-red-600">
+              {invoices.filter((i) => i.status === 'OVERDUE' || (
+                ['APPROVED', 'UNPAID', 'PARTIAL_PAID'].includes(i.status) &&
+                i.due_date && new Date(i.due_date) < new Date()
+              )).length}
             </div>
           </div>
           <div className="bg-white p-4 rounded-lg border">

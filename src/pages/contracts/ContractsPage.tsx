@@ -73,17 +73,25 @@ const ContractsPage = () => {
       return <Badge className="bg-orange-500 hover:bg-orange-600">Sắp chuyển đi</Badge>;
     }
 
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      DRAFT: { variant: 'outline', label: 'Nháp' },
-      ACTIVE: { variant: 'default', label: 'Đang hoạt động' },
-      EXTENDED: { variant: 'secondary', label: 'Đã gia hạn' },
-      TRANSFERRED: { variant: 'secondary', label: 'Đã chuyển nhượng' },
-      TERMINATED: { variant: 'destructive', label: 'Đã thanh lý' },
+    // Check if contract is expiring soon (within 30 days)
+    const daysUntilExpiry = Math.ceil(
+      (new Date(contract.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (contract.status === 'ACTIVE' && daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
+      return <Badge className="bg-yellow-500 hover:bg-yellow-600 text-white">Sắp hết hạn ({daysUntilExpiry} ngày)</Badge>;
+    }
+
+    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; className?: string }> = {
+      DRAFT: { variant: 'outline', label: 'Nháp', className: 'border-gray-400 text-gray-600' },
+      ACTIVE: { variant: 'default', label: 'Đang hoạt động', className: 'bg-green-500 hover:bg-green-600' },
+      EXTENDED: { variant: 'default', label: 'Đã gia hạn', className: 'bg-blue-500 hover:bg-blue-600' },
+      TRANSFERRED: { variant: 'secondary', label: 'Đã chuyển nhượng', className: 'bg-purple-500 hover:bg-purple-600 text-white' },
+      TERMINATED: { variant: 'outline', label: 'Đã thanh lý', className: 'border-red-400 text-red-600' },
       EXPIRED: { variant: 'destructive', label: 'Hết hạn' },
     };
 
     const config = variants[contract.status] || { variant: 'outline' as const, label: contract.status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return <Badge variant={config.variant} className={config.className}>{config.label}</Badge>;
   };
 
   const getLocationDisplay = (contract: typeof contracts[0]) => {
