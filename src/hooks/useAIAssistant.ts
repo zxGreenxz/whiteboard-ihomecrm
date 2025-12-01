@@ -6,6 +6,8 @@ import type {
   AIConversation,
   AIMessage,
   AIMemoryEmbedding,
+  AIApiKey,
+  AIProvider,
   SendMessageRequest,
   CreateConversationRequest,
   ConversationStats,
@@ -469,6 +471,189 @@ export function useDeleteKnowledgeEntry() {
     onError: (error: Error) => {
       console.error('Delete knowledge entry error:', error);
       toast.error('Lỗi khi xóa: ' + error.message);
+    },
+  });
+}
+
+// =============================================
+// API KEYS MANAGEMENT
+// =============================================
+
+/**
+ * Get all API keys for current user
+ */
+export function useApiKeys() {
+  const { data: user } = useAuth();
+
+  return useQuery({
+    queryKey: ['ai-api-keys', user?.id],
+    queryFn: async (): Promise<AIApiKey[]> => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      try {
+        const { data, error } = await supabase
+          .from('ai_api_keys')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('provider', { ascending: true })
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching API keys:', error);
+          throw error;
+        }
+
+        return (data || []) as AIApiKey[];
+      } catch (error) {
+        console.error('Failed to fetch API keys:', error);
+        throw error;
+      }
+    },
+    enabled: !!user?.id,
+    retry: 1,
+  });
+}
+
+/**
+ * Save or update API key
+ */
+export function useSaveApiKey() {
+  const queryClient = useQueryClient();
+  const { data: user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (request: {
+      provider: AIProvider;
+      api_key: string;
+      display_name?: string;
+      notes?: string;
+      is_default?: boolean;
+    }): Promise<AIApiKey> => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      try {
+        // Check if key already exists for this provider
+        const { data: existing } = await supabase
+          .from('ai_api_keys')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('provider', request.provider)
+          .single();
+
+        let result;
+
+        if (existing) {
+          // Update existing key
+          const { data, error } = await supabase
+            .from('ai_api_keys')
+            .update({
+              api_key: request.api_key,
+              display_name: request.display_name,
+              notes: request.notes,
+              is_default: request.is_default ?? false,
+              is_active: true,
+            })
+            .eq('id', existing.id)
+            .select()
+            .single();
+
+          if (error) throw error;
+          result = data;
+        } else {
+          // Insert new key
+          const { data, error } = await supabase
+            .from('ai_api_keys')
+            .insert({
+              user_id: user.id,
+              provider: request.provider,
+              api_key: request.api_key,
+              display_name: request.display_name,
+              notes: request.notes,
+              is_default: request.is_default ?? false,
+              is_active: true,
+              total_requests: 0,
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          result = data;
+        }
+
+        return result as AIApiKey;
+      } catch (error) {
+        console.error('Failed to save API key:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-api-keys'] });
+      toast.success('Đã lưu API key');
+    },
+    onError: (error: Error) => {
+      console.error('Save API key error:', error);
+      toast.error('Lỗi khi lưu API key: ' + error.message);
+    },
+  });
+}
+
+/**
+ * Delete API key
+ */
+export function useDeleteApiKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (keyId: string): Promise<void> => {
+      try {
+        const { error } = await supabase
+          .from('ai_api_keys')
+          .delete()
+          .eq('id', keyId);
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Failed to delete API key:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-api-keys'] });
+      toast.success('Đã xóa API key');
+    },
+    onError: (error: Error) => {
+      console.error('Delete API key error:', error);
+      toast.error('Lỗi khi xóa: ' + error.message);
+    },
+  });
+}
+
+/**
+ * Toggle API key active status
+ */
+export function useToggleApiKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }): Promise<void> => {
+      try {
+        const { error } = await supabase
+          .from('ai_api_keys')
+          .update({ is_active })
+          .eq('id', id);
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Failed to toggle API key:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-api-keys'] });
+    },
+    onError: (error: Error) => {
+      console.error('Toggle API key error:', error);
+      toast.error('Lỗi: ' + error.message);
     },
   });
 }
