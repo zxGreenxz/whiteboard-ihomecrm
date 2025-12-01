@@ -116,3 +116,131 @@ export interface ConversationStats {
   messages_this_month: number;
   tokens_this_month: number;
 }
+
+// API Keys Management
+export type AIProvider = 'openai' | 'gemini' | 'deepseek' | 'anthropic';
+
+export interface AIApiKey {
+  id: string;
+  user_id: string;
+  provider: AIProvider;
+  api_key: string;
+  is_active: boolean;
+  is_default: boolean;
+  last_used_at?: string;
+  total_requests: number;
+  display_name?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIProviderConfig {
+  provider: AIProvider;
+  name: string;
+  description: string;
+  models: AIModelConfig[];
+  keyPattern: RegExp;
+  keyExample: string;
+  docsUrl: string;
+}
+
+export interface AIModelConfig {
+  id: string;
+  name: string;
+  description: string;
+  contextWindow: number;
+  costPer1MInput: number;
+  costPer1MOutput: number;
+}
+
+export const AI_PROVIDERS: AIProviderConfig[] = [
+  {
+    provider: 'openai',
+    name: 'OpenAI',
+    description: 'GPT-4, GPT-3.5 và các model của OpenAI',
+    models: [
+      {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o Mini',
+        description: 'Nhanh, rẻ, phù hợp cho hầu hết tasks',
+        contextWindow: 128000,
+        costPer1MInput: 0.15,
+        costPer1MOutput: 0.60,
+      },
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        description: 'Mạnh nhất, phù hợp cho tasks phức tạp',
+        contextWindow: 128000,
+        costPer1MInput: 2.50,
+        costPer1MOutput: 10.00,
+      },
+    ],
+    keyPattern: /^sk-[A-Za-z0-9]{32,}$/,
+    keyExample: 'sk-...',
+    docsUrl: 'https://platform.openai.com/api-keys',
+  },
+  {
+    provider: 'gemini',
+    name: 'Google Gemini',
+    description: 'Gemini Pro và Flash của Google',
+    models: [
+      {
+        id: 'gemini-1.5-flash',
+        name: 'Gemini 1.5 Flash',
+        description: 'Nhanh nhất, miễn phí đến 15 requests/phút',
+        contextWindow: 1000000,
+        costPer1MInput: 0.075,
+        costPer1MOutput: 0.30,
+      },
+      {
+        id: 'gemini-1.5-pro',
+        name: 'Gemini 1.5 Pro',
+        description: 'Mạnh hơn, context window lớn nhất',
+        contextWindow: 2000000,
+        costPer1MInput: 1.25,
+        costPer1MOutput: 5.00,
+      },
+    ],
+    keyPattern: /^AIza[A-Za-z0-9_-]{35}$/,
+    keyExample: 'AIza...',
+    docsUrl: 'https://aistudio.google.com/app/apikey',
+  },
+  {
+    provider: 'deepseek',
+    name: 'DeepSeek',
+    description: 'DeepSeek Chat - rẻ nhất, hiệu quả cao',
+    models: [
+      {
+        id: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+        description: 'Rất rẻ, hiệu suất tốt cho tiếng Việt',
+        contextWindow: 64000,
+        costPer1MInput: 0.14,
+        costPer1MOutput: 0.28,
+      },
+    ],
+    keyPattern: /^sk-[A-Za-z0-9]{32,}$/,
+    keyExample: 'sk-...',
+    docsUrl: 'https://platform.deepseek.com/api_keys',
+  },
+  {
+    provider: 'anthropic',
+    name: 'Anthropic Claude',
+    description: 'Claude 3.5 Sonnet - tốt nhất cho coding',
+    models: [
+      {
+        id: 'claude-3-5-sonnet-20241022',
+        name: 'Claude 3.5 Sonnet',
+        description: 'Tốt nhất cho coding và analysis',
+        contextWindow: 200000,
+        costPer1MInput: 3.00,
+        costPer1MOutput: 15.00,
+      },
+    ],
+    keyPattern: /^sk-ant-[A-Za-z0-9_-]{95,}$/,
+    keyExample: 'sk-ant-...',
+    docsUrl: 'https://console.anthropic.com/settings/keys',
+  },
+];

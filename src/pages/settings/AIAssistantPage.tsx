@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2, AlertCircle, Book, X } from 'lucide-react';
+import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2, AlertCircle, Book, X, Settings } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { APIKeysSettings } from '@/components/ai/APIKeysSettings';
 
 const AIAssistantPage = () => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
@@ -230,6 +231,10 @@ const AIAssistantPage = () => {
           <TabsTrigger value="knowledge">
             <Book className="h-4 w-4 mr-2" />
             Kho kiến thức
+          </TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings className="h-4 w-4 mr-2" />
+            Cài đặt API
           </TabsTrigger>
         </TabsList>
 
@@ -618,6 +623,15 @@ const AIAssistantPage = () => {
                   </div>
                 )}
               </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Settings Tab */}
+        <TabsContent value="settings" className="h-full mt-0">
+          <Card className="h-full">
+            <CardContent className="p-6">
+              <APIKeysSettings />
             </CardContent>
           </Card>
         </TabsContent>
