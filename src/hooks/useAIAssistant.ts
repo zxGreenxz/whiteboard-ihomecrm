@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import type {
   AIConversation,
   AIMessage,
+  AIMemoryEmbedding,
   SendMessageRequest,
   CreateConversationRequest,
   ConversationStats,
@@ -264,8 +265,7 @@ export function useMessages(conversationId?: string) {
 }
 
 /**
- * Send a message (this will be handled by Edge Function in production)
- * For now, we'll create a placeholder that stores the message
+ * Send a message via Edge Function with AI integration
  */
 export function useSendMessage() {
   const queryClient = useQueryClient();
@@ -275,76 +275,42 @@ export function useSendMessage() {
     mutationFn: async (request: SendMessageRequest): Promise<{
       conversation_id: string;
       user_message: AIMessage;
+      assistant_message: AIMessage;
     }> => {
       if (!user?.id) throw new Error('User not authenticated');
 
       try {
-        let conversationId = request.conversation_id;
-
-        // Create new conversation if needed
-        if (!conversationId) {
-          const { data: newConv, error: convError } = await supabase
-            .from('ai_conversations')
-            .insert({
-              user_id: user.id,
-              title: 'Cuộc trò chuyện mới',
-              message_count: 0,
-              total_tokens_used: 0,
-              referenced_entities: [],
-              tags: [],
-              is_pinned: false,
-              is_archived: false,
-            })
-            .select()
-            .single();
-
-          if (convError) {
-            console.error('Error creating conversation:', convError);
-            throw convError;
-          }
-
-          conversationId = newConv.id;
+        // Get auth token
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('No active session');
         }
 
-        // Insert user message
-        const { data: userMessage, error: msgError } = await supabase
-          .from('ai_messages')
-          .insert({
-            conversation_id: conversationId,
-            role: 'user',
-            content: request.message,
-            tokens_used: Math.ceil(request.message.length / 4), // Rough estimate
-            context_used: [],
-            referenced_entities: [],
-          })
-          .select()
-          .single();
+        // Call Edge Function
+        const { data, error } = await supabase.functions.invoke('ai-chat', {
+          body: {
+            conversation_id: request.conversation_id,
+            message: request.message,
+            include_context: request.include_context ?? true,
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
 
-        if (msgError) {
-          console.error('Error inserting message:', msgError);
-          throw msgError;
+        if (error) {
+          console.error('Edge Function error:', error);
+          throw error;
         }
 
-        // TODO: Call OpenAI API via Edge Function to get assistant response
-        // For now, we'll insert a placeholder assistant response
-        const { error: assistantError } = await supabase
-          .from('ai_messages')
-          .insert({
-            conversation_id: conversationId,
-            role: 'assistant',
-            content: 'Xin chào! Tôi là trợ lý AI của bạn. Hiện tại tính năng này đang được phát triển. Vui lòng chờ cập nhật để tôi có thể giúp bạn phân tích dữ liệu và trả lời câu hỏi.',
-            tokens_used: 50,
-            context_used: [],
-            referenced_entities: [],
-          });
-
-        if (assistantError) {
-          console.error('Error inserting assistant message:', assistantError);
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to send message');
         }
 
         return {
-          conversation_id: conversationId,
-          user_message: userMessage as AIMessage,
+          conversation_id: data.conversation_id,
+          user_message: data.user_message,
+          assistant_message: data.assistant_message,
         };
       } catch (error) {
         console.error('Failed to send message:', error);
@@ -355,10 +321,154 @@ export function useSendMessage() {
       queryClient.invalidateQueries({ queryKey: ['ai-conversations'] });
       queryClient.invalidateQueries({ queryKey: ['ai-conversation', data.conversation_id] });
       queryClient.invalidateQueries({ queryKey: ['ai-messages', data.conversation_id] });
+      queryClient.invalidateQueries({ queryKey: ['ai-conversation-stats'] });
     },
     onError: (error: Error) => {
       console.error('Send message error:', error);
       toast.error('Lỗi khi gửi tin nhắn: ' + error.message);
+    },
+  });
+}
+
+// =============================================
+// KNOWLEDGE BASE (EMBEDDINGS)
+// =============================================
+
+/**
+ * Get all knowledge base entries for current user
+ */
+export function useKnowledgeBase(options?: {
+  entity_type?: string;
+  limit?: number;
+}) {
+  const { data: user } = useAuth();
+
+  return useQuery({
+    queryKey: ['ai-knowledge-base', user?.id, options],
+    queryFn: async (): Promise<AIMemoryEmbedding[]> => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      try {
+        let query = supabase
+          .from('ai_memory_embeddings')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (options?.entity_type) {
+          query = query.eq('entity_type', options.entity_type);
+        }
+
+        if (options?.limit) {
+          query = query.limit(options.limit);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('Error fetching knowledge base:', error);
+          throw error;
+        }
+
+        return (data || []) as AIMemoryEmbedding[];
+      } catch (error) {
+        console.error('Failed to fetch knowledge base:', error);
+        throw error;
+      }
+    },
+    enabled: !!user?.id,
+    retry: 1,
+  });
+}
+
+/**
+ * Create a new knowledge base entry (with embedding)
+ */
+export function useCreateKnowledgeEntry() {
+  const queryClient = useQueryClient();
+  const { data: user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (request: {
+      content: string;
+      entity_type?: string;
+      entity_id?: string;
+      entity_name?: string;
+      importance_score?: number;
+    }): Promise<{ id: string }> => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      try {
+        // Get auth token
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('No active session');
+        }
+
+        // Call Edge Function to create embedding
+        const { data, error } = await supabase.functions.invoke('ai-embeddings', {
+          body: request,
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (error) {
+          console.error('Edge Function error:', error);
+          throw error;
+        }
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to create embedding');
+        }
+
+        return { id: data.embedding_id };
+      } catch (error) {
+        console.error('Failed to create knowledge entry:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-knowledge-base'] });
+      toast.success('Đã thêm kiến thức mới');
+    },
+    onError: (error: Error) => {
+      console.error('Create knowledge entry error:', error);
+      toast.error('Lỗi khi thêm kiến thức: ' + error.message);
+    },
+  });
+}
+
+/**
+ * Delete a knowledge base entry
+ */
+export function useDeleteKnowledgeEntry() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (entryId: string): Promise<void> => {
+      try {
+        const { error } = await supabase
+          .from('ai_memory_embeddings')
+          .delete()
+          .eq('id', entryId);
+
+        if (error) {
+          console.error('Error deleting knowledge entry:', error);
+          throw error;
+        }
+      } catch (error) {
+        console.error('Failed to delete knowledge entry:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-knowledge-base'] });
+      toast.success('Đã xóa kiến thức');
+    },
+    onError: (error: Error) => {
+      console.error('Delete knowledge entry error:', error);
+      toast.error('Lỗi khi xóa: ' + error.message);
     },
   });
 }

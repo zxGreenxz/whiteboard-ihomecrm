@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2, AlertCircle } from 'lucide-react';
+import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2, AlertCircle, Book, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +32,9 @@ import {
   useUpdateConversation,
   useDeleteConversation,
   useConversationStats,
+  useKnowledgeBase,
+  useCreateKnowledgeEntry,
+  useDeleteKnowledgeEntry,
 } from '@/hooks/useAIAssistant';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -31,15 +44,24 @@ const AIAssistantPage = () => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('chat');
+
+  // Knowledge Base state
+  const [showAddKnowledge, setShowAddKnowledge] = useState(false);
+  const [knowledgeContent, setKnowledgeContent] = useState('');
+  const [knowledgeEntityType, setKnowledgeEntityType] = useState('');
 
   // Hooks
   const { data: conversations, isLoading: loadingConversations, error: conversationsError } = useConversations();
   const { data: messages, isLoading: loadingMessages, error: messagesError } = useMessages(selectedConversationId);
   const { data: stats, error: statsError } = useConversationStats();
+  const { data: knowledgeBase, isLoading: loadingKnowledge } = useKnowledgeBase();
   const createConversation = useCreateConversation();
   const sendMessage = useSendMessage();
   const updateConversation = useUpdateConversation();
   const deleteConversation = useDeleteConversation();
+  const createKnowledgeEntry = useCreateKnowledgeEntry();
+  const deleteKnowledgeEntry = useDeleteKnowledgeEntry();
 
   // Check if tables exist
   const tablesNotExist = conversationsError?.message?.includes('relation') || 
@@ -109,6 +131,30 @@ const AIAssistantPage = () => {
     }
   };
 
+  // Handle add knowledge
+  const handleAddKnowledge = async () => {
+    if (!knowledgeContent.trim()) return;
+
+    try {
+      await createKnowledgeEntry.mutateAsync({
+        content: knowledgeContent,
+        entity_type: knowledgeEntityType || undefined,
+      });
+      setKnowledgeContent('');
+      setKnowledgeEntityType('');
+      setShowAddKnowledge(false);
+    } catch (error) {
+      console.error('Error adding knowledge:', error);
+    }
+  };
+
+  // Handle delete knowledge
+  const handleDeleteKnowledge = (id: string) => {
+    if (confirm('Bạn có chắc muốn xóa kiến thức này?')) {
+      deleteKnowledgeEntry.mutate(id);
+    }
+  };
+
   // Show error if tables don't exist
   if (tablesNotExist) {
     return (
@@ -174,10 +220,24 @@ const AIAssistantPage = () => {
         )}
       </div>
 
-      {/* Main Layout */}
-      <div className="grid grid-cols-12 gap-6 h-[calc(100%-5rem)]">
-        {/* Sidebar - Conversation List */}
-        <Card className="col-span-3 flex flex-col">
+      {/* Main Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="h-[calc(100%-5rem)]">
+        <TabsList className="mb-4">
+          <TabsTrigger value="chat">
+            <Bot className="h-4 w-4 mr-2" />
+            Trò chuyện
+          </TabsTrigger>
+          <TabsTrigger value="knowledge">
+            <Book className="h-4 w-4 mr-2" />
+            Kho kiến thức
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Chat Tab */}
+        <TabsContent value="chat" className="h-full mt-0">
+          <div className="grid grid-cols-12 gap-6 h-full">
+            {/* Sidebar - Conversation List */}
+            <Card className="col-span-3 flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Cuộc trò chuyện</CardTitle>
@@ -415,7 +475,153 @@ const AIAssistantPage = () => {
             </CardContent>
           )}
         </Card>
-      </div>
+          </div>
+        </TabsContent>
+
+        {/* Knowledge Base Tab */}
+        <TabsContent value="knowledge" className="h-full mt-0">
+          <Card className="h-full flex flex-col">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Kho kiến thức</CardTitle>
+                  <CardDescription>
+                    Quản lý thông tin tham khảo để AI có thể hỗ trợ tốt hơn
+                  </CardDescription>
+                </div>
+                <Dialog open={showAddKnowledge} onOpenChange={setShowAddKnowledge}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Thêm kiến thức
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Thêm kiến thức mới</DialogTitle>
+                      <DialogDescription>
+                        Thêm thông tin mà bạn muốn AI ghi nhớ và sử dụng trong các cuộc trò chuyện
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="knowledge-content">Nội dung</Label>
+                        <Textarea
+                          id="knowledge-content"
+                          placeholder="Ví dụ: Chính sách giảm giá cho khách thuê dài hạn là 10%..."
+                          value={knowledgeContent}
+                          onChange={(e) => setKnowledgeContent(e.target.value)}
+                          rows={6}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="entity-type">Loại (tùy chọn)</Label>
+                        <Input
+                          id="entity-type"
+                          placeholder="Ví dụ: policy, guideline, faq..."
+                          value={knowledgeEntityType}
+                          onChange={(e) => setKnowledgeEntityType(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowAddKnowledge(false);
+                            setKnowledgeContent('');
+                            setKnowledgeEntityType('');
+                          }}
+                        >
+                          Hủy
+                        </Button>
+                        <Button
+                          onClick={handleAddKnowledge}
+                          disabled={!knowledgeContent.trim() || createKnowledgeEntry.isPending}
+                        >
+                          {createKnowledgeEntry.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Plus className="h-4 w-4 mr-2" />
+                          )}
+                          Thêm
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                {loadingKnowledge ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : !knowledgeBase || knowledgeBase.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Book className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">
+                      Chưa có kiến thức nào
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Thêm thông tin tham khảo để AI có thể hỗ trợ bạn tốt hơn
+                    </p>
+                    <Button onClick={() => setShowAddKnowledge(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Thêm kiến thức đầu tiên
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {knowledgeBase.map((entry) => (
+                      <Card key={entry.id}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm whitespace-pre-wrap break-words">
+                                {entry.content}
+                              </p>
+                              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                                {entry.entity_type && (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-primary/10 text-primary">
+                                    {entry.entity_type}
+                                  </span>
+                                )}
+                                <span>
+                                  {format(new Date(entry.created_at), 'dd/MM/yyyy HH:mm', {
+                                    locale: vi,
+                                  })}
+                                </span>
+                                {entry.access_count > 0 && (
+                                  <span>
+                                    Đã sử dụng: {entry.access_count} lần
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteKnowledge(entry.id)}
+                              disabled={deleteKnowledgeEntry.isPending}
+                            >
+                              {deleteKnowledgeEntry.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <X className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
