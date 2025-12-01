@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2 } from 'lucide-react';
+import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,13 +33,17 @@ const AIAssistantPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Hooks
-  const { data: conversations, isLoading: loadingConversations } = useConversations();
-  const { data: messages, isLoading: loadingMessages } = useMessages(selectedConversationId);
-  const { data: stats } = useConversationStats();
+  const { data: conversations, isLoading: loadingConversations, error: conversationsError } = useConversations();
+  const { data: messages, isLoading: loadingMessages, error: messagesError } = useMessages(selectedConversationId);
+  const { data: stats, error: statsError } = useConversationStats();
   const createConversation = useCreateConversation();
   const sendMessage = useSendMessage();
   const updateConversation = useUpdateConversation();
   const deleteConversation = useDeleteConversation();
+
+  // Check if tables exist
+  const tablesNotExist = conversationsError?.message?.includes('relation') || 
+                         conversationsError?.message?.includes('does not exist');
 
   // Filter conversations by search
   const filteredConversations = conversations?.filter((conv) =>
@@ -48,10 +52,14 @@ const AIAssistantPage = () => {
 
   // Handle new conversation
   const handleNewConversation = async () => {
-    const result = await createConversation.mutateAsync({
-      title: 'Cuộc trò chuyện mới',
-    });
-    setSelectedConversationId(result.id);
+    try {
+      const result = await createConversation.mutateAsync({
+        title: 'Cuộc trò chuyện mới',
+      });
+      setSelectedConversationId(result.id);
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+    }
   };
 
   // Handle send message
@@ -61,11 +69,15 @@ const AIAssistantPage = () => {
     const message = messageInput;
     setMessageInput('');
 
-    await sendMessage.mutateAsync({
-      conversation_id: selectedConversationId,
-      message,
-      include_context: true,
-    });
+    try {
+      await sendMessage.mutateAsync({
+        conversation_id: selectedConversationId,
+        message,
+        include_context: true,
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
   };
 
   // Handle pin conversation
@@ -96,6 +108,32 @@ const AIAssistantPage = () => {
       }
     }
   };
+
+  // Show error if tables don't exist
+  if (tablesNotExist) {
+    return (
+      <div className="container mx-auto p-6 max-w-4xl">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Cần chạy Database Migration</AlertTitle>
+          <AlertDescription className="mt-2 space-y-2">
+            <p>
+              Các bảng AI Assistant chưa được tạo trong database. Vui lòng chạy migration sau:
+            </p>
+            <ol className="list-decimal list-inside space-y-1 mt-2">
+              <li>Vào Supabase Dashboard → SQL Editor</li>
+              <li>Copy nội dung file: <code className="bg-muted px-1 py-0.5 rounded">supabase/migrations/026_ai_assistant_tables.sql</code></li>
+              <li>Paste vào SQL Editor và chạy</li>
+              <li>Refresh lại trang này</li>
+            </ol>
+            <p className="mt-4 text-sm">
+              <strong>Lỗi chi tiết:</strong> {conversationsError?.message}
+            </p>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 max-w-full h-[calc(100vh-4rem)]">
@@ -143,8 +181,12 @@ const AIAssistantPage = () => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Cuộc trò chuyện</CardTitle>
-              <Button size="sm" onClick={handleNewConversation}>
-                <Plus className="h-4 w-4" />
+              <Button size="sm" onClick={handleNewConversation} disabled={createConversation.isPending}>
+                {createConversation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
               </Button>
             </div>
             <div className="relative mt-2">
@@ -215,26 +257,36 @@ const AIAssistantPage = () => {
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onClick={() => handlePinConversation(conv.id, conv.is_pinned)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePinConversation(conv.id, conv.is_pinned);
+                            }}
                           >
                             <Pin className="h-4 w-4 mr-2" />
                             {conv.is_pinned ? 'Bỏ ghim' : 'Ghim'}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => handleArchiveConversation(conv.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleArchiveConversation(conv.id);
+                            }}
                           >
                             <Archive className="h-4 w-4 mr-2" />
                             Lưu trữ
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onClick={() => handleDeleteConversation(conv.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteConversation(conv.id);
+                            }}
                             className="text-destructive"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -321,6 +373,7 @@ const AIAssistantPage = () => {
                       }
                     }}
                     className="min-h-[60px] max-h-[200px] resize-none"
+                    disabled={sendMessage.isPending}
                   />
                   <Button
                     onClick={handleSendMessage}
@@ -350,8 +403,12 @@ const AIAssistantPage = () => {
                   Chọn một cuộc trò chuyện từ danh sách bên trái hoặc tạo cuộc trò
                   chuyện mới để bắt đầu
                 </p>
-                <Button onClick={handleNewConversation}>
-                  <Plus className="h-4 w-4 mr-2" />
+                <Button onClick={handleNewConversation} disabled={createConversation.isPending}>
+                  {createConversation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-2" />
+                  )}
                   Tạo cuộc trò chuyện mới
                 </Button>
               </div>
