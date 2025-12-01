@@ -33,6 +33,7 @@ import {
   UserCog,
   ChevronDown,
   Map,
+  Bot,
 } from 'lucide-react';
 
 interface NavItem {
@@ -116,6 +117,7 @@ const navigationSections: (NavItem | NavSection)[] = [
       { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText },
       { title: 'Mẫu chữ ký', href: '/settings/signatures', icon: FileSignature },
       { title: 'Nhân viên', href: '/settings/staff', icon: UserCog },
+      { title: 'Trợ lý AI', href: '/settings/ai-assistant', icon: Bot },
     ],
   },
 ];

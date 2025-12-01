@@ -76,6 +76,7 @@ import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
 import TemplatesPage from "./pages/settings/TemplatesPage";
 import SignaturesPage from "./pages/settings/SignaturesPage";
 import StaffPage from "./pages/settings/StaffPage";
+import AIAssistantPage from "./pages/settings/AIAssistantPage";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -191,6 +192,7 @@ const App = () => (
           <Route path="/settings/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
           <Route path="/settings/signatures" element={<ProtectedRoute><SignaturesPage /></ProtectedRoute>} />
           <Route path="/settings/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
+          <Route path="/settings/ai-assistant" element={<ProtectedRoute><AIAssistantPage /></ProtectedRoute>} />
 
           {/* 404 Not Found - Catch all */}
           <Route path="*" element={<NotFound />} />
