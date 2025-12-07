@@ -145,9 +145,10 @@ export const useCreatePayment = () => {
         if (invoiceError) throw invoiceError;
 
         const newPaidAmount = (invoice.paid_amount || 0) + (data.amount || 0);
+        // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
         const status =
           newPaidAmount >= invoice.total_amount ? "PAID" :
-          newPaidAmount > 0 ? "PARTIAL_PAID" : "UNPAID";
+          newPaidAmount > 0 ? "PARTIAL_PAID" : "APPROVED";
 
         await supabase
           .from("invoices")

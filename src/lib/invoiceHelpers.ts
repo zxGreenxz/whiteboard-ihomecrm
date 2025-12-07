@@ -260,17 +260,18 @@ export async function getPreviousDebt(
   if (!config.include_previous_debt) return 0;
 
   // Get all unpaid/partial paid invoices for this contract
+  // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
   const { data: invoices } = await supabase
     .from('invoices')
-    .select('amount, amount_paid')
+    .select('total_amount, paid_amount')
     .eq('contract_id', contractId)
-    .in('status', ['UNPAID', 'PARTIAL_PAID']);
+    .in('status', ['PARTIAL_PAID', 'OVERDUE', 'APPROVED', 'PENDING_APPROVAL']);
 
   if (!invoices || invoices.length === 0) return 0;
 
   // Calculate total debt
   const totalDebt = invoices.reduce((sum, invoice) => {
-    return sum + (invoice.amount - invoice.amount_paid);
+    return sum + ((invoice.total_amount || 0) - (invoice.paid_amount || 0));
   }, 0);
 
   return totalDebt;

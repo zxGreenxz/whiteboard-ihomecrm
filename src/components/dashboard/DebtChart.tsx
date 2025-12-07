@@ -26,11 +26,12 @@ export function DebtChart() {
         const monthEnd = endOfMonth(monthDate);
 
         // Get unpaid/partial paid invoices with due date in this month
+        // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
         const { data: invoices } = await supabase
           .from("invoices")
           .select("total_amount, paid_amount")
           .eq("user_id", user.id)
-          .in("status", ["UNPAID", "PARTIAL_PAID"])
+          .in("status", ["PARTIAL_PAID", "OVERDUE", "APPROVED", "PENDING_APPROVAL"])
           .gte("due_date", monthStart.toISOString())
           .lte("due_date", monthEnd.toISOString());
 

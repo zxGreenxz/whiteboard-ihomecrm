@@ -101,18 +101,19 @@ export async function checkInvoicePaymentReminders(userId: string): Promise<void
     : [7, 3, 1];
 
   // Get unpaid/partial paid invoices
+  // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
   const { data: invoices } = await supabase
     .from('invoices')
     .select(`
       id,
       invoice_number,
       due_date,
-      amount,
-      amount_paid,
+      total_amount,
+      paid_amount,
       tenant:tenants(full_name)
     `)
     .eq('user_id', userId)
-    .in('status', ['UNPAID', 'PARTIAL_PAID']);
+    .in('status', ['PARTIAL_PAID', 'OVERDUE', 'APPROVED', 'PENDING_APPROVAL']);
 
   if (!invoices) return;
 
@@ -121,7 +122,7 @@ export async function checkInvoicePaymentReminders(userId: string): Promise<void
   for (const invoice of invoices) {
     const dueDate = new Date(invoice.due_date);
     const daysUntilDue = differenceInDays(dueDate, today);
-    const remainingAmount = invoice.amount - invoice.amount_paid;
+    const remainingAmount = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
 
     // Check if we should send reminder
     if (daysUntilDue > 0 && reminderDays.includes(daysUntilDue)) {
@@ -171,18 +172,19 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
   if (frequency === 'NONE') return;
 
   // Get overdue invoices
+  // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
   const { data: invoices } = await supabase
     .from('invoices')
     .select(`
       id,
       invoice_number,
       due_date,
-      amount,
-      amount_paid,
+      total_amount,
+      paid_amount,
       tenant:tenants(full_name)
     `)
     .eq('user_id', userId)
-    .in('status', ['UNPAID', 'PARTIAL_PAID'])
+    .in('status', ['PARTIAL_PAID', 'OVERDUE', 'APPROVED', 'PENDING_APPROVAL'])
     .lt('due_date', new Date().toISOString());
 
   if (!invoices) return;
@@ -190,7 +192,7 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
   const today = new Date();
 
   for (const invoice of invoices) {
-    const remainingAmount = invoice.amount - invoice.amount_paid;
+    const remainingAmount = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
 
     // Check last notification
     const { data: lastNotification } = await supabase

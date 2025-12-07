@@ -53,12 +53,23 @@ export const useDashboardStats = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total rooms
-      const { count: totalRooms } = await supabase
-        .from("rooms")
-        .select("*", { count: "exact", head: true })
+      // Get user's buildings first (rooms are linked via building_id)
+      const { data: userBuildings } = await supabase
+        .from("buildings")
+        .select("id")
         .eq("user_id", user.id)
         .is("deleted_at", null);
+
+      const buildingIds = userBuildings?.map(b => b.id) || [];
+
+      // Get total rooms from user's buildings
+      const { count: totalRooms } = buildingIds.length > 0
+        ? await supabase
+            .from("rooms")
+            .select("*", { count: "exact", head: true })
+            .in("building_id", buildingIds)
+            .is("deleted_at", null)
+        : { count: 0 };
 
       // Get occupied rooms (active contracts)
       const { data: activeContracts } = await supabase
@@ -86,11 +97,13 @@ export const useDashboardStats = () => {
       const revenueThisMonth = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
       // Get total debt (unpaid invoices)
+      // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
+      // For debt calculation, include PARTIAL_PAID, OVERDUE, APPROVED, PENDING_APPROVAL
       const { data: unpaidInvoices } = await supabase
         .from("invoices")
         .select("total_amount, paid_amount")
         .eq("user_id", user.id)
-        .in("status", ["UNPAID", "PARTIAL_PAID"]);
+        .in("status", ["PARTIAL_PAID", "OVERDUE", "APPROVED", "PENDING_APPROVAL"]);
 
       const totalDebt = unpaidInvoices?.reduce((sum, inv) => {
         const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
@@ -179,12 +192,23 @@ export const useOccupancyChart = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total rooms
-      const { count: totalRooms } = await supabase
-        .from("rooms")
-        .select("*", { count: "exact", head: true })
+      // Get user's buildings first (rooms are linked via building_id)
+      const { data: userBuildings } = await supabase
+        .from("buildings")
+        .select("id")
         .eq("user_id", user.id)
         .is("deleted_at", null);
+
+      const buildingIds = userBuildings?.map(b => b.id) || [];
+
+      // Get total rooms from user's buildings
+      const { count: totalRooms } = buildingIds.length > 0
+        ? await supabase
+            .from("rooms")
+            .select("*", { count: "exact", head: true })
+            .in("building_id", buildingIds)
+            .is("deleted_at", null)
+        : { count: 0 };
 
       // Get rooms by status
       const { data: activeContracts } = await supabase
@@ -226,11 +250,12 @@ export const useAlerts = () => {
       const alerts: Alert[] = [];
 
       // Overdue invoices
+      // Note: invoice_status enum has: DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED
       const { data: overdueInvoices } = await supabase
         .from("invoices")
         .select("id, title, due_date, total_amount, paid_amount, contract:contracts(tenant:tenants(full_name))")
         .eq("user_id", user.id)
-        .in("status", ["UNPAID", "PARTIAL_PAID"])
+        .in("status", ["OVERDUE", "PARTIAL_PAID", "APPROVED", "PENDING_APPROVAL"])
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
         .limit(5);

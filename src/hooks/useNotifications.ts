@@ -97,12 +97,14 @@ export function useUnreadNotificationsCount() {
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // Note: notification_status enum only has PENDING, SENT, FAILED, CANCELLED
+      // For unread count, we show notifications that are PENDING or SENT
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .neq('status', 'READ');
+        .in('status', ['PENDING', 'SENT']);
 
       if (error) throw error;
       return count || 0;
@@ -148,9 +150,11 @@ export function useMarkAsRead() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
+      // Note: notification_status enum only has PENDING, SENT, FAILED, CANCELLED
+      // Mark as read by setting status to CANCELLED
       const { data, error } = await supabase
         .from('notifications')
-        .update({ status: 'READ' })
+        .update({ status: 'CANCELLED' as any })
         .eq('id', notificationId)
         .select()
         .single();
@@ -176,12 +180,14 @@ export function useMarkAllAsRead() {
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // Note: notification_status enum only has PENDING, SENT, FAILED, CANCELLED
+      // Mark as read by setting status to CANCELLED
       const { error } = await supabase
         .from('notifications')
-        .update({ status: 'READ' })
+        .update({ status: 'CANCELLED' as any })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .neq('status', 'READ');
+        .in('status', ['PENDING', 'SENT']);
 
       if (error) throw error;
     },
@@ -264,12 +270,14 @@ export function useDeleteAllRead() {
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // Note: notification_status enum only has PENDING, SENT, FAILED, CANCELLED
+      // Delete "read" notifications (marked as CANCELLED)
       const { error } = await supabase
         .from('notifications')
         .delete()
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .eq('status', 'READ');
+        .eq('status', 'CANCELLED');
 
       if (error) throw error;
     },
