@@ -1,10 +1,22 @@
 -- =============================================
--- Migration 028: Fix contracts deleted_at column and RLS policies
+-- Migration 028: Fix contracts RLS policies (URGENT FIX)
 -- Created: 2025-12-18
--- Description: Ensure deleted_at column exists and fix RLS policies
+-- Description: Remove deleted_at dependency from RLS policies
 -- =============================================
 
--- Step 1: Add deleted_at column if not exists
+-- STEP 1: DROP ALL EXISTING RLS POLICIES ON contracts TABLE
+DROP POLICY IF EXISTS "Users can view own contracts" ON contracts;
+DROP POLICY IF EXISTS "Users can insert own contracts" ON contracts;
+DROP POLICY IF EXISTS "Users can update own contracts" ON contracts;
+DROP POLICY IF EXISTS "Users can delete own contracts" ON contracts;
+
+-- STEP 2: DROP ALL EXISTING RLS POLICIES ON contract_services TABLE
+DROP POLICY IF EXISTS "Users can view contract services" ON contract_services;
+DROP POLICY IF EXISTS "Users can insert contract services" ON contract_services;
+DROP POLICY IF EXISTS "Users can update contract services" ON contract_services;
+DROP POLICY IF EXISTS "Users can delete contract services" ON contract_services;
+
+-- STEP 3: Add deleted_at column if not exists
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -15,40 +27,17 @@ BEGIN
     AND column_name = 'deleted_at'
   ) THEN
     ALTER TABLE contracts ADD COLUMN deleted_at TIMESTAMPTZ;
-    RAISE NOTICE 'Added deleted_at column to contracts table';
-  ELSE
-    RAISE NOTICE 'deleted_at column already exists in contracts table';
   END IF;
 END $$;
 
--- Step 2: Create index if not exists
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_indexes
-    WHERE tablename = 'contracts'
-    AND indexname = 'idx_contracts_deleted_at'
-  ) THEN
-    CREATE INDEX idx_contracts_deleted_at ON contracts(deleted_at);
-    RAISE NOTICE 'Created index idx_contracts_deleted_at';
-  ELSE
-    RAISE NOTICE 'Index idx_contracts_deleted_at already exists';
-  END IF;
-END $$;
+-- STEP 4: Create index if not exists
+CREATE INDEX IF NOT EXISTS idx_contracts_deleted_at ON contracts(deleted_at);
 
--- Step 3: Drop and recreate RLS policies for contracts table
--- Drop existing policies
-DROP POLICY IF EXISTS "Users can view own contracts" ON contracts;
-DROP POLICY IF EXISTS "Users can insert own contracts" ON contracts;
-DROP POLICY IF EXISTS "Users can update own contracts" ON contracts;
-DROP POLICY IF EXISTS "Users can delete own contracts" ON contracts;
-
--- Recreate policies with proper deleted_at handling
--- SELECT policy: Only show non-deleted contracts
+-- STEP 5: RECREATE RLS POLICIES FOR contracts (SIMPLE - NO deleted_at check for now)
+-- SELECT policy: View own contracts only
 CREATE POLICY "Users can view own contracts"
   ON contracts FOR SELECT
-  USING (auth.uid() = user_id AND (deleted_at IS NULL));
+  USING (auth.uid() = user_id);
 
 -- INSERT policy: Allow inserting new contracts
 CREATE POLICY "Users can insert own contracts"
@@ -65,13 +54,7 @@ CREATE POLICY "Users can delete own contracts"
   ON contracts FOR DELETE
   USING (auth.uid() = user_id);
 
--- Step 4: Fix contract_services RLS policies
-DROP POLICY IF EXISTS "Users can view contract services" ON contract_services;
-DROP POLICY IF EXISTS "Users can insert contract services" ON contract_services;
-DROP POLICY IF EXISTS "Users can update contract services" ON contract_services;
-DROP POLICY IF EXISTS "Users can delete contract services" ON contract_services;
-
--- Recreate contract_services policies
+-- STEP 6: RECREATE RLS POLICIES FOR contract_services (SIMPLE)
 CREATE POLICY "Users can view contract services"
   ON contract_services FOR SELECT
   USING (
@@ -79,7 +62,6 @@ CREATE POLICY "Users can view contract services"
       SELECT 1 FROM contracts
       WHERE contracts.id = contract_services.contract_id
         AND contracts.user_id = auth.uid()
-        AND (contracts.deleted_at IS NULL)
     )
   );
 
@@ -113,8 +95,4 @@ CREATE POLICY "Users can delete contract services"
     )
   );
 
--- Add comment
-COMMENT ON COLUMN contracts.deleted_at IS 'Soft delete timestamp - NULL means active, timestamp means deleted';
-
--- Migration completed
--- =============================================
+-- Done!
