@@ -17,12 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Building2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Building2, Upload, Download, MoreHorizontal } from "lucide-react";
 import { CreateBuildingDialog } from "@/components/buildings/CreateBuildingDialog";
 import { EditBuildingDialog } from "@/components/buildings/EditBuildingDialog";
 import { DeleteBuildingDialog } from "@/components/buildings/DeleteBuildingDialog";
+import { ImportExcelDialog, ExportExcelDialog } from "@/components/import-export";
 import type { Database } from "@/integrations/supabase/types";
 
 type BuildingWithRelations = Database["public"]["Tables"]["buildings"]["Row"] & {
@@ -38,6 +45,8 @@ export default function BuildingsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingWithRelations | null>(null);
 
   // Filter buildings based on search, status, and type
@@ -110,10 +119,30 @@ export default function BuildingsPage() {
           <Building2 className="h-8 w-8" />
           <h1 className="text-3xl font-bold">Quản lý Tòa nhà</h1>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tạo tòa nhà
-        </Button>
+        <div className="flex gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <MoreHorizontal className="h-4 w-4 mr-2" />
+                Thêm
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import từ Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setExportDialogOpen(true)}>
+                <Download className="h-4 w-4 mr-2" />
+                Xuất ra Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo tòa nhà
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -262,6 +291,18 @@ export default function BuildingsPage() {
           />
         </>
       )}
+
+      {/* Import/Export Dialogs */}
+      <ImportExcelDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        importType="buildings"
+      />
+      <ExportExcelDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        exportType="buildings"
+      />
     </div>
   );
 }

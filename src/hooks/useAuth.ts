@@ -241,3 +241,42 @@ export const useForgotPassword = () => {
     },
   });
 };
+
+// =============================================
+// Reset Password (Update Password)
+// =============================================
+
+export interface ResetPasswordData {
+  password: string;
+}
+
+export const useResetPassword = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: ResetPasswordData) => {
+      const { error } = await supabase.auth.updateUser({
+        password: data.password,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Clear auth cache
+      queryClient.invalidateQueries({ queryKey: ['auth'] });
+
+      toast({
+        title: 'Đổi mật khẩu thành công!',
+        description: 'Bạn có thể đăng nhập với mật khẩu mới.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Đổi mật khẩu thất bại',
+        description: error.message,
+      });
+    },
+  });
+};

@@ -18,13 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Home, RefreshCw, Layers } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Home, RefreshCw, Layers, Upload, Download, MoreHorizontal } from "lucide-react";
 import { CreateRoomDialog } from "@/components/rooms/CreateRoomDialog";
 import { EditRoomDialog } from "@/components/rooms/EditRoomDialog";
 import { DeleteRoomDialog } from "@/components/rooms/DeleteRoomDialog";
 import { BulkCreateRoomsDialog } from "@/components/rooms/BulkCreateRoomsDialog";
+import { ImportExcelDialog, ExportExcelDialog } from "@/components/import-export";
 import type { Database } from "@/integrations/supabase/types";
 
 type RoomWithBuilding = Database["public"]["Tables"]["rooms"]["Row"] & {
@@ -39,6 +46,8 @@ export default function RoomsPage() {
   const [bulkCreateDialogOpen, setBulkCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithBuilding | null>(null);
 
   const { data: buildings } = useBuildings();
@@ -135,6 +144,24 @@ export default function RoomsPage() {
           <h1 className="text-3xl font-bold">Quản lý Phòng</h1>
         </div>
         <div className="flex gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <MoreHorizontal className="h-4 w-4 mr-2" />
+                Thêm
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import từ Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setExportDialogOpen(true)}>
+                <Download className="h-4 w-4 mr-2" />
+                Xuất ra Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" onClick={() => setBulkCreateDialogOpen(true)}>
             <Layers className="mr-2 h-4 w-4" />
             Tạo hàng loạt
@@ -318,6 +345,18 @@ export default function RoomsPage() {
           />
         </>
       )}
+
+      {/* Import/Export Dialogs */}
+      <ImportExcelDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        importType="rooms"
+      />
+      <ExportExcelDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        exportType="rooms"
+      />
     </div>
   );
 }

@@ -558,6 +558,8 @@ export const useTerminateContract = () => {
 // =============================================
 
 export const useEstimateTerminationCosts = () => {
+  const { toast } = useToast();
+
   return useMutation({
     mutationFn: async (data: {
       contract_id: string;
@@ -565,12 +567,112 @@ export const useEstimateTerminationCosts = () => {
       damage_fee?: number;
       cleaning_fee?: number;
       early_termination_fee?: number;
+      other_fees?: number;
+      final_electricity_reading?: number;
+      final_water_reading?: number;
     }) => {
-      // Return a mock estimation for now
-      return {
-        total_deductions: (data.damage_fee || 0) + (data.cleaning_fee || 0) + (data.early_termination_fee || 0),
-        refund_amount: 0,
-      };
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Fetch contract with relations
+      const { data: contract, error: contractError } = await supabase
+        .from('contracts')
+        .select(`
+          *,
+          tenant:tenants(*),
+          room:rooms(*, building:buildings(*)),
+          bed:beds(*, room:rooms(*, building:buildings(*))),
+          contract_services(*, service:services(*))
+        `)
+        .eq('id', data.contract_id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (contractError || !contract) {
+        throw new Error('Contract not found');
+      }
+
+      // Fetch unpaid invoices
+      const { data: unpaidInvoices } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('contract_id', data.contract_id)
+        .eq('user_id', user.id)
+        .in('status', ['PENDING', 'OVERDUE', 'PARTIAL'])
+        .is('deleted_at', null);
+
+      // Calculate dates
+      const moveOutDate = new Date(data.move_out_date);
+      const contractEndDate = new Date(contract.end_date);
+
+      const isEarlyTermination = moveOutDate < contractEndDate;
+      const daysEarly = isEarlyTermination
+        ? Math.ceil((contractEndDate.getTime() - moveOutDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      // Calculate prorated rent
+      const monthlyRent = contract.rent_price || 0;
+      const daysInMonth = new Date(moveOutDate.getFullYear(), moveOutDate.getMonth() + 1, 0).getDate();
+      const dailyRentRate = monthlyRent / daysInMonth;
+      const dayOfMonth = moveOutDate.getDate();
+      const proratedRent = Math.round(dailyRentRate * dayOfMonth);
+
+      // Calculate prorated services
+      let proratedServices = 0;
+      if (contract.contract_services) {
+        for (const cs of contract.contract_services) {
+          if (cs.unit_price) {
+            const monthlyAmount = cs.unit_price * (cs.quantity || 1);
+            const dailyAmount = monthlyAmount / daysInMonth;
+            proratedServices += Math.round(dailyAmount * dayOfMonth);
+          }
+        }
+      }
+
+      // Calculate outstanding debt
+      let outstandingDebt = 0;
+      if (unpaidInvoices) {
+        for (const inv of unpaidInvoices) {
+          const remaining = inv.total_amount - (inv.paid_amount || 0);
+          if (remaining > 0) {
+            outstandingDebt += remaining;
+          }
+        }
+      }
+
+      // Calculate fees
+      const totalFees = (data.early_termination_fee || 0) +
+                        (data.damage_fee || 0) +
+                        (data.cleaning_fee || 0) +
+                        (data.other_fees || 0);
+
+      // Calculate totals
+      const totalDeductions = outstandingDebt + proratedRent + proratedServices + totalFees;
+      const totalDeposit = contract.total_deposit || 0;
+      const refundAmount = totalDeposit - totalDeductions;
+
+      return [{
+        contract_id: contract.id,
+        contract_number: contract.contract_number || '',
+        total_deposit: totalDeposit,
+        outstanding_debt: outstandingDebt,
+        prorated_rent: proratedRent,
+        prorated_days: dayOfMonth,
+        daily_rent_rate: Math.round(dailyRentRate),
+        prorated_services: proratedServices,
+        total_fees: totalFees,
+        total_deductions: totalDeductions,
+        refund_amount: refundAmount,
+        is_early_termination: isEarlyTermination,
+        days_early: daysEarly,
+      }];
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi tính toán',
+        description: error.message,
+      });
     },
   });
 };

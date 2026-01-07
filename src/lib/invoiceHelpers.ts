@@ -275,3 +275,407 @@ export async function getPreviousDebt(
 
   return totalDebt;
 }
+
+// =============================================
+// AUTO INVOICE GENERATION
+// =============================================
+
+import { format, startOfMonth, endOfMonth } from 'date-fns';
+
+export interface InvoiceGenerationSettings {
+  auto_generate_enabled: boolean;
+  generation_day: number; // 1-28
+  due_days: number;
+  include_previous_debt: boolean;
+  auto_approve: boolean;
+}
+
+export interface GeneratedInvoiceItem {
+  item_type: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+}
+
+export interface ContractForInvoice {
+  id: string;
+  contract_number: string;
+  tenant_id: string;
+  room_id: string | null;
+  bed_id: string | null;
+  rent_price: number;
+  start_date: string;
+  end_date: string;
+  start_billing_date: string | null;
+  tenant?: {
+    id: string;
+    full_name: string;
+    phone: string;
+  };
+  room?: {
+    id: string;
+    name: string;
+    building_id: string;
+    building?: {
+      id: string;
+      name: string;
+    };
+  };
+  contract_services?: Array<{
+    service_id: string;
+    unit_price: number;
+    initial_reading: number | null;
+    service?: {
+      id: string;
+      name: string;
+      type: string;
+      unit: string;
+    };
+  }>;
+}
+
+/**
+ * Get invoice generation settings for user
+ */
+export async function getInvoiceSettings(userId: string): Promise<InvoiceGenerationSettings | null> {
+  const { data, error } = await supabase
+    .from('invoice_generation_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    // Return default settings
+    return {
+      auto_generate_enabled: false,
+      generation_day: 1,
+      due_days: 5,
+      include_previous_debt: true,
+      auto_approve: false,
+    };
+  }
+
+  return {
+    auto_generate_enabled: data.auto_generate_enabled,
+    generation_day: data.generation_day,
+    due_days: data.due_days,
+    include_previous_debt: data.include_previous_debt,
+    auto_approve: data.auto_approve,
+  };
+}
+
+/**
+ * Save invoice generation settings
+ */
+export async function saveInvoiceSettings(
+  userId: string,
+  settings: Partial<InvoiceGenerationSettings>
+): Promise<void> {
+  const { error } = await supabase
+    .from('invoice_generation_settings')
+    .upsert({
+      user_id: userId,
+      ...settings,
+      updated_at: new Date().toISOString(),
+    });
+
+  if (error) throw error;
+}
+
+/**
+ * Get active contracts for invoice generation
+ */
+export async function getActiveContractsForInvoicing(
+  userId: string,
+  buildingId?: string
+): Promise<ContractForInvoice[]> {
+  let query = supabase
+    .from('contracts')
+    .select(`
+      *,
+      tenant:tenants!contracts_tenant_id_fkey (
+        id, full_name, phone
+      ),
+      room:rooms!contracts_room_id_fkey (
+        id, name, building_id,
+        building:buildings!rooms_building_id_fkey (
+          id, name
+        )
+      ),
+      contract_services (
+        service_id, unit_price, initial_reading,
+        service:services!contract_services_service_id_fkey (
+          id, name, type, unit
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .eq('status', 'ACTIVE')
+    .is('deleted_at', null);
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return (data || []) as ContractForInvoice[];
+}
+
+/**
+ * Get meter readings for a contract in a specific period
+ */
+export async function getMeterReadingsForPeriod(
+  contractId: string,
+  periodFrom: Date,
+  periodTo: Date
+): Promise<Array<{
+  service_type: string;
+  previous_reading: number;
+  current_reading: number;
+  consumption: number;
+}>> {
+  const { data, error } = await supabase
+    .from('meter_readings')
+    .select('*')
+    .eq('contract_id', contractId)
+    .gte('reading_date', format(periodFrom, 'yyyy-MM-dd'))
+    .lte('reading_date', format(periodTo, 'yyyy-MM-dd'));
+
+  if (error) return [];
+
+  return (data || []).map(reading => ({
+    service_type: reading.service_type || '',
+    previous_reading: reading.previous_reading || 0,
+    current_reading: reading.current_reading,
+    consumption: reading.consumption || 0,
+  }));
+}
+
+/**
+ * Generate invoice items for a contract
+ */
+export function generateInvoiceItems(
+  contract: ContractForInvoice,
+  meterReadings: Array<{
+    service_type: string;
+    consumption: number;
+  }>,
+  periodFrom: Date,
+  periodTo: Date
+): GeneratedInvoiceItem[] {
+  const items: GeneratedInvoiceItem[] = [];
+
+  // Add rent
+  items.push({
+    item_type: 'RENT',
+    description: `Tiền thuê phòng tháng ${format(periodFrom, 'MM/yyyy')}`,
+    quantity: 1,
+    unit_price: contract.rent_price,
+    amount: contract.rent_price,
+  });
+
+  // Add services
+  if (contract.contract_services) {
+    for (const cs of contract.contract_services) {
+      if (!cs.service) continue;
+
+      if (cs.service.type === 'METER_READING') {
+        // Find meter reading for this service
+        const reading = meterReadings.find(r =>
+          r.service_type.toLowerCase().includes(cs.service!.name.toLowerCase().includes('điện') ? 'electricity' : 'water')
+        );
+
+        if (reading && reading.consumption > 0) {
+          items.push({
+            item_type: cs.service.name.toUpperCase().includes('ĐIỆN') ? 'ELECTRICITY' : 'WATER',
+            description: `${cs.service.name}: ${reading.consumption} ${cs.service.unit}`,
+            quantity: reading.consumption,
+            unit_price: cs.unit_price,
+            amount: reading.consumption * cs.unit_price,
+          });
+        }
+      } else if (cs.service.type === 'FIXED') {
+        items.push({
+          item_type: cs.service.name.toUpperCase().replace(/\s+/g, '_'),
+          description: cs.service.name,
+          quantity: 1,
+          unit_price: cs.unit_price,
+          amount: cs.unit_price,
+        });
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Generate a single invoice for a contract
+ */
+export async function generateInvoiceForContract(
+  userId: string,
+  contract: ContractForInvoice,
+  billingPeriod: { from: Date; to: Date },
+  settings: InvoiceGenerationSettings
+): Promise<string> {
+  // Get meter readings
+  const meterReadings = await getMeterReadingsForPeriod(
+    contract.id,
+    billingPeriod.from,
+    billingPeriod.to
+  );
+
+  // Generate invoice items
+  const items = generateInvoiceItems(
+    contract,
+    meterReadings,
+    billingPeriod.from,
+    billingPeriod.to
+  );
+
+  // Calculate subtotal
+  const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+
+  // Get previous debt if enabled
+  let previousDebtAmount = 0;
+  if (settings.include_previous_debt) {
+    previousDebtAmount = await getPreviousDebt(userId, contract.id);
+  }
+
+  // Calculate total
+  const totalAmount = subtotal + previousDebtAmount;
+
+  // Generate invoice number
+  const invoiceNumber = `INV-${format(new Date(), 'yyMM')}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+  // Calculate due date
+  const issuedDate = new Date();
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + settings.due_days);
+
+  // Create invoice
+  const { data: invoice, error: invoiceError } = await supabase
+    .from('invoices')
+    .insert({
+      user_id: userId,
+      invoice_number: invoiceNumber,
+      contract_id: contract.id,
+      room_id: contract.room_id,
+      building_id: contract.room?.building_id,
+      billing_period_from: format(billingPeriod.from, 'yyyy-MM-dd'),
+      billing_period_to: format(billingPeriod.to, 'yyyy-MM-dd'),
+      subtotal,
+      previous_debt: previousDebtAmount,
+      discount_amount: 0,
+      tax_rate: 0,
+      tax_amount: 0,
+      total_amount: totalAmount,
+      paid_amount: 0,
+      status: settings.auto_approve ? 'APPROVED' : 'DRAFT',
+      issued_date: format(issuedDate, 'yyyy-MM-dd'),
+      due_date: format(dueDate, 'yyyy-MM-dd'),
+    })
+    .select()
+    .single();
+
+  if (invoiceError) throw invoiceError;
+
+  // Create invoice items
+  const invoiceItems = items.map(item => ({
+    invoice_id: invoice.id,
+    ...item,
+  }));
+
+  const { error: itemsError } = await supabase
+    .from('invoice_items')
+    .insert(invoiceItems);
+
+  if (itemsError) throw itemsError;
+
+  return invoice.id;
+}
+
+/**
+ * Bulk generate invoices for all active contracts
+ */
+export async function bulkGenerateInvoices(
+  userId: string,
+  billingMonth: Date,
+  buildingId?: string
+): Promise<{ success: number; failed: number; errors: string[] }> {
+  const settings = await getInvoiceSettings(userId);
+  if (!settings) {
+    throw new Error('Vui lòng cấu hình cài đặt tạo hóa đơn trước');
+  }
+
+  const contracts = await getActiveContractsForInvoicing(userId, buildingId);
+
+  const billingPeriod = {
+    from: startOfMonth(billingMonth),
+    to: endOfMonth(billingMonth),
+  };
+
+  let success = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (const contract of contracts) {
+    try {
+      await generateInvoiceForContract(userId, contract, billingPeriod, settings);
+      success++;
+    } catch (error: any) {
+      failed++;
+      errors.push(`${contract.contract_number}: ${error.message}`);
+    }
+  }
+
+  return { success, failed, errors };
+}
+
+/**
+ * Auto-create invoice when contract is created (if enabled)
+ */
+export async function autoCreateInvoiceForContract(
+  contractId: string,
+  userId: string
+): Promise<string | null> {
+  const settings = await getInvoiceSettings(userId);
+  if (!settings?.auto_generate_enabled) {
+    return null;
+  }
+
+  // Get contract details
+  const { data: contract, error } = await supabase
+    .from('contracts')
+    .select(`
+      *,
+      tenant:tenants!contracts_tenant_id_fkey (id, full_name, phone),
+      room:rooms!contracts_room_id_fkey (id, name, building_id),
+      contract_services (
+        service_id, unit_price, initial_reading,
+        service:services!contract_services_service_id_fkey (id, name, type, unit)
+      )
+    `)
+    .eq('id', contractId)
+    .single();
+
+  if (error || !contract) return null;
+
+  // Calculate billing period based on start_billing_date or start_date
+  const startDate = new Date(contract.start_billing_date || contract.start_date);
+  const billingPeriod = {
+    from: startOfMonth(startDate),
+    to: endOfMonth(startDate),
+  };
+
+  try {
+    return await generateInvoiceForContract(
+      userId,
+      contract as ContractForInvoice,
+      billingPeriod,
+      settings
+    );
+  } catch (e) {
+    console.error('Auto invoice creation failed:', e);
+    return null;
+  }
+}
