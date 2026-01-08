@@ -61,7 +61,7 @@ CREATE POLICY "Users can delete their own lead activities"
   ON lead_activities FOR DELETE
   USING (user_id = auth.uid());
 
--- Function to calculate lead score
+-- Function to calculate lead score from a record (used for existing leads)
 CREATE OR REPLACE FUNCTION calculate_lead_score(lead_id UUID)
 RETURNS INTEGER AS $$
 DECLARE
@@ -91,7 +91,7 @@ BEGIN
   END IF;
 
   -- Source quality (0-20 points)
-  CASE lead_record.source
+  CASE lead_record.source::text
     WHEN 'REFERRAL' THEN score := score + 20;
     WHEN 'WALK_IN' THEN score := score + 18;
     WHEN 'WEBSITE' THEN score := score + 15;
@@ -101,11 +101,14 @@ BEGIN
     ELSE score := score + 5;
   END CASE;
 
-  -- Status progression (0-15 points)
-  CASE lead_record.status
-    WHEN 'VIEWED' THEN score := score + 15;
-    WHEN 'CONTACTED' THEN score := score + 10;
-    WHEN 'NEW' THEN score := score + 5;
+  -- Status progression (0-20 points)
+  -- Using actual lead_status enum values: B1_LEAD, B2_APPOINTMENT, B3_CONSULTATION, CONVERTED, FAILED
+  CASE lead_record.status::text
+    WHEN 'CONVERTED' THEN score := score + 20;
+    WHEN 'B3_CONSULTATION' THEN score := score + 15;
+    WHEN 'B2_APPOINTMENT' THEN score := score + 10;
+    WHEN 'B1_LEAD' THEN score := score + 5;
+    WHEN 'FAILED' THEN score := score + 0;
     ELSE score := score + 0;
   END CASE;
 
@@ -123,11 +126,60 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to auto-calculate lead score on insert/update
+-- Trigger function that calculates score directly from NEW record (for INSERT/UPDATE)
 CREATE OR REPLACE FUNCTION update_lead_score()
 RETURNS TRIGGER AS $$
+DECLARE
+  score INTEGER := 0;
 BEGIN
-  NEW.lead_score := calculate_lead_score(NEW.id);
+  -- Budget score (0-30 points)
+  IF NEW.budget_max IS NOT NULL THEN
+    score := score + 30;
+  ELSIF NEW.budget_min IS NOT NULL THEN
+    score := score + 15;
+  END IF;
+
+  -- Appointment date (0-25 points)
+  IF NEW.appointment_date IS NOT NULL THEN
+    IF NEW.appointment_date >= CURRENT_DATE THEN
+      score := score + 25;
+    ELSE
+      score := score + 10;
+    END IF;
+  END IF;
+
+  -- Source quality (0-20 points)
+  CASE NEW.source::text
+    WHEN 'REFERRAL' THEN score := score + 20;
+    WHEN 'WALK_IN' THEN score := score + 18;
+    WHEN 'WEBSITE' THEN score := score + 15;
+    WHEN 'FACEBOOK' THEN score := score + 12;
+    WHEN 'ZALO' THEN score := score + 12;
+    WHEN 'PHONE' THEN score := score + 10;
+    ELSE score := score + 5;
+  END CASE;
+
+  -- Status progression (0-20 points)
+  CASE NEW.status::text
+    WHEN 'CONVERTED' THEN score := score + 20;
+    WHEN 'B3_CONSULTATION' THEN score := score + 15;
+    WHEN 'B2_APPOINTMENT' THEN score := score + 10;
+    WHEN 'B1_LEAD' THEN score := score + 5;
+    WHEN 'FAILED' THEN score := score + 0;
+    ELSE score := score + 0;
+  END CASE;
+
+  -- Email provided (0-5 points)
+  IF NEW.email IS NOT NULL THEN
+    score := score + 5;
+  END IF;
+
+  -- Move-in date soon (0-5 points)
+  IF NEW.move_in_date IS NOT NULL AND NEW.move_in_date <= CURRENT_DATE + INTERVAL '30 days' THEN
+    score := score + 5;
+  END IF;
+
+  NEW.lead_score := score;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -198,11 +250,11 @@ RETURNS TRIGGER AS $$
 DECLARE
   sla_config RECORD;
 BEGIN
-  -- Get SLA config for this priority
+  -- Get SLA config for this priority (cast enum to text for comparison)
   SELECT * INTO sla_config
   FROM sla_configs
   WHERE user_id = NEW.user_id
-    AND priority = NEW.priority
+    AND priority = NEW.priority::text
     AND is_active = TRUE;
 
   IF FOUND THEN
@@ -257,27 +309,25 @@ CREATE TRIGGER trigger_check_sla_breach
 -- Note: profiles table uses 'id' as primary key (which is the user_id from auth.users)
 INSERT INTO code_sequences (user_id, object_type, prefix, date_format, separator, sequence_length, reset_period)
 SELECT DISTINCT
-  id as user_id,
-  object_type,
-  prefix,
+  p.id as user_id,
+  t.object_type,
+  t.prefix,
   'YYMM',
   '-',
   4,
   'MONTHLY'
-FROM (
-  SELECT id FROM profiles
-  CROSS JOIN (VALUES
-    ('CONTRACT', 'HD'),
-    ('INVOICE', 'HD'),
-    ('DEPOSIT', 'DC'),
-    ('PAYMENT', 'PT'),
-    ('ISSUE', 'IS'),
-    ('ASSET', 'TS'),
-    ('LEAD', 'KH'),
-    ('TENANT', 'KT'),
-    ('HANDOVER', 'BG')
-  ) AS types(object_type, prefix)
-) base
+FROM profiles p
+CROSS JOIN (VALUES
+  ('CONTRACT', 'HD'),
+  ('INVOICE', 'HD'),
+  ('DEPOSIT', 'DC'),
+  ('PAYMENT', 'PT'),
+  ('ISSUE', 'IS'),
+  ('ASSET', 'TS'),
+  ('LEAD', 'KH'),
+  ('TENANT', 'KT'),
+  ('HANDOVER', 'BG')
+) AS t(object_type, prefix)
 ON CONFLICT DO NOTHING;
 
 -- Function to generate next code
@@ -416,15 +466,16 @@ RETURNS TRIGGER AS $$
 BEGIN
   IF OLD.status IS DISTINCT FROM NEW.status THEN
     INSERT INTO issue_status_history (issue_id, user_id, old_status, new_status, changed_by)
-    VALUES (NEW.id, NEW.user_id, OLD.status, NEW.status, auth.uid());
+    VALUES (NEW.id, NEW.user_id, OLD.status::text, NEW.status::text, auth.uid());
 
-    -- Update resolved_at if status is COMPLETED
-    IF NEW.status = 'COMPLETED' AND OLD.status != 'COMPLETED' THEN
+    -- Update resolved_at if status is RESOLVED or CLOSED
+    -- Using actual issue_status enum: NEW, ASSIGNED, IN_PROGRESS, RESOLVED, CLOSED, CANCELLED
+    IF NEW.status::text IN ('RESOLVED', 'CLOSED') AND OLD.status::text NOT IN ('RESOLVED', 'CLOSED') THEN
       NEW.resolved_at := CURRENT_TIMESTAMP;
     END IF;
 
-    -- Update first_response_at if moving from REPORTED to IN_PROGRESS
-    IF NEW.status IN ('IN_PROGRESS', 'ASSIGNED') AND OLD.status = 'REPORTED' AND NEW.first_response_at IS NULL THEN
+    -- Update first_response_at if moving from NEW to any active status
+    IF NEW.status::text IN ('IN_PROGRESS', 'ASSIGNED') AND OLD.status::text = 'NEW' AND NEW.first_response_at IS NULL THEN
       NEW.first_response_at := CURRENT_TIMESTAMP;
     END IF;
   END IF;
@@ -520,10 +571,10 @@ SELECT
   ct.actual_move_out_date,
   c.end_date as original_end_date,
 
-  -- Days calculation
+  -- Days calculation (date - date returns integer in PostgreSQL)
   CASE
     WHEN ct.actual_move_out_date < c.end_date THEN
-      EXTRACT(DAY FROM (c.end_date::date - ct.actual_move_out_date::date))
+      (c.end_date::date - ct.actual_move_out_date::date)
     ELSE 0
   END as early_days,
 
