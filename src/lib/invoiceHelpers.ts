@@ -544,8 +544,18 @@ export async function generateInvoiceForContract(
   // Calculate total
   const totalAmount = subtotal + previousDebtAmount;
 
-  // Generate invoice number
-  const invoiceNumber = `INV-${format(new Date(), 'yyMM')}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  // Generate invoice number using proper sequential generation
+  let invoiceNumber = await autoGenerateInvoiceNumber(userId);
+
+  // Fallback to default format if auto-generation is disabled or fails
+  if (!invoiceNumber) {
+    const seq = await supabase
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    const count = (seq.count || 0) + 1;
+    invoiceNumber = `INV${format(new Date(), 'yyyyMM')}${String(count).padStart(4, '0')}`;
+  }
 
   // Calculate due date
   const issuedDate = new Date();
@@ -631,51 +641,6 @@ export async function bulkGenerateInvoices(
   return { success, failed, errors };
 }
 
-/**
- * Auto-create invoice when contract is created (if enabled)
- */
-export async function autoCreateInvoiceForContract(
-  contractId: string,
-  userId: string
-): Promise<string | null> {
-  const settings = await getInvoiceSettings(userId);
-  if (!settings?.auto_generate_enabled) {
-    return null;
-  }
+// NOTE: autoCreateInvoiceForContract has been consolidated into contractHelpers.ts
+// to avoid duplication. Use the version from contractHelpers.ts instead.
 
-  // Get contract details
-  const { data: contract, error } = await supabase
-    .from('contracts')
-    .select(`
-      *,
-      tenant:tenants!contracts_tenant_id_fkey (id, full_name, phone),
-      room:rooms!contracts_room_id_fkey (id, name, building_id),
-      contract_services (
-        service_id, unit_price, initial_reading,
-        service:services!contract_services_service_id_fkey (id, name, type, unit)
-      )
-    `)
-    .eq('id', contractId)
-    .single();
-
-  if (error || !contract) return null;
-
-  // Calculate billing period based on start_billing_date or start_date
-  const startDate = new Date(contract.start_billing_date || contract.start_date);
-  const billingPeriod = {
-    from: startOfMonth(startDate),
-    to: endOfMonth(startDate),
-  };
-
-  try {
-    return await generateInvoiceForContract(
-      userId,
-      contract as ContractForInvoice,
-      billingPeriod,
-      settings
-    );
-  } catch (e) {
-    console.error('Auto invoice creation failed:', e);
-    return null;
-  }
-}

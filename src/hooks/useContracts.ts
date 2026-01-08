@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { Database } from '@/integrations/supabase/types';
+import type { PaginatedData } from '@/hooks/usePagination';
 
 // =============================================
 // Types
@@ -10,6 +11,19 @@ import type { Database } from '@/integrations/supabase/types';
 type Contract = Database['public']['Tables']['contracts']['Row'];
 type ContractInsert = Database['public']['Tables']['contracts']['Insert'];
 type ContractUpdate = Database['public']['Tables']['contracts']['Update'];
+
+export interface ContractFilters {
+  status?: string;
+  tenant_id?: string;
+  room_id?: string;
+  bed_id?: string;
+  search?: string;
+}
+
+export interface ContractPaginationParams {
+  page?: number;
+  pageSize?: number;
+}
 
 export interface ContractWithRelations extends Contract {
   tenant?: {
@@ -115,17 +129,86 @@ export interface TerminateContractData {
 }
 
 // =============================================
-// Get All Contracts
+// Get All Contracts (with optional pagination)
 // =============================================
 
-export const useContracts = (filters?: {
+export const useContracts = (
+  filters?: ContractFilters,
+  pagination?: ContractPaginationParams
+) => {
+  return useQuery({
+    queryKey: ['contracts', filters, pagination],
+    queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Build the select query with count
+      let query = supabase
+        .from('contracts')
+        .select(`
+          *,
+          tenant:tenants!contracts_tenant_id_fkey (
+            id, full_name, phone, email
+          ),
+          room:rooms!contracts_room_id_fkey (
+            id, name, code,
+            building:buildings!rooms_building_id_fkey (
+              id, name, code
+            )
+          ),
+          bed:beds!contracts_bed_id_fkey (
+            id, name, code,
+            room:rooms!beds_room_id_fkey (
+              id, name,
+              building:buildings!rooms_building_id_fkey (
+                id, name
+              )
+            )
+          )
+        `, { count: 'exact' })
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      // Apply filters
+      if (filters?.status) {
+        query = query.eq('status', filters.status as any);
+      }
+      if (filters?.tenant_id) {
+        query = query.eq('tenant_id', filters.tenant_id);
+      }
+      if (filters?.room_id) {
+        query = query.eq('room_id', filters.room_id);
+      }
+      if (filters?.bed_id) {
+        query = query.eq('bed_id', filters.bed_id);
+      }
+
+      // Apply pagination if provided
+      if (pagination?.page && pagination?.pageSize) {
+        const offset = (pagination.page - 1) * pagination.pageSize;
+        query = query.range(offset, offset + pagination.pageSize - 1);
+      }
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      return {
+        data: data as ContractWithRelations[],
+        count: count || 0
+      };
+    },
+  });
+};
+
+// Legacy hook for backwards compatibility (returns array directly)
+export const useContractsLegacy = (filters?: {
   status?: string;
   tenant_id?: string;
   room_id?: string;
   bed_id?: string;
 }) => {
   return useQuery({
-    queryKey: ['contracts', filters],
+    queryKey: ['contracts-legacy', filters],
     queryFn: async (): Promise<ContractWithRelations[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');

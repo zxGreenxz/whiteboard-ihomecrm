@@ -25,6 +25,8 @@ import {
   DollarSign,
   Printer,
   AlertCircle,
+  Image,
+  ExternalLink,
 } from 'lucide-react';
 import { useInvoice, useApproveInvoice } from '@/hooks/useInvoices';
 import { format } from 'date-fns';
@@ -281,6 +283,7 @@ const InvoiceDetailPage = () => {
                       <TableHead>Ngày thanh toán</TableHead>
                       <TableHead>Số tiền</TableHead>
                       <TableHead>Phương thức</TableHead>
+                      <TableHead>Chứng từ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -293,10 +296,60 @@ const InvoiceDetailPage = () => {
                           {formatCurrency(payment.amount)}
                         </TableCell>
                         <TableCell className="capitalize">{payment.payment_method?.toLowerCase()}</TableCell>
+                        <TableCell>
+                          {payment.receipt_image_url ? (
+                            <a
+                              href={payment.receipt_image_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              <Image className="h-4 w-4" />
+                              <span>Xem ảnh</span>
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-gray-400 text-sm">Không có</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* Receipt Images Gallery */}
+                {invoice.payments.some(p => p.receipt_image_url) && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Ảnh chứng từ thanh toán</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {invoice.payments
+                        .filter(p => p.receipt_image_url)
+                        .map((payment) => (
+                          <a
+                            key={payment.id}
+                            href={payment.receipt_image_url!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group relative aspect-video rounded-lg overflow-hidden border bg-gray-100 hover:ring-2 hover:ring-blue-500 transition-all"
+                          >
+                            <img
+                              src={payment.receipt_image_url!}
+                              alt={`Chứng từ thanh toán ${format(new Date(payment.payment_date), 'dd/MM/yyyy', { locale: vi })}`}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                              <ExternalLink className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                              <p className="text-white text-xs">
+                                {format(new Date(payment.payment_date), 'dd/MM/yyyy', { locale: vi })} - {formatCurrency(payment.amount)}
+                              </p>
+                            </div>
+                          </a>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

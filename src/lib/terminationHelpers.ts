@@ -170,17 +170,52 @@ export async function calculateTerminationCosts(
   let electricityUsage = 0;
   let waterUsage = 0;
 
+  // Get utility prices from contract services or settings
+  let electricityPrice = 0;
+  let waterPrice = 0;
+
+  // First try to get prices from contract services
+  if (contract.contract_services) {
+    for (const cs of contract.contract_services) {
+      if (cs.service && cs.unit_price) {
+        const serviceName = (cs.service.name || '').toLowerCase();
+        if (serviceName.includes('điện') || serviceName.includes('electric')) {
+          electricityPrice = cs.unit_price;
+        }
+        if (serviceName.includes('nước') || serviceName.includes('water')) {
+          waterPrice = cs.unit_price;
+        }
+      }
+    }
+  }
+
+  // If not found in contract, try to get from user settings
+  if (electricityPrice === 0 || waterPrice === 0) {
+    const { data: utilitySettings } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('user_id', user.id)
+      .eq('key', 'utility_prices')
+      .maybeSingle();
+
+    if (utilitySettings?.value) {
+      const prices = utilitySettings.value as { electricity_price?: number; water_price?: number };
+      if (electricityPrice === 0) electricityPrice = prices.electricity_price || 3500;
+      if (waterPrice === 0) waterPrice = prices.water_price || 15000;
+    } else {
+      // Fallback to defaults if no settings found
+      if (electricityPrice === 0) electricityPrice = 3500; // VND per kWh
+      if (waterPrice === 0) waterPrice = 15000; // VND per m3
+    }
+  }
+
   if (input.final_electricity_reading && lastMeterReading?.electricity_reading) {
     electricityUsage = input.final_electricity_reading - lastMeterReading.electricity_reading;
-    // Get electricity price from settings or use default
-    const electricityPrice = 3500; // VND per kWh
     electricityCost = electricityUsage * electricityPrice;
   }
 
   if (input.final_water_reading && lastMeterReading?.water_reading) {
     waterUsage = input.final_water_reading - lastMeterReading.water_reading;
-    // Get water price from settings or use default
-    const waterPrice = 15000; // VND per m3
     waterCost = waterUsage * waterPrice;
   }
 

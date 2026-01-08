@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import {
   Table,
   TableBody,
@@ -54,24 +56,42 @@ const InvoicesPage = () => {
   const [meterReadingDialogOpen, setMeterReadingDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
 
-  const { data: invoices, isLoading } = useInvoices({
-    status: statusFilter || undefined,
-  });
+  // Pagination state
+  const { page, pageSize, setPage, setPageSize } = usePagination(20);
+
+  // Fetch invoices with pagination
+  const { data: invoicesData, isLoading } = useInvoices(
+    { status: statusFilter || undefined },
+    { page, pageSize }
+  );
+
+  // Extract data and count from response
+  const invoices = invoicesData?.data || [];
+  const totalCount = invoicesData?.count || 0;
 
   const approveMutation = useApproveInvoice();
   const deleteMutation = useDeleteInvoice();
   const bulkApproveMutation = useBulkApproveInvoices();
 
-  // Filter invoices based on search term
-  const filteredInvoices = invoices?.filter((invoice) => {
+  // Filter invoices based on search term (client-side for current page)
+  const filteredInvoices = useMemo(() => {
+    if (!searchTerm) return invoices;
+
     const searchLower = searchTerm.toLowerCase();
-    return (
+    return invoices.filter((invoice) => (
       invoice.title?.toLowerCase().includes(searchLower) ||
       invoice.contract?.contract_number?.toLowerCase().includes(searchLower) ||
       invoice.contract?.tenant?.full_name.toLowerCase().includes(searchLower) ||
       invoice.contract?.tenant?.phone.includes(searchTerm)
-    );
-  });
+    ));
+  }, [invoices, searchTerm]);
+
+  // Calculate pagination info
+  const paginationInfo = useMemo(() => {
+    // When searching client-side, use filtered count
+    const count = searchTerm ? filteredInvoices.length : totalCount;
+    return calculatePaginationInfo(page, pageSize, count);
+  }, [page, pageSize, totalCount, searchTerm, filteredInvoices.length]);
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
@@ -148,6 +168,12 @@ const InvoicesPage = () => {
   const draftInvoicesCount = filteredInvoices?.filter((inv) => inv.status === 'DRAFT').length || 0;
   const isAllDraftSelected = draftInvoicesCount > 0 && selectedInvoiceIds.length === draftInvoicesCount;
 
+  // Reset to page 1 when filters change
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
+
   return (
     <MainLayout
       title="Quản lý Hóa đơn"
@@ -168,7 +194,7 @@ const InvoicesPage = () => {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => handleStatusChange(e.target.value)}
           className="px-4 py-2 border rounded-md bg-white"
         >
           <option value="">Tất cả trạng thái</option>
@@ -225,7 +251,8 @@ const InvoicesPage = () => {
               : 'Chưa có hóa đơn nào. Nhấn "Tạo hóa đơn" để bắt đầu.'}
           </div>
         ) : (
-          <Table>
+          <>
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">
@@ -375,15 +402,25 @@ const InvoicesPage = () => {
               })}
             </TableBody>
           </Table>
+
+            {/* Pagination */}
+            <DataTablePagination
+              paginationInfo={paginationInfo}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              showPageSizeSelector={true}
+              showItemCount={true}
+            />
+          </>
         )}
       </div>
 
       {/* Summary Stats */}
-      {invoices && invoices.length > 0 && (
+      {totalCount > 0 && (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Tổng hóa đơn</div>
-            <div className="text-2xl font-bold mt-1">{invoices.length}</div>
+            <div className="text-2xl font-bold mt-1">{totalCount}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Chờ duyệt</div>

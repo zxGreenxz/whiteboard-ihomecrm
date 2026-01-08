@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,8 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useContracts, type ContractWithRelations } from '@/hooks/useContracts';
+import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import CreateContractDialog from '@/components/contracts/CreateContractDialog';
@@ -51,21 +53,39 @@ const ContractsPage = () => {
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [registerMoveOutDialogOpen, setRegisterMoveOutDialogOpen] = useState(false);
 
-  const { data: contracts, isLoading } = useContracts({
-    status: statusFilter || undefined,
-  });
+  // Pagination state
+  const { page, pageSize, setPage, setPageSize } = usePagination(20);
 
-  // Filter contracts based on search term
-  const filteredContracts = contracts?.filter((contract) => {
+  // Fetch contracts with pagination
+  const { data: contractsData, isLoading } = useContracts(
+    { status: statusFilter || undefined },
+    { page, pageSize }
+  );
+
+  // Extract data and count from response
+  const contracts = contractsData?.data || [];
+  const totalCount = contractsData?.count || 0;
+
+  // Filter contracts based on search term (client-side for small datasets)
+  const filteredContracts = useMemo(() => {
+    if (!searchTerm) return contracts;
+
     const searchLower = searchTerm.toLowerCase();
-    return (
+    return contracts.filter((contract) => (
       contract.contract_number?.toLowerCase().includes(searchLower) ||
       contract.tenant?.full_name.toLowerCase().includes(searchLower) ||
       contract.tenant?.phone.includes(searchTerm) ||
       contract.room?.name.toLowerCase().includes(searchLower) ||
       contract.bed?.name.toLowerCase().includes(searchLower)
-    );
-  });
+    ));
+  }, [contracts, searchTerm]);
+
+  // Calculate pagination info
+  const paginationInfo = useMemo(() => {
+    // When searching client-side, use filtered count
+    const count = searchTerm ? filteredContracts.length : totalCount;
+    return calculatePaginationInfo(page, pageSize, count);
+  }, [page, pageSize, totalCount, searchTerm, filteredContracts.length]);
 
   const getStatusBadge = (contract: ContractWithRelations) => {
     // Check for expected move out date
@@ -86,7 +106,7 @@ const ContractsPage = () => {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  const getLocationDisplay = (contract: typeof contracts[0]) => {
+  const getLocationDisplay = (contract: ContractWithRelations) => {
     if (contract.room) {
       return `${contract.room.building?.name} - ${contract.room.name}`;
     }
@@ -103,6 +123,17 @@ const ContractsPage = () => {
     }).format(amount);
   };
 
+  // Reset to page 1 when filters change
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    // Don't reset page for client-side search
+  };
+
   return (
     <MainLayout
       title="Quản lý Hợp đồng"
@@ -116,14 +147,14 @@ const ContractsPage = () => {
           <Input
             placeholder="Tìm theo mã HĐ, tên khách, SĐT, phòng..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
           />
         </div>
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => handleStatusChange(e.target.value)}
           className="px-4 py-2 border rounded-md bg-white"
         >
           <option value="">Tất cả trạng thái</option>
@@ -159,135 +190,150 @@ const ContractsPage = () => {
               : 'Chưa có hợp đồng nào. Nhấn "Tạo hợp đồng" để bắt đầu.'}
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã HĐ</TableHead>
-                <TableHead>Khách thuê</TableHead>
-                <TableHead>Phòng/Giường</TableHead>
-                <TableHead>Thời gian</TableHead>
-                <TableHead>Giá thuê</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredContracts.map((contract) => (
-                <TableRow key={contract.id}>
-                  <TableCell className="font-medium">
-                    {contract.contract_number || contract.id.slice(0, 8)}
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{contract.tenant?.full_name}</div>
-                      <div className="text-sm text-gray-500">{contract.tenant?.phone}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{getLocationDisplay(contract)}</TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      <div>
-                        {format(new Date(contract.start_date), 'dd/MM/yyyy', { locale: vi })}
-                        {' → '}
-                        {format(new Date(contract.end_date), 'dd/MM/yyyy', { locale: vi })}
-                      </div>
-                      <div className="text-gray-500">
-                        {contract.actual_end_date
-                          ? `Kết thúc: ${format(new Date(contract.actual_end_date), 'dd/MM/yyyy', { locale: vi })}`
-                          : (contract as any).expected_move_out_date
-                            ? `Dự kiến ra: ${format(new Date((contract as any).expected_move_out_date), 'dd/MM/yyyy', { locale: vi })}`
-                            : `Còn ${Math.ceil((new Date(contract.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ngày`}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {formatCurrency(contract.rent_price)}
-                    <div className="text-xs text-gray-500 capitalize">
-                      {contract.payment_cycle?.toLowerCase()}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(contract)}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem>
-                          <Eye className="h-4 w-4 mr-2" />
-                          Xem chi tiết
-                        </DropdownMenuItem>
-                        {contract.status === 'ACTIVE' && (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setExtendDialogOpen(true);
-                              }}
-                            >
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Gia hạn hợp đồng
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setTransferDialogOpen(true);
-                              }}
-                            >
-                              <ArrowRightLeft className="h-4 w-4 mr-2" />
-                              Chuyển Phòng/Giường
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setTransferDialogOpen(true); // Reusing transfer dialog for "Nhượng hợp đồng" as it supports both
-                              }}
-                            >
-                              <ArrowRightLeft className="h-4 w-4 mr-2" />
-                              Nhượng hợp đồng
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setRegisterMoveOutDialogOpen(true);
-                              }}
-                            >
-                              <LogOut className="h-4 w-4 mr-2" />
-                              Đăng ký ngày chuyển đi
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-red-600"
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setTerminateDialogOpen(true);
-                              }}
-                            >
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Thanh lý hợp đồng
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mã HĐ</TableHead>
+                  <TableHead>Khách thuê</TableHead>
+                  <TableHead>Phòng/Giường</TableHead>
+                  <TableHead>Thời gian</TableHead>
+                  <TableHead>Giá thuê</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="text-right">Thao tác</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredContracts.map((contract) => (
+                  <TableRow key={contract.id}>
+                    <TableCell className="font-medium">
+                      {contract.contract_number || contract.id.slice(0, 8)}
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{contract.tenant?.full_name}</div>
+                        <div className="text-sm text-gray-500">{contract.tenant?.phone}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>{getLocationDisplay(contract)}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div>
+                          {format(new Date(contract.start_date), 'dd/MM/yyyy', { locale: vi })}
+                          {' → '}
+                          {format(new Date(contract.end_date), 'dd/MM/yyyy', { locale: vi })}
+                        </div>
+                        <div className="text-gray-500">
+                          {contract.actual_end_date
+                            ? `Kết thúc: ${format(new Date(contract.actual_end_date), 'dd/MM/yyyy', { locale: vi })}`
+                            : (contract as any).expected_move_out_date
+                              ? `Dự kiến ra: ${format(new Date((contract as any).expected_move_out_date), 'dd/MM/yyyy', { locale: vi })}`
+                              : `Còn ${Math.ceil((new Date(contract.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ngày`}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {formatCurrency(contract.rent_price)}
+                      <div className="text-xs text-gray-500 capitalize">
+                        {contract.payment_cycle?.toLowerCase()}
+                      </div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(contract)}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              toast.info('Trang chi tiết hợp đồng đang được phát triển');
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Xem chi tiết
+                          </DropdownMenuItem>
+                          {contract.status === 'ACTIVE' && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedContract(contract);
+                                  setExtendDialogOpen(true);
+                                }}
+                              >
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Gia hạn hợp đồng
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedContract(contract);
+                                  setTransferDialogOpen(true);
+                                }}
+                              >
+                                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                                Chuyển Phòng/Giường
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedContract(contract);
+                                  setTransferDialogOpen(true); // Reusing transfer dialog for "Nhượng hợp đồng" as it supports both
+                                }}
+                              >
+                                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                                Nhượng hợp đồng
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedContract(contract);
+                                  setRegisterMoveOutDialogOpen(true);
+                                }}
+                              >
+                                <LogOut className="h-4 w-4 mr-2" />
+                                Đăng ký ngày chuyển đi
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-red-600"
+                                onClick={() => {
+                                  setSelectedContract(contract);
+                                  setTerminateDialogOpen(true);
+                                }}
+                              >
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Thanh lý hợp đồng
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Pagination */}
+            <DataTablePagination
+              paginationInfo={paginationInfo}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              showPageSizeSelector={true}
+              showItemCount={true}
+            />
+          </>
         )}
       </div>
 
       {/* Summary Stats */}
-      {contracts && contracts.length > 0 && (
+      {totalCount > 0 && (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Tổng hợp đồng</div>
-            <div className="text-2xl font-bold mt-1">{contracts.length}</div>
+            <div className="text-2xl font-bold mt-1">{totalCount}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Đang hoạt động</div>

@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { useTenants } from "@/hooks/useTenants";
+import { usePagination, calculatePaginationInfo } from "@/hooks/usePagination";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,7 +24,6 @@ import type { Database } from "@/integrations/supabase/types";
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 
 export default function TenantsPage() {
-  const { data: tenants, isLoading } = useTenants();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<string>("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -30,9 +31,24 @@ export default function TenantsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
 
-  // Filter tenants based on search and tab
+  // Pagination state
+  const { page, pageSize, setPage, setPageSize } = usePagination(20);
+
+  // Fetch tenants with pagination
+  const { data: tenantsData, isLoading } = useTenants(
+    { status: activeTab !== "all" ? activeTab : undefined },
+    { page, pageSize }
+  );
+
+  // Extract data and count from response
+  const tenants = tenantsData?.data || [];
+  const totalCount = tenantsData?.count || 0;
+
+  // Filter tenants based on search (client-side for current page)
   const filteredTenants = useMemo(() => {
-    if (!tenants) return [];
+    if (!tenants || tenants.length === 0) return [];
+
+    if (!searchTerm) return tenants;
 
     return tenants.filter((tenant) => {
       const matchesSearch =
@@ -41,26 +57,35 @@ export default function TenantsPage() {
         tenant.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         tenant.id_number?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesTab =
-        activeTab === "all" || tenant.status === activeTab;
-
-      return matchesSearch && matchesTab;
+      return matchesSearch;
     });
-  }, [tenants, searchTerm, activeTab]);
+  }, [tenants, searchTerm]);
 
-  // Count tenants by status
+  // Calculate pagination info
+  const paginationInfo = useMemo(() => {
+    const count = searchTerm ? filteredTenants.length : totalCount;
+    return calculatePaginationInfo(page, pageSize, count);
+  }, [page, pageSize, totalCount, searchTerm, filteredTenants.length]);
+
+  // Count tenants by status (for display on current page)
   const tenantCounts = useMemo(() => {
-    if (!tenants) return { all: 0, PROSPECT: 0, DEPOSITED: 0, ACTIVE: 0, MOVED_OUT: 0, BLACKLISTED: 0 };
-    
+    if (!tenants) return { all: totalCount, PROSPECT: 0, DEPOSITED: 0, ACTIVE: 0, MOVED_OUT: 0, BLACKLISTED: 0 };
+
     return {
-      all: tenants.length,
+      all: totalCount,
       PROSPECT: tenants.filter(t => t.status === "PROSPECT").length,
       DEPOSITED: tenants.filter(t => t.status === "DEPOSITED").length,
       ACTIVE: tenants.filter(t => t.status === "ACTIVE").length,
       MOVED_OUT: tenants.filter(t => t.status === "MOVED_OUT").length,
       BLACKLISTED: tenants.filter(t => t.status === "BLACKLISTED").length,
     };
-  }, [tenants]);
+  }, [tenants, totalCount]);
+
+  // Reset to page 1 when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setPage(1);
+  };
 
   const handleEdit = (tenant: Tenant) => {
     setSelectedTenant(tenant);
@@ -137,7 +162,7 @@ export default function TenantsPage() {
           </div>
 
           {/* Tabs for Tenant Status */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="mb-4">
               <TabsTrigger value="all">
                 Tất cả ({tenantCounts.all})
@@ -232,6 +257,15 @@ export default function TenantsPage() {
                       ))}
                     </TableBody>
                   </Table>
+
+                  {/* Pagination */}
+                  <DataTablePagination
+                    paginationInfo={paginationInfo}
+                    onPageChange={setPage}
+                    onPageSizeChange={setPageSize}
+                    showPageSizeSelector={true}
+                    showItemCount={true}
+                  />
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

@@ -2,16 +2,66 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import type { PaginatedData } from "@/hooks/usePagination";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 type TenantInsert = Database["public"]["Tables"]["tenants"]["Insert"];
 type TenantUpdate = Database["public"]["Tables"]["tenants"]["Update"];
 
-// Fetch all tenants
-export const useTenants = () => {
+export interface TenantFilters {
+  status?: string;
+  search?: string;
+}
+
+export interface TenantPaginationParams {
+  page?: number;
+  pageSize?: number;
+}
+
+// Fetch all tenants (with optional pagination)
+export const useTenants = (
+  filters?: TenantFilters,
+  pagination?: TenantPaginationParams
+) => {
   return useQuery({
-    queryKey: ["tenants"],
-    queryFn: async () => {
+    queryKey: ["tenants", filters, pagination],
+    queryFn: async (): Promise<PaginatedData<Tenant>> => {
+      let query = supabase
+        .from("tenants")
+        .select("*", { count: 'exact' })
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      if (filters?.status) {
+        query = query.eq('status', filters.status);
+      }
+
+      // Apply pagination if provided
+      if (pagination?.page && pagination?.pageSize) {
+        const offset = (pagination.page - 1) * pagination.pageSize;
+        query = query.range(offset, offset + pagination.pageSize - 1);
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        toast.error("Không thể tải danh sách khách thuê");
+        throw error;
+      }
+
+      return {
+        data: data || [],
+        count: count || 0
+      };
+    },
+  });
+};
+
+// Legacy hook for backwards compatibility (returns array directly)
+export const useTenantsLegacy = () => {
+  return useQuery({
+    queryKey: ["tenants-legacy"],
+    queryFn: async (): Promise<Tenant[]> => {
       const { data, error } = await supabase
         .from("tenants")
         .select("*")

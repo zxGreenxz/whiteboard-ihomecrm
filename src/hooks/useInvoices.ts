@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { Database } from '@/integrations/supabase/types';
+import type { PaginatedData } from '@/hooks/usePagination';
 
 // =============================================
 // Types
@@ -11,6 +12,17 @@ type Invoice = Database['public']['Tables']['invoices']['Row'];
 type InvoiceInsert = Database['public']['Tables']['invoices']['Insert'];
 type Payment = Database['public']['Tables']['payments']['Row'];
 type MeterReading = Database['public']['Tables']['meter_readings']['Row'];
+
+export interface InvoiceFilters {
+  status?: string;
+  contract_id?: string;
+  search?: string;
+}
+
+export interface InvoicePaginationParams {
+  page?: number;
+  pageSize?: number;
+}
 
 export interface InvoiceWithRelations extends Invoice {
   contract?: {
@@ -44,6 +56,8 @@ export interface InvoiceWithRelations extends Invoice {
     amount: number;
     payment_date: string;
     payment_method: string;
+    notes?: string;
+    receipt_image_url?: string;
   }>;
 }
 
@@ -85,15 +99,79 @@ export interface MeterReadingData {
 }
 
 // =============================================
-// Get All Invoices
+// Get All Invoices (with optional pagination)
 // =============================================
 
-export const useInvoices = (filters?: {
+export const useInvoices = (
+  filters?: InvoiceFilters,
+  pagination?: InvoicePaginationParams
+) => {
+  return useQuery({
+    queryKey: ['invoices', filters, pagination],
+    queryFn: async (): Promise<PaginatedData<InvoiceWithRelations>> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      let query = supabase
+        .from('invoices')
+        .select(`
+          *,
+          contract:contracts!invoices_contract_id_fkey (
+            id,
+            contract_number,
+            tenant:tenants!contracts_tenant_id_fkey (
+              id, full_name, phone
+            ),
+            room:rooms!contracts_room_id_fkey (
+              id, name,
+              building:buildings!rooms_building_id_fkey (name)
+            ),
+            bed:beds!contracts_bed_id_fkey (
+              id, name
+            )
+          ),
+          invoice_items (
+            id, description, quantity, unit_price, amount, type
+          ),
+          payments (
+            id, amount, payment_date, payment_method, notes, receipt_image_url
+          )
+        `, { count: 'exact' })
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (filters?.status) {
+        query = query.eq('status', filters.status as any);
+      }
+      if (filters?.contract_id) {
+        query = query.eq('contract_id', filters.contract_id);
+      }
+
+      // Apply pagination if provided
+      if (pagination?.page && pagination?.pageSize) {
+        const offset = (pagination.page - 1) * pagination.pageSize;
+        query = query.range(offset, offset + pagination.pageSize - 1);
+      }
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      return {
+        data: data as InvoiceWithRelations[],
+        count: count || 0
+      };
+    },
+  });
+};
+
+// Legacy hook for backwards compatibility (returns array directly)
+export const useInvoicesLegacy = (filters?: {
   status?: string;
   contract_id?: string;
 }) => {
   return useQuery({
-    queryKey: ['invoices', filters],
+    queryKey: ['invoices-legacy', filters],
     queryFn: async (): Promise<InvoiceWithRelations[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -120,7 +198,7 @@ export const useInvoices = (filters?: {
             id, description, quantity, unit_price, amount, type
           ),
           payments (
-            id, amount, payment_date, payment_method
+            id, amount, payment_date, payment_method, notes, receipt_image_url
           )
         `)
         .eq('user_id', user.id)
