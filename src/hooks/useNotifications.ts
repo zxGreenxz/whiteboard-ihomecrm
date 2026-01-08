@@ -97,12 +97,13 @@ export function useUnreadNotificationsCount() {
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // Use PENDING as unread indicator since READ may not exist in enum yet
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
-        .neq('status', 'READ');
+        .eq('status', 'PENDING');
 
       if (error) throw error;
       return count || 0;

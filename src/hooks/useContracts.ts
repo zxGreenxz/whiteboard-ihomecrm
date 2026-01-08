@@ -598,8 +598,7 @@ export const useEstimateTerminationCosts = () => {
         .select('*')
         .eq('contract_id', data.contract_id)
         .eq('user_id', user.id)
-        .in('status', ['PENDING', 'OVERDUE', 'PARTIAL'])
-        .is('deleted_at', null);
+        .in('status', ['PENDING', 'OVERDUE', 'PARTIAL']);
 
       // Calculate dates
       const moveOutDate = new Date(data.move_out_date);
