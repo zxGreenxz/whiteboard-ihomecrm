@@ -254,9 +254,10 @@ CREATE TRIGGER trigger_check_sla_breach
 -- =============================================
 
 -- code_sequences table already exists, add more object types
+-- Note: profiles table uses 'id' as primary key (which is the user_id from auth.users)
 INSERT INTO code_sequences (user_id, object_type, prefix, date_format, separator, sequence_length, reset_period)
 SELECT DISTINCT
-  user_id,
+  id as user_id,
   object_type,
   prefix,
   'YYMM',
@@ -264,7 +265,7 @@ SELECT DISTINCT
   4,
   'MONTHLY'
 FROM (
-  SELECT user_id FROM profiles
+  SELECT id FROM profiles
   CROSS JOIN (VALUES
     ('CONTRACT', 'HD'),
     ('INVOICE', 'HD'),
