@@ -71,6 +71,7 @@ export interface RecordPaymentData {
   payment_method: string;
   payment_date: string;
   notes?: string;
+  receipt_image_url?: string;
 }
 
 export interface MeterReadingData {
@@ -325,6 +326,7 @@ export const useRecordPayment = () => {
           payment_method: data.payment_method as any,
           payment_date: data.payment_date,
           notes: data.notes,
+          receipt_image_url: data.receipt_image_url,
         }])
         .select()
         .single();

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -23,9 +23,10 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPayment, type InvoiceWithRelations } from '@/hooks/useInvoices';
-import { DollarSign, CreditCard, Banknote, Smartphone, CheckCircle } from 'lucide-react';
+import { DollarSign, CreditCard, Banknote, Smartphone, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -44,6 +45,10 @@ type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPayment();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [receiptImage, setReceiptImage] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const {
     register,
@@ -74,10 +79,86 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const handleClose = () => {
     reset();
+    setReceiptImage(null);
+    setReceiptPreview(null);
     onOpenChange(false);
   };
 
-  const onSubmit = (data: PaymentFormData) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        alert('Vui lòng chọn file ảnh (jpg, png, gif...)');
+        return;
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Kích thước file không được vượt quá 5MB');
+        return;
+      }
+      setReceiptImage(file);
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setReceiptPreview(previewUrl);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setReceiptImage(null);
+    if (receiptPreview) {
+      URL.revokeObjectURL(receiptPreview);
+      setReceiptPreview(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const uploadReceiptImage = async (): Promise<string | null> => {
+    if (!receiptImage) return null;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const fileExt = receiptImage.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}_receipt.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from('payment-receipts')
+      .upload(fileName, receiptImage, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (error) {
+      console.error('Upload error:', error);
+      // If bucket doesn't exist, try documents bucket
+      const { data: fallbackData, error: fallbackError } = await supabase.storage
+        .from('documents')
+        .upload(`receipts/${fileName}`, receiptImage, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (fallbackError) {
+        console.error('Fallback upload error:', fallbackError);
+        return null;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(`receipts/${fileName}`);
+      return urlData.publicUrl;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('payment-receipts')
+      .getPublicUrl(fileName);
+    return urlData.publicUrl;
+  };
+
+  const onSubmit = async (data: PaymentFormData) => {
     if (!invoice) return;
 
     if (data.amount > outstandingAmount) {
@@ -85,17 +166,37 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       return;
     }
 
-    recordMutation.mutate(
-      {
-        invoice_id: invoice.id,
-        ...data,
-      },
-      {
-        onSuccess: () => {
-          handleClose();
-        },
+    try {
+      setIsUploading(true);
+
+      // Upload image if exists
+      let receiptImageUrl: string | undefined;
+      if (receiptImage) {
+        const uploadedUrl = await uploadReceiptImage();
+        if (uploadedUrl) {
+          receiptImageUrl = uploadedUrl;
+        }
       }
-    );
+
+      recordMutation.mutate(
+        {
+          invoice_id: invoice.id,
+          ...data,
+          receipt_image_url: receiptImageUrl,
+        },
+        {
+          onSuccess: () => {
+            handleClose();
+          },
+          onSettled: () => {
+            setIsUploading(false);
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Payment error:', error);
+      setIsUploading(false);
+    }
   };
 
   if (!invoice) return null;
@@ -112,24 +213,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const willBePaid = newOutstanding <= 0;
   const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0;
 
-  const getPaymentMethodIcon = (method: string) => {
-    switch (method) {
-      case 'CASH':
-        return <Banknote className="h-4 w-4" />;
-      case 'BANK_TRANSFER':
-        return <CreditCard className="h-4 w-4" />;
-      case 'MOMO':
-      case 'ZALO_PAY':
-      case 'VNPAY':
-        return <Smartphone className="h-4 w-4" />;
-      default:
-        return <DollarSign className="h-4 w-4" />;
-    }
-  };
+  const isProcessing = recordMutation.isPending || isUploading;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-green-600" />
@@ -206,7 +294,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             {watchedAmount > outstandingAmount && (
               <Alert className="bg-red-50 border-red-200">
                 <AlertDescription className="text-red-800 text-sm">
-                  ⚠️ Số tiền thanh toán vượt quá số tiền còn lại!
+                  Số tiền thanh toán vượt quá số tiền còn lại!
                 </AlertDescription>
               </Alert>
             )}
@@ -271,6 +359,76 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             )}
           </div>
 
+          {/* Receipt Image Upload */}
+          <div className="space-y-2">
+            <Label>Ảnh chứng từ thanh toán</Label>
+            <p className="text-xs text-gray-500">
+              Upload ảnh chuyển khoản, biên lai hoặc ảnh nhận tiền mặt (tùy chọn)
+            </p>
+
+            {!receiptPreview ? (
+              <div
+                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary hover:bg-gray-50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                <p className="text-sm text-gray-600">
+                  Click để chọn ảnh hoặc kéo thả vào đây
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Hỗ trợ: JPG, PNG, GIF (tối đa 5MB)
+                </p>
+              </div>
+            ) : (
+              <div className="relative border rounded-lg overflow-hidden">
+                <img
+                  src={receiptPreview}
+                  alt="Receipt preview"
+                  className="w-full max-h-48 object-contain bg-gray-100"
+                />
+                <div className="absolute top-2 right-2 flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 w-8 p-0"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Image className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-8 w-8 p-0"
+                    onClick={handleRemoveImage}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <div className="p-2 bg-gray-50 border-t">
+                  <p className="text-xs text-gray-600 truncate">
+                    {receiptImage?.name}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Payment Preview */}
           {watchedAmount > 0 && watchedAmount <= outstandingAmount && (
             <div className="bg-blue-50 border-2 border-blue-200 p-4 rounded-md space-y-3">
@@ -328,14 +486,22 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               type="button"
               variant="outline"
               onClick={handleClose}
+              disabled={isProcessing}
             >
               Hủy
             </Button>
             <Button
               type="submit"
-              disabled={recordMutation.isPending || !watchedAmount || watchedAmount > outstandingAmount}
+              disabled={isProcessing || !watchedAmount || watchedAmount > outstandingAmount}
             >
-              {recordMutation.isPending ? 'Đang ghi nhận...' : 'Ghi nhận thanh toán'}
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Đang xử lý...
+                </>
+              ) : (
+                'Ghi nhận thanh toán'
+              )}
             </Button>
           </DialogFooter>
         </form>
