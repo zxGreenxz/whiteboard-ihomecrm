@@ -310,7 +310,7 @@ export const useContract = (contractId?: string) => {
       if (error) throw error;
       return data as ContractWithRelations;
     },
-    enabled: !!contractId,
+    enabled: !!contractId && contractId !== 'create',
   });
 };
 

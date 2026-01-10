@@ -210,7 +210,8 @@ export const useInvoicesLegacy = (filters?: {
       if (filters?.status) {
         query = query.eq('status', filters.status as any);
       }
-      if (filters?.contract_id) {
+      // Apply contract_id filter if provided and not 'create' (which is used for new contracts)
+      if (filters?.contract_id && filters.contract_id !== 'create') {
         query = query.eq('contract_id', filters.contract_id);
       }
 
@@ -522,7 +523,7 @@ export const useMeterReadings = (contractId?: string) => {
   return useQuery({
     queryKey: ['meter_readings', contractId],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } = {} } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -566,6 +567,7 @@ export interface BulkMeterReadingData {
   meter_type: 'ELECTRIC' | 'WATER' | 'GAS' | 'OTHER';
   reading_date: string;
   previous_reading: number;
+  current_reading: number;
   current_reading: number;
   notes?: string;
 }
@@ -679,7 +681,7 @@ export const useAutoGenerateInvoices = () => {
 
   return useMutation({
     mutationFn: async (data: AutoGenerateInvoicesData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } = {} } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { invoice_type = 'RENT_AND_SERVICE' } = data;
