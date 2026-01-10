@@ -57,7 +57,6 @@ export const useVehicles = (filters?: {
           )
         `)
         .eq('user_id', user.id)
-        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (filters?.tenant_id) {
@@ -109,7 +108,6 @@ export const useVehicle = (id: string) => {
         `)
         .eq("id", id)
         .eq('user_id', user.id)
-        .is("deleted_at", null)
         .single();
 
       if (error) {
@@ -180,7 +178,7 @@ export const useUpdateVehicle = () => {
   });
 };
 
-// Delete vehicle (soft delete)
+// Delete vehicle (hard delete since deleted_at column may not exist)
 export const useDeleteVehicle = () => {
   const queryClient = useQueryClient();
 
@@ -188,7 +186,7 @@ export const useDeleteVehicle = () => {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("vehicles")
-        .update({ deleted_at: new Date().toISOString() })
+        .delete()
         .eq("id", id);
 
       if (error) throw error;

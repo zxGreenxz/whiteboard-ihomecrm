@@ -53,12 +53,24 @@ export const useDashboardStats = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total rooms
-      const { count: totalRooms } = await supabase
-        .from("rooms")
-        .select("*", { count: "exact", head: true })
+      // Get total rooms (via buildings that belong to user)
+      const { data: userBuildings } = await supabase
+        .from("buildings")
+        .select("id")
         .eq("user_id", user.id)
         .is("deleted_at", null);
+
+      const buildingIds = userBuildings?.map(b => b.id) || [];
+
+      let totalRooms = 0;
+      if (buildingIds.length > 0) {
+        const { count } = await supabase
+          .from("rooms")
+          .select("*", { count: "exact", head: true })
+          .in("building_id", buildingIds)
+          .is("deleted_at", null);
+        totalRooms = count || 0;
+      }
 
       // Get occupied rooms (active contracts)
       const { data: activeContracts } = await supabase
@@ -85,12 +97,12 @@ export const useDashboardStats = () => {
 
       const revenueThisMonth = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
-      // Get total debt (unpaid invoices)
+      // Get total debt (unpaid invoices - APPROVED or PARTIAL_PAID)
       const { data: unpaidInvoices } = await supabase
         .from("invoices")
         .select("total_amount, paid_amount")
         .eq("user_id", user.id)
-        .in("status", ["UNPAID", "PARTIAL_PAID"]);
+        .in("status", ["APPROVED", "PARTIAL_PAID"]);
 
       const totalDebt = unpaidInvoices?.reduce((sum, inv) => {
         const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
@@ -179,12 +191,24 @@ export const useOccupancyChart = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total rooms
-      const { count: totalRooms } = await supabase
-        .from("rooms")
-        .select("*", { count: "exact", head: true })
+      // Get total rooms (via buildings that belong to user)
+      const { data: userBuildings } = await supabase
+        .from("buildings")
+        .select("id")
         .eq("user_id", user.id)
         .is("deleted_at", null);
+
+      const buildingIds = userBuildings?.map(b => b.id) || [];
+
+      let totalRooms = 0;
+      if (buildingIds.length > 0) {
+        const { count } = await supabase
+          .from("rooms")
+          .select("*", { count: "exact", head: true })
+          .in("building_id", buildingIds)
+          .is("deleted_at", null);
+        totalRooms = count || 0;
+      }
 
       // Get rooms by status
       const { data: activeContracts } = await supabase
@@ -195,7 +219,7 @@ export const useOccupancyChart = () => {
         .not("room_id", "is", null);
 
       const occupiedRooms = activeContracts?.length || 0;
-      const availableRooms = (totalRooms || 0) - occupiedRooms;
+      const availableRooms = totalRooms - occupiedRooms;
 
       const total = totalRooms || 1; // Avoid division by zero
 
