@@ -190,10 +190,14 @@ export const useContracts = (
       }
 
       const { data, error, count } = await query;
-      if (error) throw error;
+      if (error) {
+        console.error('useContracts error:', error);
+        // Return empty data instead of throwing to prevent crash
+        return { data: [], count: 0 };
+      }
 
       return {
-        data: data as ContractWithRelations[],
+        data: (data || []) as ContractWithRelations[],
         count: count || 0
       };
     },
@@ -254,8 +258,11 @@ export const useContractsLegacy = (filters?: {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
-      return data as ContractWithRelations[];
+      if (error) {
+        console.error('useContractsLegacy error:', error);
+        return []; // Return empty array instead of throwing
+      }
+      return (data || []) as ContractWithRelations[];
     },
   });
 };

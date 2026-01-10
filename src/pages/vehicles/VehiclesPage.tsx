@@ -41,18 +41,23 @@ const VehiclesPage = () => {
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: vehicles = [], isLoading } = useVehicles({
+  // DEFENSIVE CHECK: ensure vehicles is array
+  const vehiclesData = useVehicles({
     vehicle_type: typeFilter !== "ALL" ? typeFilter : undefined,
   });
+  const vehicles = Array.isArray(vehiclesData?.data) ? vehiclesData.data : [];
+  const isLoading = vehiclesData?.isLoading ?? false;
 
-  const { data: buildings = [] } = useBuildings();
+  const { data: buildingsData = [] } = useBuildings();
+  const buildings = Array.isArray(buildingsData) ? buildingsData : [];
 
   const handleEdit = (vehicle: VehicleWithRelations) => {
     setSelectedVehicle(vehicle);
     setEditDialogOpen(true);
   };
 
-  const filteredVehicles = vehicles.filter((vehicle) => {
+  // DEFENSIVE CHECK: ensure filteredVehicles is array before operations
+  const filteredVehicles = Array.isArray(vehicles) ? vehicles.filter((vehicle) => {
     if (!searchQuery) return true;
     const search = searchQuery.toLowerCase();
     return (
@@ -62,7 +67,7 @@ const VehiclesPage = () => {
       vehicle.tenant?.full_name?.toLowerCase().includes(search) ||
       vehicle.contract?.contract_number?.toLowerCase().includes(search)
     );
-  });
+  }) : [];
 
   // Calculate summary stats
   const totalVehicles = filteredVehicles.length;

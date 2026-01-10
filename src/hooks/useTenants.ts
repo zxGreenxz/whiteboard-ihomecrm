@@ -45,8 +45,8 @@ export const useTenants = (
       const { data, error, count } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách khách thuê");
-        throw error;
+        console.error('useTenants error:', error);
+        return { data: [], count: 0 };
       }
 
       return {
@@ -69,8 +69,8 @@ export const useTenantsLegacy = () => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        toast.error("Không thể tải danh sách khách thuê");
-        throw error;
+        console.error('useTenantsLegacy error:', error);
+        return [];
       }
 
       return data || [];
@@ -91,8 +91,8 @@ export const useTenant = (id: string) => {
         .single();
 
       if (error) {
-        toast.error("Không thể tải thông tin khách thuê");
-        throw error;
+        console.error('useTenant error:', error);
+        return null;
       }
 
       return data;

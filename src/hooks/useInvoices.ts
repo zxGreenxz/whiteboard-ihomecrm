@@ -154,10 +154,13 @@ export const useInvoices = (
       }
 
       const { data, error, count } = await query;
-      if (error) throw error;
+      if (error) {
+        console.error('useInvoices error:', error);
+        return { data: [], count: 0 };
+      }
 
       return {
-        data: data as InvoiceWithRelations[],
+        data: (data || []) as InvoiceWithRelations[],
         count: count || 0
       };
     },
@@ -212,8 +215,11 @@ export const useInvoicesLegacy = (filters?: {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
-      return data as InvoiceWithRelations[];
+      if (error) {
+        console.error('useInvoicesLegacy error:', error);
+        return [];
+      }
+      return (data || []) as InvoiceWithRelations[];
     },
   });
 };
@@ -540,8 +546,11 @@ export const useMeterReadings = (contractId?: string) => {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error('useMeterReadings error:', error);
+        return [];
+      }
+      return data || [];
     },
     enabled: !!contractId || contractId === undefined,
   });

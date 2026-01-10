@@ -23,8 +23,8 @@ export const useBuildings = () => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        toast.error("Không thể tải danh sách tòa nhà");
-        throw error;
+        console.error('useBuildings error:', error);
+        return [];
       }
 
       // Transform data to include rooms count
@@ -52,8 +52,8 @@ export const useBuilding = (id: string) => {
         .single();
 
       if (error) {
-        toast.error("Không thể tải thông tin tòa nhà");
-        throw error;
+        console.error('useBuilding error:', error);
+        return null;
       }
 
       return data;

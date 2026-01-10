@@ -41,7 +41,9 @@ type BuildingWithRelations = Database["public"]["Tables"]["buildings"]["Row"] & 
 
 export default function BuildingsPage() {
   const navigate = useNavigate();
-  const { data: buildings, isLoading } = useBuildings();
+  const { data: buildingsData, isLoading } = useBuildings();
+  // DEFENSIVE CHECK: ensure buildings is array
+  const buildings = Array.isArray(buildingsData) ? buildingsData : [];
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -52,13 +54,13 @@ export default function BuildingsPage() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingWithRelations | null>(null);
 
-  // Filter buildings based on search, status, and type
-  const filteredBuildings = buildings?.filter((building) => {
+  // Filter buildings based on search, status, and type - DEFENSIVE CHECK
+  const filteredBuildings = Array.isArray(buildings) ? buildings.filter((building) => {
     const matchesSearch =
       building.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       building.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       building.street_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      building.area?.name.toLowerCase().includes(searchTerm.toLowerCase());
+      building.area?.name?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
       statusFilter === "all" || building.status === statusFilter;
@@ -67,7 +69,7 @@ export default function BuildingsPage() {
       typeFilter === "all" || building.type === typeFilter;
 
     return matchesSearch && matchesStatus && matchesType;
-  });
+  }) : [];
 
   const handleEdit = (building: BuildingWithRelations) => {
     setSelectedBuilding(building);

@@ -65,8 +65,8 @@ const InvoicesPage = () => {
     { page, pageSize }
   );
 
-  // Extract data and count from response
-  const invoices = invoicesData?.data || [];
+  // Extract data and count from response - DEFENSIVE CHECK
+  const invoices = Array.isArray(invoicesData?.data) ? invoicesData.data : [];
   const totalCount = invoicesData?.count || 0;
 
   const approveMutation = useApproveInvoice();
@@ -75,6 +75,8 @@ const InvoicesPage = () => {
 
   // Filter invoices based on search term (client-side for current page)
   const filteredInvoices = useMemo(() => {
+    // Defensive check - ensure invoices is array
+    if (!Array.isArray(invoices)) return [];
     if (!searchTerm) return invoices;
 
     const searchLower = searchTerm.toLowerCase();

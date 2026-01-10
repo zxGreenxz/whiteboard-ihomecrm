@@ -38,29 +38,32 @@ const MeterReadingsPage = () => {
   const { data: allMeterReadings } = useMeterReadings();
   const bulkCreateMutation = useBulkCreateMeterReadings();
 
-  // Active contracts with metered services (electric or water)
-  const activeContractsWithMeters = contracts?.filter((contract) =>
-    contract.contract_services?.some((cs) =>
+  // Active contracts with metered services (electric or water) - DEFENSIVE CHECK
+  const contractsArray = Array.isArray(contracts?.data) ? contracts.data : (Array.isArray(contracts) ? contracts : []);
+  const activeContractsWithMeters = contractsArray.filter((contract: any) =>
+    contract?.contract_services?.some((cs: any) =>
       cs.service?.billing_type === 'METERED'
     )
   );
 
   // Initialize meter inputs from latest readings
   useEffect(() => {
-    if (!activeContractsWithMeters || !allMeterReadings) return;
+    if (!activeContractsWithMeters || activeContractsWithMeters.length === 0) return;
+    // DEFENSIVE CHECK for allMeterReadings
+    const meterReadingsArray = Array.isArray(allMeterReadings) ? allMeterReadings : [];
 
     const inputs: Record<string, MeterInput> = {};
 
-    activeContractsWithMeters.forEach((contract) => {
+    activeContractsWithMeters.forEach((contract: any) => {
       // Get electric service
-      const electricService = contract.contract_services?.find((cs) =>
+      const electricService = contract.contract_services?.find((cs: any) =>
         cs.service?.name?.toLowerCase().includes('điện') || cs.service?.name?.toLowerCase().includes('electric')
       );
 
       if (electricService) {
-        const lastElectricReading = allMeterReadings
-          .filter((r) => r.contract_id === contract.id && r.service_id === electricService.service_id && r.meter_type === 'ELECTRIC')
-          .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
+        const lastElectricReading = meterReadingsArray
+          .filter((r: any) => r.contract_id === contract.id && r.service_id === electricService.service_id && r.meter_type === 'ELECTRIC')
+          .sort((a: any, b: any) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
 
         const previousReading = lastElectricReading?.current_reading || electricService.initial_reading || 0;
 
@@ -76,14 +79,14 @@ const MeterReadingsPage = () => {
       }
 
       // Get water service
-      const waterService = contract.contract_services?.find((cs) =>
+      const waterService = contract.contract_services?.find((cs: any) =>
         cs.service?.name?.toLowerCase().includes('nước') || cs.service?.name?.toLowerCase().includes('water')
       );
 
       if (waterService) {
-        const lastWaterReading = allMeterReadings
-          .filter((r) => r.contract_id === contract.id && r.service_id === waterService.service_id && r.meter_type === 'WATER')
-          .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
+        const lastWaterReading = meterReadingsArray
+          .filter((r: any) => r.contract_id === contract.id && r.service_id === waterService.service_id && r.meter_type === 'WATER')
+          .sort((a: any, b: any) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
 
         const previousReading = lastWaterReading?.current_reading || waterService.initial_reading || 0;
 

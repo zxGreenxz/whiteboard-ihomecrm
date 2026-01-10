@@ -30,8 +30,8 @@ export const useRooms = (buildingId?: string) => {
       const { data, error } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách phòng");
-        throw error;
+        console.error('useRooms error:', error);
+        return [];
       }
 
       return data || [];
@@ -55,8 +55,8 @@ export const useRoom = (id: string) => {
         .single();
 
       if (error) {
-        toast.error("Không thể tải thông tin phòng");
-        throw error;
+        console.error('useRoom error:', error);
+        return null;
       }
 
       return data;

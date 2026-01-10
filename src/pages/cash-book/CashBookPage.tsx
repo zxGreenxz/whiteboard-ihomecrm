@@ -23,14 +23,17 @@ const CashBookPage = () => {
     end: new Date().toISOString().split('T')[0],
   });
 
-  const { data: entries = [], isLoading } = useCashBook(dateRange.start, dateRange.end);
+  // DEFENSIVE CHECK: ensure entries is array
+  const { data: entriesData = [], isLoading } = useCashBook(dateRange.start, dateRange.end);
+  const entries = Array.isArray(entriesData) ? entriesData : [];
   const { data: summary } = useCashBookSummary(dateRange.start, dateRange.end);
 
-  const filteredEntries = entries.filter((entry) => {
+  // DEFENSIVE CHECK: ensure filteredEntries is array
+  const filteredEntries = Array.isArray(entries) ? entries.filter((entry) => {
     if (!searchQuery) return true;
     const search = searchQuery.toLowerCase();
     return entry.description?.toLowerCase()?.includes(search);
-  });
+  }) : [];
 
   // Calculate running balance
   let runningBalance = summary?.openingBalance || 0;

@@ -64,12 +64,14 @@ const ContractsPage = () => {
     { page, pageSize }
   );
 
-  // Extract data and count from response
-  const contracts = contractsData?.data || [];
+  // Extract data and count from response - DEFENSIVE CHECK
+  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
   const totalCount = contractsData?.count || 0;
 
   // Filter contracts based on search term (client-side for small datasets)
   const filteredContracts = useMemo(() => {
+    // Defensive check - ensure contracts is array
+    if (!Array.isArray(contracts)) return [];
     if (!searchTerm) return contracts;
 
     const searchLower = searchTerm.toLowerCase();

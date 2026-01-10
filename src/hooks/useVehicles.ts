@@ -72,11 +72,11 @@ export const useVehicles = (filters?: {
       const { data, error } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách phương tiện");
-        throw error;
+        console.error('useVehicles error:', error);
+        return [];
       }
 
-      return (data as VehicleWithRelations[]) || [];
+      return (data || []) as VehicleWithRelations[];
     },
   });
 };
@@ -111,8 +111,8 @@ export const useVehicle = (id: string) => {
         .single();
 
       if (error) {
-        toast.error("Không thể tải thông tin phương tiện");
-        throw error;
+        console.error('useVehicle error:', error);
+        return null as any; // Return null for single queries
       }
 
       return data as VehicleWithRelations;

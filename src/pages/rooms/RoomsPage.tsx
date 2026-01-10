@@ -53,13 +53,18 @@ export default function RoomsPage() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithBuilding | null>(null);
 
-  const { data: buildings } = useBuildings();
-  const { data: rooms, isLoading } = useRooms(buildingFilter !== "all" ? buildingFilter : undefined);
+  const { data: buildingsData } = useBuildings();
+  // DEFENSIVE CHECK: ensure buildings is array
+  const buildings = Array.isArray(buildingsData) ? buildingsData : [];
+  const { data: roomsData, isLoading } = useRooms(buildingFilter !== "all" ? buildingFilter : undefined);
+  // DEFENSIVE CHECK: ensure rooms is array
+  const rooms = Array.isArray(roomsData) ? roomsData : [];
   const updateStatus = useUpdateRoomStatus();
 
   // Filter and group rooms
   const filteredRooms = useMemo(() => {
-    if (!rooms) return [];
+    // DEFENSIVE CHECK: ensure rooms is array
+    if (!Array.isArray(rooms)) return [];
 
     return rooms.filter((room) => {
       const matchesSearch =

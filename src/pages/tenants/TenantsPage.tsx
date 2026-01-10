@@ -43,13 +43,15 @@ export default function TenantsPage() {
     { page, pageSize }
   );
 
-  // Extract data and count from response
-  const tenants = tenantsData?.data || [];
+  // Extract data and count from response - DEFENSIVE CHECK
+  const tenants = Array.isArray(tenantsData?.data) ? tenantsData.data : [];
   const totalCount = tenantsData?.count || 0;
 
   // Filter tenants based on search (client-side for current page)
   const filteredTenants = useMemo(() => {
-    if (!tenants || tenants.length === 0) return [];
+    // Defensive check - ensure tenants is array
+    if (!Array.isArray(tenants)) return [];
+    if (tenants.length === 0) return [];
 
     if (!searchTerm) return tenants;
 
