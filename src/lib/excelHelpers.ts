@@ -234,6 +234,100 @@ export function exportInvoices(invoices: Array<{
   exportToExcel(invoices, columns, 'danh-sach-hoa-don', 'Hóa đơn');
 }
 
+/**
+ * Export Leads to Excel
+ */
+export function exportLeads(leads: Array<{
+  id: string;
+  customer_name: string;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  status: string;
+  appointment_date: string | null;
+  notes: string | null;
+  created_at: string;
+  room?: { name: string; building?: { name: string } };
+}>): void {
+  const sourceMap: Record<string, string> = {
+    WEBSITE: 'Website',
+    FACEBOOK: 'Facebook',
+    ZALO: 'Zalo',
+    REFERRAL: 'Giới thiệu',
+    WALK_IN: 'Khách đến trực tiếp',
+    OTHER: 'Khác',
+  };
+
+  const statusMap: Record<string, string> = {
+    NEW: 'Mới',
+    CONTACTED: 'Đã liên hệ',
+    VIEWING_SCHEDULED: 'Đã hẹn xem',
+    VIEWED: 'Đã xem phòng',
+    DEPOSITED: 'Đã cọc',
+    CONVERTED: 'Đã chuyển đổi',
+    FAILED: 'Thất bại',
+  };
+
+  const columns: ExportColumn<typeof leads[0]>[] = [
+    { header: 'Tên khách hàng', key: 'customer_name', width: 25 },
+    { header: 'Số điện thoại', key: 'phone', width: 15 },
+    { header: 'Email', key: 'email', width: 25 },
+    { header: 'Nguồn', key: item => sourceMap[item.source || ''] || item.source || '', width: 15 },
+    { header: 'Tòa nhà', key: item => item.room?.building?.name || '', width: 20 },
+    { header: 'Phòng', key: item => item.room?.name || '', width: 15 },
+    { header: 'Ngày hẹn', key: item => item.appointment_date ? new Date(item.appointment_date).toLocaleDateString('vi-VN') : '', width: 15 },
+    { header: 'Trạng thái', key: item => statusMap[item.status] || item.status, width: 15 },
+    { header: 'Ghi chú', key: 'notes', width: 30 },
+    { header: 'Ngày tạo', key: item => new Date(item.created_at).toLocaleDateString('vi-VN'), width: 15 },
+  ];
+
+  exportToExcel(leads, columns, 'danh-sach-khach-hen', 'Khách hẹn');
+}
+
+/**
+ * Export Payments to Excel
+ */
+export function exportPayments(payments: Array<{
+  id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  invoice?: {
+    invoice_number: string | null;
+    contract?: {
+      contract_number: string | null;
+      tenant?: {
+        full_name: string;
+        phone: string | null;
+      };
+    };
+  };
+}>): void {
+  const methodMap: Record<string, string> = {
+    CASH: 'Tiền mặt',
+    BANK_TRANSFER: 'Chuyển khoản',
+    MOMO: 'MoMo',
+    ZALO_PAY: 'ZaloPay',
+    VNPAY: 'VNPay',
+    OTHER: 'Khác',
+  };
+
+  const columns: ExportColumn<typeof payments[0]>[] = [
+    { header: 'Số hóa đơn', key: item => item.invoice?.invoice_number || '', width: 20 },
+    { header: 'Khách thuê', key: item => item.invoice?.contract?.tenant?.full_name || '', width: 25 },
+    { header: 'SĐT', key: item => item.invoice?.contract?.tenant?.phone || '', width: 15 },
+    { header: 'Số tiền', key: item => item.amount.toLocaleString('vi-VN'), width: 15 },
+    { header: 'Ngày thanh toán', key: item => new Date(item.payment_date).toLocaleDateString('vi-VN'), width: 15 },
+    { header: 'Phương thức', key: item => methodMap[item.payment_method || ''] || item.payment_method || '', width: 15 },
+    { header: 'Mã giao dịch', key: 'reference_number', width: 20 },
+    { header: 'Ghi chú', key: 'notes', width: 30 },
+  ];
+
+  exportToExcel(payments, columns, 'danh-sach-thanh-toan', 'Thanh toán');
+}
+
 // =============================================
 // IMPORT FUNCTIONS
 // =============================================

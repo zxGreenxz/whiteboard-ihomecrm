@@ -19,13 +19,15 @@ import {
   exportTenants,
   exportContracts,
   exportInvoices,
+  exportLeads,
+  exportPayments,
 } from '@/lib/excelHelpers';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ExportExcelDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  exportType: 'buildings' | 'rooms' | 'tenants' | 'contracts' | 'invoices';
+  exportType: 'buildings' | 'rooms' | 'tenants' | 'contracts' | 'invoices' | 'leads' | 'payments';
   filters?: Record<string, any>;
 }
 
@@ -60,6 +62,14 @@ const ExportExcelDialog = ({
     invoices: {
       title: 'Xuất danh sách Hóa đơn',
       description: 'Xuất toàn bộ hoặc một phần danh sách hóa đơn ra file Excel',
+    },
+    leads: {
+      title: 'Xuất danh sách Khách hẹn',
+      description: 'Xuất toàn bộ hoặc một phần danh sách khách hẹn ra file Excel',
+    },
+    payments: {
+      title: 'Xuất danh sách Thanh toán',
+      description: 'Xuất toàn bộ hoặc một phần danh sách thanh toán ra file Excel',
     },
   };
 
@@ -116,6 +126,25 @@ const ExportExcelDialog = ({
           .is('deleted_at', null);
         break;
 
+      case 'leads':
+        query = supabase
+          .from('leads')
+          .select(includeRelations
+            ? '*, room:rooms(name, building:buildings(name))'
+            : '*')
+          .eq('user_id', user.id)
+          .is('deleted_at', null);
+        break;
+
+      case 'payments':
+        query = supabase
+          .from('payments')
+          .select(includeRelations
+            ? '*, invoice:invoices(invoice_number, contract:contracts(contract_number, tenant:tenants(full_name, phone)))'
+            : '*')
+          .eq('user_id', user.id);
+        break;
+
       default:
         throw new Error('Invalid export type');
     }
@@ -161,6 +190,12 @@ const ExportExcelDialog = ({
           break;
         case 'invoices':
           exportInvoices(data);
+          break;
+        case 'leads':
+          exportLeads(data);
+          break;
+        case 'payments':
+          exportPayments(data);
           break;
       }
 
@@ -213,7 +248,7 @@ const ExportExcelDialog = ({
           </div>
 
           {/* Include Relations */}
-          {['buildings', 'rooms', 'contracts', 'invoices'].includes(exportType) && (
+          {['buildings', 'rooms', 'contracts', 'invoices', 'leads', 'payments'].includes(exportType) && (
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="includeRelations"

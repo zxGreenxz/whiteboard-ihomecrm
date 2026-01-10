@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, FileText, DollarSign } from "lucide-react";
+import { Plus, Search, FileText, DollarSign, Download } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePayments, usePaymentsSummary } from "@/hooks/usePayments";
 import { CollectPaymentDialog } from "@/components/payments/CollectPaymentDialog";
 import { PaymentReceiptDialog } from "@/components/payments/PaymentReceiptDialog";
+import ExportExcelDialog from "@/components/import-export/ExportExcelDialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { PaymentWithRelations } from "@/hooks/usePayments";
 
@@ -38,6 +39,7 @@ const PAYMENT_METHODS = {
 const PaymentsPage = () => {
   const [collectDialogOpen, setCollectDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentWithRelations | null>(null);
   const [methodFilter, setMethodFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,7 +88,11 @@ const PaymentsPage = () => {
       icon={DollarSign}
     >
       {/* Action Button */}
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-end gap-2 mb-6">
+        <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+          <Download className="w-4 h-4 mr-2" />
+          Xuất Excel
+        </Button>
         <Button onClick={() => setCollectDialogOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Thu tiền
@@ -279,6 +285,12 @@ const PaymentsPage = () => {
           payment={selectedPayment}
         />
       )}
+
+      <ExportExcelDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        exportType="payments"
+      />
     </MainLayout>
   );
 };

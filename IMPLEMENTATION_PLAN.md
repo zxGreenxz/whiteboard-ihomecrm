@@ -898,3 +898,233 @@ supabase/migrations/
    - Detail pages cần hiển thị đầy đủ thông tin liên quan
    - Cần tích hợp các actions (gia hạn, chuyển phòng, thanh lý) vào ContractDetailPage
    - Navigation từ list pages đến detail pages cần được update
+
+---
+
+## Phase 2: Detail Pages - HOÀN THÀNH ✅
+**Ngày hoàn thành:** 08/01/2026
+
+### Những gì đã thực hiện:
+
+#### 1. Task 2.1: Contract Detail Page
+   - **Files đã tạo/sửa:**
+     - `src/pages/contracts/ContractDetailPage.tsx` (NEW) - Chi tiết hợp đồng với 5 tabs
+     - `src/pages/contracts/ContractsPage.tsx` (MODIFIED) - Thêm navigation đến detail
+     - `src/App.tsx` (MODIFIED) - Thêm route `/contracts/:id`
+   - **Thay đổi chính:**
+     - Tạo ContractDetailPage với các tabs: Thông tin chung, Dịch vụ, Hóa đơn, Thanh toán, Lịch sử
+     - Hiển thị thông tin hợp đồng, khách thuê, phòng/giường
+     - Tích hợp các actions: Gia hạn, Chuyển phòng, Đăng ký chuyển đi, Thanh lý
+     - Fetch contract services và contract history từ Supabase
+     - Thêm useNavigate cho ContractsPage "Xem chi tiết"
+
+#### 2. Task 2.2: Tenant Detail Page
+   - **Files đã tạo/sửa:**
+     - `src/pages/tenants/TenantDetailPage.tsx` (NEW) - Chi tiết khách thuê với 4 tabs
+     - `src/pages/tenants/TenantsPage.tsx` (MODIFIED) - Thêm nút Eye và navigation
+     - `src/App.tsx` (MODIFIED) - Thêm route `/tenants/:id`
+   - **Thay đổi chính:**
+     - Tạo TenantDetailPage với các tabs: Thông tin chung, Hợp đồng, Hóa đơn, Xe
+     - Hiển thị thông tin cá nhân, liên hệ, liên hệ khẩn cấp
+     - Financial summary: Tổng hóa đơn, đã thanh toán, còn nợ
+     - Fetch contracts, invoices, vehicles liên quan đến tenant
+     - Thêm nút Eye (xem chi tiết) vào TenantsPage action buttons
+
+#### 3. Task 2.3: Building Detail Page
+   - **Files đã tạo/sửa:**
+     - `src/pages/buildings/BuildingDetailPage.tsx` (NEW) - Chi tiết tòa nhà với 4 tabs
+     - `src/pages/buildings/BuildingsPage.tsx` (MODIFIED) - Thêm nút Eye và navigation
+     - `src/App.tsx` (MODIFIED) - Thêm route `/buildings/:id`
+   - **Thay đổi chính:**
+     - Tạo BuildingDetailPage với các tabs: Thông tin chung, Phòng, Hợp đồng, Hóa đơn
+     - Hiển thị thông tin cơ bản và địa chỉ tòa nhà
+     - Room stats: Tổng phòng, còn trống, đang thuê, bảo trì
+     - Danh sách phòng với navigation đến RoomDetailPage
+     - Danh sách hợp đồng và hóa đơn trong tòa nhà
+     - Thêm nút Eye (xem chi tiết) vào BuildingsPage action buttons
+
+#### 4. Task 2.4: Room Detail Page
+   - **Files đã tạo/sửa:**
+     - `src/pages/rooms/RoomDetailPage.tsx` (NEW) - Chi tiết phòng với 4 tabs
+     - `src/pages/rooms/RoomsPage.tsx` (MODIFIED) - Thêm nút Eye và navigation
+     - `src/App.tsx` (MODIFIED) - Thêm route `/rooms/:id`
+   - **Thay đổi chính:**
+     - Tạo RoomDetailPage với các tabs: Thông tin chung, Khách thuê, Hợp đồng, Hóa đơn
+     - Hiển thị thông tin phòng và thông tin tài chính
+     - Link đến Building detail page
+     - Hiển thị hợp đồng hiện tại (nếu có)
+     - Danh sách khách thuê hiện tại, lịch sử hợp đồng, hóa đơn
+     - Thêm nút Eye (xem chi tiết) vào RoomsPage action buttons
+
+### Kiểm tra so với Plan:
+
+| Task | Plan | Thực tế | Trạng thái |
+|------|------|---------|------------|
+| 2.1 Contract Detail | Tạo page với info, services, payments, history | ✅ 5 tabs: General, Services, Invoices, Payments, History + Actions | ✅ Hoàn thành |
+| 2.2 Tenant Detail | Tạo page với profile, contracts, payments | ✅ 4 tabs: General, Contracts, Invoices, Vehicles + Financial summary | ✅ Hoàn thành |
+| 2.3 Building Detail | Tạo page với rooms, stats | ✅ 4 tabs: General, Rooms, Contracts, Invoices + Room stats | ✅ Hoàn thành |
+| 2.4 Room Detail | Tạo page với tenants, beds, history | ✅ 4 tabs: General, Tenants, Contracts, Invoices + Current contract | ✅ Hoàn thành |
+
+### Vấn đề phát sinh & Cách giải quyết:
+
+1. **Contract fetching for Building:**
+   - Vấn đề: Không thể filter contracts trực tiếp theo building_id
+   - Giải pháp: Join qua rooms table và filter client-side
+
+2. **Invoice fetching with relations:**
+   - Vấn đề: Complex joins cần thiết để lấy tenant và room info
+   - Giải pháp: Sử dụng inner join với contracts và filter theo room_id
+
+3. **Type casting:**
+   - Vấn đề: Supabase select với relations không match với TypeScript types
+   - Giải pháp: Cast sang `unknown` rồi sang target type
+
+### Files tổng cộng đã tạo/sửa trong Phase 2:
+
+**Files mới (4):**
+- `src/pages/contracts/ContractDetailPage.tsx`
+- `src/pages/tenants/TenantDetailPage.tsx`
+- `src/pages/buildings/BuildingDetailPage.tsx`
+- `src/pages/rooms/RoomDetailPage.tsx`
+
+**Files đã sửa (5):**
+- `src/App.tsx` - 4 routes mới + 4 imports mới
+- `src/pages/contracts/ContractsPage.tsx` - useNavigate + navigate handler
+- `src/pages/tenants/TenantsPage.tsx` - useNavigate + Eye button
+- `src/pages/buildings/BuildingsPage.tsx` - useNavigate + Eye button
+- `src/pages/rooms/RoomsPage.tsx` - useNavigate + Eye button
+
+### Chuẩn bị cho Phase tiếp theo (Phase 3: Feature Enhancements):
+
+1. **Task 3.1 Edit Invoice:**
+   - Cần tạo EditInvoiceDialog component
+   - Cần thêm useUpdateInvoice mutation
+   - Update InvoiceDetailPage với nút Edit
+
+2. **Task 3.2 Delete Lead:**
+   - Thêm useDeleteLead mutation
+   - Thêm delete button vào lead cards
+
+3. **Task 3.3 Lead Search:**
+   - Thêm search input vào LeadsPage
+   - Filter leads client-side
+
+4. **Task 3.4 Cancel Invoice:**
+   - Thêm cancel mutation và button
+
+5. **Task 3.5 Export Functions:**
+   - Thêm export cho Tenants, Payments, Leads
+
+---
+
+## Phase 3: Feature Enhancements - HOÀN THÀNH ✅
+**Ngày hoàn thành:** 09/01/2026
+
+### Những gì đã thực hiện:
+
+#### 1. Task 3.1: Edit Invoice
+   - **Files đã tạo/sửa:**
+     - `src/components/invoices/EditInvoiceDialog.tsx` (NEW) - Dialog chỉnh sửa hóa đơn nháp
+     - `src/hooks/useInvoices.ts` (MODIFIED) - Thêm useUpdateInvoice mutation
+     - `src/pages/invoices/InvoiceDetailPage.tsx` (MODIFIED) - Thêm nút Edit và dialog
+   - **Thay đổi chính:**
+     - Tạo EditInvoiceDialog với các field: title, billing period, issue date, due date, notes
+     - Thêm useUpdateInvoice mutation sử dụng Supabase update
+     - Chỉ cho phép chỉnh sửa hóa đơn ở trạng thái DRAFT
+
+#### 2. Task 3.2: Delete Lead
+   - **Files đã tạo/sửa:**
+     - `src/components/leads/LeadCard.tsx` (MODIFIED) - Thêm nút delete
+     - `src/pages/leads/LeadsPage.tsx` (MODIFIED) - Thêm handleDelete function
+   - **Thay đổi chính:**
+     - Thêm nút Trash2 icon vào LeadCard với destructive styling
+     - Thêm onDelete prop vào LeadCard component
+     - Sử dụng useDeleteLead mutation (đã có sẵn trong useLeads.ts)
+     - Confirmation dialog trước khi xóa
+
+#### 3. Task 3.3: Lead Search
+   - **Files đã tạo/sửa:**
+     - `src/pages/leads/LeadsPage.tsx` (MODIFIED) - Thêm search functionality
+   - **Thay đổi chính:**
+     - Thêm searchTerm state và Search input component
+     - Thêm useMemo để filter leads client-side
+     - Tìm kiếm theo: customer_name, phone, email, room name, building name
+
+#### 4. Task 3.4: Cancel Invoice
+   - **Files đã tạo/sửa:**
+     - `src/hooks/useInvoices.ts` (MODIFIED) - Thêm useCancelInvoice mutation
+     - `src/pages/invoices/InvoiceDetailPage.tsx` (MODIFIED) - Thêm nút Cancel
+   - **Thay đổi chính:**
+     - Thêm useCancelInvoice mutation cập nhật status thành CANCELLED
+     - Chỉ cho phép hủy hóa đơn ở trạng thái DRAFT hoặc APPROVED
+     - Thêm nút Cancel với XCircle icon
+
+#### 5. Task 3.5: Export Functions
+   - **Files đã tạo/sửa:**
+     - `src/lib/excelHelpers.ts` (MODIFIED) - Thêm exportLeads và exportPayments functions
+     - `src/components/import-export/ExportExcelDialog.tsx` (MODIFIED) - Thêm leads và payments types
+     - `src/pages/leads/LeadsPage.tsx` (MODIFIED) - Thêm Export button
+     - `src/pages/payments/PaymentsPage.tsx` (MODIFIED) - Thêm Export button
+   - **Thay đổi chính:**
+     - Tạo exportLeads function với columns: name, phone, email, source, building, room, appointment date, status, notes, created date
+     - Tạo exportPayments function với columns: invoice number, tenant, phone, amount, payment date, method, reference number, notes
+     - Mở rộng ExportExcelDialog để hỗ trợ 'leads' và 'payments' export types
+     - Thêm Supabase queries cho leads và payments trong fetchData
+     - Thêm "Xuất Excel" button vào LeadsPage và PaymentsPage
+
+### Kiểm tra so với Plan:
+
+| Task | Plan | Thực tế | Trạng thái |
+|------|------|---------|------------|
+| 3.1 Edit Invoice | Tạo mutation và EditInvoiceDialog | ✅ Đã tạo EditInvoiceDialog + useUpdateInvoice mutation | ✅ Hoàn thành |
+| 3.2 Delete Lead | Thêm useDeleteLead mutation | ✅ Hook đã có sẵn, thêm UI vào LeadCard + LeadsPage | ✅ Hoàn thành |
+| 3.3 Lead Search | Thêm search input, filter client-side | ✅ Đã thêm search với useMemo filtering | ✅ Hoàn thành |
+| 3.4 Cancel Invoice | Thêm CANCELLED status và mutation | ✅ Đã thêm useCancelInvoice + UI button | ✅ Hoàn thành |
+| 3.5 Export Functions | Export cho Tenants, Payments, Leads | ✅ Đã thêm exportLeads, exportPayments + UI buttons | ✅ Hoàn thành |
+
+### Vấn đề phát sinh & Cách giải quyết:
+
+1. **useDeleteLead đã tồn tại:**
+   - Vấn đề: Hook đã được tạo sẵn trong useLeads.ts
+   - Giải pháp: Chỉ cần thêm UI components (delete button) và handlers
+
+2. **Export dialog type safety:**
+   - Vấn đề: Cần mở rộng exportType union type
+   - Giải pháp: Thêm 'leads' | 'payments' vào ExportExcelDialogProps interface
+
+### Files tổng cộng đã tạo/sửa trong Phase 3:
+
+**Files mới (1):**
+- `src/components/invoices/EditInvoiceDialog.tsx`
+
+**Files đã sửa (7):**
+- `src/hooks/useInvoices.ts` - useUpdateInvoice, useCancelInvoice mutations
+- `src/pages/invoices/InvoiceDetailPage.tsx` - Edit, Cancel buttons + dialogs
+- `src/components/leads/LeadCard.tsx` - Delete button + onDelete prop
+- `src/pages/leads/LeadsPage.tsx` - Search input, handleDelete, Export button
+- `src/lib/excelHelpers.ts` - exportLeads, exportPayments functions
+- `src/components/import-export/ExportExcelDialog.tsx` - leads, payments support
+- `src/pages/payments/PaymentsPage.tsx` - Export button
+
+### Build Verification:
+- ✅ `npm run build` thành công (built in 8.86s)
+- ✅ Không có lỗi TypeScript
+
+### Chuẩn bị cho Phase tiếp theo (Phase 4: Advanced Features):
+
+1. **Task 4.1 Drag-and-Drop Kanban:**
+   - Cài đặt @hello-pangea/dnd
+   - Triển khai DragDropContext, Droppable, Draggable cho LeadsPage
+
+2. **Task 4.2 Unit Tests:**
+   - Cài đặt vitest, @testing-library/react
+   - Tạo tests cho hooks và components
+
+3. **Task 4.3 Performance Optimization:**
+   - Lazy loading pages
+   - Virtual scrolling cho large lists
+   - Debounce search inputs
+
+4. **Task 4.4 Database Optimization:**
+   - Thêm indexes cho frequently queried columns
+   - Tạo database views cho reports

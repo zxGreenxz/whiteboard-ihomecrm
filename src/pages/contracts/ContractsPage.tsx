@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +45,7 @@ import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog'
 import { toast } from 'sonner';
 
 const ContractsPage = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
@@ -251,7 +253,7 @@ const ContractsPage = () => {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => {
-                              toast.info('Trang chi tiết hợp đồng đang được phát triển');
+                              navigate(`/contracts/${contract.id}`);
                             }}
                           >
                             <Eye className="h-4 w-4 mr-2" />

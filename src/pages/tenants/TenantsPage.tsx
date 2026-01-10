@@ -15,7 +15,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { CreateTenantDialog } from "@/components/tenants/CreateTenantDialog";
 import { EditTenantDialog } from "@/components/tenants/EditTenantDialog";
 import { DeleteTenantDialog } from "@/components/tenants/DeleteTenantDialog";
@@ -24,6 +25,7 @@ import type { Database } from "@/integrations/supabase/types";
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 
 export default function TenantsPage() {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<string>("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -240,7 +242,16 @@ export default function TenantsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                onClick={() => navigate(`/tenants/${tenant.id}`)}
+                                title="Xem chi tiết"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 onClick={() => handleEdit(tenant)}
+                                title="Chỉnh sửa"
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -248,6 +259,7 @@ export default function TenantsPage() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleDelete(tenant)}
+                                title="Xóa"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>

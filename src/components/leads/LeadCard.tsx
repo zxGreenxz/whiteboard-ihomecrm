@@ -1,7 +1,7 @@
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Phone, Mail, MapPin, Edit, ArrowRight } from "lucide-react";
+import { Phone, Mail, MapPin, Edit, ArrowRight, Trash2 } from "lucide-react";
 import type { LeadWithRelations } from "@/hooks/useLeads";
 import { formatDate } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ interface LeadCardProps {
   lead: LeadWithRelations;
   onEdit: (lead: LeadWithRelations) => void;
   onConvert: (lead: LeadWithRelations) => void;
+  onDelete: (lead: LeadWithRelations) => void;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -20,7 +21,7 @@ const SOURCE_LABELS: Record<string, string> = {
   OTHER: "Khác",
 };
 
-export function LeadCard({ lead, onEdit, onConvert }: LeadCardProps) {
+export function LeadCard({ lead, onEdit, onConvert, onDelete }: LeadCardProps) {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
@@ -87,6 +88,14 @@ export function LeadCard({ lead, onEdit, onConvert }: LeadCardProps) {
             Cọc
           </Button>
         )}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+          onClick={() => onDelete(lead)}
+        >
+          <Trash2 className="w-3 h-3" />
+        </Button>
       </CardFooter>
     </Card>
   );

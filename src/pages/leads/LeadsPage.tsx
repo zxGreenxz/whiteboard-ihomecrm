@@ -1,12 +1,14 @@
-import { useState } from "react";
-import { Plus } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, Search, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useLeads } from "@/hooks/useLeads";
+import { useLeads, useDeleteLead } from "@/hooks/useLeads";
 import { CreateLeadDialog } from "@/components/leads/CreateLeadDialog";
 import { EditLeadDialog } from "@/components/leads/EditLeadDialog";
 import { LeadCard } from "@/components/leads/LeadCard";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
+import ExportExcelDialog from "@/components/import-export/ExportExcelDialog";
 import type { LeadWithRelations } from "@/hooks/useLeads";
 
 const LEAD_STATUSES = [
@@ -21,9 +23,26 @@ const LeadsPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<LeadWithRelations | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { data: leads = [], isLoading } = useLeads();
+  const deleteMutation = useDeleteLead();
+
+  // Filter leads by search term
+  const filteredLeads = useMemo(() => {
+    if (!searchTerm.trim()) return leads;
+    const search = searchTerm.toLowerCase();
+    return leads.filter(
+      (lead) =>
+        lead.customer_name?.toLowerCase().includes(search) ||
+        lead.phone?.toLowerCase().includes(search) ||
+        lead.email?.toLowerCase().includes(search) ||
+        lead.room?.name?.toLowerCase().includes(search) ||
+        lead.room?.building?.name?.toLowerCase().includes(search)
+    );
+  }, [leads, searchTerm]);
 
   const handleEdit = (lead: LeadWithRelations) => {
     setSelectedLead(lead);
@@ -35,8 +54,14 @@ const LeadsPage = () => {
     setConvertDialogOpen(true);
   };
 
+  const handleDelete = (lead: LeadWithRelations) => {
+    if (confirm(`Xác nhận xóa khách hẹn "${lead.customer_name}"?`)) {
+      deleteMutation.mutate(lead.id);
+    }
+  };
+
   const getLeadsByStatus = (status: string) => {
-    return leads.filter((lead) => lead.status === status);
+    return filteredLeads.filter((lead) => lead.status === status);
   };
 
   if (isLoading) {
@@ -59,10 +84,27 @@ const LeadsPage = () => {
             Theo dõi tiến trình khách hàng tiềm năng
           </p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Tạo khách hẹn
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+            <Download className="w-4 h-4 mr-2" />
+            Xuất Excel
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Tạo khách hẹn
+          </Button>
+        </div>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+        <Input
+          placeholder="Tìm kiếm theo tên, SĐT, email, phòng..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
       {/* Stats */}
@@ -100,6 +142,7 @@ const LeadsPage = () => {
                     lead={lead}
                     onEdit={handleEdit}
                     onConvert={handleConvert}
+                    onDelete={handleDelete}
                   />
                 ))}
                 {statusLeads.length === 0 && (
@@ -135,6 +178,12 @@ const LeadsPage = () => {
           />
         </>
       )}
+
+      <ExportExcelDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        exportType="leads"
+      />
     </div>
   );
 };

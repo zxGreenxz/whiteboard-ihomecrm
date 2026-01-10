@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Building2, Upload, Download, MoreHorizontal } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Building2, Upload, Download, MoreHorizontal, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { CreateBuildingDialog } from "@/components/buildings/CreateBuildingDialog";
 import { EditBuildingDialog } from "@/components/buildings/EditBuildingDialog";
 import { DeleteBuildingDialog } from "@/components/buildings/DeleteBuildingDialog";
@@ -38,6 +39,7 @@ type BuildingWithRelations = Database["public"]["Tables"]["buildings"]["Row"] & 
 };
 
 export default function BuildingsPage() {
+  const navigate = useNavigate();
   const { data: buildings, isLoading } = useBuildings();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -244,7 +246,16 @@ export default function BuildingsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => navigate(`/buildings/${building.id}`)}
+                            title="Xem chi tiết"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleEdit(building)}
+                            title="Chỉnh sửa"
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -252,6 +263,7 @@ export default function BuildingsPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(building)}
+                            title="Xóa"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

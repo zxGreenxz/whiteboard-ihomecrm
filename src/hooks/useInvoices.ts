@@ -1105,3 +1105,147 @@ export const useBulkApproveInvoices = () => {
     },
   });
 };
+
+// =============================================
+// Update Invoice (Edit)
+// =============================================
+
+export interface UpdateInvoiceData {
+  id: string;
+  title?: string;
+  billing_period_start?: string;
+  billing_period_end?: string;
+  issue_date?: string;
+  due_date?: string;
+  notes?: string;
+  items?: Array<{
+    id?: string;
+    type: string;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+    service_id?: string;
+  }>;
+}
+
+export const useUpdateInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: UpdateInvoiceData) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { id, items, ...invoiceData } = data;
+
+      // Update invoice
+      const { error: invoiceError } = await supabase
+        .from('invoices')
+        .update(invoiceData)
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .eq('status', 'DRAFT'); // Only allow editing draft invoices
+
+      if (invoiceError) throw invoiceError;
+
+      // If items are provided, update them
+      if (items) {
+        // Delete existing items
+        await supabase
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', id);
+
+        // Calculate new totals
+        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+
+        // Insert new items
+        const invoiceItems = items.map(item => ({
+          invoice_id: id,
+          type: item.type as any,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          amount: item.amount,
+          service_id: item.service_id,
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('invoice_items')
+          .insert(invoiceItems);
+
+        if (itemsError) throw itemsError;
+
+        // Update invoice totals
+        await supabase
+          .from('invoices')
+          .update({
+            subtotal,
+            total_amount: subtotal,
+          })
+          .eq('id', id);
+      }
+
+      return { id };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+
+      toast({
+        title: 'Cập nhật hóa đơn thành công!',
+        description: 'Thông tin hóa đơn đã được cập nhật.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Cập nhật hóa đơn thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Cancel Invoice
+// =============================================
+
+export const useCancelInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: 'CANCELLED' })
+        .eq('id', invoiceId)
+        .eq('user_id', user.id)
+        .in('status', ['DRAFT', 'APPROVED']); // Only allow cancelling draft or approved invoices
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+
+      toast({
+        title: 'Hủy hóa đơn thành công!',
+        description: 'Hóa đơn đã được hủy.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Hủy hóa đơn thất bại',
+        description: error.message,
+      });
+    },
+  });
+};

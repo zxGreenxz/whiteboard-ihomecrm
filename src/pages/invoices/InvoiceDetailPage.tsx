@@ -27,22 +27,27 @@ import {
   AlertCircle,
   Image,
   ExternalLink,
+  Pencil,
+  XCircle,
 } from 'lucide-react';
-import { useInvoice, useApproveInvoice } from '@/hooks/useInvoices';
+import { useInvoice, useApproveInvoice, useCancelInvoice } from '@/hooks/useInvoices';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState } from 'react';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
+import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 
 const InvoiceDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const approveMutation = useApproveInvoice();
+  const cancelMutation = useCancelInvoice();
 
   if (!id) {
     return (
@@ -110,6 +115,12 @@ const InvoiceDetailPage = () => {
     }
   };
 
+  const handleCancel = () => {
+    if (confirm('Xác nhận hủy hóa đơn này? Hành động này không thể hoàn tác.')) {
+      cancelMutation.mutate(invoice.id);
+    }
+  };
+
   return (
     <MainLayout
       title={`Hóa đơn ${invoice.title || invoice.id.slice(0, 8)}`}
@@ -129,13 +140,33 @@ const InvoiceDetailPage = () => {
         <div className="flex-1" />
 
         {invoice.status === 'DRAFT' && (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(true)}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Chỉnh sửa
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleApprove}
+              disabled={approveMutation.isPending}
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              {approveMutation.isPending ? 'Đang duyệt...' : 'Duyệt hóa đơn'}
+            </Button>
+          </>
+        )}
+
+        {(invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
           <Button
-            variant="default"
-            onClick={handleApprove}
-            disabled={approveMutation.isPending}
+            variant="destructive"
+            onClick={handleCancel}
+            disabled={cancelMutation.isPending}
           >
-            <CheckCircle className="h-4 w-4 mr-2" />
-            {approveMutation.isPending ? 'Đang duyệt...' : 'Duyệt hóa đơn'}
+            <XCircle className="h-4 w-4 mr-2" />
+            {cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
           </Button>
         )}
 
@@ -413,6 +444,13 @@ const InvoiceDetailPage = () => {
       <PrintInvoiceDialog
         open={printDialogOpen}
         onOpenChange={setPrintDialogOpen}
+        invoice={invoice}
+      />
+
+      {/* Edit Dialog */}
+      <EditInvoiceDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
         invoice={invoice}
       />
     </MainLayout>

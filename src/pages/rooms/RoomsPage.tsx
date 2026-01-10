@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Home, RefreshCw, Layers, Upload, Download, MoreHorizontal } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Home, RefreshCw, Layers, Upload, Download, MoreHorizontal, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { CreateRoomDialog } from "@/components/rooms/CreateRoomDialog";
 import { EditRoomDialog } from "@/components/rooms/EditRoomDialog";
 import { DeleteRoomDialog } from "@/components/rooms/DeleteRoomDialog";
@@ -39,6 +40,7 @@ type RoomWithBuilding = Database["public"]["Tables"]["rooms"]["Row"] & {
 };
 
 export default function RoomsPage() {
+  const navigate = useNavigate();
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -291,7 +293,16 @@ export default function RoomsPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  onClick={() => navigate(`/rooms/${room.id}`)}
+                                  title="Xem chi tiết"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   onClick={() => handleEdit(room)}
+                                  title="Chỉnh sửa"
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -299,6 +310,7 @@ export default function RoomsPage() {
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => handleDelete(room)}
+                                  title="Xóa"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>

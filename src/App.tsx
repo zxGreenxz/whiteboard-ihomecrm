@@ -19,7 +19,9 @@ import NotFound from "./pages/NotFound";
 // Master Data Pages
 import AreasPage from "./pages/areas/AreasPage";
 import BuildingsPage from "./pages/buildings/BuildingsPage";
+import BuildingDetailPage from "./pages/buildings/BuildingDetailPage";
 import RoomsPage from "./pages/rooms/RoomsPage";
+import RoomDetailPage from "./pages/rooms/RoomDetailPage";
 import BedsPage from "./pages/beds/BedsPage";
 import ServicesPage from "./pages/services/ServicesPage";
 
@@ -27,7 +29,9 @@ import ServicesPage from "./pages/services/ServicesPage";
 import LeadsPage from "./pages/leads/LeadsPage";
 import DepositsPage from "./pages/deposits/DepositsPage";
 import ContractsPage from "./pages/contracts/ContractsPage";
+import ContractDetailPage from "./pages/contracts/ContractDetailPage";
 import TenantsPage from "./pages/tenants/TenantsPage";
+import TenantDetailPage from "./pages/tenants/TenantDetailPage";
 import VehiclesPage from "./pages/vehicles/VehiclesPage";
 
 // Finance Pages
@@ -143,7 +147,9 @@ const App = () => (
           {/* Master Data Routes */}
           <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
           <Route path="/buildings" element={<ProtectedRoute><BuildingsPage /></ProtectedRoute>} />
+          <Route path="/buildings/:id" element={<ProtectedRoute><BuildingDetailPage /></ProtectedRoute>} />
           <Route path="/rooms" element={<ProtectedRoute><RoomsPage /></ProtectedRoute>} />
+          <Route path="/rooms/:id" element={<ProtectedRoute><RoomDetailPage /></ProtectedRoute>} />
           <Route path="/beds" element={<ProtectedRoute><BedsPage /></ProtectedRoute>} />
           <Route path="/services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
 
@@ -151,7 +157,9 @@ const App = () => (
           <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
           <Route path="/deposits" element={<ProtectedRoute><DepositsPage /></ProtectedRoute>} />
           <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
+          <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetailPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
+          <Route path="/tenants/:id" element={<ProtectedRoute><TenantDetailPage /></ProtectedRoute>} />
           <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
 
           {/* Finance Routes */}
