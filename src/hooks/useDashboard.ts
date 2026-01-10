@@ -254,7 +254,7 @@ export const useAlerts = () => {
         .from("invoices")
         .select("id, title, due_date, total_amount, paid_amount, contract:contracts(tenant:tenants(full_name))")
         .eq("user_id", user.id)
-        .in("status", ["UNPAID", "PARTIAL_PAID"])
+        .in("status", ["APPROVED", "PARTIAL_PAID"])
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
         .limit(5);

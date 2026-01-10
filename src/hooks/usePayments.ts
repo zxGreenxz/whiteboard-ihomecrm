@@ -147,7 +147,7 @@ export const useCreatePayment = () => {
         const newPaidAmount = (invoice.paid_amount || 0) + (data.amount || 0);
         const status =
           newPaidAmount >= invoice.total_amount ? "PAID" :
-          newPaidAmount > 0 ? "PARTIAL_PAID" : "UNPAID";
+          newPaidAmount > 0 ? "PARTIAL_PAID" : "APPROVED";
 
         await supabase
           .from("invoices")

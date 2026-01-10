@@ -30,7 +30,7 @@ export function DebtChart() {
           .from("invoices")
           .select("total_amount, paid_amount")
           .eq("user_id", user.id)
-          .in("status", ["UNPAID", "PARTIAL_PAID"])
+          .in("status", ["APPROVED", "PARTIAL_PAID"])
           .gte("due_date", monthStart.toISOString())
           .lte("due_date", monthEnd.toISOString());
 
