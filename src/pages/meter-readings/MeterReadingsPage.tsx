@@ -54,7 +54,7 @@ const MeterReadingsPage = () => {
     activeContractsWithMeters.forEach((contract) => {
       // Get electric service
       const electricService = contract.contract_services?.find((cs) =>
-        cs.service?.name.toLowerCase().includes('điện') || cs.service?.name.toLowerCase().includes('electric')
+        cs.service?.name?.toLowerCase().includes('điện') || cs.service?.name?.toLowerCase().includes('electric')
       );
 
       if (electricService) {
@@ -77,7 +77,7 @@ const MeterReadingsPage = () => {
 
       // Get water service
       const waterService = contract.contract_services?.find((cs) =>
-        cs.service?.name.toLowerCase().includes('nước') || cs.service?.name.toLowerCase().includes('water')
+        cs.service?.name?.toLowerCase().includes('nước') || cs.service?.name?.toLowerCase().includes('water')
       );
 
       if (waterService) {

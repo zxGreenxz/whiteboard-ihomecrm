@@ -75,10 +75,10 @@ const ContractsPage = () => {
     const searchLower = searchTerm.toLowerCase();
     return contracts.filter((contract) => (
       contract.contract_number?.toLowerCase().includes(searchLower) ||
-      contract.tenant?.full_name.toLowerCase().includes(searchLower) ||
-      contract.tenant?.phone.includes(searchTerm) ||
-      contract.room?.name.toLowerCase().includes(searchLower) ||
-      contract.bed?.name.toLowerCase().includes(searchLower)
+      contract.tenant?.full_name?.toLowerCase().includes(searchLower) ||
+      contract.tenant?.phone?.includes(searchTerm) ||
+      contract.room?.name?.toLowerCase().includes(searchLower) ||
+      contract.bed?.name?.toLowerCase().includes(searchLower)
     ));
   }, [contracts, searchTerm]);
 

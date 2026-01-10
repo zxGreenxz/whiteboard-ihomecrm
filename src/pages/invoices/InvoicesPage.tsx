@@ -81,8 +81,8 @@ const InvoicesPage = () => {
     return invoices.filter((invoice) => (
       invoice.title?.toLowerCase().includes(searchLower) ||
       invoice.contract?.contract_number?.toLowerCase().includes(searchLower) ||
-      invoice.contract?.tenant?.full_name.toLowerCase().includes(searchLower) ||
-      invoice.contract?.tenant?.phone.includes(searchTerm)
+      invoice.contract?.tenant?.full_name?.toLowerCase().includes(searchLower) ||
+      invoice.contract?.tenant?.phone?.includes(searchTerm)
     ));
   }, [invoices, searchTerm]);
 

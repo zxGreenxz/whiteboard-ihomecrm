@@ -29,7 +29,7 @@ const CashBookPage = () => {
   const filteredEntries = entries.filter((entry) => {
     if (!searchQuery) return true;
     const search = searchQuery.toLowerCase();
-    return entry.description.toLowerCase().includes(search);
+    return entry.description?.toLowerCase()?.includes(search);
   });
 
   // Calculate running balance
