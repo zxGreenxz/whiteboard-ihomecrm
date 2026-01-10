@@ -74,7 +74,8 @@ export default function TenantsPage() {
 
   // Count tenants by status (for display on current page)
   const tenantCounts = useMemo(() => {
-    if (!tenants) return { all: totalCount, PROSPECT: 0, DEPOSITED: 0, ACTIVE: 0, MOVED_OUT: 0, BLACKLISTED: 0 };
+    // DEFENSIVE CHECK: ensure tenants is array
+    if (!Array.isArray(tenants)) return { all: totalCount, PROSPECT: 0, DEPOSITED: 0, ACTIVE: 0, MOVED_OUT: 0, BLACKLISTED: 0 };
 
     return {
       all: totalCount,

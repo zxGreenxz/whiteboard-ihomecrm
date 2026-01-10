@@ -418,7 +418,7 @@ const InvoicesPage = () => {
       </div>
 
       {/* Summary Stats */}
-      {totalCount > 0 && (
+      {totalCount > 0 && Array.isArray(invoices) && (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Tổng hóa đơn</div>

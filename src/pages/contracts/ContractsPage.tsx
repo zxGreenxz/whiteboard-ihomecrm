@@ -333,7 +333,7 @@ const ContractsPage = () => {
       </div>
 
       {/* Summary Stats */}
-      {totalCount > 0 && (
+      {totalCount > 0 && Array.isArray(contracts) && (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">Tổng hợp đồng</div>
