@@ -1,4 +1,5 @@
 import { Home, Building2, DoorOpen } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -66,6 +67,7 @@ export default function VacantRoomsReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Phòng trống"
       description="Danh sách các phòng hiện đang trống và sẵn sàng cho thuê"
@@ -164,5 +166,6 @@ export default function VacantRoomsReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

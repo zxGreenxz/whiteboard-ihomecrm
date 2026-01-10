@@ -1,4 +1,5 @@
 import { Building2, Home, FileText, TrendingUp, Tag, PlusCircle, XCircle, Activity, RefreshCw } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,17 +73,18 @@ const reports = [
 
 const RealEstateReportsPage = () => {
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Building2 className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Báo cáo Bất động sản</h1>
-          <p className="text-muted-foreground">
-            8 loại báo cáo phân tích và thống kê về bất động sản
-          </p>
+    <MainLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <Building2 className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Báo cáo Bất động sản</h1>
+            <p className="text-muted-foreground">
+              8 loại báo cáo phân tích và thống kê về bất động sản
+            </p>
+          </div>
         </div>
-      </div>
 
       {/* Reports Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -111,19 +113,20 @@ const RealEstateReportsPage = () => {
         })}
       </div>
 
-      {/* Info Card */}
-      <Card className="border-blue-200 bg-blue-50/50">
-        <CardHeader>
-          <CardTitle className="text-base">Hướng dẫn sử dụng</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>• Chọn một trong 8 loại báo cáo bất động sản ở trên</p>
-          <p>• Sử dụng bộ lọc để tùy chỉnh dữ liệu báo cáo</p>
-          <p>• Xuất báo cáo dưới định dạng Excel, PDF hoặc CSV</p>
-          <p>• Dữ liệu được cập nhật real-time từ hệ thống</p>
-        </CardContent>
-      </Card>
-    </div>
+        {/* Info Card */}
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardHeader>
+            <CardTitle className="text-base">Hướng dẫn sử dụng</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>• Chọn một trong 8 loại báo cáo bất động sản ở trên</p>
+            <p>• Sử dụng bộ lọc để tùy chỉnh dữ liệu báo cáo</p>
+            <p>• Xuất báo cáo dưới định dạng Excel, PDF hoặc CSV</p>
+            <p>• Dữ liệu được cập nhật real-time từ hệ thống</p>
+          </CardContent>
+        </Card>
+      </div>
+    </MainLayout>
   );
 };
 

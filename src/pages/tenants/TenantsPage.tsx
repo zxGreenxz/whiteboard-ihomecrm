@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useTenants } from "@/hooks/useTenants";
 import { usePagination, calculatePaginationInfo } from "@/hooks/usePagination";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
@@ -133,21 +134,27 @@ export default function TenantsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Users className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Quản lý Khách thuê</h1>
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Users className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Quản lý Khách thuê</h1>
+              <p className="text-sm text-muted-foreground">Quản lý thông tin và trạng thái khách thuê</p>
+            </div>
+          </div>
+          <Button onClick={() => setCreateDialogOpen(true)} className="shadow-sm">
+            <Plus className="mr-2 h-4 w-4" />
+            Tạo khách thuê
+          </Button>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tạo khách thuê
-        </Button>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách Khách thuê</CardTitle>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Danh sách Khách thuê</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Search */}
@@ -310,6 +317,7 @@ export default function TenantsPage() {
           />
         </>
       )}
-    </div>
+      </div>
+    </MainLayout>
   );
 }

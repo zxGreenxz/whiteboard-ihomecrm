@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Search, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,29 +69,32 @@ const CashBookPage = () => {
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Đang tải...</p>
+      <MainLayout>
+        <div className="p-6">
+          <div className="flex items-center justify-center h-96">
+            <p className="text-muted-foreground">Đang tải...</p>
+          </div>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Sổ quỹ</h1>
-          <p className="text-muted-foreground mt-1">
-            Theo dõi thu chi và số dư quỹ tiền mặt
-          </p>
+    <MainLayout>
+      <div className="p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Sổ quỹ</h1>
+            <p className="text-muted-foreground mt-1">
+              Theo dõi thu chi và số dư quỹ tiền mặt
+            </p>
+          </div>
+          <Button onClick={handleExport}>
+            <Download className="w-4 h-4 mr-2" />
+            Xuất Excel
+          </Button>
         </div>
-        <Button onClick={handleExport}>
-          <Download className="w-4 h-4 mr-2" />
-          Xuất Excel
-        </Button>
-      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -272,8 +276,9 @@ const CashBookPage = () => {
             </TableRow>
           </TableBody>
         </Table>
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </MainLayout>
   );
 };
 

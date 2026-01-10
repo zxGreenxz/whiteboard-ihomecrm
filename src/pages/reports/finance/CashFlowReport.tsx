@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { TrendingUp, ArrowUpCircle, ArrowDownCircle, Activity } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -69,6 +70,7 @@ export default function CashFlowReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Dòng tiền"
       description="Phân tích dòng tiền vào/ra và xu hướng"
@@ -112,5 +114,6 @@ export default function CashFlowReport() {
         </div>
       )}
     </ReportLayout>
+    </MainLayout>
   );
 }

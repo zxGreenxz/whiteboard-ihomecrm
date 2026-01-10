@@ -1,4 +1,5 @@
 import { Users, TrendingUp, CheckCircle2, AlertCircle } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -65,6 +66,7 @@ export default function TasksByStaffReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Công việc theo Nhân viên"
       description="Phân bổ và hiệu suất công việc theo nhân viên"
@@ -132,5 +134,6 @@ export default function TasksByStaffReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

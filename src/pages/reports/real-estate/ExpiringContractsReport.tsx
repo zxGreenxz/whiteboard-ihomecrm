@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { FileText, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -81,6 +82,7 @@ export default function ExpiringContractsReport() {
   };
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Hợp đồng sắp hết hạn"
       description="Danh sách hợp đồng sẽ hết hạn trong thời gian tới"
@@ -178,5 +180,6 @@ export default function ExpiringContractsReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

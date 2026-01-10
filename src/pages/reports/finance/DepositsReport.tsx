@@ -1,4 +1,5 @@
 import { Wallet, DollarSign, Clock, CheckCircle2 } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -70,6 +71,7 @@ export default function DepositsReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Tiền cọc"
       description="Quản lý danh sách tiền cọc khách hàng"
@@ -150,5 +152,6 @@ export default function DepositsReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

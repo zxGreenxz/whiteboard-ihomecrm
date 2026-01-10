@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useBeds } from "@/hooks/useBeds";
 import { useRooms } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -126,31 +127,34 @@ export default function BedsPage() {
   // Show message if no DORMITORY or SLEEPBOX buildings
   if (!dormitoryBuildings || dormitoryBuildings.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <BedIcon className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Quản lý Giường</h1>
+      <MainLayout>
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <BedIcon className="h-8 w-8" />
+            <h1 className="text-3xl font-bold">Quản lý Giường</h1>
+          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-12 text-muted-foreground">
+                <BedIcon className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                <p className="text-lg">Quản lý giường chỉ khả dụng cho Ký túc xá và Sleepbox.</p>
+                <p className="text-sm mt-2">
+                  Vui lòng tạo tòa nhà loại "Ký túc xá" hoặc "Sleepbox" để sử dụng tính năng này.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-12 text-muted-foreground">
-              <BedIcon className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p className="text-lg">Quản lý giường chỉ khả dụng cho Ký túc xá và Sleepbox.</p>
-              <p className="text-sm mt-2">
-                Vui lòng tạo tòa nhà loại "Ký túc xá" hoặc "Sleepbox" để sử dụng tính năng này.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <BedIcon className="h-8 w-8" />
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <BedIcon className="h-8 w-8" />
           <h1 className="text-3xl font-bold">Quản lý Giường</h1>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
@@ -310,6 +314,7 @@ export default function BedsPage() {
           />
         </>
       )}
-    </div>
+      </div>
+    </MainLayout>
   );
 }

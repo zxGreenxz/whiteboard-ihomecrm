@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MainLayout from "@/components/layout/MainLayout";
 import { Settings, Building, FileText, DollarSign, Bell, Save } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -106,29 +107,32 @@ const GeneralSettingsPage = () => {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <p className="text-center text-muted-foreground">Đang tải cài đặt...</p>
-      </div>
+      <MainLayout>
+        <div className="container mx-auto p-6">
+          <p className="text-center text-muted-foreground">Đang tải cài đặt...</p>
+        </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center">
-          <Settings className="h-5 w-5 text-gray-600" />
+    <MainLayout>
+      <div className="container mx-auto p-6 max-w-6xl">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center">
+            <Settings className="h-5 w-5 text-gray-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Cài đặt chung</h1>
+            <p className="text-sm text-muted-foreground">
+              Quản lý thông tin công ty và cấu hình hệ thống
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">Cài đặt chung</h1>
-          <p className="text-sm text-muted-foreground">
-            Quản lý thông tin công ty và cấu hình hệ thống
-          </p>
-        </div>
-      </div>
 
-      {/* Settings Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        {/* Settings Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="company">
             <Building className="h-4 w-4 mr-2" />
@@ -770,8 +774,9 @@ const GeneralSettingsPage = () => {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
-    </div>
+        </Tabs>
+      </div>
+    </MainLayout>
   );
 };
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { RefreshCw, FileEdit, ArrowRightLeft, TrendingUp } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -81,6 +82,7 @@ export default function ContractChangesReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Thay đổi hợp đồng"
       description="Danh sách các thay đổi: gia hạn, chuyển nhượng, điều chỉnh"
@@ -166,5 +168,6 @@ export default function ContractChangesReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

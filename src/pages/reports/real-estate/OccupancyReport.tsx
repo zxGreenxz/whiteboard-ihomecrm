@@ -1,4 +1,5 @@
 import { Building2, Home, DoorOpen, Wrench, TrendingUp } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -69,6 +70,7 @@ export default function OccupancyReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Tỷ lệ lấp đầy"
       description="Thống kê tỷ lệ lấp đầy và phân tích theo tòa nhà"
@@ -196,5 +198,6 @@ export default function OccupancyReport() {
         </div>
       )}
     </ReportLayout>
+    </MainLayout>
   );
 }

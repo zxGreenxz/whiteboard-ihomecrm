@@ -39,7 +39,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+    <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
       <div className="flex h-16 items-center px-4 gap-4">
         {/* Mobile Menu Button */}
         <Button
@@ -53,10 +53,13 @@ const Header = ({ onMenuClick }: HeaderProps) => {
 
         {/* Logo */}
         <div className="flex items-center gap-2 font-semibold">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+          <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shadow-sm">
             <Building2 className="h-5 w-5 text-white" />
           </div>
-          <span className="hidden sm:inline-block text-lg">iHomeCRM</span>
+          <div className="hidden sm:flex sm:flex-col">
+            <span className="text-lg font-bold text-primary">iHomeCRM</span>
+            <span className="text-[10px] text-muted-foreground -mt-1">Quản lý bất động sản</span>
+          </div>
         </div>
 
         {/* Spacer */}
@@ -70,10 +73,10 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-10 gap-2 px-2">
-                <Avatar className="h-8 w-8">
+              <Button variant="ghost" className="relative h-10 gap-2 px-2 hover:bg-accent">
+                <Avatar className="h-8 w-8 ring-2 ring-primary/20">
                   <AvatarImage src={profile?.avatar_url || undefined} />
-                  <AvatarFallback className="bg-primary text-white text-xs">
+                  <AvatarFallback className="bg-primary text-white text-xs font-semibold">
                     {getUserInitials()}
                   </AvatarFallback>
                 </Avatar>

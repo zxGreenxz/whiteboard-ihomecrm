@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useAreas } from "@/hooks/useAreas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,9 +81,10 @@ export default function AreasPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Quản lý Khu vực</h1>
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Quản lý Khu vực</h1>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Tạo khu vực
@@ -201,6 +203,7 @@ export default function AreasPage() {
           />
         </>
       )}
-    </div>
+      </div>
+    </MainLayout>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { PieChart as PieChartIcon, TrendingUp, DollarSign, Percent } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -70,6 +71,7 @@ export default function ProfitDistributionReport() {
   }));
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Phân bổ lợi nhuận"
       description="Phân tích cấu trúc doanh thu và lợi nhuận"
@@ -147,5 +149,6 @@ export default function ProfitDistributionReport() {
         </div>
       )}
     </ReportLayout>
+    </MainLayout>
   );
 }

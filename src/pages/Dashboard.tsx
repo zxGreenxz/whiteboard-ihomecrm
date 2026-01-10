@@ -23,21 +23,31 @@ const Dashboard = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Chào mừng bạn đến với iHomeCRM - Hệ thống quản lý bất động sản
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              Chào mừng bạn đến với iHomeCRM - Hệ thống quản lý bất động sản
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/reports/real-estate">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Xem báo cáo
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Total Rooms */}
-          <Card>
+          <Card className="border-l-4 border-l-primary hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Tổng số phòng</CardTitle>
-              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <Home className="h-5 w-5 text-blue-600" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Tổng số phòng</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Home className="h-5 w-5 text-primary" />
               </div>
             </CardHeader>
             <CardContent>
@@ -45,9 +55,9 @@ const Dashboard = () => {
                 <Skeleton className="h-8 w-16" />
               ) : (
                 <>
-                  <div className="text-2xl font-bold">{stats?.totalRooms || 0}</div>
+                  <div className="text-3xl font-bold text-foreground">{stats?.totalRooms || 0}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {stats?.availableRooms || 0} phòng còn trống
+                    <span className="text-primary font-medium">{stats?.availableRooms || 0}</span> phòng còn trống
                   </p>
                 </>
               )}
@@ -55,11 +65,11 @@ const Dashboard = () => {
           </Card>
 
           {/* Occupied Rooms */}
-          <Card>
+          <Card className="border-l-4 border-l-emerald-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Phòng đã cho thuê</CardTitle>
-              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-green-600" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Phòng đã cho thuê</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                <Building2 className="h-5 w-5 text-emerald-600" />
               </div>
             </CardHeader>
             <CardContent>
@@ -67,9 +77,9 @@ const Dashboard = () => {
                 <Skeleton className="h-8 w-16" />
               ) : (
                 <>
-                  <div className="text-2xl font-bold">{stats?.occupiedRooms || 0}</div>
+                  <div className="text-3xl font-bold text-foreground">{stats?.occupiedRooms || 0}</div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Tỷ lệ lấp đầy {stats?.occupancyRate.toFixed(1) || 0}%
+                    Tỷ lệ lấp đầy <span className="text-emerald-600 font-medium">{stats?.occupancyRate.toFixed(1) || 0}%</span>
                   </p>
                 </>
               )}
@@ -77,11 +87,11 @@ const Dashboard = () => {
           </Card>
 
           {/* Revenue This Month */}
-          <Card>
+          <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Doanh thu tháng này</CardTitle>
-              <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                <DollarSign className="h-5 w-5 text-emerald-600" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Doanh thu tháng này</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <DollarSign className="h-5 w-5 text-blue-600" />
               </div>
             </CardHeader>
             <CardContent>
@@ -89,11 +99,11 @@ const Dashboard = () => {
                 <Skeleton className="h-8 w-24" />
               ) : (
                 <>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold text-foreground">
                     {formatCurrency(stats?.revenueThisMonth || 0)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {stats?.newContractsThisMonth || 0} hợp đồng mới
+                    <span className="text-blue-600 font-medium">{stats?.newContractsThisMonth || 0}</span> hợp đồng mới
                   </p>
                 </>
               )}
@@ -101,9 +111,9 @@ const Dashboard = () => {
           </Card>
 
           {/* Total Debt */}
-          <Card>
+          <Card className="border-l-4 border-l-orange-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium">Tổng công nợ</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Tổng công nợ</CardTitle>
               <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
                 <AlertTriangle className="h-5 w-5 text-orange-600" />
               </div>
@@ -117,7 +127,7 @@ const Dashboard = () => {
                     {formatCurrency(stats?.totalDebt || 0)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {stats?.unresolvedIssues || 0} sự cố chưa xử lý
+                    <span className="text-orange-600 font-medium">{stats?.unresolvedIssues || 0}</span> sự cố chưa xử lý
                   </p>
                 </>
               )}
@@ -136,18 +146,18 @@ const Dashboard = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight">Báo cáo & Phân tích</h2>
-              <p className="text-muted-foreground">Truy cập 19 loại báo cáo chuyên sâu</p>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Báo cáo & Phân tích</h2>
+              <p className="text-sm text-muted-foreground">Truy cập 19 loại báo cáo chuyên sâu</p>
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Real Estate Reports */}
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader>
+            <Card className="group hover:shadow-lg transition-all hover:border-primary/30 cursor-pointer">
+              <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <Building2 className="h-6 w-6 text-blue-600" />
+                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <Building2 className="h-6 w-6 text-primary" />
                   </div>
                   <div>
                     <CardTitle className="text-lg">Báo cáo BĐS</CardTitle>
@@ -159,7 +169,7 @@ const Dashboard = () => {
                 <p className="text-sm text-muted-foreground mb-4">
                   Phòng trống, hợp đồng, tỷ lệ lấp đầy, khuyến mại và nhiều hơn nữa
                 </p>
-                <Button asChild variant="outline" className="w-full group">
+                <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-white transition-colors">
                   <Link to="/reports/real-estate" className="flex items-center justify-between">
                     <span>Xem báo cáo</span>
                     <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -169,11 +179,11 @@ const Dashboard = () => {
             </Card>
 
             {/* Finance Reports */}
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader>
+            <Card className="group hover:shadow-lg transition-all hover:border-emerald-500/30 cursor-pointer">
+              <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center">
-                    <Wallet className="h-6 w-6 text-green-600" />
+                  <div className="h-12 w-12 rounded-xl bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                    <Wallet className="h-6 w-6 text-emerald-600" />
                   </div>
                   <div>
                     <CardTitle className="text-lg">Báo cáo Tài chính</CardTitle>
@@ -185,7 +195,7 @@ const Dashboard = () => {
                 <p className="text-sm text-muted-foreground mb-4">
                   Sổ quỹ, dòng tiền, công nợ, thanh toán và phân tích lợi nhuận
                 </p>
-                <Button asChild variant="outline" className="w-full group">
+                <Button asChild variant="outline" className="w-full group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                   <Link to="/reports/finance" className="flex items-center justify-between">
                     <span>Xem báo cáo</span>
                     <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -195,10 +205,10 @@ const Dashboard = () => {
             </Card>
 
             {/* Task Reports */}
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader>
+            <Card className="group hover:shadow-lg transition-all hover:border-purple-500/30 cursor-pointer">
+              <CardHeader className="pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">
+                  <div className="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
                     <CheckSquare className="h-6 w-6 text-purple-600" />
                   </div>
                   <div>
@@ -211,7 +221,7 @@ const Dashboard = () => {
                 <p className="text-sm text-muted-foreground mb-4">
                   Tổng quan, phân tích theo nhân viên và theo từng phòng
                 </p>
-                <Button asChild variant="outline" className="w-full group">
+                <Button asChild variant="outline" className="w-full group-hover:bg-purple-600 group-hover:text-white transition-colors">
                   <Link to="/reports/tasks" className="flex items-center justify-between">
                     <span>Xem báo cáo</span>
                     <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />

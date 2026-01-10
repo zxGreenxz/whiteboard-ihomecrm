@@ -1,4 +1,5 @@
 import { Tag, TrendingDown, Gift, DollarSign } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -72,6 +73,7 @@ export default function PromotionsReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Khuyến mại"
       description="Danh sách các chương trình khuyến mại và ưu đãi"
@@ -151,5 +153,6 @@ export default function PromotionsReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

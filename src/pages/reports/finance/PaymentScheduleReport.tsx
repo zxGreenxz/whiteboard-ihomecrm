@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Calendar, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -74,6 +75,7 @@ export default function PaymentScheduleReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Lịch thanh toán"
       description="Lịch hóa đơn đến hạn và quá hạn"
@@ -150,5 +152,6 @@ export default function PaymentScheduleReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

@@ -1,4 +1,5 @@
 import { AlertCircle, Clock, DollarSign, TrendingDown } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -88,6 +89,7 @@ export default function DebtReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Công nợ"
       description="Phân tích công nợ theo tuổi nợ và khách hàng"
@@ -182,5 +184,6 @@ export default function DebtReport() {
         </div>
       )}
     </ReportLayout>
+    </MainLayout>
   );
 }

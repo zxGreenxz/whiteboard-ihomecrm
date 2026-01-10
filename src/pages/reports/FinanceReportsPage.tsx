@@ -1,4 +1,5 @@
 import { DollarSign, Book, TrendingUp, AlertCircle, Users, Calendar, PlusCircle, Wallet, PieChart } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,17 +73,18 @@ const reports = [
 
 const FinanceReportsPage = () => {
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <DollarSign className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
-          <p className="text-muted-foreground">
-            8 loại báo cáo phân tích tài chính và dòng tiền
-          </p>
+    <MainLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <DollarSign className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
+            <p className="text-muted-foreground">
+              8 loại báo cáo phân tích tài chính và dòng tiền
+            </p>
+          </div>
         </div>
-      </div>
 
       {/* Reports Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -111,20 +113,21 @@ const FinanceReportsPage = () => {
         })}
       </div>
 
-      {/* Info Card */}
-      <Card className="border-green-200 bg-green-50/50">
-        <CardHeader>
-          <CardTitle className="text-base">Hướng dẫn sử dụng</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>• Chọn một trong 8 loại báo cáo tài chính ở trên</p>
-          <p>• Sử dụng bộ lọc ngày tháng để phân tích theo kỳ</p>
-          <p>• Xem biểu đồ trực quan cho dòng tiền, công nợ, phân bổ lợi nhuận</p>
-          <p>• Xuất báo cáo dưới định dạng Excel, PDF hoặc CSV</p>
-          <p>• Dữ liệu real-time từ hệ thống thanh toán</p>
-        </CardContent>
-      </Card>
-    </div>
+        {/* Info Card */}
+        <Card className="border-green-200 bg-green-50/50">
+          <CardHeader>
+            <CardTitle className="text-base">Hướng dẫn sử dụng</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>• Chọn một trong 8 loại báo cáo tài chính ở trên</p>
+            <p>• Sử dụng bộ lọc ngày tháng để phân tích theo kỳ</p>
+            <p>• Xem biểu đồ trực quan cho dòng tiền, công nợ, phân bổ lợi nhuận</p>
+            <p>• Xuất báo cáo dưới định dạng Excel, PDF hoặc CSV</p>
+            <p>• Dữ liệu real-time từ hệ thống thanh toán</p>
+          </CardContent>
+        </Card>
+      </div>
+    </MainLayout>
   );
 };
 

@@ -1,4 +1,5 @@
 import { PlusCircle, DollarSign, Users, TrendingUp } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -69,6 +70,7 @@ export default function OverpaymentReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Tiền thừa"
       description="Danh sách khách hàng thanh toán thừa"
@@ -133,5 +135,6 @@ export default function OverpaymentReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

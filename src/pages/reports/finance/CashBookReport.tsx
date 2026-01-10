@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Book, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -79,6 +80,7 @@ export default function CashBookReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Sổ quỹ tiền mặt"
       description="Sổ quỹ chi tiết theo ngày với số dư tích lũy"
@@ -146,5 +148,6 @@ export default function CashBookReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

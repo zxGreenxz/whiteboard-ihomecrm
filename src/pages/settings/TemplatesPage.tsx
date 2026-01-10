@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import {
   FileText,
   Plus,
@@ -91,38 +92,41 @@ const TemplatesPage = () => {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6 max-w-7xl">
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Đang tải...</p>
+      <MainLayout>
+        <div className="container mx-auto p-6 max-w-7xl">
+          <div className="flex items-center justify-center h-64">
+            <p className="text-muted-foreground">Đang tải...</p>
+          </div>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-            <FileText className="h-5 w-5 text-purple-600" />
+    <MainLayout>
+      <div className="container mx-auto p-6 max-w-7xl">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Mẫu biểu</h1>
+              <p className="text-sm text-muted-foreground">
+                Quản lý mẫu hợp đồng, hóa đơn và biên lai
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">Mẫu biểu</h1>
-            <p className="text-sm text-muted-foreground">
-              Quản lý mẫu hợp đồng, hóa đơn và biên lai
-            </p>
-          </div>
-        </div>
 
-        <Button
-          onClick={() => setCreateDialogOpen(true)}
-          className="bg-green-600 hover:bg-green-700"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Thêm mẫu
-        </Button>
-      </div>
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Thêm mẫu
+          </Button>
+        </div>
 
       {/* Search */}
       <Card className="mb-6">
@@ -276,12 +280,13 @@ const TemplatesPage = () => {
         template={selectedTemplate}
       />
 
-      <DeleteTemplateDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        template={selectedTemplate}
-      />
-    </div>
+        <DeleteTemplateDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          template={selectedTemplate}
+        />
+      </div>
+    </MainLayout>
   );
 };
 

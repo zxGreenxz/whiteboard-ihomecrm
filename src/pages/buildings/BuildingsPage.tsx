@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useBuildings } from "@/hooks/useBuildings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,16 +116,22 @@ export default function BuildingsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Building2 className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Quản lý Tòa nhà</h1>
-        </div>
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Building2 className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Quản lý Tòa nhà</h1>
+              <p className="text-sm text-muted-foreground">Quản lý danh sách và thông tin tòa nhà</p>
+            </div>
+          </div>
         <div className="flex gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" className="shadow-sm">
                 <MoreHorizontal className="h-4 w-4 mr-2" />
                 Thêm
               </Button>
@@ -140,16 +147,16 @@ export default function BuildingsPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={() => setCreateDialogOpen(true)}>
+          <Button onClick={() => setCreateDialogOpen(true)} className="shadow-sm">
             <Plus className="mr-2 h-4 w-4" />
             Tạo tòa nhà
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách Tòa nhà</CardTitle>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Danh sách Tòa nhà</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Search and Filters */}
@@ -315,6 +322,7 @@ export default function BuildingsPage() {
         onOpenChange={setExportDialogOpen}
         exportType="buildings"
       />
-    </div>
+      </div>
+    </MainLayout>
   );
 }

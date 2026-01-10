@@ -1,4 +1,5 @@
 import { CheckSquare, ClipboardCheck, AlertTriangle, Clock, Percent } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -68,6 +69,7 @@ export default function TasksOverviewReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Tổng quan Công việc"
       description="Thống kê và phân tích tổng quan công việc"
@@ -136,5 +138,6 @@ export default function TasksOverviewReport() {
         </div>
       )}
     </ReportLayout>
+    </MainLayout>
   );
 }

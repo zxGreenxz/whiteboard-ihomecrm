@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MainLayout from "@/components/layout/MainLayout";
 import { Bell, CheckCheck, Trash2, Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -136,8 +137,9 @@ const NotificationsPage = () => {
     ];
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      {/* Header */}
+    <MainLayout>
+      <div className="container mx-auto p-6 max-w-4xl">
+        {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -297,8 +299,9 @@ const NotificationsPage = () => {
             </Card>
           ))
         )}
+        </div>
       </div>
-    </div>
+    </MainLayout>
   );
 };
 

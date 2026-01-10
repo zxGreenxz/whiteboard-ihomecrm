@@ -1,4 +1,5 @@
 import { DollarSign, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -73,6 +74,7 @@ export default function PriceHistoryReport() {
   ) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Lịch sử giá"
       description="Lịch sử thay đổi giá thuê theo thời gian"
@@ -192,5 +194,6 @@ export default function PriceHistoryReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

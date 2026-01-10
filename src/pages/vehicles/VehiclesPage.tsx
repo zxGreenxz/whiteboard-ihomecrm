@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Plus, Search, Car } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,17 +75,20 @@ const VehiclesPage = () => {
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Đang tải...</p>
+      <MainLayout>
+        <div className="p-6">
+          <div className="flex items-center justify-center h-96">
+            <p className="text-muted-foreground">Đang tải...</p>
+          </div>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
+    <MainLayout>
+      <div className="p-6 space-y-6">
+        {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Quản lý Phương tiện</h1>
@@ -284,7 +288,8 @@ const VehiclesPage = () => {
           vehicle={selectedVehicle}
         />
       )}
-    </div>
+      </div>
+    </MainLayout>
   );
 };
 

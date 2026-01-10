@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useServices } from "@/hooks/useServices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,10 +96,11 @@ export default function ServicesPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Wrench className="h-8 w-8" />
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Wrench className="h-8 w-8" />
           <h1 className="text-3xl font-bold">Quản lý Dịch vụ</h1>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
@@ -250,6 +252,7 @@ export default function ServicesPage() {
           />
         </>
       )}
-    </div>
+      </div>
+    </MainLayout>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { FileCheck, Plus, TrendingUp, DollarSign } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -81,6 +82,7 @@ export default function NewLeasesReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Cho thuê mới"
       description="Danh sách hợp đồng cho thuê mới được ký trong kỳ"
@@ -162,5 +164,6 @@ export default function NewLeasesReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

@@ -1,4 +1,5 @@
 import { Home, Wrench, CheckCircle2, Clock } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -62,6 +63,7 @@ export default function TasksByRoomReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Công việc theo Phòng"
       description="Lịch sử bảo trì và sửa chữa theo từng phòng"
@@ -129,5 +131,6 @@ export default function TasksByRoomReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

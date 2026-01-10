@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Plus, Search, Download } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,35 +67,36 @@ const LeadsPage = () => {
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <MainLayout>
         <div className="flex items-center justify-center h-96">
           <p className="text-muted-foreground">Đang tải...</p>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Quản lý Khách hẹn</h1>
-          <p className="text-muted-foreground mt-1">
-            Theo dõi tiến trình khách hàng tiềm năng
-          </p>
+    <MainLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Quản lý Khách hẹn</h1>
+            <p className="text-muted-foreground mt-1">
+              Theo dõi tiến trình khách hàng tiềm năng
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+              <Download className="w-4 h-4 mr-2" />
+              Xuất Excel
+            </Button>
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Tạo khách hẹn
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
-            <Download className="w-4 h-4 mr-2" />
-            Xuất Excel
-          </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Tạo khách hẹn
-          </Button>
-        </div>
-      </div>
 
       {/* Search Bar */}
       <div className="relative max-w-md">
@@ -184,7 +186,8 @@ const LeadsPage = () => {
         onOpenChange={setExportDialogOpen}
         exportType="leads"
       />
-    </div>
+      </div>
+    </MainLayout>
   );
 };
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { XCircle, AlertCircle, Clock, TrendingDown } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
@@ -75,6 +76,7 @@ export default function TerminationsReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Hợp đồng kết thúc"
       description="Danh sách hợp đồng đã kết thúc hoặc bị hủy"
@@ -162,5 +164,6 @@ export default function TerminationsReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

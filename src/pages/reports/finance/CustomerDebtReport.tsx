@@ -1,4 +1,5 @@
 import { Users, AlertTriangle, DollarSign, FileText } from "lucide-react";
+import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -69,6 +70,7 @@ export default function CustomerDebtReport() {
   })) || [];
 
   return (
+    <MainLayout>
     <ReportLayout
       title="Báo cáo Khách nợ tiền"
       description="Danh sách khách hàng có công nợ"
@@ -138,5 +140,6 @@ export default function CustomerDebtReport() {
         </CardContent>
       </Card>
     </ReportLayout>
+    </MainLayout>
   );
 }

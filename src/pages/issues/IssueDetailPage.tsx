@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, User, MapPin, Calendar, DollarSign, Clock, CheckCircle2, Star, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -62,11 +63,13 @@ const IssueDetailPage = () => {
 
   if (isLoading || !issue) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Đang tải...</p>
+      <MainLayout>
+        <div className="p-6">
+          <div className="flex items-center justify-center h-96">
+            <p className="text-muted-foreground">Đang tải...</p>
+          </div>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
@@ -82,8 +85,9 @@ const IssueDetailPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
+    <MainLayout>
+      <div className="p-6 space-y-6">
+        {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/issues")}>
@@ -352,7 +356,8 @@ const IssueDetailPage = () => {
         currentRating={issue.rating}
         currentFeedback={issue.feedback}
       />
-    </div>
+      </div>
+    </MainLayout>
   );
 };
 

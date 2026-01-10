@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import MainLayout from "@/components/layout/MainLayout";
 import { useRooms, useUpdateRoomStatus } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
 import { Button } from "@/components/ui/button";
@@ -139,16 +140,22 @@ export default function RoomsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Home className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Quản lý Phòng</h1>
-        </div>
+    <MainLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Home className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Quản lý Phòng</h1>
+              <p className="text-sm text-muted-foreground">Quản lý danh sách phòng và trạng thái cho thuê</p>
+            </div>
+          </div>
         <div className="flex gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" className="shadow-sm">
                 <MoreHorizontal className="h-4 w-4 mr-2" />
                 Thêm
               </Button>
@@ -164,20 +171,20 @@ export default function RoomsPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" onClick={() => setBulkCreateDialogOpen(true)}>
+          <Button variant="outline" onClick={() => setBulkCreateDialogOpen(true)} className="shadow-sm">
             <Layers className="mr-2 h-4 w-4" />
             Tạo hàng loạt
           </Button>
-          <Button onClick={() => setCreateDialogOpen(true)}>
+          <Button onClick={() => setCreateDialogOpen(true)} className="shadow-sm">
             <Plus className="mr-2 h-4 w-4" />
             Tạo phòng
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách Phòng</CardTitle>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Danh sách Phòng</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Search and Filters */}
@@ -369,6 +376,7 @@ export default function RoomsPage() {
         onOpenChange={setExportDialogOpen}
         exportType="rooms"
       />
-    </div>
+      </div>
+    </MainLayout>
   );
 }

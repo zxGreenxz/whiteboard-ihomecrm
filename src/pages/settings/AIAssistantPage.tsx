@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import MainLayout from "@/components/layout/MainLayout";
 import { Bot, Plus, Search, Archive, Pin, Trash2, MoreVertical, Send, Loader2, AlertCircle, Book, X, Settings, Sparkles, MessageSquare, Brain, Zap, Stars } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -165,32 +166,35 @@ const AIAssistantPage = () => {
   // Show error if tables don't exist
   if (tablesNotExist) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Cần chạy Database Migration</AlertTitle>
-          <AlertDescription className="mt-2 space-y-2">
-            <p>
-              Các bảng AI Assistant chưa được tạo trong database. Vui lòng chạy migration sau:
-            </p>
-            <ol className="list-decimal list-inside space-y-1 mt-2">
-              <li>Vào Supabase Dashboard → SQL Editor</li>
-              <li>Copy nội dung file: <code className="bg-muted px-1 py-0.5 rounded">supabase/migrations/026_ai_assistant_tables.sql</code></li>
-              <li>Paste vào SQL Editor và chạy</li>
-              <li>Refresh lại trang này</li>
-            </ol>
-            <p className="mt-4 text-sm">
-              <strong>Lỗi chi tiết:</strong> {conversationsError?.message}
-            </p>
-          </AlertDescription>
-        </Alert>
-      </div>
+      <MainLayout>
+        <div className="container mx-auto p-6 max-w-4xl">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Cần chạy Database Migration</AlertTitle>
+            <AlertDescription className="mt-2 space-y-2">
+              <p>
+                Các bảng AI Assistant chưa được tạo trong database. Vui lòng chạy migration sau:
+              </p>
+              <ol className="list-decimal list-inside space-y-1 mt-2">
+                <li>Vào Supabase Dashboard → SQL Editor</li>
+                <li>Copy nội dung file: <code className="bg-muted px-1 py-0.5 rounded">supabase/migrations/026_ai_assistant_tables.sql</code></li>
+                <li>Paste vào SQL Editor và chạy</li>
+                <li>Refresh lại trang này</li>
+              </ol>
+              <p className="mt-4 text-sm">
+                <strong>Lỗi chi tiết:</strong> {conversationsError?.message}
+              </p>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 dark:from-gray-950 dark:via-purple-950/20 dark:to-blue-950/20">
-      <div className="container mx-auto p-6 max-w-full h-[calc(100vh-4rem)]">
+    <MainLayout>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 dark:from-gray-950 dark:via-purple-950/20 dark:to-blue-950/20">
+        <div className="container mx-auto p-6 max-w-full h-[calc(100vh-4rem)]">
         {/* Animated Header with Gradients */}
         <div className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-blue-600 to-pink-600 p-6 shadow-2xl">
           {/* Animated background effect */}
@@ -742,9 +746,10 @@ const AIAssistantPage = () => {
               </CardContent>
             </Card>
           </TabsContent>
-        </Tabs>
+          </Tabs>
+        </div>
       </div>
-    </div>
+    </MainLayout>
   );
 };
 

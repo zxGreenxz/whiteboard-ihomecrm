@@ -164,10 +164,10 @@ const Sidebar = ({ className }: SidebarProps) => {
     return (
       <Link key={item.href} to={item.href}>
         <Button
-          variant={active ? 'secondary' : 'ghost'}
+          variant="ghost"
           className={cn(
-            'w-full justify-start gap-2',
-            active && 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary'
+            'w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            active && 'bg-sidebar-accent text-sidebar-primary font-medium'
           )}
         >
           <Icon className="h-4 w-4" />
@@ -192,8 +192,8 @@ const Sidebar = ({ className }: SidebarProps) => {
           <Button
             variant="ghost"
             className={cn(
-              'w-full justify-between gap-2',
-              hasActiveItem && 'text-primary'
+              'w-full justify-between gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+              hasActiveItem && 'text-sidebar-primary'
             )}
           >
             <div className="flex items-center gap-2">
@@ -218,7 +218,7 @@ const Sidebar = ({ className }: SidebarProps) => {
   return (
     <aside
       className={cn(
-        'flex flex-col border-r bg-white w-64 h-[calc(100vh-4rem)]',
+        'flex flex-col w-64 h-[calc(100vh-4rem)] bg-sidebar text-sidebar-foreground',
         className
       )}
     >
@@ -231,9 +231,9 @@ const Sidebar = ({ className }: SidebarProps) => {
       </ScrollArea>
 
       {/* Footer info */}
-      <div className="border-t p-3">
-        <div className="text-xs text-muted-foreground">
-          <p className="font-medium">iHomeCRM v1.0.0</p>
+      <div className="border-t border-sidebar-border p-3">
+        <div className="text-xs text-sidebar-foreground/70">
+          <p className="font-medium text-sidebar-foreground">iHomeCRM v1.0.0</p>
           <p>Quản lý bất động sản</p>
         </div>
       </div>
