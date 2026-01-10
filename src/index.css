@@ -38,21 +38,21 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
-    --sidebar-background: 160 40% 15%;
+    --sidebar-background: var(--background);
 
-    --sidebar-foreground: 160 10% 90%;
+    --sidebar-foreground: var(--foreground);
 
-    --sidebar-primary: 152 69% 45%;
+    --sidebar-primary: var(--primary);
 
-    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-primary-foreground: var(--primary-foreground);
 
-    --sidebar-accent: 160 30% 20%;
+    --sidebar-accent: var(--accent);
 
-    --sidebar-accent-foreground: 160 10% 95%;
+    --sidebar-accent-foreground: var(--accent-foreground);
 
-    --sidebar-border: 160 30% 20%;
+    --sidebar-border: var(--border);
 
-    --sidebar-ring: 152 69% 45%;
+    --sidebar-ring: var(--ring);
   }
 
   .dark {
@@ -86,7 +86,7 @@ All colors MUST be HSL.
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-accent: 240 3.7% 15.9%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
