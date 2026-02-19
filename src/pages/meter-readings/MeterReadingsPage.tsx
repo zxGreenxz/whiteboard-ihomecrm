@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Gauge, Zap, Droplet, Save, History, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useContracts } from '@/hooks/useContracts';
+import { useContractsLegacy } from '@/hooks/useContracts';
 import { useMeterReadings, useBulkCreateMeterReadings, type BulkMeterReadingData } from '@/hooks/useInvoices';
 import MeterReadingHistoryDialog from '@/components/meter-readings/MeterReadingHistoryDialog';
 import { format } from 'date-fns';
@@ -34,12 +34,12 @@ const MeterReadingsPage = () => {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
 
-  const { data: contracts, isLoading: contractsLoading } = useContracts({ status: 'ACTIVE' });
+  const { data: contracts, isLoading: contractsLoading } = useContractsLegacy({ status: 'ACTIVE' });
   const { data: allMeterReadings } = useMeterReadings();
   const bulkCreateMutation = useBulkCreateMeterReadings();
 
-  // Active contracts with metered services (electric or water) - DEFENSIVE CHECK
-  const contractsArray = Array.isArray(contracts?.data) ? contracts.data : (Array.isArray(contracts) ? contracts : []);
+  // Active contracts with metered services (electric or water)
+  const contractsArray = contracts || [];
   const activeContractsWithMeters = contractsArray.filter((contract: any) =>
     contract?.contract_services?.some((cs: any) =>
       cs.service?.billing_type === 'METERED'

@@ -25,7 +25,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Sparkles, AlertCircle, CheckCircle2, Building2 } from 'lucide-react';
 import { useAutoGenerateInvoices, type AutoGenerateInvoicesData, type InvoiceGenerationType } from '@/hooks/useInvoices';
-import { useContracts } from '@/hooks/useContracts';
+import { useContractsLegacy } from '@/hooks/useContracts';
 import { useBuildings } from '@/hooks/useBuildings';
 import { format, startOfMonth, endOfMonth, addDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -57,7 +57,7 @@ const AutoGenerateInvoicesDialog = ({
   const [invoiceType, setInvoiceType] = useState<InvoiceGenerationType>('RENT_AND_SERVICE');
 
   const generateMutation = useAutoGenerateInvoices();
-  const { data: contracts } = useContracts({ status: 'ACTIVE' });
+  const { data: contracts } = useContractsLegacy({ status: 'ACTIVE' });
   const { data: buildings } = useBuildings();
   const { data: invoiceConfig } = useInvoiceConfig();
 

@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateIssue, useIssueCategories } from "@/hooks/useIssues";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useContracts } from "@/hooks/useContracts";
+import { useContractsLegacy } from "@/hooks/useContracts";
 import { useState } from "react";
 
 const issueSchema = z.object({
@@ -37,7 +37,7 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
   const { data: categories = [] } = useIssueCategories();
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms();
-  const { data: contracts = [] } = useContracts({ status: "ACTIVE" });
+  const { data: contracts = [] } = useContractsLegacy({ status: "ACTIVE" });
 
   const form = useForm<IssueFormValues>({
     resolver: zodResolver(issueSchema),

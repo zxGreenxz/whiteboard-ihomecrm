@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateInvoice } from '@/hooks/useInvoices';
-import { useContracts } from '@/hooks/useContracts';
+import { useContractsLegacy } from '@/hooks/useContracts';
 import { useMeterReadings } from '@/hooks/useInvoices';
 import { useVehicles } from '@/hooks/useVehicles';
 import { Receipt, Plus, Trash2, Home, Zap, Droplet } from 'lucide-react';
@@ -59,7 +59,7 @@ type GenerateInvoiceFormData = z.infer<typeof generateInvoiceSchema>;
 const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProps) => {
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const createMutation = useCreateInvoice();
-  const { data: contracts } = useContracts({ status: 'ACTIVE' });
+  const { data: contracts } = useContractsLegacy({ status: 'ACTIVE' });
   const { data: meterReadings } = useMeterReadings(selectedContractId);
   const { data: vehicles } = useVehicles({ contract_id: selectedContractId });
 

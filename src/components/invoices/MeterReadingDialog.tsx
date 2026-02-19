@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useRecordMeterReading, useMeterReadings } from '@/hooks/useInvoices';
-import { useContracts } from '@/hooks/useContracts';
+import { useContractsLegacy } from '@/hooks/useContracts';
 import { Gauge, Zap, Droplet } from 'lucide-react';
 
 interface MeterReadingDialogProps {
@@ -47,7 +47,7 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
 
   const recordMutation = useRecordMeterReading();
-  const { data: contracts } = useContracts({ status: 'ACTIVE' });
+  const { data: contracts } = useContractsLegacy({ status: 'ACTIVE' });
   const { data: previousReadings } = useMeterReadings(selectedContractId);
 
   const {

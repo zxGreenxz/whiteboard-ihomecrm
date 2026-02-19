@@ -7,7 +7,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { useCreateAssetHandover } from "@/hooks/useAssets";
-import { useContracts } from "@/hooks/useContracts";
+import { useContractsLegacy } from "@/hooks/useContracts";
 import { supabase } from "@/integrations/supabase/client";
 
 const handoverSchema = z.object({
@@ -26,7 +26,7 @@ interface AssetHandoverDialogProps {
 
 export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogProps) {
   const createHandover = useCreateAssetHandover();
-  const { data: contracts = [] } = useContracts();
+  const { data: contracts = [] } = useContractsLegacy();
 
   const form = useForm<HandoverFormValues>({
     resolver: zodResolver(handoverSchema),
