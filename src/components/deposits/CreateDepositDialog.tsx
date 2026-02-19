@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useCreateDeposit } from "@/hooks/useDeposits";
-import { useCreateTenant, useTenants } from "@/hooks/useTenants";
+import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useBeds } from "@/hooks/useBeds";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -58,7 +58,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   const [createNewTenant, setCreateNewTenant] = useState(false);
   const createDeposit = useCreateDeposit();
   const createTenant = useCreateTenant();
-  const { data: tenants = [] } = useTenants();
+  const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
   const { data: beds = [] } = useBeds();
 

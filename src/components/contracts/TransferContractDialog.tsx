@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTransferContract } from '@/hooks/useContracts';
-import { useTenants } from '@/hooks/useTenants';
+import { useTenantsLegacy } from '@/hooks/useTenants';
 import { useRooms } from '@/hooks/useRooms';
 import { useBeds } from '@/hooks/useBeds';
 import { ArrowRightLeft } from 'lucide-react';
@@ -50,7 +50,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract }: TransferContra
   const [transferType, setTransferType] = useState<'TENANT_CHANGE' | 'ROOM_CHANGE' | 'BOTH_CHANGE'>('ROOM_CHANGE');
   const transferMutation = useTransferContract();
 
-  const { data: tenants } = useTenants();
+  const { data: tenants } = useTenantsLegacy();
   const { data: rooms } = useRooms();
   const { data: beds } = useBeds();
 

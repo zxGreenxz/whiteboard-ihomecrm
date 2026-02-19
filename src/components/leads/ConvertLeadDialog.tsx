@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { useConvertLeadToDeposit, type LeadWithRelations } from "@/hooks/useLeads";
 import { useCreateDeposit } from "@/hooks/useDeposits";
 import { useCreateTenant } from "@/hooks/useTenants";
-import { useTenants } from "@/hooks/useTenants";
+import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useBeds } from "@/hooks/useBeds";
 
@@ -60,7 +60,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
   const convertLead = useConvertLeadToDeposit();
   const createDeposit = useCreateDeposit();
   const createTenant = useCreateTenant();
-  const { data: tenants = [] } = useTenants();
+  const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
   const { data: beds = [] } = useBeds();
 

@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useCreateContract, useUploadContractFile } from '@/hooks/useContracts';
-import { useTenants } from '@/hooks/useTenants';
+import { useTenantsLegacy } from '@/hooks/useTenants';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useBeds } from '@/hooks/useBeds';
@@ -114,7 +114,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const createContractMutation = useCreateContract();
   const createAssetHandoverMutation = useCreateAssetHandover();
   const uploadFileMutation = useUploadContractFile();
-  const { data: tenants } = useTenants();
+  const { data: tenants } = useTenantsLegacy();
   const { data: buildings } = useBuildings();
   const { data: allRooms } = useRooms(); // Load all rooms
   const { data: allBeds } = useBeds(); // Load all beds

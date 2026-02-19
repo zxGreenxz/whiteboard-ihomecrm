@@ -8,8 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateVehicle } from "@/hooks/useVehicles";
-import { useTenants } from "@/hooks/useTenants";
-import { useContracts } from "@/hooks/useContracts";
+import { useTenantsLegacy } from "@/hooks/useTenants";
+import { useContractsLegacy } from "@/hooks/useContracts";
 
 const vehicleSchema = z.object({
   tenant_id: z.string().min(1, "Phải chọn khách thuê"),
@@ -32,8 +32,8 @@ interface CreateVehicleDialogProps {
 
 export function CreateVehicleDialog({ open, onOpenChange }: CreateVehicleDialogProps) {
   const createVehicle = useCreateVehicle();
-  const { data: tenants = [] } = useTenants();
-  const { data: contracts = [] } = useContracts();
+  const { data: tenants = [] } = useTenantsLegacy();
+  const { data: contracts = [] } = useContractsLegacy();
 
   const form = useForm<VehicleFormValues>({
     resolver: zodResolver(vehicleSchema),

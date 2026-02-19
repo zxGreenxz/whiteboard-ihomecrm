@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useUpdateVehicle, useDeleteVehicle, type VehicleWithRelations } from "@/hooks/useVehicles";
-import { useTenants } from "@/hooks/useTenants";
-import { useContracts } from "@/hooks/useContracts";
+import { useTenantsLegacy } from "@/hooks/useTenants";
+import { useContractsLegacy } from "@/hooks/useContracts";
 
 const vehicleSchema = z.object({
   tenant_id: z.string().min(1, "Phải chọn khách thuê"),
@@ -37,8 +37,8 @@ export function EditVehicleDialog({ open, onOpenChange, vehicle }: EditVehicleDi
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const updateVehicle = useUpdateVehicle();
   const deleteVehicle = useDeleteVehicle();
-  const { data: tenants = [] } = useTenants();
-  const { data: contracts = [] } = useContracts();
+  const { data: tenants = [] } = useTenantsLegacy();
+  const { data: contracts = [] } = useContractsLegacy();
 
   const form = useForm<VehicleFormValues>({
     resolver: zodResolver(vehicleSchema),
