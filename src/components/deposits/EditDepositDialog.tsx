@@ -29,7 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateDeposit, useDeleteDeposit, type DepositWithRelations } from "@/hooks/useDeposits";
-import { useTenants } from "@/hooks/useTenants";
+import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useBeds } from "@/hooks/useBeds";
 import {
@@ -67,7 +67,7 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const updateDeposit = useUpdateDeposit();
   const deleteDeposit = useDeleteDeposit();
-  const { data: tenants = [] } = useTenants();
+  const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
   const { data: beds = [] } = useBeds();
 
