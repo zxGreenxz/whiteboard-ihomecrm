@@ -5,6 +5,12 @@ on:
     branches: [main, master]
     paths:
       - 'supabase/migrations/**'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Run migrations manually'
+        required: true
+        default: 'yes'
 
 jobs:
   migrate:
