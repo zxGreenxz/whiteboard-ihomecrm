@@ -151,6 +151,58 @@ export interface TerminateContractData {
 }
 
 // =============================================
+// Shared query builder helpers
+// =============================================
+
+const BASE_SELECT = `
+  *,
+  tenant:tenants!contracts_tenant_id_fkey (
+    id, full_name, phone, email
+  ),
+  room:rooms!contracts_room_id_fkey (
+    id, name, code,
+    building:buildings!rooms_building_id_fkey (
+      id, name, code
+    )
+  ),
+  bed:beds!contracts_bed_id_fkey (
+    id, name, code,
+    room:rooms!beds_room_id_fkey (
+      id, name,
+      building:buildings!rooms_building_id_fkey (
+        id, name
+      )
+    )
+  )
+`;
+
+const BASE_SELECT_WITH_TENANTS = `
+  ${BASE_SELECT},
+  contract_tenants (
+    id, tenant_id, is_representative, move_in_date,
+    tenant:tenants (
+      id, full_name, phone, email
+    )
+  )
+`;
+
+const applyContractFilters = (query: any, filters?: ContractFilters) => {
+  if (filters?.status) {
+    query = query.eq('status', filters.status as any);
+  }
+  if (filters?.tenant_id) {
+    query = query.eq('tenant_id', filters.tenant_id);
+  }
+  if (filters?.room_id) {
+    query = query.eq('room_id', filters.room_id);
+  }
+  if (filters?.bed_id) {
+    query = query.eq('bed_id', filters.bed_id);
+  }
+  return query;
+};
+
+// =============================================
 // Get All Contracts (with optional pagination)
 // =============================================
 
@@ -164,70 +216,39 @@ export const useContracts = (
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Build the select query with count
-      let query = supabase
-        .from('contracts')
-        .select(`
-          *,
-          tenant:tenants!contracts_tenant_id_fkey (
-            id, full_name, phone, email
-          ),
-          room:rooms!contracts_room_id_fkey (
-            id, name, code,
-            building:buildings!rooms_building_id_fkey (
-              id, name, code
-            )
-          ),
-          bed:beds!contracts_bed_id_fkey (
-            id, name, code,
-            room:rooms!beds_room_id_fkey (
-              id, name,
-              building:buildings!rooms_building_id_fkey (
-                id, name
-              )
-            )
-          ),
-          contract_tenants (
-            id, tenant_id, is_representative, move_in_date,
-            tenant:tenants (
-              id, full_name, phone, email
-            )
-          )
-        `, { count: 'exact' })
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      // Try with contract_tenants first, fallback without if table doesn't exist
+      for (const selectQuery of [BASE_SELECT_WITH_TENANTS, BASE_SELECT]) {
+        let query = supabase
+          .from('contracts')
+          .select(selectQuery, { count: 'exact' })
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      // Apply filters
-      if (filters?.status) {
-        query = query.eq('status', filters.status as any);
-      }
-      if (filters?.tenant_id) {
-        query = query.eq('tenant_id', filters.tenant_id);
-      }
-      if (filters?.room_id) {
-        query = query.eq('room_id', filters.room_id);
-      }
-      if (filters?.bed_id) {
-        query = query.eq('bed_id', filters.bed_id);
+        query = applyContractFilters(query, filters);
+
+        if (pagination?.page && pagination?.pageSize) {
+          const offset = (pagination.page - 1) * pagination.pageSize;
+          query = query.range(offset, offset + pagination.pageSize - 1);
+        }
+
+        const { data, error, count } = await query;
+        if (error) {
+          // If error is about contract_tenants table, retry without it
+          if (selectQuery === BASE_SELECT_WITH_TENANTS && error.message?.includes('contract_tenants')) {
+            console.warn('contract_tenants table not found, retrying without it');
+            continue;
+          }
+          console.error('useContracts error:', error);
+          return { data: [], count: 0 };
+        }
+
+        return {
+          data: (data || []) as ContractWithRelations[],
+          count: count || 0
+        };
       }
 
-      // Apply pagination if provided
-      if (pagination?.page && pagination?.pageSize) {
-        const offset = (pagination.page - 1) * pagination.pageSize;
-        query = query.range(offset, offset + pagination.pageSize - 1);
-      }
-
-      const { data, error, count } = await query;
-      if (error) {
-        console.error('useContracts error:', error);
-        // Return empty data instead of throwing to prevent crash
-        return { data: [], count: 0 };
-      }
-
-      return {
-        data: (data || []) as ContractWithRelations[],
-        count: count || 0
-      };
+      return { data: [], count: 0 };
     },
   });
 };
@@ -245,58 +266,27 @@ export const useContractsLegacy = (filters?: {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      let query = supabase
-        .from('contracts')
-        .select(`
-          *,
-          tenant:tenants!contracts_tenant_id_fkey (
-            id, full_name, phone, email
-          ),
-          room:rooms!contracts_room_id_fkey (
-            id, name, code,
-            building:buildings!rooms_building_id_fkey (
-              id, name, code
-            )
-          ),
-          bed:beds!contracts_bed_id_fkey (
-            id, name, code,
-            room:rooms!beds_room_id_fkey (
-              id, name,
-              building:buildings!rooms_building_id_fkey (
-                id, name
-              )
-            )
-          ),
-          contract_tenants (
-            id, tenant_id, is_representative, move_in_date,
-            tenant:tenants (
-              id, full_name, phone, email
-            )
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      for (const selectQuery of [BASE_SELECT_WITH_TENANTS, BASE_SELECT]) {
+        let query = supabase
+          .from('contracts')
+          .select(selectQuery)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-      // Apply filters
-      if (filters?.status) {
-        query = query.eq('status', filters.status as any);
-      }
-      if (filters?.tenant_id) {
-        query = query.eq('tenant_id', filters.tenant_id);
-      }
-      if (filters?.room_id) {
-        query = query.eq('room_id', filters.room_id);
-      }
-      if (filters?.bed_id) {
-        query = query.eq('bed_id', filters.bed_id);
-      }
+        query = applyContractFilters(query, filters);
 
-      const { data, error } = await query;
-      if (error) {
-        console.error('useContractsLegacy error:', error);
-        return []; // Return empty array instead of throwing
+        const { data, error } = await query;
+        if (error) {
+          if (selectQuery === BASE_SELECT_WITH_TENANTS && error.message?.includes('contract_tenants')) {
+            console.warn('contract_tenants table not found, retrying without it');
+            continue;
+          }
+          console.error('useContractsLegacy error:', error);
+          return [];
+        }
+        return (data || []) as ContractWithRelations[];
       }
-      return (data || []) as ContractWithRelations[];
+      return [];
     },
   });
 };
@@ -304,6 +294,38 @@ export const useContractsLegacy = (filters?: {
 // =============================================
 // Get Single Contract
 // =============================================
+
+const DETAIL_SELECT = `
+  *,
+  tenant:tenants!contracts_tenant_id_fkey (
+    id, full_name, phone, email, id_number
+  ),
+  room:rooms!contracts_room_id_fkey (
+    id, name, code, rent_price, deposit_amount,
+    building:buildings!rooms_building_id_fkey (
+      id, name, code
+    )
+  ),
+  bed:beds!contracts_bed_id_fkey (
+    id, name, code, rent_price, deposit_amount,
+    room:rooms!beds_room_id_fkey (
+      id, name,
+      building:buildings!rooms_building_id_fkey (
+        id, name
+      )
+    )
+  )
+`;
+
+const DETAIL_SELECT_WITH_TENANTS = `
+  ${DETAIL_SELECT},
+  contract_tenants (
+    id, tenant_id, is_representative, move_in_date,
+    tenant:tenants (
+      id, full_name, phone, email
+    )
+  )
+`;
 
 export const useContract = (contractId?: string) => {
   return useQuery({
@@ -314,41 +336,25 @@ export const useContract = (contractId?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .from('contracts')
-        .select(`
-          *,
-          tenant:tenants!contracts_tenant_id_fkey (
-            id, full_name, phone, email, id_number
-          ),
-          room:rooms!contracts_room_id_fkey (
-            id, name, code, rent_price, deposit_amount,
-            building:buildings!rooms_building_id_fkey (
-              id, name, code
-            )
-          ),
-          bed:beds!contracts_bed_id_fkey (
-            id, name, code, rent_price, deposit_amount,
-            room:rooms!beds_room_id_fkey (
-              id, name,
-              building:buildings!rooms_building_id_fkey (
-                id, name
-              )
-            )
-          ),
-          contract_tenants (
-            id, tenant_id, is_representative, move_in_date,
-            tenant:tenants (
-              id, full_name, phone, email
-            )
-          )
-        `)
-        .eq('id', contractId)
-        .eq('user_id', user.id)
-        .single();
+      for (const selectQuery of [DETAIL_SELECT_WITH_TENANTS, DETAIL_SELECT]) {
+        const { data, error } = await supabase
+          .from('contracts')
+          .select(selectQuery)
+          .eq('id', contractId)
+          .eq('user_id', user.id)
+          .single();
 
-      if (error) throw error;
-      return data as ContractWithRelations;
+        if (error) {
+          if (selectQuery === DETAIL_SELECT_WITH_TENANTS && error.message?.includes('contract_tenants')) {
+            console.warn('contract_tenants table not found, retrying without it');
+            continue;
+          }
+          throw error;
+        }
+        return data as ContractWithRelations;
+      }
+
+      throw new Error('Contract not found');
     },
     enabled: !!contractId && contractId !== 'create',
   });
