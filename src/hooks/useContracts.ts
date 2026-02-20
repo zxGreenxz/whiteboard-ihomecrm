@@ -25,6 +25,19 @@ export interface ContractPaginationParams {
   pageSize?: number;
 }
 
+export interface ContractTenantWithRelations {
+  id: string;
+  tenant_id: string;
+  is_representative: boolean;
+  move_in_date: string | null;
+  tenant: {
+    id: string;
+    full_name: string;
+    phone: string;
+    email: string | null;
+  };
+}
+
 export interface ContractWithRelations extends Contract {
   tenant?: {
     id: string;
@@ -67,6 +80,13 @@ export interface ContractWithRelations extends Contract {
       unit: string;
     };
   }>;
+  contract_tenants?: ContractTenantWithRelations[];
+}
+
+export interface ContractTenantData {
+  tenant_id: string;
+  is_representative: boolean;
+  move_in_date?: string;
 }
 
 export interface CreateContractData {
@@ -97,6 +117,8 @@ export interface CreateContractData {
     reason?: string;
   }>;
   contract_file_url?: string;
+  // Multiple tenants support
+  tenants?: ContractTenantData[];
 }
 
 export interface ExtendContractData {
@@ -163,6 +185,12 @@ export const useContracts = (
               building:buildings!rooms_building_id_fkey (
                 id, name
               )
+            )
+          ),
+          contract_tenants (
+            id, tenant_id, is_representative, move_in_date,
+            tenant:tenants (
+              id, full_name, phone, email
             )
           )
         `, { count: 'exact' })
@@ -238,6 +266,12 @@ export const useContractsLegacy = (filters?: {
                 id, name
               )
             )
+          ),
+          contract_tenants (
+            id, tenant_id, is_representative, move_in_date,
+            tenant:tenants (
+              id, full_name, phone, email
+            )
           )
         `)
         .eq('user_id', user.id)
@@ -301,6 +335,12 @@ export const useContract = (contractId?: string) => {
                 id, name
               )
             )
+          ),
+          contract_tenants (
+            id, tenant_id, is_representative, move_in_date,
+            tenant:tenants (
+              id, full_name, phone, email
+            )
           )
         `)
         .eq('id', contractId)
@@ -327,9 +367,8 @@ export const useCreateContract = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Extract services and start_billing_date before creating contract
-      // Note: start_billing_date is excluded until migration 024 is run on the database
-      const { services, start_billing_date, ...contractData } = data;
+      // Extract services, start_billing_date, and tenants before creating contract
+      const { services, start_billing_date, tenants, ...contractData } = data;
 
       // Create contract
       // We cast to any to avoid TS errors with new fields until types are regenerated
@@ -347,6 +386,25 @@ export const useCreateContract = () => {
         .single();
 
       if (contractError) throw contractError;
+
+      // Add tenants to contract_tenants junction table
+      if (tenants && tenants.length > 0) {
+        const contractTenants = tenants.map(t => ({
+          contract_id: contract.id,
+          tenant_id: t.tenant_id,
+          is_representative: t.is_representative,
+          move_in_date: t.move_in_date,
+        }));
+
+        const { error: tenantsError } = await supabase
+          .from('contract_tenants')
+          .insert(contractTenants);
+
+        if (tenantsError) {
+          console.error('Error inserting contract tenants:', tenantsError);
+          // Don't throw - contract creation was successful
+        }
+      }
 
       // Add services if provided
       if (services && services.length > 0) {

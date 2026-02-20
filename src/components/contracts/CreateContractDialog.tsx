@@ -61,7 +61,7 @@ const contractSchema = z.object({
   invoice_template_id: z.string().optional(),
   notes: z.string().optional(),
 
-  // Customer
+  // Customer - representative tenant (đại diện)
   tenant_id: z.string().min(1, 'Vui lòng chọn khách thuê'),
 
   // Rent & Deposit
@@ -92,10 +92,15 @@ const contractSchema = z.object({
   path: ["room_id"],
 });
 
+interface SelectedTenant {
+  tenant_id: string;
+  is_representative: boolean;
+}
+
 type ContractFormData = z.infer<typeof contractSchema>;
 
 const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps) => {
-  const [selectedTenantId, setSelectedTenantId] = useState<string>('');
+  const [selectedTenants, setSelectedTenants] = useState<SelectedTenant[]>([]);
   const [rentalType, setRentalType] = useState<'room' | 'bed'>('room');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
@@ -103,6 +108,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [showTenantSelect, setShowTenantSelect] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<Array<{
     asset_id: string;
     asset_name: string;
@@ -119,8 +125,9 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const { data: allRooms } = useRooms(); // Load all rooms
   const { data: allBeds } = useBeds(); // Load all beds
   const { data: services } = useServices();
+  const representativeTenantId = selectedTenants.find(t => t.is_representative)?.tenant_id || '';
   const { data: deposits } = useDeposits({
-    tenant_id: selectedTenantId,
+    tenant_id: representativeTenantId,
     status: 'CONFIRMED',
   });
   const { data: contractTemplates } = useDocumentTemplates('CONTRACT_NEW');
@@ -181,13 +188,14 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
   const handleClose = () => {
     reset();
-    setSelectedTenantId('');
+    setSelectedTenants([]);
     setSelectedBuildingId('');
     setSelectedRoomId('');
     setSelectedBedId('');
     setSelectedServices(new Set());
     setContractFile(null);
     setSelectedAssets([]);
+    setShowTenantSelect(false);
     onOpenChange(false);
   };
 
@@ -246,12 +254,20 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
       ...contractData
     } = data;
 
+    // Build tenants data for junction table
+    const tenantsData = selectedTenants.map(t => ({
+      tenant_id: t.tenant_id,
+      is_representative: t.is_representative,
+      move_in_date: data.start_date,
+    }));
+
     createContractMutation.mutate(
       {
         ...contractData,
         services: servicesData,
         discounts,
         contract_file_url: fileUrl,
+        tenants: tenantsData,
       },
       {
         onSuccess: (contract) => {
@@ -471,10 +487,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <div className="flex justify-between items-center">
               <h3 className="font-medium text-gray-900">2. KHÁCH HÀNG</h3>
               <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => {
-                // Focus on tenant select or show toast
-                const select = document.getElementById('tenant-select-trigger');
-                if (select) select.click();
-                else toast.info('Vui lòng chọn khách hàng từ danh sách bên dưới');
+                setShowTenantSelect(true);
               }}>
                 <Plus className="h-4 w-4 mr-1" />
                 Thêm khách hàng
@@ -489,26 +502,52 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                 <div className="col-span-4">Đại diện</div>
               </div>
 
-              {selectedTenantId ? (
-                <div className="grid grid-cols-12 gap-4 p-3 items-center text-sm">
-                  <div className="col-span-1">
-                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => {
-                      setSelectedTenantId('');
-                      setValue('tenant_id', '');
-                    }}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="col-span-4 font-medium">
-                    {tenants?.find(t => t.id === selectedTenantId)?.full_name}
-                  </div>
-                  <div className="col-span-3">
-                    {watchedValues.start_date}
-                  </div>
-                  <div className="col-span-4">
-                    <Checkbox checked disabled />
-                  </div>
-                </div>
+              {selectedTenants.length > 0 ? (
+                selectedTenants.map((st) => {
+                  const tenantInfo = tenants?.find(t => t.id === st.tenant_id);
+                  return (
+                    <div key={st.tenant_id} className="grid grid-cols-12 gap-4 p-3 items-center text-sm border-b last:border-b-0">
+                      <div className="col-span-1">
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => {
+                          const updated = selectedTenants.filter(t => t.tenant_id !== st.tenant_id);
+                          // If we removed the representative, make the first remaining tenant the representative
+                          if (st.is_representative && updated.length > 0) {
+                            updated[0].is_representative = true;
+                          }
+                          setSelectedTenants(updated);
+                          // Update form tenant_id to the representative
+                          const newRep = updated.find(t => t.is_representative);
+                          setValue('tenant_id', newRep?.tenant_id || '');
+                        }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="col-span-4">
+                        <div className="font-medium">{tenantInfo?.full_name}</div>
+                        <div className="text-xs text-gray-500">{tenantInfo?.phone}</div>
+                      </div>
+                      <div className="col-span-3">
+                        {watchedValues.start_date}
+                      </div>
+                      <div className="col-span-4">
+                        <Checkbox
+                          checked={st.is_representative}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              // Set this tenant as representative, unset others
+                              const updated = selectedTenants.map(t => ({
+                                ...t,
+                                is_representative: t.tenant_id === st.tenant_id,
+                              }));
+                              setSelectedTenants(updated);
+                              setValue('tenant_id', st.tenant_id);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 <div className="p-8 text-center text-gray-500 text-sm">
                   Danh sách trống
@@ -516,25 +555,42 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
               )}
             </div>
 
-            {!selectedTenantId && (
+            {(showTenantSelect || selectedTenants.length === 0) && (
               <div className="max-w-md">
                 <Label>Chọn khách thuê từ danh sách *</Label>
                 <Select
-                  value={selectedTenantId}
+                  value=""
                   onValueChange={(value) => {
-                    setSelectedTenantId(value);
-                    setValue('tenant_id', value);
+                    // Check if tenant is already selected
+                    if (selectedTenants.some(t => t.tenant_id === value)) {
+                      toast.error('Khách hàng này đã được thêm');
+                      return;
+                    }
+                    const isFirst = selectedTenants.length === 0;
+                    const newTenant: SelectedTenant = {
+                      tenant_id: value,
+                      is_representative: isFirst, // First tenant is representative by default
+                    };
+                    const updated = [...selectedTenants, newTenant];
+                    setSelectedTenants(updated);
+                    // Set form tenant_id to the representative
+                    if (isFirst) {
+                      setValue('tenant_id', value);
+                    }
+                    setShowTenantSelect(false);
                   }}
                 >
                   <SelectTrigger id="tenant-select-trigger">
                     <SelectValue placeholder="Chọn khách thuê..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {tenants?.map((tenant) => (
-                      <SelectItem key={tenant.id} value={tenant.id}>
-                        {tenant.full_name} - {tenant.phone}
-                      </SelectItem>
-                    ))}
+                    {tenants
+                      ?.filter(tenant => !selectedTenants.some(st => st.tenant_id === tenant.id))
+                      .map((tenant) => (
+                        <SelectItem key={tenant.id} value={tenant.id}>
+                          {tenant.full_name} - {tenant.phone}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 {errors.tenant_id && <p className="text-xs text-red-500 mt-1">{errors.tenant_id.message}</p>}

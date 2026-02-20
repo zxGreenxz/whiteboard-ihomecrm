@@ -80,7 +80,11 @@ const ContractsPage = () => {
       contract.tenant?.full_name?.toLowerCase().includes(searchLower) ||
       contract.tenant?.phone?.includes(searchTerm) ||
       contract.room?.name?.toLowerCase().includes(searchLower) ||
-      contract.bed?.name?.toLowerCase().includes(searchLower)
+      contract.bed?.name?.toLowerCase().includes(searchLower) ||
+      contract.contract_tenants?.some(ct =>
+        ct.tenant?.full_name?.toLowerCase().includes(searchLower) ||
+        ct.tenant?.phone?.includes(searchTerm)
+      )
     ));
   }, [contracts, searchTerm]);
 
@@ -214,10 +218,30 @@ const ContractsPage = () => {
                       {contract.contract_number || contract.id.slice(0, 8)}
                     </TableCell>
                     <TableCell>
-                      <div>
-                        <div className="font-medium">{contract.tenant?.full_name}</div>
-                        <div className="text-sm text-gray-500">{contract.tenant?.phone}</div>
-                      </div>
+                      {contract.contract_tenants && contract.contract_tenants.length > 0 ? (
+                        <div>
+                          <div className="font-medium">
+                            {contract.contract_tenants.find(ct => ct.is_representative)?.tenant?.full_name
+                              || contract.contract_tenants[0]?.tenant?.full_name
+                              || contract.tenant?.full_name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {contract.contract_tenants.find(ct => ct.is_representative)?.tenant?.phone
+                              || contract.contract_tenants[0]?.tenant?.phone
+                              || contract.tenant?.phone}
+                          </div>
+                          {contract.contract_tenants.length > 1 && (
+                            <div className="text-xs text-blue-600">
+                              +{contract.contract_tenants.length - 1} người khác
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-medium">{contract.tenant?.full_name}</div>
+                          <div className="text-sm text-gray-500">{contract.tenant?.phone}</div>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>{getLocationDisplay(contract)}</TableCell>
                     <TableCell>
