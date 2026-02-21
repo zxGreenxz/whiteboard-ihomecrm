@@ -138,6 +138,7 @@ export const useInvoices = (
           )
         `, { count: 'exact' })
         .eq('user_id', user.id)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
@@ -567,7 +568,6 @@ export interface BulkMeterReadingData {
   meter_type: 'ELECTRIC' | 'WATER' | 'GAS' | 'OTHER';
   reading_date: string;
   previous_reading: number;
-  current_reading: number;
   current_reading: number;
   notes?: string;
 }

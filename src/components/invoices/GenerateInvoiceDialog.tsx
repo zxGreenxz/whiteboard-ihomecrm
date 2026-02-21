@@ -59,7 +59,8 @@ type GenerateInvoiceFormData = z.infer<typeof generateInvoiceSchema>;
 const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProps) => {
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const createMutation = useCreateInvoice();
-  const { data: contracts } = useContracts({ status: 'ACTIVE' });
+  const { data: contractsData } = useContracts({ status: 'ACTIVE' });
+  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
   const { data: meterReadings } = useMeterReadings(selectedContractId);
   const { data: vehicles } = useVehicles({ contract_id: selectedContractId });
 

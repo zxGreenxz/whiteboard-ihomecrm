@@ -26,7 +26,8 @@ interface AssetHandoverDialogProps {
 
 export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogProps) {
   const createHandover = useCreateAssetHandover();
-  const { data: contracts = [] } = useContracts();
+  const { data: contractsData } = useContracts();
+  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
 
   const form = useForm<HandoverFormValues>({
     resolver: zodResolver(handoverSchema),

@@ -37,7 +37,8 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
   const { data: categories = [] } = useIssueCategories();
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms();
-  const { data: contracts = [] } = useContracts({ status: "ACTIVE" });
+  const { data: contractsData } = useContracts({ status: "ACTIVE" });
+  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
 
   const form = useForm<IssueFormValues>({
     resolver: zodResolver(issueSchema),
