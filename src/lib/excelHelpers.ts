@@ -527,6 +527,219 @@ export async function importRooms(
 }
 
 /**
+ * Download Contract Import Template (building-specific)
+ */
+export function downloadContractImportTemplate(
+  buildingName: string,
+  rooms: Array<{ name: string }>
+): void {
+  const headers = [
+    'Phòng (*)', 'Giường', 'Họ tên khách thuê (*)', 'SĐT khách thuê (*)',
+    'Ngày ký (*)', 'Ngày bắt đầu (*)', 'Hạn hợp đồng (*)',
+    'Tiền thuê (*)', 'Chu kỳ thanh toán', 'Ngày bắt đầu tính tiền',
+    'Tiền cọc', 'Đã đặt cọc', 'Ghi chú'
+  ];
+
+  const sampleData = [
+    {
+      'Phòng (*)': rooms[0]?.name || 'Phòng 101',
+      'Giường': '',
+      'Họ tên khách thuê (*)': 'Nguyễn Văn A',
+      'SĐT khách thuê (*)': '0901234567',
+      'Ngày ký (*)': '01/01/2025',
+      'Ngày bắt đầu (*)': '01/01/2025',
+      'Hạn hợp đồng (*)': '01/01/2026',
+      'Tiền thuê (*)': 3500000,
+      'Chu kỳ thanh toán': '1 tháng',
+      'Ngày bắt đầu tính tiền': '01/01/2025',
+      'Tiền cọc': 3500000,
+      'Đã đặt cọc': 0,
+      'Ghi chú': '',
+    },
+  ];
+
+  if (rooms.length > 1) {
+    sampleData.push({
+      'Phòng (*)': rooms[1]?.name || 'Phòng 102',
+      'Giường': '',
+      'Họ tên khách thuê (*)': 'Trần Thị B',
+      'SĐT khách thuê (*)': '0909876543',
+      'Ngày ký (*)': '15/01/2025',
+      'Ngày bắt đầu (*)': '15/01/2025',
+      'Hạn hợp đồng (*)': '15/01/2026',
+      'Tiền thuê (*)': 4000000,
+      'Chu kỳ thanh toán': '1 tháng',
+      'Ngày bắt đầu tính tiền': '15/01/2025',
+      'Tiền cọc': 4000000,
+      'Đã đặt cọc': 4000000,
+      'Ghi chú': '',
+    });
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(sampleData);
+
+  // Set column widths
+  worksheet['!cols'] = [
+    { wch: 15 }, { wch: 12 }, { wch: 25 }, { wch: 15 },
+    { wch: 15 }, { wch: 15 }, { wch: 15 },
+    { wch: 15 }, { wch: 18 }, { wch: 20 },
+    { wch: 15 }, { wch: 12 }, { wch: 25 },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Mẫu hợp đồng');
+
+  // Add a reference sheet with room names
+  const roomsRef = rooms.map(r => ({ 'Danh sách phòng': r.name }));
+  const roomsSheet = XLSX.utils.json_to_sheet(roomsRef);
+  XLSX.utils.book_append_sheet(workbook, roomsSheet, 'Danh sách phòng');
+
+  XLSX.writeFile(workbook, `mau-hop-dong-${buildingName.replace(/\s+/g, '-')}.xlsx`);
+}
+
+/**
+ * Import Contracts from Excel
+ */
+export interface ContractImportRow {
+  room_name: string;
+  bed_name?: string;
+  tenant_name: string;
+  tenant_phone: string;
+  signed_date: string;
+  start_date: string;
+  end_date: string;
+  rent_price: number;
+  payment_cycle?: string;
+  start_billing_date?: string;
+  total_deposit?: number;
+  deposit_paid?: number;
+  notes?: string;
+}
+
+export async function importContracts(
+  file: File
+): Promise<ImportResult<ContractImportRow>> {
+  const headerMapping = {
+    'Phòng (*)': 'room_name',
+    'Giường': 'bed_name',
+    'Họ tên khách thuê (*)': 'tenant_name',
+    'SĐT khách thuê (*)': 'tenant_phone',
+    'Ngày ký (*)': 'signed_date',
+    'Ngày bắt đầu (*)': 'start_date',
+    'Hạn hợp đồng (*)': 'end_date',
+    'Tiền thuê (*)': 'rent_price',
+    'Chu kỳ thanh toán': 'payment_cycle',
+    'Ngày bắt đầu tính tiền': 'start_billing_date',
+    'Tiền cọc': 'total_deposit',
+    'Đã đặt cọc': 'deposit_paid',
+    'Ghi chú': 'notes',
+  } as const;
+
+  const data = await parseExcelFile<ContractImportRow>(file, headerMapping as any);
+
+  const success: ContractImportRow[] = [];
+  const errors: Array<{ row: number; message: string }> = [];
+
+  // Helper to parse dd/MM/yyyy date strings to yyyy-MM-dd
+  const parseDate = (value: any): string | null => {
+    if (!value) return null;
+    const str = String(value).trim();
+
+    // Try dd/MM/yyyy format
+    const match = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (match) {
+      const [, day, month, year] = match;
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+
+    // Try yyyy-MM-dd format (already correct)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+    // Try Excel serial date (number)
+    if (!isNaN(Number(str)) && Number(str) > 30000) {
+      const date = new Date((Number(str) - 25569) * 86400 * 1000);
+      return date.toISOString().split('T')[0];
+    }
+
+    return null;
+  };
+
+  const parseAmount = (value: any): number => {
+    if (typeof value === 'number') return value;
+    if (!value) return 0;
+    return Number(String(value).replace(/\./g, '').replace(/,/g, ''));
+  };
+
+  const parseCycle = (value: any): string => {
+    if (!value) return 'MONTHLY';
+    const str = String(value).trim().toLowerCase();
+    if (str.includes('3') || str.includes('quý')) return 'QUARTERLY';
+    if (str.includes('6')) return 'SEMI_ANNUAL';
+    if (str.includes('năm') || str.includes('12')) return 'ANNUAL';
+    return 'MONTHLY';
+  };
+
+  data.forEach((item, index) => {
+    const row = index + 2;
+
+    // Validate required fields
+    if (!item.room_name) {
+      errors.push({ row, message: 'Thiếu tên phòng' });
+      return;
+    }
+    if (!item.tenant_name) {
+      errors.push({ row, message: 'Thiếu họ tên khách thuê' });
+      return;
+    }
+    if (!item.tenant_phone) {
+      errors.push({ row, message: 'Thiếu số điện thoại khách thuê' });
+      return;
+    }
+
+    const signedDate = parseDate(item.signed_date);
+    const startDate = parseDate(item.start_date);
+    const endDate = parseDate(item.end_date);
+
+    if (!signedDate) {
+      errors.push({ row, message: 'Ngày ký không hợp lệ' });
+      return;
+    }
+    if (!startDate) {
+      errors.push({ row, message: 'Ngày bắt đầu không hợp lệ' });
+      return;
+    }
+    if (!endDate) {
+      errors.push({ row, message: 'Hạn hợp đồng không hợp lệ' });
+      return;
+    }
+
+    const rentPrice = parseAmount(item.rent_price);
+    if (!rentPrice || isNaN(rentPrice)) {
+      errors.push({ row, message: 'Tiền thuê không hợp lệ' });
+      return;
+    }
+
+    success.push({
+      room_name: String(item.room_name).trim(),
+      bed_name: item.bed_name ? String(item.bed_name).trim() : undefined,
+      tenant_name: String(item.tenant_name).trim(),
+      tenant_phone: String(item.tenant_phone).trim(),
+      signed_date: signedDate,
+      start_date: startDate,
+      end_date: endDate,
+      rent_price: rentPrice,
+      payment_cycle: parseCycle(item.payment_cycle),
+      start_billing_date: parseDate(item.start_billing_date) || startDate,
+      total_deposit: parseAmount(item.total_deposit),
+      deposit_paid: parseAmount(item.deposit_paid),
+      notes: item.notes ? String(item.notes) : undefined,
+    });
+  });
+
+  return { success, errors };
+}
+
+/**
  * Generate sample Excel template for import
  */
 export function downloadImportTemplate(type: 'buildings' | 'rooms' | 'tenants'): void {

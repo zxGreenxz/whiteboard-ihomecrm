@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -32,6 +32,7 @@ interface TransferContractDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contract: ContractWithRelations | null;
+  defaultTransferType?: 'TENANT_CHANGE' | 'ROOM_CHANGE' | 'BOTH_CHANGE';
 }
 
 const transferSchema = z.object({
@@ -46,8 +47,8 @@ const transferSchema = z.object({
 
 type TransferFormData = z.infer<typeof transferSchema>;
 
-const TransferContractDialog = ({ open, onOpenChange, contract }: TransferContractDialogProps) => {
-  const [transferType, setTransferType] = useState<'TENANT_CHANGE' | 'ROOM_CHANGE' | 'BOTH_CHANGE'>('ROOM_CHANGE');
+const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferType = 'ROOM_CHANGE' }: TransferContractDialogProps) => {
+  const [transferType, setTransferType] = useState<'TENANT_CHANGE' | 'ROOM_CHANGE' | 'BOTH_CHANGE'>(defaultTransferType);
   const transferMutation = useTransferContract();
 
   const { data: tenants } = useTenantsLegacy();
@@ -64,17 +65,25 @@ const TransferContractDialog = ({ open, onOpenChange, contract }: TransferContra
   } = useForm<TransferFormData>({
     resolver: zodResolver(transferSchema),
     defaultValues: {
-      transfer_type: 'ROOM_CHANGE',
+      transfer_type: defaultTransferType,
       transfer_fee: 0,
     },
   });
+
+  // Sync transfer type when prop or dialog state changes
+  useEffect(() => {
+    if (open) {
+      setTransferType(defaultTransferType);
+      setValue('transfer_type', defaultTransferType);
+    }
+  }, [defaultTransferType, open, setValue]);
 
   const watchedNewRoomId = watch('new_room_id');
   const watchedNewBedId = watch('new_bed_id');
 
   const handleClose = () => {
     reset();
-    setTransferType('ROOM_CHANGE');
+    setTransferType(defaultTransferType);
     onOpenChange(false);
   };
 
@@ -111,7 +120,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract }: TransferContra
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowRightLeft className="h-5 w-5" />
-            Chuyển phòng / Nhượng hợp đồng
+            {defaultTransferType === 'TENANT_CHANGE' ? 'Nhượng hợp đồng' : 'Chuyển Phòng/Giường'}
           </DialogTitle>
           <DialogDescription>
             Hợp đồng: {contract.contract_number || contract.id.slice(0, 8)}

@@ -42,7 +42,7 @@ import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
 import TransferContractDialog from '@/components/contracts/TransferContractDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
-import { toast } from 'sonner';
+import ImportContractsDialog from '@/components/contracts/ImportContractsDialog';
 
 const ContractsPage = () => {
   const navigate = useNavigate();
@@ -54,6 +54,8 @@ const ContractsPage = () => {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [registerMoveOutDialogOpen, setRegisterMoveOutDialogOpen] = useState(false);
+  const [transferDefaultType, setTransferDefaultType] = useState<'TENANT_CHANGE' | 'ROOM_CHANGE'>('ROOM_CHANGE');
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Pagination state
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
@@ -174,7 +176,7 @@ const ContractsPage = () => {
           <option value="EXPIRED">Hết hạn</option>
         </select>
 
-        <Button variant="outline" onClick={() => toast.info('Tính năng đang phát triển')}>
+        <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
           <Upload className="h-4 w-4 mr-2" />
           Nhập từ file
         </Button>
@@ -299,6 +301,7 @@ const ContractsPage = () => {
                               <DropdownMenuItem
                                 onClick={() => {
                                   setSelectedContract(contract);
+                                  setTransferDefaultType('ROOM_CHANGE');
                                   setTransferDialogOpen(true);
                                 }}
                               >
@@ -308,7 +311,8 @@ const ContractsPage = () => {
                               <DropdownMenuItem
                                 onClick={() => {
                                   setSelectedContract(contract);
-                                  setTransferDialogOpen(true); // Reusing transfer dialog for "Nhượng hợp đồng" as it supports both
+                                  setTransferDefaultType('TENANT_CHANGE');
+                                  setTransferDialogOpen(true);
                                 }}
                               >
                                 <ArrowRightLeft className="h-4 w-4 mr-2" />
@@ -407,6 +411,7 @@ const ContractsPage = () => {
         open={transferDialogOpen}
         onOpenChange={setTransferDialogOpen}
         contract={selectedContract}
+        defaultTransferType={transferDefaultType}
       />
 
       <TerminateContractDialog
@@ -419,6 +424,11 @@ const ContractsPage = () => {
         open={registerMoveOutDialogOpen}
         onOpenChange={setRegisterMoveOutDialogOpen}
         contract={selectedContract}
+      />
+
+      <ImportContractsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
       />
     </MainLayout>
   );

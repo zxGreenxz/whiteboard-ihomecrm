@@ -707,6 +707,32 @@ export const useTerminateContract = () => {
 };
 
 // =============================================
+// Fetch Unpaid Invoices for a Contract
+// =============================================
+
+export const useUnpaidInvoices = (contractId?: string) => {
+  return useQuery({
+    queryKey: ['unpaid-invoices', contractId],
+    queryFn: async () => {
+      if (!contractId) return [];
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('contract_id', contractId)
+        .eq('user_id', user.id)
+        .in('status', ['PENDING', 'OVERDUE', 'PARTIAL']);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!contractId,
+  });
+};
+
+// =============================================
 // Estimate Termination Costs (Preview)
 // =============================================
 
@@ -1105,6 +1131,187 @@ export const useUploadContractFile = () => {
       toast({
         variant: 'destructive',
         title: 'Upload thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Bulk Create Contracts (from Excel Import)
+// =============================================
+
+export interface BulkContractImportRow {
+  room_name: string;
+  bed_name?: string;
+  tenant_name: string;
+  tenant_phone: string;
+  signed_date: string;
+  start_date: string;
+  end_date: string;
+  rent_price: number;
+  payment_cycle?: string;
+  start_billing_date?: string;
+  total_deposit?: number;
+  deposit_paid?: number;
+  notes?: string;
+}
+
+export const useBulkCreateContracts = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      building_id,
+      contracts: rows,
+    }: {
+      building_id: string;
+      contracts: BulkContractImportRow[];
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Fetch all rooms in the building
+      const { data: rooms } = await supabase
+        .from('rooms')
+        .select('id, name, code')
+        .eq('building_id', building_id)
+        .eq('user_id', user.id)
+        .is('deleted_at', null);
+
+      if (!rooms) throw new Error('Không thể tải danh sách phòng');
+
+      // Fetch existing tenants
+      const { data: existingTenants } = await supabase
+        .from('tenants')
+        .select('id, full_name, phone')
+        .eq('user_id', user.id)
+        .is('deleted_at', null);
+
+      const results = {
+        success: 0,
+        failed: 0,
+        errors: [] as Array<{ row: number; message: string }>,
+      };
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 2; // Excel row (1-indexed + header)
+
+        try {
+          // Find room by name
+          const room = rooms.find(
+            r => r.name?.toLowerCase() === row.room_name.toLowerCase() ||
+                 r.code?.toLowerCase() === row.room_name.toLowerCase()
+          );
+          if (!room) {
+            results.errors.push({ row: rowNum, message: `Không tìm thấy phòng "${row.room_name}"` });
+            results.failed++;
+            continue;
+          }
+
+          // Find or create tenant by phone
+          let tenantId: string;
+          const existingTenant = existingTenants?.find(
+            t => t.phone === row.tenant_phone
+          );
+
+          if (existingTenant) {
+            tenantId = existingTenant.id;
+          } else {
+            // Create new tenant
+            const { data: newTenant, error: tenantError } = await supabase
+              .from('tenants')
+              .insert([{
+                user_id: user.id,
+                full_name: row.tenant_name,
+                phone: row.tenant_phone,
+              }])
+              .select()
+              .single();
+
+            if (tenantError || !newTenant) {
+              results.errors.push({ row: rowNum, message: `Không thể tạo khách thuê: ${tenantError?.message || 'Unknown'}` });
+              results.failed++;
+              continue;
+            }
+            tenantId = newTenant.id;
+            // Add to existing list to avoid duplicate creation
+            existingTenants?.push({ id: newTenant.id, full_name: row.tenant_name, phone: row.tenant_phone });
+          }
+
+          // Create contract
+          const contractInsert: any = {
+            user_id: user.id,
+            tenant_id: tenantId,
+            room_id: room.id,
+            signed_date: row.signed_date,
+            start_date: row.start_date,
+            end_date: row.end_date,
+            rent_price: row.rent_price,
+            payment_cycle: row.payment_cycle || 'MONTHLY',
+            total_deposit: row.total_deposit || 0,
+            deposit_paid: row.deposit_paid || 0,
+            notes: row.notes,
+            status: 'ACTIVE',
+          };
+
+          const { data: contract, error: contractError } = await supabase
+            .from('contracts')
+            .insert([contractInsert])
+            .select()
+            .single();
+
+          if (contractError || !contract) {
+            results.errors.push({ row: rowNum, message: `Lỗi tạo hợp đồng: ${contractError?.message || 'Unknown'}` });
+            results.failed++;
+            continue;
+          }
+
+          // Add tenant to contract_tenants junction table
+          await (supabase as any)
+            .from('contract_tenants')
+            .insert([{
+              contract_id: contract.id,
+              tenant_id: tenantId,
+              is_representative: true,
+              move_in_date: row.start_date,
+            }]);
+
+          results.success++;
+        } catch (e: any) {
+          results.errors.push({ row: rowNum, message: e.message || 'Lỗi không xác định' });
+          results.failed++;
+        }
+      }
+
+      return results;
+    },
+    onSuccess: (results) => {
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+
+      if (results.success > 0) {
+        toast({
+          title: 'Nhập dữ liệu thành công!',
+          description: `Đã tạo ${results.success} hợp đồng.${results.failed > 0 ? ` ${results.failed} hợp đồng thất bại.` : ''}`,
+        });
+      }
+
+      if (results.success === 0 && results.failed > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Nhập dữ liệu thất bại',
+          description: `Tất cả ${results.failed} hợp đồng đều gặp lỗi.`,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Nhập dữ liệu thất bại',
         description: error.message,
       });
     },
