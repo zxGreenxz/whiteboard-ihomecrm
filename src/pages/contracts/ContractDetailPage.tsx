@@ -101,9 +101,43 @@ const ContractDetailPage = () => {
   const [contractServices, setContractServices] = useState<ContractService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
 
+  // Fetch contract tenants directly (separate query to avoid join issues)
+  const [contractTenants, setContractTenants] = useState<Array<{
+    id: string;
+    tenant_id: string;
+    is_representative: boolean;
+    move_in_date: string | null;
+    tenant: { id: string; full_name: string; phone: string; email: string | null } | null;
+  }>>([]);
+
   // Fetch contract history (extensions, transfers, terminations)
   const [contractHistory, setContractHistory] = useState<ContractHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  // Fetch contract tenants when contract ID changes
+  useEffect(() => {
+    const fetchContractTenants = async () => {
+      if (!id) return;
+      try {
+        const { data, error } = await (supabase as any)
+          .from('contract_tenants')
+          .select(`
+            id, tenant_id, is_representative, move_in_date,
+            tenant:tenants(id, full_name, phone, email)
+          `)
+          .eq('contract_id', id)
+          .order('is_representative', { ascending: false });
+
+        if (!error && data) {
+          setContractTenants(data);
+        }
+      } catch (e) {
+        console.error('Error fetching contract tenants:', e);
+      }
+    };
+
+    fetchContractTenants();
+  }, [id]);
 
   // Fetch contract services when contract ID changes
   useEffect(() => {
@@ -552,17 +586,17 @@ const ContractDetailPage = () => {
                   <CardTitle className="flex items-center gap-2">
                     <User className="h-5 w-5" />
                     Thông tin khách thuê
-                    {contract.contract_tenants && contract.contract_tenants.length > 1 && (
+                    {contractTenants.length > 1 && (
                       <Badge variant="secondary" className="ml-2">
-                        {contract.contract_tenants.length} người
+                        {contractTenants.length} người
                       </Badge>
                     )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {contract.contract_tenants && contract.contract_tenants.length > 0 ? (
+                  {contractTenants.length > 0 ? (
                     <div className="space-y-4">
-                      {contract.contract_tenants.map((ct, index) => (
+                      {contractTenants.map((ct, index) => (
                         <div key={ct.id} className={index > 0 ? 'pt-4 border-t' : ''}>
                           <div className="flex items-center gap-2 mb-2">
                             <span className="font-medium text-sm">
