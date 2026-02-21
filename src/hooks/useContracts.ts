@@ -679,7 +679,7 @@ export const useTerminateContract = () => {
           damage_description: data.damage_description,
           cleaning_fee: data.cleaning_fee || 0,
           notes: data.notes,
-          status: 'DRAFT',
+          status: 'PENDING_APPROVAL',
         }])
         .select()
         .single();
@@ -689,10 +689,11 @@ export const useTerminateContract = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-terminations'] });
 
       toast({
         title: 'Tạo yêu cầu thanh lý thành công!',
-        description: 'Vui lòng kiểm tra chi phí và duyệt.',
+        description: 'Yêu cầu đang chờ duyệt tại mục "Duyệt thanh lý".',
       });
     },
     onError: (error: Error) => {
@@ -822,6 +823,237 @@ export const useEstimateTerminationCosts = () => {
       toast({
         variant: 'destructive',
         title: 'Lỗi tính toán',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Fetch Pending Terminations (for approval page)
+// =============================================
+
+export interface TerminationWithRelations {
+  id: string;
+  user_id: string;
+  contract_id: string;
+  termination_type: string;
+  termination_date: string;
+  actual_move_out_date: string;
+  status: string;
+  outstanding_debt: number;
+  prorated_rent: number;
+  prorated_services: number;
+  early_termination_fee: number;
+  damage_fee: number;
+  damage_description: string | null;
+  cleaning_fee: number;
+  other_fees: number;
+  other_fees_description: string | null;
+  total_deductions: number;
+  refund_amount: number;
+  total_deposit: number;
+  notes: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  contract?: ContractWithRelations;
+}
+
+export const usePendingTerminations = () => {
+  return useQuery({
+    queryKey: ['pending-terminations'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('contract_terminations')
+        .select(`
+          *,
+          contract:contracts(
+            *,
+            tenant:tenants(id, full_name, phone, email),
+            room:rooms(id, name, code, building:buildings(id, name, code)),
+            bed:beds(id, name, code, room:rooms(id, name, building:buildings(id, name)))
+          )
+        `)
+        .eq('user_id', user.id)
+        .in('status', ['DRAFT', 'PENDING_APPROVAL'])
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as TerminationWithRelations[];
+    },
+  });
+};
+
+// =============================================
+// Approve Termination
+// =============================================
+
+export const useApproveTermination = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: {
+      termination_id: string;
+      contract_id: string;
+      refund_amount: number;
+      payment_method?: string;
+      notes?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Update termination status to APPROVED
+      const { error: termError } = await supabase
+        .from('contract_terminations')
+        .update({
+          status: 'APPROVED',
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+        })
+        .eq('id', data.termination_id)
+        .eq('user_id', user.id);
+
+      if (termError) throw termError;
+
+      // 2. Update contract status to TERMINATED
+      const { error: contractError } = await supabase
+        .from('contracts')
+        .update({
+          status: 'TERMINATED',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', data.contract_id)
+        .eq('user_id', user.id);
+
+      if (contractError) throw contractError;
+
+      // 3. Mark termination as COMPLETED
+      const { error: completeError } = await supabase
+        .from('contract_terminations')
+        .update({
+          status: 'COMPLETED',
+          refund_date: new Date().toISOString(),
+        })
+        .eq('id', data.termination_id)
+        .eq('user_id', user.id);
+
+      if (completeError) throw completeError;
+
+      // 4. Create cash book entry for refund/collection
+      if (data.refund_amount !== 0) {
+        const isRefund = data.refund_amount > 0;
+        const { error: cashError } = await supabase
+          .from('cash_book')
+          .insert([{
+            user_id: user.id,
+            transaction_date: new Date().toISOString(),
+            transaction_type: isRefund ? 'EXPENSE' : 'INCOME',
+            category: isRefund ? 'DEPOSIT_REFUND' : 'DEPOSIT_FORFEIT',
+            amount: Math.abs(data.refund_amount),
+            description: isRefund
+              ? 'Hoàn cọc thanh lý hợp đồng'
+              : 'Thu thêm từ thanh lý hợp đồng',
+            reference_type: 'CONTRACT_TERMINATION',
+            reference_id: data.termination_id,
+            payment_method: data.payment_method || 'CASH',
+            notes: data.notes,
+          }]);
+
+        if (cashError) throw cashError;
+      }
+
+      // 5. Update room/bed status to AVAILABLE
+      const { data: contract } = await supabase
+        .from('contracts')
+        .select('room_id, bed_id')
+        .eq('id', data.contract_id)
+        .single();
+
+      if (contract?.room_id) {
+        await supabase
+          .from('rooms')
+          .update({ status: 'AVAILABLE' })
+          .eq('id', contract.room_id);
+      }
+
+      if (contract?.bed_id) {
+        await supabase
+          .from('beds')
+          .update({ status: 'AVAILABLE' })
+          .eq('id', contract.bed_id);
+      }
+
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-terminations'] });
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['beds'] });
+
+      toast({
+        title: 'Duyệt thanh lý thành công!',
+        description: 'Hợp đồng đã được thanh lý và phòng/giường đã được giải phóng.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Duyệt thanh lý thất bại',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// Reject Termination
+// =============================================
+
+export const useRejectTermination = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: {
+      termination_id: string;
+      rejection_reason?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('contract_terminations')
+        .update({
+          status: 'DRAFT',
+          notes: data.rejection_reason
+            ? `[Từ chối] ${data.rejection_reason}`
+            : undefined,
+        })
+        .eq('id', data.termination_id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-terminations'] });
+
+      toast({
+        title: 'Đã từ chối yêu cầu thanh lý',
+        description: 'Yêu cầu đã được trả về trạng thái nháp.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Thao tác thất bại',
         description: error.message,
       });
     },
