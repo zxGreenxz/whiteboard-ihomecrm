@@ -57,7 +57,8 @@ const AutoGenerateInvoicesDialog = ({
   const [invoiceType, setInvoiceType] = useState<InvoiceGenerationType>('RENT_AND_SERVICE');
 
   const generateMutation = useAutoGenerateInvoices();
-  const { data: contracts } = useContracts({ status: 'ACTIVE' });
+  const { data: contractsData } = useContracts({ status: 'ACTIVE' });
+  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
   const { data: buildings } = useBuildings();
   const { data: invoiceConfig } = useInvoiceConfig();
 
