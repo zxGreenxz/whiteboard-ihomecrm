@@ -189,7 +189,7 @@ export const useContracts = (
           ),
           contract_tenants (
             id, tenant_id, is_representative, move_in_date,
-            tenant:tenants (
+            tenant:tenants!left (
               id, full_name, phone, email
             )
           )
@@ -269,7 +269,7 @@ export const useContractsLegacy = (filters?: {
           ),
           contract_tenants (
             id, tenant_id, is_representative, move_in_date,
-            tenant:tenants (
+            tenant:tenants!left (
               id, full_name, phone, email
             )
           )
@@ -338,7 +338,7 @@ export const useContract = (contractId?: string) => {
           ),
           contract_tenants (
             id, tenant_id, is_representative, move_in_date,
-            tenant:tenants (
+            tenant:tenants!left (
               id, full_name, phone, email
             )
           )
@@ -396,13 +396,17 @@ export const useCreateContract = () => {
           move_in_date: t.move_in_date,
         }));
 
-        const { error: tenantsError } = await supabase
+        const { error: tenantsError } = await (supabase as any)
           .from('contract_tenants')
           .insert(contractTenants);
 
         if (tenantsError) {
           console.error('Error inserting contract tenants:', tenantsError);
-          // Don't throw - contract creation was successful
+          toast({
+            variant: 'destructive',
+            title: 'Cảnh báo: Lỗi lưu khách thuê',
+            description: `Hợp đồng đã tạo nhưng có lỗi khi lưu danh sách khách thuê. Vui lòng kiểm tra lại.`,
+          });
         }
       }
 
