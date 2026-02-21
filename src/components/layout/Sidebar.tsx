@@ -34,6 +34,7 @@ import {
   ChevronDown,
   Map,
   Bot,
+  ClipboardCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -78,6 +79,7 @@ const navigationSections: (NavItem | NavSection)[] = [
       { title: 'Khách hẹn', href: '/leads', icon: UserPlus },
       { title: 'Đặt cọc', href: '/deposits', icon: DollarSign },
       { title: 'Hợp đồng', href: '/contracts', icon: FileText },
+      { title: 'Duyệt thanh lý', href: '/contracts/termination-approvals', icon: ClipboardCheck },
       { title: 'Khách thuê', href: '/tenants', icon: User },
       { title: 'Phương tiện', href: '/vehicles', icon: Car },
     ],

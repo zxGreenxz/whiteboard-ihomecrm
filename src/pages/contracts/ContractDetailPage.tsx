@@ -1104,8 +1104,20 @@ const ContractDetailPage = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-medium">{getHistoryTypeLabel(item.type)}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {item.status}
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              item.status === 'PENDING_APPROVAL' ? 'bg-orange-100 text-orange-800 border-orange-300' :
+                              item.status === 'APPROVED' || item.status === 'COMPLETED' ? 'bg-green-100 text-green-800 border-green-300' :
+                              item.status === 'DRAFT' ? 'bg-gray-100 text-gray-800' : ''
+                            }`}
+                          >
+                            {item.status === 'DRAFT' ? 'Nháp' :
+                             item.status === 'PENDING_APPROVAL' ? 'Chờ duyệt' :
+                             item.status === 'APPROVED' ? 'Đã duyệt' :
+                             item.status === 'COMPLETED' ? 'Hoàn thành' :
+                             item.status === 'CANCELLED' ? 'Đã hủy' :
+                             item.status}
                           </Badge>
                         </div>
                         <div className="text-sm text-gray-600">
@@ -1129,6 +1141,19 @@ const ContractDetailPage = () => {
                             Loại: {item.details.termination_type}
                             {item.details.actual_move_out_date && (
                               <> - Ngày trả phòng: {format(new Date(item.details.actual_move_out_date), 'dd/MM/yyyy', { locale: vi })}</>
+                            )}
+                            {(item.status === 'DRAFT' || item.status === 'PENDING_APPROVAL') && (
+                              <div className="mt-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                  onClick={() => navigate('/contracts/termination-approvals')}
+                                >
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Đi đến duyệt thanh lý
+                                </Button>
+                              </div>
                             )}
                           </div>
                         )}
