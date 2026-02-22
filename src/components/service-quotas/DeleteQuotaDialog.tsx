@@ -8,25 +8,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useDeleteService, FEE_TYPE_LABELS } from "@/hooks/useServices";
-import type { ServiceWithBuildings } from "@/hooks/useServices";
+import { useDeleteServiceQuota } from "@/hooks/useServices";
+import type { ServiceQuotaWithTiers } from "@/hooks/useServices";
 
-interface DeleteServiceDialogProps {
+interface DeleteQuotaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  service: ServiceWithBuildings;
+  quota: ServiceQuotaWithTiers;
 }
 
-export function DeleteServiceDialog({
+export function DeleteQuotaDialog({
   open,
   onOpenChange,
-  service,
-}: DeleteServiceDialogProps) {
-  const deleteService = useDeleteService();
+  quota,
+}: DeleteQuotaDialogProps) {
+  const deleteMutation = useDeleteServiceQuota();
 
   const handleDelete = async () => {
     try {
-      await deleteService.mutateAsync(service.id);
+      await deleteMutation.mutateAsync(quota.id);
       onOpenChange(false);
     } catch {
       // handled by mutation
@@ -37,30 +37,27 @@ export function DeleteServiceDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Xác nhận xóa dịch vụ</AlertDialogTitle>
+          <AlertDialogTitle>Xác nhận xóa định mức</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
               <p>
-                Bạn có chắc chắn muốn xóa dịch vụ{" "}
-                <span className="font-semibold">{service.name}</span>?
+                Bạn có chắc chắn muốn xóa định mức{" "}
+                <span className="font-semibold">{quota.name}</span>?
               </p>
               <div className="bg-muted rounded-md p-3 text-sm space-y-1">
-                {service.code && (
-                  <p>
-                    <span className="font-medium">Mã:</span> {service.code}
-                  </p>
-                )}
-                {service.fee_type && (
-                  <p>
-                    <span className="font-medium">Loại phí:</span>{" "}
-                    {FEE_TYPE_LABELS[service.fee_type] || service.fee_type}
-                  </p>
-                )}
                 <p>
-                  <span className="font-medium">Đơn giá:</span>{" "}
-                  {new Intl.NumberFormat("vi-VN").format(service.unit_price)}
-                  {service.unit && `/${service.unit}`}
+                  <span className="font-medium">Tên:</span> {quota.name}
                 </p>
+                <p>
+                  <span className="font-medium">Số bậc:</span>{" "}
+                  {quota.service_quota_tiers?.length || 0}
+                </p>
+                {quota.description && (
+                  <p>
+                    <span className="font-medium">Mô tả:</span>{" "}
+                    {quota.description}
+                  </p>
+                )}
               </div>
               <p className="text-sm text-muted-foreground mt-2">
                 Hành động này không thể hoàn tác.
@@ -72,10 +69,10 @@ export function DeleteServiceDialog({
           <AlertDialogCancel>Hủy</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
-            disabled={deleteService.isPending}
+            disabled={deleteMutation.isPending}
             className="bg-destructive hover:bg-destructive/90"
           >
-            {deleteService.isPending ? "Đang xóa..." : "Xóa"}
+            {deleteMutation.isPending ? "Đang xóa..." : "Xóa"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

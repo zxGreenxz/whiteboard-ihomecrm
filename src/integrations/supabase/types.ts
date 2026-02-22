@@ -2014,16 +2014,94 @@ export type Database = {
           },
         ]
       }
+      service_buildings: {
+        Row: {
+          building_id: string
+          created_at: string
+          id: string
+          service_id: string
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          id?: string
+          service_id: string
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          id?: string
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_buildings_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_quota_tiers: {
+        Row: {
+          created_at: string
+          from_value: number
+          id: string
+          quota_id: string
+          tier_number: number
+          to_value: number | null
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string
+          from_value: number
+          id?: string
+          quota_id: string
+          tier_number: number
+          to_value?: number | null
+          unit_price: number
+        }
+        Update: {
+          created_at?: string
+          from_value?: number
+          id?: string
+          quota_id?: string
+          tier_number?: number
+          to_value?: number | null
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_quota_tiers_quota_id_fkey"
+            columns: ["quota_id"]
+            isOneToOne: false
+            referencedRelation: "service_quotas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           code: string | null
           created_at: string
           deleted_at: string | null
           description: string | null
+          fee_type: Database["public"]["Enums"]["fee_type"] | null
           id: string
           is_default: boolean | null
           is_mandatory: boolean | null
           name: string
+          pricing_type: Database["public"]["Enums"]["pricing_type"] | null
+          quota_id: string | null
+          tax_rate: number | null
           type: Database["public"]["Enums"]["service_type"]
           unit: string | null
           unit_price: number
@@ -2035,10 +2113,14 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           description?: string | null
+          fee_type?: Database["public"]["Enums"]["fee_type"] | null
           id?: string
           is_default?: boolean | null
           is_mandatory?: boolean | null
           name: string
+          pricing_type?: Database["public"]["Enums"]["pricing_type"] | null
+          quota_id?: string | null
+          tax_rate?: number | null
           type: Database["public"]["Enums"]["service_type"]
           unit?: string | null
           unit_price?: number
@@ -2050,17 +2132,29 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           description?: string | null
+          fee_type?: Database["public"]["Enums"]["fee_type"] | null
           id?: string
           is_default?: boolean | null
           is_mandatory?: boolean | null
           name?: string
+          pricing_type?: Database["public"]["Enums"]["pricing_type"] | null
+          quota_id?: string | null
+          tax_rate?: number | null
           type?: Database["public"]["Enums"]["service_type"]
           unit?: string | null
           unit_price?: number
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "services_quota_id_fkey"
+            columns: ["quota_id"]
+            isOneToOne: false
+            referencedRelation: "service_quotas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settings: {
         Row: {
@@ -2420,54 +2514,33 @@ export type Database = {
       }
       service_quotas: {
         Row: {
-          id: string
-          service_id: string
-          building_id: string | null
-          quota_value: number
-          unit: string | null
-          description: string | null
-          user_id: string
           created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          name: string
           updated_at: string
+          user_id: string
         }
         Insert: {
-          id?: string
-          service_id: string
-          building_id?: string | null
-          quota_value: number
-          unit?: string | null
-          description?: string | null
-          user_id: string
           created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
           updated_at?: string
+          user_id: string
         }
         Update: {
-          id?: string
-          service_id?: string
-          building_id?: string | null
-          quota_value?: number
-          unit?: string | null
-          description?: string | null
-          user_id?: string
           created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
           updated_at?: string
+          user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "service_quotas_service_id_fkey"
-            columns: ["service_id"]
-            isOneToOne: false
-            referencedRelation: "services"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "service_quotas_building_id_fkey"
-            columns: ["building_id"]
-            isOneToOne: false
-            referencedRelation: "buildings"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       meters: {
         Row: {
@@ -2970,6 +3043,12 @@ export type Database = {
         | "SALARY"
         | "SUPPLIES"
         | "OTHER"
+      fee_type:
+        | "TIEN_PHI_DICH_VU"
+        | "TIEN_DIEN"
+        | "TIEN_NUOC"
+        | "TIEN_PHI_KHAC"
+        | "TIEN_VE_SINH"
       id_type: "CCCD" | "CMND" | "PASSPORT" | "OTHER"
       invoice_item_type: "RENT" | "SERVICE" | "PENALTY" | "DISCOUNT" | "OTHER"
       invoice_status:
@@ -3021,6 +3100,12 @@ export type Database = {
         | "VNPAY"
         | "ZALO_PAY"
         | "OTHER"
+      pricing_type:
+        | "DON_GIA_CO_DINH_THANG"
+        | "DON_GIA_CO_DINH_DONG_HO"
+        | "DON_GIA_BIEN_DONG"
+        | "DON_GIA_THEO_NGUOI"
+        | "DON_GIA_THEO_PHONG"
       room_status:
         | "AVAILABLE"
         | "OCCUPIED"
@@ -3202,6 +3287,13 @@ export const Constants = {
         "SUPPLIES",
         "OTHER",
       ],
+      fee_type: [
+        "TIEN_PHI_DICH_VU",
+        "TIEN_DIEN",
+        "TIEN_NUOC",
+        "TIEN_PHI_KHAC",
+        "TIEN_VE_SINH",
+      ],
       id_type: ["CCCD", "CMND", "PASSPORT", "OTHER"],
       invoice_item_type: ["RENT", "SERVICE", "PENALTY", "DISCOUNT", "OTHER"],
       invoice_status: [
@@ -3258,6 +3350,13 @@ export const Constants = {
         "VNPAY",
         "ZALO_PAY",
         "OTHER",
+      ],
+      pricing_type: [
+        "DON_GIA_CO_DINH_THANG",
+        "DON_GIA_CO_DINH_DONG_HO",
+        "DON_GIA_BIEN_DONG",
+        "DON_GIA_THEO_NGUOI",
+        "DON_GIA_THEO_PHONG",
       ],
       room_status: [
         "AVAILABLE",

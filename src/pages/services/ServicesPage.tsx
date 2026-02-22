@@ -1,8 +1,13 @@
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
-import { useServices } from "@/hooks/useServices";
+import {
+  useServices,
+  FEE_TYPE_LABELS,
+  PRICING_TYPE_LABELS,
+  type ServiceWithBuildings,
+} from "@/hooks/useServices";
+import { useBuildings } from "@/hooks/useBuildings";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -11,256 +16,272 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Pencil, Trash2, Wrench, Check, X } from "lucide-react";
-import EmptyState from "@/components/ui/EmptyState";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, RefreshCw, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { CreateServiceDialog } from "@/components/services/CreateServiceDialog";
 import { EditServiceDialog } from "@/components/services/EditServiceDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
-import type { Database } from "@/integrations/supabase/types";
-
-type Service = Database["public"]["Tables"]["services"]["Row"];
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function ServicesPage() {
-  const { data: services, isLoading } = useServices();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<string>("all");
+  const queryClient = useQueryClient();
+  const [buildingFilter, setBuildingFilter] = useState<string>("");
+  const [feeTypeFilter, setFeeTypeFilter] = useState<string>("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceWithBuildings | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Filter services based on search and tab
-  const filteredServices = useMemo(() => {
-    if (!services) return [];
+  const { data: services, isLoading } = useServices({
+    building_id: buildingFilter || undefined,
+    fee_type: feeTypeFilter || undefined,
+  });
+  const { data: buildings } = useBuildings();
 
-    return services.filter((service) => {
-      const matchesSearch =
-        service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        service.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        service.description?.toLowerCase().includes(searchTerm.toLowerCase());
+  const totalCount = services?.length || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
+  const paginatedServices = useMemo(
+    () => (services || []).slice(startIndex, endIndex),
+    [services, startIndex, endIndex]
+  );
 
-      const matchesTab =
-        activeTab === "all" || service.type === activeTab;
-
-      return matchesSearch && matchesTab;
-    });
-  }, [services, searchTerm, activeTab]);
-
-  // Count services by type
-  const serviceCounts = useMemo(() => {
-    if (!services) return { all: 0, FIXED: 0, PER_PERSON: 0, PER_ROOM: 0, METER_READING: 0 };
-    
-    return {
-      all: services.length,
-      FIXED: services.filter(s => s.type === "FIXED").length,
-      PER_PERSON: services.filter(s => s.type === "PER_PERSON").length,
-      PER_ROOM: services.filter(s => s.type === "PER_ROOM").length,
-      METER_READING: services.filter(s => s.type === "METER_READING").length,
-    };
-  }, [services]);
-
-  const handleEdit = (service: Service) => {
+  const handleEdit = (service: ServiceWithBuildings) => {
     setSelectedService(service);
     setEditDialogOpen(true);
   };
 
-  const handleDelete = (service: Service) => {
+  const handleDelete = (service: ServiceWithBuildings) => {
     setSelectedService(service);
     setDeleteDialogOpen(true);
   };
 
-  const getServiceTypeBadge = (type: string) => {
-    const variants: Record<string, { label: string; color: "default" | "secondary" | "outline" | "destructive" }> = {
-      FIXED: { label: "Cố định", color: "default" },
-      PER_PERSON: { label: "Theo người", color: "secondary" },
-      PER_ROOM: { label: "Theo căn hộ", color: "outline" },
-      METER_READING: { label: "Theo chỉ số", color: "destructive" },
-    };
-
-    const config = variants[type] || { label: type, color: "default" };
-
-    return (
-      <Badge variant={config.color}>
-        {config.label}
-      </Badge>
-    );
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["services"] });
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-    }).format(amount);
+  const toggleSelectAll = () => {
+    if (selectedIds.size === paginatedServices.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paginatedServices.map((s) => s.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const formatPrice = (amount: number, unit?: string | null) => {
+    const formatted = new Intl.NumberFormat("vi-VN").format(amount);
+    return unit ? `${formatted}/${unit}` : formatted;
   };
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Wrench className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Quản lý Dịch vụ</h1>
+      <div className="space-y-4">
+        {/* Breadcrumb */}
+        <div className="text-sm text-muted-foreground">
+          Danh mục dữ liệu &gt; <span className="text-foreground font-medium">Dịch vụ</span>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tạo dịch vụ
-        </Button>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách Dịch vụ</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Search */}
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Tìm kiếm theo tên, mã, mô tả..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
+        {/* Toolbar */}
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Thêm
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
 
-          {/* Tabs for Service Types */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="all">
-                Tất cả ({serviceCounts.all})
-              </TabsTrigger>
-              <TabsTrigger value="FIXED">
-                Cố định ({serviceCounts.FIXED})
-              </TabsTrigger>
-              <TabsTrigger value="PER_PERSON">
-                Theo người ({serviceCounts.PER_PERSON})
-              </TabsTrigger>
-              <TabsTrigger value="PER_ROOM">
-                Theo căn hộ ({serviceCounts.PER_ROOM})
-              </TabsTrigger>
-              <TabsTrigger value="METER_READING">
-                Theo chỉ số ({serviceCounts.METER_READING})
-              </TabsTrigger>
-            </TabsList>
+        {/* Filters */}
+        <div className="flex items-center gap-3">
+          <Select value={buildingFilter} onValueChange={(v) => { setBuildingFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Chọn tòa nhà" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
+              {(buildings || []).map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <TabsContent value={activeTab}>
-              {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Đang tải...
-                </div>
-              ) : filteredServices && filteredServices.length > 0 ? (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Tên dịch vụ</TableHead>
-                        <TableHead>Loại</TableHead>
-                        <TableHead className="text-right">Đơn giá</TableHead>
-                        <TableHead>Đơn vị</TableHead>
-                        <TableHead className="text-center">Mặc định</TableHead>
-                        <TableHead className="text-center">Bắt buộc</TableHead>
-                        <TableHead className="text-right">Thao tác</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredServices.map((service) => (
-                        <TableRow key={service.id}>
-                          <TableCell className="font-medium">
-                            {service.name}
-                            {service.code && (
-                              <span className="text-sm text-muted-foreground ml-2">
-                                ({service.code})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>{getServiceTypeBadge(service.type)}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(service.unit_price)}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {service.unit || "-"}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {service.is_default ? (
-                              <Check className="h-4 w-4 mx-auto text-green-600" />
-                            ) : (
-                              <X className="h-4 w-4 mx-auto text-muted-foreground" />
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {service.is_mandatory ? (
-                              <Check className="h-4 w-4 mx-auto text-green-600" />
-                            ) : (
-                              <X className="h-4 w-4 mx-auto text-muted-foreground" />
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(service)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDelete(service)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                searchTerm || activeTab !== "all" ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Không tìm thấy dịch vụ nào
-                  </div>
+          <Select value={feeTypeFilter} onValueChange={(v) => { setFeeTypeFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Loại dịch vụ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Tất cả loại</SelectItem>
+              {Object.entries(FEE_TYPE_LABELS).map(([key, label]) => (
+                <SelectItem key={key} value={key}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Table */}
+        {isLoading ? (
+          <div className="text-center py-8 text-muted-foreground">Đang tải...</div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={paginatedServices.length > 0 && selectedIds.size === paginatedServices.length}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                  <TableHead>Mã</TableHead>
+                  <TableHead>Thao tác</TableHead>
+                  <TableHead>Tên dịch vụ</TableHead>
+                  <TableHead>Loại dịch vụ</TableHead>
+                  <TableHead>Loại tính tiền</TableHead>
+                  <TableHead className="text-right">Giá dịch vụ</TableHead>
+                  <TableHead className="text-center">Mặc định</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedServices.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      Không có dữ liệu
+                    </TableCell>
+                  </TableRow>
                 ) : (
-                  <EmptyState
-                    icon={Wrench}
-                    title="Chưa có dịch vụ nào"
-                    description="Hãy thêm dịch vụ đầu tiên để bắt đầu quản lý"
-                    actionLabel="Tạo dịch vụ"
-                    onAction={() => setCreateDialogOpen(true)}
-                  />
-                )
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+                  paginatedServices.map((service) => (
+                    <TableRow key={service.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(service.id)}
+                          onCheckedChange={() => toggleSelect(service.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {service.code || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-green-600 hover:text-green-700"
+                            onClick={() => handleEdit(service)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-600 hover:text-red-700"
+                            onClick={() => handleDelete(service)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">{service.name}</TableCell>
+                      <TableCell>{service.fee_type ? FEE_TYPE_LABELS[service.fee_type] || service.fee_type : "-"}</TableCell>
+                      <TableCell>{service.pricing_type ? PRICING_TYPE_LABELS[service.pricing_type] || service.pricing_type : "-"}</TableCell>
+                      <TableCell className="text-right">
+                        {formatPrice(service.unit_price, service.unit)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch checked={service.is_default || false} disabled />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-      {/* Dialogs */}
-      <CreateServiceDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
-      {selectedService && (
-        <>
-          <EditServiceDialog
-            open={editDialogOpen}
-            onOpenChange={setEditDialogOpen}
-            service={selectedService}
-          />
-          <DeleteServiceDialog
-            open={deleteDialogOpen}
-            onOpenChange={setDeleteDialogOpen}
-            service={selectedService}
-          />
-        </>
-      )}
+        {/* Pagination */}
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2">
+            <span>Số bản ghi:</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+              <SelectTrigger className="w-[70px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">
+              {totalCount > 0
+                ? `${startIndex + 1}-${endIndex} trên tổng số ${totalCount} bản ghi`
+                : "0 bản ghi"}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Dialogs */}
+        <CreateServiceDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+        />
+        {selectedService && (
+          <>
+            <EditServiceDialog
+              open={editDialogOpen}
+              onOpenChange={setEditDialogOpen}
+              service={selectedService}
+            />
+            <DeleteServiceDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              service={selectedService}
+            />
+          </>
+        )}
       </div>
     </MainLayout>
   );
