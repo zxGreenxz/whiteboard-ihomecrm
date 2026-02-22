@@ -29,6 +29,7 @@ import {
   UserCog,
   ChevronDown,
   Map,
+  MapPin,
   Bell,
   ClipboardList,
   List,
@@ -71,6 +72,7 @@ const navigationGroups: NavGroup[] = [
         title: 'Danh mục dữ liệu',
         icon: Building2,
         items: [
+          { title: 'Khu vực', href: '/areas', icon: MapPin },
           { title: 'Toà nhà', href: '/buildings', icon: Building2 },
           { title: 'Căn hộ', href: '/apartments', icon: Home },
           { title: 'Giường', href: '/beds', icon: Bed },

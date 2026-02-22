@@ -145,19 +145,15 @@ export const useDeleteService = () => {
     mutationFn: async (id: string) => {
       // TODO: Check if service is used in any active contracts
       // For now, just soft delete
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("services")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
 
       if (error) {
         toast.error("Không thể xóa dịch vụ");
         throw error;
       }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });

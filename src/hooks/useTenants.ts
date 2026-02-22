@@ -194,19 +194,15 @@ export const useDeleteTenant = () => {
     mutationFn: async (id: string) => {
       // TODO: Check if tenant has active contracts
       // Soft delete
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("tenants")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
 
       if (error) {
         toast.error("Không thể xóa khách hàng");
         throw error;
       }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });

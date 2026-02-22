@@ -30,11 +30,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateBuilding } from "@/hooks/useBuildings";
+import { useAreas } from "@/hooks/useAreas";
 import type { Database } from "@/integrations/supabase/types";
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
 
 const buildingSchema = z.object({
+  area_id: z.string().optional(),
   name: z.string().min(1, "Tên tòa nhà là bắt buộc"),
   code: z.string().optional(),
   type: z.enum(["APARTMENT", "DORMITORY", "HOUSE", "OFFICE", "SLEEPBOX", "HOMESTAY"]),
@@ -61,10 +63,13 @@ export function EditBuildingDialog({
   building,
 }: EditBuildingDialogProps) {
   const updateBuilding = useUpdateBuilding();
+  const { data: areasData } = useAreas();
+  const areas = Array.isArray(areasData) ? areasData.filter(a => a.status === 'ACTIVE') : [];
 
   const form = useForm<BuildingFormValues>({
     resolver: zodResolver(buildingSchema),
     defaultValues: {
+      area_id: building.area_id || "",
       name: building.name,
       code: building.code || "",
       type: building.type,
@@ -82,6 +87,7 @@ export function EditBuildingDialog({
   useEffect(() => {
     if (building) {
       form.reset({
+        area_id: building.area_id || "",
         name: building.name,
         code: building.code || "",
         type: building.type,
@@ -104,6 +110,7 @@ export function EditBuildingDialog({
         updates: {
           name: data.name,
           code: data.code || null,
+          area_id: data.area_id || null,
           type: data.type,
           status: data.status,
           province: data.province,
@@ -137,6 +144,31 @@ export function EditBuildingDialog({
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm">Thông tin cơ bản</h3>
                 
+                <FormField
+                  control={form.control}
+                  name="area_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Khu vực</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn khu vực" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {areas.map((area) => (
+                            <SelectItem key={area.id} value={area.id}>
+                              {area.name}{area.code ? ` (${area.code})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="name"

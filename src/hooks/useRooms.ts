@@ -152,19 +152,15 @@ export const useDeleteRoom = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       // Soft delete
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("rooms")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
 
       if (error) {
         toast.error("Không thể xóa căn hộ");
         throw error;
       }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rooms"] });

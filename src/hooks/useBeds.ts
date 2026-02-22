@@ -151,19 +151,15 @@ export const useDeleteBed = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       // Soft delete
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("beds")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
 
       if (error) {
         toast.error("Không thể xóa giường");
         throw error;
       }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["beds"] });

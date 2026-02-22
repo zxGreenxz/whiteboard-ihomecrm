@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      areas: {
+        Row: {
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       asset_categories: {
         Row: {
           created_at: string
@@ -348,6 +384,7 @@ export type Database = {
       buildings: {
         Row: {
           amenities: Json | null
+          area_id: string | null
           code: string | null
           created_at: string
           deleted_at: string | null
@@ -368,6 +405,7 @@ export type Database = {
         }
         Insert: {
           amenities?: Json | null
+          area_id?: string | null
           code?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -388,6 +426,7 @@ export type Database = {
         }
         Update: {
           amenities?: Json | null
+          area_id?: string | null
           code?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -406,7 +445,15 @@ export type Database = {
           user_id?: string
           ward?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "buildings_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       code_sequences: {
         Row: {

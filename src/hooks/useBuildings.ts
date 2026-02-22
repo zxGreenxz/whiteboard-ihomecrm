@@ -16,6 +16,7 @@ export const useBuildings = () => {
         .from("buildings")
         .select(`
           *,
+          area:areas(id, name, code),
           rooms:rooms(count)
         `)
         .is("deleted_at", null)
@@ -42,7 +43,10 @@ export const useBuilding = (id: string) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("buildings")
-        .select(`*`)
+        .select(`
+          *,
+          area:areas(id, name, code)
+        `)
         .eq("id", id)
         .is("deleted_at", null)
         .single();
@@ -173,19 +177,15 @@ export const useDeleteBuilding = () => {
       }
 
       // Soft delete
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("buildings")
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
 
       if (error) {
         toast.error("Không thể xóa tòa nhà");
         throw error;
       }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });

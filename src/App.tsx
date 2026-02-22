@@ -18,6 +18,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import NotFound from "./pages/NotFound";
 
 // Danh mục dữ liệu Pages
+import AreasPage from "./pages/areas/AreasPage";
 import BuildingsPage from "./pages/buildings/BuildingsPage";
 import BuildingDetailPage from "./pages/buildings/BuildingDetailPage";
 import RoomsPage from "./pages/rooms/RoomsPage";
@@ -172,6 +173,7 @@ const App = () => (
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
           {/* === DANH MỤC DỮ LIỆU === */}
+          <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
           <Route path="/buildings" element={<ProtectedRoute><BuildingsPage /></ProtectedRoute>} />
           <Route path="/buildings/:id" element={<ProtectedRoute><BuildingDetailPage /></ProtectedRoute>} />
           {/* Primary route: /apartments, redirect /rooms → /apartments */}
