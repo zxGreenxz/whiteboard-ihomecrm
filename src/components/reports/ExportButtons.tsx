@@ -37,10 +37,10 @@ export function ExportButtons({ data, filename, onExport }: ExportButtonsProps) 
           return; // Don't show success toast for unimplemented features
         }
       }
-      toast.success(`Đã xuất file ${format.toUpperCase()} thành công!`);
+      toast.success(`Đã xuất file ${format.toUpperCase()} thành công`);
     } catch (error) {
       console.error("Export error:", error);
-      toast.error(`Lỗi khi xuất file ${format.toUpperCase()}`);
+      toast.error(`Có lỗi xảy ra khi xuất file ${format.toUpperCase()}`);
     } finally {
       setIsExporting(false);
     }
@@ -104,7 +104,7 @@ function exportToExcel(data: any[], filename: string) {
     XLSX.writeFile(workbook, `${filename}.xlsx`);
   } catch (error) {
     console.error("Excel export error:", error);
-    toast.error("Lỗi khi xuất file Excel");
+    toast.error("Có lỗi xảy ra khi xuất file Excel");
   }
 }
 

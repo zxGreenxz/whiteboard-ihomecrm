@@ -45,22 +45,26 @@ export interface RecentActivity {
   amount?: number;
 }
 
+// Helper to get building IDs for filtering
+const getBuildingIds = async (userId: string, buildingId?: string | null): Promise<string[]> => {
+  if (buildingId) return [buildingId];
+  const { data: userBuildings } = await supabase
+    .from("buildings")
+    .select("id")
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+  return userBuildings?.map(b => b.id) || [];
+};
+
 // Dashboard stats
-export const useDashboardStats = () => {
+export const useDashboardStats = (buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["dashboard-stats"],
+    queryKey: ["dashboard-stats", buildingId],
     queryFn: async (): Promise<DashboardStats> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total rooms (via buildings that belong to user)
-      const { data: userBuildings } = await supabase
-        .from("buildings")
-        .select("id")
-        .eq("user_id", user.id)
-        .is("deleted_at", null);
-
-      const buildingIds = userBuildings?.map(b => b.id) || [];
+      const buildingIds = await getBuildingIds(user.id, buildingId);
 
       let totalRooms = 0;
       if (buildingIds.length > 0) {
@@ -72,13 +76,19 @@ export const useDashboardStats = () => {
         totalRooms = count || 0;
       }
 
-      // Get occupied rooms (active contracts)
-      const { data: activeContracts } = await supabase
+      // Get occupied rooms (active contracts) - filter by room's building
+      let occupiedRoomsQuery = supabase
         .from("contracts")
-        .select("room_id")
+        .select("room_id, room:rooms!inner(building_id)")
         .eq("user_id", user.id)
         .eq("status", "ACTIVE")
         .not("room_id", "is", null);
+
+      if (buildingIds.length > 0) {
+        occupiedRoomsQuery = occupiedRoomsQuery.in("rooms.building_id", buildingIds);
+      }
+
+      const { data: activeContracts } = await occupiedRoomsQuery;
 
       const occupiedRooms = activeContracts?.length || 0;
       const availableRooms = (totalRooms || 0) - occupiedRooms;
@@ -135,14 +145,14 @@ export const useDashboardStats = () => {
         unresolvedIssues: unresolvedIssues || 0,
       };
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
   });
 };
 
 // Revenue chart data (last 12 months)
-export const useRevenueChart = (months: number = 12) => {
+export const useRevenueChart = (months: number = 12, buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["revenue-chart", months],
+    queryKey: ["revenue-chart", months, buildingId],
     queryFn: async (): Promise<RevenueData[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -184,21 +194,14 @@ export const useRevenueChart = (months: number = 12) => {
 };
 
 // Occupancy chart data
-export const useOccupancyChart = () => {
+export const useOccupancyChart = (buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["occupancy-chart"],
+    queryKey: ["occupancy-chart", buildingId],
     queryFn: async (): Promise<OccupancyData[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total rooms (via buildings that belong to user)
-      const { data: userBuildings } = await supabase
-        .from("buildings")
-        .select("id")
-        .eq("user_id", user.id)
-        .is("deleted_at", null);
-
-      const buildingIds = userBuildings?.map(b => b.id) || [];
+      const buildingIds = await getBuildingIds(user.id, buildingId);
 
       let totalRooms = 0;
       if (buildingIds.length > 0) {
@@ -211,17 +214,23 @@ export const useOccupancyChart = () => {
       }
 
       // Get rooms by status
-      const { data: activeContracts } = await supabase
+      let contractsQuery = supabase
         .from("contracts")
-        .select("room_id, status")
+        .select("room_id, room:rooms!inner(building_id)")
         .eq("user_id", user.id)
         .eq("status", "ACTIVE")
         .not("room_id", "is", null);
 
+      if (buildingIds.length > 0) {
+        contractsQuery = contractsQuery.in("rooms.building_id", buildingIds);
+      }
+
+      const { data: activeContracts } = await contractsQuery;
+
       const occupiedRooms = activeContracts?.length || 0;
       const availableRooms = totalRooms - occupiedRooms;
 
-      const total = totalRooms || 1; // Avoid division by zero
+      const total = totalRooms || 1;
 
       return [
         {
@@ -240,9 +249,9 @@ export const useOccupancyChart = () => {
 };
 
 // Alerts
-export const useAlerts = () => {
+export const useAlerts = (buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["dashboard-alerts"],
+    queryKey: ["dashboard-alerts", buildingId],
     queryFn: async (): Promise<Alert[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -265,7 +274,7 @@ export const useAlerts = () => {
           id: invoice.id,
           type: "overdue_invoice",
           title: "Hóa đơn quá hạn",
-          description: `${invoice.contract?.tenant?.full_name || "Khách thuê"} - ${invoice.title || "Hóa đơn"} - Nợ ${debt.toLocaleString()}đ`,
+          description: `${invoice.contract?.tenant?.full_name || "Khách hàng"} - ${invoice.title || "Hóa đơn"} - Nợ ${debt.toLocaleString()}đ`,
           severity: "high",
           date: invoice.due_date,
           link: `/invoices/${invoice.id}`,
@@ -292,7 +301,7 @@ export const useAlerts = () => {
           id: contract.id,
           type: "expiring_contract",
           title: "Hợp đồng sắp hết hạn",
-          description: `${contract.tenant?.full_name || "Khách thuê"} - ${contract.contract_number} - Còn ${daysLeft} ngày`,
+          description: `${contract.tenant?.full_name || "Khách hàng"} - ${contract.contract_number} - Còn ${daysLeft} ngày`,
           severity: daysLeft <= 7 ? "high" : daysLeft <= 15 ? "medium" : "low",
           date: contract.end_date,
           link: `/contracts/${contract.id}`,
@@ -317,7 +326,7 @@ export const useAlerts = () => {
         alerts.push({
           id: issue.id,
           type: "urgent_issue",
-          title: "Sự cố khẩn cấp chưa xử lý",
+          title: "Công việc khẩn cấp chưa xử lý",
           description: `${issue.title} - Quá 24h chưa giải quyết`,
           severity: "high",
           date: issue.created_at,
@@ -334,9 +343,9 @@ export const useAlerts = () => {
 };
 
 // Recent activities
-export const useRecentActivities = () => {
+export const useRecentActivities = (buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["recent-activities"],
+    queryKey: ["recent-activities", buildingId],
     queryFn: async (): Promise<RecentActivity[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -360,7 +369,7 @@ export const useRecentActivities = () => {
           id: contract.id,
           type: "contract",
           title: "Hợp đồng mới",
-          description: `${contract.tenant?.full_name || "Khách thuê"} - ${contract.room?.name || "Phòng"}`,
+          description: `${contract.tenant?.full_name || "Khách hàng"} - ${contract.room?.name || "Căn hộ"}`,
           date: contract.created_at,
         });
       });
@@ -379,7 +388,7 @@ export const useRecentActivities = () => {
           id: payment.id,
           type: "payment",
           title: "Thu tiền",
-          description: `${payment.invoice?.contract?.tenant?.full_name || "Khách thuê"}`,
+          description: `${payment.invoice?.contract?.tenant?.full_name || "Khách hàng"}`,
           date: payment.payment_date,
           amount: payment.amount,
         });
@@ -398,7 +407,7 @@ export const useRecentActivities = () => {
         activities.push({
           id: issue.id,
           type: "issue",
-          title: "Sự cố mới",
+          title: "Công việc mới",
           description: issue.title,
           date: issue.created_at,
         });

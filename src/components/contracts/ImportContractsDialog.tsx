@@ -183,7 +183,7 @@ const ImportContractsDialog = ({ open, onOpenChange }: ImportContractsDialogProp
                   Tải file mẫu tại đây
                 </Button>
                 <span className="text-sm text-gray-500">
-                  ({buildingRooms.length} phòng trong tòa nhà)
+                  ({buildingRooms.length} căn hộ trong tòa nhà)
                 </span>
               </div>
 
@@ -249,8 +249,8 @@ const ImportContractsDialog = ({ open, onOpenChange }: ImportContractsDialogProp
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-xs">STT</TableHead>
-                      <TableHead className="text-xs">Phòng</TableHead>
-                      <TableHead className="text-xs">Khách thuê</TableHead>
+                      <TableHead className="text-xs">Căn hộ</TableHead>
+                      <TableHead className="text-xs">Khách hàng</TableHead>
                       <TableHead className="text-xs">SĐT</TableHead>
                       <TableHead className="text-xs">Bắt đầu</TableHead>
                       <TableHead className="text-xs">Kết thúc</TableHead>

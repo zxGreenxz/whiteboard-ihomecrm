@@ -27,6 +27,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Pencil, Trash2, Building2, Upload, Download, MoreHorizontal, Eye } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";
 import { CreateBuildingDialog } from "@/components/buildings/CreateBuildingDialog";
 import { EditBuildingDialog } from "@/components/buildings/EditBuildingDialog";
@@ -213,7 +214,7 @@ export default function BuildingsPage() {
                     <TableHead>Khu vực</TableHead>
                     <TableHead>Loại hình</TableHead>
                     <TableHead>Địa chỉ</TableHead>
-                    <TableHead className="text-center">Số phòng</TableHead>
+                    <TableHead className="text-center">Số căn hộ</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead className="text-right">Thao tác</TableHead>
                   </TableRow>
@@ -284,11 +285,19 @@ export default function BuildingsPage() {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchTerm || statusFilter !== "all" || typeFilter !== "all"
-                ? "Không tìm thấy tòa nhà nào"
-                : "Chưa có tòa nhà nào. Nhấn 'Tạo tòa nhà' để bắt đầu."}
-            </div>
+            searchTerm || statusFilter !== "all" || typeFilter !== "all" ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Không tìm thấy tòa nhà nào
+              </div>
+            ) : (
+              <EmptyState
+                icon={Building2}
+                title="Chưa có toà nhà nào"
+                description="Hãy thêm toà nhà đầu tiên để bắt đầu quản lý"
+                actionLabel="Tạo toà nhà"
+                onAction={() => setCreateDialogOpen(true)}
+              />
+            )
           )}
         </CardContent>
       </Card>

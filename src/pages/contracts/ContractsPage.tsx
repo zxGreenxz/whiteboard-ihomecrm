@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ import {
   Upload,
   LogOut,
 } from 'lucide-react';
+import EmptyState from '@/components/ui/EmptyState';
 import { useContracts, type ContractWithRelations } from '@/hooks/useContracts';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
@@ -43,9 +44,16 @@ import TransferContractDialog from '@/components/contracts/TransferContractDialo
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 import ImportContractsDialog from '@/components/contracts/ImportContractsDialog';
+import TerminationApprovalsTab from '@/components/contracts/TerminationApprovalsTab';
+import ESigningTab from '@/components/contracts/ESigningTab';
+import { useGeneralSettings } from '@/hooks/useSettings';
 
 const ContractsPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'contracts';
+  const { data: generalSettings } = useGeneralSettings();
+  const eSigningEnabled = generalSettings?.contract_e_signing_enabled === true;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
@@ -147,15 +155,57 @@ const ContractsPage = () => {
   return (
     <MainLayout
       title="Quản lý Hợp đồng"
-      subtitle="Quản lý hợp đồng thuê phòng"
+      subtitle="Quản lý hợp đồng thuê căn hộ"
       icon={FileText}
     >
+      {/* Tab Navigation */}
+      <div className="flex gap-1 mb-6 border-b">
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'contracts'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+          onClick={() => setSearchParams({})}
+        >
+          Danh sách hợp đồng
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'termination-approvals'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+          onClick={() => setSearchParams({ tab: 'termination-approvals' })}
+        >
+          Duyệt thanh lý
+        </button>
+        {eSigningEnabled && (
+          <button
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'e-signing'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setSearchParams({ tab: 'e-signing' })}
+          >
+            Ký điện tử
+          </button>
+        )}
+      </div>
+
+      {activeTab === 'termination-approvals' ? (
+        <TerminationApprovalsTab />
+      ) : activeTab === 'e-signing' && eSigningEnabled ? (
+        <ESigningTab />
+      ) : (
+      <>
       {/* Header Actions */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Tìm theo mã HĐ, tên khách, SĐT, phòng..."
+            placeholder="Tìm theo mã HĐ, tên khách, SĐT, căn hộ..."
             value={searchTerm}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
@@ -194,19 +244,27 @@ const ContractsPage = () => {
             Đang tải dữ liệu...
           </div>
         ) : !filteredContracts || filteredContracts.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            {searchTerm || statusFilter
-              ? 'Không tìm thấy hợp đồng nào phù hợp'
-              : 'Chưa có hợp đồng nào. Nhấn "Tạo hợp đồng" để bắt đầu.'}
-          </div>
+          searchTerm || statusFilter ? (
+            <div className="p-8 text-center text-gray-500">
+              Không tìm thấy hợp đồng nào phù hợp
+            </div>
+          ) : (
+            <EmptyState
+              icon={FileText}
+              title="Chưa có hợp đồng nào"
+              description="Hãy tạo hợp đồng đầu tiên để bắt đầu quản lý"
+              actionLabel="Tạo hợp đồng"
+              onAction={() => setCreateDialogOpen(true)}
+            />
+          )
         ) : (
           <>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Mã HĐ</TableHead>
-                  <TableHead>Khách thuê</TableHead>
-                  <TableHead>Phòng/Giường</TableHead>
+                  <TableHead>Khách hàng</TableHead>
+                  <TableHead>Căn hộ/Giường</TableHead>
                   <TableHead>Thời gian</TableHead>
                   <TableHead>Giá thuê</TableHead>
                   <TableHead>Trạng thái</TableHead>
@@ -306,7 +364,7 @@ const ContractsPage = () => {
                                 }}
                               >
                                 <ArrowRightLeft className="h-4 w-4 mr-2" />
-                                Chuyển Phòng/Giường
+                                Chuyển Căn hộ/Giường
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => {
@@ -430,6 +488,8 @@ const ContractsPage = () => {
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
       />
+      </>
+      )}
     </MainLayout>
   );
 };

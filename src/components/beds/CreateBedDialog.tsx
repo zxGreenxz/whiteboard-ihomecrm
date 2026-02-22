@@ -34,7 +34,7 @@ import { useRooms } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
 
 const bedSchema = z.object({
-  room_id: z.string().min(1, "Phòng là bắt buộc"),
+  room_id: z.string().min(1, "Căn hộ là bắt buộc"),
   name: z.string().min(1, "Tên giường là bắt buộc"),
   code: z.string().optional(),
   rent_price: z.string().min(1, "Giá thuê là bắt buộc"),
@@ -118,11 +118,11 @@ export function CreateBedDialog({ open, onOpenChange }: CreateBedDialogProps) {
                 name="room_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phòng *</FormLabel>
+                    <FormLabel>Căn hộ *</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Chọn phòng" />
+                          <SelectValue placeholder="Chọn căn hộ" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -134,7 +134,7 @@ export function CreateBedDialog({ open, onOpenChange }: CreateBedDialogProps) {
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Chỉ hiển thị phòng từ Ký túc xá và Sleepbox
+                      Chỉ hiển thị căn hộ từ Ký túc xá và Sleepbox
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

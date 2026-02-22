@@ -89,7 +89,7 @@ export const useCreateBuilding = () => {
         if (error.code === "23505") {
           toast.error("Mã tòa nhà đã tồn tại");
         } else if (error.code === "23503") {
-          toast.error("Khu vực không tồn tại");
+          toast.error("Dữ liệu liên kết không tồn tại");
         } else {
           toast.error("Không thể tạo tòa nhà");
         }
@@ -101,7 +101,7 @@ export const useCreateBuilding = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
       queryClient.invalidateQueries({ queryKey: ["areas"] }); // Update buildings count in areas
-      toast.success("Tạo tòa nhà thành công");
+      toast.success("Tòa nhà đã được tạo thành công");
     },
     onError: (error) => {
       console.error("Error creating building:", error);
@@ -132,7 +132,7 @@ export const useUpdateBuilding = () => {
         if (error.code === "23505") {
           toast.error("Mã tòa nhà đã tồn tại");
         } else if (error.code === "23503") {
-          toast.error("Khu vực không tồn tại");
+          toast.error("Dữ liệu liên kết không tồn tại");
         } else {
           toast.error("Không thể cập nhật tòa nhà");
         }
@@ -145,7 +145,7 @@ export const useUpdateBuilding = () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
       queryClient.invalidateQueries({ queryKey: ["buildings", data.id] });
       queryClient.invalidateQueries({ queryKey: ["areas"] });
-      toast.success("Cập nhật tòa nhà thành công");
+      toast.success("Tòa nhà đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating building:", error);
@@ -173,7 +173,7 @@ export const useDeleteBuilding = () => {
 
       if (rooms && rooms.length > 0) {
         toast.error(
-          `Không thể xóa tòa nhà đang có ${rooms.length} phòng`
+          `Không thể xóa tòa nhà đang có ${rooms.length} căn hộ`
         );
         throw new Error("Building has rooms");
       }
@@ -196,7 +196,7 @@ export const useDeleteBuilding = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
       queryClient.invalidateQueries({ queryKey: ["areas"] });
-      toast.success("Xóa tòa nhà thành công");
+      toast.success("Tòa nhà đã được xóa thành công");
     },
     onError: (error) => {
       console.error("Error deleting building:", error);

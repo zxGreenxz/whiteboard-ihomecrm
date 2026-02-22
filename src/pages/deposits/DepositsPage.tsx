@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, DollarSign } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -115,7 +116,7 @@ const DepositsPage = () => {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
-            placeholder="Tìm kiếm theo tên, SĐT, phòng..."
+            placeholder="Tìm kiếm theo tên, SĐT, căn hộ..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -143,7 +144,7 @@ const DepositsPage = () => {
             <TableRow>
               <TableHead>Khách hàng</TableHead>
               <TableHead>SĐT</TableHead>
-              <TableHead>Phòng/Giường</TableHead>
+              <TableHead>Căn hộ/Giường</TableHead>
               <TableHead>Số tiền</TableHead>
               <TableHead>Ngày đặt cọc</TableHead>
               <TableHead>Giữ đến ngày</TableHead>
@@ -154,8 +155,20 @@ const DepositsPage = () => {
           <TableBody>
             {filteredDeposits.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  Không tìm thấy phiếu đặt cọc nào
+                <TableCell colSpan={8}>
+                  {deposits.length === 0 && statusFilter === "ALL" && !searchQuery ? (
+                    <EmptyState
+                      icon={DollarSign}
+                      title="Chưa có phiếu đặt cọc nào"
+                      description="Hãy tạo phiếu đặt cọc đầu tiên để bắt đầu quản lý"
+                      actionLabel="Tạo đặt cọc"
+                      onAction={() => setCreateDialogOpen(true)}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Không tìm thấy phiếu đặt cọc nào
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

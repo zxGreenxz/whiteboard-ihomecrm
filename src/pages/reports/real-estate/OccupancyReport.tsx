@@ -28,10 +28,10 @@ export default function OccupancyReport() {
   const stats = occupancyData && (
     <>
       <ReportCard
-        title="Tổng số phòng"
+        title="Tổng số căn hộ"
         value={occupancyData.summary.total}
         icon={Building2}
-        description="Tổng phòng quản lý"
+        description="Tổng căn hộ quản lý"
       />
       <ReportCard
         title="Đang cho thuê"
@@ -40,7 +40,7 @@ export default function OccupancyReport() {
         description={`${occupancyData.summary.occupancyRate}% tỷ lệ lấp đầy`}
       />
       <ReportCard
-        title="Phòng trống"
+        title="Căn hộ trống"
         value={occupancyData.summary.available}
         icon={DoorOpen}
         description="Sẵn sàng cho thuê"
@@ -62,9 +62,9 @@ export default function OccupancyReport() {
 
   const exportData = occupancyData?.byBuilding.map(building => ({
     "Tòa nhà": building.building,
-    "Tổng phòng": building.total,
+    "Tổng căn hộ": building.total,
     "Đang thuê": building.occupied,
-    "Phòng trống": building.available,
+    "Căn hộ trống": building.available,
     "Bảo dưỡng": building.maintenance,
     "Tỷ lệ lấp đầy (%)": building.occupancyRate,
   })) || [];
@@ -95,7 +95,7 @@ export default function OccupancyReport() {
             {/* Pie Chart */}
             <Card>
               <CardHeader>
-                <CardTitle>Phân bố trạng thái phòng</CardTitle>
+                <CardTitle>Phân bố trạng thái căn hộ</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -152,9 +152,9 @@ export default function OccupancyReport() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Tòa nhà</TableHead>
-                      <TableHead className="text-center">Tổng phòng</TableHead>
+                      <TableHead className="text-center">Tổng căn hộ</TableHead>
                       <TableHead className="text-center">Đang thuê</TableHead>
-                      <TableHead className="text-center">Phòng trống</TableHead>
+                      <TableHead className="text-center">Căn hộ trống</TableHead>
                       <TableHead className="text-center">Bảo dưỡng</TableHead>
                       <TableHead className="text-center">Tỷ lệ lấp đầy</TableHead>
                     </TableRow>

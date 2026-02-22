@@ -53,8 +53,8 @@ export function DeleteBuildingDialog({
                 <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm text-destructive">
                   <p className="font-semibold">⚠️ Cảnh báo:</p>
                   <p>
-                    Tòa nhà này đang có {building.rooms_count} phòng. Bạn cần
-                    xóa hoặc chuyển các phòng này trước khi xóa tòa nhà.
+                    Tòa nhà này đang có {building.rooms_count} căn hộ. Bạn cần
+                    xóa hoặc chuyển các căn hộ này trước khi xóa tòa nhà.
                   </p>
                 </div>
               )}

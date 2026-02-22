@@ -150,7 +150,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
                   <FormItem><FormLabel>Tòa nhà</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Chọn tòa nhà" /></SelectTrigger></FormControl><SelectContent>{buildings.map((b) => (<SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="room_id" render={({ field }) => (
-                  <FormItem><FormLabel>Phòng</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Chọn phòng" /></SelectTrigger></FormControl><SelectContent>{rooms.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
+                  <FormItem><FormLabel>Căn hộ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Chọn căn hộ" /></SelectTrigger></FormControl><SelectContent>{rooms.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
                 )} />
               </div>
               <FormField control={form.control} name="description" render={({ field }) => (

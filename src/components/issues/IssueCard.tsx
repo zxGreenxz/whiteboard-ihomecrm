@@ -12,13 +12,24 @@ const PRIORITY_CONFIG = {
   URGENT: { label: "Khẩn cấp", color: "bg-red-100 text-red-800" },
 };
 
+interface TaskTypeItem {
+  id: string;
+  name: string;
+  color: string | null;
+  description: string | null;
+}
+
 interface IssueCardProps {
   issue: IssueWithRelations;
+  taskTypes?: TaskTypeItem[];
   onClick?: () => void;
 }
 
-export function IssueCard({ issue, onClick }: IssueCardProps) {
+export function IssueCard({ issue, taskTypes = [], onClick }: IssueCardProps) {
   const priorityConfig = PRIORITY_CONFIG[issue.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.MEDIUM;
+
+  // Find matching task type by category_id
+  const taskType = taskTypes.find((t) => t.id === issue.category_id);
 
   return (
     <Card
@@ -36,11 +47,22 @@ export function IssueCard({ issue, onClick }: IssueCardProps) {
               {priorityConfig.label}
             </Badge>
           </div>
-          {issue.category && (
+          {taskType ? (
+            <Badge
+              variant="outline"
+              className="text-xs"
+              style={taskType.color ? {
+                borderColor: taskType.color,
+                color: taskType.color,
+              } : undefined}
+            >
+              {taskType.name}
+            </Badge>
+          ) : issue.category ? (
             <Badge variant="outline" className="text-xs">
               {issue.category.name}
             </Badge>
-          )}
+          ) : null}
         </div>
 
         {/* Description */}

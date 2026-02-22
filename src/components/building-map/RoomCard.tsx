@@ -17,14 +17,14 @@ interface RoomCardProps {
 
 const STATUS_CONFIG = {
   AVAILABLE: {
-    label: "Còn trống",
+    label: "Trống",
     color: "bg-red-50 border-red-200 hover:bg-red-100",
     badge: "bg-red-100 text-red-800",
     icon: Home,
     iconColor: "text-red-600",
   },
   OCCUPIED: {
-    label: "Đã thuê",
+    label: "Đang thuê",
     color: "bg-green-50 border-green-200 hover:bg-green-100",
     badge: "bg-green-100 text-green-800",
     icon: Users,
@@ -38,14 +38,14 @@ const STATUS_CONFIG = {
     iconColor: "text-orange-600",
   },
   EXPIRING_SOON: {
-    label: "Sắp hết hạn",
+    label: "Sắp trống",
     color: "bg-purple-50 border-purple-200 hover:bg-purple-100",
     badge: "bg-purple-100 text-purple-800",
     icon: AlertCircle,
     iconColor: "text-purple-600",
   },
   MAINTENANCE: {
-    label: "Bảo trì",
+    label: "Ngừng hoạt động",
     color: "bg-gray-50 border-gray-200 hover:bg-gray-100",
     badge: "bg-gray-100 text-gray-800",
     icon: AlertCircle,

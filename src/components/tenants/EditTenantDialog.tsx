@@ -136,9 +136,9 @@ export function EditTenantDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Chỉnh sửa Khách thuê</DialogTitle>
+          <DialogTitle>Chỉnh sửa Khách hàng</DialogTitle>
           <DialogDescription>
-            Cập nhật thông tin khách thuê
+            Cập nhật thông tin khách hàng
           </DialogDescription>
         </DialogHeader>
 
@@ -368,7 +368,7 @@ export function EditTenantDialog({
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Trạng thái hiện tại của khách thuê
+                        Trạng thái hiện tại của khách hàng
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -383,7 +383,7 @@ export function EditTenantDialog({
                       <FormLabel>Ghi chú</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Ghi chú thêm về khách thuê..."
+                          placeholder="Ghi chú thêm về khách hàng..."
                           {...field}
                         />
                       </FormControl>

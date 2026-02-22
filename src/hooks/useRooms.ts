@@ -79,11 +79,11 @@ export const useCreateRoom = () => {
 
       if (error) {
         if (error.code === "23505") {
-          toast.error("Mã phòng đã tồn tại");
+          toast.error("Mã căn hộ đã tồn tại");
         } else if (error.code === "23503") {
           toast.error("Tòa nhà không tồn tại");
         } else {
-          toast.error("Không thể tạo phòng");
+          toast.error("Không thể tạo căn hộ");
         }
         throw error;
       }
@@ -93,7 +93,7 @@ export const useCreateRoom = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["buildings"] }); // Update rooms count
-      toast.success("Tạo phòng thành công");
+      toast.success("Căn hộ đã được tạo thành công");
     },
     onError: (error) => {
       console.error("Error creating room:", error);
@@ -122,11 +122,11 @@ export const useUpdateRoom = () => {
 
       if (error) {
         if (error.code === "23505") {
-          toast.error("Mã phòng đã tồn tại");
+          toast.error("Mã căn hộ đã tồn tại");
         } else if (error.code === "23503") {
           toast.error("Tòa nhà không tồn tại");
         } else {
-          toast.error("Không thể cập nhật phòng");
+          toast.error("Không thể cập nhật căn hộ");
         }
         throw error;
       }
@@ -137,7 +137,7 @@ export const useUpdateRoom = () => {
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["rooms", data.id] });
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      toast.success("Cập nhật phòng thành công");
+      toast.success("Căn hộ đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating room:", error);
@@ -160,7 +160,7 @@ export const useDeleteRoom = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể xóa phòng");
+        toast.error("Không thể xóa căn hộ");
         throw error;
       }
 
@@ -169,7 +169,7 @@ export const useDeleteRoom = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      toast.success("Xóa phòng thành công");
+      toast.success("Căn hộ đã được xóa thành công");
     },
     onError: (error) => {
       console.error("Error deleting room:", error);
@@ -190,9 +190,9 @@ export const useBulkCreateRooms = () => {
 
       if (error) {
         if (error.code === "23505") {
-          toast.error("Một hoặc nhiều mã phòng đã tồn tại");
+          toast.error("Một hoặc nhiều mã căn hộ đã tồn tại");
         } else {
-          toast.error("Không thể tạo phòng hàng loạt");
+          toast.error("Không thể tạo căn hộ hàng loạt");
         }
         throw error;
       }
@@ -202,7 +202,7 @@ export const useBulkCreateRooms = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      toast.success(`Tạo thành công ${data.length} phòng`);
+      toast.success(`Đã tạo thành công ${data.length} căn hộ`);
     },
     onError: (error) => {
       console.error("Error bulk creating rooms:", error);
@@ -230,7 +230,7 @@ export const useUpdateRoomStatus = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể cập nhật trạng thái phòng");
+        toast.error("Không thể cập nhật trạng thái căn hộ");
         throw error;
       }
 
@@ -238,7 +238,7 @@ export const useUpdateRoomStatus = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Cập nhật trạng thái thành công");
+      toast.success("Trạng thái căn hộ đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating room status:", error);

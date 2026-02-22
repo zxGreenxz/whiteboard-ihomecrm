@@ -191,7 +191,7 @@ export function useMarkAllAsRead() {
       toast.success('Đã đánh dấu tất cả là đã đọc');
     },
     onError: (error) => {
-      toast.error('Lỗi khi đánh dấu thông báo: ' + error.message);
+      toast.error('Có lỗi xảy ra khi đánh dấu thông báo: ' + error.message);
     },
   });
 }
@@ -221,10 +221,10 @@ export function useCreateNotification() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      toast.success('Thông báo đã được tạo');
+      toast.success('Thông báo đã được tạo thành công');
     },
     onError: (error) => {
-      toast.error('Lỗi khi tạo thông báo: ' + error.message);
+      toast.error('Có lỗi xảy ra khi tạo thông báo: ' + error.message);
     },
   });
 }
@@ -246,10 +246,10 @@ export function useDeleteNotification() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      toast.success('Đã xóa thông báo');
+      toast.success('Thông báo đã được xóa thành công');
     },
     onError: (error) => {
-      toast.error('Lỗi khi xóa thông báo: ' + error.message);
+      toast.error('Có lỗi xảy ra khi xóa thông báo: ' + error.message);
     },
   });
 }
@@ -276,10 +276,10 @@ export function useDeleteAllRead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      toast.success('Đã xóa tất cả thông báo đã đọc');
+      toast.success('Đã xóa tất cả thông báo đã đọc thành công');
     },
     onError: (error) => {
-      toast.error('Lỗi khi xóa thông báo: ' + error.message);
+      toast.error('Có lỗi xảy ra khi xóa thông báo: ' + error.message);
     },
   });
 }
@@ -319,12 +319,12 @@ export function getNotificationContent(
     case 'CONTRACT_EXPIRING':
       return {
         subject: 'Hợp đồng sắp hết hạn',
-        content: `Hợp đồng ${data.contractNumber} của ${data.tenantName} (phòng ${data.roomName}) sẽ hết hạn trong ${data.daysLeft} ngày. Vui lòng liên hệ để gia hạn.`,
+        content: `Hợp đồng ${data.contractNumber} của ${data.tenantName} (căn hộ ${data.roomName}) sẽ hết hạn trong ${data.daysLeft} ngày. Vui lòng liên hệ để gia hạn.`,
       };
     case 'ISSUE_RESOLVED':
       return {
-        subject: 'Sự cố đã được giải quyết',
-        content: `Sự cố "${data.issueTitle}" tại phòng ${data.roomName} đã được giải quyết thành công.`,
+        subject: 'Công việc đã được giải quyết',
+        content: `Công việc "${data.issueTitle}" tại căn hộ ${data.roomName} đã được giải quyết thành công.`,
       };
     case 'GENERAL_ANNOUNCEMENT':
       return {

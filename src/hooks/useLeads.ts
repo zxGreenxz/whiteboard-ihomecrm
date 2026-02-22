@@ -8,6 +8,10 @@ type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
 type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 
 export interface LeadWithRelations extends Lead {
+  building?: {
+    id: string;
+    name: string;
+  };
   room?: {
     id: string;
     name: string;
@@ -39,6 +43,9 @@ export const useLeads = (filters?: {
         .from("leads")
         .select(`
           *,
+          building:buildings!leads_building_id_fkey (
+            id, name
+          ),
           room:rooms!leads_room_id_fkey (
             id, name, code,
             building:buildings!rooms_building_id_fkey (
@@ -50,7 +57,6 @@ export const useLeads = (filters?: {
           )
         `)
         .eq('user_id', user.id)
-        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
@@ -84,6 +90,9 @@ export const useLead = (id: string) => {
         .from("leads")
         .select(`
           *,
+          building:buildings!leads_building_id_fkey (
+            id, name
+          ),
           room:rooms!leads_room_id_fkey (
             id, name, code,
             building:buildings!rooms_building_id_fkey (
@@ -96,7 +105,6 @@ export const useLead = (id: string) => {
         `)
         .eq("id", id)
         .eq('user_id', user.id)
-        .is("deleted_at", null)
         .single();
 
       if (error) {
@@ -133,10 +141,10 @@ export const useCreateLead = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Tạo khách hẹn thành công");
+      toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: Error) => {
-      toast.error("Tạo khách hẹn thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi tạo khách hẹn: " + error.message);
     },
   });
 };
@@ -159,10 +167,10 @@ export const useUpdateLead = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Cập nhật khách hẹn thành công");
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
     onError: (error: Error) => {
-      toast.error("Cập nhật khách hẹn thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi cập nhật khách hẹn: " + error.message);
     },
   });
 };
@@ -182,10 +190,10 @@ export const useDeleteLead = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
-      toast.success("Xóa khách hẹn thành công");
+      toast.success("Dữ liệu đã được XÓA thành công");
     },
     onError: (error: Error) => {
-      toast.error("Xóa khách hẹn thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi xóa khách hẹn: " + error.message);
     },
   });
 };
@@ -208,7 +216,7 @@ export const useConvertLeadToDeposit = () => {
       // Mark lead as converted
       const { error: updateError } = await supabase
         .from("leads")
-        .update({ status: "CONVERTED" })
+        .update({ status: "CONVERTED" as any })
         .eq("id", leadId);
 
       if (updateError) throw updateError;
@@ -220,7 +228,7 @@ export const useConvertLeadToDeposit = () => {
       toast.success("Chuyển đổi sang đặt cọc thành công");
     },
     onError: (error: Error) => {
-      toast.error("Chuyển đổi thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi chuyển đổi: " + error.message);
     },
   });
 };

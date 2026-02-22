@@ -6,19 +6,25 @@ import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { useCashFlowReport } from "@/hooks/useReports";
+import { useBuildings } from "@/hooks/useBuildings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { DateRange } from "react-day-picker";
 import { startOfYear } from "date-fns";
-import { BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
+import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
 
 export default function CashFlowReport() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfYear(new Date()),
     to: new Date(),
   });
+  const [buildingId, setBuildingId] = useState<string>("all");
 
   const { data: cashFlow, isLoading } = useCashFlowReport(dateRange?.from, dateRange?.to);
+  const { data: buildings = [] } = useBuildings();
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -75,6 +81,7 @@ export default function CashFlowReport() {
       title="Báo cáo Dòng tiền"
       description="Phân tích dòng tiền vào/ra và xu hướng"
       icon={<TrendingUp className="h-8 w-8" />}
+      backPath="/reports/finance"
       actions={
         <ExportButtons
           data={exportData}
@@ -82,7 +89,22 @@ export default function CashFlowReport() {
         />
       }
       filters={
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
+        <div className="flex flex-wrap gap-4 items-end">
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <Select value={buildingId} onValueChange={setBuildingId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Tất cả toà nhà" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả toà nhà</SelectItem>
+              {buildings.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       }
       stats={stats}
     >

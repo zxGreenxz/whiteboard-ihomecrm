@@ -98,7 +98,7 @@ const NotificationsPage = () => {
       case 'CONTRACT_EXPIRING':
         return 'Hợp đồng hết hạn';
       case 'ISSUE_RESOLVED':
-        return 'Sự cố';
+        return 'Công việc';
       case 'GENERAL_ANNOUNCEMENT':
         return 'Thông báo chung';
       default:
@@ -132,7 +132,7 @@ const NotificationsPage = () => {
       { value: 'PAYMENT_REMINDER', label: 'Nhắc thanh toán' },
       { value: 'OVERDUE_INVOICE', label: 'Quá hạn' },
       { value: 'CONTRACT_EXPIRING', label: 'HĐ hết hạn' },
-      { value: 'ISSUE_RESOLVED', label: 'Sự cố' },
+      { value: 'ISSUE_RESOLVED', label: 'Công việc' },
       { value: 'GENERAL_ANNOUNCEMENT', label: 'Thông báo chung' },
     ];
 

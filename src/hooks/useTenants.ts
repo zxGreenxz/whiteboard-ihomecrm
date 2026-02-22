@@ -33,7 +33,7 @@ export const useTenants = (
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
-        query = query.eq('status', filters.status);
+        query = query.eq('status', filters.status as any);
       }
 
       // Apply pagination if provided
@@ -128,7 +128,7 @@ export const useCreateTenant = () => {
         if (error.code === "23505") {
           toast.error("Số điện thoại hoặc CCCD đã tồn tại");
         } else {
-          toast.error("Không thể tạo khách thuê");
+          toast.error("Không thể tạo khách hàng");
         }
         throw error;
       }
@@ -137,7 +137,7 @@ export const useCreateTenant = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
-      toast.success("Tạo khách thuê thành công");
+      toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error) => {
       console.error("Error creating tenant:", error);
@@ -168,7 +168,7 @@ export const useUpdateTenant = () => {
         if (error.code === "23505") {
           toast.error("Số điện thoại hoặc CCCD đã tồn tại");
         } else {
-          toast.error("Không thể cập nhật khách thuê");
+          toast.error("Không thể cập nhật khách hàng");
         }
         throw error;
       }
@@ -178,7 +178,7 @@ export const useUpdateTenant = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       queryClient.invalidateQueries({ queryKey: ["tenants", data.id] });
-      toast.success("Cập nhật khách thuê thành công");
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
     onError: (error) => {
       console.error("Error updating tenant:", error);
@@ -202,7 +202,7 @@ export const useDeleteTenant = () => {
         .single();
 
       if (error) {
-        toast.error("Không thể xóa khách thuê");
+        toast.error("Không thể xóa khách hàng");
         throw error;
       }
 
@@ -210,7 +210,7 @@ export const useDeleteTenant = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
-      toast.success("Xóa khách thuê thành công");
+      toast.success("Dữ liệu đã được XÓA thành công");
     },
     onError: (error) => {
       console.error("Error deleting tenant:", error);

@@ -108,7 +108,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     if (selectedContract && fields.length === 0) {
       append({
         type: 'RENT',
-        description: `Tiền thuê phòng ${selectedContract.room?.name || selectedContract.bed?.name || ''}`,
+        description: `Tiền thuê căn hộ ${selectedContract.room?.name || selectedContract.bed?.name || ''}`,
         quantity: 1,
         unit_price: selectedContract.rent_price,
         amount: selectedContract.rent_price,
@@ -271,7 +271,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
           {selectedContract && (
             <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Khách thuê:</span>
+                <span className="text-gray-600">Khách hàng:</span>
                 <span className="font-medium">{selectedContract.tenant?.full_name}</span>
               </div>
               <div className="flex justify-between">

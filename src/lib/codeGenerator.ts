@@ -1,254 +1,246 @@
 /**
  * Code Generation Utility
  *
- * Generates auto-incrementing codes for entities based on configurable formats.
- * Supports tokens: {prefix}, {year}, {month}, {seq:N}, {building}, {floor}
+ * Generates formatted codes for 4 document types:
+ * - Đặt cọc (DEPOSIT): DC-YYYYMMDD-001
+ * - Hợp đồng (CONTRACT): HD-YYYYMM-0001
+ * - Hóa đơn (INVOICE): INV-YYYY-00001
+ * - Biên bản bàn giao (HANDOVER): BBBG-001
  *
- * Examples:
- * - Contract: "HD{year}{month}{seq:4}" → HD202511001
- * - Invoice: "INV{year}{month}{seq:4}" → INV202511001
- * - Building: "B{seq:3}" → B001
- * - Room: "{building}{floor}{seq:2}" → B001101
+ * Supports configurable prefix, separator, date format, padding, and reset period.
  */
 
-import { supabase } from '@/integrations/supabase/client';
+// --- Type Definitions ---
+
+export type CodeType = 'DEPOSIT' | 'CONTRACT' | 'INVOICE' | 'HANDOVER';
+
+export type ResetPeriod = 'daily' | 'monthly' | 'yearly' | 'never';
+
+export type DateFormat = 'YYYYMMDD' | 'YYYYMM' | 'YYYY' | 'none';
+
+export interface CodeConfig {
+  /** Prefix for the code (e.g. "DC", "HD", "INV", "BBBG") */
+  prefix: string;
+  /** Separator between parts (default: "-") */
+  separator: string;
+  /** Date format included in the code */
+  dateFormat: DateFormat;
+  /** Number of digits for the counter (e.g. 3 → "001") */
+  padding: number;
+  /** When to reset the counter */
+  resetPeriod: ResetPeriod;
+}
+
+// --- Default Configurations ---
+
+const DEFAULT_CONFIGS: Record<CodeType, CodeConfig> = {
+  DEPOSIT: {
+    prefix: 'DC',
+    separator: '-',
+    dateFormat: 'YYYYMMDD',
+    padding: 3,
+    resetPeriod: 'daily',
+  },
+  CONTRACT: {
+    prefix: 'HD',
+    separator: '-',
+    dateFormat: 'YYYYMM',
+    padding: 4,
+    resetPeriod: 'monthly',
+  },
+  INVOICE: {
+    prefix: 'INV',
+    separator: '-',
+    dateFormat: 'YYYY',
+    padding: 5,
+    resetPeriod: 'yearly',
+  },
+  HANDOVER: {
+    prefix: 'BBBG',
+    separator: '-',
+    dateFormat: 'none',
+    padding: 3,
+    resetPeriod: 'never',
+  },
+};
 
 /**
- * Get next sequence number for a given entity type
+ * Get the default configuration for a code type.
  */
-async function getNextSequence(
-  entityType: 'building' | 'room' | 'contract' | 'invoice' | 'payment',
-  userId: string,
-  resetPeriod: 'NEVER' | 'YEARLY' | 'MONTHLY' = 'YEARLY'
-): Promise<number> {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
+export function getDefaultConfig(type: CodeType): CodeConfig {
+  return { ...DEFAULT_CONFIGS[type] };
+}
 
-  // Determine reset key based on period
-  let resetKey = entityType;
-  if (resetPeriod === 'YEARLY') {
-    resetKey = `${entityType}_${year}`;
-  } else if (resetPeriod === 'MONTHLY') {
-    resetKey = `${entityType}_${year}${month}`;
-  }
+/**
+ * Format a date according to the specified date format.
+ */
+export function formatDatePart(date: Date, format: DateFormat): string {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
 
-  // Try to get existing sequence
-  const { data: existing, error: selectError } = await supabase
-    .from('code_sequences')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('entity_type', resetKey)
-    .maybeSingle();
-
-  if (selectError) throw selectError;
-
-  if (existing) {
-    // Increment existing sequence
-    const newSequence = existing.current_sequence + 1;
-
-    const { error: updateError } = await supabase
-      .from('code_sequences')
-      .update({ current_sequence: newSequence })
-      .eq('id', existing.id);
-
-    if (updateError) throw updateError;
-
-    return newSequence;
-  } else {
-    // Create new sequence starting at 1
-    const { error: insertError } = await supabase
-      .from('code_sequences')
-      .insert({
-        user_id: userId,
-        entity_type: resetKey,
-        current_sequence: 1,
-      });
-
-    if (insertError) throw insertError;
-
-    return 1;
+  switch (format) {
+    case 'YYYYMMDD':
+      return `${year}${month}${day}`;
+    case 'YYYYMM':
+      return `${year}${month}`;
+    case 'YYYY':
+      return year;
+    case 'none':
+      return '';
   }
 }
 
 /**
- * Replace tokens in format string with actual values
+ * Compute the reset key suffix for a given reset period and date.
+ * This determines when the counter resets to 1.
  */
-function replaceTokens(
-  format: string,
-  tokens: {
-    prefix?: string;
-    year?: string;
-    month?: string;
-    seq?: number;
-    building?: string;
-    floor?: number | string;
+export function getResetKey(date: Date, resetPeriod: ResetPeriod): string {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  switch (resetPeriod) {
+    case 'daily':
+      return `${year}${month}${day}`;
+    case 'monthly':
+      return `${year}${month}`;
+    case 'yearly':
+      return year;
+    case 'never':
+      return '';
   }
+}
+
+/**
+ * Generate a formatted code string.
+ *
+ * @param type - The document type (DEPOSIT, CONTRACT, INVOICE, HANDOVER)
+ * @param config - Optional partial config to override defaults
+ * @param counter - The sequence number (defaults to 1)
+ * @param date - The date to use (defaults to now)
+ * @returns Formatted code string
+ *
+ * @example
+ * generateCode('DEPOSIT')                          // "DC-20260222-001"
+ * generateCode('CONTRACT')                         // "HD-202602-0001"
+ * generateCode('INVOICE', undefined, 5)            // "INV-2026-00005"
+ * generateCode('HANDOVER', undefined, 42)          // "BBBG-042"
+ * generateCode('DEPOSIT', { prefix: 'DEP' }, 7)   // "DEP-20260222-007"
+ */
+export function generateCode(
+  type: CodeType,
+  config?: Partial<CodeConfig>,
+  counter: number = 1,
+  date: Date = new Date()
 ): string {
-  let result = format;
+  const resolved: CodeConfig = {
+    ...DEFAULT_CONFIGS[type],
+    ...config,
+  };
 
-  // Replace simple tokens
-  if (tokens.prefix) result = result.replace('{prefix}', tokens.prefix);
-  if (tokens.year) result = result.replace('{year}', tokens.year);
-  if (tokens.month) result = result.replace('{month}', tokens.month);
-  if (tokens.building) result = result.replace('{building}', tokens.building);
-  if (tokens.floor !== undefined) result = result.replace('{floor}', String(tokens.floor));
+  const parts: string[] = [resolved.prefix];
 
-  // Replace sequence with padding {seq:N}
-  if (tokens.seq !== undefined) {
-    const seqMatch = result.match(/\{seq:(\d+)\}/);
-    if (seqMatch) {
-      const padding = parseInt(seqMatch[1], 10);
-      const paddedSeq = String(tokens.seq).padStart(padding, '0');
-      result = result.replace(seqMatch[0], paddedSeq);
-    } else {
-      // No padding specified, just use sequence
-      result = result.replace('{seq}', String(tokens.seq));
-    }
+  const datePart = formatDatePart(date, resolved.dateFormat);
+  if (datePart) {
+    parts.push(datePart);
   }
 
-  return result;
+  const counterStr = String(counter).padStart(resolved.padding, '0');
+  parts.push(counterStr);
+
+  return parts.join(resolved.separator);
 }
 
-/**
- * Generate building code
- *
- * @param format - Format string (e.g., "B{seq:3}")
- * @param userId - User ID for sequence tracking
- * @returns Generated code (e.g., "B001")
- */
-export async function generateBuildingCode(
-  format: string,
-  userId: string
-): Promise<string> {
-  const sequence = await getNextSequence('building', userId, 'NEVER');
-
-  return replaceTokens(format, { seq: sequence });
-}
 
 /**
- * Generate room code
+ * Generate an invoice number using a prefix, format string, and user context.
  *
- * @param format - Format string (e.g., "{building}{floor}{seq:2}")
- * @param userId - User ID for sequence tracking
- * @param buildingCode - Building code (e.g., "B001")
- * @param floor - Floor number (e.g., 1)
- * @returns Generated code (e.g., "B001101")
- */
-export async function generateRoomCode(
-  format: string,
-  userId: string,
-  buildingCode: string,
-  floor: number
-): Promise<string> {
-  const sequence = await getNextSequence('room', userId, 'NEVER');
-
-  return replaceTokens(format, {
-    building: buildingCode,
-    floor,
-    seq: sequence,
-  });
-}
-
-/**
- * Generate contract number
+ * This is a convenience wrapper around `generateCode` for invoice-specific usage.
  *
- * @param prefix - Prefix (e.g., "HD")
- * @param format - Format string (e.g., "{prefix}{year}{month}{seq:4}")
- * @param userId - User ID for sequence tracking
- * @param resetPeriod - When to reset sequence
- * @returns Generated number (e.g., "HD202511001")
- */
-export async function generateContractNumber(
-  prefix: string,
-  format: string,
-  userId: string,
-  resetPeriod: 'NEVER' | 'YEARLY' | 'MONTHLY' = 'YEARLY'
-): Promise<string> {
-  const now = new Date();
-  const year = String(now.getFullYear());
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-
-  const sequence = await getNextSequence('contract', userId, resetPeriod);
-
-  return replaceTokens(format, {
-    prefix,
-    year,
-    month,
-    seq: sequence,
-  });
-}
-
-/**
- * Generate invoice number
- *
- * @param prefix - Prefix (e.g., "INV")
- * @param format - Format string (e.g., "{prefix}{year}{month}{seq:4}")
- * @param userId - User ID for sequence tracking
- * @param resetPeriod - When to reset sequence
- * @returns Generated number (e.g., "INV202511001")
+ * @param prefix - The prefix for the invoice number (e.g. "INV")
+ * @param _format - Format string (reserved for future use)
+ * @param _userId - User ID (reserved for future per-user counters)
+ * @param resetPeriod - When to reset the counter ("DAILY", "MONTHLY", "YEARLY", "NEVER")
+ * @returns Generated invoice number string
  */
 export async function generateInvoiceNumber(
   prefix: string,
-  format: string,
-  userId: string,
-  resetPeriod: 'NEVER' | 'YEARLY' | 'MONTHLY' = 'YEARLY'
+  _format: string,
+  _userId: string,
+  resetPeriod: string
 ): Promise<string> {
-  const now = new Date();
-  const year = String(now.getFullYear());
-  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const periodMap: Record<string, ResetPeriod> = {
+    DAILY: 'daily',
+    MONTHLY: 'monthly',
+    YEARLY: 'yearly',
+    NEVER: 'never',
+  };
 
-  const sequence = await getNextSequence('invoice', userId, resetPeriod);
+  const resolvedPeriod = periodMap[resetPeriod] || 'yearly';
 
-  return replaceTokens(format, {
-    prefix,
-    year,
-    month,
-    seq: sequence,
-  });
+  // Determine date format based on reset period
+  const dateFormatMap: Record<ResetPeriod, DateFormat> = {
+    daily: 'YYYYMMDD',
+    monthly: 'YYYYMM',
+    yearly: 'YYYY',
+    never: 'none',
+  };
+
+  return generateCode(
+    'INVOICE',
+    {
+      prefix,
+      resetPeriod: resolvedPeriod,
+      dateFormat: dateFormatMap[resolvedPeriod],
+    },
+    1,
+    new Date()
+  );
 }
 
+
 /**
- * Generate payment receipt number
+ * Generate a contract number using a prefix, format string, and user context.
  *
- * @param prefix - Prefix (e.g., "PT")
- * @param format - Format string (e.g., "{prefix}{year}{month}{seq:4}")
- * @param userId - User ID for sequence tracking
- * @param resetPeriod - When to reset sequence
- * @returns Generated number (e.g., "PT202511001")
+ * This is a convenience wrapper around `generateCode` for contract-specific usage.
+ *
+ * @param prefix - The prefix for the contract number (e.g. "HD")
+ * @param _format - Format string (reserved for future use)
+ * @param _userId - User ID (reserved for future per-user counters)
+ * @param resetPeriod - When to reset the counter ("DAILY", "MONTHLY", "YEARLY", "NEVER")
+ * @returns Generated contract number string
  */
-export async function generatePaymentNumber(
+export async function generateContractNumber(
   prefix: string,
-  format: string,
-  userId: string,
-  resetPeriod: 'NEVER' | 'YEARLY' | 'MONTHLY' = 'YEARLY'
+  _format: string,
+  _userId: string,
+  resetPeriod: string
 ): Promise<string> {
-  const now = new Date();
-  const year = String(now.getFullYear());
-  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const periodMap: Record<string, ResetPeriod> = {
+    DAILY: 'daily',
+    MONTHLY: 'monthly',
+    YEARLY: 'yearly',
+    NEVER: 'never',
+  };
 
-  const sequence = await getNextSequence('payment', userId, resetPeriod);
+  const resolvedPeriod = periodMap[resetPeriod] || 'monthly';
 
-  return replaceTokens(format, {
-    prefix,
-    year,
-    month,
-    seq: sequence,
-  });
-}
+  const dateFormatMap: Record<ResetPeriod, DateFormat> = {
+    daily: 'YYYYMMDD',
+    monthly: 'YYYYMM',
+    yearly: 'YYYY',
+    never: 'none',
+  };
 
-/**
- * Helper: Check if code generation is enabled for an entity
- */
-export function isAutoGenerateEnabled(
-  entityType: 'contract' | 'invoice',
-  config: any
-): boolean {
-  if (entityType === 'contract') {
-    return config?.auto_generate_contract_number === true;
-  }
-  if (entityType === 'invoice') {
-    return config?.auto_generate_invoice_number === true;
-  }
-  return false;
+  return generateCode(
+    'CONTRACT',
+    {
+      prefix,
+      resetPeriod: resolvedPeriod,
+      dateFormat: dateFormatMap[resolvedPeriod],
+    },
+    1,
+    new Date()
+  );
 }

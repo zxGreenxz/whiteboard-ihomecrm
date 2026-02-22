@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Gauge, Zap, Droplet, Save, History, AlertCircle, CheckCircle2 } from 'lucide-react';
+import EmptyState from '@/components/ui/EmptyState';
 import { useContracts } from '@/hooks/useContracts';
 import { useMeterReadings, useBulkCreateMeterReadings, type BulkMeterReadingData } from '@/hooks/useInvoices';
 import MeterReadingHistoryDialog from '@/components/meter-readings/MeterReadingHistoryDialog';
@@ -273,12 +274,11 @@ const MeterReadingsPage = () => {
           Đang tải dữ liệu...
         </div>
       ) : !activeContractsWithMeters || activeContractsWithMeters.length === 0 ? (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Không có hợp đồng nào đang hoạt động với dịch vụ tính theo công tơ.
-          </AlertDescription>
-        </Alert>
+        <EmptyState
+          icon={Gauge}
+          title="Chưa có hợp đồng nào cần ghi chỉ số"
+          description="Không có hợp đồng nào đang hoạt động với dịch vụ tính theo công tơ (điện, nước)"
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {activeContractsWithMeters.map((contract) => {

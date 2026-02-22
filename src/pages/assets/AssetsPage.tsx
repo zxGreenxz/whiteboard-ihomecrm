@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, Search, FileText, ArrowRightLeft, Wrench, Package } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +21,12 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAssets, type AssetWithRelations } from "@/hooks/useAssets";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAssets, useAssetMovements, useAssetMaintenance, type AssetWithRelations } from "@/hooks/useAssets";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useBuildings } from "@/hooks/useBuildings";
+import { useRooms } from "@/hooks/useRooms";
 import { CreateAssetDialog } from "@/components/assets/CreateAssetDialog";
 import { EditAssetDialog } from "@/components/assets/EditAssetDialog";
 import { AssetHandoverDialog } from "@/components/assets/AssetHandoverDialog";
@@ -38,6 +42,12 @@ const CONDITION_CONFIG = {
   BROKEN: { label: "Hỏng", color: "bg-red-100 text-red-800" },
 };
 
+const MAINTENANCE_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  PENDING: { label: "Chờ xử lý", color: "bg-yellow-100 text-yellow-800" },
+  IN_PROGRESS: { label: "Đang xử lý", color: "bg-blue-100 text-blue-800" },
+  COMPLETED: { label: "Hoàn thành", color: "bg-green-100 text-green-800" },
+};
+
 const AssetsPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -47,12 +57,21 @@ const AssetsPage = () => {
   const [selectedAsset, setSelectedAsset] = useState<AssetWithRelations | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [conditionFilter, setConditionFilter] = useState<string>("ALL");
+  const [buildingFilter, setBuildingFilter] = useState<string>("ALL");
+  const [roomFilter, setRoomFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: buildings = [] } = useBuildings();
+  const { data: rooms = [] } = useRooms(buildingFilter !== "ALL" ? buildingFilter : undefined);
 
   const { data: assets = [], isLoading } = useAssets({
     category_id: categoryFilter !== "ALL" ? categoryFilter : undefined,
     condition: conditionFilter !== "ALL" ? conditionFilter : undefined,
+    building_id: buildingFilter !== "ALL" ? buildingFilter : undefined,
   });
+
+  const { data: movements = [] } = useAssetMovements();
+  const { data: maintenanceRecords = [] } = useAssetMaintenance();
 
   // Fetch categories for filter
   const { data: categories = [] } = useQuery({
@@ -60,13 +79,11 @@ const AssetsPage = () => {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-
       const { data, error } = await supabase
         .from("asset_categories")
         .select("*")
         .eq('user_id', user.id)
         .order("name");
-
       if (error) throw error;
       return data || [];
     },
@@ -77,11 +94,8 @@ const AssetsPage = () => {
     setEditDialogOpen(true);
   };
 
-  const handleHandover = () => {
-    setHandoverDialogOpen(true);
-  };
-
   const filteredAssets = assets.filter((asset) => {
+    if (roomFilter !== "ALL" && asset.room_id !== roomFilter) return false;
     if (!searchQuery) return true;
     const search = searchQuery.toLowerCase();
     return (
@@ -126,7 +140,7 @@ const AssetsPage = () => {
           <Wrench className="w-4 h-4 mr-2" />
           Bảo trì
         </Button>
-        <Button variant="outline" onClick={handleHandover}>
+        <Button variant="outline" onClick={() => setHandoverDialogOpen(true)}>
           <FileText className="w-4 h-4 mr-2" />
           Biên bản bàn giao
         </Button>
@@ -140,186 +154,278 @@ const AssetsPage = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Tổng số tài sản
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Tổng số tài sản</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalAssets}</div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Giá trị tổng
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Giá trị tổng</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(totalValue)}
-            </div>
+            <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalValue)}</div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Tốt / Mới
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Tốt / Mới</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {(byCondition.GOOD || 0) + (byCondition.NEW || 0)}
-            </div>
+            <div className="text-2xl font-bold text-green-600">{(byCondition.GOOD || 0) + (byCondition.NEW || 0)}</div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Hỏng / Kém
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Hỏng / Kém</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {(byCondition.BROKEN || 0) + (byCondition.POOR || 0)}
-            </div>
+            <div className="text-2xl font-bold text-red-600">{(byCondition.BROKEN || 0) + (byCondition.POOR || 0)}</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Tìm kiếm theo tên, mã, loại..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+      {/* Tabs: Danh sách, Lịch sử di chuyển, Lịch sử sửa chữa */}
+      <Tabs defaultValue="list" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="list">Danh sách tài sản</TabsTrigger>
+          <TabsTrigger value="movements">Lịch sử di chuyển</TabsTrigger>
+          <TabsTrigger value="maintenance">Lịch sử sửa chữa</TabsTrigger>
+        </TabsList>
 
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Lọc theo loại" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả loại</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Tab: Danh sách tài sản */}
+        <TabsContent value="list" className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                placeholder="Tìm kiếm theo tên, mã, loại..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={buildingFilter} onValueChange={(val) => { setBuildingFilter(val); setRoomFilter("ALL"); }}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Toà nhà" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả toà nhà</SelectItem>
+                {buildings.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={roomFilter} onValueChange={setRoomFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Căn hộ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả căn hộ</SelectItem>
+                {rooms.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Loại tài sản" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả loại</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={conditionFilter} onValueChange={setConditionFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Tình trạng" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả</SelectItem>
+                {Object.entries(CONDITION_CONFIG).map(([key, config]) => (
+                  <SelectItem key={key} value={key}>{config.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <Select value={conditionFilter} onValueChange={setConditionFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Tình trạng" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả</SelectItem>
-            {Object.entries(CONDITION_CONFIG).map(([key, config]) => (
-              <SelectItem key={key} value={key}>
-                {config.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Assets Table */}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Mã TS</TableHead>
-              <TableHead>Tên tài sản</TableHead>
-              <TableHead>Loại</TableHead>
-              <TableHead>Số lượng</TableHead>
-              <TableHead>Tình trạng</TableHead>
-              <TableHead>Vị trí</TableHead>
-              <TableHead>Giá trị</TableHead>
-              <TableHead>Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredAssets.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  Không tìm thấy tài sản nào
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredAssets.map((asset) => (
-                <TableRow key={asset.id}>
-                  <TableCell className="font-mono">{asset.code || "-"}</TableCell>
-                  <TableCell className="font-medium">{asset.name}</TableCell>
-                  <TableCell>{asset.category?.name || "-"}</TableCell>
-                  <TableCell>{asset.quantity || 1}</TableCell>
-                  <TableCell>
-                    <Badge
-                      className={
-                        CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG]?.color || ""
-                      }
-                    >
-                      {CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG]?.label ||
-                        asset.condition}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {asset.building?.name}
-                    {asset.room && ` - ${asset.room.name}`}
-                  </TableCell>
-                  <TableCell className="font-semibold">
-                    {formatCurrency((asset.purchase_price || 0) * (asset.quantity || 1))}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(asset)}
-                    >
-                      Sửa
-                    </Button>
-                  </TableCell>
+          {/* Assets Table */}
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mã TS</TableHead>
+                  <TableHead>Tên tài sản</TableHead>
+                  <TableHead>Loại</TableHead>
+                  <TableHead>Số lượng</TableHead>
+                  <TableHead>Giá trị</TableHead>
+                  <TableHead>Tình trạng</TableHead>
+                  <TableHead>Vị trí</TableHead>
+                  <TableHead>Nhà cung cấp</TableHead>
+                  <TableHead>Ngày mua</TableHead>
+                  <TableHead>Thao tác</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {filteredAssets.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      Không tìm thấy tài sản nào
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredAssets.map((asset) => (
+                    <TableRow key={asset.id}>
+                      <TableCell className="font-mono">{asset.code || "-"}</TableCell>
+                      <TableCell className="font-medium">{asset.name}</TableCell>
+                      <TableCell>{asset.category?.name || "-"}</TableCell>
+                      <TableCell>{asset.quantity || 1}</TableCell>
+                      <TableCell className="font-semibold">
+                        {formatCurrency((asset.purchase_price || 0) * (asset.quantity || 1))}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG]?.color || ""}>
+                          {CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG]?.label || asset.condition}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {asset.building?.name || "-"}
+                        {asset.room && ` - ${asset.room.name}`}
+                      </TableCell>
+                      <TableCell>{asset.supplier?.name || "-"}</TableCell>
+                      <TableCell>{asset.purchase_date || "-"}</TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(asset)}>
+                          Sửa
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Lịch sử di chuyển */}
+        <TabsContent value="movements" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Lịch sử di chuyển tài sản</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ngày</TableHead>
+                    <TableHead>Tài sản</TableHead>
+                    <TableHead>Từ</TableHead>
+                    <TableHead>Đến</TableHead>
+                    <TableHead>Số lượng</TableHead>
+                    <TableHead>Lý do</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {movements.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        Chưa có lịch sử di chuyển tài sản
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    movements.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell>{m.movement_date || "-"}</TableCell>
+                        <TableCell className="font-medium">
+                          {m.asset?.code ? `[${m.asset.code}] ` : ""}
+                          {m.asset?.name || "-"}
+                        </TableCell>
+                        <TableCell>
+                          {m.from_room
+                            ? `${m.from_room.building?.name || ""} - ${m.from_room.name}`
+                            : m.from_location || "Kho"}
+                        </TableCell>
+                        <TableCell>
+                          {m.to_room
+                            ? `${m.to_room.building?.name || ""} - ${m.to_room.name}`
+                            : m.to_location || "-"}
+                        </TableCell>
+                        <TableCell>{m.quantity || 1}</TableCell>
+                        <TableCell>{m.reason || "-"}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Lịch sử sửa chữa */}
+        <TabsContent value="maintenance" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Lịch sử sửa chữa tài sản</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ngày</TableHead>
+                    <TableHead>Tài sản</TableHead>
+                    <TableHead>Mô tả</TableHead>
+                    <TableHead>Người xử lý</TableHead>
+                    <TableHead>Chi phí</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead>Ghi chú</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {maintenanceRecords.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        Chưa có lịch sử sửa chữa tài sản
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    maintenanceRecords.map((rec) => (
+                      <TableRow key={rec.id}>
+                        <TableCell>{rec.maintenance_date || "-"}</TableCell>
+                        <TableCell className="font-medium">
+                          {rec.asset?.code ? `[${rec.asset.code}] ` : ""}
+                          {rec.asset?.name || "-"}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">{rec.issue_description || "-"}</TableCell>
+                        <TableCell>{rec.assigned_profile?.full_name || "-"}</TableCell>
+                        <TableCell>{rec.cost ? formatCurrency(rec.cost) : "-"}</TableCell>
+                        <TableCell>
+                          <Badge className={MAINTENANCE_STATUS_CONFIG[rec.status as string]?.color || ""}>
+                            {MAINTENANCE_STATUS_CONFIG[rec.status as string]?.label || rec.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[150px] truncate">{rec.notes || "-"}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Dialogs */}
-      <CreateAssetDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
-
+      <CreateAssetDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
       {selectedAsset && (
-        <EditAssetDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          asset={selectedAsset}
-        />
+        <EditAssetDialog open={editDialogOpen} onOpenChange={setEditDialogOpen} asset={selectedAsset} />
       )}
-
-      <AssetHandoverDialog
-        open={handoverDialogOpen}
-        onOpenChange={setHandoverDialogOpen}
-      />
-
-      <AssetMovementDialog
-        open={movementDialogOpen}
-        onOpenChange={setMovementDialogOpen}
-      />
-
-      <AssetMaintenanceDialog
-        open={maintenanceDialogOpen}
-        onOpenChange={setMaintenanceDialogOpen}
-      />
+      <AssetHandoverDialog open={handoverDialogOpen} onOpenChange={setHandoverDialogOpen} />
+      <AssetMovementDialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen} />
+      <AssetMaintenanceDialog open={maintenanceDialogOpen} onOpenChange={setMaintenanceDialogOpen} />
     </MainLayout>
   );
 };

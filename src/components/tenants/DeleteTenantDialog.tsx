@@ -55,11 +55,11 @@ export function DeleteTenantDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Xác nhận xóa khách thuê</AlertDialogTitle>
+          <AlertDialogTitle>Xác nhận xóa khách hàng</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
               <p>
-                Bạn có chắc chắn muốn xóa khách thuê{" "}
+                Bạn có chắc chắn muốn xóa khách hàng{" "}
                 <span className="font-semibold">{tenant.full_name}</span>?
               </p>
               <div className="bg-muted rounded-md p-3 text-sm space-y-1">

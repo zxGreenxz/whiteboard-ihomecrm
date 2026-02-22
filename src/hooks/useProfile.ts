@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 // =============================================
 // Types
@@ -44,7 +44,6 @@ export const useProfile = () => {
     queryKey: ['profile'],
     queryFn: async (): Promise<Profile | null> => {
       const { data: { user } } = await supabase.auth.getUser();
-
       if (!user) return null;
 
       const { data, error } = await supabase
@@ -66,12 +65,10 @@ export const useProfile = () => {
 
 export const useUpdateProfile = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (data: UpdateProfileData) => {
       const { data: { user } } = await supabase.auth.getUser();
-
       if (!user) throw new Error('Not authenticated');
 
       const { data: profile, error } = await supabase
@@ -86,18 +83,74 @@ export const useUpdateProfile = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
-
-      toast({
-        title: 'Cập nhật thành công!',
-        description: 'Thông tin cá nhân đã được cập nhật.',
-      });
+      toast.success('Dữ liệu đã được CẬP NHẬT thành công');
     },
     onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Cập nhật thất bại',
-        description: error.message,
+      toast.error('Có lỗi xảy ra khi cập nhật thông tin: ' + error.message);
+    },
+  });
+};
+
+// =============================================
+// Upload Avatar
+// =============================================
+
+export const useUploadAvatar = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/avatar.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+      return urlData.publicUrl;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      toast.success('Ảnh đại diện đã được CẬP NHẬT thành công');
+    },
+    onError: (error: Error) => {
+      toast.error('Có lỗi xảy ra khi tải ảnh: ' + error.message);
+    },
+  });
+};
+
+// =============================================
+// Change Password
+// =============================================
+
+export const useChangePassword = () => {
+  return useMutation({
+    mutationFn: async (newPassword: string) => {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
       });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Mật khẩu đã được đổi thành công');
+    },
+    onError: (error: Error) => {
+      toast.error('Có lỗi xảy ra khi đổi mật khẩu: ' + error.message);
     },
   });
 };

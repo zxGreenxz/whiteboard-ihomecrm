@@ -22,6 +22,7 @@ import {
   Receipt,
   Eye,
   Users,
+  Package,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRooms';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,6 +59,16 @@ type Tenant = {
   status: string;
 };
 
+type Asset = {
+  id: string;
+  name: string;
+  asset_code: string | null;
+  category: string | null;
+  quantity: number;
+  condition: string | null;
+  value: number | null;
+};
+
 const RoomDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -65,9 +76,11 @@ const RoomDetailPage = () => {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [currentTenants, setCurrentTenants] = useState<Tenant[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [loadingContracts, setLoadingContracts] = useState(false);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [loadingTenants, setLoadingTenants] = useState(false);
+  const [loadingAssets, setLoadingAssets] = useState(false);
 
   const { data: room, isLoading: loadingRoom } = useRoom(id || '');
 
@@ -170,9 +183,42 @@ const RoomDetailPage = () => {
     fetchInvoices();
   }, [id]);
 
+  // Fetch assets for this room
+  useEffect(() => {
+    const fetchAssets = async () => {
+      if (!id) return;
+      setLoadingAssets(true);
+      try {
+        const { data, error } = await supabase
+          .from('assets')
+          .select('id, name, code, condition, quantity, purchase_price, category_id')
+          .eq('room_id', id)
+          .is('deleted_at', null)
+          .order('name', { ascending: true });
+
+        if (error) throw error;
+        setAssets((data || []).map(a => ({
+          id: a.id,
+          name: a.name,
+          asset_code: a.code,
+          category: null,
+          quantity: a.quantity || 1,
+          condition: a.condition,
+          value: a.purchase_price,
+        })));
+      } catch (error) {
+        console.error('Error fetching assets:', error);
+      } finally {
+        setLoadingAssets(false);
+      }
+    };
+
+    fetchAssets();
+  }, [id]);
+
   if (loadingRoom) {
     return (
-      <MainLayout title="Chi tiết Phòng" icon={Home}>
+      <MainLayout title="Chi tiết Căn hộ" icon={Home}>
         <div className="flex items-center justify-center h-64">
           <p className="text-muted-foreground">Đang tải...</p>
         </div>
@@ -182,9 +228,9 @@ const RoomDetailPage = () => {
 
   if (!room) {
     return (
-      <MainLayout title="Chi tiết Phòng" icon={Home}>
+      <MainLayout title="Chi tiết Căn hộ" icon={Home}>
         <div className="flex flex-col items-center justify-center h-64 gap-4">
-          <p className="text-muted-foreground">Không tìm thấy phòng</p>
+          <p className="text-muted-foreground">Không tìm thấy căn hộ</p>
           <Button variant="outline" onClick={() => navigate('/rooms')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Quay lại danh sách
@@ -286,7 +332,7 @@ const RoomDetailPage = () => {
 
   return (
     <MainLayout
-      title={`Phòng: ${room.name}`}
+      title={`Căn hộ: ${room.name}`}
       subtitle={room.code || undefined}
       icon={Home}
     >
@@ -313,11 +359,15 @@ const RoomDetailPage = () => {
           </TabsTrigger>
           <TabsTrigger value="tenants">
             <Users className="h-4 w-4 mr-2" />
-            Khách thuê ({currentTenants.length})
+            Khách hàng ({currentTenants.length})
           </TabsTrigger>
           <TabsTrigger value="contracts">
             <FileText className="h-4 w-4 mr-2" />
             Hợp đồng ({contracts.length})
+          </TabsTrigger>
+          <TabsTrigger value="assets">
+            <Package className="h-4 w-4 mr-2" />
+            Tài sản ({assets.length})
           </TabsTrigger>
           <TabsTrigger value="invoices">
             <Receipt className="h-4 w-4 mr-2" />
@@ -330,15 +380,15 @@ const RoomDetailPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Thông tin phòng</CardTitle>
+                <CardTitle className="text-lg">Thông tin căn hộ</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tên phòng:</span>
+                  <span className="text-muted-foreground">Tên căn hộ:</span>
                   <span className="font-medium">{room.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Mã phòng:</span>
+                  <span className="text-muted-foreground">Mã căn hộ:</span>
                   <span className="font-medium">{room.code || '-'}</span>
                 </div>
                 <div className="flex justify-between">
@@ -380,6 +430,22 @@ const RoomDetailPage = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Amenities */}
+          {Array.isArray(room.amenities) && (room.amenities as string[]).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Tiện ích</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {(room.amenities as string[]).map((item: string, idx: number) => (
+                    <Badge key={idx} variant="secondary">{item}</Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Building Info */}
           <Card>
@@ -428,7 +494,7 @@ const RoomDetailPage = () => {
                   </Button>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Khách thuê:</span>
+                  <span className="text-muted-foreground">Khách hàng:</span>
                   <Button
                     variant="link"
                     className="p-0 h-auto font-medium"
@@ -468,7 +534,7 @@ const RoomDetailPage = () => {
         <TabsContent value="tenants">
           <Card>
             <CardHeader>
-              <CardTitle>Khách thuê hiện tại</CardTitle>
+              <CardTitle>Khách hàng hiện tại</CardTitle>
             </CardHeader>
             <CardContent>
               {loadingTenants ? (
@@ -506,7 +572,7 @@ const RoomDetailPage = () => {
                 </Table>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  Phòng chưa có khách thuê
+                  Căn hộ chưa có khách hàng
                 </div>
               )}
             </CardContent>
@@ -529,7 +595,7 @@ const RoomDetailPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Mã HĐ</TableHead>
-                      <TableHead>Khách thuê</TableHead>
+                      <TableHead>Khách hàng</TableHead>
                       <TableHead>Thời hạn</TableHead>
                       <TableHead>Giá thuê</TableHead>
                       <TableHead>Trạng thái</TableHead>
@@ -563,7 +629,58 @@ const RoomDetailPage = () => {
                 </Table>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  Chưa có hợp đồng nào cho phòng này
+                  Chưa có hợp đồng nào cho căn hộ này
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Assets Tab */}
+        <TabsContent value="assets">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tài sản trong căn hộ</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingAssets ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Đang tải...
+                </div>
+              ) : assets.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mã tài sản</TableHead>
+                      <TableHead>Tên tài sản</TableHead>
+                      <TableHead className="text-right">Số lượng</TableHead>
+                      <TableHead>Tình trạng</TableHead>
+                      <TableHead className="text-right">Giá trị</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assets.map((asset) => (
+                      <TableRow key={asset.id}>
+                        <TableCell className="font-medium">
+                          {asset.asset_code || '-'}
+                        </TableCell>
+                        <TableCell>{asset.name}</TableCell>
+                        <TableCell className="text-right">{asset.quantity}</TableCell>
+                        <TableCell>
+                          <Badge variant={asset.condition === 'GOOD' ? 'default' : asset.condition === 'DAMAGED' ? 'destructive' : 'secondary'}>
+                            {asset.condition === 'GOOD' ? 'Tốt' : asset.condition === 'DAMAGED' ? 'Hỏng' : asset.condition === 'FAIR' ? 'Bình thường' : asset.condition || '-'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {asset.value ? formatCurrency(asset.value) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  Chưa có tài sản nào trong căn hộ này
                 </div>
               )}
             </CardContent>
@@ -574,7 +691,7 @@ const RoomDetailPage = () => {
         <TabsContent value="invoices">
           <Card>
             <CardHeader>
-              <CardTitle>Hóa đơn của phòng</CardTitle>
+              <CardTitle>Hóa đơn của căn hộ</CardTitle>
             </CardHeader>
             <CardContent>
               {loadingInvoices ? (
@@ -586,7 +703,7 @@ const RoomDetailPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Mã hóa đơn</TableHead>
-                      <TableHead>Khách thuê</TableHead>
+                      <TableHead>Khách hàng</TableHead>
                       <TableHead>Hạn thanh toán</TableHead>
                       <TableHead>Tổng tiền</TableHead>
                       <TableHead>Trạng thái</TableHead>
@@ -618,7 +735,7 @@ const RoomDetailPage = () => {
                 </Table>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  Chưa có hóa đơn nào cho phòng này
+                  Chưa có hóa đơn nào cho căn hộ này
                 </div>
               )}
             </CardContent>

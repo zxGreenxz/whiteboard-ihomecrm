@@ -99,11 +99,11 @@ const ExtendContractDialog = ({ open, onOpenChange, contract }: ExtendContractDi
           {/* Current Contract Info */}
           <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Khách thuê:</span>
+              <span className="text-gray-600">Khách hàng:</span>
               <span className="font-medium">{contract.tenant?.full_name}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Phòng/Giường:</span>
+              <span className="text-gray-600">Căn hộ/Giường:</span>
               <span className="font-medium">
                 {contract.room ? contract.room.name : contract.bed?.name}
               </span>

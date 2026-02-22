@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { useRooms, useUpdateRoomStatus } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useFloors } from "@/hooks/useFloors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,6 +29,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Pencil, Trash2, Home, RefreshCw, Layers, Upload, Download, MoreHorizontal, Eye } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";
 import { CreateRoomDialog } from "@/components/rooms/CreateRoomDialog";
 import { EditRoomDialog } from "@/components/rooms/EditRoomDialog";
@@ -43,6 +45,7 @@ type RoomWithBuilding = Database["public"]["Tables"]["rooms"]["Row"] & {
 export default function RoomsPage() {
   const navigate = useNavigate();
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
+  const [floorFilter, setFloorFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -56,6 +59,8 @@ export default function RoomsPage() {
   const { data: buildingsData } = useBuildings();
   // DEFENSIVE CHECK: ensure buildings is array
   const buildings = Array.isArray(buildingsData) ? buildingsData : [];
+  const { data: floorsData } = useFloors(buildingFilter !== "all" ? buildingFilter : undefined);
+  const floors = Array.isArray(floorsData) ? floorsData : [];
   const { data: roomsData, isLoading } = useRooms(buildingFilter !== "all" ? buildingFilter : undefined);
   // DEFENSIVE CHECK: ensure rooms is array
   const rooms = Array.isArray(roomsData) ? roomsData : [];
@@ -74,9 +79,12 @@ export default function RoomsPage() {
       const matchesStatus =
         statusFilter === "all" || room.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      const matchesFloor =
+        floorFilter === "all" || room.floor === parseInt(floorFilter);
+
+      return matchesSearch && matchesStatus && matchesFloor;
     });
-  }, [rooms, searchTerm, statusFilter]);
+  }, [rooms, searchTerm, statusFilter, floorFilter]);
 
   // Group by floor
   const roomsByFloor = useMemo(() => {
@@ -153,8 +161,8 @@ export default function RoomsPage() {
               <Home className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Quản lý Phòng</h1>
-              <p className="text-sm text-muted-foreground">Quản lý danh sách phòng và trạng thái cho thuê</p>
+              <h1 className="text-2xl font-bold text-foreground">Quản lý Căn hộ</h1>
+              <p className="text-sm text-muted-foreground">Quản lý danh sách căn hộ và trạng thái cho thuê</p>
             </div>
           </div>
         <div className="flex gap-2">
@@ -182,14 +190,14 @@ export default function RoomsPage() {
           </Button>
           <Button onClick={() => setCreateDialogOpen(true)} className="shadow-sm">
             <Plus className="mr-2 h-4 w-4" />
-            Tạo phòng
+            Tạo căn hộ
           </Button>
         </div>
       </div>
 
       <Card className="shadow-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Danh sách Phòng</CardTitle>
+          <CardTitle className="text-lg">Danh sách Căn hộ</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Search and Filters */}
@@ -197,13 +205,13 @@ export default function RoomsPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Tìm kiếm theo tên, mã phòng..."
+                placeholder="Tìm kiếm theo tên, mã căn hộ..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Select value={buildingFilter} onValueChange={setBuildingFilter}>
+            <Select value={buildingFilter} onValueChange={(val) => { setBuildingFilter(val); setFloorFilter("all"); }}>
               <SelectTrigger className="w-[220px]">
                 <SelectValue placeholder="Lọc theo tòa nhà" />
               </SelectTrigger>
@@ -212,6 +220,19 @@ export default function RoomsPage() {
                 {buildings?.map((building) => (
                   <SelectItem key={building.id} value={building.id}>
                     {building.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={floorFilter} onValueChange={setFloorFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Lọc theo tầng" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tầng</SelectItem>
+                {floors.map((floor) => (
+                  <SelectItem key={floor.id} value={floor.floor_number.toString()}>
+                    Tầng {floor.floor_number}{floor.name ? ` - ${floor.name}` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -243,14 +264,14 @@ export default function RoomsPage() {
                   <h3 className="text-lg font-semibold">
                     Tầng {floor}
                     <span className="text-sm text-muted-foreground ml-2">
-                      ({rooms.length} phòng)
+                      ({rooms.length} căn hộ)
                     </span>
                   </h3>
                   <div className="rounded-md border">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Tên phòng</TableHead>
+                          <TableHead>Tên căn hộ</TableHead>
                           <TableHead>Tòa nhà</TableHead>
                           <TableHead className="text-right">Diện tích</TableHead>
                           <TableHead className="text-right">Giá thuê</TableHead>
@@ -337,11 +358,19 @@ export default function RoomsPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchTerm || buildingFilter !== "all" || statusFilter !== "all"
-                ? "Không tìm thấy phòng nào"
-                : "Chưa có phòng nào. Nhấn 'Tạo phòng' để bắt đầu."}
-            </div>
+            searchTerm || buildingFilter !== "all" || statusFilter !== "all" || floorFilter !== "all" ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Không tìm thấy căn hộ nào
+              </div>
+            ) : (
+              <EmptyState
+                icon={Home}
+                title="Chưa có căn hộ nào"
+                description="Hãy thêm căn hộ đầu tiên để bắt đầu quản lý"
+                actionLabel="Tạo căn hộ"
+                onAction={() => setCreateDialogOpen(true)}
+              />
+            )
           )}
         </CardContent>
       </Card>

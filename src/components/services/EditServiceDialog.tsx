@@ -176,7 +176,7 @@ export function EditServiceDialog({
                           <SelectContent>
                             <SelectItem value="FIXED">Cố định</SelectItem>
                             <SelectItem value="PER_PERSON">Theo người</SelectItem>
-                            <SelectItem value="PER_ROOM">Theo phòng</SelectItem>
+                            <SelectItem value="PER_ROOM">Theo căn hộ</SelectItem>
                             <SelectItem value="METER_READING">Theo chỉ số</SelectItem>
                           </SelectContent>
                         </Select>
@@ -204,7 +204,7 @@ export function EditServiceDialog({
                         <FormDescription>
                           {selectedType === "METER_READING" && "Giá mỗi đơn vị (kWh, m³)"}
                           {selectedType === "PER_PERSON" && "Giá mỗi người"}
-                          {selectedType === "PER_ROOM" && "Giá mỗi phòng"}
+                          {selectedType === "PER_ROOM" && "Giá mỗi căn hộ"}
                           {selectedType === "FIXED" && "Giá cố định"}
                         </FormDescription>
                         <FormMessage />
@@ -222,7 +222,7 @@ export function EditServiceDialog({
                         </FormLabel>
                         <FormControl>
                           <Input 
-                            placeholder={selectedType === "METER_READING" ? "kWh, m³" : "tháng, người, phòng"} 
+                            placeholder={selectedType === "METER_READING" ? "kWh, m³" : "tháng, người, căn hộ"} 
                             {...field} 
                           />
                         </FormControl>

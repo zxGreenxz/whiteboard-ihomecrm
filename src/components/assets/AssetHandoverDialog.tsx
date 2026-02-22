@@ -69,7 +69,7 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
             )} />
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="handover_type" render={({ field }) => (
-                <FormItem><FormLabel>Loại *</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="CHECK_IN">Nhận phòng</SelectItem><SelectItem value="CHECK_OUT">Trả phòng</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                <FormItem><FormLabel>Loại *</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="CHECK_IN">Nhận căn hộ</SelectItem><SelectItem value="CHECK_OUT">Trả căn hộ</SelectItem></SelectContent></Select><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="handover_date" render={({ field }) => (
                 <FormItem><FormLabel>Ngày *</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>

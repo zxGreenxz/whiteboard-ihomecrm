@@ -73,7 +73,7 @@ export async function checkContractExpiryReminders(userId: string): Promise<void
         type: 'CONTRACT_EXPIRING',
         channel: 'IN_APP',
         subject: 'Hợp đồng sắp hết hạn',
-        content: `Hợp đồng ${contract.contract_number} của ${contract.tenant?.full_name} (phòng ${contract.room?.name}) sẽ hết hạn trong ${daysUntilExpiry} ngày. Vui lòng liên hệ để gia hạn.`,
+        content: `Hợp đồng ${contract.contract_number} của ${contract.tenant?.full_name} (căn hộ ${contract.room?.name}) sẽ hết hạn trong ${daysUntilExpiry} ngày. Vui lòng liên hệ để gia hạn.`,
         contract_id: contract.id,
         status: 'PENDING',
       });

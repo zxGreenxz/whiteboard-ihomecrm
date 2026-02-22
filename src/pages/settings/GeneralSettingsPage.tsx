@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
-import { Settings, Building, FileText, DollarSign, Bell, Save } from 'lucide-react';
+import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,102 +8,342 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
+
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  useGeneralSettings,
+  useUpdateGeneralSetting,
   useCompanyInfo,
   useUpdateCompanyInfo,
-  useContractConfig,
-  useUpdateContractConfig,
-  useInvoiceConfig,
-  useUpdateInvoiceConfig,
-  usePaymentConfig,
-  useUpdatePaymentConfig,
-  useNotificationConfig,
-  useUpdateNotificationConfig,
-  type CompanyInfo,
-  type ContractConfig,
-  type InvoiceConfig,
-  type PaymentConfig,
-  type NotificationConfig,
 } from '@/hooks/useSettings';
+import { toast } from 'sonner';
+
+// =============================================
+// Setting item configuration for each tab
+// =============================================
+
+interface ToggleSettingItem {
+  type: 'toggle';
+  key: string;
+  label: string;
+  tooltip: string;
+}
+
+interface SelectSettingItem {
+  type: 'select';
+  key: string;
+  label: string;
+  tooltip: string;
+  options: { value: string; label: string }[];
+}
+
+interface NumberSettingItem {
+  type: 'number';
+  key: string;
+  label: string;
+  tooltip: string;
+  min?: number;
+  max?: number;
+  suffix?: string;
+}
+
+type SettingItem = ToggleSettingItem | SelectSettingItem | NumberSettingItem;
+
+const CONTRACT_SETTINGS: SettingItem[] = [
+  {
+    type: 'toggle',
+    key: 'contract_auto_set_service_users',
+    label: 'Tự cài số người dùng DV',
+    tooltip: 'Tự động cài đặt số lượng người sử dụng dịch vụ khi tạo hợp đồng mới',
+  },
+  {
+    type: 'toggle',
+    key: 'contract_asset_inspection',
+    label: 'Kiểm kê tài sản khi ký/thanh lý',
+    tooltip: 'Yêu cầu kiểm kê tài sản khi ký hợp đồng mới hoặc thanh lý hợp đồng',
+  },
+  {
+    type: 'toggle',
+    key: 'contract_auto_create_on_renewal',
+    label: 'Tự động lập HĐ mới khi gia hạn',
+    tooltip: 'Hệ thống tự động tạo hợp đồng mới khi hợp đồng hiện tại được gia hạn',
+  },
+  {
+    type: 'toggle',
+    key: 'contract_e_signing_enabled',
+    label: 'Ký HĐ online',
+    tooltip: 'Cho phép ký hợp đồng điện tử online. Chủ nhà gửi link ký cho khách hàng',
+  },
+  {
+    type: 'toggle',
+    key: 'contract_payment_date_setting',
+    label: 'Cài đặt ngày thanh toán',
+    tooltip: 'Cho phép cài đặt ngày thanh toán cố định hàng tháng cho hợp đồng',
+  },
+  {
+    type: 'toggle',
+    key: 'contract_show_expiring_status',
+    label: 'Hiển thị trạng thái sắp hết hạn',
+    tooltip: 'Hiển thị cảnh báo khi hợp đồng sắp hết hạn trên danh sách và bảng tin',
+  },
+  {
+    type: 'toggle',
+    key: 'contract_overdue_notification',
+    label: 'Nhận thông báo quá hạn HĐ',
+    tooltip: 'Gửi thông báo tự động khi hợp đồng quá hạn chưa được gia hạn hoặc thanh lý',
+  },
+];
+
+const INVOICE_SETTINGS: SettingItem[] = [
+  {
+    type: 'toggle',
+    key: 'invoice_auto_approve_meter',
+    label: 'Tự động duyệt chỉ số',
+    tooltip: 'Tự động duyệt chỉ số công tơ điện nước sau khi nhân viên ghi chỉ số',
+  },
+  {
+    type: 'toggle',
+    key: 'invoice_auto_approve',
+    label: 'Tự động duyệt hóa đơn',
+    tooltip: 'Hóa đơn được tự động duyệt ngay sau khi tạo, không cần xác nhận thủ công',
+  },
+  {
+    type: 'toggle',
+    key: 'invoice_use_coefficient',
+    label: 'Sử dụng hệ số',
+    tooltip: 'Áp dụng hệ số nhân khi tính tiền dịch vụ (ví dụ: hệ số điện bậc thang)',
+  },
+  {
+    type: 'toggle',
+    key: 'invoice_auto_calc_coefficient',
+    label: 'Tự động tính hệ số theo ngày',
+    tooltip: 'Hệ thống tự động tính hệ số dựa trên số ngày sử dụng thực tế trong kỳ',
+  },
+  {
+    type: 'select',
+    key: 'invoice_service_cycle_type',
+    label: 'Chu kỳ tính dịch vụ',
+    tooltip: 'Chọn cách tính chu kỳ dịch vụ: theo tháng, theo ngày bắt đầu, hoặc theo ngày chốt',
+    options: [
+      { value: 'monthly', label: 'Theo chu kỳ trong tháng' },
+      { value: 'start_date', label: 'Theo ngày bắt đầu tính tiền' },
+      { value: 'cutoff_date', label: 'Theo ngày chốt tiền' },
+    ],
+  },
+  {
+    type: 'select',
+    key: 'invoice_prorate_method',
+    label: 'Chia tỷ lệ lẻ ngày',
+    tooltip: 'Phương pháp tính tiền khi số ngày sử dụng không đủ tháng',
+    options: [
+      { value: 'actual_days', label: 'Theo số ngày trong tháng' },
+      { value: 'fixed_30', label: 'Chia cố định 30 ngày' },
+    ],
+  },
+  {
+    type: 'number',
+    key: 'invoice_payment_deadline_days',
+    label: 'Hạn thanh toán',
+    tooltip: 'Số ngày kể từ ngày phát hành hóa đơn đến hạn thanh toán',
+    min: 1,
+    max: 90,
+    suffix: 'ngày',
+  },
+  {
+    type: 'toggle',
+    key: 'invoice_auto_create_deposit',
+    label: 'Tự lập hóa đơn đặt cọc',
+    tooltip: 'Tự động tạo hóa đơn đặt cọc khi khách hàng xác nhận đặt cọc',
+  },
+  {
+    type: 'toggle',
+    key: 'invoice_auto_generate_next',
+    label: 'Tự động sinh hóa đơn kỳ tiếp',
+    tooltip: 'Hệ thống tự động tạo hóa đơn cho kỳ thanh toán tiếp theo',
+  },
+  {
+    type: 'toggle',
+    key: 'invoice_allow_tenant_meter',
+    label: 'Cho phép cư dân chốt điện nước',
+    tooltip: 'Cho phép khách hàng tự nhập chỉ số điện nước từ ứng dụng Resident',
+  },
+];
+
+const PAYMENT_SETTINGS: SettingItem[] = [
+  {
+    type: 'toggle',
+    key: 'payment_auto_approve',
+    label: 'Tự động duyệt thu chi',
+    tooltip: 'Phiếu thu/chi được tự động duyệt ngay sau khi tạo, không cần xác nhận thủ công',
+  },
+];
+
+const NOTIFICATION_SETTINGS: SettingItem[] = [
+  {
+    type: 'toggle',
+    key: 'notification_invoice_reminder',
+    label: 'Nhắc ngày lập hóa đơn',
+    tooltip: 'Gửi thông báo nhắc nhở khi đến ngày lập hóa đơn hàng tháng',
+  },
+  {
+    type: 'toggle',
+    key: 'notification_payment_reminder',
+    label: 'Nhắc hạn thanh toán',
+    tooltip: 'Gửi thông báo nhắc nhở khách hàng khi sắp đến hạn thanh toán hóa đơn',
+  },
+];
+
+// =============================================
+// Reusable Setting Row Component with Tooltip
+// =============================================
+
+interface SettingRowProps {
+  item: SettingItem;
+  value: boolean | string | number;
+  onChange: (key: string, value: boolean | string | number) => void;
+}
+
+function SettingRow({ item, value, onChange }: SettingRowProps) {
+  return (
+    <div className="flex items-center justify-between py-3">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="space-y-0.5">
+          <Label className="text-sm font-medium">{item.label}</Label>
+        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-4 w-4 text-muted-foreground shrink-0 cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              <p>{item.tooltip}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      <div className="ml-4 shrink-0">
+        {item.type === 'toggle' && (
+          <Switch
+            checked={value === true || value === 'true'}
+            onCheckedChange={(checked) => onChange(item.key, checked)}
+          />
+        )}
+
+        {item.type === 'select' && (
+          <Select
+            value={String(value)}
+            onValueChange={(v) => onChange(item.key, v)}
+          >
+            <SelectTrigger className="w-[240px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {item.options.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {item.type === 'number' && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              className="w-[100px]"
+              min={item.min}
+              max={item.max}
+              value={Number(value)}
+              onChange={(e) => onChange(item.key, Number(e.target.value))}
+            />
+            {item.suffix && (
+              <span className="text-sm text-muted-foreground">{item.suffix}</span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================
+// Settings Tab Content Component
+// =============================================
+
+interface SettingsTabContentProps {
+  title: string;
+  description: string;
+  items: SettingItem[];
+  settings: Record<string, boolean | string | number>;
+  onSettingChange: (key: string, value: boolean | string | number) => void;
+}
+
+function SettingsTabContent({ title, description, items, settings, onSettingChange }: SettingsTabContentProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="divide-y">
+          {items.map((item) => (
+            <SettingRow
+              key={item.key}
+              item={item}
+              value={settings[item.key] ?? (item.type === 'toggle' ? false : '')}
+              onChange={onSettingChange}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =============================================
+// Main Page Component
+// =============================================
 
 const GeneralSettingsPage = () => {
-  const [activeTab, setActiveTab] = useState('company');
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // Company Info
+  // General settings (individual keys)
+  const { data: generalSettings, isLoading: loadingGeneral } = useGeneralSettings();
+  const updateSetting = useUpdateGeneralSetting();
+
+  // Company info (for logo upload in basic tab)
   const { data: companyInfo, isLoading: loadingCompany } = useCompanyInfo();
   const updateCompanyInfo = useUpdateCompanyInfo();
-  const [companyForm, setCompanyForm] = useState<CompanyInfo | undefined>(companyInfo);
 
-  // Contract Config
-  const { data: contractConfig, isLoading: loadingContract } = useContractConfig();
-  const updateContractConfig = useUpdateContractConfig();
-  const [contractForm, setContractForm] = useState<ContractConfig | undefined>(contractConfig);
-
-  // Invoice Config
-  const { data: invoiceConfig, isLoading: loadingInvoice } = useInvoiceConfig();
-  const updateInvoiceConfig = useUpdateInvoiceConfig();
-  const [invoiceForm, setInvoiceForm] = useState<InvoiceConfig | undefined>(invoiceConfig);
-
-  // Payment Config
-  const { data: paymentConfig, isLoading: loadingPayment } = usePaymentConfig();
-  const updatePaymentConfig = useUpdatePaymentConfig();
-  const [paymentForm, setPaymentForm] = useState<PaymentConfig | undefined>(paymentConfig);
-
-  // Notification Config
-  const { data: notificationConfig, isLoading: loadingNotification } = useNotificationConfig();
-  const updateNotificationConfig = useUpdateNotificationConfig();
-  const [notificationForm, setNotificationForm] = useState<NotificationConfig | undefined>(notificationConfig);
-
-  // Update forms when data loads
-  useState(() => {
-    if (companyInfo) setCompanyForm(companyInfo);
-  });
-  useState(() => {
-    if (contractConfig) setContractForm(contractConfig);
-  });
-  useState(() => {
-    if (invoiceConfig) setInvoiceForm(invoiceConfig);
-  });
-  useState(() => {
-    if (paymentConfig) setPaymentForm(paymentConfig);
-  });
-  useState(() => {
-    if (notificationConfig) setNotificationForm(notificationConfig);
-  });
-
-  // Save handlers
-  const handleSaveCompany = () => {
-    if (companyForm) {
-      updateCompanyInfo.mutate(companyForm);
-    }
+  const handleSettingChange = (key: string, value: boolean | string | number) => {
+    updateSetting.mutate({ key, value });
   };
 
-  const handleSaveContract = () => {
-    if (contractForm) {
-      updateContractConfig.mutate(contractForm);
-    }
+  const handleLogoUpload = () => {
+    logoInputRef.current?.click();
   };
 
-  const handleSaveInvoice = () => {
-    if (invoiceForm) {
-      updateInvoiceConfig.mutate(invoiceForm);
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // For now, create a local URL preview. In production, upload to Supabase Storage.
+    const url = URL.createObjectURL(file);
+    if (companyInfo) {
+      updateCompanyInfo.mutate({ ...companyInfo, company_logo_url: url });
     }
+    toast.success('Dữ liệu đã được CẬP NHẬT thành công');
   };
 
-  const handleSavePayment = () => {
-    if (paymentForm) {
-      updatePaymentConfig.mutate(paymentForm);
-    }
-  };
-
-  const handleSaveNotification = () => {
-    if (notificationForm) {
-      updateNotificationConfig.mutate(notificationForm);
-    }
-  };
-
-  const isLoading = loadingCompany || loadingContract || loadingInvoice || loadingPayment || loadingNotification;
+  const isLoading = loadingGeneral || loadingCompany;
 
   if (isLoading) {
     return (
@@ -115,9 +355,11 @@ const GeneralSettingsPage = () => {
     );
   }
 
+  const settings = generalSettings ?? {};
+
   return (
     <MainLayout>
-      <div className="container mx-auto p-6 max-w-6xl">
+      <div className="container mx-auto p-6 max-w-4xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -126,654 +368,123 @@ const GeneralSettingsPage = () => {
           <div>
             <h1 className="text-2xl font-bold">Cài đặt chung</h1>
             <p className="text-sm text-muted-foreground">
-              Quản lý thông tin công ty và cấu hình hệ thống
+              Quản lý cấu hình hệ thống cho hợp đồng, hóa đơn, thu chi và thông báo
             </p>
           </div>
         </div>
 
-        {/* Settings Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="company">
-            <Building className="h-4 w-4 mr-2" />
-            Công ty
-          </TabsTrigger>
-          <TabsTrigger value="contract">
-            <FileText className="h-4 w-4 mr-2" />
-            Hợp đồng
-          </TabsTrigger>
-          <TabsTrigger value="invoice">
-            <FileText className="h-4 w-4 mr-2" />
-            Hóa đơn
-          </TabsTrigger>
-          <TabsTrigger value="payment">
-            <DollarSign className="h-4 w-4 mr-2" />
-            Thanh toán
-          </TabsTrigger>
-          <TabsTrigger value="notification">
-            <Bell className="h-4 w-4 mr-2" />
-            Thông báo
-          </TabsTrigger>
-        </TabsList>
+        {/* 5 Tabs */}
+        <Tabs defaultValue="basic">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="basic">
+              <Settings className="h-4 w-4 mr-2" />
+              Cài đặt cơ bản
+            </TabsTrigger>
+            <TabsTrigger value="contract">
+              <FileText className="h-4 w-4 mr-2" />
+              Hợp đồng
+            </TabsTrigger>
+            <TabsTrigger value="invoice">
+              <Receipt className="h-4 w-4 mr-2" />
+              Hóa đơn
+            </TabsTrigger>
+            <TabsTrigger value="payment">
+              <DollarSign className="h-4 w-4 mr-2" />
+              Thu chi
+            </TabsTrigger>
+            <TabsTrigger value="notification">
+              <Bell className="h-4 w-4 mr-2" />
+              Thông báo
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Company Info Tab */}
-        <TabsContent value="company">
-          <Card>
-            <CardHeader>
-              <CardTitle>Thông tin công ty</CardTitle>
-              <CardDescription>
-                Thông tin hiển thị trên hợp đồng, hóa đơn và các tài liệu
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="company_name">Tên công ty *</Label>
-                  <Input
-                    id="company_name"
-                    value={companyForm?.company_name || ''}
-                    onChange={(e) =>
-                      setCompanyForm({ ...companyForm!, company_name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company_tax_code">Mã số thuế</Label>
-                  <Input
-                    id="company_tax_code"
-                    value={companyForm?.company_tax_code || ''}
-                    onChange={(e) =>
-                      setCompanyForm({ ...companyForm!, company_tax_code: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="company_address">Địa chỉ *</Label>
-                <Input
-                  id="company_address"
-                  value={companyForm?.company_address || ''}
-                  onChange={(e) =>
-                    setCompanyForm({ ...companyForm!, company_address: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="company_phone">Số điện thoại *</Label>
-                  <Input
-                    id="company_phone"
-                    value={companyForm?.company_phone || ''}
-                    onChange={(e) =>
-                      setCompanyForm({ ...companyForm!, company_phone: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company_email">Email *</Label>
-                  <Input
-                    id="company_email"
-                    type="email"
-                    value={companyForm?.company_email || ''}
-                    onChange={(e) =>
-                      setCompanyForm({ ...companyForm!, company_email: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <Separator />
-
-              <h3 className="font-semibold">Thông tin ngân hàng</h3>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="bank_name">Tên ngân hàng</Label>
-                  <Input
-                    id="bank_name"
-                    value={companyForm?.bank_name || ''}
-                    onChange={(e) =>
-                      setCompanyForm({ ...companyForm!, bank_name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bank_account_number">Số tài khoản</Label>
-                  <Input
-                    id="bank_account_number"
-                    value={companyForm?.bank_account_number || ''}
-                    onChange={(e) =>
-                      setCompanyForm({ ...companyForm!, bank_account_number: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bank_account_name">Tên chủ tài khoản</Label>
-                <Input
-                  id="bank_account_name"
-                  value={companyForm?.bank_account_name || ''}
-                  onChange={(e) =>
-                    setCompanyForm({ ...companyForm!, bank_account_name: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSaveCompany} disabled={updateCompanyInfo.isPending}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {updateCompanyInfo.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Contract Config Tab */}
-        <TabsContent value="contract">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cấu hình hợp đồng</CardTitle>
-              <CardDescription>
-                Quy tắc và cấu hình cho việc tạo và quản lý hợp đồng
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Deposit Settings */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Cài đặt đặt cọc</h3>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Bắt buộc đặt cọc</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Yêu cầu khách phải đặt cọc trước khi ký hợp đồng
-                    </p>
-                  </div>
-                  <Switch
-                    checked={contractForm?.require_deposit}
-                    onCheckedChange={(checked) =>
-                      setContractForm({ ...contractForm!, require_deposit: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Cho phép đặt cọc một phần</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Cho phép khách đặt cọc dưới 100%
-                    </p>
-                  </div>
-                  <Switch
-                    checked={contractForm?.allow_partial_deposit}
-                    onCheckedChange={(checked) =>
-                      setContractForm({ ...contractForm!, allow_partial_deposit: checked })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Tỷ lệ đặt cọc mặc định (%)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={contractForm?.deposit_percentage}
-                    onChange={(e) =>
-                      setContractForm({
-                        ...contractForm!,
-                        deposit_percentage: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Contract Number Settings */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Mã hợp đồng</h3>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Tự động tạo mã hợp đồng</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Hệ thống tự động tạo mã theo định dạng
-                    </p>
-                  </div>
-                  <Switch
-                    checked={contractForm?.auto_generate_contract_number}
-                    onCheckedChange={(checked) =>
-                      setContractForm({ ...contractForm!, auto_generate_contract_number: checked })
-                    }
-                  />
-                </div>
-
-                {contractForm?.auto_generate_contract_number && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Tiền tố</Label>
-                        <Input
-                          value={contractForm?.contract_number_prefix}
-                          onChange={(e) =>
-                            setContractForm({
-                              ...contractForm!,
-                              contract_number_prefix: e.target.value,
-                            })
-                          }
-                          placeholder="HD"
+          {/* Tab: Cài đặt cơ bản */}
+          <TabsContent value="basic">
+            <Card>
+              <CardHeader>
+                <CardTitle>Cài đặt cơ bản</CardTitle>
+                <CardDescription>Upload logo và thông tin cơ bản của hệ thống</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <Label>Logo công ty</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="h-24 w-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
+                      {companyInfo?.company_logo_url ? (
+                        <img
+                          src={companyInfo.company_logo_url}
+                          alt="Logo"
+                          className="h-full w-full object-contain"
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Định dạng</Label>
-                        <Input
-                          value={contractForm?.contract_number_format}
-                          onChange={(e) =>
-                            setContractForm({
-                              ...contractForm!,
-                              contract_number_format: e.target.value,
-                            })
-                          }
-                          placeholder="{prefix}{year}{month}{seq:4}"
-                        />
-                      </div>
+                      ) : (
+                        <Upload className="h-8 w-8 text-gray-400" />
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Ví dụ: HD202511001, HD202511002, ...
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Other Settings */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Cài đặt khác</h3>
-                <div className="space-y-2">
-                  <Label>Kỳ thanh toán mặc định</Label>
-                  <Select
-                    value={contractForm?.payment_cycle_default}
-                    onValueChange={(value: any) =>
-                      setContractForm({ ...contractForm!, payment_cycle_default: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MONTHLY">Hàng tháng</SelectItem>
-                      <SelectItem value="QUARTERLY">Hàng quý</SelectItem>
-                      <SelectItem value="YEARLY">Hàng năm</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Tự động tạo hóa đơn</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Tạo hóa đơn ngay sau khi ký hợp đồng
-                    </p>
-                  </div>
-                  <Switch
-                    checked={contractForm?.auto_create_invoice}
-                    onCheckedChange={(checked) =>
-                      setContractForm({ ...contractForm!, auto_create_invoice: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Cho phép nhượng hợp đồng</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Cho phép chuyển nhượng hợp đồng cho người khác
-                    </p>
-                  </div>
-                  <Switch
-                    checked={contractForm?.allow_contract_transfer}
-                    onCheckedChange={(checked) =>
-                      setContractForm({ ...contractForm!, allow_contract_transfer: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Yêu cầu duyệt khi thanh lý</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Cần xác nhận trước khi thanh lý hợp đồng
-                    </p>
-                  </div>
-                  <Switch
-                    checked={contractForm?.require_approval_for_termination}
-                    onCheckedChange={(checked) =>
-                      setContractForm({ ...contractForm!, require_approval_for_termination: checked })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSaveContract} disabled={updateContractConfig.isPending}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {updateContractConfig.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Invoice Config Tab */}
-        <TabsContent value="invoice">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cấu hình hóa đơn</CardTitle>
-              <CardDescription>
-                Quy tắc và cấu hình cho việc tạo và quản lý hóa đơn
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Invoice Number Settings */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Mã hóa đơn</h3>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Tự động tạo mã hóa đơn</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Hệ thống tự động tạo mã theo định dạng
-                    </p>
-                  </div>
-                  <Switch
-                    checked={invoiceForm?.auto_generate_invoice_number}
-                    onCheckedChange={(checked) =>
-                      setInvoiceForm({ ...invoiceForm!, auto_generate_invoice_number: checked })
-                    }
-                  />
-                </div>
-
-                {invoiceForm?.auto_generate_invoice_number && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Tiền tố</Label>
-                        <Input
-                          value={invoiceForm?.invoice_number_prefix}
-                          onChange={(e) =>
-                            setInvoiceForm({
-                              ...invoiceForm!,
-                              invoice_number_prefix: e.target.value,
-                            })
-                          }
-                          placeholder="INV"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Định dạng</Label>
-                        <Input
-                          value={invoiceForm?.invoice_number_format}
-                          onChange={(e) =>
-                            setInvoiceForm({
-                              ...invoiceForm!,
-                              invoice_number_format: e.target.value,
-                            })
-                          }
-                          placeholder="{prefix}{year}{month}{seq:4}"
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Button variant="outline" onClick={handleLogoUpload}>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Tải lên logo
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Định dạng: PNG, JPG, SVG. Kích thước tối đa: 2MB
+                      </p>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml"
+                        className="hidden"
+                        onChange={handleLogoFileChange}
+                      />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Ví dụ: INV202511001, INV202511002, ...
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Payment Settings */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Thanh toán</h3>
-                <div className="space-y-2">
-                  <Label>Số ngày đến hạn thanh toán</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={invoiceForm?.payment_due_days}
-                    onChange={(e) =>
-                      setInvoiceForm({
-                        ...invoiceForm!,
-                        payment_due_days: Number(e.target.value),
-                      })
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Số ngày từ khi phát hành hóa đơn đến hạn thanh toán
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Gộp nợ cũ vào hóa đơn mới</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Tự động cộng công nợ cũ vào hóa đơn mới
-                    </p>
                   </div>
-                  <Switch
-                    checked={invoiceForm?.include_previous_debt}
-                    onCheckedChange={(checked) =>
-                      setInvoiceForm({ ...invoiceForm!, include_previous_debt: checked })
-                    }
-                  />
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Cho phép thanh toán một phần</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Cho phép khách thanh toán dưới 100%
-                    </p>
-                  </div>
-                  <Switch
-                    checked={invoiceForm?.allow_partial_payment}
-                    onCheckedChange={(checked) =>
-                      setInvoiceForm({ ...invoiceForm!, allow_partial_payment: checked })
-                    }
-                  />
-                </div>
-              </div>
+          {/* Tab: Hợp đồng */}
+          <TabsContent value="contract">
+            <SettingsTabContent
+              title="Cấu hình hợp đồng"
+              description="Các tùy chọn liên quan đến quản lý hợp đồng thuê"
+              items={CONTRACT_SETTINGS}
+              settings={settings}
+              onSettingChange={handleSettingChange}
+            />
+          </TabsContent>
 
-              <Separator />
+          {/* Tab: Hóa đơn */}
+          <TabsContent value="invoice">
+            <SettingsTabContent
+              title="Cấu hình hóa đơn"
+              description="Các tùy chọn liên quan đến tạo và quản lý hóa đơn"
+              items={INVOICE_SETTINGS}
+              settings={settings}
+              onSettingChange={handleSettingChange}
+            />
+          </TabsContent>
 
-              {/* Late Payment Fee */}
-              <div className="space-y-4">
-                <h3 className="font-semibold">Phí trễ hạn</h3>
-                <div className="space-y-2">
-                  <Label>Loại phí trễ hạn</Label>
-                  <Select
-                    value={invoiceForm?.late_payment_fee_type}
-                    onValueChange={(value: any) =>
-                      setInvoiceForm({ ...invoiceForm!, late_payment_fee_type: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">Không tính phí</SelectItem>
-                      <SelectItem value="PERCENTAGE">Theo phần trăm (%)</SelectItem>
-                      <SelectItem value="FIXED">Số tiền cố định (VND)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+          {/* Tab: Thu chi */}
+          <TabsContent value="payment">
+            <SettingsTabContent
+              title="Cấu hình thu chi"
+              description="Các tùy chọn liên quan đến quản lý thu chi"
+              items={PAYMENT_SETTINGS}
+              settings={settings}
+              onSettingChange={handleSettingChange}
+            />
+          </TabsContent>
 
-                {invoiceForm?.late_payment_fee_type !== 'NONE' && (
-                  <div className="space-y-2">
-                    <Label>
-                      {invoiceForm?.late_payment_fee_type === 'PERCENTAGE'
-                        ? 'Tỷ lệ phí (%/ngày)'
-                        : 'Số tiền (VND/ngày)'}
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={invoiceForm?.late_payment_fee_value}
-                      onChange={(e) =>
-                        setInvoiceForm({
-                          ...invoiceForm!,
-                          late_payment_fee_value: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSaveInvoice} disabled={updateInvoiceConfig.isPending}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {updateInvoiceConfig.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Payment Config Tab */}
-        <TabsContent value="payment">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cấu hình thanh toán</CardTitle>
-              <CardDescription>
-                Phương thức thanh toán và cài đặt liên quan
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Phương thức thanh toán mặc định</Label>
-                  <Select
-                    value={paymentForm?.default_payment_method}
-                    onValueChange={(value: any) =>
-                      setPaymentForm({ ...paymentForm!, default_payment_method: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CASH">Tiền mặt</SelectItem>
-                      <SelectItem value="BANK_TRANSFER">Chuyển khoản</SelectItem>
-                      <SelectItem value="MOMO">MoMo</SelectItem>
-                      <SelectItem value="VNPAY">VNPay</SelectItem>
-                      <SelectItem value="OTHER">Khác</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Tự động gửi biên lai</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Gửi biên lai qua email sau khi thanh toán
-                    </p>
-                  </div>
-                  <Switch
-                    checked={paymentForm?.auto_send_receipt}
-                    onCheckedChange={(checked) =>
-                      setPaymentForm({ ...paymentForm!, auto_send_receipt: checked })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSavePayment} disabled={updatePaymentConfig.isPending}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {updatePaymentConfig.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Notification Config Tab */}
-        <TabsContent value="notification">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cấu hình thông báo</CardTitle>
-              <CardDescription>
-                Cài đặt thông báo tự động cho khách thuê và quản lý
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Gửi xác nhận thanh toán</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Gửi thông báo khi thanh toán thành công
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notificationForm?.send_payment_confirmation}
-                    onCheckedChange={(checked) =>
-                      setNotificationForm({ ...notificationForm!, send_payment_confirmation: checked })
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Gửi cập nhật sự cố</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Gửi thông báo khi sự cố được cập nhật
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notificationForm?.send_issue_updates}
-                    onCheckedChange={(checked) =>
-                      setNotificationForm({ ...notificationForm!, send_issue_updates: checked })
-                    }
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label>Tần suất nhắc quá hạn</Label>
-                  <Select
-                    value={notificationForm?.overdue_reminder_frequency}
-                    onValueChange={(value: any) =>
-                      setNotificationForm({ ...notificationForm!, overdue_reminder_frequency: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">Không nhắc</SelectItem>
-                      <SelectItem value="DAILY">Hàng ngày</SelectItem>
-                      <SelectItem value="WEEKLY">Hàng tuần</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSaveNotification} disabled={updateNotificationConfig.isPending}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {updateNotificationConfig.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {/* Tab: Thông báo */}
+          <TabsContent value="notification">
+            <SettingsTabContent
+              title="Cấu hình thông báo"
+              description="Các tùy chọn thông báo tự động cho hệ thống"
+              items={NOTIFICATION_SETTINGS}
+              settings={settings}
+              onSettingChange={handleSettingChange}
+            />
+          </TabsContent>
         </Tabs>
       </div>
     </MainLayout>

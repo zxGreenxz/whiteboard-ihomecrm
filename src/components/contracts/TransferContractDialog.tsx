@@ -120,7 +120,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowRightLeft className="h-5 w-5" />
-            {defaultTransferType === 'TENANT_CHANGE' ? 'Nhượng hợp đồng' : 'Chuyển Phòng/Giường'}
+            {defaultTransferType === 'TENANT_CHANGE' ? 'Nhượng hợp đồng' : 'Chuyển Căn hộ/Giường'}
           </DialogTitle>
           <DialogDescription>
             Hợp đồng: {contract.contract_number || contract.id.slice(0, 8)}
@@ -135,7 +135,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
               <span className="font-medium">{contract.tenant?.full_name}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Phòng/Giường hiện tại:</span>
+              <span className="text-gray-600">Căn hộ/Giường hiện tại:</span>
               <span className="font-medium">
                 {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : ''}
                 {contract.bed ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}` : ''}
@@ -163,9 +163,9 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ROOM_CHANGE">Chuyển phòng (cùng khách)</SelectItem>
-                <SelectItem value="TENANT_CHANGE">Nhượng hợp đồng (cùng phòng)</SelectItem>
-                <SelectItem value="BOTH_CHANGE">Cả hai (khách mới + phòng mới)</SelectItem>
+                <SelectItem value="ROOM_CHANGE">Chuyển căn hộ (cùng khách)</SelectItem>
+                <SelectItem value="TENANT_CHANGE">Nhượng hợp đồng (cùng căn hộ)</SelectItem>
+                <SelectItem value="BOTH_CHANGE">Cả hai (khách mới + căn hộ mới)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -173,12 +173,12 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
           {/* New Tenant (for TENANT_CHANGE or BOTH_CHANGE) */}
           {(transferType === 'TENANT_CHANGE' || transferType === 'BOTH_CHANGE') && (
             <div className="space-y-2">
-              <Label>Khách thuê mới *</Label>
+              <Label>Khách hàng mới *</Label>
               <Select
                 onValueChange={(value) => setValue('new_tenant_id', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn khách thuê mới..." />
+                  <SelectValue placeholder="Chọn khách hàng mới..." />
                 </SelectTrigger>
                 <SelectContent>
                   {tenants?.filter(t => t.id !== contract.tenant_id).map((tenant) => (
@@ -199,7 +199,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
             <>
               {contract.room && (
                 <div className="space-y-2">
-                  <Label>Phòng mới *</Label>
+                  <Label>Căn hộ mới *</Label>
                   <Select
                     onValueChange={(value) => {
                       setValue('new_room_id', value);
@@ -211,7 +211,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Chọn phòng trống..." />
+                      <SelectValue placeholder="Chọn căn hộ trống..." />
                     </SelectTrigger>
                     <SelectContent>
                       {rooms?.map((room) => (
@@ -254,7 +254,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
               {(selectedNewRoom || selectedNewBed) && (
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-md">
                   <p className="text-sm font-medium text-blue-900">
-                    Phòng/Giường mới: {selectedNewRoom?.name || selectedNewBed?.name}
+                    Căn hộ/Giường mới: {selectedNewRoom?.name || selectedNewBed?.name}
                   </p>
                   <p className="text-xs text-blue-700 mt-1">
                     Giá thuê mới: {(selectedNewRoom?.rent_price || selectedNewBed?.rent_price)?.toLocaleString('vi-VN')} VND/tháng
@@ -274,7 +274,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
               placeholder="Để trống nếu giữ giá tự động"
             />
             <p className="text-xs text-gray-500">
-              Hệ thống tự động lấy giá từ phòng/giường mới
+              Hệ thống tự động lấy giá từ căn hộ/giường mới
             </p>
           </div>
 
@@ -300,7 +300,7 @@ const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferT
             <Textarea
               id="reason"
               {...register('reason')}
-              placeholder="Lý do chuyển phòng/nhượng hợp đồng..."
+              placeholder="Lý do chuyển căn hộ/nhượng hợp đồng..."
               rows={3}
             />
           </div>

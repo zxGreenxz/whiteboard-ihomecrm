@@ -39,11 +39,11 @@ const convertSchema = z.object({
   create_tenant: z.boolean(),
   tenant_name: z.string().optional(),
   tenant_phone: z.string().optional(),
-  room_id: z.string().min(1, "Phải chọn phòng"),
+  room_id: z.string().min(1, "Phải chọn căn hộ"),
   bed_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
-  hold_until_date: z.string().min(1, "Ngày giữ phòng là bắt buộc"),
+  hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
   notes: z.string().optional(),
 });
 
@@ -96,7 +96,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
       }
 
       if (!tenantId) {
-        throw new Error("Phải chọn hoặc tạo khách thuê");
+        throw new Error("Phải chọn hoặc tạo khách hàng");
       }
 
       // Create deposit
@@ -126,7 +126,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
         <DialogHeader>
           <DialogTitle>Chuyển sang Đặt cọc</DialogTitle>
           <DialogDescription>
-            Tạo phiếu đặt cọc từ khách hẹn: {lead.customer_name}
+            Chuyển đổi khách hẹn thành đặt cọc: {lead.customer_name}
           </DialogDescription>
         </DialogHeader>
 
@@ -143,7 +143,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
                   className="rounded"
                 />
                 <label htmlFor="create_tenant" className="text-sm">
-                  Tạo khách thuê mới
+                  Tạo khách hàng mới
                 </label>
               </div>
 
@@ -154,7 +154,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
                     name="tenant_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tên khách thuê *</FormLabel>
+                        <FormLabel>Tên khách hàng *</FormLabel>
                         <FormControl>
                           <Input {...field} />
                         </FormControl>
@@ -182,11 +182,11 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
                   name="tenant_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Chọn khách thuê *</FormLabel>
+                      <FormLabel>Chọn khách hàng *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn khách thuê" />
+                            <SelectValue placeholder="Chọn khách hàng" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -211,11 +211,11 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
                 name="room_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phòng *</FormLabel>
+                    <FormLabel>Căn hộ *</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Chọn phòng" />
+                          <SelectValue placeholder="Chọn căn hộ" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -296,7 +296,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
                 name="hold_until_date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Giữ phòng đến *</FormLabel>
+                    <FormLabel>Giữ căn hộ đến *</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>

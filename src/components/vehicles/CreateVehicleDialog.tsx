@@ -12,7 +12,7 @@ import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useContractsLegacy } from "@/hooks/useContracts";
 
 const vehicleSchema = z.object({
-  tenant_id: z.string().min(1, "Phải chọn khách thuê"),
+  tenant_id: z.string().min(1, "Phải chọn khách hàng"),
   contract_id: z.string().optional(),
   vehicle_type: z.enum(["MOTORBIKE", "CAR", "BICYCLE", "ELECTRIC_BIKE", "OTHER"]),
   license_plate: z.string().min(1, "Biển số là bắt buộc"),
@@ -77,7 +77,7 @@ export function CreateVehicleDialog({ open, onOpenChange }: CreateVehicleDialogP
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Thêm phương tiện mới</DialogTitle>
-          <DialogDescription>Đăng ký phương tiện cho khách thuê</DialogDescription>
+          <DialogDescription>Đăng ký phương tiện cho khách hàng</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
@@ -88,11 +88,11 @@ export function CreateVehicleDialog({ open, onOpenChange }: CreateVehicleDialogP
                   name="tenant_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Khách thuê *</FormLabel>
+                      <FormLabel>Khách hàng *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn khách thuê" />
+                            <SelectValue placeholder="Chọn khách hàng" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -234,6 +234,7 @@ export function CreateVehicleDialog({ open, onOpenChange }: CreateVehicleDialogP
                     <FormControl>
                       <Input
                         type="number"
+                        placeholder="VD: 100000"
                         {...field}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                       />

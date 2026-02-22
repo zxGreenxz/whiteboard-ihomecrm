@@ -1,4 +1,14 @@
-import { DollarSign, Book, TrendingUp, AlertCircle, Users, Calendar, PlusCircle, Wallet, PieChart } from "lucide-react";
+import {
+  DollarSign,
+  Book,
+  TrendingUp,
+  PieChart,
+  FileText,
+  Users,
+  Calendar,
+  Coins,
+  Wallet,
+} from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,32 +16,40 @@ import { Button } from "@/components/ui/button";
 
 const reports = [
   {
-    title: "Sổ quỹ tiền mặt",
-    description: "Sổ quỹ chi tiết theo ngày với số dư tích lũy",
+    title: "Sổ quỹ theo ngày",
+    description: "Thu chi hàng ngày, số dư đầu kỳ, tổng thu, tổng chi, số dư cuối kỳ",
     icon: Book,
-    path: "/reports/finance/cash-book",
+    path: "/reports/finance/daily-cashbook",
     color: "text-blue-600",
     bgColor: "bg-blue-50",
   },
   {
     title: "Dòng tiền",
-    description: "Phân tích dòng tiền vào/ra và xu hướng",
+    description: "Phân tích dòng tiền vào/ra và xu hướng theo thời gian",
     icon: TrendingUp,
     path: "/reports/finance/cash-flow",
     color: "text-green-600",
     bgColor: "bg-green-50",
   },
   {
-    title: "Công nợ",
-    description: "Phân tích công nợ theo tuổi nợ (0-30, 31-60, 61-90, >90 ngày)",
-    icon: AlertCircle,
-    path: "/reports/finance/debt",
+    title: "Phân bổ lợi nhuận",
+    description: "Doanh thu, chi phí, lợi nhuận và tỷ lệ margin",
+    icon: PieChart,
+    path: "/reports/finance/profit-distribution",
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+  },
+  {
+    title: "Công nợ hợp đồng mới",
+    description: "Công nợ phát sinh từ các hợp đồng mới ký kết",
+    icon: FileText,
+    path: "/reports/finance/new-contract-debt",
     color: "text-red-600",
     bgColor: "bg-red-50",
   },
   {
     title: "Khách nợ tiền",
-    description: "Danh sách khách hàng có công nợ",
+    description: "Danh sách khách hàng có công nợ, phân loại theo mức độ",
     icon: Users,
     path: "/reports/finance/customer-debt",
     color: "text-orange-600",
@@ -39,7 +57,7 @@ const reports = [
   },
   {
     title: "Lịch thanh toán",
-    description: "Lịch hóa đơn đến hạn và quá hạn",
+    description: "Hợp đồng cần thu trong tháng, ngày đáo hạn và số tiền",
     icon: Calendar,
     path: "/reports/finance/payment-schedule",
     color: "text-purple-600",
@@ -47,27 +65,19 @@ const reports = [
   },
   {
     title: "Tiền thừa",
-    description: "Danh sách khách hàng thanh toán thừa",
-    icon: PlusCircle,
+    description: "Danh sách khách trả thừa cần hoàn lại",
+    icon: Coins,
     path: "/reports/finance/overpayment",
     color: "text-emerald-600",
     bgColor: "bg-emerald-50",
   },
   {
-    title: "Tiền cọc",
-    description: "Quản lý danh sách tiền cọc khách hàng",
+    title: "Danh sách tiền cọc",
+    description: "Tổng tiền cọc đang giữ, phân theo trạng thái",
     icon: Wallet,
     path: "/reports/finance/deposits",
     color: "text-cyan-600",
     bgColor: "bg-cyan-50",
-  },
-  {
-    title: "Phân bổ lợi nhuận",
-    description: "Phân tích cấu trúc doanh thu và lợi nhuận",
-    icon: PieChart,
-    path: "/reports/finance/profit-distribution",
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-50",
   },
 ];
 
@@ -75,7 +85,6 @@ const FinanceReportsPage = () => {
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <DollarSign className="h-8 w-8 text-primary" />
           <div>
@@ -86,46 +95,31 @@ const FinanceReportsPage = () => {
           </div>
         </div>
 
-      {/* Reports Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {reports.map((report) => {
-          const Icon = report.icon;
-          return (
-            <Link key={report.path} to={report.path}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardHeader>
-                  <div className={`w-12 h-12 rounded-lg ${report.bgColor} flex items-center justify-center mb-2`}>
-                    <Icon className={`h-6 w-6 ${report.color}`} />
-                  </div>
-                  <CardTitle className="text-lg">{report.title}</CardTitle>
-                  <CardDescription className="text-sm">
-                    {report.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="ghost" className="w-full" asChild>
-                    <span>Xem báo cáo →</span>
-                  </Button>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
-
-        {/* Info Card */}
-        <Card className="border-green-200 bg-green-50/50">
-          <CardHeader>
-            <CardTitle className="text-base">Hướng dẫn sử dụng</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>• Chọn một trong 8 loại báo cáo tài chính ở trên</p>
-            <p>• Sử dụng bộ lọc ngày tháng để phân tích theo kỳ</p>
-            <p>• Xem biểu đồ trực quan cho dòng tiền, công nợ, phân bổ lợi nhuận</p>
-            <p>• Xuất báo cáo dưới định dạng Excel, PDF hoặc CSV</p>
-            <p>• Dữ liệu real-time từ hệ thống thanh toán</p>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {reports.map((report) => {
+            const Icon = report.icon;
+            return (
+              <Link key={report.path} to={report.path}>
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
+                  <CardHeader>
+                    <div className={`w-12 h-12 rounded-lg ${report.bgColor} flex items-center justify-center mb-2`}>
+                      <Icon className={`h-6 w-6 ${report.color}`} />
+                    </div>
+                    <CardTitle className="text-lg">{report.title}</CardTitle>
+                    <CardDescription className="text-sm">
+                      {report.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button variant="ghost" className="w-full" asChild>
+                      <span>Xem báo cáo →</span>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </MainLayout>
   );

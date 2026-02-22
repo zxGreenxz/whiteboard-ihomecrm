@@ -232,7 +232,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           {/* Invoice Info */}
           <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-600">Khách thuê:</span>
+              <span className="text-gray-600">Khách hàng:</span>
               <span className="font-medium">{invoice.contract?.tenant?.full_name}</span>
             </div>
             <div className="flex justify-between">

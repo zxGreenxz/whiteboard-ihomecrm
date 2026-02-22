@@ -68,7 +68,7 @@ export interface NotificationConfig {
   contract_expiry_reminder_days: number[]; // Nhắc HĐ hết hạn (e.g., [30, 15, 7])
   overdue_reminder_frequency: 'DAILY' | 'WEEKLY' | 'NONE'; // Tần suất nhắc quá hạn
   send_payment_confirmation: boolean; // Gửi xác nhận khi thanh toán
-  send_issue_updates: boolean; // Gửi cập nhật sự cố
+  send_issue_updates: boolean; // Gửi cập nhật công việc
 }
 
 export interface CodeGenerationConfig {
@@ -197,10 +197,10 @@ function useUpdateSetting<T>(key: SettingKey) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings', key] });
-      toast.success('Cài đặt đã được lưu');
+      toast.success('Cài đặt đã được lưu thành công');
     },
     onError: (error) => {
-      toast.error('Lỗi khi lưu cài đặt: ' + error.message);
+      toast.error('Có lỗi xảy ra khi lưu cài đặt: ' + error.message);
     },
   });
 }
@@ -286,4 +286,181 @@ export function useAllSettings() {
       notificationConfig.isLoading ||
       codeGenerationConfig.isLoading,
   };
+}
+
+// =============================================
+// Individual Setting Key Hooks
+// For settings stored as individual keys (from migration 20250101000012)
+// =============================================
+
+type IndividualSettingValue = boolean | string | number;
+
+/**
+ * Hook to fetch a single setting by its individual key
+ */
+export function useIndividualSetting(key: string, defaultValue: IndividualSettingValue) {
+  const { data: user } = useAuth();
+
+  return useQuery({
+    queryKey: ['settings', 'individual', key, user?.id],
+    queryFn: async () => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('user_id', user.id)
+        .eq('key', key)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) return defaultValue;
+
+      // Parse the JSONB value
+      const val = data.value;
+      if (typeof val === 'boolean' || typeof val === 'number' || typeof val === 'string') {
+        return val as IndividualSettingValue;
+      }
+      return defaultValue;
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+/**
+ * Hook to update a single setting by its individual key
+ */
+export function useUpdateIndividualSetting(key: string) {
+  const queryClient = useQueryClient();
+  const { data: user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (value: IndividualSettingValue) => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
+        .from('settings')
+        .upsert(
+          { user_id: user.id, key, value: value as any },
+          { onConflict: 'user_id,key' }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'individual', key] });
+      toast.success('Dữ liệu đã được CẬP NHẬT thành công');
+    },
+    onError: (error) => {
+      toast.error('Có lỗi xảy ra: ' + error.message);
+    },
+  });
+}
+
+// =============================================
+// Bulk settings hook for the General Settings page
+// Fetches all individual setting keys at once
+// =============================================
+
+export interface GeneralSettingsMap {
+  [key: string]: IndividualSettingValue;
+}
+
+const GENERAL_SETTINGS_DEFAULTS: GeneralSettingsMap = {
+  // Contract tab
+  contract_auto_set_service_users: false,
+  contract_asset_inspection: false,
+  contract_auto_create_on_renewal: false,
+  contract_e_signing_enabled: false,
+  contract_payment_date_setting: '1',
+  contract_show_expiring_status: true,
+  contract_overdue_notification: false,
+  // Invoice tab
+  invoice_auto_approve_meter: false,
+  invoice_auto_approve: false,
+  invoice_use_coefficient: false,
+  invoice_auto_calc_coefficient: false,
+  invoice_service_cycle_type: 'monthly',
+  invoice_prorate_method: 'actual_days',
+  invoice_payment_deadline_days: 5,
+  invoice_auto_create_deposit: false,
+  invoice_auto_generate_next: false,
+  invoice_allow_tenant_meter: false,
+  // Payment tab
+  payment_auto_approve: false,
+  // Notification tab
+  notification_invoice_reminder: false,
+  notification_payment_reminder: false,
+};
+
+/**
+ * Hook to fetch all general settings (individual keys) at once
+ */
+export function useGeneralSettings() {
+  const { data: user } = useAuth();
+  const keys = Object.keys(GENERAL_SETTINGS_DEFAULTS);
+
+  return useQuery({
+    queryKey: ['settings', 'general-all', user?.id],
+    queryFn: async () => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
+        .from('settings')
+        .select('key, value')
+        .eq('user_id', user.id)
+        .in('key', keys);
+
+      if (error) throw error;
+
+      const result: GeneralSettingsMap = { ...GENERAL_SETTINGS_DEFAULTS };
+      if (data) {
+        for (const row of data) {
+          if (row.key in result) {
+            result[row.key] = row.value as IndividualSettingValue;
+          }
+        }
+      }
+      return result;
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+/**
+ * Hook to update a single general setting key and refresh the bulk query
+ */
+export function useUpdateGeneralSetting() {
+  const queryClient = useQueryClient();
+  const { data: user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: IndividualSettingValue }) => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
+        .from('settings')
+        .upsert(
+          { user_id: user.id, key, value: value as any },
+          { onConflict: 'user_id,key' }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'general-all'] });
+      toast.success('Dữ liệu đã được CẬP NHẬT thành công');
+    },
+    onError: (error) => {
+      toast.error('Có lỗi xảy ra: ' + error.message);
+    },
+  });
 }

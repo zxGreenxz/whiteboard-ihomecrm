@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Plus, Search, Car } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -98,7 +99,7 @@ const VehiclesPage = () => {
         <div>
           <h1 className="text-3xl font-bold">Quản lý Phương tiện</h1>
           <p className="text-muted-foreground mt-1">
-            Theo dõi và quản lý phương tiện của khách thuê
+            Theo dõi và quản lý phương tiện của khách hàng
           </p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
@@ -218,8 +219,20 @@ const VehiclesPage = () => {
           <TableBody>
             {filteredVehicles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  Không tìm thấy phương tiện nào
+                <TableCell colSpan={8}>
+                  {vehicles.length === 0 && typeFilter === "ALL" && !searchQuery ? (
+                    <EmptyState
+                      icon={Car}
+                      title="Chưa có phương tiện nào"
+                      description="Hãy thêm phương tiện đầu tiên để bắt đầu quản lý"
+                      actionLabel="Thêm phương tiện"
+                      onAction={() => setCreateDialogOpen(true)}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Không tìm thấy phương tiện nào
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

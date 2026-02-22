@@ -6,8 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
-export function AlertsList() {
-  const { data: alerts = [], isLoading } = useAlerts();
+export function AlertsList({ buildingId }: { buildingId?: string | null }) {
+  const { data: alerts = [], isLoading } = useAlerts(buildingId);
   const navigate = useNavigate();
 
   const getSeverityConfig = (severity: string) => {
@@ -43,7 +43,7 @@ export function AlertsList() {
       case "expiring_contract":
         return "Hợp đồng hết hạn";
       case "urgent_issue":
-        return "Sự cố khẩn cấp";
+        return "Công việc khẩn cấp";
       default:
         return "Thông báo";
     }

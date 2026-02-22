@@ -6,8 +6,12 @@ import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { useProfitDistributionReport } from "@/hooks/useReports";
+import { useBuildings } from "@/hooks/useBuildings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { DateRange } from "react-day-picker";
 import { startOfMonth } from "date-fns";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
@@ -19,8 +23,10 @@ export default function ProfitDistributionReport() {
     from: startOfMonth(new Date()),
     to: new Date(),
   });
+  const [buildingId, setBuildingId] = useState<string>("all");
 
   const { data: profitData, isLoading } = useProfitDistributionReport(dateRange?.from, dateRange?.to);
+  const { data: buildings = [] } = useBuildings();
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -76,6 +82,7 @@ export default function ProfitDistributionReport() {
       title="Báo cáo Phân bổ lợi nhuận"
       description="Phân tích cấu trúc doanh thu và lợi nhuận"
       icon={<PieChartIcon className="h-8 w-8" />}
+      backPath="/reports/finance"
       actions={
         <ExportButtons
           data={exportData}
@@ -83,7 +90,22 @@ export default function ProfitDistributionReport() {
         />
       }
       filters={
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
+        <div className="flex flex-wrap gap-4 items-end">
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <Select value={buildingId} onValueChange={setBuildingId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Tất cả toà nhà" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả toà nhà</SelectItem>
+              {buildings.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       }
       stats={stats}
     >

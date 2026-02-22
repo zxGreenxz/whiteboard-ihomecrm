@@ -331,14 +331,14 @@ export const useCreateInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
       toast({
-        title: 'Tạo hóa đơn thành công!',
+        title: 'Hóa đơn đã được tạo thành công',
         description: 'Hóa đơn đã được tạo ở trạng thái nháp.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Tạo hóa đơn thất bại',
+        title: 'Có lỗi xảy ra khi tạo hóa đơn',
         description: error.message,
       });
     },
@@ -374,14 +374,14 @@ export const useApproveInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
 
       toast({
-        title: 'Duyệt hóa đơn thành công!',
-        description: 'Hóa đơn đã được duyệt và gửi đến khách thuê.',
+        title: 'Hóa đơn đã được duyệt thành công',
+        description: 'Hóa đơn đã được duyệt và gửi đến khách hàng.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Duyệt hóa đơn thất bại',
+        title: 'Có lỗi xảy ra khi duyệt hóa đơn',
         description: error.message,
       });
     },
@@ -452,14 +452,14 @@ export const useRecordPayment = () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
 
       toast({
-        title: 'Ghi nhận thanh toán thành công!',
+        title: 'Thanh toán đã được ghi nhận thành công',
         description: 'Thanh toán đã được ghi nhận vào hệ thống.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Ghi nhận thanh toán thất bại',
+        title: 'Có lỗi xảy ra khi ghi nhận thanh toán',
         description: error.message,
       });
     },
@@ -502,14 +502,14 @@ export const useRecordMeterReading = () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
       toast({
-        title: 'Ghi nhận chỉ số thành công!',
+        title: 'Chỉ số công tơ đã được ghi nhận thành công',
         description: 'Chỉ số công tơ đã được ghi nhận.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Ghi nhận chỉ số thất bại',
+        title: 'Có lỗi xảy ra khi ghi nhận chỉ số',
         description: error.message,
       });
     },
@@ -605,14 +605,14 @@ export const useBulkCreateMeterReadings = () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
       toast({
-        title: 'Ghi nhận chỉ số thành công!',
+        title: 'Chỉ số công tơ đã được ghi nhận thành công',
         description: `Đã ghi nhận ${data.length} chỉ số công tơ.`,
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Ghi nhận chỉ số thất bại',
+        title: 'Có lỗi xảy ra khi ghi nhận chỉ số',
         description: error.message,
       });
     },
@@ -645,14 +645,14 @@ export const useDeleteInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
 
       toast({
-        title: 'Xóa hóa đơn thành công!',
+        title: 'Hóa đơn đã được xóa thành công',
         description: 'Hóa đơn nháp đã được xóa.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Xóa hóa đơn thất bại',
+        title: 'Có lỗi xảy ra khi xóa hóa đơn',
         description: error.message,
       });
     },
@@ -846,7 +846,7 @@ export const useAutoGenerateInvoices = () => {
           const rentPrice = contract.rent_price || 0;
           items.push({
             type: 'RENT',
-            description: 'Tiền thuê phòng',
+            description: 'Tiền thuê căn hộ',
             quantity: 1,
             unit_price: rentPrice,
             amount: rentPrice,
@@ -1059,7 +1059,7 @@ export const useAutoGenerateInvoices = () => {
       }
 
       toast({
-        title: createdCount > 0 ? 'Tạo hóa đơn tự động thành công!' : 'Không có hóa đơn mới được tạo',
+        title: createdCount > 0 ? 'Hóa đơn tự động đã được tạo thành công' : 'Không có hóa đơn mới được tạo',
         description,
         variant: createdCount > 0 ? 'default' : 'destructive',
       });
@@ -1067,7 +1067,7 @@ export const useAutoGenerateInvoices = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Tạo hóa đơn tự động thất bại',
+        title: 'Có lỗi xảy ra khi tạo hóa đơn tự động',
         description: error.message,
       });
     },
@@ -1102,14 +1102,14 @@ export const useBulkApproveInvoices = () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
 
       toast({
-        title: 'Duyệt hóa đơn thành công!',
+        title: 'Hóa đơn đã được duyệt thành công',
         description: `Đã duyệt ${data.length} hóa đơn.`,
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Duyệt hóa đơn thất bại',
+        title: 'Có lỗi xảy ra khi duyệt hóa đơn',
         description: error.message,
       });
     },
@@ -1205,14 +1205,14 @@ export const useUpdateInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
 
       toast({
-        title: 'Cập nhật hóa đơn thành công!',
+        title: 'Hóa đơn đã được cập nhật thành công',
         description: 'Thông tin hóa đơn đã được cập nhật.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Cập nhật hóa đơn thất bại',
+        title: 'Có lỗi xảy ra khi cập nhật hóa đơn',
         description: error.message,
       });
     },
@@ -1246,14 +1246,14 @@ export const useCancelInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
 
       toast({
-        title: 'Hủy hóa đơn thành công!',
+        title: 'Hóa đơn đã được hủy thành công',
         description: 'Hóa đơn đã được hủy.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Hủy hóa đơn thất bại',
+        title: 'Có lỗi xảy ra khi hủy hóa đơn',
         description: error.message,
       });
     },

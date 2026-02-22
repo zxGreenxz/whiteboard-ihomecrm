@@ -80,7 +80,7 @@ export const useCreateBed = () => {
         if (error.code === "23505") {
           toast.error("Mã giường đã tồn tại");
         } else if (error.code === "23503") {
-          toast.error("Phòng không tồn tại");
+          toast.error("Căn hộ không tồn tại");
         } else {
           toast.error("Không thể tạo giường");
         }
@@ -92,7 +92,7 @@ export const useCreateBed = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["beds"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Tạo giường thành công");
+      toast.success("Giường đã được tạo thành công");
     },
     onError: (error) => {
       console.error("Error creating bed:", error);
@@ -123,7 +123,7 @@ export const useUpdateBed = () => {
         if (error.code === "23505") {
           toast.error("Mã giường đã tồn tại");
         } else if (error.code === "23503") {
-          toast.error("Phòng không tồn tại");
+          toast.error("Căn hộ không tồn tại");
         } else {
           toast.error("Không thể cập nhật giường");
         }
@@ -136,7 +136,7 @@ export const useUpdateBed = () => {
       queryClient.invalidateQueries({ queryKey: ["beds"] });
       queryClient.invalidateQueries({ queryKey: ["beds", data.id] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Cập nhật giường thành công");
+      toast.success("Giường đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating bed:", error);
@@ -168,7 +168,7 @@ export const useDeleteBed = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["beds"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      toast.success("Xóa giường thành công");
+      toast.success("Giường đã được xóa thành công");
     },
     onError: (error) => {
       console.error("Error deleting bed:", error);

@@ -45,12 +45,12 @@ import {
 import { useState } from "react";
 
 const depositSchema = z.object({
-  tenant_id: z.string().min(1, "Phải chọn khách thuê"),
-  room_id: z.string().min(1, "Phải chọn phòng"),
+  tenant_id: z.string().min(1, "Phải chọn khách hàng"),
+  room_id: z.string().min(1, "Phải chọn căn hộ"),
   bed_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
-  hold_until_date: z.string().min(1, "Ngày giữ phòng là bắt buộc"),
+  hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
   status: z.enum(["PENDING", "CONFIRMED", "CONVERTED", "REFUNDED", "FORFEITED"]),
   notes: z.string().optional(),
 });
@@ -143,11 +143,11 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                   name="tenant_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Khách thuê *</FormLabel>
+                      <FormLabel>Khách hàng *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn khách thuê" />
+                            <SelectValue placeholder="Chọn khách hàng" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -169,11 +169,11 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                     name="room_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Phòng *</FormLabel>
+                        <FormLabel>Căn hộ *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Chọn phòng" />
+                              <SelectValue placeholder="Chọn căn hộ" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -253,7 +253,7 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                     name="hold_until_date"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Giữ phòng đến *</FormLabel>
+                        <FormLabel>Giữ căn hộ đến *</FormLabel>
                         <FormControl>
                           <Input type="date" {...field} />
                         </FormControl>

@@ -5,8 +5,8 @@ import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { formatCurrency } from "@/lib/utils";
 
-export function RecentActivities() {
-  const { data: activities = [], isLoading } = useRecentActivities();
+export function RecentActivities({ buildingId }: { buildingId?: string | null }) {
+  const { data: activities = [], isLoading } = useRecentActivities(buildingId);
 
   const getActivityConfig = (type: string) => {
     switch (type) {

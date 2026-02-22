@@ -40,8 +40,8 @@ export async function createIssueResolvedNotification(
     user_id: userId,
     type: 'ISSUE_RESOLVED',
     channel: 'IN_APP',
-    subject: 'Sự cố đã được giải quyết',
-    content: `Sự cố "${issueTitle}" tại phòng ${roomName} đã được giải quyết thành công.`,
+    subject: 'Công việc đã được giải quyết',
+    content: `Công việc "${issueTitle}" tại căn hộ ${roomName} đã được giải quyết thành công.`,
     issue_id: issueId,
     status: 'PENDING',
   });
@@ -80,8 +80,8 @@ export async function createIssueAssignedNotification(
     user_id: userId,
     type: 'CUSTOM',
     channel: 'IN_APP',
-    subject: 'Sự cố mới được phân công',
-    content: `Sự cố "${issueTitle}" tại phòng ${roomName} đã được phân công cho ${assignedToName}.`,
+    subject: 'Công việc mới được phân công',
+    content: `Công việc "${issueTitle}" tại căn hộ ${roomName} đã được phân công cho ${assignedToName}.`,
     issue_id: issueId,
     status: 'PENDING',
   });
@@ -106,8 +106,8 @@ export async function createUrgentIssueNotification(
     user_id: userId,
     type: 'CUSTOM',
     channel: 'IN_APP',
-    subject: '⚠️ Sự cố KHẨN CẤP',
-    content: `Sự cố KHẨN CẤP: "${issueTitle}" tại phòng ${roomName}. Cần xử lý ngay!`,
+    subject: '⚠️ Công việc KHẨN CẤP',
+    content: `Công việc KHẨN CẤP: "${issueTitle}" tại căn hộ ${roomName}. Cần xử lý ngay!`,
     issue_id: issueId,
     status: 'PENDING',
   });

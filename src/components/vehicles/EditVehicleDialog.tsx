@@ -14,7 +14,7 @@ import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useContractsLegacy } from "@/hooks/useContracts";
 
 const vehicleSchema = z.object({
-  tenant_id: z.string().min(1, "Phải chọn khách thuê"),
+  tenant_id: z.string().min(1, "Phải chọn khách hàng"),
   contract_id: z.string().optional(),
   vehicle_type: z.enum(["MOTORBIKE", "CAR", "BICYCLE", "ELECTRIC_BIKE", "OTHER"]),
   license_plate: z.string().min(1, "Biển số là bắt buộc"),
@@ -119,7 +119,7 @@ export function EditVehicleDialog({ open, onOpenChange, vehicle }: EditVehicleDi
                     name="tenant_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Khách thuê *</FormLabel>
+                        <FormLabel>Khách hàng *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>

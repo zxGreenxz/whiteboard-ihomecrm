@@ -48,12 +48,12 @@ const ExportExcelDialog = ({
       description: 'Xuất toàn bộ hoặc một phần danh sách tòa nhà ra file Excel',
     },
     rooms: {
-      title: 'Xuất danh sách Phòng',
-      description: 'Xuất toàn bộ hoặc một phần danh sách phòng ra file Excel',
+      title: 'Xuất danh sách Căn hộ',
+      description: 'Xuất toàn bộ hoặc một phần danh sách căn hộ ra file Excel',
     },
     tenants: {
-      title: 'Xuất danh sách Khách thuê',
-      description: 'Xuất toàn bộ hoặc một phần danh sách khách thuê ra file Excel',
+      title: 'Xuất danh sách Khách hàng',
+      description: 'Xuất toàn bộ hoặc một phần danh sách khách hàng ra file Excel',
     },
     contracts: {
       title: 'Xuất danh sách Hợp đồng',
@@ -256,7 +256,7 @@ const ExportExcelDialog = ({
                 onCheckedChange={(checked) => setIncludeRelations(checked as boolean)}
               />
               <Label htmlFor="includeRelations" className="font-normal cursor-pointer">
-                Bao gồm thông tin liên quan (tên tòa nhà, khách thuê, v.v.)
+                Bao gồm thông tin liên quan (tên tòa nhà, khách hàng, v.v.)
               </Label>
             </div>
           )}

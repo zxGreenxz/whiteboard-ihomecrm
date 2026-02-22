@@ -65,11 +65,11 @@ const ImportExcelDialog = ({
       columnLabels: ['Tên tòa nhà', 'Địa chỉ', 'Mã khu vực', 'Số tầng', 'Giá điện', 'Giá nước'],
     },
     rooms: {
-      title: 'Import Phòng',
-      description: 'Tải lên file Excel chứa danh sách phòng',
-      templateName: 'Mẫu Import Phòng',
+      title: 'Import Căn hộ',
+      description: 'Tải lên file Excel chứa danh sách căn hộ',
+      templateName: 'Mẫu Import Căn hộ',
       columns: ['name', 'building_name', 'floor', 'room_type', 'area', 'max_occupants', 'rent_price'],
-      columnLabels: ['Tên phòng', 'Tòa nhà', 'Tầng', 'Loại phòng', 'Diện tích', 'Số người tối đa', 'Giá thuê'],
+      columnLabels: ['Tên căn hộ', 'Tòa nhà', 'Tầng', 'Loại căn hộ', 'Diện tích', 'Số người tối đa', 'Giá thuê'],
     },
   };
 

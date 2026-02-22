@@ -1,0 +1,185 @@
+import { useState } from "react";
+import MainLayout from "@/components/layout/MainLayout";
+import { RefreshCw, ArrowRightLeft, FileCheck } from "lucide-react";
+import { ReportLayout } from "@/components/reports/ReportLayout";
+import { ReportCard } from "@/components/reports/ReportCard";
+import { ExportButtons } from "@/components/reports/ExportButtons";
+import { useRenewalsTransfersReport } from "@/hooks/useReports";
+import { useBuildings } from "@/hooks/useBuildings";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
+
+export default function RenewalsTransfersReport() {
+  const [buildingId, setBuildingId] = useState<string | undefined>();
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  const { data: buildings } = useBuildings();
+  const { data: contracts, isLoading } = useRenewalsTransfersReport(
+    startDate || undefined, endDate || undefined, buildingId
+  );
+
+  const renewals = contracts?.filter((c) => c.status === "EXTENDED") || [];
+  const transfers = contracts?.filter((c) => c.status === "TRANSFERRED") || [];
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
+
+  const stats = contracts && (
+    <>
+      <ReportCard
+        title="Tổng gia hạn"
+        value={renewals.length}
+        icon={RefreshCw}
+        description="Hợp đồng đã gia hạn"
+      />
+      <ReportCard
+        title="Tổng chuyển nhượng"
+        value={transfers.length}
+        icon={ArrowRightLeft}
+        description="Hợp đồng đã chuyển nhượng"
+      />
+      <ReportCard
+        title="Tổng trong kỳ"
+        value={contracts.length}
+        icon={FileCheck}
+        description="Tổng giao dịch trong khoảng thời gian"
+      />
+    </>
+  );
+
+  const exportData = contracts?.map((c) => ({
+    "Mã HĐ": c.contract_number || "N/A",
+    "Khách hàng": c.tenants?.full_name || "N/A",
+    "Toà nhà": c.rooms?.buildings?.name || "N/A",
+    "Căn hộ": c.rooms?.name || "N/A",
+    "Loại": c.status === "EXTENDED" ? "Gia hạn" : "Chuyển nhượng",
+    "Ngày": format(new Date(c.updated_at), "dd/MM/yyyy", { locale: vi }),
+    "Giá thuê mới": c.rent_price,
+  })) || [];
+
+  const filters = (
+    <div className="flex flex-wrap gap-4 items-end">
+      <div className="w-[200px]">
+        <Select
+          value={buildingId || "all"}
+          onValueChange={(v) => setBuildingId(v === "all" ? undefined : v)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Chọn toà nhà" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả toà nhà</SelectItem>
+            {buildings?.map((b) => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="startDate">Từ ngày</Label>
+        <Input
+          id="startDate"
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-[180px]"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="endDate">Đến ngày</Label>
+        <Input
+          id="endDate"
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="w-[180px]"
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <MainLayout>
+      <ReportLayout
+        title="Báo cáo Gia hạn & Chuyển nhượng"
+        description="Danh sách hợp đồng đã gia hạn hoặc chuyển nhượng"
+        icon={<RefreshCw className="h-8 w-8" />}
+        actions={
+          <ExportButtons data={exportData} filename="bao-cao-gia-han-chuyen-nhuong" />
+        }
+        stats={stats}
+        filters={filters}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>Danh sách hợp đồng</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : contracts && contracts.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mã HĐ</TableHead>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Toà nhà</TableHead>
+                      <TableHead>Căn hộ</TableHead>
+                      <TableHead>Loại</TableHead>
+                      <TableHead>Ngày</TableHead>
+                      <TableHead>Giá thuê mới</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {contracts.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">
+                          {c.contract_number || "N/A"}
+                        </TableCell>
+                        <TableCell>{c.tenants?.full_name || "N/A"}</TableCell>
+                        <TableCell>{c.rooms?.buildings?.name || "N/A"}</TableCell>
+                        <TableCell>{c.rooms?.name || "N/A"}</TableCell>
+                        <TableCell>
+                          {c.status === "EXTENDED" ? (
+                            <Badge variant="default">Gia hạn</Badge>
+                          ) : (
+                            <Badge variant="secondary">Chuyển nhượng</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(c.updated_at), "dd/MM/yyyy", { locale: vi })}
+                        </TableCell>
+                        <TableCell>{formatCurrency(c.rent_price)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Không có dữ liệu gia hạn hoặc chuyển nhượng
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </ReportLayout>
+    </MainLayout>
+  );
+}

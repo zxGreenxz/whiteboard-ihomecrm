@@ -72,8 +72,8 @@ export function AssignIssueDialog({ open, onOpenChange, issueId }: AssignIssueDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Phân công sự cố</DialogTitle>
-          <DialogDescription>Chỉ định nhân viên xử lý sự cố này</DialogDescription>
+          <DialogTitle>Phân công công việc</DialogTitle>
+          <DialogDescription>Chỉ định nhân viên xử lý công việc này</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

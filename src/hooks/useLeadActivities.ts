@@ -76,10 +76,10 @@ export const useCreateLeadActivity = () => {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["lead-activities", variables.lead_id] });
-      toast.success("Đã thêm hoạt động");
+      toast.success("Hoạt động đã được thêm thành công");
     },
     onError: (error: Error) => {
-      toast.error("Thêm hoạt động thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi thêm hoạt động: " + error.message);
     },
   });
 };
@@ -100,10 +100,10 @@ export const useDeleteLeadActivity = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["lead-activities", data.leadId] });
-      toast.success("Đã xóa hoạt động");
+      toast.success("Hoạt động đã được xóa thành công");
     },
     onError: (error: Error) => {
-      toast.error("Xóa hoạt động thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi xóa hoạt động: " + error.message);
     },
   });
 };

@@ -63,9 +63,9 @@ export function IssueRatingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Đánh giá giải quyết sự cố</DialogTitle>
+          <DialogTitle>Đánh giá giải quyết công việc</DialogTitle>
           <DialogDescription>
-            Vui lòng đánh giá mức độ hài lòng về cách giải quyết sự cố
+            Vui lòng đánh giá mức độ hài lòng về cách giải quyết công việc
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -120,7 +120,7 @@ export function IssueRatingDialog({
                   <FormControl>
                     <Textarea
                       {...field}
-                      placeholder="Nhập nhận xét của bạn về cách giải quyết sự cố..."
+                      placeholder="Nhập nhận xét của bạn về cách giải quyết công việc..."
                       className="min-h-[100px]"
                     />
                   </FormControl>

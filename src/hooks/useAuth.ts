@@ -116,7 +116,7 @@ export const useRegister = () => {
     },
     onSuccess: () => {
       toast({
-        title: 'Đăng ký thành công!',
+        title: 'Đăng ký thành công',
         description: 'Bạn đã tạo tài khoản thành công. Đăng nhập để bắt đầu.',
       });
       navigate('/login');
@@ -124,7 +124,7 @@ export const useRegister = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Đăng ký thất bại',
+        title: 'Có lỗi xảy ra khi đăng ký',
         description: error.message,
       });
     },
@@ -158,7 +158,7 @@ export const useLogin = () => {
       queryClient.invalidateQueries({ queryKey: ['auth'] });
 
       toast({
-        title: 'Đăng nhập thành công!',
+        title: 'Đăng nhập thành công',
         description: 'Chào mừng bạn trở lại.',
       });
 
@@ -167,7 +167,7 @@ export const useLogin = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Đăng nhập thất bại',
+        title: 'Có lỗi xảy ra khi đăng nhập',
         description: error.message === 'Invalid login credentials'
           ? 'Số điện thoại/Email hoặc mật khẩu không đúng'
           : error.message,
@@ -204,7 +204,7 @@ export const useLogout = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Đăng xuất thất bại',
+        title: 'Có lỗi xảy ra khi đăng xuất',
         description: error.message,
       });
     },
@@ -228,14 +228,14 @@ export const useForgotPassword = () => {
     },
     onSuccess: () => {
       toast({
-        title: 'Đã gửi email!',
+        title: 'Email đã được gửi thành công',
         description: 'Vui lòng kiểm tra email để đặt lại mật khẩu.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Gửi email thất bại',
+        title: 'Có lỗi xảy ra khi gửi email',
         description: error.message,
       });
     },
@@ -267,14 +267,14 @@ export const useResetPassword = () => {
       queryClient.invalidateQueries({ queryKey: ['auth'] });
 
       toast({
-        title: 'Đổi mật khẩu thành công!',
+        title: 'Mật khẩu đã được đổi thành công',
         description: 'Bạn có thể đăng nhập với mật khẩu mới.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Đổi mật khẩu thất bại',
+        title: 'Có lỗi xảy ra khi đổi mật khẩu',
         description: error.message,
       });
     },

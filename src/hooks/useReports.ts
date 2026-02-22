@@ -2,375 +2,318 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { addDays, differenceInDays } from "date-fns";
 
+
 // ==================== REAL ESTATE REPORTS ====================
 
 /**
  * Get vacant rooms report
- * Returns list of currently vacant rooms with details
+ * Returns rooms with status 'available' or no active contract
  */
-export function useVacantRoomsReport() {
+export function useVacantRoomsReport(buildingId?: string, floorId?: string) {
   return useQuery({
-    queryKey: ["reports", "vacant-rooms"],
+    queryKey: ["reports", "vacant-rooms", buildingId, floorId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Get all rooms
+      let roomsQuery = supabase
         .from("rooms")
         .select(`
-          *,
-          buildings (
-            id,
-            name,
-            code
-          ),
-          contracts (
-            id,
-            end_date,
-            status
-          )
+          id,
+          name,
+          area,
+          rent_price,
+          status,
+          description,
+          floor,
+          building_id,
+          buildings (id, name)
         `)
-        .eq("status", "AVAILABLE")
-        .order("building_id", { ascending: true })
-        .order("room_number", { ascending: true });
+        .is("deleted_at", null)
+        .order("name", { ascending: true });
 
-      if (error) throw error;
+      if (buildingId) {
+        roomsQuery = roomsQuery.eq("building_id", buildingId);
+      }
 
-      // Calculate days vacant for each room
-      return data.map(room => {
-        // Find the most recent ended contract
-        const lastContract = room.contracts
-          ?.filter((c: any) => c.status === "COMPLETED" || c.status === "CANCELLED")
-          ?.sort((a: any, b: any) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime())[0];
+      const { data: rooms, error: roomsError } = await roomsQuery;
+      if (roomsError) throw roomsError;
 
-        const daysVacant = lastContract
-          ? differenceInDays(new Date(), new Date(lastContract.end_date))
-          : null;
+      // Get active contracts to determine which rooms are occupied
+      const { data: activeContracts, error: contractsError } = await supabase
+        .from("contracts")
+        .select("room_id, end_date")
+        .in("status", ["ACTIVE", "DRAFT", "EXTENDED"])
+        .is("deleted_at", null);
 
-        return {
-          ...room,
-          days_vacant: daysVacant,
-          last_end_date: lastContract?.end_date,
-        };
-      });
+      if (contractsError) throw contractsError;
+
+      const occupiedRoomIds = new Set(activeContracts?.map(c => c.room_id) || []);
+
+      // Filter vacant rooms (not occupied)
+      let vacantRooms = (rooms || [])
+        .filter(room => !occupiedRoomIds.has(room.id))
+        .map(room => {
+          // Find the most recent ended contract for this room
+          const lastContract = activeContracts?.find(c => c.room_id === room.id);
+          const lastEndDate = lastContract?.end_date;
+          const daysVacant = lastEndDate
+            ? differenceInDays(new Date(), new Date(lastEndDate))
+            : null;
+
+          return {
+            ...room,
+            days_vacant: daysVacant,
+            last_end_date: lastEndDate,
+          };
+        });
+
+      // Filter by floor if provided
+      if (floorId) {
+        vacantRooms = vacantRooms.filter(room => String(room.floor) === floorId);
+      }
+
+      return vacantRooms;
     },
   });
 }
 
 /**
  * Get expiring contracts report
- * Returns contracts expiring within specified days
+ * Returns rooms with contracts expiring within specified days
  */
-export function useExpiringContractsReport(daysAhead: number = 30) {
+export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: string, floorId?: string) {
   return useQuery({
-    queryKey: ["reports", "expiring-contracts", daysAhead],
+    queryKey: ["reports", "expiring-contracts", daysAhead, buildingId, floorId],
     queryFn: async () => {
       const today = new Date();
       const futureDate = addDays(today, daysAhead);
 
-      const { data, error } = await supabase
+      const query = supabase
         .from("contracts")
         .select(`
-          *,
-          rooms (
-            id,
-            room_number,
-            buildings (
-              name
-            )
-          ),
+          id,
+          contract_number,
+          start_date,
+          end_date,
+          rent_price,
+          status,
+          room_id,
           tenants (
             id,
             full_name,
             phone,
             email
+          ),
+          rooms (
+            id,
+            name,
+            floor,
+            building_id,
+            buildings (id, name)
           )
         `)
         .eq("status", "ACTIVE")
+        .is("deleted_at", null)
         .gte("end_date", today.toISOString())
         .lte("end_date", futureDate.toISOString())
         .order("end_date", { ascending: true });
 
+      const { data, error } = await query;
       if (error) throw error;
 
-      return data.map(contract => ({
+      let contracts = (data || []).map(contract => ({
         ...contract,
         days_left: differenceInDays(new Date(contract.end_date), today),
       }));
+
+      // Filter by building
+      if (buildingId) {
+        contracts = contracts.filter(c => c.rooms?.building_id === buildingId);
+      }
+
+      // Filter by floor
+      if (floorId) {
+        contracts = contracts.filter(c => String(c.rooms?.floor) === floorId);
+      }
+
+      return contracts;
+    },
+  });
+}
+
+/**
+ * Get renewals and transfers report
+ * Returns contracts with EXTENDED or TRANSFERRED status within a date range
+ */
+export function useRenewalsTransfersReport(
+  startDate?: string,
+  endDate?: string,
+  buildingId?: string
+) {
+  return useQuery({
+    queryKey: ["reports", "renewals-transfers", startDate, endDate, buildingId],
+    queryFn: async () => {
+      let query = supabase
+        .from("contracts")
+        .select(`
+          id,
+          contract_number,
+          rent_price,
+          status,
+          updated_at,
+          start_date,
+          tenants (id, full_name),
+          rooms (id, name, building_id, buildings (id, name))
+        `)
+        .in("status", ["EXTENDED", "TRANSFERRED"])
+        .is("deleted_at", null)
+        .order("updated_at", { ascending: false });
+
+      if (startDate) {
+        query = query.gte("updated_at", startDate);
+      }
+      if (endDate) {
+        query = query.lte("updated_at", endDate);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let results = data || [];
+
+      if (buildingId) {
+        results = results.filter((c) => c.rooms?.building_id === buildingId);
+      }
+
+      return results;
     },
   });
 }
 
 /**
  * Get occupancy report
- * Returns occupancy statistics and trends
+ * Returns occupancy rates per building with optional building filter
  */
-export function useOccupancyReport() {
+export function useOccupancyReport(buildingId?: string) {
   return useQuery({
-    queryKey: ["reports", "occupancy"],
+    queryKey: ["reports", "occupancy", buildingId],
     queryFn: async () => {
-      // Get room statistics
-      const { data: rooms, error: roomsError } = await supabase
+      let roomsQuery = supabase
         .from("rooms")
-        .select("id, status, building_id, buildings (name)");
+        .select(`id, name, status, building_id, buildings (id, name)`)
+        .is("deleted_at", null);
 
+      if (buildingId) {
+        roomsQuery = roomsQuery.eq("building_id", buildingId);
+      }
+
+      const { data: rooms, error: roomsError } = await roomsQuery;
       if (roomsError) throw roomsError;
 
-      // Calculate statistics
-      const total = rooms.length;
-      const occupied = rooms.filter(r => r.status === "OCCUPIED").length;
-      const available = rooms.filter(r => r.status === "AVAILABLE").length;
-      const maintenance = rooms.filter(r => r.status === "MAINTENANCE").length;
-      const occupancyRate = total > 0 ? (occupied / total) * 100 : 0;
+      const { data: activeContracts, error: contractsError } = await supabase
+        .from("contracts")
+        .select("room_id")
+        .in("status", ["ACTIVE", "EXTENDED"])
+        .is("deleted_at", null);
+      if (contractsError) throw contractsError;
 
-      // Group by building
-      const byBuilding = rooms.reduce((acc: any, room) => {
-        const buildingName = room.buildings?.name || "Unknown";
-        if (!acc[buildingName]) {
-          acc[buildingName] = { total: 0, occupied: 0, available: 0, maintenance: 0 };
+      const occupiedRoomIds = new Set(activeContracts?.map(c => c.room_id) || []);
+
+      const buildingMap: Record<string, { building: string; total: number; occupied: number; available: number; maintenance: number }> = {};
+
+      (rooms || []).forEach(room => {
+        const bName = room.buildings?.name || "Không xác định";
+        if (!buildingMap[bName]) {
+          buildingMap[bName] = { building: bName, total: 0, occupied: 0, available: 0, maintenance: 0 };
         }
-        acc[buildingName].total++;
-        if (room.status === "OCCUPIED") acc[buildingName].occupied++;
-        if (room.status === "AVAILABLE") acc[buildingName].available++;
-        if (room.status === "MAINTENANCE") acc[buildingName].maintenance++;
-        return acc;
-      }, {});
+        buildingMap[bName].total++;
+        if (occupiedRoomIds.has(room.id)) {
+          buildingMap[bName].occupied++;
+        } else if (room.status === "MAINTENANCE") {
+          buildingMap[bName].maintenance++;
+        } else {
+          buildingMap[bName].available++;
+        }
+      });
+
+      const byBuilding = Object.values(buildingMap).map(b => ({
+        ...b,
+        occupancyRate: b.total > 0 ? Number(((b.occupied / b.total) * 100).toFixed(1)) : 0,
+      }));
+
+      const totalRooms = (rooms || []).length;
+      const totalOccupied = byBuilding.reduce((s, b) => s + b.occupied, 0);
+      const totalAvailable = byBuilding.reduce((s, b) => s + b.available, 0);
+      const totalMaintenance = byBuilding.reduce((s, b) => s + b.maintenance, 0);
 
       return {
         summary: {
-          total,
-          occupied,
-          available,
-          maintenance,
-          occupancyRate: Number(occupancyRate.toFixed(2)),
+          total: totalRooms,
+          occupied: totalOccupied,
+          available: totalAvailable,
+          maintenance: totalMaintenance,
+          occupancyRate: totalRooms > 0 ? Number(((totalOccupied / totalRooms) * 100).toFixed(1)) : 0,
         },
-        byBuilding: Object.entries(byBuilding).map(([name, stats]: [string, any]) => ({
-          building: name,
-          ...stats,
-          occupancyRate: Number(((stats.occupied / stats.total) * 100).toFixed(2)),
-        })),
+        byBuilding,
       };
     },
   });
 }
 
 /**
- * Get new leases report
- * Returns newly signed contracts within date range
+ * Get monthly occupancy trend data for the last 12 months
  */
-export function useNewLeasesReport(startDate?: Date, endDate?: Date) {
+export function useOccupancyTrend(buildingId?: string) {
   return useQuery({
-    queryKey: ["reports", "new-leases", startDate?.toISOString(), endDate?.toISOString()],
+    queryKey: ["reports", "occupancy-trend", buildingId],
     queryFn: async () => {
-      let query = supabase
+      let roomsQuery = supabase
+        .from("rooms")
+        .select("id, building_id")
+        .is("deleted_at", null);
+
+      if (buildingId) {
+        roomsQuery = roomsQuery.eq("building_id", buildingId);
+      }
+
+      const { data: rooms, error: roomsError } = await roomsQuery;
+      if (roomsError) throw roomsError;
+
+      const totalRooms = (rooms || []).length;
+      if (totalRooms === 0) return [];
+
+      const roomIds = new Set((rooms || []).map(r => r.id));
+
+      const { data: contracts, error: contractsError } = await supabase
         .from("contracts")
-        .select(`
-          *,
-          rooms (
-            id,
-            room_number,
-            buildings (name)
-          ),
-          tenants (
-            id,
-            full_name,
-            phone
-          )
-        `)
-        .eq("status", "ACTIVE")
-        .order("start_date", { ascending: false });
+        .select("room_id, start_date, end_date, status")
+        .in("status", ["ACTIVE", "EXTENDED", "TERMINATED", "EXPIRED"])
+        .is("deleted_at", null);
+      if (contractsError) throw contractsError;
 
-      if (startDate) {
-        query = query.gte("start_date", startDate.toISOString());
-      }
-      if (endDate) {
-        query = query.lte("start_date", endDate.toISOString());
-      }
+      const months: { month: string; rate: number; occupied: number; total: number }[] = [];
+      const now = new Date();
 
-      const { data, error } = await query;
-      if (error) throw error;
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const monthLabel = `${d.getMonth() + 1}/${d.getFullYear()}`;
 
-      return data.map(contract => ({
-        ...contract,
-        total_value: contract.monthly_rent * contract.duration_months,
-      }));
-    },
-  });
-}
+        const occupiedCount = (contracts || []).filter(c => {
+          if (!roomIds.has(c.room_id)) return false;
+          const start = new Date(c.start_date);
+          const end = new Date(c.end_date);
+          return start <= monthEnd && end >= d;
+        }).length;
 
-/**
- * Get terminations report
- * Returns cancelled/ended contracts within date range
- */
-export function useTerminationsReport(startDate?: Date, endDate?: Date) {
-  return useQuery({
-    queryKey: ["reports", "terminations", startDate?.toISOString(), endDate?.toISOString()],
-    queryFn: async () => {
-      let query = supabase
-        .from("contracts")
-        .select(`
-          *,
-          rooms (
-            id,
-            room_number,
-            buildings (name)
-          ),
-          tenants (
-            id,
-            full_name,
-            phone
-          )
-        `)
-        .in("status", ["CANCELLED", "COMPLETED"])
-        .order("end_date", { ascending: false });
-
-      if (startDate) {
-        query = query.gte("end_date", startDate.toISOString());
-      }
-      if (endDate) {
-        query = query.lte("end_date", endDate.toISOString());
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return data.map(contract => ({
-        ...contract,
-        duration_actual: differenceInDays(
-          new Date(contract.end_date),
-          new Date(contract.start_date)
-        ),
-      }));
-    },
-  });
-}
-
-/**
- * Get price history report
- * Returns rent price changes over time
- */
-export function usePriceHistoryReport() {
-  return useQuery({
-    queryKey: ["reports", "price-history"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("contracts")
-        .select(`
-          id,
-          monthly_rent,
-          start_date,
-          end_date,
-          status,
-          rooms (
-            id,
-            room_number,
-            buildings (name)
-          )
-        `)
-        .order("start_date", { ascending: false });
-
-      if (error) throw error;
-
-      // Group by room to show price changes
-      const priceHistory = data.reduce((acc: any, contract) => {
-        const roomKey = `${contract.rooms?.buildings?.name} - ${contract.rooms?.room_number}`;
-        if (!acc[roomKey]) {
-          acc[roomKey] = [];
-        }
-        acc[roomKey].push({
-          contract_id: contract.id,
-          rent: contract.monthly_rent,
-          start_date: contract.start_date,
-          end_date: contract.end_date,
-          status: contract.status,
+        months.push({
+          month: monthLabel,
+          rate: totalRooms > 0 ? Number(((occupiedCount / totalRooms) * 100).toFixed(1)) : 0,
+          occupied: occupiedCount,
+          total: totalRooms,
         });
-        return acc;
-      }, {});
-
-      return Object.entries(priceHistory).map(([room, history]: [string, any]) => ({
-        room,
-        history: history.sort((a: any, b: any) =>
-          new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
-        ),
-        currentPrice: history[0]?.rent,
-        priceChanges: history.length - 1,
-      }));
-    },
-  });
-}
-
-/**
- * Get promotions report
- * Returns list of promotions and discounts
- */
-export function usePromotionsReport() {
-  return useQuery({
-    queryKey: ["reports", "promotions"],
-    queryFn: async () => {
-      // Get contracts with discounts
-      const { data, error } = await supabase
-        .from("contracts")
-        .select(`
-          id,
-          monthly_rent,
-          discount_amount,
-          discount_type,
-          promotion_name,
-          start_date,
-          end_date,
-          status,
-          rooms (
-            room_number,
-            buildings (name)
-          ),
-          tenants (full_name)
-        `)
-        .or("discount_amount.gt.0,promotion_name.not.is.null")
-        .order("start_date", { ascending: false });
-
-      if (error) throw error;
-
-      return data.map(contract => ({
-        ...contract,
-        savings: contract.discount_amount || 0,
-        effective_rent: contract.monthly_rent - (contract.discount_amount || 0),
-      }));
-    },
-  });
-}
-
-/**
- * Get contract changes report
- * Returns extensions, transfers, and reassignments
- */
-export function useContractChangesReport(startDate?: Date, endDate?: Date) {
-  return useQuery({
-    queryKey: ["reports", "contract-changes", startDate?.toISOString(), endDate?.toISOString()],
-    queryFn: async () => {
-      let query = supabase
-        .from("contracts")
-        .select(`
-          *,
-          rooms (
-            room_number,
-            buildings (name)
-          ),
-          tenants (full_name, phone)
-        `)
-        .not("parent_contract_id", "is", null)
-        .order("created_at", { ascending: false });
-
-      if (startDate) {
-        query = query.gte("created_at", startDate.toISOString());
-      }
-      if (endDate) {
-        query = query.lte("created_at", endDate.toISOString());
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return data.map(contract => ({
-        ...contract,
-        change_type: contract.parent_contract_id ? "EXTENSION" : "NEW",
-      }));
+      return months;
     },
   });
 }
@@ -940,6 +883,225 @@ export function useTasksByRoomReport() {
         ...room,
         completionRate: room.total > 0 ? Number(((room.completed / room.total) * 100).toFixed(1)) : 0,
       }));
+    },
+  });
+}
+
+// ==================== PROMOTIONS, NEW LEASES, TERMINATIONS REPORTS ====================
+
+/**
+ * Get promotions report - contracts with discounts
+ */
+export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId?: string) {
+  return useQuery({
+    queryKey: ["reports", "promotions", startDate?.toISOString(), endDate?.toISOString(), buildingId],
+    queryFn: async () => {
+      let query = supabase
+        .from("contracts")
+        .select(`
+          id,
+          contract_number,
+          rent_price,
+          discounts,
+          status,
+          start_date,
+          end_date,
+          signed_date,
+          tenants:tenant_id (full_name, phone),
+          rooms:room_id (
+            id,
+            room_number,
+            buildings:building_id (id, name)
+          )
+        `)
+        .not("discounts", "is", null)
+        .is("deleted_at", null)
+        .order("signed_date", { ascending: false });
+
+      if (startDate) {
+        query = query.gte("signed_date", startDate.toISOString());
+      }
+      if (endDate) {
+        query = query.lte("signed_date", endDate.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // Filter by building if specified
+      let filtered = data || [];
+      if (buildingId) {
+        filtered = filtered.filter((c: any) => c.rooms?.buildings?.id === buildingId);
+      }
+
+      return filtered.map((contract: any) => {
+        const discounts = contract.discounts as any;
+        const discountAmount = discounts?.amount || discounts?.value || 0;
+        const discountType = discounts?.type || "fixed";
+        const savings = discountType === "percent"
+          ? (contract.rent_price * discountAmount) / 100
+          : discountAmount;
+        const effectiveRent = contract.rent_price - savings;
+
+        return {
+          ...contract,
+          monthly_rent: contract.rent_price,
+          discount_amount: discountAmount,
+          discount_type: discountType === "percent" ? "Phần trăm" : "Cố định",
+          promotion_name: discounts?.name || discounts?.description || null,
+          savings,
+          effective_rent: effectiveRent > 0 ? effectiveRent : 0,
+        };
+      });
+    },
+  });
+}
+
+/**
+ * Get new leases report - contracts created in period
+ */
+export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?: string) {
+  return useQuery({
+    queryKey: ["reports", "new-leases", startDate?.toISOString(), endDate?.toISOString(), buildingId],
+    queryFn: async () => {
+      let query = supabase
+        .from("contracts")
+        .select(`
+          id,
+          contract_number,
+          rent_price,
+          total_deposit,
+          start_date,
+          end_date,
+          signed_date,
+          status,
+          payment_cycle,
+          tenants:tenant_id (full_name, phone),
+          rooms:room_id (
+            id,
+            room_number,
+            buildings:building_id (id, name)
+          )
+        `)
+        .is("deleted_at", null)
+        .order("signed_date", { ascending: false });
+
+      if (startDate) {
+        query = query.gte("signed_date", startDate.toISOString());
+      }
+      if (endDate) {
+        query = query.lte("signed_date", endDate.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let filtered = data || [];
+      if (buildingId) {
+        filtered = filtered.filter((c: any) => c.rooms?.buildings?.id === buildingId);
+      }
+
+      return filtered.map((contract: any) => {
+        const start = new Date(contract.start_date);
+        const end = new Date(contract.end_date);
+        const durationMonths = Math.max(1, Math.round(differenceInDays(end, start) / 30));
+        const totalValue = contract.rent_price * durationMonths;
+
+        return {
+          ...contract,
+          monthly_rent: contract.rent_price,
+          deposit_amount: contract.total_deposit,
+          duration_months: durationMonths,
+          total_value: totalValue,
+        };
+      });
+    },
+  });
+}
+
+/**
+ * Get terminations report - terminated/cancelled contracts
+ */
+export function useTerminationsReport(startDate?: Date, endDate?: Date, buildingId?: string) {
+  return useQuery({
+    queryKey: ["reports", "terminations", startDate?.toISOString(), endDate?.toISOString(), buildingId],
+    queryFn: async () => {
+      // Get terminated contracts
+      let query = supabase
+        .from("contracts")
+        .select(`
+          id,
+          contract_number,
+          rent_price,
+          total_deposit,
+          start_date,
+          end_date,
+          actual_end_date,
+          signed_date,
+          status,
+          tenants:tenant_id (full_name, phone),
+          rooms:room_id (
+            id,
+            room_number,
+            buildings:building_id (id, name)
+          )
+        `)
+        .in("status", ["TERMINATED", "EXPIRED"])
+        .is("deleted_at", null)
+        .order("actual_end_date", { ascending: false });
+
+      if (startDate) {
+        query = query.gte("actual_end_date", startDate.toISOString());
+      }
+      if (endDate) {
+        query = query.lte("actual_end_date", endDate.toISOString());
+      }
+
+      const { data: contracts, error: contractsError } = await query;
+      if (contractsError) throw contractsError;
+
+      // Get termination details
+      const contractIds = (contracts || []).map(c => c.id);
+      let terminations: any[] = [];
+      if (contractIds.length > 0) {
+        const { data: termData } = await supabase
+          .from("contract_terminations")
+          .select("contract_id, termination_type, termination_date, notes")
+          .in("contract_id", contractIds);
+        terminations = termData || [];
+      }
+
+      const termMap = new Map(terminations.map(t => [t.contract_id, t]));
+
+      let filtered = contracts || [];
+      if (buildingId) {
+        filtered = filtered.filter((c: any) => c.rooms?.buildings?.id === buildingId);
+      }
+
+      // Get total contracts count for termination rate
+      const { count: totalContracts } = await supabase
+        .from("contracts")
+        .select("id", { count: "exact", head: true })
+        .is("deleted_at", null);
+
+      return {
+        items: filtered.map((contract: any) => {
+          const term = termMap.get(contract.id);
+          const endDate = contract.actual_end_date || contract.end_date;
+          const durationActual = differenceInDays(new Date(endDate), new Date(contract.start_date));
+
+          return {
+            ...contract,
+            termination_reason: term?.notes || term?.termination_type || null,
+            termination_type: term?.termination_type || (contract.status === "EXPIRED" ? "Hết hạn" : "Thanh lý"),
+            duration_actual: durationActual,
+          };
+        }),
+        totalContracts: totalContracts || 0,
+        terminationRate: totalContracts && totalContracts > 0
+          ? Number(((filtered.length / totalContracts) * 100).toFixed(1))
+          : 0,
+      };
     },
   });
 }

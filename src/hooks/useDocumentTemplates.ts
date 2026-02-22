@@ -11,12 +11,23 @@ export type TemplateCategory =
   | "RECEIPT"
   | "HANDOVER";
 
+export type TemplateType =
+  | "signature"
+  | "deposit_contract"
+  | "lease_contract"
+  | "handover_report"
+  | "invoice"
+  | "receipt";
+
 export interface DocumentTemplate {
   id: string;
   user_id: string;
   code: string;
   name: string;
   category: TemplateCategory;
+  type?: TemplateType;
+  content?: string;
+  variables?: Record<string, unknown>[] | null;
   description?: string;
   file_url: string;
   file_name: string;
@@ -37,6 +48,61 @@ export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   INVOICE: "Hóa đơn",
   RECEIPT: "Biên lai",
   HANDOVER: "Biên bản bàn giao tài sản",
+};
+
+export const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
+  signature: "Mẫu chữ ký",
+  deposit_contract: "HĐ đặt cọc",
+  lease_contract: "HĐ thuê",
+  handover_report: "BB bàn giao",
+  invoice: "Mẫu hóa đơn",
+  receipt: "Mẫu thu chi",
+};
+
+export const TEMPLATE_TYPES: TemplateType[] = [
+  "signature",
+  "deposit_contract",
+  "lease_contract",
+  "handover_report",
+  "invoice",
+  "receipt",
+];
+
+// Default template variables for each type
+export const DEFAULT_TEMPLATE_VARIABLES: Record<TemplateType, Record<string, string>[]> = {
+  signature: [
+    { key: "owner_name", label: "Tên chủ nhà" },
+    { key: "owner_phone", label: "SĐT chủ nhà" },
+  ],
+  deposit_contract: [
+    { key: "tenant_name", label: "Tên khách hàng" },
+    { key: "room_name", label: "Tên căn hộ" },
+    { key: "deposit_amount", label: "Số tiền cọc" },
+    { key: "deposit_date", label: "Ngày cọc" },
+  ],
+  lease_contract: [
+    { key: "tenant_name", label: "Tên khách hàng" },
+    { key: "room_name", label: "Tên căn hộ" },
+    { key: "rent_price", label: "Giá thuê" },
+    { key: "start_date", label: "Ngày bắt đầu" },
+    { key: "end_date", label: "Ngày kết thúc" },
+  ],
+  handover_report: [
+    { key: "tenant_name", label: "Tên khách hàng" },
+    { key: "room_name", label: "Tên căn hộ" },
+    { key: "handover_date", label: "Ngày bàn giao" },
+  ],
+  invoice: [
+    { key: "tenant_name", label: "Tên khách hàng" },
+    { key: "room_name", label: "Tên căn hộ" },
+    { key: "total_amount", label: "Tổng tiền" },
+    { key: "due_date", label: "Hạn thanh toán" },
+  ],
+  receipt: [
+    { key: "tenant_name", label: "Tên khách hàng" },
+    { key: "amount", label: "Số tiền" },
+    { key: "payment_method", label: "Phương thức thanh toán" },
+  ],
 };
 
 // Helper function to generate template code
@@ -100,6 +166,42 @@ export const useDocumentTemplates = (category?: TemplateCategory) => {
   });
 };
 
+// 1b. FETCH TEMPLATES BY TYPE
+export const useDocumentTemplatesByType = (type?: TemplateType) => {
+  return useQuery({
+    queryKey: ["document-templates", "by-type", type],
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      let query = supabase
+        .from("document_templates")
+        .select("*")
+        .eq("user_id", user.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      if (type) {
+        query = query.eq("type", type);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        toast.error("Không thể tải danh sách mẫu");
+        throw error;
+      }
+
+      return data as DocumentTemplate[];
+    },
+  });
+};
+
 // 2. FETCH SINGLE TEMPLATE
 export const useDocumentTemplate = (id: string) => {
   return useQuery({
@@ -134,6 +236,9 @@ export const useCreateDocumentTemplate = () => {
       description?: string;
       file: File;
       is_default: boolean;
+      type?: TemplateType;
+      variables?: Record<string, unknown>[] | null;
+      content?: string;
     }) => {
       const {
         data: { user },
@@ -182,6 +287,9 @@ export const useCreateDocumentTemplate = () => {
           file_size: payload.file.size,
           file_type: fileExt,
           is_default: payload.is_default,
+          type: payload.type,
+          variables: payload.variables,
+          content: payload.content,
         })
         .select()
         .single();
@@ -202,7 +310,7 @@ export const useCreateDocumentTemplate = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document-templates"] });
-      toast.success("Tạo mẫu thành công");
+      toast.success("Mẫu đã được tạo thành công");
     },
     onError: (error) => {
       console.error("Error creating template:", error);
@@ -222,6 +330,9 @@ export const useUpdateDocumentTemplate = () => {
       description?: string;
       file?: File;
       is_default?: boolean;
+      type?: TemplateType;
+      variables?: Record<string, unknown>[] | null;
+      content?: string;
     }) => {
       const {
         data: { user },
@@ -236,6 +347,9 @@ export const useUpdateDocumentTemplate = () => {
         category: payload.category,
         description: payload.description,
         is_default: payload.is_default,
+        type: payload.type,
+        variables: payload.variables,
+        content: payload.content,
       };
 
       // If new file uploaded
@@ -312,7 +426,7 @@ export const useUpdateDocumentTemplate = () => {
       queryClient.invalidateQueries({
         queryKey: ["document-template", data.id],
       });
-      toast.success("Cập nhật mẫu thành công");
+      toast.success("Mẫu đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating template:", error);
@@ -342,7 +456,7 @@ export const useDeleteDocumentTemplate = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document-templates"] });
-      toast.success("Xóa mẫu thành công");
+      toast.success("Mẫu đã được xóa thành công");
     },
     onError: (error) => {
       console.error("Error deleting template:", error);
@@ -379,7 +493,7 @@ export const useDownloadTemplate = () => {
       toast.success("Tải xuống thành công");
     },
     onError: () => {
-      toast.error("Lỗi khi tải file");
+      toast.error("Có lỗi xảy ra khi tải file");
     },
   });
 };

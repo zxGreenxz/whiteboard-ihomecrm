@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
@@ -30,10 +31,13 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateRoom } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useFloors } from "@/hooks/useFloors";
+import { Badge } from "@/components/ui/badge";
+import { X } from "lucide-react";
 
 const roomSchema = z.object({
   building_id: z.string().min(1, "Tòa nhà là bắt buộc"),
-  name: z.string().min(1, "Tên phòng là bắt buộc"),
+  name: z.string().min(1, "Tên căn hộ là bắt buộc"),
   code: z.string().optional(),
   floor: z.string().min(0, "Tầng không hợp lệ"),
   area: z.string().optional(),
@@ -42,6 +46,7 @@ const roomSchema = z.object({
   max_occupants: z.string().optional(),
   status: z.enum(["AVAILABLE", "OCCUPIED", "RESERVED", "MAINTENANCE", "UNAVAILABLE"]).default("AVAILABLE"),
   description: z.string().optional(),
+  amenities: z.string().optional(),
 });
 
 type RoomFormValues = z.infer<typeof roomSchema>;
@@ -54,6 +59,11 @@ interface CreateRoomDialogProps {
 export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) {
   const createRoom = useCreateRoom();
   const { data: buildings } = useBuildings();
+  const [selectedBuildingId, setSelectedBuildingId] = useState("");
+  const { data: floorsData } = useFloors(selectedBuildingId || undefined);
+  const floors = Array.isArray(floorsData) ? floorsData : [];
+  const [amenitiesList, setAmenitiesList] = useState<string[]>([]);
+  const [amenityInput, setAmenityInput] = useState("");
 
   const form = useForm<RoomFormValues>({
     resolver: zodResolver(roomSchema),
@@ -68,8 +78,21 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
       max_occupants: "",
       status: "AVAILABLE",
       description: "",
+      amenities: "",
     },
   });
+
+  const addAmenity = () => {
+    const trimmed = amenityInput.trim();
+    if (trimmed && !amenitiesList.includes(trimmed)) {
+      setAmenitiesList([...amenitiesList, trimmed]);
+      setAmenityInput("");
+    }
+  };
+
+  const removeAmenity = (item: string) => {
+    setAmenitiesList(amenitiesList.filter(a => a !== item));
+  };
 
   const onSubmit = async (data: RoomFormValues) => {
     try {
@@ -84,8 +107,12 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
         max_occupants: data.max_occupants ? parseInt(data.max_occupants) : null,
         status: data.status,
         description: data.description || null,
+        amenities: amenitiesList.length > 0 ? amenitiesList : null,
       });
       form.reset();
+      setAmenitiesList([]);
+      setAmenityInput("");
+      setSelectedBuildingId("");
       onOpenChange(false);
     } catch (error) {
       // Error is handled by the mutation
@@ -96,9 +123,9 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Tạo Phòng mới</DialogTitle>
+          <DialogTitle>Tạo Căn hộ mới</DialogTitle>
           <DialogDescription>
-            Nhập thông tin phòng để quản lý thuê và khách thuê
+            Nhập thông tin căn hộ để quản lý thuê và khách hàng
           </DialogDescription>
         </DialogHeader>
 
@@ -115,7 +142,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tòa nhà *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={(val) => { field.onChange(val); setSelectedBuildingId(val); form.setValue('floor', '0'); }} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Chọn tòa nhà" />
@@ -140,7 +167,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tên phòng *</FormLabel>
+                        <FormLabel>Tên căn hộ *</FormLabel>
                         <FormControl>
                           <Input placeholder="Ví dụ: P101" {...field} />
                         </FormControl>
@@ -154,7 +181,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                     name="code"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Mã phòng</FormLabel>
+                        <FormLabel>Mã căn hộ</FormLabel>
                         <FormControl>
                           <Input placeholder="R-101" {...field} />
                         </FormControl>
@@ -171,9 +198,26 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tầng *</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="1" {...field} />
-                        </FormControl>
+                        {floors.length > 0 ? (
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn tầng" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {floors.map((floor) => (
+                                <SelectItem key={floor.id} value={floor.floor_number.toString()}>
+                                  Tầng {floor.floor_number}{floor.name ? ` - ${floor.name}` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <FormControl>
+                            <Input type="number" placeholder="1" {...field} />
+                          </FormControl>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -287,7 +331,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                       <FormLabel>Mô tả</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Mô tả chi tiết về phòng, tiện nghi..."
+                          placeholder="Mô tả chi tiết về căn hộ, tiện nghi..."
                           {...field}
                         />
                       </FormControl>
@@ -295,6 +339,32 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                     </FormItem>
                   )}
                 />
+              </div>
+
+              {/* Tiện ích */}
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="font-semibold text-sm">Tiện ích</h3>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nhập tiện ích (VD: Máy lạnh, Tủ lạnh...)"
+                    value={amenityInput}
+                    onChange={(e) => setAmenityInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAmenity(); } }}
+                  />
+                  <Button type="button" variant="outline" onClick={addAmenity}>Thêm</Button>
+                </div>
+                {amenitiesList.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {amenitiesList.map((item) => (
+                      <Badge key={item} variant="secondary" className="gap-1">
+                        {item}
+                        <button type="button" onClick={() => removeAmenity(item)}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
@@ -306,7 +376,7 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                   Hủy
                 </Button>
                 <Button type="submit" disabled={createRoom.isPending}>
-                  {createRoom.isPending ? "Đang tạo..." : "Tạo phòng"}
+                  {createRoom.isPending ? "Đang tạo..." : "Tạo căn hộ"}
                 </Button>
               </div>
             </form>

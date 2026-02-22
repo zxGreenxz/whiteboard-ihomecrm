@@ -35,6 +35,7 @@ import {
   Gauge,
   Sparkles,
 } from 'lucide-react';
+import EmptyState from '@/components/ui/EmptyState';
 import { useInvoices, useApproveInvoice, useDeleteInvoice, useBulkApproveInvoices, type InvoiceWithRelations } from '@/hooks/useInvoices';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -121,13 +122,13 @@ const InvoicesPage = () => {
   };
 
   const handleApproveInvoice = (invoiceId: string) => {
-    if (confirm('Xác nhận duyệt hóa đơn này?')) {
+    if (confirm('Bạn có chắc chắn muốn duyệt hóa đơn này?')) {
       approveMutation.mutate(invoiceId);
     }
   };
 
   const handleDeleteInvoice = (invoiceId: string) => {
-    if (confirm('Xác nhận xóa hóa đơn nháp này?')) {
+    if (confirm('Bạn có chắc chắn muốn xóa hóa đơn nháp này?')) {
       deleteMutation.mutate(invoiceId);
     }
   };
@@ -158,7 +159,7 @@ const InvoicesPage = () => {
       return;
     }
 
-    if (confirm(`Xác nhận duyệt ${selectedInvoiceIds.length} hóa đơn đã chọn?`)) {
+    if (confirm(`Bạn có chắc chắn muốn duyệt ${selectedInvoiceIds.length} hóa đơn đã chọn?`)) {
       bulkApproveMutation.mutate(selectedInvoiceIds, {
         onSuccess: () => {
           setSelectedInvoiceIds([]);
@@ -247,11 +248,17 @@ const InvoicesPage = () => {
             Đang tải dữ liệu...
           </div>
         ) : !filteredInvoices || filteredInvoices.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            {searchTerm || statusFilter
-              ? 'Không tìm thấy hóa đơn nào phù hợp'
-              : 'Chưa có hóa đơn nào. Nhấn "Tạo hóa đơn" để bắt đầu.'}
-          </div>
+          searchTerm || statusFilter ? (
+            <div className="p-8 text-center text-gray-500">
+              Không tìm thấy hóa đơn nào phù hợp
+            </div>
+          ) : (
+            <EmptyState
+              icon={Receipt}
+              title="Chưa có hóa đơn nào"
+              description="Hãy tạo hóa đơn đầu tiên để bắt đầu quản lý"
+            />
+          )
         ) : (
           <>
             <Table>

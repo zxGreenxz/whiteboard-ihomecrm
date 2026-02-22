@@ -91,14 +91,14 @@ export const useCreateDeposit = () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       toast({
-        title: 'Đặt cọc thành công!',
+        title: 'Đặt cọc đã được tạo thành công',
         description: 'Thông tin đặt cọc đã được lưu.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Đặt cọc thất bại',
+        title: 'Có lỗi xảy ra khi tạo đặt cọc',
         description: error.message,
       });
     },
@@ -127,14 +127,14 @@ export const useUpdateDeposit = () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       toast({
-        title: 'Cập nhật thành công!',
+        title: 'Đặt cọc đã được cập nhật thành công',
         description: 'Thông tin đặt cọc đã được cập nhật.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Cập nhật thất bại',
+        title: 'Có lỗi xảy ra khi cập nhật đặt cọc',
         description: error.message,
       });
     },
@@ -160,14 +160,14 @@ export const useDeleteDeposit = () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['beds'] });
       toast({
-        title: 'Xóa thành công!',
+        title: 'Đặt cọc đã được xóa thành công',
         description: 'Phiếu đặt cọc đã được xóa.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Xóa thất bại',
+        title: 'Có lỗi xảy ra khi xóa đặt cọc',
         description: error.message,
       });
     },

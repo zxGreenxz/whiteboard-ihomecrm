@@ -70,7 +70,7 @@ export function ConvertToContractDialog({
               <div className="text-muted-foreground">Số điện thoại:</div>
               <div>{deposit.tenant?.phone}</div>
 
-              <div className="text-muted-foreground">Phòng:</div>
+              <div className="text-muted-foreground">Căn hộ:</div>
               <div>
                 {deposit.room?.name}
                 {deposit.bed && ` - ${deposit.bed.name}`}

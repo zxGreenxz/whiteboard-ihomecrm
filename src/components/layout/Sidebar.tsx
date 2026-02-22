@@ -11,7 +11,6 @@ import {
 import {
   LayoutDashboard,
   Building2,
-  MapPin,
   Home,
   Bed,
   Wrench,
@@ -24,17 +23,19 @@ import {
   Gauge,
   Receipt,
   CreditCard,
-  BookOpen,
   Package,
-  AlertCircle,
   BarChart3,
   Settings,
-  FileSignature,
   UserCog,
   ChevronDown,
   Map,
-  Bot,
-  ClipboardCheck,
+  Bell,
+  ClipboardList,
+  List,
+  UserCircle,
+  HelpCircle,
+  History,
+  Smartphone,
 } from 'lucide-react';
 
 interface NavItem {
@@ -49,77 +50,98 @@ interface NavSection {
   items: NavItem[];
 }
 
-// Navigation configuration
-const navigationSections: (NavItem | NavSection)[] = [
+interface NavGroup {
+  label: string;
+  items: (NavItem | NavSection)[];
+}
+
+// Navigation configuration - khớp 100% SUMMARY.md
+const navigationGroups: NavGroup[] = [
   {
-    title: 'Tổng quan',
-    href: '/',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'Sơ đồ Tòa nhà',
-    href: '/building-map',
-    icon: Map,
-  },
-  {
-    title: 'Danh mục dữ liệu',
-    icon: Building2,
+    label: 'THEO DÕI NHANH',
     items: [
-      { title: 'Khu vực', href: '/areas', icon: MapPin },
-      { title: 'Tòa nhà', href: '/buildings', icon: Building2 },
-      { title: 'Phòng', href: '/rooms', icon: Home },
-      { title: 'Giường', href: '/beds', icon: Bed },
-      { title: 'Dịch vụ', href: '/services', icon: Wrench },
+      { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
+      { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map },
     ],
   },
   {
-    title: 'Khách hàng',
-    icon: Users,
+    label: 'QUẢN LÝ & VẬN HÀNH',
     items: [
-      { title: 'Khách hẹn', href: '/leads', icon: UserPlus },
-      { title: 'Đặt cọc', href: '/deposits', icon: DollarSign },
-      { title: 'Hợp đồng', href: '/contracts', icon: FileText },
-      { title: 'Duyệt thanh lý', href: '/contracts/termination-approvals', icon: ClipboardCheck },
-      { title: 'Khách thuê', href: '/tenants', icon: User },
-      { title: 'Phương tiện', href: '/vehicles', icon: Car },
+      {
+        title: 'Danh mục dữ liệu',
+        icon: Building2,
+        items: [
+          { title: 'Toà nhà', href: '/buildings', icon: Building2 },
+          { title: 'Căn hộ', href: '/apartments', icon: Home },
+          { title: 'Giường', href: '/beds', icon: Bed },
+          { title: 'Dịch vụ', href: '/services', icon: Wrench },
+          { title: 'Tài sản', href: '/assets', icon: Package },
+        ],
+      },
+      {
+        title: 'Khách hàng',
+        icon: Users,
+        items: [
+          { title: 'Khách hẹn', href: '/leads', icon: UserPlus },
+          { title: 'Đặt cọc', href: '/deposits', icon: DollarSign },
+          { title: 'Hợp đồng', href: '/contracts', icon: FileText },
+          { title: 'Khách hàng', href: '/customers', icon: User },
+          { title: 'Phương tiện', href: '/vehicles', icon: Car },
+        ],
+      },
+      {
+        title: 'Tài chính',
+        icon: CreditCard,
+        items: [
+          { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge },
+          { title: 'Hoá đơn', href: '/invoices', icon: Receipt },
+          { title: 'Thu chi', href: '/income-expense', icon: CreditCard },
+        ],
+      },
+      { title: 'Thông báo', href: '/notifications', icon: Bell },
+      { title: 'Công việc', href: '/tasks', icon: ClipboardList },
     ],
   },
   {
-    title: 'Tài chính',
-    icon: CreditCard,
+    label: 'BÁO CÁO',
     items: [
-      { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge },
-      { title: 'Hóa đơn', href: '/invoices', icon: Receipt },
-      { title: 'Thu chi', href: '/payments', icon: CreditCard },
-      { title: 'Sổ quỹ', href: '/cash-book', icon: BookOpen },
+      {
+        title: 'Báo cáo',
+        icon: BarChart3,
+        items: [
+          { title: 'Báo cáo BĐS', href: '/reports/real-estate', icon: Building2 },
+          { title: 'Báo cáo Tài chính', href: '/reports/finance', icon: CreditCard },
+          { title: 'Báo cáo Công việc', href: '/reports/tasks', icon: ClipboardList },
+        ],
+      },
     ],
   },
   {
-    title: 'Tài sản & Sự cố',
-    icon: Package,
+    label: 'CÀI ĐẶT HỆ THỐNG',
     items: [
-      { title: 'Tài sản', href: '/assets', icon: Package },
-      { title: 'Sự cố', href: '/issues', icon: AlertCircle },
+      {
+        title: 'Cài đặt hệ thống',
+        icon: Settings,
+        items: [
+          { title: 'Cài đặt chung', href: '/settings/general', icon: Settings },
+          { title: 'Danh mục khác', href: '/settings/categories', icon: List },
+          { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText },
+          { title: 'Nhân viên', href: '/settings/staff', icon: UserCog },
+        ],
+      },
     ],
   },
   {
-    title: 'Báo cáo',
-    icon: BarChart3,
+    label: 'TÀI KHOẢN',
     items: [
-      { title: 'Báo cáo BĐS', href: '/reports/real-estate', icon: Building2 },
-      { title: 'Báo cáo tài chính', href: '/reports/finance', icon: CreditCard },
-      { title: 'Báo cáo công việc', href: '/reports/tasks', icon: AlertCircle },
-    ],
-  },
-  {
-    title: 'Cài đặt',
-    icon: Settings,
-    items: [
-      { title: 'Cài đặt chung', href: '/settings/general', icon: Settings },
-      { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText },
-      { title: 'Mẫu chữ ký', href: '/settings/signatures', icon: FileSignature },
-      { title: 'Nhân viên', href: '/settings/staff', icon: UserCog },
-      { title: 'Trợ lý AI', href: '/settings/ai-assistant', icon: Bot },
+      {
+        title: 'Tài khoản',
+        icon: UserCircle,
+        items: [
+          { title: 'Thông tin cá nhân', href: '/account/profile', icon: User },
+          { title: 'Gói cước', href: '/account/subscription', icon: CreditCard },
+        ],
+      },
     ],
   },
 ];
@@ -133,15 +155,17 @@ const Sidebar = ({ className }: SidebarProps) => {
   const [openSections, setOpenSections] = useState<string[]>(() => {
     // Auto-open sections that contain the current active route
     const active: string[] = [];
-    navigationSections.forEach((section) => {
-      if ('items' in section) {
-        const hasActiveItem = section.items.some(
-          (item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/')
-        );
-        if (hasActiveItem) {
-          active.push(section.title);
+    navigationGroups.forEach((group) => {
+      group.items.forEach((section) => {
+        if ('items' in section) {
+          const hasActiveItem = section.items.some(
+            (item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+          );
+          if (hasActiveItem) {
+            active.push(section.title);
+          }
         }
-      }
+      });
     });
     return active;
   });
@@ -225,15 +249,38 @@ const Sidebar = ({ className }: SidebarProps) => {
       )}
     >
       <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-1">
-          {navigationSections.map((section) =>
-            'items' in section ? renderSection(section) : renderNavItem(section)
-          )}
+        <nav className="space-y-4">
+          {navigationGroups.map((group) => (
+            <div key={group.label}>
+              <p className="px-3 mb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+                {group.label}
+              </p>
+              <div className="space-y-1">
+                {group.items.map((section) =>
+                  'items' in section ? renderSection(section) : renderNavItem(section)
+                )}
+              </div>
+            </div>
+          ))}
         </nav>
       </ScrollArea>
 
       {/* Footer info */}
       <div className="border-t border-sidebar-border p-3">
+        <div className="flex items-center gap-3 mb-2">
+          <Link to="/faq" className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground flex items-center gap-1">
+            <HelpCircle className="h-3 w-3" />
+            FAQ
+          </Link>
+          <Link to="/changelog" className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground flex items-center gap-1">
+            <History className="h-3 w-3" />
+            Lịch sử cập nhật
+          </Link>
+          <Link to="/app-guide" className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground flex items-center gap-1">
+            <Smartphone className="h-3 w-3" />
+            Hướng dẫn App
+          </Link>
+        </div>
         <div className="text-xs text-sidebar-foreground/70">
           <p className="font-medium text-sidebar-foreground">iHomeCRM v1.0.0</p>
           <p>Quản lý bất động sản</p>

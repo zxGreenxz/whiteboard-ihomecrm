@@ -22,10 +22,10 @@ const reports = [
     bgColor: "bg-purple-50",
   },
   {
-    title: "Công việc theo Phòng",
-    description: "Lịch sử bảo trì và sửa chữa theo từng phòng",
+    title: "Công việc theo Căn hộ",
+    description: "Lịch sử bảo trì và sửa chữa theo từng căn hộ",
     icon: Home,
-    path: "/reports/tasks/by-room",
+    path: "/reports/tasks/by-apartment",
     color: "text-green-600",
     bgColor: "bg-green-50",
   },

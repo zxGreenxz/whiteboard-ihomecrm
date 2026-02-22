@@ -110,7 +110,7 @@ export const useIssues = (filters?: {
       const { data, error } = await query;
 
       if (error) {
-        toast.error("Không thể tải danh sách sự cố");
+        toast.error("Không thể tải danh sách công việc");
         throw error;
       }
 
@@ -158,7 +158,7 @@ export const useIssue = (id: string) => {
         .single();
 
       if (error) {
-        toast.error("Không thể tải thông tin sự cố");
+        toast.error("Không thể tải thông tin công việc");
         throw error;
       }
 
@@ -191,10 +191,10 @@ export const useCreateIssue = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });
-      toast.success("Tạo sự cố thành công");
+      toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: Error) => {
-      toast.error("Tạo sự cố thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi tạo công việc: " + error.message);
     },
   });
 };
@@ -220,10 +220,10 @@ export const useUpdateIssue = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });
-      toast.success("Cập nhật sự cố thành công");
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
     onError: (error: Error) => {
-      toast.error("Cập nhật sự cố thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi cập nhật công việc: " + error.message);
     },
   });
 };
@@ -263,10 +263,10 @@ export const useAssignIssue = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });
-      toast.success("Phân công sự cố thành công");
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
     onError: (error: Error) => {
-      toast.error("Phân công sự cố thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi phân công: " + error.message);
     },
   });
 };
@@ -331,10 +331,10 @@ export const useCreateComment = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issue-comments"] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
-      toast.success("Thêm bình luận thành công");
+      toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: Error) => {
-      toast.error("Thêm bình luận thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi thêm bình luận: " + error.message);
     },
   });
 };
@@ -354,7 +354,7 @@ export const useIssueCategories = () => {
         .order("name");
 
       if (error) {
-        toast.error("Không thể tải danh mục sự cố");
+        toast.error("Không thể tải danh mục công việc");
         throw error;
       }
 

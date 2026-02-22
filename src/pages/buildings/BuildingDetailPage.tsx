@@ -317,7 +317,7 @@ const BuildingDetailPage = () => {
           </TabsTrigger>
           <TabsTrigger value="rooms">
             <Home className="h-4 w-4 mr-2" />
-            Phòng ({roomStats.total})
+            Căn hộ ({roomStats.total})
           </TabsTrigger>
           <TabsTrigger value="contracts">
             <FileText className="h-4 w-4 mr-2" />
@@ -396,7 +396,7 @@ const BuildingDetailPage = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground">Tổng số phòng</div>
+                <div className="text-sm text-muted-foreground">Tổng số căn hộ</div>
                 <div className="text-2xl font-bold">{roomStats.total}</div>
               </CardContent>
             </Card>
@@ -437,9 +437,9 @@ const BuildingDetailPage = () => {
         <TabsContent value="rooms">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Danh sách Phòng</CardTitle>
+              <CardTitle>Danh sách Căn hộ</CardTitle>
               <Button onClick={() => navigate('/rooms', { state: { buildingId: id } })}>
-                Quản lý phòng
+                Quản lý căn hộ
               </Button>
             </CardHeader>
             <CardContent>
@@ -451,7 +451,7 @@ const BuildingDetailPage = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Tên phòng</TableHead>
+                      <TableHead>Tên căn hộ</TableHead>
                       <TableHead>Tầng</TableHead>
                       <TableHead>Diện tích</TableHead>
                       <TableHead>Giá thuê</TableHead>
@@ -482,7 +482,7 @@ const BuildingDetailPage = () => {
                 </Table>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  Tòa nhà chưa có phòng nào
+                  Tòa nhà chưa có căn hộ nào
                 </div>
               )}
             </CardContent>
@@ -505,8 +505,8 @@ const BuildingDetailPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Mã HĐ</TableHead>
-                      <TableHead>Khách thuê</TableHead>
-                      <TableHead>Phòng</TableHead>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Căn hộ</TableHead>
                       <TableHead>Thời hạn</TableHead>
                       <TableHead>Giá thuê</TableHead>
                       <TableHead>Trạng thái</TableHead>
@@ -564,8 +564,8 @@ const BuildingDetailPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Mã hóa đơn</TableHead>
-                      <TableHead>Khách thuê</TableHead>
-                      <TableHead>Phòng</TableHead>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Căn hộ</TableHead>
                       <TableHead>Hạn thanh toán</TableHead>
                       <TableHead>Tổng tiền</TableHead>
                       <TableHead>Trạng thái</TableHead>

@@ -1,169 +1,141 @@
 import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
-import { XCircle, AlertCircle, Clock, TrendingDown } from "lucide-react";
+import { XCircle, AlertCircle, TrendingDown, Percent } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { useTerminationsReport } from "@/hooks/useReports";
+import { useBuildings } from "@/hooks/useBuildings";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
 
 export default function TerminationsReport() {
+  const [buildingId, setBuildingId] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
     to: new Date(),
   });
 
-  const { data: terminations, isLoading } = useTerminationsReport(dateRange?.from, dateRange?.to);
+  const { data: buildings } = useBuildings();
+  const { data: reportData, isLoading } = useTerminationsReport(
+    dateRange?.from, dateRange?.to, buildingId
+  );
 
-  const cancelled = terminations?.filter(t => t.status === "CANCELLED").length || 0;
-  const completed = terminations?.filter(t => t.status === "COMPLETED").length || 0;
-  const avgDuration = terminations && terminations.length > 0
-    ? Math.round(terminations.reduce((sum, t) => sum + t.duration_actual, 0) / terminations.length)
-    : 0;
+  const terminations = reportData?.items || [];
+  const terminationRate = reportData?.terminationRate || 0;
 
-  const stats = terminations && (
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
+
+  const cancelled = terminations.filter(t => t.status === "TERMINATED").length;
+  const expired = terminations.filter(t => t.status === "EXPIRED").length;
+
+  const stats = (
     <>
-      <ReportCard
-        title="Tổng hợp đồng kết thúc"
-        value={terminations.length}
-        icon={XCircle}
-        description="Trong kỳ báo cáo"
-      />
-      <ReportCard
-        title="Hủy giữa chừng"
-        value={cancelled}
-        icon={AlertCircle}
-        description="Hợp đồng bị hủy"
-      />
-      <ReportCard
-        title="Kết thúc đúng hạn"
-        value={completed}
-        icon={Clock}
-        description="Hoàn thành bình thường"
-      />
-      <ReportCard
-        title="Thời gian thuê TB"
-        value={`${avgDuration} ngày`}
-        icon={TrendingDown}
-        description="Trung bình"
-      />
+      <ReportCard title="HĐ thanh lý" value={terminations.length} icon={XCircle} description="Trong kỳ báo cáo" />
+      <ReportCard title="Thanh lý sớm" value={cancelled} icon={AlertCircle} description="Chấm dứt trước hạn" />
+      <ReportCard title="Hết hạn" value={expired} icon={TrendingDown} description="Kết thúc đúng hạn" />
+      <ReportCard title="Tỷ lệ bỏ trả" value={`${terminationRate}%`} icon={Percent} description="So với tổng HĐ" />
     </>
   );
 
-  const exportData = terminations?.map(term => ({
-    "Mã HĐ": term.contract_number,
+  const exportData = terminations.map(term => ({
+    "Mã HĐ": term.contract_number || term.id.slice(0, 8),
     "Khách hàng": term.tenants?.full_name || "N/A",
-    "Phòng": `${term.rooms?.buildings?.name} - ${term.rooms?.room_number}`,
-    "Ngày bắt đầu": format(new Date(term.start_date), "dd/MM/yyyy", { locale: vi }),
-    "Ngày kết thúc": format(new Date(term.end_date), "dd/MM/yyyy", { locale: vi }),
-    "Thời gian thuê (ngày)": term.duration_actual,
-    "Lý do": term.termination_reason || "N/A",
-    "Trạng thái": term.status === "CANCELLED" ? "Hủy" : "Hoàn thành",
-  })) || [];
+    "Căn hộ": `${term.rooms?.buildings?.name} - ${term.rooms?.room_number}`,
+    "Ngày thanh lý": format(new Date(term.actual_end_date || term.end_date), "dd/MM/yyyy", { locale: vi }),
+    "Lý do": term.termination_reason || term.termination_type || "N/A",
+    "Tiền cọc": term.total_deposit,
+  }));
+
+  const filters = (
+    <div className="flex flex-wrap gap-4">
+      <div className="w-[200px]">
+        <Select value={buildingId || "all"} onValueChange={(v) => setBuildingId(v === "all" ? undefined : v)}>
+          <SelectTrigger><SelectValue placeholder="Chọn toà nhà" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả toà nhà</SelectItem>
+            {buildings?.map((b) => (<SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>))}
+          </SelectContent>
+        </Select>
+      </div>
+      <DateRangePicker value={dateRange} onChange={setDateRange} />
+    </div>
+  );
 
   return (
     <MainLayout>
-    <ReportLayout
-      title="Báo cáo Hợp đồng kết thúc"
-      description="Danh sách hợp đồng đã kết thúc hoặc bị hủy"
-      icon={<XCircle className="h-8 w-8" />}
-      actions={
-        <ExportButtons
-          data={exportData}
-          filename="bao-cao-hop-dong-ket-thuc"
-        />
-      }
-      filters={
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
-      }
-      stats={stats}
-    >
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách hợp đồng kết thúc</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : terminations && terminations.length > 0 ? (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mã HĐ</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Phòng</TableHead>
-                    <TableHead>Ngày BĐ</TableHead>
-                    <TableHead>Ngày KT</TableHead>
-                    <TableHead>Thời gian thuê</TableHead>
-                    <TableHead>Lý do</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {terminations.map((term) => (
-                    <TableRow key={term.id}>
-                      <TableCell className="font-medium">
-                        {term.contract_number || term.id.slice(0, 8)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div className="font-medium">{term.tenants?.full_name || "N/A"}</div>
-                          <div className="text-muted-foreground">{term.tenants?.phone || "-"}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div className="font-medium">{term.rooms?.buildings?.name}</div>
-                          <div className="text-muted-foreground">Phòng {term.rooms?.room_number}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(term.start_date), "dd/MM/yyyy", { locale: vi })}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(term.end_date), "dd/MM/yyyy", { locale: vi })}
-                      </TableCell>
-                      <TableCell>{term.duration_actual} ngày</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {term.termination_reason || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={term.status === "CANCELLED" ? "destructive" : "secondary"}>
-                          {term.status === "CANCELLED" ? "Đã hủy" : "Hoàn thành"}
-                        </Badge>
-                      </TableCell>
+      <ReportLayout
+        title="Báo cáo Bỏ trả"
+        description="Danh sách hợp đồng đã thanh lý, chấm dứt"
+        icon={<XCircle className="h-8 w-8" />}
+        actions={<ExportButtons data={exportData} filename="bao-cao-bo-tra" />}
+        filters={filters}
+        stats={stats}
+      >
+        <Card>
+          <CardHeader><CardTitle>Danh sách hợp đồng thanh lý</CardTitle></CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">{[1, 2, 3].map(i => (<Skeleton key={i} className="h-12 w-full" />))}</div>
+            ) : terminations.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mã HĐ</TableHead>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Căn hộ</TableHead>
+                      <TableHead>Ngày thanh lý</TableHead>
+                      <TableHead>Lý do</TableHead>
+                      <TableHead>Tiền cọc</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              Không có hợp đồng kết thúc nào trong kỳ này
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </ReportLayout>
+                  </TableHeader>
+                  <TableBody>
+                    {terminations.map((term) => (
+                      <TableRow key={term.id}>
+                        <TableCell className="font-medium">{term.contract_number || term.id.slice(0, 8)}</TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div className="font-medium">{term.tenants?.full_name || "N/A"}</div>
+                            <div className="text-muted-foreground">{term.tenants?.phone || "-"}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div className="font-medium">{term.rooms?.buildings?.name}</div>
+                            <div className="text-muted-foreground">Căn hộ {term.rooms?.room_number}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{format(new Date(term.actual_end_date || term.end_date), "dd/MM/yyyy", { locale: vi })}</TableCell>
+                        <TableCell>
+                          <Badge variant={term.status === "TERMINATED" ? "destructive" : "secondary"}>
+                            {term.termination_reason || term.termination_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatCurrency(term.total_deposit)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">Không có hợp đồng thanh lý nào trong kỳ này</div>
+            )}
+          </CardContent>
+        </Card>
+      </ReportLayout>
     </MainLayout>
   );
 }

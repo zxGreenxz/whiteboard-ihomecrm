@@ -46,7 +46,7 @@ export function DeleteServiceDialog({
     const labels: Record<string, string> = {
       FIXED: "Cố định",
       PER_PERSON: "Theo người",
-      PER_ROOM: "Theo phòng",
+      PER_ROOM: "Theo căn hộ",
       METER_READING: "Theo chỉ số",
     };
     return labels[type] || type;

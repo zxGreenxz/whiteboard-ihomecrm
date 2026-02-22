@@ -165,11 +165,11 @@ export function generateInvoiceHTML(invoice: {
 
   <div class="info-grid">
     <div class="info-box">
-      <h4>THÔNG TIN KHÁCH THUÊ</h4>
+      <h4>THÔNG TIN KHÁCH HÀNG</h4>
       <div class="info-row"><span class="info-label">Họ tên:</span> <span>${invoice.tenant.full_name}</span></div>
       <div class="info-row"><span class="info-label">Điện thoại:</span> <span>${invoice.tenant.phone}</span></div>
       <div class="info-row"><span class="info-label">CCCD:</span> <span>${invoice.tenant.id_number || 'N/A'}</span></div>
-      <div class="info-row"><span class="info-label">Phòng:</span> <span>${invoice.room.building.name} - ${invoice.room.name}</span></div>
+      <div class="info-row"><span class="info-label">Căn hộ:</span> <span>${invoice.room.building.name} - ${invoice.room.name}</span></div>
     </div>
     <div class="info-box">
       <h4>THÔNG TIN HÓA ĐƠN</h4>
@@ -253,7 +253,7 @@ export function generateInvoiceHTML(invoice: {
 
   <div class="signature-grid">
     <div class="signature-box">
-      <div class="signature-title">KHÁCH THUÊ</div>
+      <div class="signature-title">KHÁCH HÀNG</div>
       <div>(Ký, ghi rõ họ tên)</div>
     </div>
     <div class="signature-box">
@@ -329,7 +329,7 @@ export function generateContractHTML(contract: {
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Hợp đồng thuê phòng ${contract.contract_number}</title>
+  <title>Hợp đồng thuê căn hộ ${contract.contract_number}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.6; padding: 20mm; }
@@ -358,7 +358,7 @@ export function generateContractHTML(contract: {
     <div class="country">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
     <div class="slogan">Độc lập - Tự do - Hạnh phúc</div>
     <div>---oOo---</div>
-    <div class="title">HỢP ĐỒNG THUÊ PHÒNG</div>
+    <div class="title">HỢP ĐỒNG THUÊ CĂN HỘ</div>
     <div class="contract-number">Số: ${contract.contract_number}</div>
   </div>
 
@@ -389,13 +389,13 @@ export function generateContractHTML(contract: {
     </div>
   </div>
 
-  <p style="margin: 20px 0;">Hai bên cùng thỏa thuận và ký kết hợp đồng thuê phòng với các điều khoản sau:</p>
+  <p style="margin: 20px 0;">Hai bên cùng thỏa thuận và ký kết hợp đồng thuê căn hộ với các điều khoản sau:</p>
 
   <div class="article">
     <div class="article-title">ĐIỀU 1: ĐỐI TƯỢNG CHO THUÊ</div>
     <div class="article-content">
-      <p>Bên A đồng ý cho Bên B thuê phòng tại địa chỉ:</p>
-      <p><strong>Phòng ${contract.room.name}, ${contract.room.building.name}</strong></p>
+      <p>Bên A đồng ý cho Bên B thuê căn hộ tại địa chỉ:</p>
+      <p><strong>Căn hộ ${contract.room.name}, ${contract.room.building.name}</strong></p>
       <p>Địa chỉ: ${buildingAddress}</p>
     </div>
   </div>
@@ -410,7 +410,7 @@ export function generateContractHTML(contract: {
   <div class="article">
     <div class="article-title">ĐIỀU 3: GIÁ THUÊ VÀ PHƯƠNG THỨC THANH TOÁN</div>
     <div class="article-content">
-      <p>- Giá thuê phòng: <strong>${formatCurrency(contract.rent_price)}</strong>/tháng</p>
+      <p>- Giá thuê căn hộ: <strong>${formatCurrency(contract.rent_price)}</strong>/tháng</p>
       <p>- Chu kỳ thanh toán: ${paymentCycleText[contract.payment_cycle] || contract.payment_cycle}</p>
       <p>- Tiền đặt cọc: <strong>${formatCurrency(contract.total_deposit)}</strong></p>
       ${contract.services && contract.services.length > 0 ? `
@@ -426,7 +426,7 @@ export function generateContractHTML(contract: {
     <div class="article-title">ĐIỀU 4: QUYỀN VÀ NGHĨA VỤ CỦA BÊN A</div>
     <div class="article-content">
       <ul>
-        <li>Bàn giao phòng cho Bên B đúng thời hạn và đảm bảo các tiện ích đã thỏa thuận.</li>
+        <li>Bàn giao căn hộ cho Bên B đúng thời hạn và đảm bảo các tiện ích đã thỏa thuận.</li>
         <li>Đảm bảo quyền sử dụng hợp pháp cho Bên B trong thời gian thuê.</li>
         <li>Thông báo trước ít nhất 30 ngày nếu có thay đổi liên quan đến hợp đồng.</li>
       </ul>
@@ -438,7 +438,7 @@ export function generateContractHTML(contract: {
     <div class="article-content">
       <ul>
         <li>Thanh toán tiền thuê đầy đủ và đúng hạn.</li>
-        <li>Sử dụng phòng đúng mục đích thuê, giữ gìn vệ sinh và tài sản.</li>
+        <li>Sử dụng căn hộ đúng mục đích thuê, giữ gìn vệ sinh và tài sản.</li>
         <li>Không được cho người khác thuê lại hoặc chuyển nhượng khi chưa có sự đồng ý của Bên A.</li>
         <li>Thông báo trước ít nhất 30 ngày nếu muốn chấm dứt hợp đồng trước hạn.</li>
         <li>Chịu trách nhiệm bồi thường nếu làm hư hỏng tài sản của Bên A.</li>
@@ -499,7 +499,7 @@ export function generateHandoverHTML(handover: {
   tenant_signature?: string;
   landlord_signature?: string;
 }): string {
-  const typeText = handover.type === 'CHECK_IN' ? 'NHẬN PHÒNG' : 'TRẢ PHÒNG';
+  const typeText = handover.type === 'CHECK_IN' ? 'NHẬN CĂN HỘ' : 'TRẢ CĂN HỘ';
   const conditionText: Record<string, string> = {
     NEW: 'Mới',
     GOOD: 'Tốt',
@@ -543,10 +543,10 @@ export function generateHandoverHTML(handover: {
   <div class="info-grid">
     <div class="info-box">
       <div class="info-row"><span class="info-label">Số hợp đồng:</span> ${handover.contract.contract_number}</div>
-      <div class="info-row"><span class="info-label">Phòng:</span> ${handover.contract.room.building.name} - ${handover.contract.room.name}</div>
+      <div class="info-row"><span class="info-label">Căn hộ:</span> ${handover.contract.room.building.name} - ${handover.contract.room.name}</div>
     </div>
     <div class="info-box">
-      <div class="info-row"><span class="info-label">Khách thuê:</span> ${handover.contract.tenant.full_name}</div>
+      <div class="info-row"><span class="info-label">Khách hàng:</span> ${handover.contract.tenant.full_name}</div>
       <div class="info-row"><span class="info-label">SĐT:</span> ${handover.contract.tenant.phone}</div>
       <div class="info-row"><span class="info-label">CCCD:</span> ${handover.contract.tenant.id_number || 'N/A'}</div>
     </div>

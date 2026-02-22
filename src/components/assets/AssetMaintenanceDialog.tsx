@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 const maintenanceSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
-  issue_description: z.string().min(1, "Mô tả sự cố là bắt buộc"),
+  issue_description: z.string().min(1, "Mô tả công việc là bắt buộc"),
   maintenance_date: z.string().min(1, "Ngày bảo trì là bắt buộc"),
   cost: z.number().min(0, "Chi phí phải >= 0").optional(),
   assigned_to: z.string().optional(),
@@ -125,7 +125,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
               name="issue_description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Mô tả sự cố *</FormLabel>
+                  <FormLabel>Mô tả công việc *</FormLabel>
                   <FormControl>
                     <Textarea
                       {...field}

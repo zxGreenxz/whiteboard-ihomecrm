@@ -83,7 +83,7 @@ export async function createContractNotification(
     type: 'CUSTOM',
     channel: 'IN_APP',
     subject: 'Hợp đồng mới được tạo',
-    content: `Hợp đồng ${contractNumber} đã được tạo cho khách ${tenantName} (phòng ${roomName}).`,
+    content: `Hợp đồng ${contractNumber} đã được tạo cho khách ${tenantName} (căn hộ ${roomName}).`,
     contract_id: contractId,
     status: 'PENDING',
   });
@@ -183,7 +183,7 @@ export async function autoCreateInvoiceForContract(
   const rentAmount = contract.rent_price || 0;
   invoiceItems.push({
     type: 'RENT',
-    description: 'Tiền thuê phòng',
+    description: 'Tiền thuê căn hộ',
     quantity: 1,
     unit_price: rentAmount,
     amount: rentAmount,

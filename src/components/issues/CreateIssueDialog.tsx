@@ -8,11 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useCreateIssue, useIssueCategories } from "@/hooks/useIssues";
+import { useCreateIssue } from "@/hooks/useIssues";
+import { useTaskTypes } from "@/hooks/useTaskTypes";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useContracts } from "@/hooks/useContracts";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
+import { ImagePlus, X } from "lucide-react";
 
 const issueSchema = z.object({
   title: z.string().min(1, "Tiêu đề là bắt buộc"),
@@ -21,7 +24,8 @@ const issueSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
   building_id: z.string().optional(),
   room_id: z.string().optional(),
-  contract_id: z.string().optional(),
+  assigned_to: z.string().optional(),
+  due_date: z.string().optional(),
 });
 
 type IssueFormValues = z.infer<typeof issueSchema>;
@@ -33,12 +37,29 @@ interface CreateIssueDialogProps {
 
 export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps) {
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [newImageUrl, setNewImageUrl] = useState("");
   const createIssue = useCreateIssue();
-  const { data: categories = [] } = useIssueCategories();
+  const { data: taskTypes = [] } = useTaskTypes();
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms();
-  const { data: contractsData } = useContracts({ status: "ACTIVE" });
-  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
+
+  // Fetch staff/profiles for assignment
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles-for-assignment"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const form = useForm<IssueFormValues>({
     resolver: zodResolver(issueSchema),
@@ -49,26 +70,44 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
       priority: "MEDIUM",
       building_id: undefined,
       room_id: undefined,
-      contract_id: undefined,
+      assigned_to: undefined,
+      due_date: "",
     },
   });
 
   const buildingRooms = rooms.filter((r) => r.building_id === selectedBuildingId);
 
+  const handleAddImage = () => {
+    if (newImageUrl.trim()) {
+      setImageUrls((prev) => [...prev, newImageUrl.trim()]);
+      setNewImageUrl("");
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImageUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const onSubmit = async (data: IssueFormValues) => {
     try {
+      const assignedTo = data.assigned_to;
       await createIssue.mutateAsync({
-        ...data,
+        title: data.title,
+        description: data.description,
         category_id: data.category_id || null,
+        priority: data.priority,
         building_id: data.building_id || null,
         room_id: data.room_id || null,
-        contract_id: data.contract_id || null,
-        status: "NEW",
-        images: [],
+        assigned_to: assignedTo || null,
+        assigned_at: assignedTo ? new Date().toISOString() : null,
+        due_date: data.due_date || null,
+        status: assignedTo ? "ASSIGNED" : "NEW",
+        images: imageUrls.length > 0 ? imageUrls : [],
         attachments: [],
       });
       form.reset();
       setSelectedBuildingId("");
+      setImageUrls([]);
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to create issue:", error);
@@ -79,8 +118,8 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Tạo sự cố mới</DialogTitle>
-          <DialogDescription>Ghi nhận sự cố từ khách thuê hoặc phát hiện</DialogDescription>
+          <DialogTitle>Tạo công việc mới</DialogTitle>
+          <DialogDescription>Ghi nhận công việc mới cần xử lý</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
@@ -92,7 +131,7 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
                   <FormItem>
                     <FormLabel>Tiêu đề *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="VD: Ống nước bị rò rỉ" />
+                      <Input {...field} placeholder="VD: Sửa chữa ống nước" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -108,7 +147,7 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
                     <FormControl>
                       <Textarea
                         {...field}
-                        placeholder="Mô tả chi tiết vấn đề..."
+                        placeholder="Mô tả chi tiết công việc cần thực hiện..."
                         className="min-h-[100px]"
                       />
                     </FormControl>
@@ -123,17 +162,25 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
                   name="category_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Danh mục</FormLabel>
+                      <FormLabel>Loại công việc</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn danh mục" />
+                            <SelectValue placeholder="Chọn loại công việc" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {categories.map((category) => (
-                            <SelectItem key={category.id} value={category.id}>
-                              {category.name}
+                          {taskTypes.map((taskType) => (
+                            <SelectItem key={taskType.id} value={taskType.id}>
+                              <div className="flex items-center gap-2">
+                                {taskType.color && (
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: taskType.color }}
+                                  />
+                                )}
+                                {taskType.name}
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -148,7 +195,7 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
                   name="priority"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Độ ưu tiên *</FormLabel>
+                      <FormLabel>Mức độ ưu tiên *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -206,17 +253,17 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
                   name="room_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phòng</FormLabel>
+                      <FormLabel>Căn hộ</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn phòng" />
+                            <SelectValue placeholder="Chọn căn hộ" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {buildingRooms.length === 0 ? (
                             <SelectItem value="none" disabled>
-                              Không có phòng
+                              Không có căn hộ
                             </SelectItem>
                           ) : (
                             buildingRooms.map((room) => (
@@ -233,37 +280,97 @@ export function CreateIssueDialog({ open, onOpenChange }: CreateIssueDialogProps
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="contract_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Hợp đồng (nếu có)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="assigned_to"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Người phụ trách</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn người phụ trách" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {profiles.map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.full_name || profile.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="due_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hạn hoàn thành</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn hợp đồng" />
-                        </SelectTrigger>
+                        <Input type="date" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {contracts.map((contract) => (
-                          <SelectItem key={contract.id} value={contract.id}>
-                            {contract.contract_number} - {contract.tenant?.full_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Image URLs */}
+              <div className="space-y-2">
+                <FormLabel>Ảnh đính kèm</FormLabel>
+                <div className="flex gap-2">
+                  <Input
+                    value={newImageUrl}
+                    onChange={(e) => setNewImageUrl(e.target.value)}
+                    placeholder="Nhập URL ảnh..."
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddImage();
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" size="icon" onClick={handleAddImage}>
+                    <ImagePlus className="w-4 h-4" />
+                  </Button>
+                </div>
+                {imageUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {imageUrls.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Ảnh ${index + 1}`}
+                          className="w-20 h-20 object-cover rounded border"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect fill='%23f3f4f6' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-size='10'%3EẢnh%3C/text%3E%3C/svg%3E";
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              />
+              </div>
 
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Hủy
                 </Button>
                 <Button type="submit" disabled={createIssue.isPending}>
-                  {createIssue.isPending ? "Đang tạo..." : "Tạo sự cố"}
+                  {createIssue.isPending ? "Đang tạo..." : "Tạo công việc"}
                 </Button>
               </div>
             </form>

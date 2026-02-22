@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Pencil, Trash2, Wrench, Check, X } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { CreateServiceDialog } from "@/components/services/CreateServiceDialog";
 import { EditServiceDialog } from "@/components/services/EditServiceDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
@@ -75,7 +76,7 @@ export default function ServicesPage() {
     const variants: Record<string, { label: string; color: "default" | "secondary" | "outline" | "destructive" }> = {
       FIXED: { label: "Cố định", color: "default" },
       PER_PERSON: { label: "Theo người", color: "secondary" },
-      PER_ROOM: { label: "Theo phòng", color: "outline" },
+      PER_ROOM: { label: "Theo căn hộ", color: "outline" },
       METER_READING: { label: "Theo chỉ số", color: "destructive" },
     };
 
@@ -140,7 +141,7 @@ export default function ServicesPage() {
                 Theo người ({serviceCounts.PER_PERSON})
               </TabsTrigger>
               <TabsTrigger value="PER_ROOM">
-                Theo phòng ({serviceCounts.PER_ROOM})
+                Theo căn hộ ({serviceCounts.PER_ROOM})
               </TabsTrigger>
               <TabsTrigger value="METER_READING">
                 Theo chỉ số ({serviceCounts.METER_READING})
@@ -222,11 +223,19 @@ export default function ServicesPage() {
                   </Table>
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm || activeTab !== "all"
-                    ? "Không tìm thấy dịch vụ nào"
-                    : "Chưa có dịch vụ nào. Nhấn 'Tạo dịch vụ' để bắt đầu."}
-                </div>
+                searchTerm || activeTab !== "all" ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Không tìm thấy dịch vụ nào
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Wrench}
+                    title="Chưa có dịch vụ nào"
+                    description="Hãy thêm dịch vụ đầu tiên để bắt đầu quản lý"
+                    actionLabel="Tạo dịch vụ"
+                    onAction={() => setCreateDialogOpen(true)}
+                  />
+                )
               )}
             </TabsContent>
           </Tabs>

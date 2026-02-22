@@ -51,7 +51,7 @@ const PlaceholderPage = ({
               <p>Trong khi chờ đợi, bạn có thể:</p>
               <ul className="list-disc list-inside space-y-1 pl-2">
                 <li>Khám phá các tính năng đã hoàn thành</li>
-                <li>Xem lại dashboard tổng quan</li>
+                <li>Xem lại Bảng tin</li>
                 <li>Kiểm tra documentation</li>
               </ul>
             </div>

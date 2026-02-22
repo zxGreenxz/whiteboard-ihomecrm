@@ -199,10 +199,10 @@ export const useCreateAsset = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
-      toast.success("Tạo tài sản thành công");
+      toast.success("Tài sản đã được tạo thành công");
     },
     onError: (error: Error) => {
-      toast.error("Tạo tài sản thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi tạo tài sản: " + error.message);
     },
   });
 };
@@ -225,10 +225,10 @@ export const useUpdateAsset = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
-      toast.success("Cập nhật tài sản thành công");
+      toast.success("Tài sản đã được cập nhật thành công");
     },
     onError: (error: Error) => {
-      toast.error("Cập nhật tài sản thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi cập nhật tài sản: " + error.message);
     },
   });
 };
@@ -248,10 +248,10 @@ export const useDeleteAsset = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assets"] });
-      toast.success("Xóa tài sản thành công");
+      toast.success("Tài sản đã được xóa thành công");
     },
     onError: (error: Error) => {
-      toast.error("Xóa tài sản thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi xóa tài sản: " + error.message);
     },
   });
 };
@@ -317,10 +317,10 @@ export const useCreateAssetHandover = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-handovers"] });
-      toast.success("Tạo biên bản bàn giao thành công");
+      toast.success("Biên bản bàn giao đã được tạo thành công");
     },
     onError: (error: Error) => {
-      toast.error("Tạo biên bản thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi tạo biên bản: " + error.message);
     },
   });
 };
@@ -395,10 +395,10 @@ export const useCreateAssetMovement = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-movements"] });
-      toast.success("Ghi nhận di chuyển tài sản thành công");
+      toast.success("Di chuyển tài sản đã được ghi nhận thành công");
     },
     onError: (error: Error) => {
-      toast.error("Ghi nhận di chuyển thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi ghi nhận di chuyển: " + error.message);
     },
   });
 };
@@ -470,10 +470,10 @@ export const useCreateAssetMaintenance = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
-      toast.success("Tạo phiếu bảo trì thành công");
+      toast.success("Phiếu bảo trì đã được tạo thành công");
     },
     onError: (error: Error) => {
-      toast.error("Tạo phiếu bảo trì thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi tạo phiếu bảo trì: " + error.message);
     },
   });
 };
@@ -496,10 +496,10 @@ export const useUpdateAssetMaintenance = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance"] });
-      toast.success("Cập nhật phiếu bảo trì thành công");
+      toast.success("Phiếu bảo trì đã được cập nhật thành công");
     },
     onError: (error: Error) => {
-      toast.error("Cập nhật phiếu bảo trì thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi cập nhật phiếu bảo trì: " + error.message);
     },
   });
 };

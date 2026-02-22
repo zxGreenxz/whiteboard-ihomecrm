@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -29,8 +29,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateLead, useDeleteLead, type LeadWithRelations } from "@/hooks/useLeads";
+import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,17 +41,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
 
 const leadSchema = z.object({
   customer_name: z.string().min(1, "Tên khách hàng là bắt buộc"),
   phone: z.string().min(1, "Số điện thoại là bắt buộc"),
   email: z.string().email("Email không hợp lệ").optional().or(z.literal("")),
-  source: z.enum(["WEBSITE", "FACEBOOK", "ZALO", "REFERRAL", "WALK_IN", "OTHER"]),
+  source: z.enum(["FACEBOOK", "ZALO", "PHONE", "REFERRAL", "WALK_IN", "WEBSITE", "OTHER"]),
+  building_id: z.string().optional(),
   room_id: z.string().optional(),
-  bed_id: z.string().optional(),
   appointment_date: z.string().optional(),
-  status: z.enum(["NEW", "CONTACTED", "VIEWED", "DEPOSITED", "FAILED"]),
+  assigned_staff_id: z.string().optional(),
+  status: z.enum(["B1_LEAD", "B2_APPOINTMENT", "B3_CONSULTATION", "CONVERTED", "FAILED"]),
   notes: z.string().optional(),
 });
 
@@ -67,8 +67,8 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const updateLead = useUpdateLead();
   const deleteLead = useDeleteLead();
+  const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms();
-  const { data: beds = [] } = useBeds();
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema),
@@ -76,14 +76,20 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
       customer_name: "",
       phone: "",
       email: "",
-      source: "WEBSITE",
+      source: "PHONE",
+      building_id: undefined,
       room_id: undefined,
-      bed_id: undefined,
       appointment_date: "",
-      status: "NEW",
+      assigned_staff_id: undefined,
+      status: "B1_LEAD",
       notes: "",
     },
   });
+
+  const selectedBuildingId = form.watch("building_id");
+  const filteredRooms = selectedBuildingId
+    ? rooms.filter((r: any) => r.building_id === selectedBuildingId)
+    : rooms;
 
   useEffect(() => {
     if (lead) {
@@ -91,11 +97,12 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
         customer_name: lead.customer_name || "",
         phone: lead.phone || "",
         email: lead.email || "",
-        source: lead.source || "WEBSITE",
+        source: (lead.source as any) || "PHONE",
+        building_id: lead.building_id || undefined,
         room_id: lead.room_id || undefined,
-        bed_id: lead.bed_id || undefined,
         appointment_date: lead.appointment_date || "",
-        status: lead.status || "NEW",
+        assigned_staff_id: lead.assigned_staff_id || undefined,
+        status: (lead.status as any) || "B1_LEAD",
         notes: lead.notes || "",
       });
     }
@@ -107,9 +114,10 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
         id: lead.id,
         ...data,
         email: data.email || null,
+        building_id: data.building_id || null,
         room_id: data.room_id || null,
-        bed_id: data.bed_id || null,
         appointment_date: data.appointment_date || null,
+        assigned_staff_id: data.assigned_staff_id || null,
         notes: data.notes || null,
       });
       onOpenChange(false);
@@ -135,20 +143,21 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
           <DialogHeader>
             <DialogTitle>Chỉnh sửa khách hẹn</DialogTitle>
             <DialogDescription>
-              Cập nhật thông tin khách hàng tiềm năng
+              Cập nhật thông tin khách hẹn
             </DialogDescription>
           </DialogHeader>
 
           <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {/* Tên & SĐT */}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="customer_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tên khách hàng *</FormLabel>
+                        <FormLabel>Tên *</FormLabel>
                         <FormControl>
                           <Input placeholder="Nguyễn Văn A" {...field} />
                         </FormControl>
@@ -162,7 +171,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Số điện thoại *</FormLabel>
+                        <FormLabel>SĐT *</FormLabel>
                         <FormControl>
                           <Input placeholder="0912345678" {...field} />
                         </FormControl>
@@ -172,6 +181,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                   />
                 </div>
 
+                {/* Email */}
                 <FormField
                   control={form.control}
                   name="email"
@@ -186,6 +196,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                   )}
                 />
 
+                {/* Nguồn & Trạng thái */}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -200,11 +211,12 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="WEBSITE">Website</SelectItem>
                             <SelectItem value="FACEBOOK">Facebook</SelectItem>
                             <SelectItem value="ZALO">Zalo</SelectItem>
+                            <SelectItem value="PHONE">Điện thoại</SelectItem>
                             <SelectItem value="REFERRAL">Giới thiệu</SelectItem>
                             <SelectItem value="WALK_IN">Khách đến trực tiếp</SelectItem>
+                            <SelectItem value="WEBSITE">Website</SelectItem>
                             <SelectItem value="OTHER">Khác</SelectItem>
                           </SelectContent>
                         </Select>
@@ -226,11 +238,11 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="NEW">Khách mới</SelectItem>
-                            <SelectItem value="CONTACTED">Đã liên hệ</SelectItem>
-                            <SelectItem value="VIEWED">Đã xem phòng</SelectItem>
-                            <SelectItem value="DEPOSITED">Đã đặt cọc</SelectItem>
-                            <SelectItem value="FAILED">Không thành công</SelectItem>
+                            <SelectItem value="B1_LEAD">Mới</SelectItem>
+                            <SelectItem value="B2_APPOINTMENT">Đã hẹn</SelectItem>
+                            <SelectItem value="B3_CONSULTATION">Đang tư vấn</SelectItem>
+                            <SelectItem value="CONVERTED">Đã chuyển đổi</SelectItem>
+                            <SelectItem value="FAILED">Thất bại</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -239,21 +251,47 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                   />
                 </div>
 
+                {/* Toà nhà & Căn hộ quan tâm */}
                 <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="building_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Toà nhà</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Chọn toà nhà" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {buildings.map((building) => (
+                              <SelectItem key={building.id} value={building.id}>
+                                {building.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormField
                     control={form.control}
                     name="room_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Phòng quan tâm</FormLabel>
+                        <FormLabel>Căn hộ quan tâm</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Chọn phòng" />
+                              <SelectValue placeholder="Chọn căn hộ" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {rooms.map((room) => (
+                            {filteredRooms.map((room) => (
                               <SelectItem key={room.id} value={room.id}>
                                 {room.name} {room.code && `(${room.code})`}
                               </SelectItem>
@@ -264,39 +302,15 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="bed_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Giường quan tâm</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn giường" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {beds.map((bed) => (
-                              <SelectItem key={bed.id} value={bed.id}>
-                                {bed.name} {bed.code && `(${bed.code})`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
+                {/* Thời gian hẹn */}
                 <FormField
                   control={form.control}
                   name="appointment_date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Ngày hẹn</FormLabel>
+                      <FormLabel>Thời gian hẹn</FormLabel>
                       <FormControl>
                         <Input type="datetime-local" {...field} />
                       </FormControl>
@@ -305,6 +319,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                   )}
                 />
 
+                {/* Ghi chú */}
                 <FormField
                   control={form.control}
                   name="notes"
@@ -313,7 +328,7 @@ export function EditLeadDialog({ open, onOpenChange, lead }: EditLeadDialogProps
                       <FormLabel>Ghi chú</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Ghi chú về khách hàng..."
+                          placeholder="Ghi chú về khách hẹn..."
                           className="min-h-[80px]"
                           {...field}
                         />

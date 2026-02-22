@@ -88,7 +88,7 @@ export const useCreateService = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
-      toast.success("Tạo dịch vụ thành công");
+      toast.success("Dịch vụ đã được tạo thành công");
     },
     onError: (error) => {
       console.error("Error creating service:", error);
@@ -129,7 +129,7 @@ export const useUpdateService = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
       queryClient.invalidateQueries({ queryKey: ["services", data.id] });
-      toast.success("Cập nhật dịch vụ thành công");
+      toast.success("Dịch vụ đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating service:", error);
@@ -161,7 +161,7 @@ export const useDeleteService = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
-      toast.success("Xóa dịch vụ thành công");
+      toast.success("Dịch vụ đã được xóa thành công");
     },
     onError: (error) => {
       console.error("Error deleting service:", error);

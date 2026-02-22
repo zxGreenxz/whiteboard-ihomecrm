@@ -27,25 +27,25 @@ export default function TasksByRoomReport() {
   const stats = (
     <>
       <ReportCard
-        title="Phòng có công việc"
+        title="Căn hộ có công việc"
         value={totalRooms}
         icon={Home}
-        description="Đã có sự cố/bảo trì"
+        description="Đã có công việc/bảo trì"
       />
       <ReportCard
         title="Tổng công việc"
         value={totalTasks}
         icon={Wrench}
-        description="Liên quan phòng"
+        description="Liên quan căn hộ"
       />
       <ReportCard
-        title="Phòng có vấn đề"
+        title="Căn hộ có vấn đề"
         value={roomsWithIssues}
         icon={Clock}
         description="Chưa xử lý xong"
       />
       <ReportCard
-        title="TB/phòng"
+        title="TB/căn hộ"
         value={avgTasksPerRoom}
         icon={CheckCircle2}
         description="Công việc trung bình"
@@ -54,7 +54,7 @@ export default function TasksByRoomReport() {
   );
 
   const exportData = roomData?.map(room => ({
-    "Phòng": room.roomDisplay,
+    "Căn hộ": room.roomDisplay,
     "Tổng CV": room.total,
     "Hoàn thành": room.completed,
     "Đang làm": room.inProgress,
@@ -65,8 +65,8 @@ export default function TasksByRoomReport() {
   return (
     <MainLayout>
     <ReportLayout
-      title="Công việc theo Phòng"
-      description="Lịch sử bảo trì và sửa chữa theo từng phòng"
+      title="Công việc theo Căn hộ"
+      description="Lịch sử bảo trì và sửa chữa theo từng căn hộ"
       icon={<Home className="h-8 w-8" />}
       actions={
         <ExportButtons
@@ -78,7 +78,7 @@ export default function TasksByRoomReport() {
     >
       <Card>
         <CardHeader>
-          <CardTitle>Chi tiết theo phòng</CardTitle>
+          <CardTitle>Chi tiết theo căn hộ</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -90,7 +90,7 @@ export default function TasksByRoomReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Phòng</TableHead>
+                    <TableHead>Căn hộ</TableHead>
                     <TableHead className="text-center">Tổng</TableHead>
                     <TableHead className="text-center">Hoàn thành</TableHead>
                     <TableHead className="text-center">Đang làm</TableHead>

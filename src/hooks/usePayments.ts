@@ -163,10 +163,10 @@ export const useCreatePayment = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      toast.success("Thu tiền thành công");
+      toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: Error) => {
-      toast.error("Thu tiền thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra: " + error.message);
     },
   });
 };

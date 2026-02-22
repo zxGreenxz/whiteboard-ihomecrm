@@ -23,6 +23,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Pencil, Trash2, Bed as BedIcon } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { CreateBedDialog } from "@/components/beds/CreateBedDialog";
 import { EditBedDialog } from "@/components/beds/EditBedDialog";
 import { DeleteBedDialog } from "@/components/beds/DeleteBedDialog";
@@ -197,10 +198,10 @@ export default function BedsPage() {
             </Select>
             <Select value={roomFilter} onValueChange={setRoomFilter}>
               <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Lọc theo phòng" />
+                <SelectValue placeholder="Lọc theo căn hộ" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tất cả phòng</SelectItem>
+                <SelectItem value="all">Tất cả căn hộ</SelectItem>
                 {availableRooms?.map((room) => (
                   <SelectItem key={room.id} value={room.id}>
                     {room.name}
@@ -234,7 +235,7 @@ export default function BedsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tên giường</TableHead>
-                    <TableHead>Phòng</TableHead>
+                    <TableHead>Căn hộ</TableHead>
                     <TableHead className="text-right">Giá thuê</TableHead>
                     <TableHead className="text-right">Tiền cọc</TableHead>
                     <TableHead>Trạng thái</TableHead>
@@ -286,11 +287,19 @@ export default function BedsPage() {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchTerm || buildingFilter !== "all" || roomFilter !== "all" || statusFilter !== "all"
-                ? "Không tìm thấy giường nào"
-                : "Chưa có giường nào. Nhấn 'Tạo giường' để bắt đầu."}
-            </div>
+            searchTerm || buildingFilter !== "all" || roomFilter !== "all" || statusFilter !== "all" ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Không tìm thấy giường nào
+              </div>
+            ) : (
+              <EmptyState
+                icon={BedIcon}
+                title="Chưa có giường nào"
+                description="Hãy thêm giường đầu tiên để bắt đầu quản lý"
+                actionLabel="Tạo giường"
+                onAction={() => setCreateDialogOpen(true)}
+              />
+            )
           )}
         </CardContent>
       </Card>

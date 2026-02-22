@@ -35,7 +35,6 @@ import {
 } from 'lucide-react';
 import { useTenant } from '@/hooks/useTenants';
 import { useContractsLegacy } from '@/hooks/useContracts';
-import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState, useEffect } from 'react';
@@ -148,6 +147,10 @@ const TenantDetailPage = () => {
       ACTIVE: { variant: 'default', label: 'Đang thuê' },
       INACTIVE: { variant: 'outline', label: 'Đã rời đi' },
       PENDING: { variant: 'secondary', label: 'Chờ xử lý' },
+      PROSPECT: { variant: 'outline', label: 'Tiềm năng' },
+      DEPOSITED: { variant: 'secondary', label: 'Đã đặt cọc' },
+      MOVED_OUT: { variant: 'outline', label: 'Đã chuyển đi' },
+      BLACKLISTED: { variant: 'destructive', label: 'Danh sách đen' },
     };
 
     const config = variants[status] || { variant: 'outline' as const, label: status };
@@ -205,10 +208,10 @@ const TenantDetailPage = () => {
   // Error states
   if (!id) {
     return (
-      <MainLayout title="Lỗi" subtitle="Không tìm thấy khách thuê" icon={User}>
+      <MainLayout title="Lỗi" subtitle="Không tìm thấy khách hàng" icon={User}>
         <div className="text-center py-12">
-          <p className="text-gray-500">ID khách thuê không hợp lệ</p>
-          <Button onClick={() => navigate('/tenants')} className="mt-4">
+          <p className="text-gray-500">ID khách hàng không hợp lệ</p>
+          <Button onClick={() => navigate('/customers')} className="mt-4">
             Quay lại danh sách
           </Button>
         </div>
@@ -220,7 +223,7 @@ const TenantDetailPage = () => {
     return (
       <MainLayout title="Đang tải..." subtitle="Vui lòng đợi" icon={User}>
         <div className="text-center py-12 text-gray-500">
-          Đang tải thông tin khách thuê...
+          Đang tải thông tin khách hàng...
         </div>
       </MainLayout>
     );
@@ -228,10 +231,10 @@ const TenantDetailPage = () => {
 
   if (!tenant) {
     return (
-      <MainLayout title="Không tìm thấy" subtitle="Khách thuê không tồn tại" icon={User}>
+      <MainLayout title="Không tìm thấy" subtitle="Khách hàng không tồn tại" icon={User}>
         <div className="text-center py-12">
-          <p className="text-gray-500">Không tìm thấy khách thuê với ID này</p>
-          <Button onClick={() => navigate('/tenants')} className="mt-4">
+          <p className="text-gray-500">Không tìm thấy khách hàng với ID này</p>
+          <Button onClick={() => navigate('/customers')} className="mt-4">
             Quay lại danh sách
           </Button>
         </div>
@@ -251,14 +254,14 @@ const TenantDetailPage = () => {
   return (
     <MainLayout
       title={tenant.full_name}
-      subtitle="Chi tiết khách thuê"
+      subtitle="Chi tiết khách hàng"
       icon={User}
     >
       {/* Header Actions */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <Button
           variant="outline"
-          onClick={() => navigate('/tenants')}
+          onClick={() => navigate('/customers')}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Quay lại
@@ -266,291 +269,232 @@ const TenantDetailPage = () => {
 
         <div className="flex-1" />
 
+        {getStatusBadge(tenant.status || 'ACTIVE')}
+
         <Button variant="outline">
           <Edit className="h-4 w-4 mr-2" />
           Chỉnh sửa
         </Button>
       </div>
 
-      <Tabs defaultValue="general" className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <FileText className="h-8 w-8 text-blue-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Hợp đồng</p>
+                <p className="text-xl font-bold">{totalContracts}</p>
+                <p className="text-xs text-green-600">{activeContracts} đang hoạt động</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <Receipt className="h-8 w-8 text-orange-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Hóa đơn</p>
+                <p className="text-xl font-bold">{allInvoices.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <CreditCard className="h-8 w-8 text-red-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Công nợ</p>
+                <p className={`text-xl font-bold ${outstandingAmount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                  {formatCurrency(outstandingAmount)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-3">
+              <Car className="h-8 w-8 text-purple-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Phương tiện</p>
+                <p className="text-xl font-bold">{vehicles.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="personal" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="general">Thông tin chung</TabsTrigger>
-          <TabsTrigger value="contracts">Hợp đồng ({totalContracts})</TabsTrigger>
-          <TabsTrigger value="invoices">Hóa đơn ({allInvoices.length})</TabsTrigger>
+          <TabsTrigger value="personal">Thông tin cá nhân</TabsTrigger>
+          <TabsTrigger value="contracts">Lịch sử HĐ ({totalContracts})</TabsTrigger>
+          <TabsTrigger value="payments">Lịch sử thanh toán ({allInvoices.length})</TabsTrigger>
           <TabsTrigger value="vehicles">Phương tiện ({vehicles.length})</TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: General Information */}
-        <TabsContent value="general" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column - Personal Info */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Personal Information Card */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <User className="h-5 w-5" />
-                      Thông tin cá nhân
-                    </CardTitle>
-                    {getStatusBadge(tenant.status || 'ACTIVE')}
+        {/* Tab 1: Thông tin cá nhân */}
+        <TabsContent value="personal" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Personal Information Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Thông tin cá nhân
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-gray-600">Họ và tên</div>
+                    <div className="font-medium">{tenant.full_name}</div>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-gray-600">Họ và tên</div>
-                      <div className="font-medium">{tenant.full_name}</div>
+                  <div>
+                    <div className="text-gray-600">Giới tính</div>
+                    <div className="font-medium">{getGenderLabel(tenant.gender)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600 flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Ngày sinh
                     </div>
-                    <div>
-                      <div className="text-gray-600">Giới tính</div>
-                      <div className="font-medium">{getGenderLabel(tenant.gender)}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-600 flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Ngày sinh
-                      </div>
-                      <div className="font-medium">
-                        {tenant.date_of_birth
-                          ? format(new Date(tenant.date_of_birth), 'dd/MM/yyyy', { locale: vi })
-                          : 'N/A'
-                        }
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-600 flex items-center gap-1">
-                        <CreditCard className="h-3 w-3" />
-                        Loại giấy tờ
-                      </div>
-                      <div className="font-medium">
-                        {tenant.id_type === 'CCCD' ? 'CCCD' : tenant.id_type === 'CMND' ? 'CMND' : tenant.id_type || 'N/A'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-gray-600 flex items-center gap-1">
-                        <CreditCard className="h-3 w-3" />
-                        Số CCCD/CMND
-                      </div>
-                      <div className="font-medium">{tenant.id_number || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-600">Ngày cấp</div>
-                      <div className="font-medium">
-                        {tenant.id_issue_date
-                          ? format(new Date(tenant.id_issue_date), 'dd/MM/yyyy', { locale: vi })
-                          : 'N/A'
-                        }
-                      </div>
-                    </div>
-                    <div className="col-span-2">
-                      <div className="text-gray-600">Nơi cấp</div>
-                      <div className="font-medium">{tenant.id_issue_place || 'N/A'}</div>
+                    <div className="font-medium">
+                      {tenant.date_of_birth
+                        ? format(new Date(tenant.date_of_birth), 'dd/MM/yyyy', { locale: vi })
+                        : 'N/A'
+                      }
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                  <div>
+                    <div className="text-gray-600 flex items-center gap-1">
+                      <CreditCard className="h-3 w-3" />
+                      Loại giấy tờ
+                    </div>
+                    <div className="font-medium">
+                      {tenant.id_type === 'CCCD' ? 'CCCD' : tenant.id_type === 'CMND' ? 'CMND' : tenant.id_type || 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600 flex items-center gap-1">
+                      <CreditCard className="h-3 w-3" />
+                      Số CMND/CCCD
+                    </div>
+                    <div className="font-medium">{tenant.id_number || 'N/A'}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-              {/* Contact Information Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Phone className="h-5 w-5" />
-                    Thông tin liên hệ
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-gray-600 flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        Số điện thoại
-                      </div>
-                      <div className="font-medium">{tenant.phone || 'N/A'}</div>
+            {/* Contact Information Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5" />
+                  Thông tin liên hệ
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-gray-600 flex items-center gap-1">
+                      <Phone className="h-3 w-3" />
+                      Số điện thoại
                     </div>
-                    <div>
-                      <div className="text-gray-600 flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        Email
-                      </div>
-                      <div className="font-medium">{tenant.email || 'N/A'}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <div className="text-gray-600 flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        Địa chỉ thường trú
-                      </div>
-                      <div className="font-medium">{tenant.permanent_address || 'N/A'}</div>
-                    </div>
+                    <div className="font-medium">{tenant.phone || 'N/A'}</div>
                   </div>
+                  <div>
+                    <div className="text-gray-600 flex items-center gap-1">
+                      <Mail className="h-3 w-3" />
+                      Email
+                    </div>
+                    <div className="font-medium">{tenant.email || 'N/A'}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-gray-600 flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      Địa chỉ thường trú
+                    </div>
+                    <div className="font-medium">{tenant.permanent_address || 'N/A'}</div>
+                  </div>
+                </div>
 
-                  {/* Emergency Contact */}
-                  {(tenant.emergency_contact_name || tenant.emergency_contact_phone) && (
-                    <div className="pt-4 border-t">
-                      <div className="text-sm font-medium text-gray-700 mb-2">Liên hệ khẩn cấp</div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                {/* Emergency Contact */}
+                {(tenant.emergency_contact_name || tenant.emergency_contact_phone) && (
+                  <div className="pt-4 border-t">
+                    <div className="text-sm font-medium text-gray-700 mb-2">Liên hệ khẩn cấp</div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-gray-600">Họ tên</div>
+                        <div className="font-medium">{tenant.emergency_contact_name || 'N/A'}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600">Số điện thoại</div>
+                        <div className="font-medium">{tenant.emergency_contact_phone || 'N/A'}</div>
+                      </div>
+                      {tenant.emergency_contact_relationship && (
                         <div>
-                          <div className="text-gray-600">Họ tên</div>
-                          <div className="font-medium">{tenant.emergency_contact_name || 'N/A'}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600">Số điện thoại</div>
-                          <div className="font-medium">{tenant.emergency_contact_phone || 'N/A'}</div>
-                        </div>
-                        {tenant.emergency_contact_relationship && (
-                          <div>
-                            <div className="text-gray-600">Mối quan hệ</div>
-                            <div className="font-medium">{tenant.emergency_contact_relationship}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Notes Card */}
-              {tenant.notes && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Ghi chú</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-sm bg-gray-50 p-3 rounded">{tenant.notes}</div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-            {/* Right Column - Summary */}
-            <div className="space-y-6">
-              {/* Contract Summary Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Hợp đồng
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Tổng số hợp đồng:</span>
-                    <span className="font-medium">{totalContracts}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Đang hoạt động:</span>
-                    <span className="font-medium text-green-600">{activeContracts}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Financial Summary Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Receipt className="h-5 w-5" />
-                    Tài chính
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Tổng hóa đơn:</span>
-                      <span className="font-medium">{allInvoices.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Tổng phát sinh:</span>
-                      <span className="font-bold">{formatCurrency(totalInvoiced)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Đã thanh toán:</span>
-                      <span className="font-medium text-green-600">{formatCurrency(totalPaid)}</span>
-                    </div>
-                    <div className="border-t pt-2 flex justify-between">
-                      <span className="text-gray-900 font-medium">Công nợ:</span>
-                      <span className={`font-bold text-lg ${outstandingAmount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                        {formatCurrency(outstandingAmount)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {outstandingAmount > 0 && (
-                    <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg text-sm text-red-700">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span>Còn công nợ cần thu</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Vehicles Summary Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Car className="h-5 w-5" />
-                    Phương tiện
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Số phương tiện:</span>
-                    <span className="font-medium">{vehicles.length}</span>
-                  </div>
-                  {vehicles.length > 0 && (
-                    <div className="pt-2 border-t">
-                      {vehicles.slice(0, 3).map(v => (
-                        <div key={v.id} className="flex justify-between text-xs py-1">
-                          <span>{getVehicleTypeLabel(v.vehicle_type)}</span>
-                          <span className="font-medium">{v.license_plate}</span>
-                        </div>
-                      ))}
-                      {vehicles.length > 3 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          +{vehicles.length - 3} phương tiện khác
+                          <div className="text-gray-600">Mối quan hệ</div>
+                          <div className="font-medium">{tenant.emergency_contact_relationship}</div>
                         </div>
                       )}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Created/Updated Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Thông tin hệ thống</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-gray-500">
-                  <div className="flex justify-between">
-                    <span>Ngày tạo:</span>
-                    <span>
-                      {tenant.created_at
-                        ? format(new Date(tenant.created_at), 'dd/MM/yyyy HH:mm', { locale: vi })
-                        : 'N/A'
-                      }
-                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Cập nhật:</span>
-                    <span>
-                      {tenant.updated_at
-                        ? format(new Date(tenant.updated_at), 'dd/MM/yyyy HH:mm', { locale: vi })
-                        : 'N/A'
-                      }
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
+
+          {/* Notes Card */}
+          {tenant.notes && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Ghi chú</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm bg-gray-50 p-3 rounded">{tenant.notes}</div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* System Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Thông tin hệ thống</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-xs text-gray-500">
+              <div className="flex justify-between">
+                <span>Ngày tạo:</span>
+                <span>
+                  {tenant.created_at
+                    ? format(new Date(tenant.created_at), 'dd/MM/yyyy HH:mm', { locale: vi })
+                    : 'N/A'
+                  }
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cập nhật:</span>
+                <span>
+                  {tenant.updated_at
+                    ? format(new Date(tenant.updated_at), 'dd/MM/yyyy HH:mm', { locale: vi })
+                    : 'N/A'
+                  }
+                </span>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        {/* Tab 2: Contracts */}
+        {/* Tab 2: Lịch sử HĐ */}
         <TabsContent value="contracts">
           <Card>
             <CardHeader>
-              <CardTitle>Danh sách hợp đồng</CardTitle>
+              <CardTitle>Lịch sử hợp đồng</CardTitle>
               <CardDescription>
-                Tất cả hợp đồng của khách thuê ({contracts?.length || 0} hợp đồng)
+                Tất cả hợp đồng của khách hàng ({contracts?.length || 0} hợp đồng)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -567,7 +511,7 @@ const TenantDetailPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Số hợp đồng</TableHead>
-                      <TableHead>Phòng</TableHead>
+                      <TableHead>Căn hộ</TableHead>
                       <TableHead>Ngày bắt đầu</TableHead>
                       <TableHead>Ngày kết thúc</TableHead>
                       <TableHead className="text-right">Giá thuê</TableHead>
@@ -614,16 +558,44 @@ const TenantDetailPage = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab 3: Invoices */}
-        <TabsContent value="invoices">
+        {/* Tab 3: Lịch sử thanh toán */}
+        <TabsContent value="payments">
           <Card>
             <CardHeader>
-              <CardTitle>Lịch sử hóa đơn</CardTitle>
-              <CardDescription>
-                Tất cả hóa đơn của khách thuê ({allInvoices.length} hóa đơn)
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Lịch sử thanh toán</CardTitle>
+                  <CardDescription>
+                    Tất cả hóa đơn của khách hàng ({allInvoices.length} hóa đơn)
+                  </CardDescription>
+                </div>
+                {outstandingAmount > 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-red-50 rounded-lg text-sm text-red-700">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>Công nợ: {formatCurrency(outstandingAmount)}</span>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
+              {/* Financial Summary */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Tổng phát sinh</p>
+                  <p className="text-lg font-bold">{formatCurrency(totalInvoiced)}</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Đã thanh toán</p>
+                  <p className="text-lg font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Còn nợ</p>
+                  <p className={`text-lg font-bold ${outstandingAmount > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                    {formatCurrency(outstandingAmount)}
+                  </p>
+                </div>
+              </div>
+
               {invoicesLoading ? (
                 <div className="text-center py-8 text-gray-500">
                   Đang tải...
@@ -697,7 +669,7 @@ const TenantDetailPage = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab 4: Vehicles */}
+        {/* Tab 4: Phương tiện */}
         <TabsContent value="vehicles">
           <Card>
             <CardHeader>
@@ -705,7 +677,7 @@ const TenantDetailPage = () => {
                 <div>
                   <CardTitle>Phương tiện đã đăng ký</CardTitle>
                   <CardDescription>
-                    Danh sách phương tiện của khách thuê ({vehicles.length} phương tiện)
+                    Danh sách phương tiện của khách hàng ({vehicles.length} phương tiện)
                   </CardDescription>
                 </div>
                 <Button variant="outline" onClick={() => navigate('/vehicles')}>

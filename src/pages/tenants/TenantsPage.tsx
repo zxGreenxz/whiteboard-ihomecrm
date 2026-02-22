@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Pencil, Trash2, Users, Eye } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
 import { useNavigate } from "react-router-dom";
 import { CreateTenantDialog } from "@/components/tenants/CreateTenantDialog";
 import { EditTenantDialog } from "@/components/tenants/EditTenantDialog";
@@ -49,7 +50,6 @@ export default function TenantsPage() {
 
   // Filter tenants based on search (client-side for current page)
   const filteredTenants = useMemo(() => {
-    // Defensive check - ensure tenants is array
     if (!Array.isArray(tenants)) return [];
     if (tenants.length === 0) return [];
 
@@ -74,7 +74,6 @@ export default function TenantsPage() {
 
   // Count tenants by status (for display on current page)
   const tenantCounts = useMemo(() => {
-    // DEFENSIVE CHECK: ensure tenants is array
     if (!Array.isArray(tenants)) return { all: totalCount, PROSPECT: 0, DEPOSITED: 0, ACTIVE: 0, MOVED_OUT: 0, BLACKLISTED: 0 };
 
     return {
@@ -126,16 +125,6 @@ export default function TenantsPage() {
     return new Date(dateString).toLocaleDateString("vi-VN");
   };
 
-  const getGenderLabel = (gender: string | null) => {
-    if (!gender) return "-";
-    const labels: Record<string, string> = {
-      MALE: "Nam",
-      FEMALE: "Nữ",
-      OTHER: "Khác",
-    };
-    return labels[gender] || gender;
-  };
-
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -145,19 +134,19 @@ export default function TenantsPage() {
               <Users className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Quản lý Khách thuê</h1>
-              <p className="text-sm text-muted-foreground">Quản lý thông tin và trạng thái khách thuê</p>
+              <h1 className="text-2xl font-bold text-foreground">Quản lý Khách hàng</h1>
+              <p className="text-sm text-muted-foreground">Quản lý thông tin và trạng thái khách hàng</p>
             </div>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)} className="shadow-sm">
             <Plus className="mr-2 h-4 w-4" />
-            Tạo khách thuê
+            Thêm khách hàng
           </Button>
         </div>
 
       <Card className="shadow-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Danh sách Khách thuê</CardTitle>
+          <CardTitle className="text-lg">Danh sách Khách hàng</CardTitle>
         </CardHeader>
         <CardContent>
           {/* Search */}
@@ -165,7 +154,7 @@ export default function TenantsPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Tìm kiếm theo tên, SĐT, email, CCCD..."
+                placeholder="Tìm kiếm theo tên, SĐT, email, CMND/CCCD..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -206,12 +195,10 @@ export default function TenantsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Họ tên</TableHead>
+                        <TableHead>Tên</TableHead>
                         <TableHead>SĐT</TableHead>
                         <TableHead>Email</TableHead>
-                        <TableHead>CCCD/CMND</TableHead>
-                        <TableHead>Giới tính</TableHead>
-                        <TableHead>Ngày sinh</TableHead>
+                        <TableHead>CMND/CCCD</TableHead>
                         <TableHead>Trạng thái</TableHead>
                         <TableHead className="text-right">Thao tác</TableHead>
                       </TableRow>
@@ -240,19 +227,13 @@ export default function TenantsPage() {
                               "-"
                             )}
                           </TableCell>
-                          <TableCell className="text-sm">
-                            {getGenderLabel(tenant.gender)}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {formatDate(tenant.date_of_birth)}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(tenant.status)}</TableCell>
+                          <TableCell>{getStatusBadge(tenant.status || "PROSPECT")}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => navigate(`/tenants/${tenant.id}`)}
+                                onClick={() => navigate(`/customers/${tenant.id}`)}
                                 title="Xem chi tiết"
                               >
                                 <Eye className="h-4 w-4" />
@@ -290,11 +271,19 @@ export default function TenantsPage() {
                   />
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm || activeTab !== "all"
-                    ? "Không tìm thấy khách thuê nào"
-                    : "Chưa có khách thuê nào. Nhấn 'Tạo khách thuê' để bắt đầu."}
-                </div>
+                searchTerm || activeTab !== "all" ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Không tìm thấy khách hàng nào
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Users}
+                    title="Chưa có khách hàng nào"
+                    description="Hãy thêm khách hàng đầu tiên để bắt đầu quản lý"
+                    actionLabel="Thêm khách hàng"
+                    onAction={() => setCreateDialogOpen(true)}
+                  />
+                )
               )}
             </TabsContent>
           </Tabs>

@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 const movementSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
   from_room_id: z.string().optional(),
-  to_room_id: z.string().min(1, "Phải chọn phòng đích"),
+  to_room_id: z.string().min(1, "Phải chọn căn hộ đích"),
   quantity: z.number().min(1, "Số lượng phải >= 1"),
   movement_date: z.string().min(1, "Ngày di chuyển là bắt buộc"),
   reason: z.string().optional(),
@@ -76,7 +76,7 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Di chuyển tài sản</DialogTitle>
-          <DialogDescription>Ghi nhận di chuyển tài sản giữa các phòng</DialogDescription>
+          <DialogDescription>Ghi nhận di chuyển tài sản giữa các căn hộ</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -112,7 +112,7 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
                 name="from_room_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Từ phòng</FormLabel>
+                    <FormLabel>Từ căn hộ</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
@@ -137,11 +137,11 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
                 name="to_room_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Đến phòng *</FormLabel>
+                    <FormLabel>Đến căn hộ *</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Chọn phòng" />
+                          <SelectValue placeholder="Chọn căn hộ" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>

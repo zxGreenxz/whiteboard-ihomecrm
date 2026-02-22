@@ -36,7 +36,7 @@ const bulkRoomSchema = z.object({
   building_id: z.string().min(1, "Tòa nhà là bắt buộc"),
   start_floor: z.string().min(0, "Tầng bắt đầu không hợp lệ"),
   end_floor: z.string().min(0, "Tầng kết thúc không hợp lệ"),
-  rooms_per_floor: z.string().min(1, "Số phòng/tầng là bắt buộc"),
+  rooms_per_floor: z.string().min(1, "Số căn hộ/tầng là bắt buộc"),
   name_pattern: z.string().min(1, "Mẫu tên là bắt buộc"),
   rent_price: z.string().min(1, "Giá thuê là bắt buộc"),
   deposit_amount: z.string().min(1, "Tiền cọc là bắt buộc"),
@@ -149,9 +149,9 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Tạo phòng hàng loạt</DialogTitle>
+          <DialogTitle>Tạo căn hộ hàng loạt</DialogTitle>
           <DialogDescription>
-            Tạo nhiều phòng cùng lúc với cấu hình tương tự
+            Tạo nhiều căn hộ cùng lúc với cấu hình tương tự
           </DialogDescription>
         </DialogHeader>
 
@@ -219,7 +219,7 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                   name="rooms_per_floor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Số phòng/tầng *</FormLabel>
+                      <FormLabel>Số căn hộ/tầng *</FormLabel>
                       <FormControl>
                         <Input type="number" placeholder="10" {...field} />
                       </FormControl>
@@ -235,12 +235,12 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                 name="name_pattern"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Mẫu tên phòng *</FormLabel>
+                    <FormLabel>Mẫu tên căn hộ *</FormLabel>
                     <FormControl>
                       <Input placeholder="{floor}{room}" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Sử dụng {"{floor}"} cho số tầng và {"{room}"} cho số phòng.
+                      Sử dụng {"{floor}"} cho số tầng và {"{room}"} cho số căn hộ.
                       Ví dụ: {"{floor}{room}"} → 101, 102... hoặc P{"{floor}"}.{"{room}"} → P1.01
                     </FormDescription>
                     <FormMessage />
@@ -318,7 +318,7 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                   onClick={handlePreview}
                   className="w-full"
                 >
-                  Xem trước danh sách phòng
+                  Xem trước danh sách căn hộ
                 </Button>
               </div>
 
@@ -327,7 +327,7 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                 <Card>
                   <CardContent className="pt-6">
                     <h4 className="font-semibold mb-2">
-                      Danh sách phòng sẽ tạo ({preview.length} phòng):
+                      Danh sách căn hộ sẽ tạo ({preview.length} căn hộ):
                     </h4>
                     <ScrollArea className="h-40 rounded border p-2">
                       <div className="grid grid-cols-5 gap-2">
@@ -351,7 +351,7 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                   Hủy
                 </Button>
                 <Button type="submit" disabled={bulkCreateRooms.isPending || preview.length === 0}>
-                  {bulkCreateRooms.isPending ? "Đang tạo..." : `Tạo ${preview.length} phòng`}
+                  {bulkCreateRooms.isPending ? "Đang tạo..." : `Tạo ${preview.length} căn hộ`}
                 </Button>
               </div>
             </form>

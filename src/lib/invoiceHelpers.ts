@@ -467,7 +467,7 @@ export function generateInvoiceItems(
   // Add rent
   items.push({
     item_type: 'RENT',
-    description: `Tiền thuê phòng tháng ${format(periodFrom, 'MM/yyyy')}`,
+    description: `Tiền thuê căn hộ tháng ${format(periodFrom, 'MM/yyyy')}`,
     quantity: 1,
     unit_price: contract.rent_price,
     amount: contract.rent_price,

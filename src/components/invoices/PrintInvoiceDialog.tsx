@@ -307,7 +307,7 @@ const PrintInvoiceDialog = ({ open, onOpenChange, invoice }: PrintInvoiceDialogP
         <span class="meta-value">${invoice.contract?.tenant?.phone || 'N/A'}</span>
       </div>
       <div class="meta-row">
-        <span class="meta-label">Phòng:</span>
+        <span class="meta-label">Căn hộ:</span>
         <span class="meta-value">${invoice.contract?.room?.name || invoice.contract?.bed?.name || 'N/A'}</span>
       </div>
       <div class="meta-row">
@@ -595,7 +595,7 @@ const PrintInvoiceDialog = ({ open, onOpenChange, invoice }: PrintInvoiceDialogP
     <span>${invoice.contract?.tenant?.phone || 'N/A'}</span>
   </div>
   <div class="info-row">
-    <span>Phòng:</span>
+    <span>Căn hộ:</span>
     <span>${invoice.contract?.room?.name || invoice.contract?.bed?.name || 'N/A'}</span>
   </div>
 

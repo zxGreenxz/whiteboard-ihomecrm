@@ -87,7 +87,7 @@ export const useCreateCustomer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
-      toast.success("Tạo khách hàng thành công");
+      toast.success("Khách hàng đã được tạo thành công");
     },
     onError: (error) => {
       console.error("Error creating customer:", error);
@@ -128,7 +128,7 @@ export const useUpdateCustomer = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customers", data.id] });
-      toast.success("Cập nhật khách hàng thành công");
+      toast.success("Khách hàng đã được cập nhật thành công");
     },
     onError: (error) => {
       console.error("Error updating customer:", error);
@@ -159,7 +159,7 @@ export const useDeleteCustomer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
-      toast.success("Xóa khách hàng thành công");
+      toast.success("Khách hàng đã được xóa thành công");
     },
     onError: (error) => {
       console.error("Error deleting customer:", error);

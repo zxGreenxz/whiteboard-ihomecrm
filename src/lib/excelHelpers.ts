@@ -79,7 +79,7 @@ export function exportBuildings(buildings: Array<{
     { header: 'Phường/Xã', key: 'ward', width: 20 },
     { header: 'Địa chỉ', key: 'street_address', width: 30 },
     { header: 'Số tầng', key: 'total_floors', width: 10 },
-    { header: 'Số phòng', key: 'total_rooms', width: 10 },
+    { header: 'Số căn hộ', key: 'total_rooms', width: 10 },
     { header: 'Trạng thái', key: item => item.status === 'ACTIVE' ? 'Hoạt động' : 'Không hoạt động', width: 15 },
   ];
 
@@ -103,8 +103,8 @@ export function exportRooms(rooms: Array<{
 }>): void {
   const columns: ExportColumn<typeof rooms[0]>[] = [
     { header: 'Tòa nhà', key: item => item.building?.name || '', width: 25 },
-    { header: 'Mã phòng', key: 'code', width: 15 },
-    { header: 'Tên phòng', key: 'name', width: 20 },
+    { header: 'Mã căn hộ', key: 'code', width: 15 },
+    { header: 'Tên căn hộ', key: 'name', width: 20 },
     { header: 'Tầng', key: 'floor', width: 10 },
     { header: 'Diện tích (m²)', key: 'area', width: 15 },
     { header: 'Giá thuê', key: item => item.rent_price.toLocaleString('vi-VN'), width: 15 },
@@ -121,7 +121,7 @@ export function exportRooms(rooms: Array<{
     }, width: 15 },
   ];
 
-  exportToExcel(rooms, columns, 'danh-sach-phong', 'Phòng');
+  exportToExcel(rooms, columns, 'danh-sach-can-ho', 'Căn hộ');
 }
 
 /**
@@ -148,7 +148,7 @@ export function exportTenants(tenants: Array<{
     { header: 'Địa chỉ thường trú', key: 'permanent_address', width: 40 },
   ];
 
-  exportToExcel(tenants, columns, 'danh-sach-khach-thue', 'Khách thuê');
+  exportToExcel(tenants, columns, 'danh-sach-khach-hang', 'Khách hàng');
 }
 
 /**
@@ -167,10 +167,10 @@ export function exportContracts(contracts: Array<{
 }>): void {
   const columns: ExportColumn<typeof contracts[0]>[] = [
     { header: 'Mã hợp đồng', key: 'contract_number', width: 20 },
-    { header: 'Khách thuê', key: item => item.tenant?.full_name || '', width: 25 },
+    { header: 'Khách hàng', key: item => item.tenant?.full_name || '', width: 25 },
     { header: 'SĐT', key: item => item.tenant?.phone || '', width: 15 },
     { header: 'Tòa nhà', key: item => item.room?.building?.name || '', width: 20 },
-    { header: 'Phòng', key: item => item.room?.name || '', width: 15 },
+    { header: 'Căn hộ', key: item => item.room?.name || '', width: 15 },
     { header: 'Ngày bắt đầu', key: item => new Date(item.start_date).toLocaleDateString('vi-VN'), width: 15 },
     { header: 'Ngày kết thúc', key: item => new Date(item.end_date).toLocaleDateString('vi-VN'), width: 15 },
     { header: 'Giá thuê', key: item => item.rent_price.toLocaleString('vi-VN'), width: 15 },
@@ -209,8 +209,8 @@ export function exportInvoices(invoices: Array<{
 }>): void {
   const columns: ExportColumn<typeof invoices[0]>[] = [
     { header: 'Số hóa đơn', key: 'invoice_number', width: 20 },
-    { header: 'Khách thuê', key: item => item.tenant?.full_name || '', width: 25 },
-    { header: 'Phòng', key: item => item.room?.name || '', width: 15 },
+    { header: 'Khách hàng', key: item => item.tenant?.full_name || '', width: 25 },
+    { header: 'Căn hộ', key: item => item.room?.name || '', width: 15 },
     { header: 'Kỳ từ', key: item => new Date(item.billing_period_from).toLocaleDateString('vi-VN'), width: 15 },
     { header: 'Kỳ đến', key: item => new Date(item.billing_period_to).toLocaleDateString('vi-VN'), width: 15 },
     { header: 'Tiền dịch vụ', key: item => item.subtotal.toLocaleString('vi-VN'), width: 15 },
@@ -262,7 +262,7 @@ export function exportLeads(leads: Array<{
     NEW: 'Mới',
     CONTACTED: 'Đã liên hệ',
     VIEWING_SCHEDULED: 'Đã hẹn xem',
-    VIEWED: 'Đã xem phòng',
+    VIEWED: 'Đã xem căn hộ',
     DEPOSITED: 'Đã cọc',
     CONVERTED: 'Đã chuyển đổi',
     FAILED: 'Thất bại',
@@ -274,7 +274,7 @@ export function exportLeads(leads: Array<{
     { header: 'Email', key: 'email', width: 25 },
     { header: 'Nguồn', key: item => sourceMap[item.source || ''] || item.source || '', width: 15 },
     { header: 'Tòa nhà', key: item => item.room?.building?.name || '', width: 20 },
-    { header: 'Phòng', key: item => item.room?.name || '', width: 15 },
+    { header: 'Căn hộ', key: item => item.room?.name || '', width: 15 },
     { header: 'Ngày hẹn', key: item => item.appointment_date ? new Date(item.appointment_date).toLocaleDateString('vi-VN') : '', width: 15 },
     { header: 'Trạng thái', key: item => statusMap[item.status] || item.status, width: 15 },
     { header: 'Ghi chú', key: 'notes', width: 30 },
@@ -316,7 +316,7 @@ export function exportPayments(payments: Array<{
 
   const columns: ExportColumn<typeof payments[0]>[] = [
     { header: 'Số hóa đơn', key: item => item.invoice?.invoice_number || '', width: 20 },
-    { header: 'Khách thuê', key: item => item.invoice?.contract?.tenant?.full_name || '', width: 25 },
+    { header: 'Khách hàng', key: item => item.invoice?.contract?.tenant?.full_name || '', width: 25 },
     { header: 'SĐT', key: item => item.invoice?.contract?.tenant?.phone || '', width: 15 },
     { header: 'Số tiền', key: item => item.amount.toLocaleString('vi-VN'), width: 15 },
     { header: 'Ngày thanh toán', key: item => new Date(item.payment_date).toLocaleDateString('vi-VN'), width: 15 },
@@ -409,7 +409,7 @@ export async function importBuildings(
     'Phường/Xã': 'ward',
     'Địa chỉ': 'street_address',
     'Số tầng': 'total_floors',
-    'Số phòng': 'total_rooms',
+    'Số căn hộ': 'total_rooms',
   } as const;
 
   const data = await parseExcelFile(file, headerMapping as any);
@@ -472,8 +472,8 @@ export async function importRooms(
 }>> {
   const headerMapping = {
     'Tòa nhà': 'building_name',
-    'Mã phòng': 'code',
-    'Tên phòng': 'name',
+    'Mã căn hộ': 'code',
+    'Tên căn hộ': 'name',
     'Tầng': 'floor',
     'Diện tích (m²)': 'area',
     'Giá thuê': 'rent_price',
@@ -491,7 +491,7 @@ export async function importRooms(
 
     // Validate required fields
     if (!item.name) {
-      errors.push({ row, message: 'Thiếu tên phòng' });
+      errors.push({ row, message: 'Thiếu tên căn hộ' });
       return;
     }
     if (!item.building_name) {
@@ -534,7 +534,7 @@ export function downloadContractImportTemplate(
   rooms: Array<{ name: string }>
 ): void {
   const headers = [
-    'Phòng (*)', 'Giường', 'Họ tên khách thuê (*)', 'SĐT khách thuê (*)',
+    'Căn hộ (*)', 'Giường', 'Họ tên khách hàng (*)', 'SĐT khách hàng (*)',
     'Ngày ký (*)', 'Ngày bắt đầu (*)', 'Hạn hợp đồng (*)',
     'Tiền thuê (*)', 'Chu kỳ thanh toán', 'Ngày bắt đầu tính tiền',
     'Tiền cọc', 'Đã đặt cọc', 'Ghi chú'
@@ -542,10 +542,10 @@ export function downloadContractImportTemplate(
 
   const sampleData = [
     {
-      'Phòng (*)': rooms[0]?.name || 'Phòng 101',
+      'Căn hộ (*)': rooms[0]?.name || 'Căn hộ 101',
       'Giường': '',
-      'Họ tên khách thuê (*)': 'Nguyễn Văn A',
-      'SĐT khách thuê (*)': '0901234567',
+      'Họ tên khách hàng (*)': 'Nguyễn Văn A',
+      'SĐT khách hàng (*)': '0901234567',
       'Ngày ký (*)': '01/01/2025',
       'Ngày bắt đầu (*)': '01/01/2025',
       'Hạn hợp đồng (*)': '01/01/2026',
@@ -560,10 +560,10 @@ export function downloadContractImportTemplate(
 
   if (rooms.length > 1) {
     sampleData.push({
-      'Phòng (*)': rooms[1]?.name || 'Phòng 102',
+      'Căn hộ (*)': rooms[1]?.name || 'Căn hộ 102',
       'Giường': '',
-      'Họ tên khách thuê (*)': 'Trần Thị B',
-      'SĐT khách thuê (*)': '0909876543',
+      'Họ tên khách hàng (*)': 'Trần Thị B',
+      'SĐT khách hàng (*)': '0909876543',
       'Ngày ký (*)': '15/01/2025',
       'Ngày bắt đầu (*)': '15/01/2025',
       'Hạn hợp đồng (*)': '15/01/2026',
@@ -590,9 +590,9 @@ export function downloadContractImportTemplate(
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Mẫu hợp đồng');
 
   // Add a reference sheet with room names
-  const roomsRef = rooms.map(r => ({ 'Danh sách phòng': r.name }));
+  const roomsRef = rooms.map(r => ({ 'Danh sách căn hộ': r.name }));
   const roomsSheet = XLSX.utils.json_to_sheet(roomsRef);
-  XLSX.utils.book_append_sheet(workbook, roomsSheet, 'Danh sách phòng');
+  XLSX.utils.book_append_sheet(workbook, roomsSheet, 'Danh sách căn hộ');
 
   XLSX.writeFile(workbook, `mau-hop-dong-${buildingName.replace(/\s+/g, '-')}.xlsx`);
 }
@@ -620,10 +620,10 @@ export async function importContracts(
   file: File
 ): Promise<ImportResult<ContractImportRow>> {
   const headerMapping = {
-    'Phòng (*)': 'room_name',
+    'Căn hộ (*)': 'room_name',
     'Giường': 'bed_name',
-    'Họ tên khách thuê (*)': 'tenant_name',
-    'SĐT khách thuê (*)': 'tenant_phone',
+    'Họ tên khách hàng (*)': 'tenant_name',
+    'SĐT khách hàng (*)': 'tenant_phone',
     'Ngày ký (*)': 'signed_date',
     'Ngày bắt đầu (*)': 'start_date',
     'Hạn hợp đồng (*)': 'end_date',
@@ -684,15 +684,15 @@ export async function importContracts(
 
     // Validate required fields
     if (!item.room_name) {
-      errors.push({ row, message: 'Thiếu tên phòng' });
+      errors.push({ row, message: 'Thiếu tên căn hộ' });
       return;
     }
     if (!item.tenant_name) {
-      errors.push({ row, message: 'Thiếu họ tên khách thuê' });
+      errors.push({ row, message: 'Thiếu họ tên khách hàng' });
       return;
     }
     if (!item.tenant_phone) {
-      errors.push({ row, message: 'Thiếu số điện thoại khách thuê' });
+      errors.push({ row, message: 'Thiếu số điện thoại khách hàng' });
       return;
     }
 
@@ -748,17 +748,17 @@ export function downloadImportTemplate(type: 'buildings' | 'rooms' | 'tenants'):
 
   switch (type) {
     case 'buildings':
-      headers = ['Mã tòa nhà', 'Tên tòa nhà', 'Loại', 'Tỉnh/TP', 'Quận/Huyện', 'Phường/Xã', 'Địa chỉ', 'Số tầng', 'Số phòng'];
+      headers = ['Mã tòa nhà', 'Tên tòa nhà', 'Loại', 'Tỉnh/TP', 'Quận/Huyện', 'Phường/Xã', 'Địa chỉ', 'Số tầng', 'Số căn hộ'];
       sampleData = [
-        { 'Mã tòa nhà': 'TN001', 'Tên tòa nhà': 'Tòa nhà ABC', 'Loại': 'Nhà trọ', 'Tỉnh/TP': 'Hồ Chí Minh', 'Quận/Huyện': 'Quận 1', 'Phường/Xã': 'Phường Bến Nghé', 'Địa chỉ': '123 Nguyễn Huệ', 'Số tầng': 5, 'Số phòng': 20 },
-        { 'Mã tòa nhà': 'TN002', 'Tên tòa nhà': 'Tòa nhà XYZ', 'Loại': 'Chung cư', 'Tỉnh/TP': 'Hồ Chí Minh', 'Quận/Huyện': 'Quận 7', 'Phường/Xã': 'Phường Tân Phong', 'Địa chỉ': '456 Nguyễn Thị Thập', 'Số tầng': 10, 'Số phòng': 50 },
+        { 'Mã tòa nhà': 'TN001', 'Tên tòa nhà': 'Tòa nhà ABC', 'Loại': 'Nhà trọ', 'Tỉnh/TP': 'Hồ Chí Minh', 'Quận/Huyện': 'Quận 1', 'Phường/Xã': 'Phường Bến Nghé', 'Địa chỉ': '123 Nguyễn Huệ', 'Số tầng': 5, 'Số căn hộ': 20 },
+        { 'Mã tòa nhà': 'TN002', 'Tên tòa nhà': 'Tòa nhà XYZ', 'Loại': 'Chung cư', 'Tỉnh/TP': 'Hồ Chí Minh', 'Quận/Huyện': 'Quận 7', 'Phường/Xã': 'Phường Tân Phong', 'Địa chỉ': '456 Nguyễn Thị Thập', 'Số tầng': 10, 'Số căn hộ': 50 },
       ];
       break;
     case 'rooms':
-      headers = ['Tòa nhà', 'Mã phòng', 'Tên phòng', 'Tầng', 'Diện tích (m²)', 'Giá thuê', 'Tiền cọc', 'Số người tối đa'];
+      headers = ['Tòa nhà', 'Mã căn hộ', 'Tên căn hộ', 'Tầng', 'Diện tích (m²)', 'Giá thuê', 'Tiền cọc', 'Số người tối đa'];
       sampleData = [
-        { 'Tòa nhà': 'Tòa nhà ABC', 'Mã phòng': 'P101', 'Tên phòng': 'Phòng 101', 'Tầng': 1, 'Diện tích (m²)': 25, 'Giá thuê': 3500000, 'Tiền cọc': 3500000, 'Số người tối đa': 2 },
-        { 'Tòa nhà': 'Tòa nhà ABC', 'Mã phòng': 'P102', 'Tên phòng': 'Phòng 102', 'Tầng': 1, 'Diện tích (m²)': 30, 'Giá thuê': 4000000, 'Tiền cọc': 4000000, 'Số người tối đa': 3 },
+        { 'Tòa nhà': 'Tòa nhà ABC', 'Mã căn hộ': 'P101', 'Tên căn hộ': 'Căn hộ 101', 'Tầng': 1, 'Diện tích (m²)': 25, 'Giá thuê': 3500000, 'Tiền cọc': 3500000, 'Số người tối đa': 2 },
+        { 'Tòa nhà': 'Tòa nhà ABC', 'Mã căn hộ': 'P102', 'Tên căn hộ': 'Căn hộ 102', 'Tầng': 1, 'Diện tích (m²)': 30, 'Giá thuê': 4000000, 'Tiền cọc': 4000000, 'Số người tối đa': 3 },
       ];
       break;
     case 'tenants':

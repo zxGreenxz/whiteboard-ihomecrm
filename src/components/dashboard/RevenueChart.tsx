@@ -3,8 +3,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useRevenueChart } from "@/hooks/useDashboard";
 import { formatCurrency } from "@/lib/utils";
 
-export function RevenueChart() {
-  const { data: revenueData = [], isLoading } = useRevenueChart(12);
+export function RevenueChart({ buildingId }: { buildingId?: string | null }) {
+  const { data: revenueData = [], isLoading } = useRevenueChart(12, buildingId);
 
   if (isLoading) {
     return (

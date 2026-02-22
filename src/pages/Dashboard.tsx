@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, Home, TrendingUp, DollarSign, AlertTriangle, FileText, Users2, BarChart3, Wallet, CheckSquare, ArrowRight } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Building2, Home, DollarSign, AlertTriangle, BarChart3, Wallet, CheckSquare, ArrowRight, DoorOpen } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/useDashboard';
+import { useBuildings } from '@/hooks/useBuildings';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
 import { DebtChart } from '@/components/dashboard/DebtChart';
@@ -12,25 +15,52 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { useScheduledNotifications } from '@/hooks/useScheduledNotifications';
+import OnboardingWizard, { useOnboardingState } from '@/components/onboarding/OnboardingWizard';
 
 const Dashboard = () => {
-  const { data: stats, isLoading } = useDashboardStats();
+  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
+  const buildingId = selectedBuilding === 'all' ? null : selectedBuilding;
+
+  const { data: stats, isLoading } = useDashboardStats(buildingId);
+  const { data: buildings = [] } = useBuildings();
 
   // Run scheduled notification checks
   useScheduledNotifications();
 
+  // Onboarding wizard state
+  const { isCompleted: onboardingCompleted, isLoading: onboardingLoading } = useOnboardingState();
+  const showOnboarding = !onboardingLoading && !onboardingCompleted;
+
   return (
     <MainLayout>
+      {showOnboarding && <OnboardingWizard />}
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Bảng tin</h1>
             <p className="text-muted-foreground mt-1">
               Chào mừng bạn đến với iHomeCRM - Hệ thống quản lý bất động sản
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {/* Building Filter */}
+            <Select
+              value={selectedBuilding || 'all'}
+              onValueChange={(value) => setSelectedBuilding(value === 'all' ? null : value)}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Tất cả toà nhà" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả toà nhà</SelectItem>
+                {buildings.map((building: any) => (
+                  <SelectItem key={building.id} value={building.id}>
+                    {building.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm" asChild>
               <Link to="/reports/real-estate">
                 <BarChart3 className="h-4 w-4 mr-2" />
@@ -40,12 +70,12 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Stats Grid - 5 cards */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {/* Total Rooms */}
           <Card className="border-l-4 border-l-primary hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Tổng số phòng</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Tổng số căn hộ</CardTitle>
               <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                 <Home className="h-5 w-5 text-primary" />
               </div>
@@ -54,12 +84,7 @@ const Dashboard = () => {
               {isLoading ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
-                <>
-                  <div className="text-3xl font-bold text-foreground">{stats?.totalRooms || 0}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    <span className="text-primary font-medium">{stats?.availableRooms || 0}</span> phòng còn trống
-                  </p>
-                </>
+                <div className="text-3xl font-bold text-foreground">{stats?.totalRooms || 0}</div>
               )}
             </CardContent>
           </Card>
@@ -67,7 +92,7 @@ const Dashboard = () => {
           {/* Occupied Rooms */}
           <Card className="border-l-4 border-l-emerald-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Phòng đã cho thuê</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Đang thuê</CardTitle>
               <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
                 <Building2 className="h-5 w-5 text-emerald-600" />
               </div>
@@ -86,10 +111,27 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
+          {/* Vacant Rooms */}
+          <Card className="border-l-4 border-l-red-500 hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Trống</CardTitle>
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                <DoorOpen className="h-5 w-5 text-red-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-3xl font-bold text-red-600">{stats?.availableRooms || 0}</div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Revenue This Month */}
           <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Doanh thu tháng này</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Doanh thu tháng</CardTitle>
               <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
                 <DollarSign className="h-5 w-5 text-blue-600" />
               </div>
@@ -113,7 +155,7 @@ const Dashboard = () => {
           {/* Total Debt */}
           <Card className="border-l-4 border-l-orange-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Tổng công nợ</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Công nợ tổng</CardTitle>
               <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
                 <AlertTriangle className="h-5 w-5 text-orange-600" />
               </div>
@@ -127,7 +169,7 @@ const Dashboard = () => {
                     {formatCurrency(stats?.totalDebt || 0)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    <span className="text-orange-600 font-medium">{stats?.unresolvedIssues || 0}</span> sự cố chưa xử lý
+                    <span className="text-orange-600 font-medium">{stats?.unresolvedIssues || 0}</span> công việc chưa xử lý
                   </p>
                 </>
               )}
@@ -137,8 +179,8 @@ const Dashboard = () => {
 
         {/* Charts Row */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <RevenueChart />
-          <OccupancyChart />
+          <RevenueChart buildingId={buildingId} />
+          <OccupancyChart buildingId={buildingId} />
           <DebtChart />
         </div>
 
@@ -167,7 +209,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Phòng trống, hợp đồng, tỷ lệ lấp đầy, khuyến mại và nhiều hơn nữa
+                  Căn hộ trống, hợp đồng, tỷ lệ lấp đầy, khuyến mại và nhiều hơn nữa
                 </p>
                 <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-white transition-colors">
                   <Link to="/reports/real-estate" className="flex items-center justify-between">
@@ -219,7 +261,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Tổng quan, phân tích theo nhân viên và theo từng phòng
+                  Tổng quan, phân tích theo nhân viên và theo từng căn hộ
                 </p>
                 <Button asChild variant="outline" className="w-full group-hover:bg-purple-600 group-hover:text-white transition-colors">
                   <Link to="/reports/tasks" className="flex items-center justify-between">
@@ -234,8 +276,8 @@ const Dashboard = () => {
 
         {/* Alerts & Activities Row */}
         <div className="grid gap-4 md:grid-cols-2">
-          <AlertsList />
-          <RecentActivities />
+          <AlertsList buildingId={buildingId} />
+          <RecentActivities buildingId={buildingId} />
         </div>
       </div>
     </MainLayout>

@@ -38,11 +38,11 @@ const depositSchema = z.object({
   create_tenant: z.boolean(),
   tenant_name: z.string().optional(),
   tenant_phone: z.string().optional(),
-  room_id: z.string().min(1, "Phải chọn phòng"),
+  room_id: z.string().min(1, "Phải chọn căn hộ"),
   bed_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
-  hold_until_date: z.string().min(1, "Ngày giữ phòng là bắt buộc"),
+  hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
   status: z.enum(["PENDING", "CONFIRMED", "CONVERTED", "REFUNDED", "FORFEITED"]),
   notes: z.string().optional(),
 });
@@ -94,7 +94,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       }
 
       if (!tenantId) {
-        throw new Error("Phải chọn hoặc tạo khách thuê");
+        throw new Error("Phải chọn hoặc tạo khách hàng");
       }
 
       // Create deposit
@@ -122,7 +122,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
         <DialogHeader>
           <DialogTitle>Tạo phiếu đặt cọc</DialogTitle>
           <DialogDescription>
-            Tạo phiếu đặt cọc mới cho khách thuê
+            Tạo phiếu đặt cọc mới cho khách hàng
           </DialogDescription>
         </DialogHeader>
 
@@ -140,7 +140,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                     className="rounded"
                   />
                   <label htmlFor="create_tenant" className="text-sm">
-                    Tạo khách thuê mới
+                    Tạo khách hàng mới
                   </label>
                 </div>
 
@@ -151,7 +151,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                       name="tenant_name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Tên khách thuê *</FormLabel>
+                          <FormLabel>Tên khách hàng *</FormLabel>
                           <FormControl>
                             <Input {...field} />
                           </FormControl>
@@ -179,11 +179,11 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                     name="tenant_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Chọn khách thuê *</FormLabel>
+                        <FormLabel>Chọn khách hàng *</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Chọn khách thuê" />
+                              <SelectValue placeholder="Chọn khách hàng" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -208,11 +208,11 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   name="room_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phòng *</FormLabel>
+                      <FormLabel>Căn hộ *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn phòng" />
+                            <SelectValue placeholder="Chọn căn hộ" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -293,7 +293,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   name="hold_until_date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Giữ phòng đến *</FormLabel>
+                      <FormLabel>Giữ căn hộ đến *</FormLabel>
                       <FormControl>
                         <Input type="date" {...field} />
                       </FormControl>

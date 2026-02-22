@@ -14,42 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      areas: {
-        Row: {
-          code: string | null
-          created_at: string
-          deleted_at: string | null
-          description: string | null
-          id: string
-          name: string
-          status: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          code?: string | null
-          created_at?: string
-          deleted_at?: string | null
-          description?: string | null
-          id?: string
-          name: string
-          status?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          code?: string | null
-          created_at?: string
-          deleted_at?: string | null
-          description?: string | null
-          id?: string
-          name?: string
-          status?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       asset_categories: {
         Row: {
           created_at: string
@@ -445,15 +409,7 @@ export type Database = {
           user_id?: string
           ward?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "buildings_area_id_fkey"
-            columns: ["area_id"]
-            isOneToOne: false
-            referencedRelation: "areas"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       code_sequences: {
         Row: {
@@ -2308,6 +2264,525 @@ export type Database = {
           },
         ]
       }
+      floors: {
+        Row: {
+          id: string
+          building_id: string
+          floor_number: number
+          name: string | null
+          description: string | null
+          status: string | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          building_id: string
+          floor_number: number
+          name?: string | null
+          description?: string | null
+          status?: string | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          building_id?: string
+          floor_number?: number
+          name?: string | null
+          description?: string | null
+          status?: string | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "floors_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hotlines: {
+        Row: {
+          id: string
+          name: string
+          phone_number: string
+          description: string | null
+          is_active: boolean | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          phone_number: string
+          description?: string | null
+          is_active?: boolean | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          phone_number?: string
+          description?: string | null
+          is_active?: boolean | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      income_expense_types: {
+        Row: {
+          id: string
+          name: string
+          type: string
+          description: string | null
+          is_default: boolean | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: string
+          description?: string | null
+          is_default?: boolean | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          type?: string
+          description?: string | null
+          is_default?: boolean | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      service_quotas: {
+        Row: {
+          id: string
+          service_id: string
+          building_id: string | null
+          quota_value: number
+          unit: string | null
+          description: string | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          service_id: string
+          building_id?: string | null
+          quota_value: number
+          unit?: string | null
+          description?: string | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          service_id?: string
+          building_id?: string | null
+          quota_value?: number
+          unit?: string | null
+          description?: string | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_quotas_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_quotas_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meters: {
+        Row: {
+          id: string
+          user_id: string
+          code: string
+          building_id: string
+          room_id: string | null
+          service_id: string
+          meter_type: Database["public"]["Enums"]["meter_type"]
+          name: string | null
+          installation_date: string | null
+          initial_reading: number | null
+          current_reading: number | null
+          status: string
+          location_note: string | null
+          manufacturer: string | null
+          model: string | null
+          serial_number: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+          deleted_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          code: string
+          building_id: string
+          room_id?: string | null
+          service_id: string
+          meter_type: Database["public"]["Enums"]["meter_type"]
+          name?: string | null
+          installation_date?: string | null
+          initial_reading?: number | null
+          current_reading?: number | null
+          status?: string
+          location_note?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          serial_number?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          code?: string
+          building_id?: string
+          room_id?: string | null
+          service_id?: string
+          meter_type?: Database["public"]["Enums"]["meter_type"]
+          name?: string | null
+          installation_date?: string | null
+          initial_reading?: number | null
+          current_reading?: number | null
+          status?: string
+          location_note?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          serial_number?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meters_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meters_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meters_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      auto_debt_config: {
+        Row: {
+          id: string
+          building_id: string | null
+          is_enabled: boolean | null
+          bank_account: string | null
+          matching_rules: Json | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          building_id?: string | null
+          is_enabled?: boolean | null
+          bank_account?: string | null
+          matching_rules?: Json | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          building_id?: string | null
+          is_enabled?: boolean | null
+          bank_account?: string | null
+          matching_rules?: Json | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auto_debt_config_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roles: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          permissions: Json
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          permissions?: Json
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          permissions?: Json
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      staff_assignments: {
+        Row: {
+          id: string
+          staff_id: string
+          role_id: string
+          building_id: string | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          staff_id: string
+          role_id: string
+          building_id?: string | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          staff_id?: string
+          role_id?: string
+          building_id?: string | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_assignments_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_assignments_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          price: number
+          duration_months: number
+          max_rooms: number | null
+          max_buildings: number | null
+          features: Json | null
+          is_active: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          price: number
+          duration_months: number
+          max_rooms?: number | null
+          max_buildings?: number | null
+          features?: Json | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          price?: number
+          duration_months?: number
+          max_rooms?: number | null
+          max_buildings?: number | null
+          features?: Json | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          plan_id: string
+          start_date: string
+          end_date: string
+          status: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          plan_id: string
+          start_date: string
+          end_date: string
+          status?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          plan_id?: string
+          start_date?: string
+          end_date?: string
+          status?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_types: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          color: string | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          color?: string | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          color?: string | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      asset_warehouses: {
+        Row: {
+          id: string
+          name: string
+          location: string | null
+          building_id: string | null
+          user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          location?: string | null
+          building_id?: string | null
+          user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          location?: string | null
+          building_id?: string | null
+          user_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_warehouses_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       contract_extension_history: {
@@ -2485,7 +2960,7 @@ export type Database = {
         | "FAILED"
       meter_type: "ELECTRICITY" | "WATER" | "GAS" | "OTHER"
       notification_channel: "IN_APP" | "EMAIL" | "SMS" | "ZALO" | "PUSH"
-      notification_status: "PENDING" | "SENT" | "FAILED" | "CANCELLED"
+      notification_status: "PENDING" | "SENT" | "FAILED" | "CANCELLED" | "READ"
       notification_type:
         | "NEW_INVOICE"
         | "PAYMENT_REMINDER"
@@ -2721,7 +3196,7 @@ export const Constants = {
       ],
       meter_type: ["ELECTRICITY", "WATER", "GAS", "OTHER"],
       notification_channel: ["IN_APP", "EMAIL", "SMS", "ZALO", "PUSH"],
-      notification_status: ["PENDING", "SENT", "FAILED", "CANCELLED"],
+      notification_status: ["PENDING", "SENT", "FAILED", "CANCELLED", "READ"],
       notification_type: [
         "NEW_INVOICE",
         "PAYMENT_REMINDER",

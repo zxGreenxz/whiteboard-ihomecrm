@@ -47,11 +47,11 @@ export function DeleteRoomDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Xác nhận xóa phòng</AlertDialogTitle>
+          <AlertDialogTitle>Xác nhận xóa căn hộ</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
               <p>
-                Bạn có chắc chắn muốn xóa phòng{" "}
+                Bạn có chắc chắn muốn xóa căn hộ{" "}
                 <span className="font-semibold">{room.name}</span>?
               </p>
               <div className="bg-muted rounded-md p-3 text-sm space-y-1">

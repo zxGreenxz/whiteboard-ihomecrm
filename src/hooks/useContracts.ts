@@ -404,8 +404,8 @@ export const useCreateContract = () => {
           console.error('Error inserting contract tenants:', tenantsError);
           toast({
             variant: 'destructive',
-            title: 'Cảnh báo: Lỗi lưu khách thuê',
-            description: `Hợp đồng đã tạo nhưng có lỗi khi lưu danh sách khách thuê. Vui lòng kiểm tra lại.`,
+            title: 'Cảnh báo: Lỗi lưu khách hàng',
+            description: `Hợp đồng đã tạo nhưng có lỗi khi lưu danh sách khách hàng. Vui lòng kiểm tra lại.`,
           });
         }
       }
@@ -449,14 +449,14 @@ export const useCreateContract = () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] }); // Also refresh invoices
 
       toast({
-        title: 'Tạo hợp đồng thành công!',
+        title: 'Hợp đồng đã được tạo thành công',
         description: 'Hợp đồng đã được tạo và kích hoạt.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Tạo hợp đồng thất bại',
+        title: 'Có lỗi xảy ra khi tạo hợp đồng',
         description: error.message,
       });
     },
@@ -492,14 +492,14 @@ export const useUpdateContract = () => {
       queryClient.invalidateQueries({ queryKey: ['contract'] });
 
       toast({
-        title: 'Cập nhật thành công!',
+        title: 'Hợp đồng đã được cập nhật thành công',
         description: 'Thông tin hợp đồng đã được cập nhật.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Cập nhật thất bại',
+        title: 'Có lỗi xảy ra khi cập nhật hợp đồng',
         description: error.message,
       });
     },
@@ -532,14 +532,14 @@ export const useDeleteContract = () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
       toast({
-        title: 'Xóa thành công!',
+        title: 'Hợp đồng đã được xóa thành công',
         description: 'Hợp đồng đã được xóa.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Xóa thất bại',
+        title: 'Có lỗi xảy ra khi xóa hợp đồng',
         description: error.message,
       });
     },
@@ -584,14 +584,14 @@ export const useExtendContract = () => {
       queryClient.invalidateQueries({ queryKey: ['contract'] });
 
       toast({
-        title: 'Tạo yêu cầu gia hạn thành công!',
+        title: 'Yêu cầu gia hạn đã được tạo thành công',
         description: 'Vui lòng duyệt yêu cầu để áp dụng.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Gia hạn thất bại',
+        title: 'Có lỗi xảy ra khi gia hạn hợp đồng',
         description: error.message,
       });
     },
@@ -637,14 +637,14 @@ export const useTransferContract = () => {
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
       toast({
-        title: 'Tạo yêu cầu chuyển đổi thành công!',
+        title: 'Yêu cầu chuyển đổi đã được tạo thành công',
         description: 'Vui lòng duyệt để áp dụng thay đổi.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Tạo yêu cầu thất bại',
+        title: 'Có lỗi xảy ra khi tạo yêu cầu chuyển đổi',
         description: error.message,
       });
     },
@@ -692,14 +692,14 @@ export const useTerminateContract = () => {
       queryClient.invalidateQueries({ queryKey: ['pending-terminations'] });
 
       toast({
-        title: 'Tạo yêu cầu thanh lý thành công!',
-        description: 'Yêu cầu đang chờ duyệt tại mục "Duyệt thanh lý".',
+        title: 'Yêu cầu thanh lý đã được tạo thành công',
+        description: 'Yêu cầu đang chờ duyệt tại tab "Duyệt thanh lý" trong trang Hợp đồng.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Tạo yêu cầu thất bại',
+        title: 'Có lỗi xảy ra khi tạo yêu cầu thanh lý',
         description: error.message,
       });
     },
@@ -848,7 +848,7 @@ export const useEstimateTerminationCosts = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Lỗi tính toán',
+        title: 'Có lỗi xảy ra khi tính toán',
         description: error.message,
       });
     },
@@ -1023,14 +1023,14 @@ export const useApproveTermination = () => {
       queryClient.invalidateQueries({ queryKey: ['beds'] });
 
       toast({
-        title: 'Duyệt thanh lý thành công!',
-        description: 'Hợp đồng đã được thanh lý và phòng/giường đã được giải phóng.',
+        title: 'Hợp đồng đã được thanh lý thành công',
+        description: 'Hợp đồng đã được thanh lý và căn hộ/giường đã được giải phóng.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Duyệt thanh lý thất bại',
+        title: 'Có lỗi xảy ra khi duyệt thanh lý',
         description: error.message,
       });
     },
@@ -1072,14 +1072,14 @@ export const useRejectTermination = () => {
       queryClient.invalidateQueries({ queryKey: ['pending-terminations'] });
 
       toast({
-        title: 'Đã từ chối yêu cầu thanh lý',
+        title: 'Yêu cầu thanh lý đã bị từ chối',
         description: 'Yêu cầu đã được trả về trạng thái nháp.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Thao tác thất bại',
+        title: 'Có lỗi xảy ra. Vui lòng thử lại',
         description: error.message,
       });
     },
@@ -1130,7 +1130,7 @@ export const useUploadContractFile = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Upload thất bại',
+        title: 'Có lỗi xảy ra khi tải file lên',
         description: error.message,
       });
     },
@@ -1180,7 +1180,7 @@ export const useBulkCreateContracts = () => {
         .eq('user_id', user.id)
         .is('deleted_at', null);
 
-      if (!rooms) throw new Error('Không thể tải danh sách phòng');
+      if (!rooms) throw new Error('Không thể tải danh sách căn hộ');
 
       // Fetch existing tenants
       const { data: existingTenants } = await supabase
@@ -1206,7 +1206,7 @@ export const useBulkCreateContracts = () => {
                  r.code?.toLowerCase() === row.room_name.toLowerCase()
           );
           if (!room) {
-            results.errors.push({ row: rowNum, message: `Không tìm thấy phòng "${row.room_name}"` });
+            results.errors.push({ row: rowNum, message: `Không tìm thấy căn hộ "${row.room_name}"` });
             results.failed++;
             continue;
           }
@@ -1232,7 +1232,7 @@ export const useBulkCreateContracts = () => {
               .single();
 
             if (tenantError || !newTenant) {
-              results.errors.push({ row: rowNum, message: `Không thể tạo khách thuê: ${tenantError?.message || 'Unknown'}` });
+              results.errors.push({ row: rowNum, message: `Không thể tạo khách hàng: ${tenantError?.message || 'Unknown'}` });
               results.failed++;
               continue;
             }
@@ -1295,7 +1295,7 @@ export const useBulkCreateContracts = () => {
 
       if (results.success > 0) {
         toast({
-          title: 'Nhập dữ liệu thành công!',
+          title: 'Dữ liệu đã được nhập thành công',
           description: `Đã tạo ${results.success} hợp đồng.${results.failed > 0 ? ` ${results.failed} hợp đồng thất bại.` : ''}`,
         });
       }
@@ -1303,7 +1303,7 @@ export const useBulkCreateContracts = () => {
       if (results.success === 0 && results.failed > 0) {
         toast({
           variant: 'destructive',
-          title: 'Nhập dữ liệu thất bại',
+          title: 'Có lỗi xảy ra khi nhập dữ liệu',
           description: `Tất cả ${results.failed} hợp đồng đều gặp lỗi.`,
         });
       }
@@ -1311,7 +1311,7 @@ export const useBulkCreateContracts = () => {
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Nhập dữ liệu thất bại',
+        title: 'Có lỗi xảy ra khi nhập dữ liệu',
         description: error.message,
       });
     },

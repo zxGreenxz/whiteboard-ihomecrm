@@ -29,12 +29,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateBuilding } from "@/hooks/useBuildings";
-import { useAreas } from "@/hooks/useAreas";
 
 const buildingSchema = z.object({
   name: z.string().min(1, "Tên tòa nhà là bắt buộc"),
   code: z.string().optional(),
-  area_id: z.string().optional(),
   type: z.enum(["APARTMENT", "DORMITORY", "HOUSE", "OFFICE", "SLEEPBOX", "HOMESTAY"]),
   status: z.enum(["ACTIVE", "INACTIVE", "MAINTENANCE"]).default("ACTIVE"),
   province: z.string().min(1, "Tỉnh/Thành phố là bắt buộc"),
@@ -54,14 +52,12 @@ interface CreateBuildingDialogProps {
 
 export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialogProps) {
   const createBuilding = useCreateBuilding();
-  const { data: areas } = useAreas();
 
   const form = useForm<BuildingFormValues>({
     resolver: zodResolver(buildingSchema),
     defaultValues: {
       name: "",
       code: "",
-      area_id: "",
       type: "APARTMENT",
       status: "ACTIVE",
       province: "",
@@ -78,7 +74,6 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
       await createBuilding.mutateAsync({
         name: data.name,
         code: data.code || null,
-        area_id: data.area_id || null,
         type: data.type,
         status: data.status,
         province: data.province,
@@ -101,7 +96,7 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
         <DialogHeader>
           <DialogTitle>Tạo Tòa nhà mới</DialogTitle>
           <DialogDescription>
-            Nhập thông tin tòa nhà để quản lý phòng và khách thuê
+            Nhập thông tin tòa nhà để quản lý căn hộ và khách hàng
           </DialogDescription>
         </DialogHeader>
 
@@ -141,33 +136,6 @@ export function CreateBuildingDialog({ open, onOpenChange }: CreateBuildingDialo
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="area_id"
-                    render={({ field }) => (
-                      <FormItem>
-                      <FormLabel>Khu vực</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || undefined}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn khu vực (tùy chọn)" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {areas?.map((area) => (
-                            <SelectItem key={area.id} value={area.id}>
-                              {area.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="type"

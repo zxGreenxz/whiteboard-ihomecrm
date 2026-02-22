@@ -115,7 +115,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
                 {room.name}
               </DialogTitle>
               <DialogDescription>
-                Chi tiết phòng và hợp đồng hiện tại
+                Chi tiết căn hộ và hợp đồng hiện tại
               </DialogDescription>
             </DialogHeader>
 
@@ -172,7 +172,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Khách thuê:</span>
+                      <span className="text-sm text-muted-foreground">Khách hàng:</span>
                       <span className="font-medium">{activeContract.tenant?.full_name}</span>
                     </div>
 
@@ -196,7 +196,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>Phòng chưa có hợp đồng</p>
+                  <p>Căn hộ chưa có hợp đồng</p>
                 </div>
               )}
 
@@ -253,14 +253,14 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
                   className={activeContract ? "col-span-2" : ""}
                 >
                   <AlertCircle className="w-4 h-4 mr-2" />
-                  Báo cáo sự cố
+                  Báo cáo công việc
                 </Button>
               </div>
             </div>
           </>
         ) : (
           <div className="text-center py-8">
-            <p className="text-muted-foreground">Không tìm thấy thông tin phòng</p>
+            <p className="text-muted-foreground">Không tìm thấy thông tin căn hộ</p>
           </div>
         )}
       </DialogContent>

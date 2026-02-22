@@ -103,9 +103,9 @@ export function CreateTenantDialog({ open, onOpenChange }: CreateTenantDialogPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Tạo Khách thuê mới</DialogTitle>
+          <DialogTitle>Tạo Khách hàng mới</DialogTitle>
           <DialogDescription>
-            Nhập thông tin khách thuê cho hệ thống quản lý
+            Nhập thông tin khách hàng cho hệ thống quản lý
           </DialogDescription>
         </DialogHeader>
 
@@ -335,7 +335,7 @@ export function CreateTenantDialog({ open, onOpenChange }: CreateTenantDialogPro
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Trạng thái hiện tại của khách thuê
+                        Trạng thái hiện tại của khách hàng
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -350,7 +350,7 @@ export function CreateTenantDialog({ open, onOpenChange }: CreateTenantDialogPro
                       <FormLabel>Ghi chú</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Ghi chú thêm về khách thuê..."
+                          placeholder="Ghi chú thêm về khách hàng..."
                           {...field}
                         />
                       </FormControl>
@@ -369,7 +369,7 @@ export function CreateTenantDialog({ open, onOpenChange }: CreateTenantDialogPro
                   Hủy
                 </Button>
                 <Button type="submit" disabled={createTenant.isPending}>
-                  {createTenant.isPending ? "Đang tạo..." : "Tạo khách thuê"}
+                  {createTenant.isPending ? "Đang tạo..." : "Tạo khách hàng"}
                 </Button>
               </div>
             </form>

@@ -214,7 +214,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                 setValue('deposit_refund', contract.total_deposit || 0);
               }}
             >
-              <div className="font-medium text-sm">Khách rời phòng</div>
+              <div className="font-medium text-sm">Khách rời căn hộ</div>
               <div className="text-xs text-gray-500 mt-1">
                 Trả cọc, lập hóa đơn thanh lý
               </div>
@@ -229,11 +229,11 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
               {/* Contract Info Summary */}
               <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Khách thuê:</span>
+                  <span className="text-gray-600">Khách hàng:</span>
                   <span className="font-medium">{contract.tenant?.full_name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Phòng/Giường:</span>
+                  <span className="text-gray-600">Căn hộ/Giường:</span>
                   <span className="font-medium">
                     {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : ''}
                     {contract.bed ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}` : ''}
@@ -268,7 +268,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
           )}
 
           {/* ============================================ */}
-          {/* CASE 2: Khách rời phòng */}
+          {/* CASE 2: Khách rời căn hộ */}
           {/* ============================================ */}
           {terminationCase === 'MOVE_OUT' && (
             <>
@@ -280,11 +280,11 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-600">Khách thuê:</span>
+                    <span className="text-gray-600">Khách hàng:</span>
                     <div className="font-medium">{contract.tenant?.full_name}</div>
                   </div>
                   <div>
-                    <span className="text-gray-600">Phòng/Giường:</span>
+                    <span className="text-gray-600">Căn hộ/Giường:</span>
                     <div className="font-medium">
                       {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : ''}
                       {contract.bed ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}` : ''}
@@ -400,7 +400,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Tiền phòng thừa</Label>
+                    <Label>Tiền căn hộ thừa</Label>
                     <Input
                       type="number"
                       value={proratedRent}
@@ -450,7 +450,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                     <span className="font-medium">{formatCurrency(summary.depositRefund)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-700">Tiền phòng thừa:</span>
+                    <span className="text-gray-700">Tiền căn hộ thừa:</span>
                     <span className="font-medium text-green-600">+{formatCurrency(summary.excessRent)}</span>
                   </div>
                   <div className="border-t pt-2 space-y-1">
@@ -468,7 +468,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                     <span>
                       {summary.finalAmount >= 0
                         ? 'Chủ nhà thanh toán cho khách:'
-                        : 'Khách thuê thanh toán thêm:'}
+                        : 'Khách hàng thanh toán thêm:'}
                     </span>
                     <span className={summary.finalAmount >= 0 ? 'text-green-600' : 'text-red-600'}>
                       {formatCurrency(Math.abs(summary.finalAmount))}
@@ -480,7 +480,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                   <Alert className="bg-red-50 border-red-200">
                     <AlertTriangle className="h-4 w-4 text-red-600" />
                     <AlertDescription className="text-red-800 text-sm">
-                      Khách thuê còn nợ. Cần thu thêm trước khi thanh lý.
+                      Khách hàng còn nợ. Cần thu thêm trước khi thanh lý.
                     </AlertDescription>
                   </Alert>
                 )}

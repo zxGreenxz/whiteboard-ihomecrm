@@ -421,7 +421,7 @@ export function generateTerminationSummary(estimate: TerminationCostEstimate): s
     }
   }
 
-  lines.push(`2. Tiền phòng ngày lẻ (${estimate.prorated_days} ngày): ${estimate.prorated_rent.toLocaleString('vi-VN')} VND`);
+  lines.push(`2. Tiền căn hộ ngày lẻ (${estimate.prorated_days} ngày): ${estimate.prorated_rent.toLocaleString('vi-VN')} VND`);
   lines.push(`   (Đơn giá: ${estimate.daily_rent_rate.toLocaleString('vi-VN')} VND/ngày)`);
 
   if (estimate.prorated_services > 0) {

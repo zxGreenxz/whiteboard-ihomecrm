@@ -297,7 +297,7 @@ const ContractDetailPage = () => {
     const labels: Record<string, string> = {
       FIXED: 'Cố định',
       PER_PERSON: 'Theo người',
-      PER_ROOM: 'Theo phòng',
+      PER_ROOM: 'Theo căn hộ',
       METER_READING: 'Theo công tơ',
     };
     return labels[type] || type;
@@ -460,7 +460,7 @@ const ContractDetailPage = () => {
         <Alert className="mb-6 bg-orange-50 border-orange-200">
           <AlertCircle className="h-4 w-4 text-orange-600" />
           <AlertDescription className="text-orange-800">
-            Hợp đồng sẽ hết hạn trong {daysRemaining} ngày. Vui lòng liên hệ khách thuê để gia hạn.
+            Hợp đồng sẽ hết hạn trong {daysRemaining} ngày. Vui lòng liên hệ khách hàng để gia hạn.
           </AlertDescription>
         </Alert>
       )}
@@ -585,7 +585,7 @@ const ContractDetailPage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <User className="h-5 w-5" />
-                    Thông tin khách thuê
+                    Thông tin khách hàng
                     {contractTenants.length > 1 && (
                       <Badge variant="secondary" className="ml-2">
                         {contractTenants.length} người
@@ -673,7 +673,7 @@ const ContractDetailPage = () => {
                           size="sm"
                           onClick={() => navigate(`/tenants/${contract.tenant_id}`)}
                         >
-                          Xem chi tiết khách thuê
+                          Xem chi tiết khách hàng
                         </Button>
                       </div>
                     </>
@@ -686,7 +686,7 @@ const ContractDetailPage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Home className="h-5 w-5" />
-                    Thông tin phòng
+                    Thông tin căn hộ
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1140,7 +1140,7 @@ const ContractDetailPage = () => {
                           <div className="text-sm mt-1">
                             Loại: {item.details.termination_type}
                             {item.details.actual_move_out_date && (
-                              <> - Ngày trả phòng: {format(new Date(item.details.actual_move_out_date), 'dd/MM/yyyy', { locale: vi })}</>
+                              <> - Ngày trả căn hộ: {format(new Date(item.details.actual_move_out_date), 'dd/MM/yyyy', { locale: vi })}</>
                             )}
                             {(item.status === 'DRAFT' || item.status === 'PENDING_APPROVAL') && (
                               <div className="mt-2">
@@ -1148,7 +1148,7 @@ const ContractDetailPage = () => {
                                   variant="outline"
                                   size="sm"
                                   className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                                  onClick={() => navigate('/contracts/termination-approvals')}
+                                  onClick={() => navigate('/contracts?tab=termination-approvals')}
                                 >
                                   <CheckCircle className="h-3 w-3 mr-1" />
                                   Đi đến duyệt thanh lý

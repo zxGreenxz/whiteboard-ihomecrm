@@ -8,6 +8,12 @@ import {
   Download,
   Eye,
   Search,
+  PenTool,
+  FileSignature,
+  Home,
+  ClipboardList,
+  Receipt,
+  Wallet,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,51 +28,52 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  useDocumentTemplates,
+  useDocumentTemplatesByType,
   useUpdateDocumentTemplate,
   useDownloadTemplate,
   DocumentTemplate,
+  TemplateType,
+  TEMPLATE_TYPE_LABELS,
+  TEMPLATE_TYPES,
   CATEGORY_LABELS,
 } from "@/hooks/useDocumentTemplates";
 import { CreateTemplateDialog } from "@/components/document-templates/CreateTemplateDialog";
 import { EditTemplateDialog } from "@/components/document-templates/EditTemplateDialog";
 import { DeleteTemplateDialog } from "@/components/document-templates/DeleteTemplateDialog";
 
-const TemplatesPage = () => {
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
+const TAB_ICONS: Record<TemplateType, React.ReactNode> = {
+  signature: <PenTool className="h-4 w-4" />,
+  deposit_contract: <FileSignature className="h-4 w-4" />,
+  lease_contract: <Home className="h-4 w-4" />,
+  handover_report: <ClipboardList className="h-4 w-4" />,
+  invoice: <Receipt className="h-4 w-4" />,
+  receipt: <Wallet className="h-4 w-4" />,
+};
 
-  const { data: templates, isLoading } = useDocumentTemplates();
+interface TemplateListProps {
+  templateType: TemplateType;
+  onEdit: (template: DocumentTemplate) => void;
+  onDelete: (template: DocumentTemplate) => void;
+}
+
+function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const { data: templates, isLoading } = useDocumentTemplatesByType(templateType);
   const updateMutation = useUpdateDocumentTemplate();
   const downloadMutation = useDownloadTemplate();
 
-  // Filter templates by search term
   const filteredTemplates = useMemo(() => {
     if (!templates) return [];
     if (!searchTerm) return templates;
-
     const search = searchTerm.toLowerCase();
     return templates.filter(
-      (template) =>
-        template.name.toLowerCase().includes(search) ||
-        template.code.toLowerCase().includes(search) ||
-        CATEGORY_LABELS[template.category].toLowerCase().includes(search)
+      (t) =>
+        t.name.toLowerCase().includes(search) ||
+        t.code.toLowerCase().includes(search)
     );
   }, [templates, searchTerm]);
-
-  const handleEdit = (template: DocumentTemplate) => {
-    setSelectedTemplate(template);
-    setEditDialogOpen(true);
-  };
-
-  const handleDelete = (template: DocumentTemplate) => {
-    setSelectedTemplate(template);
-    setDeleteDialogOpen(true);
-  };
 
   const handleToggleDefault = async (template: DocumentTemplate) => {
     try {
@@ -74,7 +81,7 @@ const TemplatesPage = () => {
         id: template.id,
         is_default: !template.is_default,
       });
-    } catch (error) {
+    } catch {
       // Error handled by mutation
     }
   };
@@ -92,58 +99,33 @@ const TemplatesPage = () => {
 
   if (isLoading) {
     return (
-      <MainLayout>
-        <div className="container mx-auto p-6 max-w-7xl">
-          <div className="flex items-center justify-center h-64">
-            <p className="text-muted-foreground">Đang tải...</p>
-          </div>
-        </div>
-      </MainLayout>
+      <div className="flex items-center justify-center h-32">
+        <p className="text-muted-foreground">Đang tải...</p>
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="container mx-auto p-6 max-w-7xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Mẫu biểu</h1>
-              <p className="text-sm text-muted-foreground">
-                Quản lý mẫu hợp đồng, hóa đơn và biên lai
-              </p>
-            </div>
-          </div>
-
-          <Button
-            onClick={() => setCreateDialogOpen(true)}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Thêm mẫu
-          </Button>
-        </div>
-
+    <div className="space-y-4">
       {/* Search */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Tìm kiếm..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Input
+          placeholder="Tìm kiếm mẫu..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
+      </div>
 
-      {/* Templates Table */}
+      {/* Variables info */}
+      {templates && templates.length > 0 && templates.some((t) => t.variables && Array.isArray(t.variables) && t.variables.length > 0) && (
+        <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded-lg">
+          Mẫu biểu hỗ trợ biến thay thế (variables) để tự động điền thông tin khi in.
+        </div>
+      )}
+
+      {/* Table */}
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -166,7 +148,7 @@ const TemplatesPage = () => {
                       <p className="text-muted-foreground">
                         {searchTerm
                           ? "Không tìm thấy mẫu nào"
-                          : "Chưa có mẫu nào. Nhấn 'Thêm mẫu' để tạo mới."}
+                          : `Chưa có ${TEMPLATE_TYPE_LABELS[templateType]} nào. Nhấn 'Thêm mẫu' để tạo mới.`}
                       </p>
                     </div>
                   </TableCell>
@@ -174,19 +156,16 @@ const TemplatesPage = () => {
               ) : (
                 filteredTemplates.map((template) => (
                   <TableRow key={template.id}>
-                    {/* Code */}
                     <TableCell className="font-medium text-green-600">
                       {template.code}
                     </TableCell>
-
-                    {/* Actions */}
                     <TableCell>
                       <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                          onClick={() => handleEdit(template)}
+                          onClick={() => onEdit(template)}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -194,14 +173,12 @@ const TemplatesPage = () => {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDelete(template)}
+                          onClick={() => onDelete(template)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
-
-                    {/* Name */}
                     <TableCell>
                       <div>
                         <p className="font-medium">{template.name}</p>
@@ -212,15 +189,13 @@ const TemplatesPage = () => {
                         )}
                       </div>
                     </TableCell>
-
-                    {/* Category */}
                     <TableCell>
                       <Badge variant="outline">
-                        {CATEGORY_LABELS[template.category]}
+                        {template.type
+                          ? TEMPLATE_TYPE_LABELS[template.type]
+                          : CATEGORY_LABELS[template.category]}
                       </Badge>
                     </TableCell>
-
-                    {/* View/Download */}
                     <TableCell>
                       <div className="flex gap-1">
                         <Button
@@ -230,7 +205,7 @@ const TemplatesPage = () => {
                           onClick={() => handleView(template)}
                         >
                           <Eye className="h-3 w-3 mr-1" />
-                          Xem mẫu
+                          Xem
                         </Button>
                         <span className="text-gray-300">|</span>
                         <Button
@@ -240,12 +215,10 @@ const TemplatesPage = () => {
                           onClick={() => handleDownload(template)}
                         >
                           <Download className="h-3 w-3 mr-1" />
-                          Tải xuống
+                          Tải
                         </Button>
                       </div>
                     </TableCell>
-
-                    {/* Default Toggle */}
                     <TableCell className="text-center">
                       <Switch
                         checked={template.is_default}
@@ -258,8 +231,6 @@ const TemplatesPage = () => {
               )}
             </TableBody>
           </Table>
-
-          {/* Footer with pagination info */}
           {filteredTemplates.length > 0 && (
             <div className="px-4 py-3 border-t text-sm text-muted-foreground text-right">
               1 - {filteredTemplates.length} trên tổng số {filteredTemplates.length} bản ghi
@@ -267,18 +238,86 @@ const TemplatesPage = () => {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      {/* Dialogs */}
-      <CreateTemplateDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
+const TemplatesPage = () => {
+  const [activeTab, setActiveTab] = useState<TemplateType>("signature");
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
 
-      <EditTemplateDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        template={selectedTemplate}
-      />
+  const handleEdit = (template: DocumentTemplate) => {
+    setSelectedTemplate(template);
+    setEditDialogOpen(true);
+  };
+
+  const handleDelete = (template: DocumentTemplate) => {
+    setSelectedTemplate(template);
+    setDeleteDialogOpen(true);
+  };
+
+  return (
+    <MainLayout>
+      <div className="container mx-auto p-6 max-w-7xl">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Mẫu biểu</h1>
+              <p className="text-sm text-muted-foreground">
+                Quản lý 6 loại mẫu biểu: chữ ký, hợp đồng, biên bản, hóa đơn, thu chi
+              </p>
+            </div>
+          </div>
+
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Thêm mẫu
+          </Button>
+        </div>
+
+        {/* Tabs for 6 template types */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TemplateType)}>
+          <TabsList className="mb-4 flex flex-wrap h-auto gap-1">
+            {TEMPLATE_TYPES.map((type) => (
+              <TabsTrigger key={type} value={type} className="flex items-center gap-1.5">
+                {TAB_ICONS[type]}
+                {TEMPLATE_TYPE_LABELS[type]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {TEMPLATE_TYPES.map((type) => (
+            <TabsContent key={type} value={type}>
+              <TemplateList
+                templateType={type}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            </TabsContent>
+          ))}
+        </Tabs>
+
+        {/* Dialogs */}
+        <CreateTemplateDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+        />
+
+        <EditTemplateDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          template={selectedTemplate}
+        />
 
         <DeleteTemplateDialog
           open={deleteDialogOpen}

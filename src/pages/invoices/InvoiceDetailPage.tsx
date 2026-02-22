@@ -110,13 +110,13 @@ const InvoiceDetailPage = () => {
   const isOverdue = invoice.status !== 'PAID' && invoice.due_date && new Date(invoice.due_date) < new Date();
 
   const handleApprove = () => {
-    if (confirm('Xác nhận duyệt hóa đơn này?')) {
+    if (confirm('Bạn có chắc chắn muốn duyệt hóa đơn này?')) {
       approveMutation.mutate(invoice.id);
     }
   };
 
   const handleCancel = () => {
-    if (confirm('Xác nhận hủy hóa đơn này? Hành động này không thể hoàn tác.')) {
+    if (confirm('Bạn có chắc chắn muốn hủy hóa đơn này? Hành động này không thể hoàn tác.')) {
       cancelMutation.mutate(invoice.id);
     }
   };
@@ -208,7 +208,7 @@ const InvoiceDetailPage = () => {
                   <div className="font-medium">{invoice.contract?.contract_number || 'N/A'}</div>
                 </div>
                 <div>
-                  <div className="text-gray-600">Khách thuê</div>
+                  <div className="text-gray-600">Khách hàng</div>
                   <div className="font-medium">{invoice.contract?.tenant?.full_name || 'N/A'}</div>
                 </div>
                 <div>
@@ -216,7 +216,7 @@ const InvoiceDetailPage = () => {
                   <div className="font-medium">{invoice.contract?.tenant?.phone || 'N/A'}</div>
                 </div>
                 <div>
-                  <div className="text-gray-600">Phòng</div>
+                  <div className="text-gray-600">Căn hộ</div>
                   <div className="font-medium">
                     {invoice.contract?.room?.name || invoice.contract?.bed?.name || 'N/A'}
                   </div>

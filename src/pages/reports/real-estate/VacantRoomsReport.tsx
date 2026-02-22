@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Home, Building2, DoorOpen } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
 import { useVacantRoomsReport } from "@/hooks/useReports";
+import { useBuildings } from "@/hooks/useBuildings";
+import { useFloors } from "@/hooks/useFloors";
 import {
   Table,
   TableBody,
@@ -13,11 +16,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function VacantRoomsReport() {
-  const { data: vacantRooms, isLoading } = useVacantRoomsReport();
+  const [buildingId, setBuildingId] = useState<string | undefined>();
+  const [floorId, setFloorId] = useState<string | undefined>();
+
+  const { data: buildings } = useBuildings();
+  const { data: floors } = useFloors(buildingId);
+  const { data: vacantRooms, isLoading } = useVacantRoomsReport(buildingId, floorId);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -29,26 +43,26 @@ export default function VacantRoomsReport() {
   const stats = vacantRooms && (
     <>
       <ReportCard
-        title="Tổng số phòng trống"
+        title="Tổng số căn hộ trống"
         value={vacantRooms.length}
         icon={Home}
-        description="Phòng đang sẵn sàng cho thuê"
+        description="Căn hộ đang sẵn sàng cho thuê"
       />
       <ReportCard
         title="Trống dưới 7 ngày"
-        value={vacantRooms.filter(r => r.days_vacant && r.days_vacant <= 7).length}
+        value={vacantRooms.filter(r => r.days_vacant != null && r.days_vacant <= 7).length}
         icon={DoorOpen}
-        description="Phòng mới trống gần đây"
+        description="Căn hộ mới trống gần đây"
       />
       <ReportCard
         title="Trống 7-30 ngày"
-        value={vacantRooms.filter(r => r.days_vacant && r.days_vacant > 7 && r.days_vacant <= 30).length}
+        value={vacantRooms.filter(r => r.days_vacant != null && r.days_vacant > 7 && r.days_vacant <= 30).length}
         icon={Building2}
         description="Cần ưu tiên cho thuê"
       />
       <ReportCard
         title="Trống trên 30 ngày"
-        value={vacantRooms.filter(r => r.days_vacant && r.days_vacant > 30).length}
+        value={vacantRooms.filter(r => r.days_vacant != null && r.days_vacant > 30).length}
         icon={Home}
         description="Cần xem xét lại giá"
       />
@@ -57,115 +71,139 @@ export default function VacantRoomsReport() {
 
   const exportData = vacantRooms?.map(room => ({
     "Tòa nhà": room.buildings?.name || "N/A",
-    "Phòng": room.room_number,
+    "Căn hộ": room.name,
+    "Tầng": room.floor ?? "N/A",
     "Diện tích (m²)": room.area,
-    "Giá thuê": room.rental_price,
-    "Loại phòng": room.room_type,
-    "Tình trạng": room.condition,
-    "Số ngày trống": room.days_vacant || "Chưa xác định",
+    "Giá thuê": room.rent_price,
+    "Trạng thái": room.status,
+    "Số ngày trống": room.days_vacant ?? "Chưa xác định",
     "Ngày trống gần nhất": room.last_end_date || "N/A",
   })) || [];
 
+  const filters = (
+    <div className="flex flex-wrap gap-4">
+      <div className="w-[200px]">
+        <Select
+          value={buildingId || "all"}
+          onValueChange={(v) => {
+            setBuildingId(v === "all" ? undefined : v);
+            setFloorId(undefined);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Chọn toà nhà" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả toà nhà</SelectItem>
+            {buildings?.map((b) => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="w-[200px]">
+        <Select
+          value={floorId || "all"}
+          onValueChange={(v) => setFloorId(v === "all" ? undefined : v)}
+          disabled={!buildingId}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Chọn tầng" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả tầng</SelectItem>
+            {floors?.map((f) => (
+              <SelectItem key={f.id} value={String(f.floor_number)}>
+                {f.name || `Tầng ${f.floor_number}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
   return (
     <MainLayout>
-    <ReportLayout
-      title="Báo cáo Phòng trống"
-      description="Danh sách các phòng hiện đang trống và sẵn sàng cho thuê"
-      icon={<Home className="h-8 w-8" />}
-      actions={
-        <ExportButtons
-          data={exportData}
-          filename="bao-cao-phong-trong"
-        />
-      }
-      stats={stats}
-    >
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách phòng trống</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3, 4, 5].map(i => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : vacantRooms && vacantRooms.length > 0 ? (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tòa nhà</TableHead>
-                    <TableHead>Phòng</TableHead>
-                    <TableHead>Diện tích</TableHead>
-                    <TableHead>Giá thuê</TableHead>
-                    <TableHead>Loại</TableHead>
-                    <TableHead>Tình trạng</TableHead>
-                    <TableHead>Số ngày trống</TableHead>
-                    <TableHead>Ghi chú</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vacantRooms.map((room) => (
-                    <TableRow key={room.id}>
-                      <TableCell className="font-medium">
-                        {room.buildings?.name || "N/A"}
-                      </TableCell>
-                      <TableCell>{room.room_number}</TableCell>
-                      <TableCell>{room.area} m²</TableCell>
-                      <TableCell>{formatCurrency(room.rental_price)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{room.room_type}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            room.condition === "GOOD"
-                              ? "default"
-                              : room.condition === "FAIR"
-                              ? "secondary"
-                              : "destructive"
-                          }
-                        >
-                          {room.condition === "GOOD"
-                            ? "Tốt"
-                            : room.condition === "FAIR"
-                            ? "Trung bình"
-                            : "Cần sửa"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {room.days_vacant ? (
-                          <span className={
-                            room.days_vacant <= 7
-                              ? "text-green-600"
-                              : room.days_vacant <= 30
-                              ? "text-yellow-600"
-                              : "text-red-600"
-                          }>
-                            {room.days_vacant} ngày
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">Chưa xác định</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {room.notes || "-"}
-                      </TableCell>
+      <ReportLayout
+        title="Báo cáo Căn hộ trống"
+        description="Danh sách các căn hộ hiện đang trống và sẵn sàng cho thuê"
+        icon={<Home className="h-8 w-8" />}
+        actions={
+          <ExportButtons
+            data={exportData}
+            filename="bao-cao-can-ho-trong"
+          />
+        }
+        stats={stats}
+        filters={filters}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>Danh sách căn hộ trống</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
+              </div>
+            ) : vacantRooms && vacantRooms.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tòa nhà</TableHead>
+                      <TableHead>Căn hộ</TableHead>
+                      <TableHead>Tầng</TableHead>
+                      <TableHead>Diện tích</TableHead>
+                      <TableHead>Giá thuê</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                      <TableHead>Số ngày trống</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              Không có phòng trống nào
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </ReportLayout>
+                  </TableHeader>
+                  <TableBody>
+                    {vacantRooms.map((room) => (
+                      <TableRow key={room.id}>
+                        <TableCell className="font-medium">
+                          {room.buildings?.name || "N/A"}
+                        </TableCell>
+                        <TableCell>{room.name}</TableCell>
+                        <TableCell>{room.floor ?? "-"}</TableCell>
+                        <TableCell>{room.area ? `${room.area} m²` : "-"}</TableCell>
+                        <TableCell>{formatCurrency(room.rent_price)}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {room.status}
+                        </TableCell>
+                        <TableCell>
+                          {room.days_vacant != null ? (
+                            <span className={
+                              room.days_vacant <= 7
+                                ? "text-green-600"
+                                : room.days_vacant <= 30
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                            }>
+                              {room.days_vacant} ngày
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">Chưa xác định</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Không có căn hộ trống nào
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </ReportLayout>
     </MainLayout>
   );
 }

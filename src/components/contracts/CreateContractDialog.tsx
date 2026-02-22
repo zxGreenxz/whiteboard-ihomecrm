@@ -62,7 +62,7 @@ const contractSchema = z.object({
   notes: z.string().optional(),
 
   // Customer - representative tenant (đại diện)
-  tenant_id: z.string().min(1, 'Vui lòng chọn khách thuê'),
+  tenant_id: z.string().min(1, 'Vui lòng chọn khách hàng'),
 
   // Rent & Deposit
   rent_price: z.number().min(0, 'Giá thuê phải >= 0'),
@@ -88,7 +88,7 @@ const contractSchema = z.object({
 }).refine((data) => {
   return !!(data.room_id || data.bed_id);
 }, {
-  message: "Vui lòng chọn phòng hoặc giường",
+  message: "Vui lòng chọn căn hộ hoặc giường",
   path: ["room_id"],
 });
 
@@ -237,7 +237,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
         setIsUploadingFile(false);
       } catch (error) {
         setIsUploadingFile(false);
-        toast.error('Upload file thất bại. Hợp đồng sẽ được tạo không có file đính kèm.');
+        toast.error('Có lỗi xảy ra khi tải file lên. Hợp đồng sẽ được tạo không có file đính kèm.');
         // Continue without file
       }
     }
@@ -364,7 +364,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
               </div>
 
               <div className="space-y-2">
-                <Label>Phòng *</Label>
+                <Label>Căn hộ *</Label>
                 <Select
                   value={selectedRoomId}
                   onValueChange={(value) => {
@@ -383,7 +383,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Chọn phòng..." />
+                    <SelectValue placeholder="Chọn căn hộ..." />
                   </SelectTrigger>
                   <SelectContent>
                     {availableRooms?.map((room) => (
@@ -557,7 +557,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
             {(showTenantSelect || selectedTenants.length === 0) && (
               <div className="max-w-md">
-                <Label>Chọn khách thuê từ danh sách *</Label>
+                <Label>Chọn khách hàng từ danh sách *</Label>
                 <Select
                   value=""
                   onValueChange={(value) => {
@@ -581,7 +581,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                   }}
                 >
                   <SelectTrigger id="tenant-select-trigger">
-                    <SelectValue placeholder="Chọn khách thuê..." />
+                    <SelectValue placeholder="Chọn khách hàng..." />
                   </SelectTrigger>
                   <SelectContent>
                     {tenants
@@ -761,7 +761,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                 className="bg-green-600 hover:bg-green-700"
                 onClick={() => {
                   if (!assets || assets.length === 0) {
-                    toast.info('Không có tài sản nào trong phòng này. Vui lòng thêm tài sản trước.');
+                    toast.info('Không có tài sản nào trong căn hộ này. Vui lòng thêm tài sản trước.');
                     return;
                   }
                   // Add empty row - user will select asset from dropdown

@@ -144,10 +144,10 @@ export const useCreateVehicle = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      toast.success("Thêm phương tiện thành công");
+      toast.success("Phương tiện đã được thêm thành công");
     },
     onError: (error: Error) => {
-      toast.error("Thêm phương tiện thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi thêm phương tiện: " + error.message);
     },
   });
 };
@@ -170,10 +170,10 @@ export const useUpdateVehicle = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      toast.success("Cập nhật phương tiện thành công");
+      toast.success("Phương tiện đã được cập nhật thành công");
     },
     onError: (error: Error) => {
-      toast.error("Cập nhật phương tiện thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi cập nhật phương tiện: " + error.message);
     },
   });
 };
@@ -193,10 +193,10 @@ export const useDeleteVehicle = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      toast.success("Xóa phương tiện thành công");
+      toast.success("Phương tiện đã được xóa thành công");
     },
     onError: (error: Error) => {
-      toast.error("Xóa phương tiện thất bại: " + error.message);
+      toast.error("Có lỗi xảy ra khi xóa phương tiện: " + error.message);
     },
   });
 };
