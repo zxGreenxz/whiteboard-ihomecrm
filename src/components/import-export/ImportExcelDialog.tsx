@@ -61,8 +61,8 @@ const ImportExcelDialog = ({
       title: 'Import Tòa nhà',
       description: 'Tải lên file Excel chứa danh sách tòa nhà',
       templateName: 'Mẫu Import Tòa nhà',
-      columns: ['name', 'address', 'area_id', 'floors', 'electricity_price', 'water_price'],
-      columnLabels: ['Tên tòa nhà', 'Địa chỉ', 'Mã khu vực', 'Số tầng', 'Giá điện', 'Giá nước'],
+      columns: ['name', 'address', 'floors', 'electricity_price', 'water_price'],
+      columnLabels: ['Tên tòa nhà', 'Địa chỉ', 'Số tầng', 'Giá điện', 'Giá nước'],
     },
     rooms: {
       title: 'Import Căn hộ',

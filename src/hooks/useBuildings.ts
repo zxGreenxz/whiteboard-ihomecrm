@@ -16,7 +16,6 @@ export const useBuildings = () => {
         .from("buildings")
         .select(`
           *,
-          area:areas(id, name, code),
           rooms:rooms(count)
         `)
         .is("deleted_at", null)
@@ -43,10 +42,7 @@ export const useBuilding = (id: string) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("buildings")
-        .select(`
-          *,
-          area:areas(id, name, code)
-        `)
+        .select(`*`)
         .eq("id", id)
         .is("deleted_at", null)
         .single();
@@ -100,7 +96,6 @@ export const useCreateBuilding = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      queryClient.invalidateQueries({ queryKey: ["areas"] }); // Update buildings count in areas
       toast.success("Tòa nhà đã được tạo thành công");
     },
     onError: (error) => {
@@ -144,7 +139,6 @@ export const useUpdateBuilding = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
       queryClient.invalidateQueries({ queryKey: ["buildings", data.id] });
-      queryClient.invalidateQueries({ queryKey: ["areas"] });
       toast.success("Tòa nhà đã được cập nhật thành công");
     },
     onError: (error) => {
@@ -195,7 +189,6 @@ export const useDeleteBuilding = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
-      queryClient.invalidateQueries({ queryKey: ["areas"] });
       toast.success("Tòa nhà đã được xóa thành công");
     },
     onError: (error) => {

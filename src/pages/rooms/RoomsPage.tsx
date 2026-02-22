@@ -39,7 +39,7 @@ import { ImportExcelDialog, ExportExcelDialog } from "@/components/import-export
 import type { Database } from "@/integrations/supabase/types";
 
 type RoomWithBuilding = Database["public"]["Tables"]["rooms"]["Row"] & {
-  building?: { id: string; name: string; code: string | null; area_id: string | null } | null;
+  building?: { id: string; name: string; code: string | null } | null;
 };
 
 export default function RoomsPage() {

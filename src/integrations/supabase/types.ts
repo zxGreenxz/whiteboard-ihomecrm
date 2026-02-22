@@ -348,7 +348,6 @@ export type Database = {
       buildings: {
         Row: {
           amenities: Json | null
-          area_id: string | null
           code: string | null
           created_at: string
           deleted_at: string | null
@@ -369,7 +368,6 @@ export type Database = {
         }
         Insert: {
           amenities?: Json | null
-          area_id?: string | null
           code?: string | null
           created_at?: string
           deleted_at?: string | null
@@ -390,7 +388,6 @@ export type Database = {
         }
         Update: {
           amenities?: Json | null
-          area_id?: string | null
           code?: string | null
           created_at?: string
           deleted_at?: string | null
