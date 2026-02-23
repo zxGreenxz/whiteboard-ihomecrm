@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
-import { Pencil, Trash2, Gauge } from 'lucide-react';
+import { Gauge } from 'lucide-react';
 import {
   useMetersGroupedByRoom,
   type MeterWithRoom,
@@ -113,19 +113,18 @@ const MeterList = ({ buildingId, meterType, onEdit, onDelete }: MeterListProps) 
                       <div className="flex justify-end gap-1">
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="sm"
                           onClick={() => onEdit(meter)}
-                          title="Sửa"
                         >
-                          <Pencil className="h-4 w-4" />
+                          Sửa
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="sm"
                           onClick={() => onDelete(meter.id)}
-                          title="Xoá"
+                          className="text-destructive hover:text-destructive"
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          Xoá
                         </Button>
                       </div>
                     </TableCell>

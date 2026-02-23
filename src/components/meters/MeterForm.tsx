@@ -30,7 +30,6 @@ import { meterFormSchema, type MeterFormValues } from '@/lib/meterReadingValidat
 import { useCreateMeter, useUpdateMeter, type MeterWithRoom } from '@/hooks/useMeters';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useServices } from '@/hooks/useServices';
 
 interface MeterFormProps {
   open: boolean;
@@ -52,7 +51,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
   const { data: buildings } = useBuildings();
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const { data: rooms } = useRooms(selectedBuildingId || undefined);
-  const { data: services } = useServices();
 
   const form = useForm<MeterFormValues>({
     resolver: zodResolver(meterFormSchema),
@@ -61,7 +59,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
       room_id: '',
       meter_type: undefined,
       code: '',
-      service_id: '',
       initial_reading: 0,
       installation_date: '',
       location_note: '',
@@ -80,7 +77,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
         room_id: meter.room_id || '',
         meter_type: meter.meter_type as 'ELECTRICITY' | 'WATER' | 'GAS',
         code: meter.code || '',
-        service_id: meter.service_id || '',
         initial_reading: meter.initial_reading ?? 0,
         installation_date: meter.installation_date || '',
         location_note: meter.location_note || '',
@@ -97,7 +93,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
         room_id: '',
         meter_type: undefined,
         code: '',
-        service_id: '',
         initial_reading: 0,
         installation_date: '',
         location_note: '',
@@ -120,7 +115,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
             room_id: data.room_id,
             meter_type: data.meter_type,
             code: data.code,
-            service_id: data.service_id,
             initial_reading: data.initial_reading,
             installation_date: data.installation_date || null,
             location_note: data.location_note || null,
@@ -131,12 +125,12 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
           },
         });
       } else {
+        // service_id is auto-resolved from meter_type in the useCreateMeter hook
         await createMeter.mutateAsync({
           building_id: data.building_id,
           room_id: data.room_id,
           meter_type: data.meter_type,
           code: data.code,
-          service_id: data.service_id,
           initial_reading: data.initial_reading,
           installation_date: data.installation_date || null,
           location_note: data.location_note || null,
@@ -144,7 +138,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
           model: data.model || null,
           serial_number: data.serial_number || null,
           notes: data.notes || null,
-        });
+        } as Parameters<typeof createMeter.mutateAsync>[0]);
       }
       onOpenChange(false);
     } catch {
@@ -262,31 +256,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                   )}
                 />
               </div>
-
-              <FormField
-                control={form.control}
-                name="service_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dịch vụ *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn dịch vụ" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {services?.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
               {/* Optional fields */}
               <div className="space-y-4 pt-4 border-t">

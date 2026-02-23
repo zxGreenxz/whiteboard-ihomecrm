@@ -24,7 +24,7 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
       { title: "Gạch nợ tự động", href: "/settings/categories/auto-debt", description: "Cấu hình gạch nợ tự động" },
       { title: "Loại thu chi", href: "/settings/categories/income-expense-types", description: "Quản lý loại thu chi" },
       { title: "Định mức dịch vụ", href: "/settings/categories/service-quotas", description: "Quản lý định mức dịch vụ" },
-      { title: "Đồng hồ công tơ", href: "/settings/categories/meters", description: "Quản lý đồng hồ công tơ" },
+      { title: "Đồng hồ công tơ", href: "/settings/meters", description: "Quản lý đồng hồ công tơ" },
     ],
   },
   {

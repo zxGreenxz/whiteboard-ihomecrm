@@ -93,7 +93,7 @@ import ServiceQuotasPage from "./pages/settings/categories/ServiceQuotasPage";
 import MetersPage from "./pages/settings/MetersPage";
 import IncomeExpenseTypesNewPage from "./pages/settings/IncomeExpenseTypesPage";
 import IncomeExpenseTemplatesPage from "./pages/settings/IncomeExpenseTemplatesPage";
-import MetersLegacyPage from "./pages/settings/categories/MetersPage";
+
 import SuppliersPage from "./pages/settings/categories/SuppliersPage";
 import WarehousesPage from "./pages/settings/categories/WarehousesPage";
 import AssetTypesPage from "./pages/settings/categories/AssetTypesPage";
@@ -257,7 +257,7 @@ const App = () => (
           <Route path="/settings/categories/auto-debt" element={<ProtectedRoute><AutoDebtPage /></ProtectedRoute>} />
           <Route path="/settings/categories/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesPage /></ProtectedRoute>} />
           <Route path="/settings/categories/service-quotas" element={<ProtectedRoute><ServiceQuotasPage /></ProtectedRoute>} />
-          <Route path="/settings/categories/meters" element={<ProtectedRoute><MetersLegacyPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/meters" element={<Navigate to="/settings/meters" replace />} />
           <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
           <Route path="/settings/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesNewPage /></ProtectedRoute>} />
           <Route path="/settings/income-expense-templates" element={<ProtectedRoute><IncomeExpenseTemplatesPage /></ProtectedRoute>} />

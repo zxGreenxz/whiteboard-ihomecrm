@@ -81,7 +81,7 @@ const routeLabels: Record<string, string> = {
   '/settings/categories/auto-debt': 'Gạch nợ tự động',
   '/settings/categories/income-expense-types': 'Loại thu chi',
   '/settings/categories/service-quotas': 'Định mức dịch vụ',
-  '/settings/categories/meters': 'Đồng hồ công tơ',
+  '/settings/meters': 'Đồng hồ công tơ',
   '/settings/categories/suppliers': 'Nhà cung cấp',
   '/settings/categories/warehouses': 'Kho tài sản',
   '/settings/categories/asset-types': 'Loại tài sản',

@@ -8,7 +8,6 @@ export const meterFormSchema = z.object({
     required_error: 'Vui lòng chọn loại công tơ',
   }),
   code: z.string().min(1, 'Vui lòng nhập mã công tơ'),
-  service_id: z.string().min(1, 'Vui lòng chọn dịch vụ'),
   initial_reading: z.number().min(0).optional().default(0),
   installation_date: z.string().optional(),
   location_note: z.string().optional(),

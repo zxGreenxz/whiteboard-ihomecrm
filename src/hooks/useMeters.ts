@@ -58,6 +58,40 @@ export const useMeter = (id: string) => {
   });
 };
 
+/** Mapping from meter_type to service name in the services table */
+const METER_TYPE_TO_SERVICE_NAME: Record<string, string> = {
+  ELECTRICITY: "Điện",
+  WATER: "Nước",
+  GAS: "Gas",
+};
+
+/**
+ * Resolve service_id from meter_type by querying the services table.
+ * Throws and shows toast error if no matching service is found.
+ */
+async function resolveServiceId(meterType: string | null | undefined): Promise<string> {
+  const serviceName = meterType ? METER_TYPE_TO_SERVICE_NAME[meterType] : undefined;
+  if (!serviceName) {
+    toast.error("Không tìm thấy dịch vụ tương ứng với loại công tơ");
+    throw new Error(`No service mapping for meter_type: ${meterType}`);
+  }
+
+  const { data, error } = await supabase
+    .from("services")
+    .select("id")
+    .eq("name", serviceName)
+    .is("deleted_at", null)
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    toast.error("Không tìm thấy dịch vụ tương ứng với loại công tơ");
+    throw new Error(`Service not found for meter_type: ${meterType} (name: ${serviceName})`);
+  }
+
+  return data.id;
+}
+
 export const useCreateMeter = () => {
   const queryClient = useQueryClient();
 
@@ -69,9 +103,12 @@ export const useCreateMeter = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      // Auto-resolve service_id from meter_type
+      const serviceId = await resolveServiceId(meter.meter_type);
+
       const { data, error } = await supabase
         .from("meters")
-        .insert({ ...meter, user_id: user.id })
+        .insert({ ...meter, user_id: user.id, service_id: serviceId })
         .select()
         .single();
 
@@ -88,7 +125,7 @@ export const useCreateMeter = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
-      toast.success("Công tơ đã được tạo thành công");
+      toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error) => {
       console.error("Error creating meter:", error);
@@ -101,9 +138,16 @@ export const useUpdateMeter = () => {
 
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: MeterUpdate }) => {
+      // Auto-resolve service_id when meter_type is being updated
+      let resolvedUpdates = { ...updates };
+      if (updates.meter_type) {
+        const serviceId = await resolveServiceId(updates.meter_type);
+        resolvedUpdates.service_id = serviceId;
+      }
+
       const { data, error } = await supabase
         .from("meters")
-        .update(updates)
+        .update(resolvedUpdates)
         .eq("id", id)
         .select()
         .single();
@@ -146,7 +190,7 @@ export const useDeleteMeter = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
-      toast.success("Công tơ đã được xóa thành công");
+      toast.success("Dữ liệu đã được XOÁ thành công");
     },
     onError: (error) => {
       console.error("Error deleting meter:", error);
