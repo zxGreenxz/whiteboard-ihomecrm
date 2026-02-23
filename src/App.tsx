@@ -90,7 +90,8 @@ import BankAccountsPage from "./pages/settings/categories/BankAccountsPage";
 import AutoDebtPage from "./pages/settings/categories/AutoDebtPage";
 import IncomeExpenseTypesPage from "./pages/settings/categories/IncomeExpenseTypesPage";
 import ServiceQuotasPage from "./pages/settings/categories/ServiceQuotasPage";
-import MetersPage from "./pages/settings/categories/MetersPage";
+import MetersPage from "./pages/settings/MetersPage";
+import MetersLegacyPage from "./pages/settings/categories/MetersPage";
 import SuppliersPage from "./pages/settings/categories/SuppliersPage";
 import WarehousesPage from "./pages/settings/categories/WarehousesPage";
 import AssetTypesPage from "./pages/settings/categories/AssetTypesPage";
@@ -254,7 +255,8 @@ const App = () => (
           <Route path="/settings/categories/auto-debt" element={<ProtectedRoute><AutoDebtPage /></ProtectedRoute>} />
           <Route path="/settings/categories/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesPage /></ProtectedRoute>} />
           <Route path="/settings/categories/service-quotas" element={<ProtectedRoute><ServiceQuotasPage /></ProtectedRoute>} />
-          <Route path="/settings/categories/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/meters" element={<ProtectedRoute><MetersLegacyPage /></ProtectedRoute>} />
+          <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
           {/* Categories Sub-Pages - Tài sản */}
           <Route path="/settings/categories/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/settings/categories/warehouses" element={<ProtectedRoute><WarehousesPage /></ProtectedRoute>} />

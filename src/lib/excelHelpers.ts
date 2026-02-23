@@ -776,3 +776,55 @@ export function downloadImportTemplate(type: 'buildings' | 'rooms' | 'tenants'):
 
   XLSX.writeFile(workbook, `mau-${type}.xlsx`);
 }
+
+/**
+ * Download Meter Reading Import Template
+ * Columns: Mã công tơ, Ngày chốt, Chỉ số mới, Ghi chú
+ */
+export function downloadMeterReadingImportTemplate(): void {
+  const sampleData = [
+    {
+      'Mã công tơ (*)': 'CTD-201',
+      'Ngày chốt (*)': '2025-01-15',
+      'Chỉ số mới (*)': 1250,
+      'Ghi chú': 'Ghi chú mẫu',
+    },
+    {
+      'Mã công tơ (*)': 'CTN-201',
+      'Ngày chốt (*)': '2025-01-15',
+      'Chỉ số mới (*)': 85,
+      'Ghi chú': '',
+    },
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(sampleData);
+
+  worksheet['!cols'] = [
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 30 },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Mẫu chỉ số');
+
+  XLSX.writeFile(workbook, 'mau-chi-so-cong-to.xlsx');
+}
+
+/**
+ * Parse Meter Reading Excel file
+ * Maps Vietnamese headers to field names expected by excelImportRowSchema
+ */
+export async function parseMeterReadingExcel(
+  file: File
+): Promise<Array<{ meter_code: string; reading_date: string; current_reading: number; notes?: string }>> {
+  const headerMapping = {
+    'Mã công tơ (*)': 'meter_code' as const,
+    'Ngày chốt (*)': 'reading_date' as const,
+    'Chỉ số mới (*)': 'current_reading' as const,
+    'Ghi chú': 'notes' as const,
+  };
+
+  return parseExcelFile(file, headerMapping as any);
+}

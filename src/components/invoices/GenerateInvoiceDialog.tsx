@@ -25,6 +25,7 @@ import { useCreateInvoice } from '@/hooks/useInvoices';
 import { useContracts } from '@/hooks/useContracts';
 import { useMeterReadings } from '@/hooks/useInvoices';
 import { useVehicles } from '@/hooks/useVehicles';
+import MeterReadingSelector from '@/components/invoices/MeterReadingSelector';
 import { Receipt, Plus, Trash2, Home, Zap, Droplet } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -58,6 +59,8 @@ type GenerateInvoiceFormData = z.infer<typeof generateInvoiceSchema>;
 
 const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProps) => {
   const [selectedContractId, setSelectedContractId] = useState<string>('');
+  const [selectedElectricReadingId, setSelectedElectricReadingId] = useState<string>();
+  const [selectedWaterReadingId, setSelectedWaterReadingId] = useState<string>();
   const createMutation = useCreateInvoice();
   const { data: contractsData } = useContracts({ status: 'ACTIVE' });
   const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
@@ -94,6 +97,27 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const watchedBillingEnd = watch('billing_period_end');
 
   const selectedContract = contracts?.find((c) => c.id === watchedContractId);
+
+  // Derive room ID and settlement month for meter reading integration
+  const contractRoomId = selectedContract?.room?.id || selectedContract?.bed?.room?.id || '';
+  const billingMonth = watchedBillingStart
+    ? format(new Date(watchedBillingStart), 'yyyy-MM')
+    : '';
+
+  // Get unit prices for electricity and water from contract services
+  const electricityService = selectedContract?.contract_services?.find(
+    (cs) => cs.service?.name?.toLowerCase().includes('điện') || cs.service?.type === 'METER_READING'
+  );
+  const waterService = selectedContract?.contract_services?.find(
+    (cs) => cs.service?.name?.toLowerCase().includes('nước') || (cs.service?.type === 'METER_READING' && cs.service?.name?.toLowerCase().includes('nước'))
+  );
+  // Separate electricity vs water more precisely
+  const electricityUnitPrice = selectedContract?.contract_services?.find(
+    (cs) => cs.service?.name?.toLowerCase().includes('điện')
+  )?.unit_price || 0;
+  const waterUnitPrice = selectedContract?.contract_services?.find(
+    (cs) => cs.service?.name?.toLowerCase().includes('nước')
+  )?.unit_price || 0;
 
   // Auto-generate title when contract or dates change
   useEffect(() => {
@@ -146,6 +170,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const handleClose = () => {
     reset();
     setSelectedContractId('');
+    setSelectedElectricReadingId(undefined);
+    setSelectedWaterReadingId(undefined);
     onOpenChange(false);
   };
 
@@ -167,46 +193,38 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     });
   };
 
-  const addUtilityFromMeter = () => {
-    if (!selectedContract || !meterReadings) return;
-
-    const latestElectric = meterReadings
-      .filter((r) => r.meter_type === 'ELECTRICITY')
-      .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
-
-    if (latestElectric) {
-      const usage = latestElectric.current_reading - latestElectric.previous_reading;
-      const service = selectedContract.contract_services?.find((cs) => cs.service_id === latestElectric.service_id);
-      const unitPrice = service?.unit_price || 0;
-
-      append({
-        type: 'UTILITY',
-        description: `Điện (${latestElectric.previous_reading} → ${latestElectric.current_reading})`,
-        quantity: usage,
-        unit_price: unitPrice,
-        amount: usage * unitPrice,
-        service_id: latestElectric.service_id,
-      });
+  // Handler for when an approved meter reading is selected (Requirement 11.1, 11.2)
+  const handleMeterReadingSelect = (
+    meterType: 'ELECTRICITY' | 'WATER',
+    data: { readingId: string; consumption: number; amount: number; description: string }
+  ) => {
+    if (meterType === 'ELECTRICITY') {
+      setSelectedElectricReadingId(data.readingId);
+    } else {
+      setSelectedWaterReadingId(data.readingId);
     }
 
-    const latestWater = meterReadings
-      .filter((r) => r.meter_type === 'WATER')
-      .sort((a, b) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime())[0];
+    // Find the service_id for this meter type
+    const service = selectedContract?.contract_services?.find(
+      (cs) => cs.service?.name?.toLowerCase().includes(meterType === 'ELECTRICITY' ? 'điện' : 'nước')
+    );
 
-    if (latestWater) {
-      const usage = latestWater.current_reading - latestWater.previous_reading;
-      const service = selectedContract.contract_services?.find((cs) => cs.service_id === latestWater.service_id);
-      const unitPrice = service?.unit_price || 0;
-
-      append({
-        type: 'UTILITY',
-        description: `Nước (${latestWater.previous_reading} → ${latestWater.current_reading})`,
-        quantity: usage,
-        unit_price: unitPrice,
-        amount: usage * unitPrice,
-        service_id: latestWater.service_id,
-      });
+    // Remove existing item of same utility type before adding
+    const existingIndex = watchedItems.findIndex(
+      (item) => item.type === 'UTILITY' && item.description.toLowerCase().includes(meterType === 'ELECTRICITY' ? 'điện' : 'nước')
+    );
+    if (existingIndex >= 0) {
+      remove(existingIndex);
     }
+
+    append({
+      type: 'UTILITY',
+      description: data.description,
+      quantity: data.consumption,
+      unit_price: meterType === 'ELECTRICITY' ? electricityUnitPrice : waterUnitPrice,
+      amount: data.amount,
+      service_id: service?.service_id,
+    });
   };
 
   const updateItemAmount = (index: number) => {
@@ -350,17 +368,6 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             <div className="flex items-center justify-between">
               <Label>Các khoản thu *</Label>
               <div className="flex gap-2">
-                {meterReadings && meterReadings.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addUtilityFromMeter}
-                  >
-                    <Zap className="h-4 w-4 mr-2" />
-                    Thêm điện/nước từ chỉ số
-                  </Button>
-                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -372,6 +379,29 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                 </Button>
               </div>
             </div>
+
+            {/* Meter Reading Selectors for Electricity/Water (Requirement 11.1, 11.2, 11.3) */}
+            {selectedContract && contractRoomId && billingMonth && (
+              <div className="space-y-3 p-3 bg-gray-50 rounded-md border">
+                <p className="text-sm font-medium text-gray-700">Chỉ số công tơ</p>
+                <MeterReadingSelector
+                  roomId={contractRoomId}
+                  month={billingMonth}
+                  meterType="ELECTRICITY"
+                  unitPrice={electricityUnitPrice}
+                  selectedReadingId={selectedElectricReadingId}
+                  onSelect={(data) => handleMeterReadingSelect('ELECTRICITY', data)}
+                />
+                <MeterReadingSelector
+                  roomId={contractRoomId}
+                  month={billingMonth}
+                  meterType="WATER"
+                  unitPrice={waterUnitPrice}
+                  selectedReadingId={selectedWaterReadingId}
+                  onSelect={(data) => handleMeterReadingSelect('WATER', data)}
+                />
+              </div>
+            )}
 
             <div className="border rounded-md">
               <table className="w-full">
