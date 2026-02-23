@@ -1,0 +1,147 @@
+import { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Plus } from 'lucide-react';
+import {
+  useIncomeExpenseTypes,
+  type IncomeExpenseType,
+} from '@/hooks/useIncomeExpenseTypes';
+import IncomeExpenseTypeForm from '@/components/income-expense-types/IncomeExpenseTypeForm';
+
+interface IncomeExpenseItemSelectorProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  voucherType: 'INCOME' | 'EXPENSE';
+  onSelect: (types: IncomeExpenseType[]) => void;
+  selectedTypeIds: string[];
+}
+
+const IncomeExpenseItemSelector = ({
+  open,
+  onOpenChange,
+  voucherType,
+  onSelect,
+  selectedTypeIds,
+}: IncomeExpenseItemSelectorProps) => {
+  const filterType = voucherType === 'INCOME' ? 'income' : 'expense';
+  const { data: types = [], isLoading } = useIncomeExpenseTypes(filterType);
+
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [isTypeFormOpen, setIsTypeFormOpen] = useState(false);
+
+  // Sync checkedIds with selectedTypeIds when dialog opens
+  useEffect(() => {
+    if (open) {
+      setCheckedIds(new Set(selectedTypeIds));
+    }
+  }, [open, selectedTypeIds]);
+
+  const handleToggle = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleConfirm = () => {
+    const selected = types.filter((t) => checkedIds.has(t.id));
+    onSelect(selected);
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    onOpenChange(false);
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>
+              Chọn hạng mục {voucherType === 'INCOME' ? 'thu' : 'chi'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Type list with checkboxes */}
+            <div className="max-h-[300px] overflow-y-auto space-y-2">
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  Đang tải...
+                </p>
+              ) : types.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  Chưa có loại {voucherType === 'INCOME' ? 'thu' : 'chi'} nào.
+                  Hãy thêm mới.
+                </p>
+              ) : (
+                types.map((t) => (
+                  <label
+                    key={t.id}
+                    className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent"
+                  >
+                    <Checkbox
+                      checked={checkedIds.has(t.id)}
+                      onCheckedChange={() => handleToggle(t.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{t.name}</p>
+                      {t.description && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {t.description}
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            {/* Add new type button */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setIsTypeFormOpen(true)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Thêm loại {voucherType === 'INCOME' ? 'thu' : 'chi'} mới
+            </Button>
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={handleCancel}>
+                Huỷ
+              </Button>
+              <Button type="button" onClick={handleConfirm}>
+                Xác nhận
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inline form to create new type */}
+      <IncomeExpenseTypeForm
+        open={isTypeFormOpen}
+        onOpenChange={setIsTypeFormOpen}
+        type={null}
+      />
+    </>
+  );
+};
+
+export default IncomeExpenseItemSelector;

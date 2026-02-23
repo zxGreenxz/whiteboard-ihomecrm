@@ -23,7 +23,7 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
 
       const entries: CashBookEntry[] = [];
 
-      // Fetch payments (income)
+      // Fetch payments (income from invoices)
       let paymentsQuery = supabase
         .from("payments")
         .select(`
@@ -107,6 +107,53 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
         });
       });
 
+      // Fetch APPROVED income_expenses (thu/chi phát sinh ngoài hoá đơn)
+      let incomeExpensesQuery = supabase
+        .from("income_expenses")
+        .select(`
+          id,
+          type,
+          name,
+          voucher_date,
+          total_amount,
+          building:buildings!income_expenses_building_id_fkey (
+            name
+          )
+        `)
+        .eq('approval_status', 'APPROVED');
+
+      if (start_date) {
+        incomeExpensesQuery = incomeExpensesQuery.gte("voucher_date", start_date);
+      }
+      if (end_date) {
+        incomeExpensesQuery = incomeExpensesQuery.lte("voucher_date", end_date);
+      }
+
+      const { data: incomeExpenses, error: incomeExpensesError } = await incomeExpensesQuery;
+
+      if (incomeExpensesError) {
+        toast.error("Không thể tải dữ liệu thu chi phát sinh");
+        throw incomeExpensesError;
+      }
+
+      // Add income_expenses to entries
+      incomeExpenses?.forEach((ie: any) => {
+        const buildingName = ie.building?.name || "";
+        const prefix = ie.type === "INCOME" ? "Thu" : "Chi";
+        const desc = buildingName
+          ? `${prefix} phát sinh: ${ie.name} (${buildingName})`
+          : `${prefix} phát sinh: ${ie.name}`;
+        entries.push({
+          id: ie.id,
+          date: ie.voucher_date,
+          type: ie.type as "INCOME" | "EXPENSE",
+          description: desc,
+          amount: ie.total_amount || 0,
+          reference_id: ie.id,
+          reference_type: "income_expense",
+        });
+      });
+
       // Sort by date descending
       entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -115,7 +162,8 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
   });
 };
 
-// Get cash book summary
+
+// Get cash book summary (includes payments, expenses, and approved income_expenses)
 export const useCashBookSummary = (start_date?: string, end_date?: string) => {
   return useQuery({
     queryKey: ["cash-book-summary", start_date, end_date],
@@ -123,7 +171,7 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get total income
+      // Get total income from payments (invoices)
       let incomeQuery = supabase
         .from("payments")
         .select("amount")
@@ -139,7 +187,7 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
       const { data: incomeData, error: incomeError } = await incomeQuery;
       if (incomeError) throw incomeError;
 
-      const totalIncome = incomeData?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const paymentIncome = incomeData?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
       // Get total expenses
       let expenseQuery = supabase
@@ -157,7 +205,29 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
       const { data: expenseData, error: expenseError } = await expenseQuery;
       if (expenseError) throw expenseError;
 
-      const totalExpense = expenseData?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
+      const legacyExpense = expenseData?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
+
+      // Get APPROVED income_expenses (thu/chi phát sinh)
+      let ieQuery = supabase
+        .from("income_expenses")
+        .select("type, total_amount")
+        .eq('approval_status', 'APPROVED');
+
+      if (start_date) {
+        ieQuery = ieQuery.gte("voucher_date", start_date);
+      }
+      if (end_date) {
+        ieQuery = ieQuery.lte("voucher_date", end_date);
+      }
+
+      const { data: ieData, error: ieError } = await ieQuery;
+      if (ieError) throw ieError;
+
+      const ieIncome = ieData?.filter(ie => ie.type === 'INCOME').reduce((sum, ie) => sum + (ie.total_amount || 0), 0) || 0;
+      const ieExpense = ieData?.filter(ie => ie.type === 'EXPENSE').reduce((sum, ie) => sum + (ie.total_amount || 0), 0) || 0;
+
+      const totalIncome = paymentIncome + ieIncome;
+      const totalExpense = legacyExpense + ieExpense;
 
       // Calculate opening balance (sum before start_date)
       let openingBalance = 0;
@@ -174,8 +244,17 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
           .eq('user_id', user.id)
           .lt("expense_date", start_date);
 
-        const prevIncomeTotal = prevIncome?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-        const prevExpenseTotal = prevExpense?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
+        // Previous APPROVED income_expenses
+        const { data: prevIE } = await supabase
+          .from("income_expenses")
+          .select("type, total_amount")
+          .eq('approval_status', 'APPROVED')
+          .lt("voucher_date", start_date);
+
+        const prevIncomeTotal = (prevIncome?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0)
+          + (prevIE?.filter(ie => ie.type === 'INCOME').reduce((sum, ie) => sum + (ie.total_amount || 0), 0) || 0);
+        const prevExpenseTotal = (prevExpense?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0)
+          + (prevIE?.filter(ie => ie.type === 'EXPENSE').reduce((sum, ie) => sum + (ie.total_amount || 0), 0) || 0);
 
         openingBalance = prevIncomeTotal - prevExpenseTotal;
       }
@@ -191,7 +270,7 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
   });
 };
 
-// Get cash flow data by day
+// Get cash flow data by day (includes payments, expenses, and approved income_expenses)
 export const useCashFlowByDay = (start_date: string, end_date: string) => {
   return useQuery({
     queryKey: ["cash-flow-by-day", start_date, end_date],
@@ -215,6 +294,14 @@ export const useCashFlowByDay = (start_date: string, end_date: string) => {
         .gte("expense_date", start_date)
         .lte("expense_date", end_date);
 
+      // Get APPROVED income_expenses by day
+      const { data: incomeExpenses } = await supabase
+        .from("income_expenses")
+        .select("voucher_date, type, total_amount")
+        .eq('approval_status', 'APPROVED')
+        .gte("voucher_date", start_date)
+        .lte("voucher_date", end_date);
+
       // Group by date
       const dateMap: Record<string, { date: string; income: number; expense: number }> = {};
 
@@ -232,6 +319,19 @@ export const useCashFlowByDay = (start_date: string, end_date: string) => {
           dateMap[date] = { date, income: 0, expense: 0 };
         }
         dateMap[date].expense += e.amount || 0;
+      });
+
+      // Add approved income_expenses to daily totals
+      incomeExpenses?.forEach((ie) => {
+        const date = ie.voucher_date;
+        if (!dateMap[date]) {
+          dateMap[date] = { date, income: 0, expense: 0 };
+        }
+        if (ie.type === 'INCOME') {
+          dateMap[date].income += ie.total_amount || 0;
+        } else {
+          dateMap[date].expense += ie.total_amount || 0;
+        }
       });
 
       // Convert to array and sort

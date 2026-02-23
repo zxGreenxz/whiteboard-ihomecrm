@@ -39,7 +39,7 @@ import VehiclesPage from "./pages/vehicles/VehiclesPage";
 import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
 import InvoicesPage from "./pages/invoices/InvoicesPage";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
-import PaymentsPage from "./pages/payments/PaymentsPage";
+import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
 // CashBookPage moved to reports/finance/DailyCashbookReport - redirect via /cash-book route below
 
 // Assets & Issues Pages
@@ -91,6 +91,8 @@ import AutoDebtPage from "./pages/settings/categories/AutoDebtPage";
 import IncomeExpenseTypesPage from "./pages/settings/categories/IncomeExpenseTypesPage";
 import ServiceQuotasPage from "./pages/settings/categories/ServiceQuotasPage";
 import MetersPage from "./pages/settings/MetersPage";
+import IncomeExpenseTypesNewPage from "./pages/settings/IncomeExpenseTypesPage";
+import IncomeExpenseTemplatesPage from "./pages/settings/IncomeExpenseTemplatesPage";
 import MetersLegacyPage from "./pages/settings/categories/MetersPage";
 import SuppliersPage from "./pages/settings/categories/SuppliersPage";
 import WarehousesPage from "./pages/settings/categories/WarehousesPage";
@@ -203,7 +205,7 @@ const App = () => (
           <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
           <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
           {/* Primary route: /income-expense, redirect /payments → /income-expense */}
-          <Route path="/income-expense" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
+          <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
 
           {/* === CÔNG VIỆC === */}
@@ -257,6 +259,8 @@ const App = () => (
           <Route path="/settings/categories/service-quotas" element={<ProtectedRoute><ServiceQuotasPage /></ProtectedRoute>} />
           <Route path="/settings/categories/meters" element={<ProtectedRoute><MetersLegacyPage /></ProtectedRoute>} />
           <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
+          <Route path="/settings/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesNewPage /></ProtectedRoute>} />
+          <Route path="/settings/income-expense-templates" element={<ProtectedRoute><IncomeExpenseTemplatesPage /></ProtectedRoute>} />
           {/* Categories Sub-Pages - Tài sản */}
           <Route path="/settings/categories/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/settings/categories/warehouses" element={<ProtectedRoute><WarehousesPage /></ProtectedRoute>} />
