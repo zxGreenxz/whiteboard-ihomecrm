@@ -22,10 +22,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useRecordPayment, type InvoiceWithRelations } from '@/hooks/useInvoices';
+import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
+import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CreditCard, Banknote, Smartphone, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 
 interface RecordPaymentDialogProps {
@@ -44,7 +43,7 @@ const paymentSchema = z.object({
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
-  const recordMutation = useRecordPayment();
+  const recordMutation = useRecordPaymentRPC();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -161,11 +160,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const onSubmit = async (data: PaymentFormData) => {
     if (!invoice) return;
 
-    if (data.amount > outstandingAmount) {
-      alert(`Số tiền thanh toán không được vượt quá số tiền còn lại (${formatCurrency(outstandingAmount)})`);
-      return;
-    }
-
     try {
       setIsUploading(true);
 
@@ -181,7 +175,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       recordMutation.mutate(
         {
           invoice_id: invoice.id,
-          ...data,
+          amount: data.amount,
+          payment_method: data.payment_method,
+          payment_date: data.payment_date,
+          notes: data.notes,
           receipt_image_url: receiptImageUrl,
         },
         {
@@ -224,7 +221,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             Ghi nhận thanh toán
           </DialogTitle>
           <DialogDescription>
-            Hóa đơn: {invoice.title}
+            Hóa đơn: {invoice.invoice_number}
           </DialogDescription>
         </DialogHeader>
 
@@ -233,17 +230,13 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Khách hàng:</span>
-              <span className="font-medium">{invoice.contract?.tenant?.full_name}</span>
+              <span className="font-medium">{invoice.tenant?.full_name}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Kỳ thanh toán:</span>
               <span className="font-medium">
-                {invoice.billing_period_start && invoice.billing_period_end && (
-                  <>
-                    {format(new Date(invoice.billing_period_start), 'dd/MM', { locale: vi })}
-                    {' - '}
-                    {format(new Date(invoice.billing_period_end), 'dd/MM/yyyy', { locale: vi })}
-                  </>
+                {invoice.billing_month && (
+                  <>Tháng {invoice.billing_month.split('-')[1]}/{invoice.billing_month.split('-')[0]}</>
                 )}
               </span>
             </div>
@@ -291,10 +284,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 1/2
               </Button>
             </div>
-            {watchedAmount > outstandingAmount && (
-              <Alert className="bg-red-50 border-red-200">
-                <AlertDescription className="text-red-800 text-sm">
-                  Số tiền thanh toán vượt quá số tiền còn lại!
+            {watchedAmount > outstandingAmount && outstandingAmount > 0 && (
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertDescription className="text-amber-800 text-sm">
+                  Số tiền vượt quá còn lại — phần dư sẽ được ghi nhận vào tiền thừa của khách thuê.
                 </AlertDescription>
               </Alert>
             )}
@@ -430,7 +423,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           </div>
 
           {/* Payment Preview */}
-          {watchedAmount > 0 && watchedAmount <= outstandingAmount && (
+          {watchedAmount > 0 && (
             <div className="bg-blue-50 border-2 border-blue-200 p-4 rounded-md space-y-3">
               <h4 className="font-bold text-blue-900">Sau khi thanh toán:</h4>
 
@@ -445,6 +438,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     {formatCurrency(Math.max(0, newOutstanding))}
                   </span>
                 </div>
+                {newOutstanding < 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Tiền thừa:</span>
+                    <span className="font-medium text-blue-600">{formatCurrency(Math.abs(newOutstanding))}</span>
+                  </div>
+                )}
                 <div className="flex justify-between border-t pt-2">
                   <span className="text-gray-700">Trạng thái mới:</span>
                   <span className="font-bold text-blue-900">
@@ -463,7 +462,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <Alert className="bg-green-50 border-green-200">
                   <CheckCircle className="h-4 w-4 text-green-600" />
                   <AlertDescription className="text-green-800 text-sm">
-                    Hóa đơn sẽ được đánh dấu là đã thanh toán đầy đủ
+                    {newOutstanding < 0
+                      ? `Hóa đơn sẽ được thanh toán đầy đủ. Số tiền thừa ${formatCurrency(Math.abs(newOutstanding))} sẽ được ghi nhận cho khách thuê.`
+                      : 'Hóa đơn sẽ được đánh dấu là đã thanh toán đầy đủ'}
                   </AlertDescription>
                 </Alert>
               )}
@@ -492,7 +493,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </Button>
             <Button
               type="submit"
-              disabled={isProcessing || !watchedAmount || watchedAmount > outstandingAmount}
+              disabled={isProcessing || !watchedAmount}
             >
               {isProcessing ? (
                 <>

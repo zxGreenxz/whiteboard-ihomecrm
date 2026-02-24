@@ -1,110 +1,77 @@
+// =============================================
+// Invoice Module Hooks (Reimplemented)
+// TanStack Query hooks for invoice CRUD, approval, statistics, and excess amounts.
+// Uses new schema with billing_month (YYYY-MM) and building_id on invoices.
+// =============================================
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import type { Database } from '@/integrations/supabase/types';
 import type { PaginatedData } from '@/hooks/usePagination';
+import type {
+  InvoiceWithRelations,
+  InvoiceFilters,
+  InvoiceFormData,
+  InvoiceFormItem,
+  InvoiceStatus,
+} from '@/types/invoice';
+import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
 
-// =============================================
-// Types
-// =============================================
+// Re-export types for backward compatibility
+export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
-type Invoice = Database['public']['Tables']['invoices']['Row'];
-type InvoiceInsert = Database['public']['Tables']['invoices']['Insert'];
-type Payment = Database['public']['Tables']['payments']['Row'];
-type MeterReading = Database['public']['Tables']['meter_readings']['Row'];
+// Legacy types kept for backward compatibility with existing components
+export type InvoiceGenerationType = 'RENT_ONLY' | 'SERVICE_ONLY' | 'RENT_AND_SERVICE';
 
-export interface InvoiceFilters {
-  status?: string;
-  contract_id?: string;
-  search?: string;
+export interface AutoGenerateInvoicesData {
+  billing_period_start: string;
+  billing_period_end: string;
+  issue_date: string;
+  due_date: string;
+  contract_ids?: string[];
+  building_id?: string;
+  invoice_type: InvoiceGenerationType;
 }
+
+export interface UpdateInvoiceData {
+  id: string;
+  formData: InvoiceFormData;
+}
+
+// =============================================
+// Shared select string for invoice queries
+// =============================================
+
+const INVOICE_LIST_SELECT = `
+  *,
+  contract:contracts!invoices_contract_id_fkey (
+    id, contract_number,
+    tenant:tenants!contracts_tenant_id_fkey (id, full_name, phone)
+  ),
+  building:buildings!invoices_building_id_fkey (id, name),
+  room:rooms!invoices_room_id_fkey (id, name),
+  bed:beds!invoices_bed_id_fkey (id, name),
+  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
+  payments (id, amount, payment_date, payment_method, notes, receipt_image_url)
+`;
+
+// =============================================
+// Pagination params
+// =============================================
 
 export interface InvoicePaginationParams {
   page?: number;
   pageSize?: number;
 }
 
-export interface InvoiceWithRelations extends Invoice {
-  contract?: {
-    id: string;
-    contract_number: string | null;
-    tenant: {
-      id: string;
-      full_name: string;
-      phone: string;
-    };
-    room?: {
-      id: string;
-      name: string;
-      building: { name: string };
-    };
-    bed?: {
-      id: string;
-      name: string;
-    };
-  };
-  invoice_items?: Array<{
-    id: string;
-    description: string;
-    quantity: number;
-    unit_price: number;
-    amount: number;
-    type: string;
-  }>;
-  payments?: Array<{
-    id: string;
-    amount: number;
-    payment_date: string;
-    payment_method: string;
-    notes?: string;
-    receipt_image_url?: string;
-  }>;
-}
-
-export interface CreateInvoiceData {
-  contract_id: string;
-  billing_period_start: string;
-  billing_period_end: string;
-  issue_date: string;
-  due_date: string;
-  title: string;
-  items: Array<{
-    type: string;
-    description: string;
-    quantity: number;
-    unit_price: number;
-    amount: number;
-    service_id?: string;
-  }>;
-  notes?: string;
-}
-
-export interface RecordPaymentData {
-  invoice_id: string;
-  amount: number;
-  payment_method: string;
-  payment_date: string;
-  notes?: string;
-  receipt_image_url?: string;
-}
-
-export interface MeterReadingData {
-  contract_id: string;
-  service_id: string;
-  meter_type: string;
-  reading_date: string;
-  current_reading: number;
-  previous_reading: number;
-  notes?: string;
-}
-
 // =============================================
-// Get All Invoices (with optional pagination)
+// useInvoices - Query invoices with pagination and filters
+// Requirements: 10.2, 10.4, 10.5, 13.7
 // =============================================
 
 export const useInvoices = (
   filters?: InvoiceFilters,
-  pagination?: InvoicePaginationParams
+  pagination?: InvoicePaginationParams,
 ) => {
   return useQuery({
     queryKey: ['invoices', filters, pagination],
@@ -112,43 +79,40 @@ export const useInvoices = (
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      let query = supabase
+      let query = (supabase
         .from('invoices')
-        .select(`
-          *,
-          contract:contracts!invoices_contract_id_fkey (
-            id,
-            contract_number,
-            tenant:tenants!contracts_tenant_id_fkey (
-              id, full_name, phone
-            ),
-            room:rooms!contracts_room_id_fkey (
-              id, name,
-              building:buildings!rooms_building_id_fkey (name)
-            ),
-            bed:beds!contracts_bed_id_fkey (
-              id, name
-            )
-          ),
-          invoice_items (
-            id, description, quantity, unit_price, amount, type
-          ),
-          payments (
-            id, amount, payment_date, payment_method, notes, receipt_image_url
-          )
-        `, { count: 'exact' })
+        .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
         .eq('user_id', user.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-      if (filters?.status) {
-        query = query.eq('status', filters.status as any);
+      // Apply filters
+      if (filters?.building_id) {
+        query = query.eq('building_id', filters.building_id);
+      }
+      if (filters?.room_id) {
+        query = query.eq('room_id', filters.room_id);
+      }
+      if (filters?.bed_id) {
+        query = query.eq('bed_id', filters.bed_id);
       }
       if (filters?.contract_id) {
         query = query.eq('contract_id', filters.contract_id);
       }
+      if (filters?.status) {
+        query = query.eq('status', filters.status);
+      }
+      if (filters?.billing_month) {
+        query = query.eq('billing_month', filters.billing_month);
+      }
+      if (filters?.date_range?.start) {
+        query = query.gte('issue_date', filters.date_range.start);
+      }
+      if (filters?.date_range?.end) {
+        query = query.lte('issue_date', filters.date_range.end);
+      }
 
-      // Apply pagination if provided
+      // Apply pagination
       if (pagination?.page && pagination?.pageSize) {
         const offset = (pagination.page - 1) * pagination.pageSize;
         query = query.range(offset, offset + pagination.pageSize - 1);
@@ -162,7 +126,7 @@ export const useInvoices = (
 
       return {
         data: (data || []) as InvoiceWithRelations[],
-        count: count || 0
+        count: count || 0,
       };
     },
   });
@@ -179,39 +143,16 @@ export const useInvoicesLegacy = (filters?: {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      let query = supabase
+      let query = (supabase
         .from('invoices')
-        .select(`
-          *,
-          contract:contracts!invoices_contract_id_fkey (
-            id,
-            contract_number,
-            tenant:tenants!contracts_tenant_id_fkey (
-              id, full_name, phone
-            ),
-            room:rooms!contracts_room_id_fkey (
-              id, name,
-              building:buildings!rooms_building_id_fkey (name)
-            ),
-            bed:beds!contracts_bed_id_fkey (
-              id, name
-            )
-          ),
-          invoice_items (
-            id, description, quantity, unit_price, amount, type
-          ),
-          payments (
-            id, amount, payment_date, payment_method, notes, receipt_image_url
-          )
-        `)
+        .select(INVOICE_LIST_SELECT) as any)
         .eq('user_id', user.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
-        query = query.eq('status', filters.status as any);
+        query = query.eq('status', filters.status);
       }
-      // Apply contract_id filter if provided and not 'create' (which is used for new contracts)
       if (filters?.contract_id && filters.contract_id !== 'create') {
         query = query.eq('contract_id', filters.contract_id);
       }
@@ -227,7 +168,8 @@ export const useInvoicesLegacy = (filters?: {
 };
 
 // =============================================
-// Get Single Invoice
+// useInvoice - Query single invoice with relations
+// Requirements: 1.12, 3.1
 // =============================================
 
 export const useInvoice = (invoiceId?: string) => {
@@ -239,27 +181,9 @@ export const useInvoice = (invoiceId?: string) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('invoices')
-        .select(`
-          *,
-          contract:contracts!invoices_contract_id_fkey (
-            id, contract_number,
-            tenant:tenants!contracts_tenant_id_fkey (
-              id, full_name, phone, email
-            ),
-            room:rooms!contracts_room_id_fkey (
-              id, name,
-              building:buildings!rooms_building_id_fkey (name)
-            )
-          ),
-          invoice_items (
-            id, description, quantity, unit_price, amount, type, service_id
-          ),
-          payments (
-            id, amount, payment_date, payment_method, notes
-          )
-        `)
+        .select(INVOICE_LIST_SELECT) as any)
         .eq('id', invoiceId)
         .eq('user_id', user.id)
         .is('deleted_at', null)
@@ -273,7 +197,8 @@ export const useInvoice = (invoiceId?: string) => {
 };
 
 // =============================================
-// Create Invoice
+// useCreateInvoice - Create invoice + invoice_items, status = DRAFT
+// Requirements: 1.12, 3.1
 // =============================================
 
 export const useCreateInvoice = () => {
@@ -281,64 +206,95 @@ export const useCreateInvoice = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: CreateInvoiceData) => {
+    mutationFn: async (formData: InvoiceFormData) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { items, ...invoiceData } = data;
+      const { items, ...invoiceFields } = formData;
 
-      // Calculate totals
-      const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-      const total_amount = subtotal;
+      // Calculate totals from items
+      const subtotal = items.reduce(
+        (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,
+        0,
+      );
+      const tax_amount = subtotal * (invoiceFields.tax_percent || 0) / 100;
+      const total_amount = subtotal - (invoiceFields.discount_amount || 0) + tax_amount;
 
-      // Create invoice
+      // Generate invoice number
+      const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
+      const invoice_number = await generateInvoiceNumber(user.id);
+
+      // Insert invoice
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert({
-          ...invoiceData,
           user_id: user.id,
-          status: 'DRAFT',
+          contract_id: invoiceFields.contract_id,
+          building_id: invoiceFields.building_id,
+          room_id: invoiceFields.room_id,
+          bed_id: invoiceFields.bed_id || null,
+          invoice_number,
+          billing_month: invoiceFields.billing_month,
+          issue_date: invoiceFields.issue_date,
+          due_date: invoiceFields.due_date,
+          status: 'DRAFT' as any,
           subtotal,
+          discount_amount: invoiceFields.discount_amount || 0,
+          tax_percent: invoiceFields.tax_percent || 0,
+          tax_amount,
           total_amount,
+          prepaid_amount: invoiceFields.prepaid_amount || 0,
           paid_amount: 0,
-        })
+          previous_debt: invoiceFields.previous_debt || 0,
+          notes: invoiceFields.notes || null,
+          template_id: invoiceFields.template_id || null,
+        } as any)
         .select()
         .single();
 
       if (invoiceError) throw invoiceError;
 
-      // Add invoice items
-      const invoiceItems = items.map(item => ({
-        invoice_id: invoice.id,
-        type: item.type as any,
-        description: item.description,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        amount: item.amount,
-        service_id: item.service_id,
-      }));
+      // Insert invoice items
+      if (items.length > 0) {
+        const invoiceItems = items.map((item) => ({
+          invoice_id: invoice.id,
+          service_id: item.service_id || null,
+          type: item.type as any,
+          description: item.description,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          coefficient: item.coefficient,
+          amount: item.unit_price * item.quantity * item.coefficient,
+          previous_reading: item.previous_reading ?? null,
+          current_reading: item.current_reading ?? null,
+          from_date: item.from_date || null,
+          to_date: item.to_date || null,
+          sort_order: item.sort_order,
+        }));
 
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(invoiceItems);
+        const { error: itemsError } = await supabase
+          .from('invoice_items')
+          .insert(invoiceItems as any);
 
-      if (itemsError) throw itemsError;
+        if (itemsError) throw itemsError;
+      }
 
       return invoice;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
 
       toast({
-        title: 'Hóa đơn đã được tạo thành công',
-        description: 'Hóa đơn đã được tạo ở trạng thái nháp.',
+        title: 'Dữ liệu đã được TẠO thành công',
+        description: 'Hoá đơn mới đã được tạo ở trạng thái nháp.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Có lỗi xảy ra khi tạo hóa đơn',
+        title: 'Có lỗi xảy ra khi tạo hoá đơn',
         description: error.message,
       });
     },
@@ -346,7 +302,226 @@ export const useCreateInvoice = () => {
 };
 
 // =============================================
-// Approve Invoice
+// useUpdateInvoice - Update invoice (check canEditInvoice first)
+// Requirements: 3.1, 3.2
+// =============================================
+
+export const useUpdateInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, formData }: UpdateInvoiceData) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Fetch current invoice to check status
+      const { data: current, error: fetchError } = await supabase
+        .from('invoices')
+        .select('status')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!canEditInvoice(current.status as InvoiceStatus)) {
+        throw new Error('Không thể chỉnh sửa hoá đơn ở trạng thái này');
+      }
+
+      const { items, ...invoiceFields } = formData;
+
+      // Recalculate totals
+      const subtotal = items.reduce(
+        (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,
+        0,
+      );
+      const tax_amount = subtotal * (invoiceFields.tax_percent || 0) / 100;
+      const total_amount = subtotal - (invoiceFields.discount_amount || 0) + tax_amount;
+
+      // Update invoice
+      const { data: invoice, error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          contract_id: invoiceFields.contract_id,
+          building_id: invoiceFields.building_id,
+          room_id: invoiceFields.room_id,
+          bed_id: invoiceFields.bed_id || null,
+          billing_month: invoiceFields.billing_month,
+          issue_date: invoiceFields.issue_date,
+          due_date: invoiceFields.due_date,
+          subtotal,
+          discount_amount: invoiceFields.discount_amount || 0,
+          tax_percent: invoiceFields.tax_percent || 0,
+          tax_amount,
+          total_amount,
+          prepaid_amount: invoiceFields.prepaid_amount || 0,
+          previous_debt: invoiceFields.previous_debt || 0,
+          notes: invoiceFields.notes || null,
+          template_id: invoiceFields.template_id || null,
+        } as any)
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // Delete old items and insert new ones
+      const { error: deleteItemsError } = await supabase
+        .from('invoice_items')
+        .delete()
+        .eq('invoice_id', id);
+
+      if (deleteItemsError) throw deleteItemsError;
+
+      if (items.length > 0) {
+        const invoiceItems = items.map((item) => ({
+          invoice_id: id,
+          service_id: item.service_id || null,
+          type: item.type as any,
+          description: item.description,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          coefficient: item.coefficient,
+          amount: item.unit_price * item.quantity * item.coefficient,
+          previous_reading: item.previous_reading ?? null,
+          current_reading: item.current_reading ?? null,
+          from_date: item.from_date || null,
+          to_date: item.to_date || null,
+          sort_order: item.sort_order,
+        }));
+
+        const { error: insertItemsError } = await supabase
+          .from('invoice_items')
+          .insert(invoiceItems as any);
+
+        if (insertItemsError) throw insertItemsError;
+      }
+
+      return invoice;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+
+      toast({
+        title: 'Dữ liệu đã được CẬP NHẬT thành công',
+        description: 'Hoá đơn đã được cập nhật.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi cập nhật hoá đơn',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// useDeleteInvoice - Soft-delete single invoice
+// Requirements: 3.4, 3.5
+// =============================================
+
+export const useDeleteInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Fetch current invoice to check status
+      const { data: current, error: fetchError } = await supabase
+        .from('invoices')
+        .select('status')
+        .eq('id', invoiceId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!canDeleteInvoice(current.status as InvoiceStatus)) {
+        throw new Error('Không thể xoá hoá đơn ở trạng thái này');
+      }
+
+      const { error } = await supabase
+        .from('invoices')
+        .update({ deleted_at: new Date().toISOString() } as any)
+        .eq('id', invoiceId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+
+      toast({
+        title: 'Dữ liệu đã được XOÁ thành công',
+        description: 'Hoá đơn đã được xoá.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi xoá hoá đơn',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// useBulkDeleteInvoices - Soft-delete multiple invoices
+// Requirements: 3.5
+// =============================================
+
+export const useBulkDeleteInvoices = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceIds: string[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (invoiceIds.length === 0) return;
+
+      const { error } = await supabase
+        .from('invoices')
+        .update({ deleted_at: new Date().toISOString() } as any)
+        .in('id', invoiceIds)
+        .eq('user_id', user.id)
+        .eq('status', 'DRAFT' as any); // Only allow deleting DRAFT invoices
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+
+      toast({
+        title: 'Dữ liệu đã được XOÁ thành công',
+        description: 'Các hoá đơn đã chọn đã được xoá.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi xoá hoá đơn',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// useApproveInvoice - DRAFT → APPROVED
+// Requirements: 4.1, 4.2
 // =============================================
 
 export const useApproveInvoice = () => {
@@ -360,9 +535,14 @@ export const useApproveInvoice = () => {
 
       const { data, error } = await supabase
         .from('invoices')
-        .update({ status: 'APPROVED' })
+        .update({
+          status: 'APPROVED' as any,
+          approved_at: new Date().toISOString(),
+          approved_by: user.id,
+        } as any)
         .eq('id', invoiceId)
         .eq('user_id', user.id)
+        .eq('status', 'DRAFT' as any)
         .select()
         .single();
 
@@ -371,17 +551,19 @@ export const useApproveInvoice = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
 
       toast({
-        title: 'Hóa đơn đã được duyệt thành công',
-        description: 'Hóa đơn đã được duyệt và gửi đến khách hàng.',
+        title: 'Hoá đơn đã được duyệt thành công',
+        description: 'Hoá đơn đã chuyển sang trạng thái Đã duyệt.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Có lỗi xảy ra khi duyệt hóa đơn',
+        title: 'Có lỗi xảy ra khi duyệt hoá đơn',
         description: error.message,
       });
     },
@@ -389,8 +571,259 @@ export const useApproveInvoice = () => {
 };
 
 // =============================================
-// Record Payment
+// useUnapproveInvoice - APPROVED → DRAFT
+// Requirements: 4.5
 // =============================================
+
+export const useUnapproveInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .update({
+          status: 'DRAFT' as any,
+          approved_at: null,
+          approved_by: null,
+        } as any)
+        .eq('id', invoiceId)
+        .eq('user_id', user.id)
+        .eq('status', 'APPROVED' as any)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+
+      toast({
+        title: 'Đã bỏ duyệt hoá đơn',
+        description: 'Hoá đơn đã chuyển về trạng thái Nháp.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi bỏ duyệt hoá đơn',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// useBulkApproveInvoices - Bulk approve DRAFT → APPROVED
+// Requirements: 4.3
+// =============================================
+
+export const useBulkApproveInvoices = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceIds: string[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (invoiceIds.length === 0) return;
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .update({
+          status: 'APPROVED' as any,
+          approved_at: new Date().toISOString(),
+          approved_by: user.id,
+        } as any)
+        .in('id', invoiceIds)
+        .eq('user_id', user.id)
+        .eq('status', 'DRAFT' as any)
+        .select();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+
+      const count = data?.length ?? 0;
+      toast({
+        title: 'Duyệt hàng loạt thành công',
+        description: `Đã duyệt ${count} hoá đơn.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi duyệt hoá đơn',
+        description: error.message,
+      });
+    },
+  });
+};
+
+// =============================================
+// useInvoiceStatistics - Query RPC get_invoice_statistics
+// Requirements: 10.1
+// =============================================
+
+export interface InvoiceStatisticsFilters {
+  building_id?: string;
+  room_id?: string;
+  status?: InvoiceStatus;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface InvoiceStatistics {
+  total_paid: number;
+  total_remaining: number;
+  total_count: number;
+}
+
+export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
+  return useQuery({
+    queryKey: ['invoice-statistics', filters],
+    queryFn: async (): Promise<InvoiceStatistics> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await (supabase.rpc as any)('get_invoice_statistics', {
+        p_user_id: user.id,
+        p_building_id: filters?.building_id ?? null,
+        p_room_id: filters?.room_id ?? null,
+        p_status: filters?.status ?? null,
+        p_start_date: filters?.start_date ?? null,
+        p_end_date: filters?.end_date ?? null,
+      });
+
+      if (error) throw error;
+
+      // RPC returns a single row or array with one element
+      const result = Array.isArray(data) ? data[0] : data;
+      return {
+        total_paid: result?.total_paid ?? 0,
+        total_remaining: result?.total_remaining ?? 0,
+        total_count: result?.total_count ?? 0,
+      };
+    },
+  });
+};
+
+// =============================================
+// useCheckOverdueInvoices - Auto-update overdue invoices on page load
+// Requirements: 7.7, 11.10
+// Checks invoices with status APPROVED or PARTIAL_PAID where due_date < today
+// and updates their status to OVERDUE.
+// =============================================
+
+export const useCheckOverdueInvoices = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (): Promise<number> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Find all invoices that should be marked as OVERDUE:
+      // status IN ('APPROVED', 'PARTIAL_PAID'), due_date < today, not deleted
+      const { data: overdueInvoices, error: fetchError } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .in('status', ['APPROVED', 'PARTIAL_PAID'] as any)
+        .lt('due_date', today);
+
+      if (fetchError) throw fetchError;
+      if (!overdueInvoices || overdueInvoices.length === 0) return 0;
+
+      const overdueIds = overdueInvoices.map((inv) => inv.id);
+
+      // Batch update all overdue invoices
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({ status: 'OVERDUE' as any } as any)
+        .in('id', overdueIds)
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      return overdueIds.length;
+    },
+    onSuccess: (count) => {
+      if (count > 0) {
+        // Invalidate invoice queries so the list refreshes with updated statuses
+        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+        queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+        queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+      }
+    },
+    onError: (error: Error) => {
+      // Silently log - this is a background check, don't disrupt the user
+      console.error('Failed to check overdue invoices:', error.message);
+    },
+  });
+};
+
+// =============================================
+// useExcessAmount - Query SUM(amount) from excess_amounts by contract_id
+// Requirements: 8.2
+// =============================================
+
+export const useExcessAmount = (contractId?: string) => {
+  return useQuery({
+    queryKey: ['excess-amount', contractId],
+    queryFn: async (): Promise<number> => {
+      if (!contractId) return 0;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await (supabase
+        .from('excess_amounts' as any) as any)
+        .select('amount')
+        .eq('contract_id', contractId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Sum all amounts (positive = credit added, negative = credit used)
+      const total = (data || []).reduce((sum: number, row: any) => sum + (row.amount || 0), 0);
+      return total;
+    },
+    enabled: !!contractId,
+  });
+};
+
+
+// =============================================
+// Legacy hooks kept for backward compatibility
+// These are used by existing components that haven't been migrated yet
+// =============================================
+
+export interface RecordPaymentData {
+  invoice_id: string;
+  amount: number;
+  payment_method: string;
+  payment_date: string;
+  notes?: string;
+  receipt_image_url?: string;
+}
 
 export const useRecordPayment = () => {
   const queryClient = useQueryClient();
@@ -401,7 +834,6 @@ export const useRecordPayment = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Create payment record
       const { data: payment, error: paymentError } = await supabase
         .from('payments')
         .insert([{
@@ -438,9 +870,9 @@ export const useRecordPayment = () => {
           .from('invoices')
           .update({
             paid_amount: newPaidAmount,
-            status: newStatus,
+            status: newStatus as any,
             paid_date: newPaidAmount >= invoice.total_amount ? new Date().toISOString().split('T')[0] : null,
-          })
+          } as any)
           .eq('id', data.invoice_id);
       }
 
@@ -448,8 +880,11 @@ export const useRecordPayment = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Thanh toán đã được ghi nhận thành công',
@@ -467,8 +902,19 @@ export const useRecordPayment = () => {
 };
 
 // =============================================
-// Record Meter Reading
+// Legacy: Meter reading hooks (kept for backward compatibility)
+// These will be moved to useInvoicePayments.ts in task 9.3
 // =============================================
+
+export interface MeterReadingData {
+  contract_id: string;
+  service_id: string;
+  meter_type: string;
+  reading_date: string;
+  current_reading: number;
+  previous_reading: number;
+  notes?: string;
+}
 
 export const useRecordMeterReading = () => {
   const queryClient = useQueryClient();
@@ -516,15 +962,11 @@ export const useRecordMeterReading = () => {
   });
 };
 
-// =============================================
-// Get Meter Readings
-// =============================================
-
 export const useMeterReadings = (contractId?: string) => {
   return useQuery({
     queryKey: ['meter_readings', contractId],
     queryFn: async () => {
-      const { data: { user } = {} } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -557,10 +999,6 @@ export const useMeterReadings = (contractId?: string) => {
     enabled: !!contractId || contractId === undefined,
   });
 };
-
-// =============================================
-// Bulk Create Meter Readings
-// =============================================
 
 export interface BulkMeterReadingData {
   contract_id: string;
@@ -620,60 +1058,9 @@ export const useBulkCreateMeterReadings = () => {
 };
 
 // =============================================
-// Delete Invoice (Soft Delete)
+// Legacy: useAutoGenerateInvoices (kept for backward compatibility)
+// Will be moved to useInvoicePayments.ts in task 9.3
 // =============================================
-
-export const useDeleteInvoice = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase
-        .from('invoices')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', invoiceId)
-        .eq('user_id', user.id)
-        .eq('status', 'DRAFT'); // Only allow deleting draft invoices
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-
-      toast({
-        title: 'Hóa đơn đã được xóa thành công',
-        description: 'Hóa đơn nháp đã được xóa.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi xóa hóa đơn',
-        description: error.message,
-      });
-    },
-  });
-};
-
-// =============================================
-// Auto-Generate Invoices (Bulk)
-// =============================================
-
-export type InvoiceGenerationType = 'RENT_ONLY' | 'SERVICE_ONLY' | 'RENT_AND_SERVICE';
-
-export interface AutoGenerateInvoicesData {
-  billing_period_start: string;
-  billing_period_end: string;
-  issue_date: string;
-  due_date: string;
-  contract_ids?: string[]; // Optional: specific contracts, or all active if not provided
-  building_id?: string; // Filter by building
-  invoice_type: InvoiceGenerationType; // Type of invoice to generate
-}
 
 export const useAutoGenerateInvoices = () => {
   const queryClient = useQueryClient();
@@ -681,538 +1068,43 @@ export const useAutoGenerateInvoices = () => {
 
   return useMutation({
     mutationFn: async (data: AutoGenerateInvoicesData) => {
-      const { data: { user } = {} } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { invoice_type = 'RENT_AND_SERVICE' } = data;
-
-      // Get invoice config for settings
-      const { data: invoiceSettings } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('user_id', user.id)
-        .eq('key', 'invoice_config')
-        .maybeSingle();
-
-      const invoiceConfig = invoiceSettings?.value as any;
-      const includePreviousDebt = invoiceConfig?.include_previous_debt ?? true;
-
-      // Get active contracts with full details
-      let query = supabase
-        .from('contracts')
-        .select(`
-          id,
-          contract_number,
-          tenant_id,
-          room_id,
-          bed_id,
-          rent_price,
-          payment_cycle,
-          start_billing_date,
-          start_date,
-          discounts,
-          room:rooms!contracts_room_id_fkey (
-            id,
-            name,
-            building_id
-          ),
-          bed:beds!contracts_bed_id_fkey (
-            id,
-            name,
-            room:rooms!beds_room_id_fkey (
-              id,
-              name,
-              building_id
-            )
-          ),
-          contract_services (
-            id,
-            service_id,
-            unit_price,
-            initial_reading,
-            service:services!contract_services_service_id_fkey (
-              id,
-              name,
-              billing_type,
-              unit
-            )
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('status', 'ACTIVE')
-        .is('deleted_at', null);
-
-      if (data.contract_ids && data.contract_ids.length > 0) {
-        query = query.in('id', data.contract_ids);
-      }
-
-      const { data: contracts, error: contractsError } = await query;
-      if (contractsError) throw contractsError;
-      if (!contracts || contracts.length === 0) {
-        return { created_count: 0, skipped_count: 0 };
-      }
-
-      // Filter by building if specified
-      let filteredContracts = contracts;
-      if (data.building_id) {
-        filteredContracts = contracts.filter((contract) => {
-          const buildingId = contract.room?.building_id || contract.bed?.room?.building_id;
-          return buildingId === data.building_id;
-        });
-      }
-
-      if (filteredContracts.length === 0) {
-        return { created_count: 0, skipped_count: 0 };
-      }
-
-      // Check for existing invoices in the same billing period to avoid duplicates
-      const contractIds = filteredContracts.map(c => c.id);
-      const { data: existingInvoices } = await supabase
-        .from('invoices')
-        .select('contract_id')
-        .in('contract_id', contractIds)
-        .gte('billing_period_start', data.billing_period_start)
-        .lte('billing_period_end', data.billing_period_end)
-        .is('deleted_at', null);
-
-      const existingContractIds = new Set((existingInvoices || []).map(i => i.contract_id));
-      const contractsToProcess = filteredContracts.filter(c => !existingContractIds.has(c.id));
-      const skippedCount = filteredContracts.length - contractsToProcess.length;
-
-      if (contractsToProcess.length === 0) {
-        return { created_count: 0, skipped_count: skippedCount };
-      }
-
-      // Get meter readings for utility calculations
-      const { data: meterReadings } = await supabase
-        .from('meter_readings')
-        .select('*')
-        .in('contract_id', contractsToProcess.map(c => c.id))
-        .order('reading_date', { ascending: false });
-
-      // Group meter readings by contract
-      const meterReadingsByContract = new Map<string, any[]>();
-      (meterReadings || []).forEach(reading => {
-        if (!meterReadingsByContract.has(reading.contract_id)) {
-          meterReadingsByContract.set(reading.contract_id, []);
-        }
-        meterReadingsByContract.get(reading.contract_id)!.push(reading);
-      });
-
-      // Get previous debts if enabled
-      const previousDebts = new Map<string, number>();
-      if (includePreviousDebt) {
-        const { data: unpaidInvoices } = await supabase
-          .from('invoices')
-          .select('contract_id, total_amount, paid_amount')
-          .in('contract_id', contractsToProcess.map(c => c.id))
-          .in('status', ['APPROVED', 'PARTIAL_PAID', 'OVERDUE'])
-          .is('deleted_at', null);
-
-        (unpaidInvoices || []).forEach(invoice => {
-          const debt = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
-          if (debt > 0) {
-            const currentDebt = previousDebts.get(invoice.contract_id) || 0;
-            previousDebts.set(invoice.contract_id, currentDebt + debt);
-          }
-        });
-      }
-
-      // Generate invoice numbers
-      const { generateInvoiceNumber } = await import('@/lib/codeGenerator');
-      const prefix = invoiceConfig?.invoice_number_prefix || 'INV';
-      const format = invoiceConfig?.invoice_number_format || '{prefix}{year}{month}{seq:4}';
-      const autoGenerateNumber = invoiceConfig?.auto_generate_invoice_number !== false;
-
-      // Create invoices and items
-      const createdInvoices: any[] = [];
-      const allInvoiceItems: any[] = [];
-
-      for (const contract of contractsToProcess) {
-        // Calculate invoice items based on type
-        const items: Array<{
-          type: string;
-          description: string;
-          quantity: number;
-          unit_price: number;
-          amount: number;
-          service_id?: string;
-          previous_reading?: number;
-          current_reading?: number;
-        }> = [];
-
-        // Add rent item
-        if (invoice_type === 'RENT_ONLY' || invoice_type === 'RENT_AND_SERVICE') {
-          const rentPrice = contract.rent_price || 0;
-          items.push({
-            type: 'RENT',
-            description: 'Tiền thuê căn hộ',
-            quantity: 1,
-            unit_price: rentPrice,
-            amount: rentPrice,
-          });
-        }
-
-        // Add service items
-        if (invoice_type === 'SERVICE_ONLY' || invoice_type === 'RENT_AND_SERVICE') {
-          const services = contract.contract_services || [];
-
-          for (const cs of services) {
-            const service = cs.service;
-            if (!service) continue;
-
-            const billingType = service.billing_type;
-
-            // Fixed services and per-room services
-            if (billingType === 'FIXED' || billingType === 'PER_ROOM') {
-              items.push({
-                type: 'SERVICE',
-                description: service.name,
-                quantity: 1,
-                unit_price: cs.unit_price,
-                amount: cs.unit_price,
-                service_id: cs.service_id,
-              });
-            }
-
-            // Per-person services (assumes 1 person if no quantity specified)
-            if (billingType === 'PER_PERSON') {
-              const quantity = 1; // Default to 1 person per contract
-              items.push({
-                type: 'SERVICE',
-                description: service.name,
-                quantity: quantity,
-                unit_price: cs.unit_price,
-                amount: quantity * cs.unit_price,
-                service_id: cs.service_id,
-              });
-            }
-
-            // Meter reading services (ELECTRIC, WATER)
-            if (billingType === 'METER_READING') {
-              const contractReadings = meterReadingsByContract.get(contract.id) || [];
-              const serviceReadings = contractReadings
-                .filter((r: any) => r.service_id === cs.service_id)
-                .sort((a: any, b: any) => new Date(b.reading_date).getTime() - new Date(a.reading_date).getTime());
-
-              if (serviceReadings.length > 0) {
-                const latestReading = serviceReadings[0];
-                const usage = (latestReading.current_reading || 0) - (latestReading.previous_reading || 0);
-                if (usage > 0) {
-                  items.push({
-                    type: 'SERVICE',
-                    description: `${service.name} (${usage} ${service.unit || 'kWh'})`,
-                    quantity: usage,
-                    unit_price: cs.unit_price,
-                    amount: usage * cs.unit_price,
-                    service_id: cs.service_id,
-                    previous_reading: latestReading.previous_reading,
-                    current_reading: latestReading.current_reading,
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        // Calculate subtotal
-        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-
-        // Calculate contract discount (promotional discounts based on billing month)
-        let discountAmount = 0;
-        if (contract.discounts && Array.isArray(contract.discounts)) {
-          const contractStartDate = new Date(contract.start_billing_date || contract.start_date);
-          const billingStartDate = new Date(data.billing_period_start);
-
-          // Calculate which month of the contract this billing period is
-          const monthsDiff = (billingStartDate.getFullYear() - contractStartDate.getFullYear()) * 12 +
-                            (billingStartDate.getMonth() - contractStartDate.getMonth()) + 1;
-
-          // Find discount for this month
-          const discountForMonth = (contract.discounts as Array<{ month: number; amount: number }>)
-            .find(d => d.month === monthsDiff);
-
-          if (discountForMonth) {
-            discountAmount = discountForMonth.amount || 0;
-          }
-        }
-
-        // Calculate totals
-        const previousDebt = previousDebts.get(contract.id) || 0;
-        const totalAmount = Math.max(0, subtotal - discountAmount + previousDebt);
-
-        // Generate invoice number
-        let invoiceNumber = null;
-        if (autoGenerateNumber) {
-          try {
-            invoiceNumber = await generateInvoiceNumber(prefix, format, user.id, 'YEARLY');
-          } catch (e) {
-            console.error('Error generating invoice number:', e);
-          }
-        }
-
-        // Create invoice title
-        const billingMonth = new Date(data.billing_period_start).toLocaleDateString('vi-VN', {
-          month: '2-digit',
-          year: 'numeric'
-        });
-        const invoiceTypeLabel = invoice_type === 'RENT_ONLY' ? 'Tiền nhà' :
-                                 invoice_type === 'SERVICE_ONLY' ? 'Dịch vụ' :
-                                 'Tiền nhà & Dịch vụ';
-
-        // Create invoice
-        const { data: invoice, error: invoiceError } = await supabase
-          .from('invoices')
-          .insert({
-            user_id: user.id,
-            contract_id: contract.id,
-            invoice_number: invoiceNumber,
-            title: `${invoiceTypeLabel} - ${billingMonth}`,
-            billing_period_start: data.billing_period_start,
-            billing_period_end: data.billing_period_end,
-            issue_date: data.issue_date,
-            due_date: data.due_date,
-            status: 'DRAFT',
-            subtotal,
-            discount_amount: discountAmount > 0 ? discountAmount : null,
-            previous_debt: previousDebt > 0 ? previousDebt : null,
-            total_amount: totalAmount,
-            paid_amount: 0,
-            remaining_amount: totalAmount,
-          })
-          .select()
-          .single();
-
-        if (invoiceError) {
-          console.error('Error creating invoice:', invoiceError);
-          continue;
-        }
-
-        createdInvoices.push(invoice);
-
-        // Prepare invoice items
-        for (const item of items) {
-          allInvoiceItems.push({
-            invoice_id: invoice.id,
-            type: item.type as any,
-            description: item.description,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            amount: item.amount,
-            service_id: item.service_id,
-            previous_reading: item.previous_reading,
-            current_reading: item.current_reading,
-          });
-        }
-
-        // Add discount as an item if exists
-        if (discountAmount > 0) {
-          allInvoiceItems.push({
-            invoice_id: invoice.id,
-            type: 'DISCOUNT',
-            description: 'Giảm giá khuyến mại',
-            quantity: 1,
-            unit_price: -discountAmount,
-            amount: -discountAmount,
-          });
-        }
-
-        // Add previous debt as an item if exists
-        if (previousDebt > 0) {
-          allInvoiceItems.push({
-            invoice_id: invoice.id,
-            type: 'OTHER',
-            description: 'Công nợ tồn đọng kỳ trước',
-            quantity: 1,
-            unit_price: previousDebt,
-            amount: previousDebt,
-          });
-        }
-      }
-
-      // Insert all invoice items in batch
-      if (allInvoiceItems.length > 0) {
-        const { error: itemsError } = await supabase
-          .from('invoice_items')
-          .insert(allInvoiceItems);
-
-        if (itemsError) {
-          console.error('Error creating invoice items:', itemsError);
-        }
-      }
-
-      return {
-        created_count: createdInvoices.length,
-        skipped_count: skippedCount
-      };
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['contracts'] });
-
-      const createdCount = result?.created_count || 0;
-      const skippedCount = result?.skipped_count || 0;
-
-      let description = `Đã tạo ${createdCount} hóa đơn mới.`;
-      if (skippedCount > 0) {
-        description += ` Bỏ qua ${skippedCount} hợp đồng đã có hóa đơn trong kỳ.`;
-      }
-
-      toast({
-        title: createdCount > 0 ? 'Hóa đơn tự động đã được tạo thành công' : 'Không có hóa đơn mới được tạo',
-        description,
-        variant: createdCount > 0 ? 'default' : 'destructive',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi tạo hóa đơn tự động',
-        description: error.message,
-      });
-    },
-  });
-};
-
-// =============================================
-// Bulk Approve Invoices
-// =============================================
-
-export const useBulkApproveInvoices = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (invoiceIds: string[]) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .from('invoices')
-        .update({ status: 'APPROVED' })
-        .in('id', invoiceIds)
-        .eq('user_id', user.id)
-        .eq('status', 'DRAFT')
-        .select();
+      // Map legacy invoice_type to new RPC param
+      const typeMap: Record<InvoiceGenerationType, string> = {
+        RENT_ONLY: 'rent_only',
+        SERVICE_ONLY: 'service_only',
+        RENT_AND_SERVICE: 'both',
+      };
+
+      // Extract billing_month from billing_period_start (YYYY-MM-DD → YYYY-MM)
+      const billingMonth = data.billing_period_start.substring(0, 7);
+
+      const { data: result, error } = await (supabase.rpc as any)('generate_invoices_for_building', {
+        p_user_id: user.id,
+        p_building_id: data.building_id ?? '',
+        p_billing_month: billingMonth,
+        p_invoice_type: typeMap[data.invoice_type] ?? 'both',
+      });
 
       if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-
-      toast({
-        title: 'Hóa đơn đã được duyệt thành công',
-        description: `Đã duyệt ${data.length} hóa đơn.`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi duyệt hóa đơn',
-        description: error.message,
-      });
-    },
-  });
-};
-
-// =============================================
-// Update Invoice (Edit)
-// =============================================
-
-export interface UpdateInvoiceData {
-  id: string;
-  title?: string;
-  billing_period_start?: string;
-  billing_period_end?: string;
-  issue_date?: string;
-  due_date?: string;
-  notes?: string;
-  items?: Array<{
-    id?: string;
-    type: string;
-    description: string;
-    quantity: number;
-    unit_price: number;
-    amount: number;
-    service_id?: string;
-  }>;
-}
-
-export const useUpdateInvoice = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (data: UpdateInvoiceData) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { id, items, ...invoiceData } = data;
-
-      // Update invoice
-      const { error: invoiceError } = await supabase
-        .from('invoices')
-        .update(invoiceData)
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .eq('status', 'DRAFT'); // Only allow editing draft invoices
-
-      if (invoiceError) throw invoiceError;
-
-      // If items are provided, update them
-      if (items) {
-        // Delete existing items
-        await supabase
-          .from('invoice_items')
-          .delete()
-          .eq('invoice_id', id);
-
-        // Calculate new totals
-        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-
-        // Insert new items
-        const invoiceItems = items.map(item => ({
-          invoice_id: id,
-          type: item.type as any,
-          description: item.description,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          amount: item.amount,
-          service_id: item.service_id,
-        }));
-
-        const { error: itemsError } = await supabase
-          .from('invoice_items')
-          .insert(invoiceItems);
-
-        if (itemsError) throw itemsError;
-
-        // Update invoice totals
-        await supabase
-          .from('invoices')
-          .update({
-            subtotal,
-            total_amount: subtotal,
-          })
-          .eq('id', id);
-      }
-
-      return { id };
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
 
       toast({
-        title: 'Hóa đơn đã được cập nhật thành công',
-        description: 'Thông tin hóa đơn đã được cập nhật.',
+        title: 'Dữ liệu đã được TẠO thành công',
+        description: 'Hoá đơn đã được sinh tự động.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Có lỗi xảy ra khi cập nhật hóa đơn',
+        title: 'Có lỗi xảy ra khi sinh hoá đơn',
         description: error.message,
       });
     },
@@ -1220,7 +1112,7 @@ export const useUpdateInvoice = () => {
 };
 
 // =============================================
-// Cancel Invoice
+// Legacy: useCancelInvoice (kept for backward compatibility)
 // =============================================
 
 export const useCancelInvoice = () => {
@@ -1232,28 +1124,32 @@ export const useCancelInvoice = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('invoices')
-        .update({ status: 'CANCELLED' })
+        .update({ status: 'CANCELLED' as any } as any)
         .eq('id', invoiceId)
         .eq('user_id', user.id)
-        .in('status', ['DRAFT', 'APPROVED']); // Only allow cancelling draft or approved invoices
+        .select()
+        .single();
 
       if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
 
       toast({
-        title: 'Hóa đơn đã được hủy thành công',
-        description: 'Hóa đơn đã được hủy.',
+        title: 'Hoá đơn đã được huỷ',
+        description: 'Hoá đơn đã chuyển sang trạng thái Đã huỷ.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Có lỗi xảy ra khi hủy hóa đơn',
+        title: 'Có lỗi xảy ra khi huỷ hoá đơn',
         description: error.message,
       });
     },

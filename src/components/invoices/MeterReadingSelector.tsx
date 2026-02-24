@@ -55,6 +55,8 @@ export interface MeterReadingSelectorProps {
     consumption: number;
     amount: number;
     description: string;
+    previous_reading: number;
+    current_reading: number;
   }) => void;
 }
 
@@ -126,6 +128,8 @@ export default function MeterReadingSelector({
       consumption: reading.consumption,
       amount,
       description: `${label} (${reading.previous_reading} → ${reading.current_reading}): ${reading.consumption} ${unit}`,
+      previous_reading: reading.previous_reading,
+      current_reading: reading.current_reading,
     });
   };
 
