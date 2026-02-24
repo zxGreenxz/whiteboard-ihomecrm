@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateInvoice } from '@/hooks/useInvoices';
+import type { InvoiceFormData } from '@/types/invoice';
 import { useContracts } from '@/hooks/useContracts';
 import { useMeterReadings } from '@/hooks/useInvoices';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -176,7 +177,48 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   };
 
   const onSubmit = (data: GenerateInvoiceFormData) => {
-    createMutation.mutate(data, {
+    if (!selectedContract) return;
+
+    // Derive building_id, room_id, bed_id from selected contract
+    const roomData = selectedContract.room as any;
+    const bedData = selectedContract.bed as any;
+    const buildingId = roomData?.building?.id || bedData?.room?.building?.id || '';
+    const roomId = roomData?.id || bedData?.room?.id || '';
+    const bedId = bedData?.id || null;
+
+    // Derive billing_month from billing_period_start (YYYY-MM-DD → YYYY-MM)
+    const billingMonth = data.billing_period_start
+      ? format(new Date(data.billing_period_start), 'yyyy-MM')
+      : format(new Date(), 'yyyy-MM');
+
+    // Map old items format to new InvoiceFormData items format
+    const mappedItems = data.items.map((item, index) => ({
+      service_id: item.service_id || null,
+      type: (item.type === 'UTILITY' ? 'SERVICE' : item.type) as any,
+      description: item.description,
+      unit_price: item.unit_price,
+      quantity: item.quantity,
+      coefficient: 1,
+      sort_order: index,
+    }));
+
+    const invoiceFormData: InvoiceFormData = {
+      building_id: buildingId,
+      room_id: roomId,
+      bed_id: bedId,
+      contract_id: data.contract_id,
+      billing_month: billingMonth,
+      issue_date: data.issue_date,
+      due_date: data.due_date,
+      notes: data.notes || null,
+      discount_amount: 0,
+      tax_percent: 0,
+      prepaid_amount: 0,
+      previous_debt: 0,
+      items: mappedItems,
+    };
+
+    createMutation.mutate(invoiceFormData, {
       onSuccess: () => {
         handleClose();
       },
