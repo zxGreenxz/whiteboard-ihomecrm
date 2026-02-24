@@ -1,7 +1,16 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvoiceStatistics, type InvoiceStatisticsFilters } from '@/hooks/useInvoices';
-import { DollarSign, FileText, TrendingDown } from 'lucide-react';
+import {
+  DollarSign,
+  Home,
+  Receipt,
+  CreditCard,
+  RefreshCcw,
+  Banknote,
+  TrendingDown,
+  FileText,
+} from 'lucide-react';
 
 interface InvoiceStatsSummaryProps {
   filters?: InvoiceStatisticsFilters;
@@ -10,52 +19,120 @@ interface InvoiceStatsSummaryProps {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
+interface StatCard {
+  label: string;
+  value: string;
+  icon: React.ElementType;
+  iconColor: string;
+  iconBg: string;
+  valueColor: string;
+}
+
 const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
   const { data: stats, isLoading } = useInvoiceStatistics(filters);
 
-  const cards = [
+  // TODO: API only returns total_paid, total_remaining, total_count
+  // The following values need backend support: total_amount, rent_amount, service_amount, total_collected, total_refunded
+  const totalPaid = stats?.total_paid ?? 0;
+  const totalRemaining = stats?.total_remaining ?? 0;
+  const totalCount = stats?.total_count ?? 0;
+
+  const row1: StatCard[] = [
     {
-      label: 'Tổng đã thu',
-      value: formatCurrency(stats?.total_paid ?? 0),
+      label: 'Tổng tiền',
+      value: formatCurrency(0), // TODO: needs total_amount from API
       icon: DollarSign,
-      color: 'text-green-600',
-      bg: 'bg-green-50',
+      iconColor: 'text-green-600',
+      iconBg: 'bg-green-100',
+      valueColor: 'text-green-600',
     },
     {
-      label: 'Tổng phải thu',
-      value: formatCurrency(stats?.total_remaining ?? 0),
-      icon: TrendingDown,
-      color: 'text-orange-600',
-      bg: 'bg-orange-50',
+      label: 'Tiền nhà',
+      value: formatCurrency(0), // TODO: needs rent_amount from API
+      icon: Home,
+      iconColor: 'text-blue-600',
+      iconBg: 'bg-blue-100',
+      valueColor: 'text-blue-600',
     },
     {
-      label: 'Tổng số hoá đơn',
-      value: String(stats?.total_count ?? 0),
-      icon: FileText,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
+      label: 'Tiền dịch vụ',
+      value: formatCurrency(0), // TODO: needs service_amount from API
+      icon: Receipt,
+      iconColor: 'text-purple-600',
+      iconBg: 'bg-purple-100',
+      valueColor: 'text-purple-600',
+    },
+    {
+      label: 'Tổng tiền thu',
+      value: formatCurrency(0), // TODO: needs total_collected from API
+      icon: CreditCard,
+      iconColor: 'text-green-600',
+      iconBg: 'bg-green-100',
+      valueColor: 'text-green-600',
     },
   ];
 
+  const row2: StatCard[] = [
+    {
+      label: 'Tổng tiền hoàn',
+      value: formatCurrency(0), // TODO: needs total_refunded from API
+      icon: RefreshCcw,
+      iconColor: 'text-red-600',
+      iconBg: 'bg-red-100',
+      valueColor: 'text-red-600',
+    },
+    {
+      label: 'Đã thu',
+      value: formatCurrency(totalPaid),
+      icon: Banknote,
+      iconColor: 'text-blue-600',
+      iconBg: 'bg-blue-100',
+      valueColor: 'text-blue-600',
+    },
+    {
+      label: 'Phải thu',
+      value: formatCurrency(totalRemaining),
+      icon: TrendingDown,
+      iconColor: 'text-orange-600',
+      iconBg: 'bg-orange-100',
+      valueColor: 'text-orange-600',
+    },
+    {
+      label: 'Tổng hoá đơn',
+      value: String(totalCount),
+      icon: FileText,
+      iconColor: 'text-gray-600',
+      iconBg: 'bg-gray-100',
+      valueColor: 'text-gray-600',
+    },
+  ];
+
+  const renderCard = (card: StatCard) => (
+    <Card key={card.label}>
+      <CardContent className="flex items-center gap-3 p-4">
+        <div className={`h-10 w-10 rounded-full ${card.iconBg} flex items-center justify-center shrink-0`}>
+          <card.icon className={`h-5 w-5 ${card.iconColor}`} />
+        </div>
+        <div className="min-w-0">
+          {isLoading ? (
+            <Skeleton className="h-6 w-24 mb-1" />
+          ) : (
+            <p className={`text-lg font-bold ${card.valueColor} truncate`}>{card.value}</p>
+          )}
+          <p className="text-xs text-muted-foreground">{card.label}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {cards.map((card) => (
-        <Card key={card.label}>
-          <CardContent className="flex items-center gap-4 p-4">
-            <div className={`h-10 w-10 rounded-lg ${card.bg} flex items-center justify-center`}>
-              <card.icon className={`h-5 w-5 ${card.color}`} />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{card.label}</p>
-              {isLoading ? (
-                <Skeleton className="h-7 w-28 mt-1" />
-              ) : (
-                <p className={`text-xl font-bold ${card.color}`}>{card.value}</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="space-y-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {row1.map(renderCard)}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {row2.map(renderCard)}
+      </div>
     </div>
   );
 };
