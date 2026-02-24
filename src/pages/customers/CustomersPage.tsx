@@ -1,273 +1,223 @@
-import { useState, useMemo } from "react";
-import { useCustomers } from "@/hooks/useCustomers";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
-import { CreateCustomerDialog } from "@/components/customers/CreateCustomerDialog";
-import { EditCustomerDialog } from "@/components/customers/EditCustomerDialog";
-import { DeleteCustomerDialog } from "@/components/customers/DeleteCustomerDialog";
-import type { Database } from "@/integrations/supabase/types";
+import { useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Users } from 'lucide-react';
+import MainLayout from '@/components/layout/MainLayout';
+import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
+import EmptyState from '@/components/ui/EmptyState';
+import { useCustomers, useCustomerStats } from '@/hooks/useCustomers';
+import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '@/types/customer';
+import type { ViewMode } from '@/components/customers/CustomerListToolbar';
 
-type Customer = Database["public"]["Tables"]["customers"]["Row"];
+import CustomerStatusTabs from '@/components/customers/CustomerStatusTabs';
+import CustomerStatsCards from '@/components/customers/CustomerStatsCards';
+import CustomerListFilters from '@/components/customers/CustomerListFilters';
+import CustomerListToolbar from '@/components/customers/CustomerListToolbar';
+import CustomerListTable from '@/components/customers/CustomerListTable';
+import CustomerDetailModal from '@/components/customers/CustomerDetailModal';
+import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
 
 export default function CustomersPage() {
-  const { data: customers, isLoading } = useCustomers();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<string>("all");
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const navigate = useNavigate();
+
+  // State
+  const [activeTab, setActiveTab] = useState<CustomerStatus>('RENTING');
+  const [activeStatFilter, setActiveStatFilter] = useState<StatFilterType>('ALL');
+  const [filters, setFilters] = useState<CustomerFilters>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
 
-  // Filter customers based on search and tab
-  const filteredCustomers = useMemo(() => {
-    if (!customers) return [];
+  // Pagination
+  const { page, pageSize, setPage, setPageSize } = usePagination(20);
 
-    return customers.filter((customer) => {
-      const matchesSearch =
-        customer.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.id_number?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Build effective filters
+  const effectiveFilters = useMemo<CustomerFilters>(
+    () => ({
+      ...filters,
+      status: activeTab,
+      statFilter: activeStatFilter,
+      search: searchQuery || undefined,
+    }),
+    [filters, activeTab, activeStatFilter, searchQuery]
+  );
 
-      const matchesTab =
-        activeTab === "all" || customer.status === activeTab;
+  // Stats filters (same as effective but without statFilter to get all counts)
+  const statsFilters = useMemo<CustomerFilters>(
+    () => ({
+      ...filters,
+      status: activeTab,
+      search: searchQuery || undefined,
+    }),
+    [filters, activeTab, searchQuery]
+  );
 
-      return matchesSearch && matchesTab;
-    });
-  }, [customers, searchTerm, activeTab]);
+  // Data fetching
+  const { data: customersData, isLoading } = useCustomers(effectiveFilters, { page, pageSize });
+  const { data: stats } = useCustomerStats(statsFilters);
 
-  // Count customers by status
-  const customerCounts = useMemo(() => {
-    if (!customers) return { all: 0, PROSPECT: 0, ACTIVE: 0, INACTIVE: 0, BLACKLIST: 0 };
+  const customers = customersData?.data ?? [];
+  const totalCount = customersData?.count ?? 0;
+  const customerStats = stats ?? { total: 0, individual: 0, organization: 0, foreign: 0 };
 
-    return {
-      all: customers.length,
-      PROSPECT: customers.filter(c => c.status === "PROSPECT").length,
-      ACTIVE: customers.filter(c => c.status === "ACTIVE").length,
-      INACTIVE: customers.filter(c => c.status === "INACTIVE").length,
-      BLACKLIST: customers.filter(c => c.status === "BLACKLIST").length,
-    };
-  }, [customers]);
+  // Pagination info
+  const paginationInfo = useMemo(
+    () => calculatePaginationInfo(page, pageSize, totalCount),
+    [page, pageSize, totalCount]
+  );
 
-  const handleEdit = (customer: Customer) => {
+  // Handlers
+  const handleTabChange = useCallback(
+    (tab: CustomerStatus) => {
+      setActiveTab(tab);
+      setActiveStatFilter('ALL');
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const handleStatFilterChange = useCallback(
+    (filter: StatFilterType) => {
+      setActiveStatFilter(filter);
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const handleFiltersChange = useCallback(
+    (newFilters: CustomerFilters) => {
+      setFilters(newFilters);
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const handleAdd = useCallback(() => {
+    navigate('/customers/new');
+  }, [navigate]);
+
+  const handleExport = useCallback(() => {
+    // TODO: implement export
+    console.log('Export customers');
+  }, []);
+
+  const handleImport = useCallback(() => {
+    // TODO: implement import dialog
+    console.log('Import customers');
+  }, []);
+
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
+
+  const handleView = useCallback((customer: Customer) => {
     setSelectedCustomer(customer);
-    setEditDialogOpen(true);
-  };
+    setDetailModalOpen(true);
+  }, []);
 
-  const handleDelete = (customer: Customer) => {
-    setSelectedCustomer(customer);
-    setDeleteDialogOpen(true);
-  };
+  const handleEdit = useCallback(
+    (customer: Customer) => {
+      navigate(`/customers/${customer.id}/edit`);
+    },
+    [navigate]
+  );
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, { label: string; color: "default" | "secondary" | "outline" | "destructive" }> = {
-      PROSPECT: { label: "Tiềm năng", color: "outline" },
-      ACTIVE: { label: "Đang hoạt động", color: "default" },
-      INACTIVE: { label: "Không hoạt động", color: "secondary" },
-      BLACKLIST: { label: "Danh sách đen", color: "destructive" },
-    };
-
-    const config = variants[status] || { label: status, color: "default" };
-
-    return (
-      <Badge variant={config.color}>
-        {config.label}
-      </Badge>
-    );
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("vi-VN");
-  };
-
-  const getGenderLabel = (gender: string | null) => {
-    if (!gender) return "-";
-    const labels: Record<string, string> = {
-      MALE: "Nam",
-      FEMALE: "Nữ",
-      OTHER: "Khác",
-    };
-    return labels[gender] || gender;
-  };
-
-  const getCustomerTypeLabel = (type: string | null) => {
-    if (!type) return "-";
-    return type === "INDIVIDUAL" ? "Cá nhân" : "Tổ chức";
-  };
+  const handleDelete = useCallback(
+    (customer: Customer) => {
+      setCustomerToDelete(customer);
+      setDeleteDialogOpen(true);
+    },
+    []
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Users className="h-8 w-8" />
-          <h1 className="text-3xl font-bold">Quản lý Khách hàng</h1>
-        </div>
-        <Button onClick={() => setCreateDialogOpen(true)} className="bg-green-600 hover:bg-green-700">
-          <Plus className="mr-2 h-4 w-4" />
-          Tạo khách hàng
-        </Button>
-      </div>
+    <MainLayout title="Quản lý Khách hàng" subtitle="Quản lý thông tin khách hàng" icon={Users}>
+      <div className="space-y-4">
+        {/* Status Tabs */}
+        <CustomerStatusTabs activeTab={activeTab} onTabChange={handleTabChange} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Danh sách Khách hàng</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Search */}
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Tìm kiếm theo tên, SĐT, email, CCCD..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+        {/* Stats Cards */}
+        <CustomerStatsCards
+          stats={customerStats}
+          activeFilter={activeStatFilter}
+          onFilterChange={handleStatFilterChange}
+        />
+
+        {/* Location Filters */}
+        <CustomerListFilters filters={filters} onFiltersChange={handleFiltersChange} />
+
+        {/* Toolbar */}
+        <CustomerListToolbar
+          searchQuery={searchQuery}
+          onSearchChange={handleSearch}
+          onAdd={handleAdd}
+          onExport={handleExport}
+          onImport={handleImport}
+          onPrint={handlePrint}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+        />
+
+        {/* Table */}
+        <div className="bg-white rounded-lg border">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+          ) : customers.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="Chưa có khách hàng nào"
+              description="Hãy thêm khách hàng đầu tiên để bắt đầu quản lý"
+            />
+          ) : (
+            <>
+              <CustomerListTable
+                customers={customers}
+                onView={handleView}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                isLoading={isLoading}
               />
-            </div>
-          </div>
+              <DataTablePagination
+                paginationInfo={paginationInfo}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                showPageSizeSelector
+                showItemCount
+              />
+            </>
+          )}
+        </div>
 
-          {/* Tabs for Customer Status */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="all">
-                Tất cả ({customerCounts.all})
-              </TabsTrigger>
-              <TabsTrigger value="PROSPECT">
-                Tiềm năng ({customerCounts.PROSPECT})
-              </TabsTrigger>
-              <TabsTrigger value="ACTIVE">
-                Đang hoạt động ({customerCounts.ACTIVE})
-              </TabsTrigger>
-              <TabsTrigger value="INACTIVE">
-                Không hoạt động ({customerCounts.INACTIVE})
-              </TabsTrigger>
-              <TabsTrigger value="BLACKLIST">
-                Danh sách đen ({customerCounts.BLACKLIST})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value={activeTab}>
-              {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Đang tải...
-                </div>
-              ) : filteredCustomers && filteredCustomers.length > 0 ? (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Họ tên</TableHead>
-                        <TableHead>Loại</TableHead>
-                        <TableHead>SĐT</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>CCCD/CMND</TableHead>
-                        <TableHead>Giới tính</TableHead>
-                        <TableHead>Ngày sinh</TableHead>
-                        <TableHead>Trạng thái</TableHead>
-                        <TableHead className="text-right">Thao tác</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredCustomers.map((customer) => (
-                        <TableRow key={customer.id}>
-                          <TableCell className="font-medium">
-                            {customer.full_name}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {getCustomerTypeLabel(customer.customer_type)}
-                          </TableCell>
-                          <TableCell>{customer.phone || "-"}</TableCell>
-                          <TableCell className="text-sm">
-                            {customer.email || "-"}
-                          </TableCell>
-                          <TableCell>
-                            {customer.id_number ? (
-                              <div className="text-sm">
-                                <div>{customer.id_number}</div>
-                                {customer.id_type && (
-                                  <span className="text-muted-foreground text-xs">
-                                    ({customer.id_type})
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              "-"
-                            )}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {getGenderLabel(customer.gender)}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {formatDate(customer.date_of_birth)}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(customer.status || "PROSPECT")}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(customer)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDelete(customer)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm || activeTab !== "all"
-                    ? "Không tìm thấy khách hàng nào"
-                    : "Chưa có khách hàng nào. Nhấn 'Tạo khách hàng' để bắt đầu."}
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Dialogs */}
-      <CreateCustomerDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
-      {selectedCustomer && (
-        <>
-          <EditCustomerDialog
-            open={editDialogOpen}
-            onOpenChange={setEditDialogOpen}
-            customer={selectedCustomer}
+        {/* Customer Detail Modal */}
+        {selectedCustomer && (
+          <CustomerDetailModal
+            open={detailModalOpen}
+            onOpenChange={setDetailModalOpen}
+            customerId={selectedCustomer.id}
           />
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        {customerToDelete && (
           <DeleteCustomerDialog
             open={deleteDialogOpen}
             onOpenChange={setDeleteDialogOpen}
-            customer={selectedCustomer}
+            customerId={customerToDelete.id}
+            customerName={customerToDelete.full_name}
           />
-        </>
-      )}
-    </div>
+        )}
+      </div>
+    </MainLayout>
   );
 }

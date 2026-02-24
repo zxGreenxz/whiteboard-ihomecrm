@@ -9,7 +9,6 @@ import {
   RefreshCcw,
   Banknote,
   TrendingDown,
-  FileText,
 } from 'lucide-react';
 
 interface InvoiceStatsSummaryProps {
@@ -35,7 +34,6 @@ const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
   // The following values need backend support: total_amount, rent_amount, service_amount, total_collected, total_refunded
   const totalPaid = stats?.total_paid ?? 0;
   const totalRemaining = stats?.total_remaining ?? 0;
-  const totalCount = stats?.total_count ?? 0;
 
   const row1: StatCard[] = [
     {
@@ -97,20 +95,12 @@ const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
       iconBg: 'bg-orange-100',
       valueColor: 'text-orange-600',
     },
-    {
-      label: 'Tổng hoá đơn',
-      value: String(totalCount),
-      icon: FileText,
-      iconColor: 'text-gray-600',
-      iconBg: 'bg-gray-100',
-      valueColor: 'text-gray-600',
-    },
   ];
 
   const renderCard = (card: StatCard) => (
-    <Card key={card.label}>
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className={`h-10 w-10 rounded-full ${card.iconBg} flex items-center justify-center shrink-0`}>
+    <Card key={card.label} className="shadow-sm">
+      <CardContent className="flex items-center gap-3 p-3">
+        <div className={`h-11 w-11 rounded-full ${card.iconBg} flex items-center justify-center shrink-0`}>
           <card.icon className={`h-5 w-5 ${card.iconColor}`} />
         </div>
         <div className="min-w-0">
@@ -130,7 +120,7 @@ const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {row1.map(renderCard)}
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {row2.map(renderCard)}
       </div>
     </div>

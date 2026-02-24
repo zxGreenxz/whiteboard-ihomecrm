@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useBeds } from '@/hooks/useBeds';
 import { useContracts } from '@/hooks/useContracts';
-import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -19,6 +22,8 @@ interface InvoiceListFiltersProps {
 
 const ALL_VALUE = '__all__';
 
+const MONTHS = ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'];
+
 const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProps) => {
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(filters.building_id);
@@ -27,6 +32,20 @@ const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProp
     filters.room_id ? { room_id: filters.room_id } : undefined,
   );
   const contracts = contractsData?.data ?? [];
+
+  // Month Picker state
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => {
+    if (filters.billing_month) return parseInt(filters.billing_month.split('-')[0]);
+    return new Date().getFullYear();
+  });
+
+  const selectedMonth = filters.billing_month
+    ? parseInt(filters.billing_month.split('-')[1])
+    : null;
+  const selectedYear = filters.billing_month
+    ? parseInt(filters.billing_month.split('-')[0])
+    : null;
 
   const update = (patch: Partial<InvoiceFilters>) => {
     onFiltersChange({ ...filters, ...patch });
@@ -50,9 +69,10 @@ const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProp
     update({ contract_id: value === ALL_VALUE ? undefined : value });
   };
 
-  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const month = e.target.value; // YYYY-MM format
-    update({ billing_month: month || undefined });
+  const handleMonthSelect = (month: number) => {
+    const monthStr = `${pickerYear}-${String(month).padStart(2, '0')}`;
+    update({ billing_month: monthStr });
+    setMonthPickerOpen(false);
   };
 
   return (
@@ -121,14 +141,55 @@ const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProp
         </SelectContent>
       </Select>
 
-      {/* Chọn tháng */}
-      <Input
-        type="month"
-        className="h-9 text-sm w-[160px]"
-        value={filters.billing_month ?? ''}
-        onChange={handleMonthChange}
-        placeholder="Chọn tháng"
-      />
+      {/* Chọn tháng - Custom Month Picker */}
+      <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="h-9 text-sm w-[160px] justify-start font-normal">
+            <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+            {filters.billing_month
+              ? `Th${selectedMonth}/${selectedYear}`
+              : 'Chọn tháng'}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[280px] p-3" align="start">
+          <div className="flex items-center justify-between mb-3">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPickerYear((y) => y - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-semibold">{pickerYear}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPickerYear((y) => y + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {MONTHS.map((label, idx) => {
+              const monthNum = idx + 1;
+              const isSelected = selectedYear === pickerYear && selectedMonth === monthNum;
+              return (
+                <Button
+                  key={label}
+                  variant={isSelected ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`text-sm ${isSelected ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+                  onClick={() => handleMonthSelect(monthNum)}
+                >
+                  {label}
+                </Button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 };

@@ -170,14 +170,6 @@ const InvoicesPage = () => {
     [navigate],
   );
 
-  // TODO: Placeholder handlers for features to be implemented later
-  const handlePublish = useCallback(
-    (_invoice: InvoiceWithRelations) => {
-      console.log('TODO: Phát hành hoá đơn');
-      toast({ title: 'Tính năng đang phát triển', description: 'Phát hành hoá đơn' });
-    },
-    [toast],
-  );
 
   const handleViewHistory = useCallback(
     (_invoice: InvoiceWithRelations) => {
@@ -252,7 +244,6 @@ const InvoicesPage = () => {
               onRecordPayment={handleRecordPayment}
               onUnapprove={handleUnapprove}
               onViewDetail={handleViewDetail}
-              onPublish={handlePublish}
               onViewHistory={handleViewHistory}
             />
             <DataTablePagination

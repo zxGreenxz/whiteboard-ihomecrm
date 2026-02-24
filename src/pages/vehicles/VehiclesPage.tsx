@@ -1,314 +1,159 @@
-import { useState } from "react";
-import MainLayout from "@/components/layout/MainLayout";
-import { Plus, Search, Car } from "lucide-react";
-import EmptyState from "@/components/ui/EmptyState";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useVehicles, type VehicleWithRelations } from "@/hooks/useVehicles";
-import { useBuildings } from "@/hooks/useBuildings";
-import { CreateVehicleDialog } from "@/components/vehicles/CreateVehicleDialog";
-import { EditVehicleDialog } from "@/components/vehicles/EditVehicleDialog";
-import { formatCurrency } from "@/lib/utils";
+import { useState, useMemo, useCallback } from 'react';
+import { Search, Car } from 'lucide-react';
+import MainLayout from '@/components/layout/MainLayout';
+import { Input } from '@/components/ui/input';
+import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
+import EmptyState from '@/components/ui/EmptyState';
+import { useVehicles } from '@/hooks/useVehicles';
+import VehicleListToolbar, { type ViewMode } from '@/components/vehicles/VehicleListToolbar';
+import VehicleListTable from '@/components/vehicles/VehicleListTable';
+import VehicleFormDialog from '@/components/vehicles/VehicleFormDialog';
+import DeleteVehicleDialog from '@/components/vehicles/DeleteVehicleDialog';
 
-const VEHICLE_TYPE_CONFIG = {
-  MOTORBIKE: { label: "Xe máy", color: "bg-blue-100 text-blue-800", icon: "🏍️" },
-  CAR: { label: "Ô tô", color: "bg-purple-100 text-purple-800", icon: "🚗" },
-  BICYCLE: { label: "Xe đạp", color: "bg-green-100 text-green-800", icon: "🚲" },
-  ELECTRIC_BIKE: { label: "Xe điện", color: "bg-yellow-100 text-yellow-800", icon: "⚡" },
-  OTHER: { label: "Khác", color: "bg-gray-100 text-gray-800", icon: "🚛" },
-};
+import type { VehicleWithRelations, VehicleFilters } from '@/types/vehicle';
 
-const VehiclesPage = () => {
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+export default function VehiclesPage() {
+  // State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleWithRelations | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string>("ALL");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [vehicleToDelete, setVehicleToDelete] = useState<VehicleWithRelations | null>(null);
 
-  // DEFENSIVE CHECK: ensure vehicles is array
-  const vehiclesData = useVehicles({
-    vehicle_type: typeFilter !== "ALL" ? typeFilter : undefined,
-  });
-  const vehicles = Array.isArray(vehiclesData?.data) ? vehiclesData.data : [];
-  const isLoading = vehiclesData?.isLoading ?? false;
+  // Pagination
+  const { page, pageSize, setPage, setPageSize } = usePagination(20);
 
-  const { data: buildingsData = [] } = useBuildings();
-  const buildings = Array.isArray(buildingsData) ? buildingsData : [];
+  // Build filters
+  const filters = useMemo<VehicleFilters>(
+    () => ({ search: searchQuery || undefined }),
+    [searchQuery]
+  );
 
-  const handleEdit = (vehicle: VehicleWithRelations) => {
+  // Data fetching
+  const { data: vehiclesData, isLoading } = useVehicles(filters, { page, pageSize });
+  const vehicles = vehiclesData?.data ?? [];
+  const totalCount = vehiclesData?.count ?? 0;
+
+  // Pagination info
+  const paginationInfo = useMemo(
+    () => calculatePaginationInfo(page, pageSize, totalCount),
+    [page, pageSize, totalCount]
+  );
+
+  // Handlers
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      setPage(1);
+    },
+    [setPage]
+  );
+
+  const handleAdd = useCallback(() => {
+    setSelectedVehicle(null);
+    setFormDialogOpen(true);
+  }, []);
+
+  const handleEdit = useCallback((vehicle: VehicleWithRelations) => {
     setSelectedVehicle(vehicle);
-    setEditDialogOpen(true);
-  };
+    setFormDialogOpen(true);
+  }, []);
 
-  // DEFENSIVE CHECK: ensure filteredVehicles is array before operations
-  const filteredVehicles = Array.isArray(vehicles) ? vehicles.filter((vehicle) => {
-    if (!searchQuery) return true;
-    const search = searchQuery.toLowerCase();
-    return (
-      vehicle.license_plate?.toLowerCase().includes(search) ||
-      vehicle.brand?.toLowerCase().includes(search) ||
-      vehicle.model?.toLowerCase().includes(search) ||
-      vehicle.tenant?.full_name?.toLowerCase().includes(search) ||
-      vehicle.contract?.contract_number?.toLowerCase().includes(search)
-    );
-  }) : [];
+  const handleDelete = useCallback((vehicle: VehicleWithRelations) => {
+    setVehicleToDelete(vehicle);
+    setDeleteDialogOpen(true);
+  }, []);
 
-  // Calculate summary stats
-  const totalVehicles = filteredVehicles.length;
-  const totalParkingFees = filteredVehicles.reduce((sum, v) => sum + (v.parking_fee || 0), 0);
-  const byType = filteredVehicles.reduce((acc, v) => {
-    const type = v.vehicle_type || "OTHER";
-    acc[type] = (acc[type] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const handleExport = useCallback(() => {
+    console.log('Export vehicles');
+  }, []);
 
-  if (isLoading) {
-    return (
-      <MainLayout>
-        <div className="p-6">
-          <div className="flex items-center justify-center h-96">
-            <p className="text-muted-foreground">Đang tải...</p>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
+  const handleImport = useCallback(() => {
+    console.log('Import vehicles');
+  }, []);
+
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
 
   return (
-    <MainLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Quản lý Phương tiện</h1>
-          <p className="text-muted-foreground mt-1">
-            Theo dõi và quản lý phương tiện của khách hàng
-          </p>
-        </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Thêm phương tiện
-        </Button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Tổng số xe
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalVehicles}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Tổng phí gửi xe
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(totalParkingFees)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <span>🏍️</span> Xe máy
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {byType.MOTORBIKE || 0}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <span>🚗</span> Ô tô
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {byType.CAR || 0}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <span>⚡</span> Xe điện
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
-              {byType.ELECTRIC_BIKE || 0}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <div className="flex gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Tìm kiếm theo biển số, hãng xe, chủ xe..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+    <MainLayout title="Quản lý Phương tiện" subtitle="Khách hàng > Phương tiện" icon={Car}>
+      <div className="space-y-4">
+        {/* Search + Toolbar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm kiếm phương tiện..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <VehicleListToolbar
+            onAdd={handleAdd}
+            onExport={handleExport}
+            onImport={handleImport}
+            onPrint={handlePrint}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
           />
         </div>
 
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Lọc theo loại" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả loại</SelectItem>
-            {Object.entries(VEHICLE_TYPE_CONFIG).map(([key, config]) => (
-              <SelectItem key={key} value={key}>
-                {config.icon} {config.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        {/* Table */}
+        <div className="bg-white rounded-lg border">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+          ) : vehicles.length === 0 ? (
+            <EmptyState
+              icon={Car}
+              title="Chưa có phương tiện nào"
+              description="Hãy thêm phương tiện đầu tiên để bắt đầu quản lý"
+              actionLabel="Thêm phương tiện"
+              onAction={handleAdd}
+            />
+          ) : (
+            <>
+              <VehicleListTable
+                vehicles={vehicles}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                isLoading={isLoading}
+              />
+              <DataTablePagination
+                paginationInfo={paginationInfo}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                showPageSizeSelector
+                showItemCount
+              />
+            </>
+          )}
+        </div>
 
-      {/* Vehicles Table */}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Loại xe</TableHead>
-              <TableHead>Biển số</TableHead>
-              <TableHead>Hãng / Model</TableHead>
-              <TableHead>Chủ xe</TableHead>
-              <TableHead>Hợp đồng</TableHead>
-              <TableHead>Vị trí</TableHead>
-              <TableHead>Phí gửi xe</TableHead>
-              <TableHead>Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredVehicles.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8}>
-                  {vehicles.length === 0 && typeFilter === "ALL" && !searchQuery ? (
-                    <EmptyState
-                      icon={Car}
-                      title="Chưa có phương tiện nào"
-                      description="Hãy thêm phương tiện đầu tiên để bắt đầu quản lý"
-                      actionLabel="Thêm phương tiện"
-                      onAction={() => setCreateDialogOpen(true)}
-                    />
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      Không tìm thấy phương tiện nào
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredVehicles.map((vehicle) => (
-                <TableRow key={vehicle.id}>
-                  <TableCell>
-                    <Badge
-                      className={
-                        VEHICLE_TYPE_CONFIG[vehicle.vehicle_type as keyof typeof VEHICLE_TYPE_CONFIG]?.color || ""
-                      }
-                    >
-                      {VEHICLE_TYPE_CONFIG[vehicle.vehicle_type as keyof typeof VEHICLE_TYPE_CONFIG]?.icon}{" "}
-                      {VEHICLE_TYPE_CONFIG[vehicle.vehicle_type as keyof typeof VEHICLE_TYPE_CONFIG]?.label ||
-                        vehicle.vehicle_type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono font-semibold">
-                    {vehicle.license_plate || "-"}
-                  </TableCell>
-                  <TableCell>
-                    {vehicle.brand && vehicle.model
-                      ? `${vehicle.brand} ${vehicle.model}`
-                      : vehicle.brand || vehicle.model || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{vehicle.tenant?.full_name || "-"}</div>
-                      {vehicle.tenant?.phone && (
-                        <div className="text-sm text-muted-foreground">
-                          {vehicle.tenant.phone}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">
-                    {vehicle.contract?.contract_number || "-"}
-                  </TableCell>
-                  <TableCell>
-                    {vehicle.contract?.room?.building?.name}
-                    {vehicle.contract?.room && ` - ${vehicle.contract.room.name}`}
-                  </TableCell>
-                  <TableCell className="font-semibold text-blue-600">
-                    {vehicle.parking_fee ? formatCurrency(vehicle.parking_fee) : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(vehicle)}
-                    >
-                      Sửa
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </Card>
-
-      {/* Dialogs */}
-      <CreateVehicleDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
-
-      {selectedVehicle && (
-        <EditVehicleDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          vehicle={selectedVehicle}
+        {/* Form Dialog (Add/Edit) */}
+        <VehicleFormDialog
+          open={formDialogOpen}
+          onOpenChange={setFormDialogOpen}
+          vehicle={selectedVehicle || undefined}
         />
-      )}
+
+        {/* Delete Confirmation Dialog */}
+        {vehicleToDelete && (
+          <DeleteVehicleDialog
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+            vehicleId={vehicleToDelete.id}
+            vehicleName={
+              vehicleToDelete.vehicle_name
+                ? `${vehicleToDelete.vehicle_name} (${vehicleToDelete.license_plate || ''})`
+                : vehicleToDelete.license_plate || vehicleToDelete.id.slice(0, 8)
+            }
+          />
+        )}
       </div>
     </MainLayout>
   );
-};
-
-export default VehiclesPage;
+}

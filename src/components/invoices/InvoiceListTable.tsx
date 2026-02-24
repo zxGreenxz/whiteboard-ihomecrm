@@ -20,11 +20,9 @@ import {
   XCircle,
   Pencil,
   DollarSign,
-  Mail,
   History,
   Trash2,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { canApproveInvoice, canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
 
@@ -39,7 +37,6 @@ interface InvoiceListTableProps {
   onRecordPayment: (invoice: InvoiceWithRelations) => void;
   onUnapprove: (invoice: InvoiceWithRelations) => void;
   onViewDetail: (invoice: InvoiceWithRelations) => void;
-  onPublish?: (invoice: InvoiceWithRelations) => void;
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
 }
 
@@ -78,7 +75,6 @@ const InvoiceListTable = ({
   onRecordPayment,
   onUnapprove,
   onViewDetail,
-  onPublish,
   onViewHistory,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
@@ -147,17 +143,12 @@ const InvoiceListTable = ({
 
                   {/* Mã */}
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        className="font-medium text-blue-600 hover:underline cursor-pointer text-sm"
-                        onClick={() => onViewDetail(invoice)}
-                      >
-                        {invoice.invoice_number || invoice.id.slice(0, 8)}
-                      </button>
-                      <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-200">
-                        VAT
-                      </Badge>
-                    </div>
+                    <button
+                      className="font-medium text-blue-600 hover:underline cursor-pointer text-sm"
+                      onClick={() => onViewDetail(invoice)}
+                    >
+                      {invoice.invoice_number || invoice.id.slice(0, 8)}
+                    </button>
                   </TableCell>
 
                   {/* Thao tác - inline icon buttons */}
@@ -224,27 +215,6 @@ const InvoiceListTable = ({
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>Thu tiền</TooltipContent>
-                      </Tooltip>
-
-                      {/* Phát hành hoá đơn - TODO */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200"
-                            onClick={() => {
-                              if (onPublish) {
-                                onPublish(invoice);
-                              } else {
-                                showTodo('Phát hành hoá đơn');
-                              }
-                            }}
-                          >
-                            <Mail className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Phát hành hoá đơn</TooltipContent>
                       </Tooltip>
 
                       {/* Lịch sử chỉnh sửa - TODO */}

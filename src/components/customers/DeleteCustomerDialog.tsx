@@ -1,112 +1,112 @@
+import { useState, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useDeleteCustomer } from "@/hooks/useCustomers";
-import type { Database } from "@/integrations/supabase/types";
-
-type Customer = Database["public"]["Tables"]["customers"]["Row"];
+} from '@/components/ui/alert-dialog';
+import { useDeleteCustomer } from '@/hooks/useCustomers';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DeleteCustomerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  customer: Customer;
+  customerId: string;
+  customerName: string;
+  onSuccess?: () => void;
 }
 
-export function DeleteCustomerDialog({
+/**
+ * DeleteCustomerDialog
+ * Confirm dialog with warning if customer has active contracts
+ * Soft-delete via useDeleteCustomer
+ * Toast "Dữ liệu đã được XOÁ thành công"
+ * Requirements: 5.3, 5.4, 5.5
+ */
+export default function DeleteCustomerDialog({
   open,
   onOpenChange,
-  customer,
+  customerId,
+  customerName,
+  onSuccess,
 }: DeleteCustomerDialogProps) {
-  const deleteCustomer = useDeleteCustomer();
+  const deleteMutation = useDeleteCustomer();
+  const [hasActiveContracts, setHasActiveContracts] = useState(false);
+  const [checkingContracts, setCheckingContracts] = useState(false);
 
-  const handleDelete = async () => {
-    try {
-      await deleteCustomer.mutateAsync(customer.id);
-      onOpenChange(false);
-    } catch (error) {
-      // Error is handled by the mutation
-    }
-  };
+  // Check for active contracts when dialog opens
+  useEffect(() => {
+    if (!open || !customerId) return;
 
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      PROSPECT: "Tiềm năng",
-      ACTIVE: "Đang hoạt động",
-      INACTIVE: "Không hoạt động",
-      BLACKLIST: "Danh sách đen",
+    const checkContracts = async () => {
+      setCheckingContracts(true);
+      try {
+        const { count } = await supabase
+          .from('contracts')
+          .select('id', { count: 'exact', head: true })
+          .eq('customer_id', customerId)
+          .is('deleted_at', null)
+          .eq('status', 'ACTIVE');
+
+        setHasActiveContracts((count ?? 0) > 0);
+      } catch {
+        setHasActiveContracts(false);
+      } finally {
+        setCheckingContracts(false);
+      }
     };
-    return labels[status] || status;
-  };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("vi-VN");
+    checkContracts();
+  }, [open, customerId]);
+
+  const handleDelete = () => {
+    deleteMutation.mutate(customerId, {
+      onSuccess: () => {
+        onOpenChange(false);
+        onSuccess?.();
+      },
+    });
   };
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Xác nhận xóa khách hàng</AlertDialogTitle>
+          <AlertDialogTitle>Xác nhận xoá khách hàng</AlertDialogTitle>
           <AlertDialogDescription asChild>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p>
-                Bạn có chắc chắn muốn xóa khách hàng{" "}
-                <span className="font-semibold">{customer.full_name}</span>?
+                Bạn có chắc chắn muốn xoá khách hàng <span className="font-medium text-foreground">{customerName}</span>?
               </p>
-              <div className="bg-muted rounded-md p-3 text-sm space-y-1">
-                {customer.phone && (
-                  <p>
-                    <span className="font-medium">SĐT:</span> {customer.phone}
+              {hasActiveContracts && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800">
+                    Khách hàng đang có hợp đồng hiệu lực. Bạn có chắc chắn muốn xoá?
                   </p>
-                )}
-                {customer.email && (
-                  <p>
-                    <span className="font-medium">Email:</span> {customer.email}
-                  </p>
-                )}
-                {customer.id_number && (
-                  <p>
-                    <span className="font-medium">CCCD/CMND:</span> {customer.id_number}
-                  </p>
-                )}
-                {customer.date_of_birth && (
-                  <p>
-                    <span className="font-medium">Ngày sinh:</span> {formatDate(customer.date_of_birth)}
-                  </p>
-                )}
-                {customer.customer_type && (
-                  <p>
-                    <span className="font-medium">Loại:</span>{" "}
-                    {customer.customer_type === "INDIVIDUAL" ? "Cá nhân" : "Tổ chức"}
-                  </p>
-                )}
-                <p>
-                  <span className="font-medium">Trạng thái:</span> {getStatusLabel(customer.status || "PROSPECT")}
-                </p>
-              </div>
-              <p className="text-sm text-muted-foreground mt-2">
-                Hành động này không thể hoàn tác.
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Thao tác này không thể hoàn tác.
               </p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Hủy</AlertDialogCancel>
-          <AlertDialogAction
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={deleteMutation.isPending}>
+            Huỷ
+          </Button>
+          <Button
+            variant="destructive"
             onClick={handleDelete}
-            disabled={deleteCustomer.isPending}
-            className="bg-destructive hover:bg-destructive/90"
+            disabled={deleteMutation.isPending || checkingContracts}
           >
-            {deleteCustomer.isPending ? "Đang xóa..." : "Xóa"}
-          </AlertDialogAction>
+            {deleteMutation.isPending ? 'Đang xoá...' : 'Xoá'}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
