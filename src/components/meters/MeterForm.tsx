@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Form,
@@ -62,14 +63,10 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
       initial_reading: 0,
       installation_date: '',
       location_note: '',
-      manufacturer: '',
-      model: '',
-      serial_number: '',
-      notes: '',
     },
   });
 
-  // Populate form when editing
+  // Populate form when editing, reset when adding
   useEffect(() => {
     if (meter && open) {
       const values: MeterFormValues = {
@@ -80,10 +77,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
         initial_reading: meter.initial_reading ?? 0,
         installation_date: meter.installation_date || '',
         location_note: meter.location_note || '',
-        manufacturer: meter.manufacturer || '',
-        model: meter.model || '',
-        serial_number: meter.serial_number || '',
-        notes: meter.notes || '',
       };
       setSelectedBuildingId(meter.building_id || '');
       form.reset(values);
@@ -96,10 +89,6 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
         initial_reading: 0,
         installation_date: '',
         location_note: '',
-        manufacturer: '',
-        model: '',
-        serial_number: '',
-        notes: '',
       });
       setSelectedBuildingId('');
     }
@@ -118,14 +107,9 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
             initial_reading: data.initial_reading,
             installation_date: data.installation_date || null,
             location_note: data.location_note || null,
-            manufacturer: data.manufacturer || null,
-            model: data.model || null,
-            serial_number: data.serial_number || null,
-            notes: data.notes || null,
           },
         });
       } else {
-        // service_id is auto-resolved from meter_type in the useCreateMeter hook
         await createMeter.mutateAsync({
           building_id: data.building_id,
           room_id: data.room_id,
@@ -134,15 +118,16 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
           initial_reading: data.initial_reading,
           installation_date: data.installation_date || null,
           location_note: data.location_note || null,
-          manufacturer: data.manufacturer || null,
-          model: data.model || null,
-          serial_number: data.serial_number || null,
-          notes: data.notes || null,
         } as Parameters<typeof createMeter.mutateAsync>[0]);
       }
       onOpenChange(false);
-    } catch {
-      // Errors handled by mutation hooks (toast)
+      form.reset();
+    } catch (error: unknown) {
+      // Handle duplicate meter code error (PostgreSQL error 23505)
+      const pgError = error as { code?: string };
+      if (pgError?.code === '23505') {
+        form.setError('code', { message: 'Mã công tơ đã tồn tại' });
+      }
     }
   };
 
@@ -158,7 +143,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {/* Required fields */}
+              {/* Tòa nhà (*) */}
               <FormField
                 control={form.control}
                 name="building_id"
@@ -191,6 +176,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                 )}
               />
 
+              {/* Phòng (*) - phụ thuộc Tòa nhà */}
               <FormField
                 control={form.control}
                 name="room_id"
@@ -217,6 +203,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
               />
 
               <div className="grid grid-cols-2 gap-4">
+                {/* Loại công tơ (*) */}
                 <FormField
                   control={form.control}
                   name="meter_type"
@@ -242,6 +229,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                   )}
                 />
 
+                {/* Mã công tơ (*) */}
                 <FormField
                   control={form.control}
                   name="code"
@@ -257,11 +245,10 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                 />
               </div>
 
-              {/* Optional fields */}
+              {/* Thông tin bổ sung */}
               <div className="space-y-4 pt-4 border-t">
-                <h3 className="font-semibold text-sm">Thông tin bổ sung</h3>
-
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Chỉ số ban đầu */}
                   <FormField
                     control={form.control}
                     name="initial_reading"
@@ -282,6 +269,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                     )}
                   />
 
+                  {/* Ngày lắp đặt */}
                   <FormField
                     control={form.control}
                     name="installation_date"
@@ -297,6 +285,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                   />
                 </div>
 
+                {/* Ghi chú vị trí */}
                 <FormField
                   control={form.control}
                   name="location_note"
@@ -304,65 +293,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                     <FormItem>
                       <FormLabel>Ghi chú vị trí</FormLabel>
                       <FormControl>
-                        <Input placeholder="VD: Tầng 2, hành lang" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="manufacturer"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nhà sản xuất</FormLabel>
-                        <FormControl>
-                          <Input placeholder="VD: Schneider" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="model"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Model</FormLabel>
-                        <FormControl>
-                          <Input placeholder="VD: iEM3155" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="serial_number"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Số serial</FormLabel>
-                        <FormControl>
-                          <Input placeholder="VD: SN12345" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Ghi chú</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Ghi chú thêm..." {...field} />
+                        <Textarea placeholder="VD: Tầng 2, hành lang" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -370,7 +301,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4">
+              <DialogFooter>
                 <Button
                   type="button"
                   variant="outline"
@@ -381,7 +312,7 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                 <Button type="submit" disabled={isPending}>
                   {isPending ? 'Đang lưu...' : 'Lưu'}
                 </Button>
-              </div>
+              </DialogFooter>
             </form>
           </Form>
         </ScrollArea>

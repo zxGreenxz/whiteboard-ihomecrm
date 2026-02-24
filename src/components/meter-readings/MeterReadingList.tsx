@@ -26,8 +26,9 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { MeterReadingDetailed } from '@/hooks/useMeterReadings';
+import { canEditReading, canDeleteReading } from '@/hooks/useMeterReadingsHelpers';
 import {
-  MoreVertical,
+  MoreHorizontal,
   CheckCircle,
   XCircle,
   Pencil,
@@ -36,6 +37,10 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+
+// =============================================
+// Types
+// =============================================
 
 interface MeterReadingListProps {
   readings: MeterReadingDetailed[];
@@ -49,6 +54,33 @@ interface MeterReadingListProps {
   pagination: PaginationState;
   totalCount: number;
 }
+
+// =============================================
+// Helpers
+// =============================================
+
+/** Format a number with Vietnamese locale (e.g. 1.234,56) */
+const formatNumber = (value: number | null | undefined): string => {
+  if (value == null) return '—';
+  return value.toLocaleString('vi-VN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+/** Format a date string as DD/MM/YYYY */
+const formatDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '—';
+  try {
+    return format(new Date(dateStr), 'dd/MM/yyyy', { locale: vi });
+  } catch {
+    return '—';
+  }
+};
+
+// =============================================
+// Component
+// =============================================
 
 const MeterReadingList = ({
   readings,
@@ -75,11 +107,9 @@ const MeterReadingList = ({
 
   const handleToggleAll = () => {
     if (isAllSelected) {
-      // Deselect all on current page
       const currentPageIds = new Set(readings.map((r) => r.id));
       onSelectionChange(selectedIds.filter((id) => !currentPageIds.has(id)));
     } else {
-      // Select all on current page
       const currentPageIds = readings.map((r) => r.id);
       const merged = new Set([...selectedIds, ...currentPageIds]);
       onSelectionChange(Array.from(merged));
@@ -94,6 +124,7 @@ const MeterReadingList = ({
     }
   };
 
+  // Loading skeleton
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -104,6 +135,7 @@ const MeterReadingList = ({
     );
   }
 
+  // Empty state
   if (readings.length === 0) {
     return (
       <EmptyState
@@ -144,6 +176,8 @@ const MeterReadingList = ({
         <TableBody>
           {readings.map((reading) => {
             const isApproved = reading.status === 'APPROVED';
+            const editable = canEditReading(reading.status);
+            const deletable = canDeleteReading(reading.status);
 
             return (
               <TableRow key={reading.id}>
@@ -159,7 +193,8 @@ const MeterReadingList = ({
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{reading.reading_code}</span>
-                    <Badge variant={isApproved ? 'default' : 'secondary'}
+                    <Badge
+                      variant={isApproved ? 'default' : 'secondary'}
                       className={
                         isApproved
                           ? 'bg-green-100 text-green-800 hover:bg-green-100'
@@ -176,29 +211,32 @@ const MeterReadingList = ({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
                       <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
                       <DropdownMenuSeparator />
 
-                      {/* Duyệt / Bỏ duyệt */}
-                      {isApproved ? (
-                        <DropdownMenuItem onClick={() => onUnapprove(reading.id)}>
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Bỏ duyệt
-                        </DropdownMenuItem>
-                      ) : (
+                      {/* Duyệt - chỉ hiện khi UNAPPROVED */}
+                      {!isApproved && (
                         <DropdownMenuItem onClick={() => onApprove(reading.id)}>
                           <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
                           Duyệt
                         </DropdownMenuItem>
                       )}
 
+                      {/* Bỏ duyệt - chỉ hiện khi APPROVED */}
+                      {isApproved && (
+                        <DropdownMenuItem onClick={() => onUnapprove(reading.id)}>
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Bỏ duyệt
+                        </DropdownMenuItem>
+                      )}
+
                       {/* Cập nhật - disabled khi APPROVED */}
                       <DropdownMenuItem
-                        disabled={isApproved}
+                        disabled={!editable}
                         onClick={() => onEdit(reading)}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
@@ -207,8 +245,8 @@ const MeterReadingList = ({
 
                       {/* Xoá - disabled khi APPROVED */}
                       <DropdownMenuItem
-                        disabled={isApproved}
-                        className={!isApproved ? 'text-red-600' : ''}
+                        disabled={!deletable}
+                        className={deletable ? 'text-red-600' : ''}
                         onClick={() => onDelete(reading.id)}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
@@ -228,24 +266,22 @@ const MeterReadingList = ({
 
                 {/* Chỉ số đầu */}
                 <TableCell className="text-right">
-                  {reading.previous_reading?.toFixed(2) ?? '—'}
+                  {formatNumber(reading.previous_reading)}
                 </TableCell>
 
                 {/* Chỉ số cuối */}
                 <TableCell className="text-right">
-                  {reading.current_reading?.toFixed(2) ?? '—'}
+                  {formatNumber(reading.current_reading)}
                 </TableCell>
 
                 {/* Số tiêu thụ */}
                 <TableCell className="text-right font-medium">
-                  {reading.consumption?.toFixed(2) ?? '—'}
+                  {formatNumber(reading.consumption)}
                 </TableCell>
 
                 {/* Ngày chốt */}
                 <TableCell>
-                  {reading.reading_date
-                    ? format(new Date(reading.reading_date), 'dd/MM/yyyy', { locale: vi })
-                    : '—'}
+                  {formatDate(reading.reading_date)}
                 </TableCell>
 
                 {/* Người chốt */}

@@ -1,74 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { meterFormSchema, validateReadingValue, calculateConsumption } from '../meterReadingValidation';
+import {
+  calculateConsumption,
+  generateReadingCode,
+  isValidReadingCode,
+  validateReadingValue,
+  validateImportRows,
+  meterReadingFormSchema,
+} from '../meterReadingValidation';
 
 /**
- * Feature: meter-reading-reimplementation
- * Property 3: Validation từ chối input thiếu trường bắt buộc
- * Validates: Yêu cầu 2.6
+ * Feature: meter-reading-full-reimplementation
+ * Property 8: Consumption calculation
  *
- * Với bất kỳ đối tượng meter input nào mà thiếu ít nhất một trường bắt buộc
- * (building_id, room_id, meter_type, code), Zod schema validation phải từ chối
- * và trả về lỗi tương ứng cho trường bị thiếu.
+ * Với mọi currentReading >= previousReading >= 0,
+ * calculateConsumption trả về currentReading - previousReading.
+ *
+ * **Validates: Yêu cầu 2.5**
  */
-
-const REQUIRED_FIELDS = ['building_id', 'room_id', 'meter_type', 'code'] as const;
-type RequiredField = (typeof REQUIRED_FIELDS)[number];
-
-// Generator for a valid complete meter input
-const validMeterInputArb = fc.record({
-  building_id: fc.uuid(),
-  room_id: fc.uuid(),
-  meter_type: fc.constantFrom('ELECTRICITY' as const, 'WATER' as const, 'GAS' as const),
-  code: fc.string({ minLength: 1, maxLength: 50 }),
-  service_id: fc.uuid(),
-  initial_reading: fc.nat({ max: 99999 }),
-  installation_date: fc.constant('2024-01-01'),
-  location_note: fc.constant(''),
-  manufacturer: fc.constant(''),
-  model: fc.constant(''),
-  serial_number: fc.constant(''),
-  notes: fc.constant(''),
-});
-
-// Generator: pick a non-empty subset of required fields to omit
-const fieldsToOmitArb = fc
-  .subarray([...REQUIRED_FIELDS], { minLength: 1 })
-  .filter((arr) => arr.length >= 1);
-
-describe('Property 3: Validation từ chối input thiếu trường bắt buộc', () => {
-  it('should reject any meter input missing at least one required field and report errors for each missing field', () => {
+describe('Feature: meter-reading-full-reimplementation, Property 8: Consumption calculation', () => {
+  it('consumption should always equal currentReading - previousReading for valid readings', () => {
     fc.assert(
       fc.property(
-        validMeterInputArb,
-        fieldsToOmitArb,
-        (validInput, fieldsToOmit) => {
-          // Create input with required fields removed or set to empty/undefined
-          const incompleteInput: Record<string, unknown> = { ...validInput };
+        fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
+        (a, b) => {
+          const currentReading = Math.max(a, b);
+          const previousReading = Math.min(a, b);
 
-          for (const field of fieldsToOmit) {
-            if (field === 'meter_type') {
-              // For enum field, delete it entirely to trigger required_error
-              delete incompleteInput[field];
-            } else {
-              // For string fields, set to empty string to trigger min(1) validation
-              incompleteInput[field] = '';
-            }
-          }
+          const consumption = calculateConsumption(currentReading, previousReading);
 
-          const result = meterFormSchema.safeParse(incompleteInput);
-
-          // Must be rejected
-          expect(result.success).toBe(false);
-
-          if (!result.success) {
-            const errorPaths = result.error.issues.map((issue) => issue.path[0]);
-
-            // Each omitted field must have a corresponding error
-            for (const field of fieldsToOmit) {
-              expect(errorPaths).toContain(field);
-            }
-          }
+          expect(consumption).toBe(currentReading - previousReading);
         },
       ),
       { numRuns: 100 },
@@ -76,33 +38,75 @@ describe('Property 3: Validation từ chối input thiếu trường bắt buộ
   });
 });
 
+
 /**
- * Feature: meter-reading-reimplementation
- * Property 10: Validation từ chối chỉ số mới < chỉ số đầu
- * Validates: Yêu cầu 5.7
+ * Feature: meter-reading-full-reimplementation
+ * Property 9: Reading code generation and validation
  *
- * Với bất kỳ cặp giá trị (current_reading, previous_reading) nào mà
- * current_reading < previous_reading, hàm validation phải trả về lỗi
- * "Chỉ số mới phải lớn hơn hoặc bằng chỉ số đầu".
+ * Với mọi yearMonth hợp lệ và sequence 1-99999,
+ * generateReadingCode tạo code pass isValidReadingCode.
+ *
+ * **Validates: Yêu cầu 2.6, 8.3**
  */
-describe('Property 10: Validation từ chối chỉ số mới < chỉ số đầu', () => {
+describe('Feature: meter-reading-full-reimplementation, Property 9: Reading code generation and validation', () => {
+  const validYearMonthArb = fc
+    .tuple(
+      fc.integer({ min: 2020, max: 2099 }),
+      fc.integer({ min: 1, max: 12 }),
+    )
+    .map(([year, month]) => `${year}-${String(month).padStart(2, '0')}`);
+
+  const sequenceArb = fc.integer({ min: 1, max: 99999 });
+
+  it('generated code should always pass isValidReadingCode', () => {
+    fc.assert(
+      fc.property(validYearMonthArb, sequenceArb, (yearMonth, sequence) => {
+        const code = generateReadingCode(yearMonth, sequence);
+
+        expect(isValidReadingCode(code)).toBe(true);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it('generated code should match pattern CSS{YY}{MM}{5-digit-seq}', () => {
+    fc.assert(
+      fc.property(validYearMonthArb, sequenceArb, (yearMonth, sequence) => {
+        const code = generateReadingCode(yearMonth, sequence);
+        const [year, month] = yearMonth.split('-');
+        const yy = year.slice(-2);
+
+        expect(code).toMatch(/^CSS\d{4}\d{5}$/);
+        expect(code.slice(3, 5)).toBe(yy);
+        expect(code.slice(5, 7)).toBe(month);
+        expect(code.slice(7)).toBe(String(sequence).padStart(5, '0'));
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
+
+/**
+ * Feature: meter-reading-full-reimplementation
+ * Property 10: Validation rejects current < previous
+ *
+ * Với mọi cặp số current < previous, validateReadingValue trả về lỗi;
+ * ngược lại trả về null.
+ *
+ * **Validates: Yêu cầu 2.7, 11.2**
+ */
+describe('Feature: meter-reading-full-reimplementation, Property 10: Validation rejects current < previous', () => {
   it('should return error when currentReading < previousReading', () => {
     fc.assert(
       fc.property(
         fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
         fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
         (a, b) => {
-          // Ensure current < previous by assigning min to current, max to previous
           const smaller = Math.min(a, b);
           const larger = Math.max(a, b);
-
-          // Skip when values are equal (not a valid case for this property)
           fc.pre(smaller < larger);
 
-          const currentReading = smaller;
-          const previousReading = larger;
-
-          const result = validateReadingValue(currentReading, previousReading);
+          const result = validateReadingValue(smaller, larger);
 
           expect(result).toBe('Chỉ số mới phải lớn hơn hoặc bằng chỉ số đầu');
         },
@@ -117,7 +121,6 @@ describe('Property 10: Validation từ chối chỉ số mới < chỉ số đ�
         fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
         fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
         (a, b) => {
-          // Ensure current >= previous
           const currentReading = Math.max(a, b);
           const previousReading = Math.min(a, b);
 
@@ -131,31 +134,122 @@ describe('Property 10: Validation từ chối chỉ số mới < chỉ số đ�
   });
 });
 
+/**
+ * Feature: meter-reading-full-reimplementation
+ * Property 12: Import row validation partition invariant
+ *
+ * Với mọi array rows, validRows.length + errors.length === rows.length.
+ *
+ * **Validates: Yêu cầu 3.5, 3.6**
+ */
+describe('Feature: meter-reading-full-reimplementation, Property 12: Import row validation partition invariant', () => {
+  const validImportRowArb = fc.record({
+    meter_code: fc.string({ minLength: 1, maxLength: 20 }),
+    reading_date: fc.string({ minLength: 1, maxLength: 10 }),
+    current_reading: fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
+    notes: fc.option(fc.string({ maxLength: 100 }), { nil: undefined }),
+  });
+
+  const invalidImportRowArb = fc.oneof(
+    fc.constant({}),
+    fc.constant(null),
+    fc.constant(42),
+    fc.constant('string'),
+    fc.record({
+      meter_code: fc.constant(''),
+      reading_date: fc.constant(''),
+      current_reading: fc.constant(-1),
+    }),
+  );
+
+  const mixedRowsArb = fc.array(
+    fc.oneof(validImportRowArb, invalidImportRowArb),
+    { minLength: 0, maxLength: 50 },
+  );
+
+  it('validRows.length + errors.length should always equal rows.length', () => {
+    fc.assert(
+      fc.property(mixedRowsArb, (rows) => {
+        const { validRows, errors } = validateImportRows(rows);
+
+        expect(validRows.length + errors.length).toBe(rows.length);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it('every error should have a rowIndex and non-empty message', () => {
+    fc.assert(
+      fc.property(mixedRowsArb, (rows) => {
+        const { errors } = validateImportRows(rows);
+
+        for (const error of errors) {
+          expect(typeof error.rowIndex).toBe('number');
+          expect(error.rowIndex).toBeGreaterThanOrEqual(0);
+          expect(error.message.length).toBeGreaterThan(0);
+        }
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
 
 /**
- * Feature: meter-reading-reimplementation
- * Property 8: Số tiêu thụ = Chỉ số mới - Chỉ số đầu
- * Validates: Yêu cầu 5.5
+ * Feature: meter-reading-full-reimplementation
+ * Property 21: Validation schema round-trip
  *
- * Với bất kỳ bản ghi chỉ số nào, `consumption` phải luôn bằng
- * `current_reading - previous_reading`.
+ * Với mọi valid MeterReadingFormValues,
+ * serialize→deserialize→parse trả về kết quả tương đương.
+ *
+ * **Validates: Yêu cầu 11.1, 11.5**
  */
-describe('Property 8: Số tiêu thụ = Chỉ số mới - Chỉ số đầu', () => {
-  it('consumption should always equal currentReading - previousReading for valid readings', () => {
+describe('Feature: meter-reading-full-reimplementation, Property 21: Validation schema round-trip', () => {
+  const validMeterReadingFormArb = fc.record({
+    building_id: fc.uuid(),
+    room_id: fc.uuid(),
+    meter_type: fc.option(
+      fc.constantFrom('ELECTRICITY' as const, 'WATER' as const, 'GAS' as const),
+      { nil: null },
+    ),
+    settlement_month: fc
+      .tuple(
+        fc.integer({ min: 2020, max: 2099 }),
+        fc.integer({ min: 1, max: 12 }),
+      )
+      .map(([y, m]) => `${y}-${String(m).padStart(2, '0')}`),
+    reading_date: fc
+      .tuple(
+        fc.integer({ min: 2020, max: 2099 }),
+        fc.integer({ min: 1, max: 12 }),
+        fc.integer({ min: 1, max: 28 }),
+      )
+      .map(([y, m, d]) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`),
+    readings: fc.array(
+      fc.record({
+        meter_id: fc.uuid(),
+        current_reading: fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
+        notes: fc.option(fc.string({ maxLength: 100 }), { nil: undefined }),
+        meter_image_url: fc.option(fc.string({ maxLength: 200 }), { nil: undefined }),
+      }),
+      { minLength: 1, maxLength: 10 },
+    ),
+  });
+
+  it('serialize→deserialize→parse should produce equivalent result', () => {
     fc.assert(
-      fc.property(
-        fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
-        fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
-        (a, b) => {
-          // Ensure currentReading >= previousReading (valid reading)
-          const currentReading = Math.max(a, b);
-          const previousReading = Math.min(a, b);
+      fc.property(validMeterReadingFormArb, (formValues) => {
+        // First parse to get the canonical form
+        const parsed = meterReadingFormSchema.parse(formValues);
 
-          const consumption = calculateConsumption(currentReading, previousReading);
+        // Serialize to JSON and deserialize
+        const serialized = JSON.stringify(parsed);
+        const deserialized = JSON.parse(serialized);
 
-          expect(consumption).toBe(currentReading - previousReading);
-        },
-      ),
+        // Parse again
+        const reparsed = meterReadingFormSchema.parse(deserialized);
+
+        expect(reparsed).toEqual(parsed);
+      }),
       { numRuns: 100 },
     );
   });

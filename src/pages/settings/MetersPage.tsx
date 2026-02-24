@@ -2,7 +2,7 @@ import { useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import MeterList from '@/components/meters/MeterList';
 import MeterForm from '@/components/meters/MeterForm';
-import { useDeleteMeter, type MeterWithRoom } from '@/hooks/useMeters';
+import { useMetersWithLatestReading } from '@/hooks/useMeters';
 import { useBuildings } from '@/hooks/useBuildings';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,16 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Plus } from 'lucide-react';
 
 const METER_TYPE_OPTIONS = [
@@ -34,28 +24,21 @@ export default function MetersPage() {
   const [buildingFilter, setBuildingFilter] = useState<string | null>(null);
   const [meterTypeFilter, setMeterTypeFilter] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingMeter, setEditingMeter] = useState<MeterWithRoom | null>(null);
-  const [deletingMeterId, setDeletingMeterId] = useState<string | null>(null);
+  const [editingMeter, setEditingMeter] = useState<any | null>(null);
 
   const { data: buildings } = useBuildings();
-  const deleteMeter = useDeleteMeter();
+  const { data: meters, isLoading } = useMetersWithLatestReading();
 
-  const handleEdit = (meter: MeterWithRoom) => {
+  // Client-side filter on the flat meters list
+  const filteredMeters = (meters || []).filter((m: any) => {
+    if (buildingFilter && m.building_id !== buildingFilter) return false;
+    if (meterTypeFilter && m.meter_type !== meterTypeFilter) return false;
+    return true;
+  });
+
+  const handleEdit = (meter: any) => {
     setEditingMeter(meter);
     setIsFormOpen(true);
-  };
-
-  const handleDelete = (meterId: string) => {
-    setDeletingMeterId(meterId);
-  };
-
-  const confirmDelete = async () => {
-    if (!deletingMeterId) return;
-    try {
-      await deleteMeter.mutateAsync(deletingMeterId);
-    } finally {
-      setDeletingMeterId(null);
-    }
   };
 
   const handleFormClose = (open: boolean) => {
@@ -119,10 +102,9 @@ export default function MetersPage() {
 
         {/* Meter List */}
         <MeterList
-          buildingId={buildingFilter ?? undefined}
-          meterType={meterTypeFilter ?? undefined}
+          meters={filteredMeters}
           onEdit={handleEdit}
-          onDelete={handleDelete}
+          isLoading={isLoading}
         />
 
         {/* Meter Form Dialog */}
@@ -131,31 +113,6 @@ export default function MetersPage() {
           onOpenChange={handleFormClose}
           meter={editingMeter}
         />
-
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog
-          open={!!deletingMeterId}
-          onOpenChange={(open) => { if (!open) setDeletingMeterId(null); }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Xác nhận xoá</AlertDialogTitle>
-              <AlertDialogDescription>
-                Bạn đang thực hiện thao tác xoá công tơ. Bạn có chắc chắn muốn xoá không?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Hủy</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmDelete}
-                disabled={deleteMeter.isPending}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                {deleteMeter.isPending ? 'Đang xoá...' : 'Xoá'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </MainLayout>
   );

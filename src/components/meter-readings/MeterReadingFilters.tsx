@@ -25,18 +25,21 @@ interface MeterReadingFiltersProps {
   onChange: (filters: MeterReadingFilters) => void;
 }
 
-const METER_TYPE_OPTIONS = [
+const METER_TYPE_OPTIONS: { value: MeterType; label: string }[] = [
   { value: "ELECTRICITY", label: "Điện" },
   { value: "WATER", label: "Nước" },
   { value: "GAS", label: "Gas" },
-] as const;
+];
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: { value: "APPROVED" | "UNAPPROVED"; label: string }[] = [
   { value: "APPROVED", label: "Đã duyệt" },
   { value: "UNAPPROVED", label: "Chưa duyệt" },
-] as const;
+];
 
-export function MeterReadingFiltersBar({ filters, onChange }: MeterReadingFiltersProps) {
+export function MeterReadingFiltersBar({
+  filters,
+  onChange,
+}: MeterReadingFiltersProps) {
   const { data: buildings } = useBuildings();
   const { data: rooms } = useRooms(filters.building_id ?? undefined);
 
@@ -52,7 +55,7 @@ export function MeterReadingFiltersBar({ filters, onChange }: MeterReadingFilter
         onValueChange={(v) =>
           update({
             building_id: v === "ALL" ? null : v,
-            room_id: null, // reset room when building changes
+            room_id: null,
           })
         }
       >
@@ -61,7 +64,7 @@ export function MeterReadingFiltersBar({ filters, onChange }: MeterReadingFilter
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
-          {(buildings || []).map((b) => (
+          {(buildings ?? []).map((b) => (
             <SelectItem key={b.id} value={b.id}>
               {b.name}
             </SelectItem>
@@ -69,7 +72,7 @@ export function MeterReadingFiltersBar({ filters, onChange }: MeterReadingFilter
         </SelectContent>
       </Select>
 
-      {/* Phòng */}
+      {/* Phòng (phụ thuộc Tòa nhà) */}
       <Select
         value={filters.room_id ?? "ALL"}
         onValueChange={(v) => update({ room_id: v === "ALL" ? null : v })}
@@ -79,7 +82,7 @@ export function MeterReadingFiltersBar({ filters, onChange }: MeterReadingFilter
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="ALL">Tất cả phòng</SelectItem>
-          {(rooms || []).map((r) => (
+          {(rooms ?? []).map((r) => (
             <SelectItem key={r.id} value={r.id}>
               {r.name}
             </SelectItem>

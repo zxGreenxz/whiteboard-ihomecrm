@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useCallback } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,10 +24,8 @@ import MeterReadingImportDialog from "@/components/meter-readings/MeterReadingIm
 import {
   useMeterReadingsList,
   useApproveMeterReading,
-  useBulkApproveMeterReadings,
   useUnapproveMeterReading,
   useDeleteMeterReading,
-  useBulkDeleteMeterReadings,
   type MeterReadingDetailed,
 } from "@/hooks/useMeterReadings";
 import { usePagination } from "@/hooks/usePagination";
@@ -53,7 +51,6 @@ const MeterReadingsPage = () => {
   const [editingReading, setEditingReading] =
     useState<MeterReadingDetailed | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
 
   // --- Pagination ---
   const pagination = usePagination(20);
@@ -75,16 +72,8 @@ const MeterReadingsPage = () => {
 
   // --- Mutation hooks ---
   const approveMutation = useApproveMeterReading();
-  const bulkApproveMutation = useBulkApproveMeterReadings();
   const unapproveMutation = useUnapproveMeterReading();
   const deleteMutation = useDeleteMeterReading();
-  const bulkDeleteMutation = useBulkDeleteMeterReadings();
-
-  // --- Selected readings (for bulk actions) ---
-  const selectedReadings = useMemo(
-    () => readings.filter((r) => selectedIds.includes(r.id)),
-    [readings, selectedIds]
-  );
 
   // --- Handlers ---
   const handleFiltersChange = useCallback(
@@ -135,31 +124,6 @@ const MeterReadingsPage = () => {
     [unapproveMutation]
   );
 
-  const handleBulkApprove = useCallback(() => {
-    if (selectedIds.length > 0) {
-      bulkApproveMutation.mutate(selectedIds, {
-        onSuccess: () => setSelectedIds([]),
-      });
-    }
-  }, [selectedIds, bulkApproveMutation]);
-
-  const handleBulkDelete = useCallback(() => {
-    setIsBulkDeleteOpen(true);
-  }, []);
-
-  const confirmBulkDelete = useCallback(() => {
-    const unapprovedIds = selectedReadings
-      .filter((r) => r.status === "UNAPPROVED")
-      .map((r) => r.id);
-
-    if (unapprovedIds.length > 0) {
-      bulkDeleteMutation.mutate(unapprovedIds, {
-        onSuccess: () => setSelectedIds([]),
-      });
-    }
-    setIsBulkDeleteOpen(false);
-  }, [selectedReadings, bulkDeleteMutation]);
-
   const handleClearSelection = useCallback(() => {
     setSelectedIds([]);
   }, []);
@@ -191,9 +155,6 @@ const MeterReadingsPage = () => {
         {/* Bulk Actions */}
         <MeterReadingActions
           selectedIds={selectedIds}
-          selectedReadings={selectedReadings}
-          onBulkApprove={handleBulkApprove}
-          onBulkDelete={handleBulkDelete}
           onClearSelection={handleClearSelection}
         />
 
@@ -243,25 +204,6 @@ const MeterReadingsPage = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bulk Delete Confirmation */}
-      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xoá hàng loạt</AlertDialogTitle>
-            <AlertDialogDescription>
-              Bạn có chắc chắn muốn xoá{" "}
-              {selectedReadings.filter((r) => r.status === "UNAPPROVED").length}{" "}
-              chỉ số chưa duyệt đã chọn không? Các chỉ số đã duyệt sẽ được bỏ qua.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmBulkDelete} className="bg-red-600 hover:bg-red-700">
-              Xoá
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </MainLayout>
   );
 };

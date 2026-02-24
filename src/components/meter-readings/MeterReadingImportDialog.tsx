@@ -23,7 +23,15 @@ import {
 import { excelImportRowSchema, type ExcelImportRow } from '@/lib/meterReadingValidation';
 import { useImportMeterReadings } from '@/hooks/useMeterReadings';
 import { toast } from 'sonner';
-import { Upload, Download, FileSpreadsheet, Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import {
+  Upload,
+  Download,
+  FileSpreadsheet,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+} from 'lucide-react';
 
 interface MeterReadingImportDialogProps {
   open: boolean;
@@ -37,10 +45,17 @@ interface ParsedRow {
   error?: string;
 }
 
+interface ImportResultRow {
+  row: number;
+  reading_code: string | null;
+  success: boolean;
+  error_message: string | null;
+}
+
 interface ImportResult {
   successCount: number;
   errorCount: number;
-  errors: Array<{ row: number; message: string }>;
+  details: ImportResultRow[];
 }
 
 type Step = 'upload' | 'preview' | 'result';
@@ -48,7 +63,7 @@ type Step = 'upload' | 'preview' | 'result';
 const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDialogProps) => {
   const [step, setStep] = useState<Step>('upload');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
-  const [fileName, setFileName] = useState<string>('');
+  const [fileName, setFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -70,13 +85,12 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
       if (!newOpen) resetState();
       onOpenChange(newOpen);
     },
-    [onOpenChange, resetState]
+    [onOpenChange, resetState],
   );
 
   const processFile = useCallback(async (file: File) => {
-    const validExtensions = ['.xlsx', '.xls'];
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    if (!validExtensions.includes(ext)) {
+    if (!['.xlsx', '.xls'].includes(ext)) {
       toast.error('File không đúng định dạng. Vui lòng sử dụng file Excel (.xlsx, .xls)');
       return;
     }
@@ -114,10 +128,9 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) processFile(file);
-      // Reset input so the same file can be re-selected
       e.target.value = '';
     },
-    [processFile]
+    [processFile],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -137,7 +150,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
       const file = e.dataTransfer.files?.[0];
       if (file) processFile(file);
     },
-    [processFile]
+    [processFile],
   );
 
   const handleImport = useCallback(async () => {
@@ -152,7 +165,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
     setIsProcessing(true);
 
     try {
-      await importMutation.mutateAsync({
+      const rpcResults = await importMutation.mutateAsync({
         readings: validRows.map((r) => ({
           meter_code: r.data.meter_code,
           reading_date: r.data.reading_date,
@@ -161,13 +174,45 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
         })),
       });
 
-      setImportResult({
-        successCount: validRows.length,
-        errorCount: invalidRows.length,
-        errors: invalidRows.map((r) => ({
+      // Build result details from RPC response + validation errors
+      const details: ImportResultRow[] = [];
+
+      // Add RPC results (mapped back to original row numbers)
+      if (Array.isArray(rpcResults)) {
+        rpcResults.forEach((result, idx) => {
+          details.push({
+            row: validRows[idx]?.rowIndex ?? idx + 2,
+            reading_code: result.reading_code,
+            success: result.success,
+            error_message: result.error_message,
+          });
+        });
+      }
+
+      // Add validation errors as failed rows
+      invalidRows.forEach((r) => {
+        details.push({
           row: r.rowIndex,
-          message: r.error || 'Dữ liệu không hợp lệ',
-        })),
+          reading_code: null,
+          success: false,
+          error_message: r.error || 'Dữ liệu không hợp lệ',
+        });
+      });
+
+      // Sort by row number
+      details.sort((a, b) => a.row - b.row);
+
+      const rpcSuccessCount = Array.isArray(rpcResults)
+        ? rpcResults.filter((r) => r.success).length
+        : 0;
+      const rpcErrorCount = Array.isArray(rpcResults)
+        ? rpcResults.filter((r) => !r.success).length
+        : 0;
+
+      setImportResult({
+        successCount: rpcSuccessCount,
+        errorCount: rpcErrorCount + invalidRows.length,
+        details,
       });
       setStep('result');
     } catch {
@@ -191,6 +236,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
           </DialogTitle>
         </DialogHeader>
 
+        {/* Step 1: Upload */}
         {step === 'upload' && (
           <div className="space-y-4">
             <Button
@@ -245,6 +291,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
           </div>
         )}
 
+        {/* Step 2: Preview */}
         {step === 'preview' && (
           <div className="flex flex-col gap-4 min-h-0">
             <div className="flex items-center justify-between">
@@ -253,13 +300,9 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
                 <span className="text-sm font-medium">{fileName}</span>
               </div>
               <div className="flex items-center gap-3 text-sm">
-                <span className="text-green-600">
-                  {validCount} hợp lệ
-                </span>
+                <span className="text-green-600">{validCount} hợp lệ</span>
                 {invalidCount > 0 && (
-                  <span className="text-red-600">
-                    {invalidCount} lỗi
-                  </span>
+                  <span className="text-red-600">{invalidCount} lỗi</span>
                 )}
               </div>
             </div>
@@ -280,11 +323,9 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
                   {parsedRows.map((row) => (
                     <TableRow
                       key={row.rowIndex}
-                      className={!row.valid ? 'bg-red-50' : undefined}
+                      className={row.valid ? 'bg-green-50' : 'bg-red-50'}
                     >
-                      <TableCell className="font-mono text-xs">
-                        {row.rowIndex}
-                      </TableCell>
+                      <TableCell className="font-mono text-xs">{row.rowIndex}</TableCell>
                       <TableCell>{row.data.meter_code || '—'}</TableCell>
                       <TableCell>{row.data.reading_date || '—'}</TableCell>
                       <TableCell className="text-right">
@@ -317,7 +358,7 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
               </Table>
             </ScrollArea>
 
-            {/* Show validation errors detail */}
+            {/* Validation error details */}
             {invalidCount > 0 && (
               <div className="border border-red-200 rounded-md p-3 bg-red-50 text-sm space-y-1">
                 <p className="font-medium text-red-700 flex items-center gap-1">
@@ -335,13 +376,10 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { resetState(); }}>
+              <Button variant="outline" onClick={resetState}>
                 Chọn file khác
               </Button>
-              <Button
-                onClick={handleImport}
-                disabled={validCount === 0 || isProcessing}
-              >
+              <Button onClick={handleImport} disabled={validCount === 0 || isProcessing}>
                 {isProcessing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -355,10 +393,15 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
           </div>
         )}
 
+        {/* Step 3: Result */}
         {step === 'result' && importResult && (
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle className="h-12 w-12 text-green-500" />
+              {importResult.errorCount === 0 ? (
+                <CheckCircle className="h-12 w-12 text-green-500" />
+              ) : (
+                <AlertCircle className="h-12 w-12 text-yellow-500" />
+              )}
               <p className="text-lg font-medium">Hoàn tất nhập dữ liệu</p>
             </div>
 
@@ -377,24 +420,27 @@ const MeterReadingImportDialog = ({ open, onOpenChange }: MeterReadingImportDial
               </div>
             </div>
 
-            {importResult.errors.length > 0 && (
-              <div className="border border-red-200 rounded-md p-3 bg-red-50 text-sm space-y-1">
-                <p className="font-medium text-red-700 flex items-center gap-1">
-                  <XCircle className="h-4 w-4" />
-                  Chi tiết lỗi:
-                </p>
-                {importResult.errors.map((err, idx) => (
-                  <p key={idx} className="text-red-600 ml-5">
-                    Dòng {err.row}: {err.message}
+            {/* Per-row error details from RPC + validation */}
+            {importResult.details.filter((d) => !d.success).length > 0 && (
+              <ScrollArea className="max-h-[200px]">
+                <div className="border border-red-200 rounded-md p-3 bg-red-50 text-sm space-y-1">
+                  <p className="font-medium text-red-700 flex items-center gap-1">
+                    <XCircle className="h-4 w-4" />
+                    Chi tiết lỗi:
                   </p>
-                ))}
-              </div>
+                  {importResult.details
+                    .filter((d) => !d.success)
+                    .map((d, idx) => (
+                      <p key={idx} className="text-red-600 ml-5">
+                        Dòng {d.row}: {d.error_message}
+                      </p>
+                    ))}
+                </div>
+              </ScrollArea>
             )}
 
             <div className="flex justify-end">
-              <Button onClick={() => handleOpenChange(false)}>
-                Đóng
-              </Button>
+              <Button onClick={() => handleOpenChange(false)}>Đóng</Button>
             </div>
           </div>
         )}

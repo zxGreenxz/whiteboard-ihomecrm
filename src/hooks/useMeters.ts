@@ -6,57 +6,29 @@ import { toast } from "sonner";
 type Meter = Database["public"]["Tables"]["meters"]["Row"];
 type MeterInsert = Database["public"]["Tables"]["meters"]["Insert"];
 type MeterUpdate = Database["public"]["Tables"]["meters"]["Update"];
+type MeterType = Database["public"]["Enums"]["meter_type"];
 
-export const useMeters = (roomId?: string, meterType?: string) => {
-  return useQuery({
-    queryKey: ["meters", roomId, meterType],
-    queryFn: async () => {
-      let query = supabase
-        .from("meters")
-        .select("*")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+// ============================================================================
+// Types
+// ============================================================================
 
-      if (roomId) {
-        query = query.eq("room_id", roomId);
-      }
-      if (meterType) {
-        query = query.eq("meter_type", meterType);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error("useMeters error:", error);
-        return [];
-      }
-
-      return data || [];
-    },
-  });
+export type MeterWithRoom = Meter & {
+  building: { id: string; name: string } | null;
+  room: { id: string; name: string } | null;
 };
 
-export const useMeter = (id: string) => {
-  return useQuery({
-    queryKey: ["meters", "detail", id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("meters")
-        .select("*")
-        .eq("id", id)
-        .is("deleted_at", null)
-        .single();
+export type MetersGroupedByRoom = Record<
+  string,
+  {
+    room: { id: string; name: string } | null;
+    building: { id: string; name: string } | null;
+    meters: MeterWithRoom[];
+  }
+>;
 
-      if (error) {
-        console.error("useMeter error:", error);
-        return null;
-      }
-
-      return data;
-    },
-    enabled: !!id,
-  });
-};
+// ============================================================================
+// Pure helper functions (extracted for testability)
+// ============================================================================
 
 /** Mapping from meter_type to service name in the services table */
 const METER_TYPE_TO_SERVICE_NAME: Record<string, string> = {
@@ -64,6 +36,50 @@ const METER_TYPE_TO_SERVICE_NAME: Record<string, string> = {
   WATER: "Nước",
   GAS: "Gas",
 };
+
+/** Pure function to group meters by room_id */
+export function groupMetersByRoom(meters: MeterWithRoom[]): MetersGroupedByRoom {
+  const grouped: MetersGroupedByRoom = {};
+  for (const meter of meters) {
+    const key = meter.room_id || "no-room";
+    if (!grouped[key]) {
+      grouped[key] = {
+        room: meter.room,
+        building: meter.building,
+        meters: [],
+      };
+    }
+    grouped[key].meters.push(meter);
+  }
+  return grouped;
+}
+
+/** Pure function to filter out soft-deleted meters (deleted_at IS NULL) */
+export function filterActiveMeters<T extends { deleted_at: string | null }>(
+  meters: T[]
+): T[] {
+  return meters.filter((meter) => meter.deleted_at === null);
+}
+
+/** Pure function to filter meters by building_id and/or meter_type */
+export function filterMeters(
+  meters: MeterWithRoom[],
+  filters: { building_id?: string | null; meter_type?: string | null }
+): MeterWithRoom[] {
+  return meters.filter((meter) => {
+    if (filters.building_id && meter.building_id !== filters.building_id) {
+      return false;
+    }
+    if (filters.meter_type && meter.meter_type !== filters.meter_type) {
+      return false;
+    }
+    return true;
+  });
+}
+
+// ============================================================================
+// Internal helpers
+// ============================================================================
 
 /**
  * Resolve service_id from meter_type by querying the services table.
@@ -92,6 +108,157 @@ async function resolveServiceId(meterType: string | null | undefined): Promise<s
   return data.id;
 }
 
+// ============================================================================
+// Query hooks
+// ============================================================================
+
+/** Query danh sách công tơ, filter deleted_at IS NULL, hỗ trợ filter theo roomId và meterType */
+export const useMeters = (roomId?: string, meterType?: MeterType) => {
+  return useQuery({
+    queryKey: ["meters", roomId, meterType],
+    queryFn: async () => {
+      let query = supabase
+        .from("meters")
+        .select("*")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      if (roomId) {
+        query = query.eq("room_id", roomId);
+      }
+      if (meterType) {
+        query = query.eq("meter_type", meterType);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("useMeters error:", error);
+        return [];
+      }
+
+      return data || [];
+    },
+  });
+};
+
+/** Query single meter by ID */
+export const useMeter = (id: string) => {
+  return useQuery({
+    queryKey: ["meters", "detail", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("meters")
+        .select("*")
+        .eq("id", id)
+        .is("deleted_at", null)
+        .single();
+
+      if (error) {
+        console.error("useMeter error:", error);
+        return null;
+      }
+
+      return data;
+    },
+    enabled: !!id,
+  });
+};
+
+/** Query từ view meters_with_latest_reading */
+export const useMetersWithLatestReading = () => {
+  return useQuery({
+    queryKey: ["meters-with-latest-reading"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("meters_with_latest_reading" as any)
+        .select("*");
+
+      if (error) {
+        console.error("useMetersWithLatestReading error:", error);
+        return [];
+      }
+
+      return data || [];
+    },
+  });
+};
+
+/** Query công tơ nhóm theo phòng */
+export const useMetersGroupedByRoom = (
+  buildingId?: string,
+  meterType?: MeterType
+) => {
+  return useQuery({
+    queryKey: ["meters", "grouped", buildingId, meterType],
+    queryFn: async () => {
+      let query = supabase
+        .from("meters")
+        .select("*, building:buildings(id, name), room:rooms(id, name)")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      if (buildingId) {
+        query = query.eq("building_id", buildingId);
+      }
+      if (meterType) {
+        query = query.eq("meter_type", meterType);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("useMetersGroupedByRoom error:", error);
+        return {} as MetersGroupedByRoom;
+      }
+
+      const meters = (data || []) as unknown as MeterWithRoom[];
+      return groupMetersByRoom(meters);
+    },
+  });
+};
+
+/** Gọi RPC get_meters_without_readings, trả về UnrecordedMeter[] */
+export const useUnrecordedMeters = (params: {
+  buildingId?: string;
+  roomId?: string;
+  meterType?: MeterType;
+  month: string;
+}) => {
+  const { buildingId, roomId, meterType, month } = params;
+
+  return useQuery({
+    queryKey: ["unrecorded-meters", buildingId, roomId, meterType, month],
+    queryFn: async () => {
+      const userId = (await supabase.auth.getUser()).data.user?.id ?? "";
+
+      const { data, error } = await supabase.rpc(
+        "get_meters_without_readings",
+        {
+          p_user_id: userId,
+          p_building_id: buildingId ?? null,
+          p_room_id: roomId ?? null,
+          p_meter_type: meterType ?? null,
+          p_month: month,
+        }
+      );
+
+      if (error) {
+        console.error("[useUnrecordedMeters] RPC error:", error);
+        return [];
+      }
+
+      return data || [];
+    },
+    enabled: !!month,
+  });
+};
+
+// ============================================================================
+// Mutation hooks
+// ============================================================================
+
+/** Mutation INSERT vào meters với user_id = auth.uid() */
 export const useCreateMeter = () => {
   const queryClient = useQueryClient();
 
@@ -125,6 +292,8 @@ export const useCreateMeter = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
+      queryClient.invalidateQueries({ queryKey: ["meters-with-latest-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
       toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error) => {
@@ -133,6 +302,7 @@ export const useCreateMeter = () => {
   });
 };
 
+/** Mutation UPDATE meters */
 export const useUpdateMeter = () => {
   const queryClient = useQueryClient();
 
@@ -165,7 +335,9 @@ export const useUpdateMeter = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
-      toast.success("Công tơ đã được cập nhật thành công");
+      queryClient.invalidateQueries({ queryKey: ["meters-with-latest-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
     onError: (error) => {
       console.error("Error updating meter:", error);
@@ -173,6 +345,7 @@ export const useUpdateMeter = () => {
   });
 };
 
+/** Mutation soft-delete (UPDATE deleted_at = NOW()) */
 export const useDeleteMeter = () => {
   const queryClient = useQueryClient();
 
@@ -190,143 +363,12 @@ export const useDeleteMeter = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meters"] });
+      queryClient.invalidateQueries({ queryKey: ["meters-with-latest-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
       toast.success("Dữ liệu đã được XOÁ thành công");
     },
     onError: (error) => {
       console.error("Error deleting meter:", error);
     },
-  });
-};
-
-// Types for grouped meters query
-export type MeterWithRoom = Meter & {
-  building: { id: string; name: string } | null;
-  room: { id: string; name: string } | null;
-};
-
-export type MetersGroupedByRoom = Record<
-  string,
-  {
-    room: { id: string; name: string } | null;
-    building: { id: string; name: string } | null;
-    meters: MeterWithRoom[];
-  }
->;
-
-
-/** Pure function to group meters by room_id — extracted for testability */
-export function groupMetersByRoom(meters: MeterWithRoom[]): MetersGroupedByRoom {
-  const grouped: MetersGroupedByRoom = {};
-  for (const meter of meters) {
-    const key = meter.room_id || "no-room";
-    if (!grouped[key]) {
-      grouped[key] = {
-        room: meter.room,
-        building: meter.building,
-        meters: [],
-      };
-    }
-    grouped[key].meters.push(meter);
-  }
-  return grouped;
-}
-
-/** Pure function to filter out soft-deleted meters (deleted_at IS NULL) — extracted for testability */
-export function filterActiveMeters<T extends { deleted_at: string | null }>(
-  meters: T[]
-): T[] {
-  return meters.filter((meter) => meter.deleted_at === null);
-}
-/** Pure function to filter meters by building_id and/or meter_type — extracted for testability */
-export function filterMeters(
-  meters: MeterWithRoom[],
-  filters: { building_id?: string | null; meter_type?: string | null }
-): MeterWithRoom[] {
-  return meters.filter((meter) => {
-    if (filters.building_id && meter.building_id !== filters.building_id) {
-      return false;
-    }
-    if (filters.meter_type && meter.meter_type !== filters.meter_type) {
-      return false;
-    }
-    return true;
-  });
-}
-
-
-export const useMetersGroupedByRoom = (
-  buildingId?: string,
-  meterType?: string
-) => {
-  return useQuery({
-    queryKey: ["meters", "grouped", buildingId, meterType],
-    queryFn: async () => {
-      let query = supabase
-        .from("meters")
-        .select("*, building:buildings(id, name), room:rooms(id, name)")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-
-      if (buildingId) {
-        query = query.eq("building_id", buildingId);
-      }
-      if (meterType) {
-        query = query.eq("meter_type", meterType);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error("useMetersGroupedByRoom error:", error);
-        return {} as MetersGroupedByRoom;
-      }
-
-      const meters = (data || []) as unknown as MeterWithRoom[];
-
-      return groupMetersByRoom(meters);
-    },
-  });
-};
-
-export const useUnrecordedMeters = (params: {
-  buildingId?: string;
-  roomId?: string;
-  meterType?: string;
-  month: string;
-}) => {
-  const { buildingId, roomId, meterType, month } = params;
-
-  return useQuery({
-    queryKey: ["meters", "unrecorded", buildingId, roomId, meterType, month],
-    queryFn: async () => {
-      const userId = (await supabase.auth.getUser()).data.user?.id ?? "";
-      console.log("[useUnrecordedMeters] calling RPC with:", {
-        p_user_id: userId,
-        p_building_id: buildingId ?? null,
-        p_room_id: roomId ?? null,
-        p_meter_type: meterType ?? null,
-        p_month: month,
-      });
-
-      const { data, error } = await supabase.rpc(
-        "get_meters_without_readings",
-        {
-          p_user_id: userId,
-          p_building_id: buildingId ?? null,
-          p_room_id: roomId ?? null,
-          p_meter_type: meterType ?? null,
-          p_month: month,
-        }
-      );
-
-      if (error) {
-        console.error("[useUnrecordedMeters] RPC error:", error);
-        return [];
-      }
-
-      console.log("[useUnrecordedMeters] RPC returned:", data?.length, "meters", data);
-      return data || [];
-    },
-    enabled: !!month,
   });
 };

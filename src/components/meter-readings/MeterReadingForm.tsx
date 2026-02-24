@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Table,
@@ -57,11 +58,19 @@ import { uploadFile } from '@/lib/storage';
 import { toast } from 'sonner';
 import { ImagePlus, Loader2 } from 'lucide-react';
 
+// ============================================================================
+// Types
+// ============================================================================
+
 interface MeterReadingFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  reading?: MeterReadingDetailed | null; // null = thêm mới, có giá trị = sửa
+  reading: MeterReadingDetailed | null; // null = thêm mới, non-null = sửa
 }
+
+// ============================================================================
+// Constants
+// ============================================================================
 
 const METER_TYPE_OPTIONS = [
   { value: 'ELECTRICITY', label: 'Điện' },
@@ -71,22 +80,29 @@ const METER_TYPE_OPTIONS = [
 
 const STORAGE_BUCKET = 'meter-images';
 
+// ============================================================================
+// Component
+// ============================================================================
+
 const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps) => {
   const isEditing = !!reading;
   const bulkCreate = useBulkCreateMeterReadings();
   const updateReading = useUpdateMeterReading();
 
+  // Building & Room selects
   const { data: buildings } = useBuildings();
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const { data: rooms } = useRooms(selectedBuildingId || undefined);
 
-  // For step 2: meters table
+  // UI state
+  const [showUnrecordedOnly, setShowUnrecordedOnly] = useState(true);
   const [showMetersTable, setShowMetersTable] = useState(false);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<number, string>>({});
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
+  // Form setup with Zod validation
   const form = useForm<MeterReadingFormValues>({
     resolver: zodResolver(meterReadingFormSchema),
     defaultValues: {
@@ -109,7 +125,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const watchMeterType = form.watch('meter_type');
   const watchMonth = form.watch('settlement_month');
 
-  // Query unrecorded meters based on selections
+  // Query unrecorded meters based on filter selections
   const { data: unrecordedMeters, isLoading: isLoadingMeters } = useUnrecordedMeters({
     buildingId: watchBuildingId || undefined,
     roomId: watchRoomId || undefined,
@@ -117,7 +133,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     month: watchMonth || currentMonth,
   });
 
+  // --------------------------------------------------------------------------
   // Populate form when editing
+  // --------------------------------------------------------------------------
   useEffect(() => {
     if (reading && open) {
       setSelectedBuildingId(reading.building_id || '');
@@ -148,17 +166,25 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       });
       setSelectedBuildingId('');
       setShowMetersTable(false);
+      setShowUnrecordedOnly(true);
       setValidationErrors({});
     }
   }, [reading, open, form, currentMonth]);
 
-  // Cast unrecorded meters to array for safe usage
-  const metersList: UnrecordedMeter[] = Array.isArray(unrecordedMeters) ? unrecordedMeters as unknown as UnrecordedMeter[] : [];
+  // Cast unrecorded meters to typed array
+  const metersList: UnrecordedMeter[] = Array.isArray(unrecordedMeters)
+    ? (unrecordedMeters as unknown as UnrecordedMeter[])
+    : [];
 
-  // Load meters into form (used by auto-load useEffect)
+  // --------------------------------------------------------------------------
+  // Load meters into form readings array
+  // --------------------------------------------------------------------------
   const loadMetersIntoForm = useCallback(() => {
     if (metersList.length === 0) {
-      if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' }) && !isLoadingMeters) {
+      if (
+        isLoadEnabled({ buildingId: watchBuildingId, month: watchMonth || '' }) &&
+        !isLoadingMeters
+      ) {
         toast.info('Không có công tơ chưa chốt cho bộ lọc đã chọn');
       }
       replace([]);
@@ -170,16 +196,15 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     replace(readingsData);
     setShowMetersTable(true);
     setValidationErrors({});
-  }, [metersList, replace, watchBuildingId, watchRoomId, watchMonth, isLoadingMeters]);
+  }, [metersList, replace, watchBuildingId, watchMonth, isLoadingMeters]);
 
-  // Auto-load meters when filters change (not in editing mode)
+  // Auto-load meters when filters change (add mode only)
   useEffect(() => {
     if (isEditing || !open) return;
-    if (isLoadingMeters) return; // Don't process while still loading
-    if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' })) {
+    if (isLoadingMeters) return;
+    if (isLoadEnabled({ buildingId: watchBuildingId, month: watchMonth || '' })) {
       loadMetersIntoForm();
     } else {
-      // Reset meters table when filters are insufficient
       if (showMetersTable) {
         replace([]);
         setShowMetersTable(false);
@@ -188,7 +213,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchBuildingId, watchRoomId, watchMeterType, watchMonth, metersList, isLoadingMeters]);
 
-  // Image upload handler
+  // --------------------------------------------------------------------------
+  // Image upload
+  // --------------------------------------------------------------------------
   const handleImageUpload = async (index: number, file: File) => {
     try {
       setUploadingIndex(index);
@@ -203,7 +230,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     }
   };
 
-  // Get previous reading for a meter
+  // --------------------------------------------------------------------------
+  // Helpers: previous reading & meter name
+  // --------------------------------------------------------------------------
   const getPreviousReading = (meterId: string): number => {
     if (isEditing && reading) {
       return reading.previous_reading ?? 0;
@@ -211,7 +240,6 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     return getPreviousReadingFromList(meterId, metersList);
   };
 
-  // Get meter display name
   const getMeterName = (meterId: string): string => {
     if (isEditing && reading) {
       return reading.meter_name || reading.meter_code || '';
@@ -219,7 +247,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     return getMeterNameFromList(meterId, metersList);
   };
 
-  // Validate all readings before submit
+  // --------------------------------------------------------------------------
+  // Validation: reading values >= previous
+  // --------------------------------------------------------------------------
   const validateReadings = (): boolean => {
     const errors: Record<number, string> = {};
     const readings = form.getValues('readings');
@@ -238,11 +268,11 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     return valid;
   };
 
+  // --------------------------------------------------------------------------
+  // Submit handler
+  // --------------------------------------------------------------------------
   const onSubmit = async (data: MeterReadingFormValues) => {
-    // Validate reading values against previous readings
-    if (!validateReadings()) {
-      return;
-    }
+    if (!validateReadings()) return;
 
     try {
       if (isEditing && reading) {
@@ -256,7 +286,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
           meter_image_url: readingData.meter_image_url || undefined,
         });
       } else {
-        // Bulk create readings
+        // Bulk create readings (only rows with current_reading > 0)
         const readingsToCreate = data.readings
           .filter((r) => r.current_reading > 0)
           .map((r) => ({
@@ -282,9 +312,12 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
   const isPending = bulkCreate.isPending || updateReading.isPending;
 
+  // --------------------------------------------------------------------------
+  // Render
+  // --------------------------------------------------------------------------
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh]">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? 'Cập nhật chỉ số' : 'Thêm chỉ số'}
@@ -294,7 +327,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
         <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {/* Step 1: Selection fields */}
+              {/* Row 1: Tòa nhà + Phòng */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -338,18 +371,19 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                       <FormLabel>Phòng</FormLabel>
                       <Select
                         onValueChange={(val) => {
-                          field.onChange(val);
+                          field.onChange(val === '__all__' ? '' : val);
                           setShowMetersTable(false);
                         }}
-                        value={field.value}
+                        value={field.value || '__all__'}
                         disabled={isEditing}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn phòng" />
+                            <SelectValue placeholder="Tất cả phòng" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="__all__">Tất cả phòng</SelectItem>
                           {rooms?.map((r) => (
                             <SelectItem key={r.id} value={r.id}>
                               {r.name}
@@ -363,6 +397,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 />
               </div>
 
+              {/* Row 2: Loại công tơ + Tháng chốt + Ngày chốt */}
               <div className="grid grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
@@ -434,7 +469,34 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 />
               </div>
 
-              {/* Step 2: Meters table */}
+              {/* Checkbox: Công tơ chưa chốt trong tháng */}
+              {!isEditing && (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show-unrecorded"
+                    checked={showUnrecordedOnly}
+                    onCheckedChange={(checked) =>
+                      setShowUnrecordedOnly(checked === true)
+                    }
+                  />
+                  <label
+                    htmlFor="show-unrecorded"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Công tơ chưa chốt trong tháng
+                  </label>
+                </div>
+              )}
+
+              {/* Loading indicator */}
+              {isLoadingMeters && !isEditing && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
+                  <span className="text-sm text-muted-foreground">Đang tải danh sách công tơ...</span>
+                </div>
+              )}
+
+              {/* Meters table */}
               {showMetersTable && fields.length > 0 && (
                 <div className="border rounded-lg">
                   <Table>
@@ -443,6 +505,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                         <TableHead>Tên công tơ</TableHead>
                         <TableHead className="text-right">Chỉ số đầu</TableHead>
                         <TableHead className="text-right">Chỉ số mới</TableHead>
+                        <TableHead>Ghi chú</TableHead>
                         <TableHead>Hình ảnh</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -458,7 +521,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                               {getMeterName(field.meter_id)}
                             </TableCell>
 
-                            {/* Chỉ số đầu (auto) */}
+                            {/* Chỉ số đầu (auto from last_reading) */}
                             <TableCell className="text-right text-muted-foreground">
                               {previousReading.toFixed(2)}
                             </TableCell>
@@ -479,7 +542,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                           className={`text-right ${error ? 'border-red-500' : ''}`}
                                           {...inputField}
                                           onChange={(e) => {
-                                            const val = e.target.value ? Number(e.target.value) : 0;
+                                            const val = e.target.value
+                                              ? Number(e.target.value)
+                                              : 0;
                                             inputField.onChange(val);
                                             // Clear validation error on change
                                             if (validationErrors[index]) {
@@ -493,7 +558,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                         />
                                       </FormControl>
                                       {error && (
-                                        <p className="text-xs text-red-500 mt-1">{error}</p>
+                                        <p className="text-xs text-red-500 mt-1">
+                                          {error}
+                                        </p>
                                       )}
                                       <FormMessage />
                                     </FormItem>
@@ -502,12 +569,34 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                               </div>
                             </TableCell>
 
-                            {/* Hình ảnh */}
+                            {/* Ghi chú */}
+                            <TableCell>
+                              <FormField
+                                control={form.control}
+                                name={`readings.${index}.notes`}
+                                render={({ field: notesField }) => (
+                                  <FormItem className="w-36">
+                                    <FormControl>
+                                      <Input
+                                        placeholder="Ghi chú"
+                                        {...notesField}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </TableCell>
+
+                            {/* Hình ảnh (upload) */}
                             <TableCell>
                               <div className="flex items-center gap-2">
-                                {form.watch(`readings.${index}.meter_image_url`) ? (
+                                {form.watch(
+                                  `readings.${index}.meter_image_url`
+                                ) ? (
                                   <img
-                                    src={form.watch(`readings.${index}.meter_image_url`)}
+                                    src={form.watch(
+                                      `readings.${index}.meter_image_url`
+                                    )}
                                     alt="Công tơ"
                                     className="h-10 w-10 rounded object-cover"
                                   />
@@ -539,6 +628,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                 </div>
               )}
 
+              {/* Empty state */}
               {showMetersTable && fields.length === 0 && !isEditing && (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   Không có công tơ chưa chốt cho bộ lọc đã chọn

@@ -194,7 +194,6 @@ describe('Fix Validation: isLoadEnabled room not required (Bug 1.5)', () => {
         (buildingId, month) => {
           const result = isLoadEnabled({
             buildingId,
-            roomId: '', // empty — should NOT prevent loading
             month,
           });
 
@@ -214,7 +213,6 @@ describe('Fix Validation: isLoadEnabled room not required (Bug 1.5)', () => {
         (roomId, month) => {
           const result = isLoadEnabled({
             buildingId: '',
-            roomId,
             month,
           });
 
@@ -233,7 +231,6 @@ describe('Fix Validation: isLoadEnabled room not required (Bug 1.5)', () => {
         (buildingId, roomId) => {
           const result = isLoadEnabled({
             buildingId,
-            roomId,
             month: '',
           });
 

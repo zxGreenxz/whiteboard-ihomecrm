@@ -2,7 +2,7 @@
  * MeterReadingSelector - Component for selecting approved meter readings
  * when adding electricity/water service items to an invoice.
  *
- * Requirements: 11.1, 11.2, 11.3
+ * Requirements: 9.1, 9.2, 9.3
  * - Only APPROVED meter readings are selectable
  * - Auto-calculates amount = consumption × unit_price
  * - Shows "Chốt công tơ" button if no approved readings exist for room/month
@@ -26,6 +26,17 @@ import {
   calculateInvoiceAmount,
 } from '@/hooks/useMeterReadingsHelpers';
 import type { MeterReadingForInvoice } from '@/hooks/useMeterReadingsHelpers';
+
+/** Extended type for display in the selector dropdown */
+interface ReadingForSelector extends MeterReadingForInvoice {
+  meter_type: 'ELECTRICITY' | 'WATER' | 'GAS' | 'OTHER';
+  consumption: number;
+  current_reading: number;
+  previous_reading: number;
+  meter_name: string;
+  meter_code: string;
+  reading_code: string;
+}
 
 export interface MeterReadingSelectorProps {
   /** The room ID to filter readings for */
@@ -89,7 +100,7 @@ export default function MeterReadingSelector({
   const approvedReadings = useMemo(() => {
     if (!readingsData?.data) return [];
     // Use the pure helper to filter (double-check client-side)
-    const asForInvoice: MeterReadingForInvoice[] = readingsData.data.map((r) => ({
+    const asForInvoice: ReadingForSelector[] = readingsData.data.map((r) => ({
       id: r.id,
       status: r.status,
       room_id: r.room_id,
@@ -131,7 +142,7 @@ export default function MeterReadingSelector({
     );
   }
 
-  // No approved readings: show "Chốt công tơ" button (Requirement 11.3)
+  // No approved readings: show "Chốt công tơ" button (Requirement 9.3)
   if (approvedReadings.length === 0) {
     return (
       <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
@@ -153,7 +164,7 @@ export default function MeterReadingSelector({
     );
   }
 
-  // Has approved readings: show selector (Requirement 11.1)
+  // Has approved readings: show selector (Requirement 9.1)
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -173,8 +184,8 @@ export default function MeterReadingSelector({
             return (
               <SelectItem key={reading.id} value={reading.id}>
                 <div className="flex items-center gap-2">
-                  <span>
-                    {reading.meter_code || reading.meter_name || 'Công tơ'}
+                  <span className="font-medium">
+                    {reading.reading_code}
                   </span>
                   <span className="text-muted-foreground">
                     ({reading.previous_reading} → {reading.current_reading})

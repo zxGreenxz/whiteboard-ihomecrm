@@ -5,7 +5,9 @@ import { toast } from "sonner";
 
 type MeterType = Database["public"]["Enums"]["meter_type"];
 
-// --- Types ---
+// ============================================================================
+// Types
+// ============================================================================
 
 export interface MeterReadingFilters {
   building_id?: string;
@@ -57,44 +59,13 @@ export interface MeterReadingStats {
   gas_consumption: number | null;
 }
 
-// --- Pure helpers re-exported from helpers file (avoids Supabase dependency in tests) ---
-// The canonical implementations live in useMeterReadingsHelpers.ts
+// ============================================================================
+// Re-exports from helpers (pure functions, testable without Supabase)
+// ============================================================================
 
 export {
-  applyMeterReadingFilters as applyMeterReadingFiltersHelper,
-  paginateList as paginateListHelper,
-} from "./useMeterReadingsHelpers";
-
-// Wrapper that uses the concrete MeterReadingDetailed type
-export function applyMeterReadingFilters(
-  readings: MeterReadingDetailed[],
-  filters: MeterReadingFilters
-): MeterReadingDetailed[] {
-  return readings.filter((r) => {
-    if (filters.building_id && r.building_id !== filters.building_id) return false;
-    if (filters.room_id && r.room_id !== filters.room_id) return false;
-    if (filters.meter_type && r.meter_type !== filters.meter_type) return false;
-    if (filters.month && r.settlement_month !== filters.month) return false;
-    if (filters.status && r.status !== filters.status) return false;
-    return true;
-  });
-}
-
-// --- Pure helper: paginate a list (extracted for testability) ---
-
-export function paginateList<T>(
-  items: T[],
-  page: number,
-  pageSize: number
-): { data: T[]; totalCount: number } {
-  const totalCount = items.length;
-  const start = (page - 1) * pageSize;
-  const data = items.slice(start, start + pageSize);
-  return { data, totalCount };
-}
-
-// Re-export pure helpers from separate file (avoids Supabase dependency in tests)
-export {
+  applyMeterReadingFilters,
+  paginateList,
   createMeterReadingPayload,
   canEditReading,
   canDeleteReading,
@@ -105,11 +76,70 @@ export {
   getApprovedReadingsForInvoice,
   calculateInvoiceAmount,
 } from "./useMeterReadingsHelpers";
-export type { MeterReadingForStats, ComputedStats, MeterReadingForInvoice } from "./useMeterReadingsHelpers";
+export type {
+  MeterReadingForStats,
+  ComputedStats,
+  MeterReadingForInvoice,
+} from "./useMeterReadingsHelpers";
 
+// ============================================================================
+// Mutation input types
+// ============================================================================
 
-// --- Query Hooks ---
+export interface CreateMeterReadingInput {
+  meter_id: string;
+  reading_date: string;
+  current_reading: number;
+  notes?: string;
+  meter_image_url?: string;
+}
 
+export interface BulkCreateMeterReadingInput {
+  meter_id: string;
+  reading_date: string;
+  current_reading: number;
+  notes?: string;
+  meter_image_url?: string;
+}
+
+export interface ImportMeterReadingsInput {
+  readings: {
+    meter_code: string;
+    reading_date: string;
+    current_reading: number;
+    notes?: string;
+  }[];
+}
+
+export interface UpdateMeterReadingInput {
+  id: string;
+  current_reading?: number;
+  reading_date?: string;
+  notes?: string;
+  meter_image_url?: string;
+}
+
+// ============================================================================
+// Internal: invalidate all meter-reading related queries
+// ============================================================================
+
+function invalidateMeterReadingQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
+  queryClient.invalidateQueries({ queryKey: ["meter-reading-stats"] });
+  queryClient.invalidateQueries({ queryKey: ["unrecorded-meters"] });
+}
+
+// ============================================================================
+// Query Hooks
+// ============================================================================
+
+/**
+ * Query danh sách chỉ số từ view meter_readings_detailed.
+ * Hỗ trợ filter building_id, room_id, meter_type, settlement_month, status.
+ * Hỗ trợ phân trang via .range().
+ * Trả về { data, totalCount }.
+ * Requirements: 6.1, 6.2, 6.3
+ */
 export const useMeterReadingsList = (
   filters: MeterReadingFilters,
   pagination: { page: number; pageSize: number }
@@ -127,11 +157,9 @@ export const useMeterReadingsList = (
       pagination.pageSize,
     ],
     queryFn: async () => {
-      // Query the meter_readings_detailed view via raw rpc/from
-      // The view is not in generated types, so we cast the result
       let query = supabase
         .from("meter_readings_detailed" as any)
-        .select("*", { count: "exact" });
+        .select("*", { count: "exact", head: false });
 
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
@@ -154,7 +182,7 @@ export const useMeterReadingsList = (
       const to = from + pagination.pageSize - 1;
       query = query.range(from, to);
 
-      // Order by reading_date desc (view already orders, but explicit for pagination)
+      // Order by reading_date desc
       query = query.order("reading_date", { ascending: false });
 
       const { data, error, count } = await query;
@@ -172,12 +200,18 @@ export const useMeterReadingsList = (
   });
 };
 
+/**
+ * Gọi RPC get_meter_reading_stats.
+ * Trả về thống kê: total_readings, approved_count, unapproved_count,
+ * electricity_consumption, water_consumption, gas_consumption.
+ * Requirements: 7.1
+ */
 export const useMeterReadingStats = (
   buildingId?: string,
   month?: string
 ) => {
   return useQuery({
-    queryKey: ["meter-readings", "stats", buildingId, month],
+    queryKey: ["meter-reading-stats", buildingId, month],
     queryFn: async () => {
       const { data, error } = await supabase.rpc(
         "get_meter_reading_stats" as any,
@@ -213,45 +247,15 @@ export const useMeterReadingStats = (
   });
 };
 
+// ============================================================================
+// Mutation Hooks
+// ============================================================================
 
-// --- Mutation input types ---
-
-export interface CreateMeterReadingInput {
-  meter_id: string;
-  reading_date: string;
-  current_reading: number;
-  notes?: string;
-  meter_image_url?: string;
-}
-
-export interface BulkCreateMeterReadingInput {
-  meter_id: string;
-  reading_date: string;
-  current_reading: number;
-  notes?: string;
-  meter_image_url?: string;
-}
-
-export interface ImportMeterReadingsInput {
-  readings: {
-    meter_code: string;
-    reading_date: string;
-    current_reading: number;
-    notes?: string;
-  }[];
-}
-
-export interface UpdateMeterReadingInput {
-  id: string;
-  current_reading?: number;
-  reading_date?: string;
-  notes?: string;
-  meter_image_url?: string;
-}
-
-// --- Mutation Hooks ---
-
-// Tạo chỉ số mới (đơn lẻ) - status mặc định UNAPPROVED
+/**
+ * Mutation INSERT vào meter_readings với user_id = auth.uid(), status='UNAPPROVED'.
+ * Invalidate queries, toast thành công.
+ * Requirements: 2.4
+ */
 export const useCreateMeterReading = () => {
   const queryClient = useQueryClient();
 
@@ -285,7 +289,7 @@ export const useCreateMeterReading = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
+      invalidateMeterReadingQueries(queryClient);
       toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error) => {
@@ -294,7 +298,11 @@ export const useCreateMeterReading = () => {
   });
 };
 
-// Tạo chỉ số hàng loạt (từ form ghi chỉ số nhiều công tơ cùng lúc)
+/**
+ * Mutation INSERT nhiều rows vào meter_readings.
+ * Invalidate queries, toast thành công.
+ * Requirements: 3.4
+ */
 export const useBulkCreateMeterReadings = () => {
   const queryClient = useQueryClient();
 
@@ -329,7 +337,7 @@ export const useBulkCreateMeterReadings = () => {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
+      invalidateMeterReadingQueries(queryClient);
       toast.success(`Đã tạo ${data?.length ?? 0} chỉ số thành công`);
     },
     onError: (error) => {
@@ -338,7 +346,11 @@ export const useBulkCreateMeterReadings = () => {
   });
 };
 
-// Import chỉ số từ Excel (gọi RPC bulk_create_meter_readings)
+/**
+ * Mutation gọi RPC bulk_create_meter_readings với JSONB payload.
+ * Invalidate queries, toast kết quả (số thành công/lỗi).
+ * Requirements: 8.9
+ */
 export const useImportMeterReadings = () => {
   const queryClient = useQueryClient();
 
@@ -363,11 +375,30 @@ export const useImportMeterReadings = () => {
         throw error;
       }
 
-      return data;
+      return data as unknown as Array<{
+        reading_id: string | null;
+        reading_code: string | null;
+        success: boolean;
+        error_message: string | null;
+      }>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
-      toast.success("Dữ liệu đã được TẠO thành công");
+    onSuccess: (data) => {
+      invalidateMeterReadingQueries(queryClient);
+
+      if (Array.isArray(data)) {
+        const successCount = data.filter((r) => r.success).length;
+        const errorCount = data.filter((r) => !r.success).length;
+
+        if (errorCount === 0) {
+          toast.success(`Đã nhập ${successCount} chỉ số thành công`);
+        } else {
+          toast.warning(
+            `Nhập xong: ${successCount} thành công, ${errorCount} lỗi`
+          );
+        }
+      } else {
+        toast.success("Dữ liệu đã được TẠO thành công");
+      }
     },
     onError: (error) => {
       console.error("Error importing meter readings:", error);
@@ -375,7 +406,11 @@ export const useImportMeterReadings = () => {
   });
 };
 
-// Cập nhật chỉ số (chỉ khi UNAPPROVED)
+/**
+ * Mutation UPDATE meter_readings (chỉ UNAPPROVED).
+ * Invalidate queries, toast thành công.
+ * Requirements: 5.1, 5.2
+ */
 export const useUpdateMeterReading = () => {
   const queryClient = useQueryClient();
 
@@ -395,7 +430,9 @@ export const useUpdateMeterReading = () => {
 
       if (error) {
         if (error.code === "PGRST116") {
-          toast.error("Không thể cập nhật: chỉ số đã được duyệt hoặc không tồn tại");
+          toast.error(
+            "Không thể cập nhật: chỉ số đã được duyệt hoặc không tồn tại"
+          );
         } else {
           toast.error("Không thể cập nhật chỉ số");
         }
@@ -405,8 +442,8 @@ export const useUpdateMeterReading = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
-      toast.success("Chỉ số đã được cập nhật thành công");
+      invalidateMeterReadingQueries(queryClient);
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
     onError: (error) => {
       console.error("Error updating meter reading:", error);
@@ -414,7 +451,11 @@ export const useUpdateMeterReading = () => {
   });
 };
 
-// Xoá chỉ số (soft delete, chỉ khi UNAPPROVED)
+/**
+ * Mutation soft-delete (UPDATE deleted_at).
+ * Invalidate queries, toast thành công.
+ * Requirements: 4.2
+ */
 export const useDeleteMeterReading = () => {
   const queryClient = useQueryClient();
 
@@ -423,8 +464,7 @@ export const useDeleteMeterReading = () => {
       const { error } = await supabase
         .from("meter_readings")
         .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id)
-        .eq("status" as any, "UNAPPROVED");
+        .eq("id", id);
 
       if (error) {
         toast.error("Không thể xoá chỉ số");
@@ -432,7 +472,7 @@ export const useDeleteMeterReading = () => {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
+      invalidateMeterReadingQueries(queryClient);
       toast.success("Dữ liệu đã được XOÁ thành công");
     },
     onError: (error) => {
@@ -441,26 +481,36 @@ export const useDeleteMeterReading = () => {
   });
 };
 
-// Xoá hàng loạt chỉ số chưa duyệt
+/**
+ * Mutation soft-delete nhiều rows (chỉ UNAPPROVED).
+ * Invalidate queries, toast kết quả.
+ * Requirements: 5.5
+ */
 export const useBulkDeleteMeterReadings = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await supabase
+      const query = supabase
         .from("meter_readings")
         .update({ deleted_at: new Date().toISOString() } as any)
-        .in("id", ids)
-        .eq("status" as any, "UNAPPROVED");
+        .in("id", ids) as any;
+
+      const { data, error } = await query
+        .eq("status", "UNAPPROVED")
+        .select("id");
 
       if (error) {
         toast.error("Không thể xoá chỉ số hàng loạt");
         throw error;
       }
+
+      return data as { id: string }[] | null;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
-      toast.success("Đã xoá các chỉ số chưa duyệt thành công");
+    onSuccess: (data) => {
+      invalidateMeterReadingQueries(queryClient);
+      const deletedCount = data?.length ?? 0;
+      toast.success(`Đã xoá ${deletedCount} chỉ số chưa duyệt thành công`);
     },
     onError: (error) => {
       console.error("Error bulk deleting meter readings:", error);
@@ -468,7 +518,11 @@ export const useBulkDeleteMeterReadings = () => {
   });
 };
 
-// Duyệt đơn lẻ (gọi RPC approve_meter_reading)
+/**
+ * Mutation gọi RPC approve_meter_reading.
+ * Invalidate queries, toast thành công.
+ * Requirements: 4.2, 8.5
+ */
 export const useApproveMeterReading = () => {
   const queryClient = useQueryClient();
 
@@ -487,7 +541,7 @@ export const useApproveMeterReading = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
+      invalidateMeterReadingQueries(queryClient);
       toast.success("Chỉ số đã được duyệt thành công");
     },
     onError: (error) => {
@@ -496,7 +550,11 @@ export const useApproveMeterReading = () => {
   });
 };
 
-// Duyệt hàng loạt (gọi RPC bulk_approve_meter_readings)
+/**
+ * Mutation gọi RPC bulk_approve_meter_readings.
+ * Invalidate queries, toast kết quả.
+ * Requirements: 4.3, 8.6
+ */
 export const useBulkApproveMeterReadings = () => {
   const queryClient = useQueryClient();
 
@@ -514,9 +572,10 @@ export const useBulkApproveMeterReadings = () => {
 
       return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
-      toast.success("Đã duyệt hàng loạt chỉ số thành công");
+    onSuccess: (data) => {
+      invalidateMeterReadingQueries(queryClient);
+      const approvedCount = typeof data === "number" ? data : 0;
+      toast.success(`Đã duyệt ${approvedCount} chỉ số thành công`);
     },
     onError: (error) => {
       console.error("Error bulk approving meter readings:", error);
@@ -524,7 +583,11 @@ export const useBulkApproveMeterReadings = () => {
   });
 };
 
-// Bỏ duyệt (cập nhật status=UNAPPROVED, xoá approved_by và approved_at)
+/**
+ * Mutation UPDATE status→UNAPPROVED, xoá approved_by/approved_at.
+ * Invalidate queries, toast thành công.
+ * Requirements: 4.4
+ */
 export const useUnapproveMeterReading = () => {
   const queryClient = useQueryClient();
 
@@ -549,7 +612,7 @@ export const useUnapproveMeterReading = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
+      invalidateMeterReadingQueries(queryClient);
       toast.success("Đã bỏ duyệt chỉ số thành công");
     },
     onError: (error) => {

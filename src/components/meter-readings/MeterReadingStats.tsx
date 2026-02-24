@@ -5,7 +5,7 @@ import { useMeterReadingStats } from "@/hooks/useMeterReadings";
 
 interface MeterReadingStatsProps {
   buildingId?: string;
-  month: string; // YYYY-MM
+  month?: string;
 }
 
 export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps) {
@@ -26,7 +26,7 @@ export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps)
             <Skeleton className="h-8 w-16" />
           ) : (
             <div className="text-3xl font-bold text-foreground">
-              {stats?.total_readings ?? 0}
+              {(stats?.total_readings ?? 0).toLocaleString('vi-VN')}
             </div>
           )}
         </CardContent>
@@ -45,7 +45,7 @@ export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps)
             <Skeleton className="h-8 w-16" />
           ) : (
             <div className="text-3xl font-bold text-emerald-600">
-              {stats?.approved_count ?? 0}
+              {(stats?.approved_count ?? 0).toLocaleString('vi-VN')}
             </div>
           )}
         </CardContent>
@@ -64,7 +64,7 @@ export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps)
             <Skeleton className="h-8 w-16" />
           ) : (
             <div className="text-3xl font-bold text-yellow-600">
-              {stats?.unapproved_count ?? 0}
+              {(stats?.unapproved_count ?? 0).toLocaleString('vi-VN')}
             </div>
           )}
         </CardContent>
@@ -83,7 +83,7 @@ export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps)
             <Skeleton className="h-8 w-24" />
           ) : (
             <div className="text-2xl font-bold text-foreground">
-              {(stats?.electricity_consumption ?? 0).toLocaleString()} <span className="text-sm font-normal text-muted-foreground">kWh</span>
+              {(stats?.electricity_consumption ?? 0).toLocaleString('vi-VN')} <span className="text-sm font-normal text-muted-foreground">kWh</span>
             </div>
           )}
         </CardContent>
@@ -102,7 +102,7 @@ export function MeterReadingStats({ buildingId, month }: MeterReadingStatsProps)
             <Skeleton className="h-8 w-24" />
           ) : (
             <div className="text-2xl font-bold text-foreground">
-              {(stats?.water_consumption ?? 0).toLocaleString()} <span className="text-sm font-normal text-muted-foreground">m³</span>
+              {(stats?.water_consumption ?? 0).toLocaleString('vi-VN')} <span className="text-sm font-normal text-muted-foreground">m³</span>
             </div>
           )}
         </CardContent>
