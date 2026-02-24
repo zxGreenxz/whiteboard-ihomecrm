@@ -299,10 +299,19 @@ export const useUnrecordedMeters = (params: {
   return useQuery({
     queryKey: ["meters", "unrecorded", buildingId, roomId, meterType, month],
     queryFn: async () => {
+      const userId = (await supabase.auth.getUser()).data.user?.id ?? "";
+      console.log("[useUnrecordedMeters] calling RPC with:", {
+        p_user_id: userId,
+        p_building_id: buildingId ?? null,
+        p_room_id: roomId ?? null,
+        p_meter_type: meterType ?? null,
+        p_month: month,
+      });
+
       const { data, error } = await supabase.rpc(
         "get_meters_without_readings",
         {
-          p_user_id: (await supabase.auth.getUser()).data.user?.id ?? "",
+          p_user_id: userId,
           p_building_id: buildingId ?? null,
           p_room_id: roomId ?? null,
           p_meter_type: meterType ?? null,
@@ -311,10 +320,11 @@ export const useUnrecordedMeters = (params: {
       );
 
       if (error) {
-        console.error("useUnrecordedMeters error:", error);
+        console.error("[useUnrecordedMeters] RPC error:", error);
         return [];
       }
 
+      console.log("[useUnrecordedMeters] RPC returned:", data?.length, "meters", data);
       return data || [];
     },
     enabled: !!month,

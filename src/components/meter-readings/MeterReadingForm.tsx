@@ -110,7 +110,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const watchMonth = form.watch('settlement_month');
 
   // Query unrecorded meters based on selections
-  const { data: unrecordedMeters } = useUnrecordedMeters({
+  const { data: unrecordedMeters, isLoading: isLoadingMeters } = useUnrecordedMeters({
     buildingId: watchBuildingId || undefined,
     roomId: watchRoomId || undefined,
     meterType: watchMeterType || undefined,
@@ -158,8 +158,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   // Load meters into form (used by auto-load useEffect)
   const loadMetersIntoForm = useCallback(() => {
     if (metersList.length === 0) {
-      // Only show toast if user has selected enough filters
-      if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' })) {
+      if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' }) && !isLoadingMeters) {
         toast.info('Không có công tơ chưa chốt cho bộ lọc đã chọn');
       }
       replace([]);
@@ -171,11 +170,12 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     replace(readingsData);
     setShowMetersTable(true);
     setValidationErrors({});
-  }, [metersList, replace, watchBuildingId, watchRoomId, watchMonth]);
+  }, [metersList, replace, watchBuildingId, watchRoomId, watchMonth, isLoadingMeters]);
 
   // Auto-load meters when filters change (not in editing mode)
   useEffect(() => {
     if (isEditing || !open) return;
+    if (isLoadingMeters) return; // Don't process while still loading
     if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' })) {
       loadMetersIntoForm();
     } else {
@@ -186,7 +186,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchBuildingId, watchRoomId, watchMeterType, watchMonth, metersList]);
+  }, [watchBuildingId, watchRoomId, watchMeterType, watchMonth, metersList, isLoadingMeters]);
 
   // Image upload handler
   const handleImageUpload = async (index: number, file: File) => {

@@ -3004,6 +3004,24 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      get_meters_without_readings: {
+        Args: {
+          p_user_id: string
+          p_building_id?: string
+          p_room_id?: string
+          p_meter_type?: Database["public"]["Enums"]["meter_type"]
+          p_month?: string
+        }
+        Returns: {
+          meter_id: string
+          meter_code: string
+          meter_name: string
+          room_name: string
+          meter_type_value: Database["public"]["Enums"]["meter_type"]
+          last_reading: number
+          last_reading_date: string
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
