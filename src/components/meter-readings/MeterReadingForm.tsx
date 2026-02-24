@@ -1,4 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
+import {
+  mapMeterToReading,
+  getPreviousReadingFromList,
+  getMeterNameFromList,
+  isLoadEnabled,
+  type UnrecordedMeter,
+} from './meterReadingFormUtils';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -103,7 +110,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const watchMonth = form.watch('settlement_month');
 
   // Query unrecorded meters based on selections
-  const { data: unrecordedMeters, isLoading: isLoadingMeters } = useUnrecordedMeters({
+  const { data: unrecordedMeters } = useUnrecordedMeters({
     buildingId: watchBuildingId || undefined,
     roomId: watchRoomId || undefined,
     meterType: watchMeterType || undefined,
@@ -146,26 +153,40 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   }, [reading, open, form, currentMonth]);
 
   // Cast unrecorded meters to array for safe usage
-  const metersList = Array.isArray(unrecordedMeters) ? (unrecordedMeters as any[]) : [];
+  const metersList: UnrecordedMeter[] = Array.isArray(unrecordedMeters) ? unrecordedMeters as unknown as UnrecordedMeter[] : [];
 
-  // Load meters when user clicks "Tải công tơ" (step 2)
-  const handleLoadMeters = useCallback(() => {
+  // Load meters into form (used by auto-load useEffect)
+  const loadMetersIntoForm = useCallback(() => {
     if (metersList.length === 0) {
-      toast.info('Không có công tơ chưa chốt cho phòng và tháng đã chọn');
+      // Only show toast if user has selected enough filters
+      if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' })) {
+        toast.info('Không có công tơ chưa chốt cho bộ lọc đã chọn');
+      }
+      replace([]);
+      setShowMetersTable(true);
+      setValidationErrors({});
       return;
     }
-
-    const readingsData = metersList.map((meter: any) => ({
-      meter_id: meter.id,
-      current_reading: 0,
-      notes: '',
-      meter_image_url: '',
-    }));
-
+    const readingsData = metersList.map(mapMeterToReading);
     replace(readingsData);
     setShowMetersTable(true);
     setValidationErrors({});
-  }, [metersList, replace]);
+  }, [metersList, replace, watchBuildingId, watchRoomId, watchMonth]);
+
+  // Auto-load meters when filters change (not in editing mode)
+  useEffect(() => {
+    if (isEditing || !open) return;
+    if (isLoadEnabled({ buildingId: watchBuildingId, roomId: watchRoomId || '', month: watchMonth || '' })) {
+      loadMetersIntoForm();
+    } else {
+      // Reset meters table when filters are insufficient
+      if (showMetersTable) {
+        replace([]);
+        setShowMetersTable(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchBuildingId, watchRoomId, watchMeterType, watchMonth, metersList]);
 
   // Image upload handler
   const handleImageUpload = async (index: number, file: File) => {
@@ -187,10 +208,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     if (isEditing && reading) {
       return reading.previous_reading ?? 0;
     }
-    const meter = metersList.find((m: any) => m.id === meterId);
-    if (!meter) return 0;
-    // Use latest reading or initial_reading
-    return meter.latest_reading ?? meter.initial_reading ?? 0;
+    return getPreviousReadingFromList(meterId, metersList);
   };
 
   // Get meter display name
@@ -198,8 +216,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     if (isEditing && reading) {
       return reading.meter_name || reading.meter_code || '';
     }
-    const meter = metersList.find((m: any) => m.id === meterId);
-    return meter?.name || meter?.code || '';
+    return getMeterNameFromList(meterId, metersList);
   };
 
   // Validate all readings before submit
@@ -318,7 +335,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                   name="room_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phòng *</FormLabel>
+                      <FormLabel>Phòng</FormLabel>
                       <Select
                         onValueChange={(val) => {
                           field.onChange(val);
@@ -416,27 +433,6 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                   )}
                 />
               </div>
-
-              {/* Load meters button (only for new readings) */}
-              {!isEditing && (
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleLoadMeters}
-                    disabled={!watchBuildingId || !watchRoomId || !watchMonth || isLoadingMeters}
-                  >
-                    {isLoadingMeters ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Đang tải...
-                      </>
-                    ) : (
-                      'Tải công tơ'
-                    )}
-                  </Button>
-                </div>
-              )}
 
               {/* Step 2: Meters table */}
               {showMetersTable && fields.length > 0 && (
@@ -545,7 +541,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
               {showMetersTable && fields.length === 0 && !isEditing && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Không có công tơ chưa chốt cho phòng và tháng đã chọn
+                  Không có công tơ chưa chốt cho bộ lọc đã chọn
                 </p>
               )}
 
