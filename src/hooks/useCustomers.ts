@@ -359,16 +359,9 @@ export const useDeleteCustomer = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { error } = await supabase
-        .from("customers")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id)
-        .eq("user_id", user.id);
+      const { error } = await supabase.rpc('soft_delete_customer' as any, {
+        p_customer_id: id,
+      });
 
       if (error) throw error;
     },
