@@ -359,10 +359,16 @@ export const useDeleteCustomer = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       const { error } = await supabase
         .from("customers")
         .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", user.id);
 
       if (error) throw error;
     },
