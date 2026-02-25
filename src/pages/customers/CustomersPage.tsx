@@ -10,7 +10,14 @@ import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '
 import type { ViewMode } from '@/components/customers/CustomerListToolbar';
 import { exportCustomers, uploadIdImagesFromUrls, type CustomerImportRow } from '@/lib/customerExcelHelpers';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 
 import CustomerStatusTabs from '@/components/customers/CustomerStatusTabs';
 import CustomerStatsCards from '@/components/customers/CustomerStatsCards';
@@ -35,6 +42,11 @@ export default function CustomersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importResultOpen, setImportResultOpen] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    successRows: { name: string }[];
+    failRows: { name: string; reason: string }[];
+  } | null>(null);
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
@@ -122,8 +134,9 @@ export default function CustomersPage() {
   }, []);
 
   const handleImportConfirm = useCallback(async (rows: CustomerImportRow[]) => {
-    let successCount = 0;
-    let failCount = 0;
+    const successRows: { name: string }[] = [];
+    const failRows: { name: string; reason: string }[] = [];
+
     for (const row of rows) {
       try {
         const created = await createCustomer.mutateAsync({
@@ -131,10 +144,10 @@ export default function CustomersPage() {
           full_name: row.full_name,
           phone: row.phone,
           email: row.email,
-          date_of_birth: row.date_of_birth,
+          date_of_birth: row.date_of_birth || undefined,
           gender: row.gender,
           id_number: row.id_number,
-          id_issue_date: row.id_issue_date,
+          id_issue_date: row.id_issue_date || undefined,
           id_issue_place: row.id_issue_place,
           permanent_address: row.permanent_address,
           occupation: row.occupation,
@@ -147,23 +160,26 @@ export default function CustomersPage() {
         if (row.id_image_urls && row.id_image_urls.length > 0 && created?.id) {
           try {
             const idImages = await uploadIdImagesFromUrls(created.id, row.id_image_urls);
-            // Update customer with id_images
-            await supabase
-              .from('customers')
-              .update({ id_images: idImages } as any)
-              .eq('id', created.id);
+            const sb = supabase as any;
+            await sb.from('customers').update({ id_images: idImages }).eq('id', created.id);
           } catch {
             // Non-fatal: customer was created, images just didn't upload
           }
         }
 
-        successCount++;
-      } catch {
-        failCount++;
+        successRows.push({ name: row.full_name });
+      } catch (err: any) {
+        let reason = 'Lỗi không xác định';
+        if (err?.code === '23505') reason = 'Trùng SĐT hoặc CCCD';
+        else if (err?.code === '23514') reason = 'SĐT không đúng định dạng (DB constraint)';
+        else if (err?.code === '22008') reason = 'Ngày tháng không hợp lệ';
+        else if (err?.message) reason = err.message;
+        failRows.push({ name: row.full_name, reason });
       }
     }
-    if (successCount > 0) toast.success(`Đã nhập ${successCount} khách hàng thành công`);
-    if (failCount > 0) toast.error(`${failCount} khách hàng không thể nhập (trùng SĐT hoặc CCCD)`);
+
+    setImportResult({ successRows, failRows });
+    setImportResultOpen(true);
   }, [createCustomer]);
 
   const handlePrint = useCallback(() => {
@@ -273,6 +289,71 @@ export default function CustomersPage() {
           onOpenChange={setImportDialogOpen}
           onImport={handleImportConfirm}
         />
+
+        {/* Import Result Modal */}
+        {importResult && (
+          <Dialog open={importResultOpen} onOpenChange={setImportResultOpen}>
+            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Kết quả nhập dữ liệu</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex-1">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <span className="text-sm font-medium">{importResult.successRows.length} thành công</span>
+                  </div>
+                  {importResult.failRows.length > 0 && (
+                    <div className="flex items-center gap-2 text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex-1">
+                      <XCircle className="h-5 w-5 shrink-0" />
+                      <span className="text-sm font-medium">{importResult.failRows.length} thất bại</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Failed rows detail */}
+                {importResult.failRows.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-red-700 flex items-center gap-1">
+                      <AlertTriangle className="h-4 w-4" />
+                      Danh sách lỗi:
+                    </p>
+                    <div className="rounded-md border border-red-200 divide-y divide-red-100 max-h-60 overflow-y-auto">
+                      {importResult.failRows.map((r, i) => (
+                        <div key={i} className="px-3 py-2">
+                          <p className="text-sm font-medium">{r.name}</p>
+                          <p className="text-xs text-red-600">{r.reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Success list (collapsed if many) */}
+                {importResult.successRows.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-green-700 flex items-center gap-1">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Đã nhập thành công:
+                    </p>
+                    <div className="rounded-md border border-green-200 divide-y divide-green-100 max-h-40 overflow-y-auto">
+                      {importResult.successRows.map((r, i) => (
+                        <div key={i} className="px-3 py-1.5">
+                          <p className="text-sm">{r.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Button className="w-full" onClick={() => setImportResultOpen(false)}>
+                  Đóng
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </MainLayout>
   );

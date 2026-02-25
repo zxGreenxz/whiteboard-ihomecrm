@@ -141,6 +141,49 @@ function parseGender(raw: string): string | undefined {
   return raw.trim() || undefined;
 }
 
+/**
+ * Convert date string from DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD (ISO).
+ * Also handles XLSX serial numbers (numeric dates).
+ * Returns undefined if unparseable.
+ */
+export function parseDateToISO(raw: string | number | undefined | null): string | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+
+  // XLSX may give us a numeric serial date
+  if (typeof raw === 'number') {
+    // Excel serial: days since 1900-01-01 (with leap year bug)
+    const date = XLSX.SSF.parse_date_code(raw);
+    if (date) {
+      const y = date.y;
+      const m = String(date.m).padStart(2, '0');
+      const d = String(date.d).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return undefined;
+  }
+
+  const s = String(raw).trim();
+  if (!s) return undefined;
+
+  // Already ISO: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  const match = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match) {
+    const d = match[1].padStart(2, '0');
+    const m = match[2].padStart(2, '0');
+    const y = match[3];
+    // Validate ranges
+    const day = parseInt(d), month = parseInt(m), year = parseInt(y);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  return undefined;
+}
+
 // =============================================
 // Export — "DANH SÁCH CƯ DÂN" format
 // =============================================
@@ -404,10 +447,10 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
               full_name:            row.full_name!.trim(),
               phone:                row.phone!,
               email:                row.email?.trim() || undefined,
-              date_of_birth:        row.date_of_birth?.trim() || undefined,
+              date_of_birth:        parseDateToISO(row.date_of_birth) || undefined,
               gender:               row.gender || undefined,
               id_number:            row.id_number?.trim() || undefined,
-              id_issue_date:        row.id_issue_date?.trim() || undefined,
+              id_issue_date:        parseDateToISO(row.id_issue_date) || undefined,
               id_issue_place:       row.id_issue_place?.trim() || undefined,
               permanent_address:    row.permanent_address?.trim() || undefined,
               nationality:          row.nationality?.trim() || undefined,
