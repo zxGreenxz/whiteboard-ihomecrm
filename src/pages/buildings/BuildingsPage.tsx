@@ -8,6 +8,7 @@ import BuildingStatsCards from '@/components/buildings/BuildingStatsCards';
 import BuildingListFilters from '@/components/buildings/BuildingListFilters';
 import BuildingListTable from '@/components/buildings/BuildingListTable';
 import { DeleteBuildingDialog } from '@/components/buildings/DeleteBuildingDialog';
+import BuildingFormDialog from '@/components/buildings/BuildingFormDialog';
 import { useBuildings, useUpdateBuildingStatus } from '@/hooks/useBuildings';
 import { useAreas } from '@/hooks/useAreas';
 import type { BuildingWithRelations } from '@/types/building';
@@ -36,6 +37,9 @@ export default function BuildingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingWithRelations | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editBuilding, setEditBuilding] = useState<BuildingWithRelations | undefined>(undefined);
 
   // Stats computed from ALL buildings (not filtered)
   const stats = useMemo(() => {
@@ -70,7 +74,8 @@ export default function BuildingsPage() {
 
   // Handlers
   const handleEdit = (building: BuildingWithRelations) => {
-    navigate(`/buildings/${building.id}/edit`);
+    setEditBuilding(building);
+    setEditDialogOpen(true);
   };
 
   const handleDelete = (building: BuildingWithRelations) => {
@@ -114,7 +119,7 @@ export default function BuildingsPage() {
         {/* Toolbar */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Button onClick={() => navigate('/buildings/new')} size="sm">
+            <Button onClick={() => setCreateDialogOpen(true)} size="sm">
               <Plus className="h-4 w-4 mr-1" />
               Thêm
             </Button>
@@ -168,7 +173,7 @@ export default function BuildingsPage() {
                 title="Chưa có toà nhà nào"
                 description="Hãy thêm toà nhà đầu tiên để bắt đầu quản lý"
                 actionLabel="Thêm toà nhà"
-                onAction={() => navigate('/buildings/new')}
+                onAction={() => setCreateDialogOpen(true)}
               />
             )
           ) : (
@@ -190,6 +195,19 @@ export default function BuildingsPage() {
             building={selectedBuilding}
           />
         )}
+
+        {/* Create Dialog */}
+        <BuildingFormDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+        />
+
+        {/* Edit Dialog */}
+        <BuildingFormDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          building={editBuilding}
+        />
       </div>
     </MainLayout>
   );
