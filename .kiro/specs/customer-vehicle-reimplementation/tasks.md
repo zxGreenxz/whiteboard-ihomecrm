@@ -194,7 +194,7 @@ Tái triển khai hoàn toàn module Khách hàng (Customer) và Phương tiện
     - Toast "Dữ liệu đã được XOÁ thành công"
     - _Requirements: 5.3, 5.4, 5.5_
 
-- [-] 11. Vehicle module (page, components, form)
+- [x] 11. Vehicle module (page, components, form)
   - [x] 11.1 Tạo `src/components/vehicles/VehicleListToolbar.tsx`
     - Nút Thêm (+), Export, Import, Print, View toggle
     - _Requirements: 8.4_
@@ -232,28 +232,28 @@ Tái triển khai hoàn toàn module Khách hàng (Customer) và Phương tiện
 - [ ] 12. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. CT01 module (tờ khai thay đổi thông tin cư trú)
-  - [~] 13.1 Tạo `src/lib/ct01Helpers.ts`
+- [x] 13. CT01 module (tờ khai thay đổi thông tin cư trú)
+  - [x] 13.1 Tạo `src/lib/ct01Helpers.ts`
     - Implement autoFillCT01FromCustomer(customer): CT01FormData - map customer fields sang CT01 fields
     - _Requirements: 6.3_
 
-  - [~] 13.2 Tạo `src/components/customers/CT01Form.tsx`
+  - [x] 13.2 Tạo `src/components/customers/CT01Form.tsx`
     - React Hook Form + Zod (ct01Schema)
     - Auto-fill từ customer data
     - Fields theo mẫu quy định: Cơ quan ĐKCT, Họ tên, Ngày sinh, Giới tính, CMND/CCCD, SĐT, Email, Nơi thường trú, Nơi tạm trú, Nơi ở hiện tại, Nghề nghiệp, Chủ hộ, Quan hệ, Nội dung đề nghị
     - _Requirements: 6.1, 6.2, 6.3_
 
-  - [~] 13.3 Tạo `src/components/customers/CT01FamilyMembersTable.tsx`
+  - [x] 13.3 Tạo `src/components/customers/CT01FamilyMembersTable.tsx`
     - Bảng thành viên gia đình: STT, Họ tên, Ngày sinh, Giới tính, CMND/CCCD, Nghề nghiệp, Quan hệ với người khai, Quan hệ với chủ hộ
     - Thêm/xoá dòng
     - _Requirements: 6.4_
 
-  - [~] 13.4 Tạo `src/components/customers/CT01PrintLayout.tsx`
+  - [x] 13.4 Tạo `src/components/customers/CT01PrintLayout.tsx`
     - Layout in ấn khổ A4 theo mẫu quy định nhà nước
     - CSS @media print styling
     - _Requirements: 6.7_
 
-  - [~] 13.5 Tạo `src/pages/customers/CT01FormPage.tsx`
+  - [x] 13.5 Tạo `src/pages/customers/CT01FormPage.tsx`
     - Route `/customers/:id/ct01`
     - Compose CT01Form + CT01FamilyMembersTable + CT01PrintLayout
     - Lưu qua useCreateCT01Declaration, sau đó window.print()
@@ -265,25 +265,25 @@ Tái triển khai hoàn toàn module Khách hàng (Customer) và Phương tiện
     - Tạo `src/lib/__tests__/ct01Helpers.test.ts`
     - Dùng fast-check generate customer data, verify auto-fill mapping
 
-- [ ] 14. Excel import/export
-  - [~] 14.1 Tạo `src/lib/customerExcelHelpers.ts`
+- [x] 14. Excel import/export
+  - [x] 14.1 Tạo `src/lib/customerExcelHelpers.ts`
     - Implement exportCustomers(customers, filters) - xuất Excel theo bộ lọc hiện tại
     - Implement downloadCustomerImportTemplate() - tải file mẫu với cột bắt buộc đánh dấu (*)
     - Implement parseCustomerExcel(file) - đọc và validate từng dòng, trả về ImportResult với valid rows và per-row errors
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-  - [~] 14.2 Tạo `src/lib/vehicleExcelHelpers.ts`
+  - [x] 14.2 Tạo `src/lib/vehicleExcelHelpers.ts`
     - Implement exportVehicles(vehicles) - xuất Excel
     - Implement downloadVehicleImportTemplate() - tải file mẫu
     - Implement parseVehicleExcel(file) - đọc và validate từng dòng
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 
-  - [~] 14.3 Tạo `src/components/customers/CustomerImportExportDialog.tsx`
+  - [x] 14.3 Tạo `src/components/customers/CustomerImportExportDialog.tsx`
     - Dialog import: link tải file mẫu, upload zone, nút Nhập dữ liệu
     - Hiển thị lỗi per-row nếu có
     - _Requirements: 7.2, 7.3, 7.4, 7.6_
 
-  - [~] 14.4 Tạo `src/components/vehicles/VehicleImportExportDialog.tsx`
+  - [x] 14.4 Tạo `src/components/vehicles/VehicleImportExportDialog.tsx`
     - Dialog import: link tải file mẫu, upload zone, nút Nhập dữ liệu
     - Hiển thị lỗi per-row nếu có
     - _Requirements: 10.1, 10.2, 10.3, 10.5_
@@ -300,19 +300,19 @@ Tái triển khai hoàn toàn module Khách hàng (Customer) và Phương tiện
     - **Validates: Requirements 10.3, 10.5**
     - Tạo `src/lib/__tests__/vehicleExcelHelpers.test.ts`
 
-- [ ] 15. Routing và integration
-  - [~] 15.1 Cập nhật React Router configuration
+- [x] 15. Routing và integration
+  - [x] 15.1 Cập nhật React Router configuration
     - Thêm routes: `/customers` (CustomersPage), `/customers/new` (CustomerFormPage create), `/customers/:id/edit` (CustomerFormPage edit), `/customers/:id/ct01` (CT01FormPage), `/vehicles` (VehiclesPage)
     - Đảm bảo navigation từ sidebar menu Quản lý & Vận hành → Khách hàng → Khách hàng / Phương tiện
     - _Requirements: 1.1, 8.1_
 
-  - [~] 15.2 Wire print functionality
+  - [x] 15.2 Wire print functionality
     - Implement print cho danh sách khách hàng (CustomerListToolbar)
     - Implement print cho danh sách phương tiện (VehicleListToolbar)
     - CSS @media print cho cả hai danh sách
     - _Requirements: 1.8, 8.4_
 
-- [ ] 16. Final checkpoint - Ensure all tests pass
+- [x] 16. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

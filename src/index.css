@@ -103,3 +103,94 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  /* Hide header */
+  body > div > header,
+  body header {
+    display: none !important;
+  }
+
+  /* Hide sidebar (desktop wrapper and mobile sheet) */
+  .hidden.lg\:block,
+  [data-radix-dialog-overlay],
+  [data-radix-dialog-content] {
+    display: none !important;
+  }
+
+  /* Hide breadcrumbs bar */
+  main > div.border-b {
+    display: none !important;
+  }
+
+  /* Hide toolbar action buttons, search inputs, view toggles */
+  button,
+  [role="button"],
+  input {
+    display: none !important;
+  }
+
+  /* Hide pagination */
+  nav[aria-label*="pagination"],
+  [class*="pagination"],
+  [class*="Pagination"] {
+    display: none !important;
+  }
+
+  /* Hide status tabs and stat filter cards */
+  [role="tablist"],
+  [role="tab"] {
+    display: none !important;
+  }
+
+  /* Full-width layout */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Remove flex layout so main takes full width */
+  .flex:has(main) {
+    display: block !important;
+  }
+
+  main {
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Page content padding */
+  main > div.p-4,
+  main > div.lg\:p-6 {
+    padding: 0 !important;
+  }
+
+  /* Page title — show prominently */
+  h1 {
+    font-size: 18px !important;
+    font-weight: bold !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Ensure table is visible and full-width */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #999 !important;
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+  }
+
+  /* Remove shadows and rounded corners */
+  .rounded-lg,
+  .shadow,
+  .shadow-sm {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}

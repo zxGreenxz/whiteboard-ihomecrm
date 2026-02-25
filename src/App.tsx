@@ -34,6 +34,9 @@ import ContractDetailPage from "./pages/contracts/ContractDetailPage";
 import TenantsPage from "./pages/tenants/TenantsPage";
 import TenantDetailPage from "./pages/tenants/TenantDetailPage";
 import VehiclesPage from "./pages/vehicles/VehiclesPage";
+import CustomersPage from "./pages/customers/CustomersPage";
+import CustomerFormPage from "./pages/customers/CustomerFormPage";
+import CT01FormPage from "./pages/customers/CT01FormPage";
 
 // Finance Pages
 import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
@@ -193,8 +196,11 @@ const App = () => (
           <Route path="/deposits" element={<ProtectedRoute><DepositsPage /></ProtectedRoute>} />
           <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
           <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetailPage /></ProtectedRoute>} />
-          {/* Primary route: /customers, redirect /tenants → /customers */}
-          <Route path="/customers" element={<ProtectedRoute><TenantsPage /></ProtectedRoute>} />
+          {/* Primary route: /customers (new CustomersPage), redirect /tenants → /customers */}
+          <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
+          <Route path="/customers/new" element={<ProtectedRoute><CustomerFormPage /></ProtectedRoute>} />
+          <Route path="/customers/:id/edit" element={<ProtectedRoute><CustomerFormPage /></ProtectedRoute>} />
+          <Route path="/customers/:id/ct01" element={<ProtectedRoute><CT01FormPage /></ProtectedRoute>} />
           <Route path="/customers/:id" element={<ProtectedRoute><TenantDetailPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<Navigate to="/customers" replace />} />
           <Route path="/tenants/:id" element={<Navigate to="/customers" replace />} />
