@@ -33,11 +33,14 @@ export interface CustomerImportRow {
   room_name?: string;
   bed_name?: string;
   building_name?: string;
+  // Internal warning (not blocking)
+  _phone_warning?: string;
 }
 
 export interface CustomerImportResult {
   validRows: CustomerImportRow[];
   errors: { row: number; message: string }[];
+  warnings: { row: number; message: string }[];
 }
 
 // =============================================
@@ -315,7 +318,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
         const aoa: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
 
         if (aoa.length <= headerRowIndex) {
-          return resolve({ validRows: [], errors: [] });
+          return resolve({ validRows: [], errors: [], warnings: [] });
         }
 
         // Extract header row
@@ -326,6 +329,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
 
         const validRows: CustomerImportRow[] = [];
         const errors: { row: number; message: string }[] = [];
+        const warnings: { row: number; message: string }[] = [];
 
         dataRows.forEach((rawRow, index) => {
           const excelRowNum = headerRowIndex + index + 2; // 1-indexed for user display
@@ -373,14 +377,16 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
             rowErrors.push('Họ tên không được để trống');
           }
 
-          // Validate phone (required, 10-11 digits)
+          // Validate phone (required, warn if not 10-11 digits but still allow)
           const phone = row.phone?.replace(/\s/g, '') ?? '';
           if (!phone) {
             rowErrors.push('SĐT không được để trống');
-          } else if (!PHONE_REGEX.test(phone)) {
-            rowErrors.push('SĐT phải có 10-11 chữ số');
           } else {
             row.phone = phone;
+            // Warn but don't block if format is unusual
+            if (!PHONE_REGEX.test(phone)) {
+              row._phone_warning = `SĐT "${phone}" không đúng định dạng 10-11 chữ số`;
+            }
           }
 
           if (rowErrors.length > 0) {
@@ -388,6 +394,11 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
           } else {
             // Normalize gender
             if (row.gender) row.gender = parseGender(row.gender);
+
+            // Collect phone warning if any
+            if (row._phone_warning) {
+              warnings.push({ row: excelRowNum, message: row._phone_warning });
+            }
 
             validRows.push({
               full_name:            row.full_name!.trim(),
@@ -412,7 +423,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
           }
         });
 
-        resolve({ validRows, errors });
+        resolve({ validRows, errors, warnings });
       } catch {
         reject(new Error('Không thể đọc file Excel. Vui lòng kiểm tra định dạng file.'));
       }

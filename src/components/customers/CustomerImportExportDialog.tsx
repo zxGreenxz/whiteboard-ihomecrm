@@ -28,7 +28,7 @@ import {
   type CustomerImportRow,
   type CustomerImportResult,
 } from '@/lib/customerExcelHelpers';
-import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 
 // =============================================
 // Props
@@ -105,6 +105,7 @@ export function CustomerImportExportDialog({
   const hasResult = parseResult !== null;
   const validCount = parseResult?.validRows.length ?? 0;
   const errorCount = parseResult?.errors.length ?? 0;
+  const warningCount = parseResult?.warnings.length ?? 0;
   const canConfirm = hasResult && validCount > 0;
 
   return (
@@ -215,14 +216,14 @@ export function CustomerImportExportDialog({
                   <Alert className="border-green-200 bg-green-50 text-green-800">
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                     <AlertDescription>
-                      {validCount} dòng hợp lệ, sẵn sàng nhập
+                      {validCount} dòng hợp lệ{warningCount > 0 ? `, ${warningCount} dòng cảnh báo SĐT` : ''}, sẵn sàng nhập
                     </AlertDescription>
                   </Alert>
                 ) : (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      {validCount} dòng hợp lệ, {errorCount} dòng lỗi
+                      {validCount} dòng hợp lệ, {errorCount} dòng lỗi{warningCount > 0 ? `, ${warningCount} dòng cảnh báo SĐT` : ''}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -243,6 +244,36 @@ export function CustomerImportExportDialog({
                             <TableCell className="font-medium">{err.row}</TableCell>
                             <TableCell className="text-destructive text-sm">
                               {err.message}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {/* Warning table — phone format warnings, does NOT block import */}
+                {warningCount > 0 && (
+                  <div className="rounded-md border border-amber-200 overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border-b border-amber-200">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <span className="text-sm font-medium text-amber-800">
+                        Cảnh báo SĐT ({warningCount} dòng) — vẫn được nhập
+                      </span>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-20">Dòng</TableHead>
+                          <TableHead>Cảnh báo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {parseResult!.warnings.map((w) => (
+                          <TableRow key={w.row}>
+                            <TableCell className="font-medium">{w.row}</TableCell>
+                            <TableCell className="text-amber-700 text-sm">
+                              {w.message}
                             </TableCell>
                           </TableRow>
                         ))}
