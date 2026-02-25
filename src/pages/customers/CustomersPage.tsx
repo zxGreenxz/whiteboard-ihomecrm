@@ -5,9 +5,11 @@ import MainLayout from '@/components/layout/MainLayout';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
-import { useCustomers, useCustomerStats } from '@/hooks/useCustomers';
+import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
 import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '@/types/customer';
 import type { ViewMode } from '@/components/customers/CustomerListToolbar';
+import { exportCustomers, type CustomerImportRow } from '@/lib/customerExcelHelpers';
+import { toast } from 'sonner';
 
 import CustomerStatusTabs from '@/components/customers/CustomerStatusTabs';
 import CustomerStatsCards from '@/components/customers/CustomerStatsCards';
@@ -16,6 +18,7 @@ import CustomerListToolbar from '@/components/customers/CustomerListToolbar';
 import CustomerListTable from '@/components/customers/CustomerListTable';
 import CustomerDetailModal from '@/components/customers/CustomerDetailModal';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
+import { CustomerImportExportDialog } from '@/components/customers/CustomerImportExportDialog';
 
 export default function CustomersPage() {
   const navigate = useNavigate();
@@ -30,6 +33,7 @@ export default function CustomersPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
@@ -58,6 +62,7 @@ export default function CustomersPage() {
   // Data fetching
   const { data: customersData, isLoading } = useCustomers(effectiveFilters, { page, pageSize });
   const { data: stats } = useCustomerStats(statsFilters);
+  const createCustomer = useCreateCustomer();
 
   const customers = customersData?.data ?? [];
   const totalCount = customersData?.count ?? 0;
@@ -108,14 +113,41 @@ export default function CustomersPage() {
   }, [navigate]);
 
   const handleExport = useCallback(() => {
-    // TODO: implement export
-    console.log('Export customers');
-  }, []);
+    exportCustomers(customers, effectiveFilters);
+  }, [customers, effectiveFilters]);
 
   const handleImport = useCallback(() => {
-    // TODO: implement import dialog
-    console.log('Import customers');
+    setImportDialogOpen(true);
   }, []);
+
+  const handleImportConfirm = useCallback(async (rows: CustomerImportRow[]) => {
+    let successCount = 0;
+    let failCount = 0;
+    for (const row of rows) {
+      try {
+        await createCustomer.mutateAsync({
+          customer_type: 'INDIVIDUAL',
+          full_name: row.full_name,
+          phone: row.phone,
+          email: row.email,
+          date_of_birth: row.date_of_birth,
+          gender: row.gender,
+          id_number: row.id_number,
+          id_issue_place: row.id_issue_place,
+          permanent_address: row.permanent_address,
+          occupation: row.occupation,
+          contact_person: row.contact_person,
+          contact_person_phone: row.contact_person_phone,
+          is_foreign: !!(row.nationality && row.nationality.toLowerCase() !== 'việt nam' && row.nationality.toLowerCase() !== 'viet nam'),
+        });
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+    if (successCount > 0) toast.success(`Đã nhập ${successCount} khách hàng thành công`);
+    if (failCount > 0) toast.error(`${failCount} khách hàng không thể nhập (trùng SĐT hoặc CCCD)`);
+  }, [createCustomer]);
 
   const handlePrint = useCallback(() => {
     window.print();
@@ -217,6 +249,13 @@ export default function CustomersPage() {
             customerName={customerToDelete.full_name}
           />
         )}
+
+        {/* Import/Export Dialog */}
+        <CustomerImportExportDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          onImport={handleImportConfirm}
+        />
       </div>
     </MainLayout>
   );

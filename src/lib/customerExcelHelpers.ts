@@ -1,7 +1,7 @@
 /**
  * Customer Excel Import/Export Helpers
- * Uses XLSX (SheetJS) library for Excel file operations
- * Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
+ * Matches exact column structure from the "DANH SÁCH CƯ DÂN" template
+ * Uses XLSX (SheetJS) for Excel operations
  */
 
 import * as XLSX from 'xlsx';
@@ -13,13 +13,22 @@ import type { Customer, CustomerFilters } from '@/types/customer';
 
 export interface CustomerImportRow {
   full_name: string;
-  customer_type: string;
   phone: string;
   email?: string;
-  id_number?: string;
   date_of_birth?: string;
   gender?: string;
+  id_number?: string;
+  id_issue_place?: string;
   permanent_address?: string;
+  nationality?: string;
+  passport_number?: string;
+  occupation?: string;
+  contact_person?: string;
+  contact_person_phone?: string;
+  // Location info (for reference only, not directly inserted)
+  room_name?: string;
+  bed_name?: string;
+  building_name?: string;
 }
 
 export interface CustomerImportResult {
@@ -28,165 +37,237 @@ export interface CustomerImportResult {
 }
 
 // =============================================
-// Column definitions
+// Export column headers — matches the template exactly
 // =============================================
 
-/** Export column headers (Vietnamese) */
-const EXPORT_HEADERS = [
-  'Mã KH',
+const EXPORT_COLS = [
+  { header: 'STT',                          key: 'stt',                   wch: 6  },
+  { header: 'Mã KH',                        key: 'ma_kh',                 wch: 12 },
+  { header: 'Họ tên',                       key: 'ho_ten',                wch: 25 },
+  { header: 'SĐT',                          key: 'sdt',                   wch: 14 },
+  { header: 'Email',                        key: 'email',                 wch: 25 },
+  { header: 'Ngày sinh',                    key: 'ngay_sinh',             wch: 14 },
+  { header: 'Giới tính',                    key: 'gioi_tinh',             wch: 10 },
+  { header: 'CMND/CCCD',                    key: 'cmnd_cccd',             wch: 16 },
+  { header: 'Nghề cụ',                      key: 'nghe_cu',               wch: 18 },
+  { header: 'Nơi cấp',                      key: 'noi_cap',               wch: 20 },
+  { header: 'Địa chỉ',                      key: 'dia_chi',               wch: 35 },
+  { header: 'Ảnh CMND/CCCD',               key: 'anh_cmnd',              wch: 20 },
+  { header: 'Quốc tịch',                    key: 'quoc_tich',             wch: 12 },
+  { header: 'Số hộ chiếu',                  key: 'so_ho_chieu',           wch: 16 },
+  { header: 'Căn hộ',                       key: 'can_ho',                wch: 14 },
+  { header: 'Phòng',                        key: 'phong',                 wch: 12 },
+  { header: 'Giường',                       key: 'giuong',                wch: 10 },
+  { header: 'Số mạng kết nối TikTok/App',  key: 'so_mang',               wch: 22 },
+  { header: 'Họ tên người liên hệ',         key: 'ho_ten_lien_he',        wch: 22 },
+  { header: 'SĐT người liên hệ',            key: 'sdt_lien_he',           wch: 16 },
+] as const;
+
+// =============================================
+// Import column headers — same as export (without STT, Mã KH, Ảnh CMND/CCCD)
+// =============================================
+
+const IMPORT_HEADERS = [
   'Họ tên',
-  'Loại KH',
   'SĐT',
   'Email',
-  'CMND/CCCD',
   'Ngày sinh',
   'Giới tính',
-  'Địa chỉ',
-  'Trạng thái',
-] as const;
-
-/** Import template column headers (required marked with *) */
-const IMPORT_HEADERS = [
-  'Họ tên (*)',
-  'Loại KH (*) [Cá nhân/Tổ chức]',
-  'SĐT (*)',
-  'Email',
   'CMND/CCCD',
-  'Ngày sinh (YYYY-MM-DD)',
-  'Giới tính [Nam/Nữ/Khác]',
-  'Địa chỉ thường trú',
+  'Nghề cụ',
+  'Nơi cấp',
+  'Địa chỉ',
+  'Quốc tịch',
+  'Số hộ chiếu',
+  'Căn hộ',
+  'Phòng',
+  'Giường',
+  'Số mạng kết nối TikTok/App',
+  'Họ tên người liên hệ',
+  'SĐT người liên hệ',
 ] as const;
 
-/** Mapping from import header → CustomerImportRow field */
+/** Map import header → CustomerImportRow field */
 const IMPORT_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
-  'Họ tên (*)': 'full_name',
-  'Loại KH (*) [Cá nhân/Tổ chức]': 'customer_type',
-  'SĐT (*)': 'phone',
-  'Email': 'email',
-  'CMND/CCCD': 'id_number',
-  'Ngày sinh (YYYY-MM-DD)': 'date_of_birth',
-  'Giới tính [Nam/Nữ/Khác]': 'gender',
-  'Địa chỉ thường trú': 'permanent_address',
+  'Họ tên':                         'full_name',
+  'SĐT':                            'phone',
+  'Email':                          'email',
+  'Ngày sinh':                      'date_of_birth',
+  'Giới tính':                      'gender',
+  'CMND/CCCD':                      'id_number',
+  'Nghề cụ':                        'occupation',
+  'Nơi cấp':                        'id_issue_place',
+  'Địa chỉ':                        'permanent_address',
+  'Quốc tịch':                      'nationality',
+  'Số hộ chiếu':                    'passport_number',
+  'Căn hộ':                         'building_name',
+  'Phòng':                          'room_name',
+  'Giường':                         'bed_name',
+  'Số mạng kết nối TikTok/App':     'contact_person',
+  'Họ tên người liên hệ':           'contact_person',
+  'SĐT người liên hệ':              'contact_person_phone',
 };
 
 // =============================================
 // Helpers
 // =============================================
 
-function formatCustomerType(type: string): string {
-  return type === 'INDIVIDUAL' ? 'Cá nhân' : type === 'ORGANIZATION' ? 'Tổ chức' : type;
-}
-
-function formatStatus(status: string): string {
-  switch (status) {
-    case 'RENTING': return 'Đang thuê';
-    case 'MOVED_OUT': return 'Đã chuyển đi';
-    case 'WALK_IN': return 'Khách vãng lai';
-    default: return status;
-  }
-}
-
-function formatGender(gender: string | null): string {
+function formatGender(gender: string | null | undefined): string {
   if (!gender) return '';
-  switch (gender) {
-    case 'MALE': return 'Nam';
+  switch (gender.toUpperCase()) {
+    case 'MALE':   return 'Nam';
     case 'FEMALE': return 'Nữ';
-    case 'OTHER': return 'Khác';
-    default: return gender;
+    case 'OTHER':  return 'Khác';
+    default:       return gender;
   }
 }
 
+function parseGender(raw: string): string | undefined {
+  if (!raw) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === 'nam' || v === 'male')   return 'MALE';
+  if (v === 'nữ' || v === 'nu' || v === 'female') return 'FEMALE';
+  if (v === 'khác' || v === 'khac' || v === 'other') return 'OTHER';
+  return raw.trim() || undefined;
+}
+
 // =============================================
-// Export
+// Export — "DANH SÁCH CƯ DÂN" format
 // =============================================
 
-/**
- * Export customers to Excel file based on current filters.
- * Requirement 7.1
- */
-export function exportCustomers(customers: Customer[], filters?: CustomerFilters): void {
-  const rows = customers.map(c => ({
-    'Mã KH': c.id.slice(0, 8).toUpperCase(),
-    'Họ tên': c.full_name,
-    'Loại KH': formatCustomerType(c.customer_type),
-    'SĐT': c.phone,
-    'Email': c.email ?? '',
-    'CMND/CCCD': c.id_number ?? '',
-    'Ngày sinh': c.date_of_birth ?? '',
-    'Giới tính': formatGender(c.gender),
-    'Địa chỉ': c.permanent_address ?? c.detailed_address ?? '',
-    'Trạng thái': formatStatus(c.status_v2),
-  }));
+export interface CustomerWithLocation extends Customer {
+  building_name?: string;
+  room_name?: string;
+  bed_name?: string;
+}
 
-  const worksheet = XLSX.utils.json_to_sheet(rows, { header: EXPORT_HEADERS as unknown as string[] });
+export function exportCustomers(
+  customers: CustomerWithLocation[],
+  _filters?: CustomerFilters
+): void {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([]);
 
-  // Set column widths
-  worksheet['!cols'] = [
-    { wch: 12 }, // Mã KH
-    { wch: 25 }, // Họ tên
-    { wch: 12 }, // Loại KH
-    { wch: 14 }, // SĐT
-    { wch: 25 }, // Email
-    { wch: 16 }, // CMND/CCCD
-    { wch: 14 }, // Ngày sinh
-    { wch: 10 }, // Giới tính
-    { wch: 35 }, // Địa chỉ
-    { wch: 14 }, // Trạng thái
+  // Row 1: Title
+  XLSX.utils.sheet_add_aoa(ws, [['DANH SÁCH CƯ DÂN']], { origin: 'A1' });
+  // Row 2: Subtitle
+  XLSX.utils.sheet_add_aoa(ws, [['Resident - Phần mềm quản lý Căn hộ & Cư dân | Website: https://resident.vn | Hotline & Zalo: 0869.987.255']], { origin: 'A2' });
+  // Row 3: blank
+  XLSX.utils.sheet_add_aoa(ws, [['']], { origin: 'A3' });
+
+  // Row 4: column headers
+  const headers = EXPORT_COLS.map(c => c.header);
+  XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A4' });
+
+  // Rows 5+: data
+  customers.forEach((c, i) => {
+    const row = [
+      i + 1,
+      c.id.slice(0, 8).toUpperCase(),
+      c.full_name,
+      c.phone,
+      c.email ?? '',
+      c.date_of_birth ?? '',
+      formatGender(c.gender),
+      c.id_number ?? '',
+      c.occupation ?? '',
+      c.id_issue_place ?? '',
+      c.permanent_address ?? c.detailed_address ?? '',
+      '', // Ảnh CMND/CCCD — URL only, not embeddable
+      c.is_foreign ? 'Nước ngoài' : 'Việt Nam',
+      '', // Số hộ chiếu — not in current schema
+      c.building_name ?? '',
+      c.room_name ?? '',
+      c.bed_name ?? '',
+      '', // Số mạng kết nối TikTok/App
+      c.contact_person ?? '',
+      c.contact_person_phone ?? '',
+    ];
+    XLSX.utils.sheet_add_aoa(ws, [row], { origin: `A${i + 5}` });
+  });
+
+  // Merge title across all columns
+  const totalCols = EXPORT_COLS.length;
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }, // Title
+    { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } }, // Subtitle
   ];
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Khách hàng');
+  // Column widths
+  ws['!cols'] = EXPORT_COLS.map(c => ({ wch: c.wch }));
 
-  // Build filename with filter context
-  const statusLabel = filters?.status ? `-${formatStatus(filters.status).replace(/\s/g, '_')}` : '';
-  XLSX.writeFile(workbook, `danh-sach-khach-hang${statusLabel}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'Danh sách cư dân');
+  XLSX.writeFile(wb, 'danh-sach-cu-dan.xlsx');
 }
 
 // =============================================
 // Template download
 // =============================================
 
-/**
- * Download blank import template with required columns marked (*).
- * Requirement 7.3
- */
 export function downloadCustomerImportTemplate(): void {
-  // Header row
-  const headerRow: Record<string, string> = {};
-  IMPORT_HEADERS.forEach(h => { headerRow[h] = ''; });
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([]);
 
-  // Example row to guide users
-  const exampleRow: Record<string, string> = {
-    'Họ tên (*)': 'Nguyễn Văn A',
-    'Loại KH (*) [Cá nhân/Tổ chức]': 'Cá nhân',
-    'SĐT (*)': '0901234567',
-    'Email': 'example@email.com',
-    'CMND/CCCD': '012345678901',
-    'Ngày sinh (YYYY-MM-DD)': '1990-01-15',
-    'Giới tính [Nam/Nữ/Khác]': 'Nam',
-    'Địa chỉ thường trú': '123 Đường ABC, Quận 1, TP.HCM',
-  };
+  // Row 1: Title
+  XLSX.utils.sheet_add_aoa(ws, [['DANH SÁCH CƯ DÂN']], { origin: 'A1' });
+  // Row 2: Subtitle
+  XLSX.utils.sheet_add_aoa(ws, [['Resident - Phần mềm quản lý Căn hộ & Cư dân | Website: https://resident.vn | Hotline & Zalo: 0869.987.255']], { origin: 'A2' });
+  // Row 3: blank
+  XLSX.utils.sheet_add_aoa(ws, [['']], { origin: 'A3' });
 
-  const worksheet = XLSX.utils.json_to_sheet([exampleRow], {
-    header: IMPORT_HEADERS as unknown as string[],
-  });
+  // Row 4: headers
+  XLSX.utils.sheet_add_aoa(ws, [IMPORT_HEADERS as unknown as string[]], { origin: 'A4' });
 
-  // Set column widths
-  worksheet['!cols'] = [
-    { wch: 20 }, // Họ tên (*)
-    { wch: 28 }, // Loại KH (*)
-    { wch: 14 }, // SĐT (*)
-    { wch: 25 }, // Email
-    { wch: 16 }, // CMND/CCCD
-    { wch: 22 }, // Ngày sinh
-    { wch: 22 }, // Giới tính
-    { wch: 35 }, // Địa chỉ thường trú
+  // Row 5: example
+  const example = [
+    'Nguyễn Văn A',   // Họ tên
+    '0901234567',      // SĐT
+    'example@email.com', // Email
+    '15/01/1990',      // Ngày sinh
+    'Nam',             // Giới tính
+    '012345678901',    // CMND/CCCD
+    'Kỹ sư',           // Nghề cụ
+    'Hà Nội',          // Nơi cấp
+    '123 Đường ABC, Quận 1, TP.HCM', // Địa chỉ
+    'Việt Nam',        // Quốc tịch
+    '',                // Số hộ chiếu
+    'Tòa A',           // Căn hộ
+    '101',             // Phòng
+    'G1',              // Giường
+    '',                // Số mạng kết nối TikTok/App
+    'Nguyễn Thị B',   // Họ tên người liên hệ
+    '0987654321',      // SĐT người liên hệ
+  ];
+  XLSX.utils.sheet_add_aoa(ws, [example], { origin: 'A5' });
+
+  const totalCols = IMPORT_HEADERS.length;
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } },
   ];
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Mẫu nhập khách hàng');
+  ws['!cols'] = [
+    { wch: 25 }, // Họ tên
+    { wch: 14 }, // SĐT
+    { wch: 25 }, // Email
+    { wch: 14 }, // Ngày sinh
+    { wch: 10 }, // Giới tính
+    { wch: 16 }, // CMND/CCCD
+    { wch: 18 }, // Nghề cụ
+    { wch: 20 }, // Nơi cấp
+    { wch: 35 }, // Địa chỉ
+    { wch: 12 }, // Quốc tịch
+    { wch: 16 }, // Số hộ chiếu
+    { wch: 14 }, // Căn hộ
+    { wch: 12 }, // Phòng
+    { wch: 10 }, // Giường
+    { wch: 22 }, // Số mạng kết nối TikTok/App
+    { wch: 22 }, // Họ tên người liên hệ
+    { wch: 16 }, // SĐT người liên hệ
+  ];
 
-  XLSX.writeFile(workbook, 'mau-nhap-khach-hang.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, 'Mẫu nhập cư dân');
+  XLSX.writeFile(wb, 'mau-nhap-cu-dan.xlsx');
 }
 
 // =============================================
@@ -194,12 +275,12 @@ export function downloadCustomerImportTemplate(): void {
 // =============================================
 
 const PHONE_REGEX = /^[0-9]{10,11}$/;
-const VALID_CUSTOMER_TYPES = ['Cá nhân', 'Tổ chức'];
 
 /**
- * Read and validate an Excel file for customer import.
- * Returns valid rows and per-row errors.
- * Requirements 7.4, 7.6
+ * Parse Excel file exported from Resident or filled from the template.
+ * Supports both:
+ *   - Template format: header at row 4 (rows 1-3 are title/subtitle/blank)
+ *   - Simple format: header at row 1
  */
 export async function parseCustomerExcel(file: File): Promise<CustomerImportResult> {
   return new Promise((resolve, reject) => {
@@ -211,66 +292,97 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
         const workbook = XLSX.read(data, { type: 'array' });
 
         const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
+        const ws = workbook.Sheets[sheetName];
 
-        // Parse rows as raw objects (header row = keys)
-        const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
-          defval: '',
-        });
+        // Detect header row: check if A1 contains "DANH SÁCH" (title row)
+        const a1 = ws['A1']?.v?.toString() ?? '';
+        const headerRowIndex = a1.toUpperCase().includes('DANH SÁCH') ? 3 : 0; // 0-indexed
+
+        // Read all rows as array of arrays
+        const aoa: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+
+        if (aoa.length <= headerRowIndex) {
+          return resolve({ validRows: [], errors: [] });
+        }
+
+        // Extract header row
+        const headerRow = (aoa[headerRowIndex] as string[]).map(h => String(h ?? '').trim());
+
+        // Data rows start after header
+        const dataRows = aoa.slice(headerRowIndex + 1);
 
         const validRows: CustomerImportRow[] = [];
         const errors: { row: number; message: string }[] = [];
 
-        rawRows.forEach((rawRow, index) => {
-          // Excel row number (1-indexed, +1 for header row)
-          const rowNumber = index + 2;
+        dataRows.forEach((rawRow, index) => {
+          const excelRowNum = headerRowIndex + index + 2; // 1-indexed for user display
 
-          // Map headers → fields
-          const mapped: Partial<CustomerImportRow> = {};
+          // Skip completely empty rows
+          const rowArr = rawRow as unknown[];
+          if (rowArr.every(cell => cell === '' || cell === null || cell === undefined)) return;
+
+          // Map header → value
+          const mapped: Record<string, string> = {};
+          headerRow.forEach((h, colIdx) => {
+            const val = rowArr[colIdx];
+            if (val !== undefined && val !== null && val !== '') {
+              mapped[h] = String(val).trim();
+            }
+          });
+
+          // Build CustomerImportRow
+          const row: Partial<CustomerImportRow> = {};
           for (const [header, field] of Object.entries(IMPORT_HEADER_MAP)) {
-            const value = rawRow[header];
-            if (value !== undefined && value !== '') {
-              (mapped as Record<string, unknown>)[field] = String(value).trim();
+            if (mapped[header]) {
+              (row as Record<string, string>)[field] = mapped[header];
             }
           }
 
-          // Collect per-row validation errors
+          // Also handle "Họ tên người liên hệ" separately (same key as contact_person)
+          if (mapped['Họ tên người liên hệ']) {
+            row.contact_person = mapped['Họ tên người liên hệ'];
+          }
+
           const rowErrors: string[] = [];
 
           // Validate full_name (required)
-          if (!mapped.full_name || mapped.full_name.trim() === '') {
+          if (!row.full_name?.trim()) {
             rowErrors.push('Họ tên không được để trống');
           }
 
           // Validate phone (required, 10-11 digits)
-          if (!mapped.phone || mapped.phone.trim() === '') {
-            rowErrors.push('Số điện thoại không được để trống');
-          } else if (!PHONE_REGEX.test(mapped.phone.trim())) {
-            rowErrors.push('Số điện thoại phải có 10-11 chữ số');
-          }
-
-          // Validate customer_type (required, must be 'Cá nhân' or 'Tổ chức')
-          if (!mapped.customer_type || mapped.customer_type.trim() === '') {
-            rowErrors.push('Loại KH không được để trống');
-          } else if (!VALID_CUSTOMER_TYPES.includes(mapped.customer_type.trim())) {
-            rowErrors.push(`Loại KH phải là "Cá nhân" hoặc "Tổ chức"`);
+          const phone = row.phone?.replace(/\s/g, '') ?? '';
+          if (!phone) {
+            rowErrors.push('SĐT không được để trống');
+          } else if (!PHONE_REGEX.test(phone)) {
+            rowErrors.push('SĐT phải có 10-11 chữ số');
+          } else {
+            row.phone = phone;
           }
 
           if (rowErrors.length > 0) {
-            errors.push({
-              row: rowNumber,
-              message: rowErrors.join('; '),
-            });
+            errors.push({ row: excelRowNum, message: rowErrors.join('; ') });
           } else {
+            // Normalize gender
+            if (row.gender) row.gender = parseGender(row.gender);
+
             validRows.push({
-              full_name: mapped.full_name!.trim(),
-              customer_type: mapped.customer_type!.trim(),
-              phone: mapped.phone!.trim(),
-              email: mapped.email?.trim() || undefined,
-              id_number: mapped.id_number?.trim() || undefined,
-              date_of_birth: mapped.date_of_birth?.trim() || undefined,
-              gender: mapped.gender?.trim() || undefined,
-              permanent_address: mapped.permanent_address?.trim() || undefined,
+              full_name:            row.full_name!.trim(),
+              phone:                row.phone!,
+              email:                row.email?.trim() || undefined,
+              date_of_birth:        row.date_of_birth?.trim() || undefined,
+              gender:               row.gender || undefined,
+              id_number:            row.id_number?.trim() || undefined,
+              id_issue_place:       row.id_issue_place?.trim() || undefined,
+              permanent_address:    row.permanent_address?.trim() || undefined,
+              nationality:          row.nationality?.trim() || undefined,
+              passport_number:      row.passport_number?.trim() || undefined,
+              occupation:           row.occupation?.trim() || undefined,
+              contact_person:       row.contact_person?.trim() || undefined,
+              contact_person_phone: row.contact_person_phone?.trim() || undefined,
+              building_name:        row.building_name?.trim() || undefined,
+              room_name:            row.room_name?.trim() || undefined,
+              bed_name:             row.bed_name?.trim() || undefined,
             });
           }
         });
@@ -281,10 +393,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
       }
     };
 
-    reader.onerror = () => {
-      reject(new Error('Lỗi khi đọc file'));
-    };
-
+    reader.onerror = () => reject(new Error('Lỗi khi đọc file'));
     reader.readAsArrayBuffer(file);
   });
 }
