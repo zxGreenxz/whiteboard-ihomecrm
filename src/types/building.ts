@@ -1,0 +1,94 @@
+// =============================================
+// Building Module Types
+// Standalone types for the reimplemented building module
+// Matches database schema: supabase/migrations/20250703000001_building_room_reimplementation.sql
+// =============================================
+
+// =============================================
+// Enums
+// =============================================
+
+export type BuildingStatus = 'ACTIVE' | 'INACTIVE';
+
+// =============================================
+// Core Entity
+// =============================================
+
+/** Matches `buildings` table */
+export interface Building {
+  id: string;
+  user_id: string;
+  area_id: string | null;
+  name: string;
+  code: string | null;
+  type: string;
+  status: BuildingStatus;
+  province: string;
+  district: string;
+  ward: string;
+  street_address: string | null;
+  total_floors: number;
+  total_rooms: number;
+  description: string | null;
+  images: any;
+  amenities: any;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/** Building with joined area and computed rooms count */
+export interface BuildingWithRelations extends Building {
+  area?: { id: string; name: string; code: string | null } | null;
+  rooms_count?: number;
+}
+
+// =============================================
+// Building Services (junction table)
+// =============================================
+
+/** Matches `building_services` table */
+export interface BuildingService {
+  id: string;
+  building_id: string;
+  service_id: string;
+  is_active: boolean;
+  unit_price_override: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** BuildingService with joined service details */
+export interface BuildingServiceWithDetails extends BuildingService {
+  service: {
+    id: string;
+    name: string;
+    unit_price: number;
+    unit: string | null;
+  };
+}
+
+// =============================================
+// Form Data
+// =============================================
+
+/** Form data shape for react-hook-form (create/edit building) */
+export interface BuildingFormData {
+  name: string;
+  code?: string;
+  province: string;
+  district: string;
+  ward: string;
+  street_address: string;
+  area_id?: string;
+  status: BuildingStatus;
+}
+
+/** Form data shape for building service rows in the services table */
+export interface BuildingServiceFormData {
+  service_id: string;
+  service_name: string;
+  is_active: boolean;
+  unit_price_override: number | null;
+  default_unit_price: number;
+}

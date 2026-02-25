@@ -21,6 +21,7 @@ import NotFound from "./pages/NotFound";
 import AreasPage from "./pages/areas/AreasPage";
 import BuildingsPage from "./pages/buildings/BuildingsPage";
 import BuildingDetailPage from "./pages/buildings/BuildingDetailPage";
+import BuildingFormPage from "./pages/buildings/BuildingFormPage";
 import RoomsPage from "./pages/rooms/RoomsPage";
 import RoomDetailPage from "./pages/rooms/RoomDetailPage";
 import BedsPage from "./pages/beds/BedsPage";
@@ -181,6 +182,8 @@ const App = () => (
           {/* === DANH MỤC DỮ LIỆU === */}
           <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
           <Route path="/buildings" element={<ProtectedRoute><BuildingsPage /></ProtectedRoute>} />
+          <Route path="/buildings/new" element={<ProtectedRoute><BuildingFormPage /></ProtectedRoute>} />
+          <Route path="/buildings/:id/edit" element={<ProtectedRoute><BuildingFormPage /></ProtectedRoute>} />
           <Route path="/buildings/:id" element={<ProtectedRoute><BuildingDetailPage /></ProtectedRoute>} />
           {/* Primary route: /apartments, redirect /rooms → /apartments */}
           <Route path="/apartments" element={<ProtectedRoute><RoomsPage /></ProtectedRoute>} />

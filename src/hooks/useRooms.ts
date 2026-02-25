@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import type { RoomWithRelations } from "@/types/room";
 import { toast } from "sonner";
 
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
@@ -31,10 +32,10 @@ export const useRooms = (buildingId?: string) => {
 
       if (error) {
         console.error('useRooms error:', error);
-        return [];
+        return [] as RoomWithRelations[];
       }
 
-      return data || [];
+      return (data || []) as unknown as RoomWithRelations[];
     },
   });
 };
@@ -59,7 +60,7 @@ export const useRoom = (id: string) => {
         return null;
       }
 
-      return data;
+      return data as unknown as RoomWithRelations | null;
     },
     enabled: !!id,
   });

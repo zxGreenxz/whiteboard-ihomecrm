@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import type { BuildingStatus, BuildingWithRelations } from "@/types/building";
 import { toast } from "sonner";
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
 type BuildingInsert = Database["public"]["Tables"]["buildings"]["Insert"];
 type BuildingUpdate = Database["public"]["Tables"]["buildings"]["Update"];
 
-// Fetch all buildings with area info
+// Fetch all buildings with area info and non-deleted rooms count
 export const useBuildings = () => {
   return useQuery({
     queryKey: ["buildings"],
@@ -20,6 +21,7 @@ export const useBuildings = () => {
           rooms:rooms(count)
         `)
         .is("deleted_at", null)
+        .is("rooms.deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -193,6 +195,62 @@ export const useDeleteBuilding = () => {
     },
     onError: (error) => {
       console.error("Error deleting building:", error);
+    },
+  });
+};
+
+
+// Toggle building status with optimistic update
+export const useUpdateBuildingStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: BuildingStatus;
+    }) => {
+      const { data, error } = await supabase
+        .from("buildings")
+        .update({ status })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) {
+        toast.error("Không thể cập nhật trạng thái tòa nhà");
+        throw error;
+      }
+
+      return data;
+    },
+    onMutate: async ({ id, status }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["buildings"] });
+
+      // Snapshot previous value
+      const previousBuildings = queryClient.getQueryData<BuildingWithRelations[]>(["buildings"]);
+
+      // Optimistically update the cache
+      queryClient.setQueryData<BuildingWithRelations[]>(["buildings"], (old) =>
+        old?.map((b) => (b.id === id ? { ...b, status } : b))
+      );
+
+      return { previousBuildings };
+    },
+    onError: (_error, _variables, context) => {
+      // Revert on error
+      if (context?.previousBuildings) {
+        queryClient.setQueryData(["buildings"], context.previousBuildings);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["buildings"] });
+    },
+    onSuccess: () => {
+      toast.success("Trạng thái tòa nhà đã được cập nhật thành công");
     },
   });
 };

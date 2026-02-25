@@ -7,16 +7,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useDeleteRoom } from "@/hooks/useRooms";
-import type { Database } from "@/integrations/supabase/types";
-
-type Room = Database["public"]["Tables"]["rooms"]["Row"];
+} from '@/components/ui/alert-dialog';
+import { useDeleteRoom } from '@/hooks/useRooms';
+import { toast } from 'sonner';
+import type { RoomWithRelations } from '@/types/room';
 
 interface DeleteRoomDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  room: Room;
+  room: RoomWithRelations;
 }
 
 export function DeleteRoomDialog({
@@ -29,58 +28,38 @@ export function DeleteRoomDialog({
   const handleDelete = async () => {
     try {
       await deleteRoom.mutateAsync(room.id);
+      toast.success('Dữ liệu đã được XOÁ thành công');
       onOpenChange(false);
-    } catch (error) {
-      // Error is handled by the mutation
-      // Don't close dialog if there's an error
+    } catch {
+      // Error handled by mutation hook
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-    }).format(amount);
   };
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Xác nhận xóa căn hộ</AlertDialogTitle>
+          <AlertDialogTitle>Xác nhận xoá căn hộ</AlertDialogTitle>
           <AlertDialogDescription asChild>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p>
-                Bạn có chắc chắn muốn xóa căn hộ{" "}
+                Bạn có chắc chắn muốn xoá căn hộ{' '}
                 <span className="font-semibold">{room.name}</span>?
               </p>
-              <div className="bg-muted rounded-md p-3 text-sm space-y-1">
-                <p>
-                  <span className="font-medium">Giá thuê:</span>{" "}
-                  {formatCurrency(room.rent_price)}/tháng
-                </p>
-                <p>
-                  <span className="font-medium">Tiền cọc:</span>{" "}
-                  {formatCurrency(room.deposit_amount)}
-                </p>
-                <p>
-                  <span className="font-medium">Tầng:</span> {room.floor}
-                </p>
-              </div>
-              <p className="text-sm text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground">
                 Hành động này không thể hoàn tác.
               </p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Hủy</AlertDialogCancel>
+          <AlertDialogCancel>Huỷ</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
             disabled={deleteRoom.isPending}
             className="bg-destructive hover:bg-destructive/90"
           >
-            {deleteRoom.isPending ? "Đang xóa..." : "Xóa"}
+            {deleteRoom.isPending ? 'Đang xoá...' : 'Xoá'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

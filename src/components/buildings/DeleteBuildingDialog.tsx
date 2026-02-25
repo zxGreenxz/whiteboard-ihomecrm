@@ -7,16 +7,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { useDeleteBuilding } from "@/hooks/useBuildings";
-import type { Database } from "@/integrations/supabase/types";
-
-type Building = Database["public"]["Tables"]["buildings"]["Row"] & { rooms_count?: number };
+} from '@/components/ui/alert-dialog';
+import { useDeleteBuilding } from '@/hooks/useBuildings';
+import { toast } from 'sonner';
+import type { BuildingWithRelations } from '@/types/building';
 
 interface DeleteBuildingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  building: Building;
+  building: BuildingWithRelations;
 }
 
 export function DeleteBuildingDialog({
@@ -25,55 +24,56 @@ export function DeleteBuildingDialog({
   building,
 }: DeleteBuildingDialogProps) {
   const deleteBuilding = useDeleteBuilding();
+  const roomsCount = building.rooms_count || 0;
+  const hasRooms = roomsCount > 0;
 
   const handleDelete = async () => {
+    if (hasRooms) return;
     try {
       await deleteBuilding.mutateAsync(building.id);
+      toast.success('Dữ liệu đã được XOÁ thành công');
       onOpenChange(false);
-    } catch (error) {
-      // Error is handled by the mutation
-      // Don't close dialog if there's an error
+    } catch {
+      // Error handled by mutation hook
     }
   };
-
-  const hasRooms = building.rooms_count && building.rooms_count > 0;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Xác nhận xóa tòa nhà</AlertDialogTitle>
+          <AlertDialogTitle>Xác nhận xoá toà nhà</AlertDialogTitle>
           <AlertDialogDescription asChild>
-            <div className="space-y-2">
-              <p>
-                Bạn có chắc chắn muốn xóa tòa nhà{" "}
-                <span className="font-semibold">{building.name}</span>?
-              </p>
-              {hasRooms && (
+            <div className="space-y-3">
+              {hasRooms ? (
                 <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm text-destructive">
-                  <p className="font-semibold">⚠️ Cảnh báo:</p>
-                  <p>
-                    Tòa nhà này đang có {building.rooms_count} căn hộ. Bạn cần
-                    xóa hoặc chuyển các căn hộ này trước khi xóa tòa nhà.
+                  <p className="font-semibold">⚠️ Không thể xóa tòa nhà đang có {roomsCount} căn hộ</p>
+                  <p className="mt-1">
+                    Vui lòng xoá hoặc chuyển tất cả căn hộ trước khi xoá toà nhà.
                   </p>
                 </div>
-              )}
-              {!hasRooms && (
-                <p className="text-sm text-muted-foreground">
-                  Hành động này không thể hoàn tác.
-                </p>
+              ) : (
+                <>
+                  <p>
+                    Bạn có chắc chắn muốn xoá toà nhà{' '}
+                    <span className="font-semibold">{building.name}</span>?
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Hành động này không thể hoàn tác.
+                  </p>
+                </>
               )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Hủy</AlertDialogCancel>
+          <AlertDialogCancel>Huỷ</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
-            disabled={deleteBuilding.isPending}
+            disabled={hasRooms || deleteBuilding.isPending}
             className="bg-destructive hover:bg-destructive/90"
           >
-            {deleteBuilding.isPending ? "Đang xóa..." : "Xóa"}
+            {deleteBuilding.isPending ? 'Đang xoá...' : 'Xoá'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
