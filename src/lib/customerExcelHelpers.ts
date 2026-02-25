@@ -5,6 +5,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import { supabase } from '@/integrations/supabase/client';
 import type { Customer, CustomerFilters } from '@/types/customer';
 
 // =============================================
@@ -18,6 +19,7 @@ export interface CustomerImportRow {
   date_of_birth?: string;
   gender?: string;
   id_number?: string;
+  id_issue_date?: string;
   id_issue_place?: string;
   permanent_address?: string;
   nationality?: string;
@@ -25,6 +27,8 @@ export interface CustomerImportRow {
   occupation?: string;
   contact_person?: string;
   contact_person_phone?: string;
+  // Raw image URLs from column L (newline-separated)
+  id_image_urls?: string[];
   // Location info (for reference only, not directly inserted)
   room_name?: string;
   bed_name?: string;
@@ -50,9 +54,10 @@ const EXPORT_COLS = [
   { header: 'Giới tính',                    key: 'gioi_tinh',             wch: 10 },
   { header: 'CMND/CCCD',                    key: 'cmnd_cccd',             wch: 16 },
   { header: 'Nghề cụ',                      key: 'nghe_cu',               wch: 18 },
+  { header: 'Ngày cấp',                     key: 'ngay_cap',              wch: 14 },
   { header: 'Nơi cấp',                      key: 'noi_cap',               wch: 20 },
   { header: 'Địa chỉ',                      key: 'dia_chi',               wch: 35 },
-  { header: 'Ảnh CMND/CCCD',               key: 'anh_cmnd',              wch: 20 },
+  { header: 'Ảnh CMND/CCCD',               key: 'anh_cmnd',              wch: 40 },
   { header: 'Quốc tịch',                    key: 'quoc_tich',             wch: 12 },
   { header: 'Số hộ chiếu',                  key: 'so_ho_chieu',           wch: 16 },
   { header: 'Căn hộ',                       key: 'can_ho',                wch: 14 },
@@ -75,8 +80,10 @@ const IMPORT_HEADERS = [
   'Giới tính',
   'CMND/CCCD',
   'Nghề cụ',
+  'Ngày cấp',
   'Nơi cấp',
   'Địa chỉ',
+  'Ảnh CMND/CCCD',
   'Quốc tịch',
   'Số hộ chiếu',
   'Căn hộ',
@@ -96,6 +103,7 @@ const IMPORT_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
   'Giới tính':                      'gender',
   'CMND/CCCD':                      'id_number',
   'Nghề cụ':                        'occupation',
+  'Ngày cấp':                       'id_issue_date',
   'Nơi cấp':                        'id_issue_place',
   'Địa chỉ':                        'permanent_address',
   'Quốc tịch':                      'nationality',
@@ -103,7 +111,6 @@ const IMPORT_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
   'Căn hộ':                         'building_name',
   'Phòng':                          'room_name',
   'Giường':                         'bed_name',
-  'Số mạng kết nối TikTok/App':     'contact_person',
   'Họ tên người liên hệ':           'contact_person',
   'SĐT người liên hệ':              'contact_person_phone',
 };
@@ -171,9 +178,11 @@ export function exportCustomers(
       formatGender(c.gender),
       c.id_number ?? '',
       c.occupation ?? '',
+      c.id_issue_date ?? '',
       c.id_issue_place ?? '',
       c.permanent_address ?? c.detailed_address ?? '',
-      '', // Ảnh CMND/CCCD — URL only, not embeddable
+      // Ảnh CMND/CCCD: join all image URLs with newline
+      Object.values(c.id_images ?? {}).filter(Boolean).join('\n'),
       c.is_foreign ? 'Nước ngoài' : 'Việt Nam',
       '', // Số hộ chiếu — not in current schema
       c.building_name ?? '',
@@ -227,8 +236,10 @@ export function downloadCustomerImportTemplate(): void {
     'Nam',             // Giới tính
     '012345678901',    // CMND/CCCD
     'Kỹ sư',           // Nghề cụ
+    '28/01/2023',      // Ngày cấp
     'Hà Nội',          // Nơi cấp
     '123 Đường ABC, Quận 1, TP.HCM', // Địa chỉ
+    '',                // Ảnh CMND/CCCD (để trống hoặc dán link)
     'Việt Nam',        // Quốc tịch
     '',                // Số hộ chiếu
     'Tòa A',           // Căn hộ
@@ -254,8 +265,10 @@ export function downloadCustomerImportTemplate(): void {
     { wch: 10 }, // Giới tính
     { wch: 16 }, // CMND/CCCD
     { wch: 18 }, // Nghề cụ
+    { wch: 14 }, // Ngày cấp
     { wch: 20 }, // Nơi cấp
     { wch: 35 }, // Địa chỉ
+    { wch: 40 }, // Ảnh CMND/CCCD
     { wch: 12 }, // Quốc tịch
     { wch: 16 }, // Số hộ chiếu
     { wch: 14 }, // Căn hộ
@@ -343,6 +356,16 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
             row.contact_person = mapped['Họ tên người liên hệ'];
           }
 
+          // Parse "Ảnh CMND/CCCD" column — may contain multiple URLs separated by newlines
+          const rawImages = mapped['Ảnh CMND/CCCD'] ?? '';
+          if (rawImages) {
+            const urls = rawImages
+              .split(/[\n\r]+/)
+              .map(u => u.trim())
+              .filter(u => u.startsWith('http'));
+            if (urls.length > 0) row.id_image_urls = urls;
+          }
+
           const rowErrors: string[] = [];
 
           // Validate full_name (required)
@@ -373,6 +396,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
               date_of_birth:        row.date_of_birth?.trim() || undefined,
               gender:               row.gender || undefined,
               id_number:            row.id_number?.trim() || undefined,
+              id_issue_date:        row.id_issue_date?.trim() || undefined,
               id_issue_place:       row.id_issue_place?.trim() || undefined,
               permanent_address:    row.permanent_address?.trim() || undefined,
               nationality:          row.nationality?.trim() || undefined,
@@ -380,6 +404,7 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
               occupation:           row.occupation?.trim() || undefined,
               contact_person:       row.contact_person?.trim() || undefined,
               contact_person_phone: row.contact_person_phone?.trim() || undefined,
+              id_image_urls:        row.id_image_urls,
               building_name:        row.building_name?.trim() || undefined,
               room_name:            row.room_name?.trim() || undefined,
               bed_name:             row.bed_name?.trim() || undefined,
@@ -396,4 +421,80 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
     reader.onerror = () => reject(new Error('Lỗi khi đọc file'));
     reader.readAsArrayBuffer(file);
   });
+}
+
+// =============================================
+// ID Image Download & Upload
+// =============================================
+
+/**
+ * Download an image from an external URL via a CORS proxy approach:
+ * fetch the URL, get a Blob, then upload to Supabase Storage.
+ *
+ * Returns the public URL of the uploaded file, or null on failure.
+ */
+async function downloadAndUploadImage(
+  externalUrl: string,
+  storagePath: string
+): Promise<string | null> {
+  try {
+    // Fetch the image (works if the source server allows CORS, e.g. s3.resident.vn)
+    const response = await fetch(externalUrl, { mode: 'cors' });
+    if (!response.ok) return null;
+
+    const blob = await response.blob();
+    const ext = externalUrl.split('.').pop()?.split('?')[0] ?? 'jpg';
+    const contentType = blob.type || `image/${ext}`;
+
+    const { error } = await supabase.storage
+      .from('customer-images')
+      .upload(storagePath, blob, { contentType, upsert: true });
+
+    if (error) {
+      console.warn('Upload failed:', storagePath, error.message);
+      return null;
+    }
+
+    const { data } = supabase.storage
+      .from('customer-images')
+      .getPublicUrl(storagePath);
+
+    return data.publicUrl ?? null;
+  } catch (err) {
+    console.warn('downloadAndUploadImage error:', externalUrl, err);
+    return null;
+  }
+}
+
+/**
+ * Download ID card images from external URLs (column L) and upload to Supabase Storage.
+ *
+ * Maps:
+ *   urls[0] → id_images.front
+ *   urls[1] → id_images.back
+ *   urls[2+] → id_images.extra_N
+ *
+ * Returns the id_images object to be saved on the customer record.
+ * Falls back to storing the original URL if download fails (so data is not lost).
+ */
+export async function uploadIdImagesFromUrls(
+  customerId: string,
+  urls: string[]
+): Promise<Record<string, string>> {
+  const keys = ['front', 'back', 'extra_1', 'extra_2', 'extra_3'];
+  const result: Record<string, string> = {};
+
+  await Promise.all(
+    urls.map(async (url, idx) => {
+      const key = keys[idx] ?? `extra_${idx}`;
+      const ext = url.split('.').pop()?.split('?')[0] ?? 'jpg';
+      const storagePath = `id-cards/${customerId}/${key}.${ext}`;
+
+      const uploadedUrl = await downloadAndUploadImage(url, storagePath);
+      // Use uploaded URL if successful, otherwise keep original URL as fallback
+      result[key] = uploadedUrl ?? url;
+    })
+  );
+
+  return result;
 }

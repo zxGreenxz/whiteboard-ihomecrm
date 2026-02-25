@@ -8,7 +8,8 @@ import EmptyState from '@/components/ui/EmptyState';
 import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
 import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '@/types/customer';
 import type { ViewMode } from '@/components/customers/CustomerListToolbar';
-import { exportCustomers, type CustomerImportRow } from '@/lib/customerExcelHelpers';
+import { exportCustomers, uploadIdImagesFromUrls, type CustomerImportRow } from '@/lib/customerExcelHelpers';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 import CustomerStatusTabs from '@/components/customers/CustomerStatusTabs';
@@ -125,7 +126,7 @@ export default function CustomersPage() {
     let failCount = 0;
     for (const row of rows) {
       try {
-        await createCustomer.mutateAsync({
+        const created = await createCustomer.mutateAsync({
           customer_type: 'INDIVIDUAL',
           full_name: row.full_name,
           phone: row.phone,
@@ -133,6 +134,7 @@ export default function CustomersPage() {
           date_of_birth: row.date_of_birth,
           gender: row.gender,
           id_number: row.id_number,
+          id_issue_date: row.id_issue_date,
           id_issue_place: row.id_issue_place,
           permanent_address: row.permanent_address,
           occupation: row.occupation,
@@ -140,6 +142,21 @@ export default function CustomersPage() {
           contact_person_phone: row.contact_person_phone,
           is_foreign: !!(row.nationality && row.nationality.toLowerCase() !== 'việt nam' && row.nationality.toLowerCase() !== 'viet nam'),
         });
+
+        // Download & upload ID card images from column L URLs
+        if (row.id_image_urls && row.id_image_urls.length > 0 && created?.id) {
+          try {
+            const idImages = await uploadIdImagesFromUrls(created.id, row.id_image_urls);
+            // Update customer with id_images
+            await supabase
+              .from('customers')
+              .update({ id_images: idImages } as any)
+              .eq('id', created.id);
+          } catch {
+            // Non-fatal: customer was created, images just didn't upload
+          }
+        }
+
         successCount++;
       } catch {
         failCount++;
