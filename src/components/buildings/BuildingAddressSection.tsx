@@ -213,8 +213,8 @@ export default function BuildingAddressSection({
             <FormItem>
               <FormLabel>Khu vực</FormLabel>
               <Select
-                value={field.value || ''}
-                onValueChange={(val) => field.onChange(val === '' ? undefined : val)}
+                value={field.value || '__none__'}
+                onValueChange={(val) => field.onChange(val === '__none__' ? '' : val)}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -222,7 +222,7 @@ export default function BuildingAddressSection({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">Không chọn</SelectItem>
+                  <SelectItem value="__none__">Không chọn</SelectItem>
                   {areas.map((area) => (
                     <SelectItem key={area.id} value={area.id}>
                       {area.name}
