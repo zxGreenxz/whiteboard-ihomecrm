@@ -1,497 +1,527 @@
-import { useState, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useCallback } from 'react';
+import { FileText, Plus, Upload, Download, Filter } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
-import {
-  FileText,
-  Plus,
-  Search,
-  MoreVertical,
-  RefreshCw,
-  ArrowRightLeft,
-  XCircle,
-  Eye,
-  Upload,
-  LogOut,
-} from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
-import { useContracts, type ContractWithRelations } from '@/hooks/useContracts';
-import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
-import { DataTablePagination } from '@/components/ui/data-table-pagination';
-import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
-import CreateContractDialog from '@/components/contracts/CreateContractDialog';
-import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
-import TransferContractDialog from '@/components/contracts/TransferContractDialog';
-import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
-import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
-import ImportContractsDialog from '@/components/contracts/ImportContractsDialog';
-import TerminationApprovalsTab from '@/components/contracts/TerminationApprovalsTab';
-import ESigningTab from '@/components/contracts/ESigningTab';
-import { useGeneralSettings } from '@/hooks/useSettings';
+import ContractStatsCards from '@/components/contracts/ContractStatsCards';
+import ContractListFilters from '@/components/contracts/ContractListFilters';
+import ContractListTable from '@/components/contracts/ContractListTable';
+import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
+import { RenewDialog } from '@/components/contracts/RenewDialog';
+import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
+import { MoveOutDialog } from '@/components/contracts/MoveOutDialog';
+import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
+import { TerminateDialog } from '@/components/contracts/TerminateDialog';
+import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
+import { ContractImportExportDialog } from '@/components/contracts/ContractImportExportDialog';
+import { exportContracts } from '@/lib/contractExcelHelpers';
 
-const ContractsPage = () => {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'contracts';
-  const { data: generalSettings } = useGeneralSettings();
-  const eSigningEnabled = generalSettings?.contract_e_signing_enabled === true;
+import { useContracts } from '@/hooks/useContracts';
+import { useBuildings } from '@/hooks/useBuildings';
+import { useRooms } from '@/hooks/useRooms';
+import { useBeds } from '@/hooks/useBeds';
+import { getContractDisplayStatus } from '@/types/contract';
+import type {
+  ContractWithRelations,
+  ContractStatFilter,
+  ContractStats,
+  ContractDisplayStatus,
+} from '@/types/contract';
+import type { BuildingWithRelations } from '@/types/building';
+import type { RoomWithRelations } from '@/types/room';
+
+export default function ContractsPage() {
+  // =============================================
+  // State
+  // =============================================
+
+  // Stats filter
+  const [activeStatFilter, setActiveStatFilter] = useState<ContractStatFilter>('ALL');
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
-  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [areaFilter, setAreaFilter] = useState('all');
+  const [buildingFilter, setBuildingFilter] = useState('all');
+  const [roomFilter, setRoomFilter] = useState('all');
+  const [bedFilter, setBedFilter] = useState('all');
+  const [rentalTypeFilter, setRentalTypeFilter] = useState('all');
+  const [monthFilter, setMonthFilter] = useState('');
+  const [showFilters, setShowFilters] = useState(true);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  // Dialogs
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [renewDialogOpen, setRenewDialogOpen] = useState(false);
+  const [transferRoomDialogOpen, setTransferRoomDialogOpen] = useState(false);
+  const [moveOutDialogOpen, setMoveOutDialogOpen] = useState(false);
+  const [transferContractDialogOpen, setTransferContractDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
-  const [registerMoveOutDialogOpen, setRegisterMoveOutDialogOpen] = useState(false);
-  const [transferDefaultType, setTransferDefaultType] = useState<'TENANT_CHANGE' | 'ROOM_CHANGE'>('ROOM_CHANGE');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
-  // Pagination state
-  const { page, pageSize, setPage, setPageSize } = usePagination(20);
+  // Selection
+  const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
+  const [selectedContractIds, setSelectedContractIds] = useState<string[]>([]);
 
-  // Fetch contracts with pagination
-  const { data: contractsData, isLoading } = useContracts(
-    { status: statusFilter || undefined },
-    { page, pageSize }
+  // =============================================
+  // Data fetching
+  // =============================================
+
+  const { data: contractsData, isLoading } = useContracts();
+  const contracts = useMemo(
+    () => (Array.isArray(contractsData) ? contractsData : []) as ContractWithRelations[],
+    [contractsData]
   );
 
-  // Extract data and count from response - DEFENSIVE CHECK
-  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
-  const totalCount = contractsData?.count || 0;
+  const { data: buildingsData } = useBuildings();
+  const allBuildings = useMemo(
+    () => (Array.isArray(buildingsData) ? buildingsData : []) as BuildingWithRelations[],
+    [buildingsData]
+  );
 
-  // Filter contracts based on search term (client-side for small datasets)
+  const { data: roomsData } = useRooms();
+  const allRooms = useMemo(
+    () => (Array.isArray(roomsData) ? roomsData : []) as RoomWithRelations[],
+    [roomsData]
+  );
+
+  const { data: bedsData } = useBeds();
+  const allBeds = useMemo(
+    () => (Array.isArray(bedsData) ? bedsData : []) as any[],
+    [bedsData]
+  );
+
+  // =============================================
+  // Compute areas from buildings
+  // =============================================
+
+  const areas = useMemo(() => {
+    const areaMap = new Map<string, { id: string; name: string; code: string | null; status: string }>();
+    allBuildings.forEach((b) => {
+      if (b.area && !areaMap.has(b.area.id)) {
+        areaMap.set(b.area.id, { id: b.area.id, name: b.area.name, code: b.area.code, status: 'ACTIVE' });
+      }
+    });
+    return Array.from(areaMap.values());
+  }, [allBuildings]);
+
+  // =============================================
+  // Cascading filter data
+  // =============================================
+
+  const filteredBuildings = useMemo(() => {
+    if (areaFilter === 'all') return allBuildings;
+    return allBuildings.filter((b) => b.area_id === areaFilter);
+  }, [allBuildings, areaFilter]);
+
+  const filteredRooms = useMemo(() => {
+    if (buildingFilter === 'all') return allRooms;
+    return allRooms.filter((r) => r.building_id === buildingFilter);
+  }, [allRooms, buildingFilter]);
+
+  const filteredBeds = useMemo(() => {
+    if (roomFilter === 'all') return allBeds;
+    return allBeds.filter((b: any) => b.room_id === roomFilter);
+  }, [allBeds, roomFilter]);
+
+  // =============================================
+  // Compute stats from full contract list
+  // =============================================
+
+  const stats = useMemo<ContractStats>(() => {
+    const result: ContractStats = { total: 0, expiring: 0, expired: 0, terminated: 0 };
+    contracts.forEach((c) => {
+      result.total++;
+      const displayStatus = getContractDisplayStatus(c);
+      if (displayStatus === 'EXPIRING') result.expiring++;
+      else if (displayStatus === 'EXPIRED') result.expired++;
+      else if (displayStatus === 'TERMINATED') result.terminated++;
+    });
+    return result;
+  }, [contracts]);
+
+  // =============================================
+  // Client-side filtering
+  // =============================================
+
   const filteredContracts = useMemo(() => {
-    // Defensive check - ensure contracts is array
-    if (!Array.isArray(contracts)) return [];
-    if (!searchTerm) return contracts;
+    return contracts.filter((contract) => {
+      // Stat filter
+      if (activeStatFilter !== 'ALL') {
+        const displayStatus = getContractDisplayStatus(contract);
+        const statusMap: Record<ContractStatFilter, ContractDisplayStatus[]> = {
+          ALL: [],
+          EXPIRING: ['EXPIRING'],
+          EXPIRED: ['EXPIRED'],
+          TERMINATED: ['TERMINATED'],
+        };
+        if (!statusMap[activeStatFilter]?.includes(displayStatus)) return false;
+      }
 
-    const searchLower = searchTerm.toLowerCase();
-    return contracts.filter((contract) => (
-      contract.contract_number?.toLowerCase().includes(searchLower) ||
-      contract.tenant?.full_name?.toLowerCase().includes(searchLower) ||
-      contract.tenant?.phone?.includes(searchTerm) ||
-      contract.room?.name?.toLowerCase().includes(searchLower) ||
-      contract.bed?.name?.toLowerCase().includes(searchLower) ||
-      contract.contract_tenants?.some(ct =>
-        ct.tenant?.full_name?.toLowerCase().includes(searchLower) ||
-        ct.tenant?.phone?.includes(searchTerm)
-      )
-    ));
-  }, [contracts, searchTerm]);
+      // Search filter: case-insensitive match on contract_number, customer name, phone, room name
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const contractNumber = contract.contract_number?.toLowerCase() || '';
+        const roomName = contract.room?.name?.toLowerCase() || '';
+        const customerName = contract.contract_customers
+          ?.find((cc) => cc.is_representative)
+          ?.customer?.full_name?.toLowerCase() || '';
+        const customerPhone = contract.contract_customers
+          ?.find((cc) => cc.is_representative)
+          ?.customer?.phone || '';
 
-  // Calculate pagination info
-  const paginationInfo = useMemo(() => {
-    // When searching client-side, use filtered count
-    const count = searchTerm ? filteredContracts.length : totalCount;
-    return calculatePaginationInfo(page, pageSize, count);
-  }, [page, pageSize, totalCount, searchTerm, filteredContracts.length]);
+        const matchesSearch =
+          contractNumber.includes(term) ||
+          roomName.includes(term) ||
+          customerName.includes(term) ||
+          customerPhone.includes(term);
 
-  const getStatusBadge = (contract: ContractWithRelations) => {
-    // Check for expected move out date
-    if (contract.status === 'ACTIVE' && (contract as any).expected_move_out_date) {
-      return <Badge className="bg-orange-500 hover:bg-orange-600">Sắp chuyển đi</Badge>;
-    }
+        if (!matchesSearch) return false;
+      }
 
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      DRAFT: { variant: 'outline', label: 'Nháp' },
-      ACTIVE: { variant: 'default', label: 'Đang hoạt động' },
-      EXTENDED: { variant: 'secondary', label: 'Đã gia hạn' },
-      TRANSFERRED: { variant: 'secondary', label: 'Đã chuyển nhượng' },
-      TERMINATED: { variant: 'destructive', label: 'Đã thanh lý' },
-      EXPIRED: { variant: 'destructive', label: 'Hết hạn' },
-    };
+      // Area filter
+      if (areaFilter !== 'all') {
+        if (contract.room?.building?.area_id !== areaFilter) return false;
+      }
 
-    const config = variants[contract.status] || { variant: 'outline' as const, label: contract.status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
-  };
+      // Building filter
+      if (buildingFilter !== 'all') {
+        if (contract.room?.building_id !== buildingFilter) return false;
+      }
 
-  const getLocationDisplay = (contract: ContractWithRelations) => {
-    if (contract.room) {
-      return `${contract.room.building?.name} - ${contract.room.name}`;
-    }
-    if (contract.bed) {
-      return `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}`;
-    }
-    return 'N/A';
-  };
+      // Room filter
+      if (roomFilter !== 'all') {
+        if (contract.room_id !== roomFilter) return false;
+      }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
-    }).format(amount);
-  };
+      // Bed filter
+      if (bedFilter !== 'all') {
+        if (contract.bed_id !== bedFilter) return false;
+      }
 
-  // Reset to page 1 when filters change
-  const handleStatusChange = (value: string) => {
-    setStatusFilter(value);
+      // Rental type filter
+      if (rentalTypeFilter !== 'all') {
+        if (contract.room?.building?.type !== rentalTypeFilter) return false;
+      }
+
+      // Month filter: contract's active period overlaps with selected month
+      if (monthFilter) {
+        const [year, month] = monthFilter.split('-').map(Number);
+        const monthStart = new Date(year, month - 1, 1);
+        const monthEnd = new Date(year, month, 0, 23, 59, 59);
+        const contractStart = new Date(contract.start_date);
+        const contractEnd = new Date(contract.end_date);
+        // Overlap check: contractStart <= monthEnd && contractEnd >= monthStart
+        if (contractStart > monthEnd || contractEnd < monthStart) return false;
+      }
+
+      return true;
+    });
+  }, [
+    contracts,
+    activeStatFilter,
+    searchTerm,
+    areaFilter,
+    buildingFilter,
+    roomFilter,
+    bedFilter,
+    rentalTypeFilter,
+    monthFilter,
+  ]);
+
+  // =============================================
+  // Pagination (client-side slice)
+  // =============================================
+
+  const totalCount = filteredContracts.length;
+  const paginatedContracts = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredContracts.slice(start, start + pageSize);
+  }, [filteredContracts, page, pageSize]);
+
+  // =============================================
+  // Handlers
+  // =============================================
+
+  const handleStatFilterChange = useCallback((filter: ContractStatFilter) => {
+    setActiveStatFilter(filter);
     setPage(1);
-  };
+  }, []);
 
-  const handleSearchChange = (value: string) => {
+  const handleSearchChange = useCallback((value: string) => {
     setSearchTerm(value);
-    // Don't reset page for client-side search
-  };
+    setPage(1);
+  }, []);
+
+  const handleAreaChange = useCallback((value: string) => {
+    setAreaFilter(value);
+    setPage(1);
+  }, []);
+
+  const handleBuildingChange = useCallback((value: string) => {
+    setBuildingFilter(value);
+    setPage(1);
+  }, []);
+
+  const handleRoomChange = useCallback((value: string) => {
+    setRoomFilter(value);
+    setPage(1);
+  }, []);
+
+  const handleBedChange = useCallback((value: string) => {
+    setBedFilter(value);
+    setPage(1);
+  }, []);
+
+  const handleRentalTypeChange = useCallback((value: string) => {
+    setRentalTypeFilter(value);
+    setPage(1);
+  }, []);
+
+  const handleMonthChange = useCallback((value: string) => {
+    setMonthFilter(value);
+    setPage(1);
+  }, []);
+
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage);
+  }, []);
+
+  const handlePageSizeChange = useCallback((newSize: number) => {
+    setPageSize(newSize);
+    setPage(1);
+  }, []);
+
+  // Dialog handlers
+  const handleEdit = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setFormDialogOpen(true);
+  }, []);
+
+  const handleRenew = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setRenewDialogOpen(true);
+  }, []);
+
+  const handleTransferRoom = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setTransferRoomDialogOpen(true);
+  }, []);
+
+  const handleMoveOut = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setMoveOutDialogOpen(true);
+  }, []);
+
+  const handleTransferContract = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setTransferContractDialogOpen(true);
+  }, []);
+
+  const handleTerminate = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setTerminateDialogOpen(true);
+  }, []);
+
+  const handleDelete = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const hasFilters =
+    searchTerm ||
+    areaFilter !== 'all' ||
+    buildingFilter !== 'all' ||
+    roomFilter !== 'all' ||
+    bedFilter !== 'all' ||
+    rentalTypeFilter !== 'all' ||
+    monthFilter ||
+    activeStatFilter !== 'ALL';
+
+  // =============================================
+  // Render
+  // =============================================
 
   return (
-    <MainLayout
-      title="Quản lý Hợp đồng"
-      subtitle="Quản lý hợp đồng thuê căn hộ"
-      icon={FileText}
-    >
-      {/* Tab Navigation */}
-      <div className="flex gap-1 mb-6 border-b">
-        <button
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'contracts'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-          onClick={() => setSearchParams({})}
-        >
-          Danh sách hợp đồng
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'termination-approvals'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-          onClick={() => setSearchParams({ tab: 'termination-approvals' })}
-        >
-          Duyệt thanh lý
-        </button>
-        {eSigningEnabled && (
-          <button
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'e-signing'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setSearchParams({ tab: 'e-signing' })}
-          >
-            Ký điện tử
-          </button>
-        )}
-      </div>
+    <MainLayout title="Hợp đồng thuê" subtitle="Quản lý hợp đồng thuê" icon={FileText}>
+      <div className="space-y-4">
+        {/* Stats Cards */}
+        <ContractStatsCards
+          stats={stats}
+          activeFilter={activeStatFilter}
+          onFilterChange={handleStatFilterChange}
+        />
 
-      {activeTab === 'termination-approvals' ? (
-        <TerminationApprovalsTab />
-      ) : activeTab === 'e-signing' && eSigningEnabled ? (
-        <ESigningTab />
-      ) : (
-      <>
-      {/* Header Actions */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Tìm theo mã HĐ, tên khách, SĐT, căn hộ..."
-            value={searchTerm}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10"
+        {/* Filters */}
+        {showFilters && (
+          <ContractListFilters
+            searchTerm={searchTerm}
+            onSearchChange={handleSearchChange}
+            areaFilter={areaFilter}
+            onAreaChange={handleAreaChange}
+            buildingFilter={buildingFilter}
+            onBuildingChange={handleBuildingChange}
+            roomFilter={roomFilter}
+            onRoomChange={handleRoomChange}
+            bedFilter={bedFilter}
+            onBedChange={handleBedChange}
+            rentalTypeFilter={rentalTypeFilter}
+            onRentalTypeChange={handleRentalTypeChange}
+            monthFilter={monthFilter}
+            onMonthChange={handleMonthChange}
+            areas={areas}
+            buildings={filteredBuildings}
+            rooms={filteredRooms}
+            beds={filteredBeds}
           />
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => handleStatusChange(e.target.value)}
-          className="px-4 py-2 border rounded-md bg-white"
-        >
-          <option value="">Tất cả trạng thái</option>
-          <option value="DRAFT">Nháp</option>
-          <option value="ACTIVE">Đang hoạt động</option>
-          <option value="EXTENDED">Đã gia hạn</option>
-          <option value="TRANSFERRED">Đã chuyển nhượng</option>
-          <option value="TERMINATED">Đã thanh lý</option>
-          <option value="EXPIRED">Hết hạn</option>
-        </select>
-
-        <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-          <Upload className="h-4 w-4 mr-2" />
-          Nhập từ file
-        </Button>
-
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Tạo hợp đồng
-        </Button>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-lg border">
-        {isLoading ? (
-          <div className="p-8 text-center text-gray-500">
-            Đang tải dữ liệu...
-          </div>
-        ) : !filteredContracts || filteredContracts.length === 0 ? (
-          searchTerm || statusFilter ? (
-            <div className="p-8 text-center text-gray-500">
-              Không tìm thấy hợp đồng nào phù hợp
-            </div>
-          ) : (
-            <EmptyState
-              icon={FileText}
-              title="Chưa có hợp đồng nào"
-              description="Hãy tạo hợp đồng đầu tiên để bắt đầu quản lý"
-              actionLabel="Tạo hợp đồng"
-              onAction={() => setCreateDialogOpen(true)}
-            />
-          )
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mã HĐ</TableHead>
-                  <TableHead>Khách hàng</TableHead>
-                  <TableHead>Căn hộ/Giường</TableHead>
-                  <TableHead>Thời gian</TableHead>
-                  <TableHead>Giá thuê</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredContracts.map((contract) => (
-                  <TableRow key={contract.id}>
-                    <TableCell className="font-medium">
-                      {contract.contract_number || contract.id.slice(0, 8)}
-                    </TableCell>
-                    <TableCell>
-                      {contract.contract_tenants && contract.contract_tenants.length > 0 ? (
-                        <div>
-                          <div className="font-medium">
-                            {contract.contract_tenants.find(ct => ct.is_representative)?.tenant?.full_name
-                              || contract.contract_tenants[0]?.tenant?.full_name
-                              || contract.tenant?.full_name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {contract.contract_tenants.find(ct => ct.is_representative)?.tenant?.phone
-                              || contract.contract_tenants[0]?.tenant?.phone
-                              || contract.tenant?.phone}
-                          </div>
-                          {contract.contract_tenants.length > 1 && (
-                            <div className="text-xs text-blue-600">
-                              +{contract.contract_tenants.length - 1} người khác
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="font-medium">{contract.tenant?.full_name}</div>
-                          <div className="text-sm text-gray-500">{contract.tenant?.phone}</div>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{getLocationDisplay(contract)}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>
-                          {format(new Date(contract.start_date), 'dd/MM/yyyy', { locale: vi })}
-                          {' → '}
-                          {format(new Date(contract.end_date), 'dd/MM/yyyy', { locale: vi })}
-                        </div>
-                        <div className="text-gray-500">
-                          {contract.actual_end_date
-                            ? `Kết thúc: ${format(new Date(contract.actual_end_date), 'dd/MM/yyyy', { locale: vi })}`
-                            : (contract as any).expected_move_out_date
-                              ? `Dự kiến ra: ${format(new Date((contract as any).expected_move_out_date), 'dd/MM/yyyy', { locale: vi })}`
-                              : `Còn ${Math.ceil((new Date(contract.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} ngày`}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {formatCurrency(contract.rent_price)}
-                      <div className="text-xs text-gray-500 capitalize">
-                        {contract.payment_cycle?.toLowerCase()}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(contract)}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => {
-                              navigate(`/contracts/${contract.id}`);
-                            }}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Xem chi tiết
-                          </DropdownMenuItem>
-                          {contract.status === 'ACTIVE' && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedContract(contract);
-                                  setExtendDialogOpen(true);
-                                }}
-                              >
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Gia hạn hợp đồng
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedContract(contract);
-                                  setTransferDefaultType('ROOM_CHANGE');
-                                  setTransferDialogOpen(true);
-                                }}
-                              >
-                                <ArrowRightLeft className="h-4 w-4 mr-2" />
-                                Chuyển Căn hộ/Giường
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedContract(contract);
-                                  setTransferDefaultType('TENANT_CHANGE');
-                                  setTransferDialogOpen(true);
-                                }}
-                              >
-                                <ArrowRightLeft className="h-4 w-4 mr-2" />
-                                Nhượng hợp đồng
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedContract(contract);
-                                  setRegisterMoveOutDialogOpen(true);
-                                }}
-                              >
-                                <LogOut className="h-4 w-4 mr-2" />
-                                Đăng ký ngày chuyển đi
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => {
-                                  setSelectedContract(contract);
-                                  setTerminateDialogOpen(true);
-                                }}
-                              >
-                                <XCircle className="h-4 w-4 mr-2" />
-                                Thanh lý hợp đồng
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {/* Pagination */}
-            <DataTablePagination
-              paginationInfo={paginationInfo}
-              onPageChange={setPage}
-              onPageSizeChange={setPageSize}
-              showPageSizeSelector={true}
-              showItemCount={true}
-            />
-          </>
         )}
-      </div>
 
-      {/* Summary Stats */}
-      {totalCount > 0 && Array.isArray(contracts) && (
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-sm text-gray-500">Tổng hợp đồng</div>
-            <div className="text-2xl font-bold mt-1">{totalCount}</div>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setFormDialogOpen(true)} size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              Thêm
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="h-4 w-4 mr-1" />
+              Nhập
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportContracts(filteredContracts)}>
+              <Download className="h-4 w-4 mr-1" />
+              Xuất
+            </Button>
           </div>
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-sm text-gray-500">Đang hoạt động</div>
-            <div className="text-2xl font-bold mt-1 text-green-600">
-              {contracts.filter((c) => c.status === 'ACTIVE').length}
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-sm text-gray-500">Sắp hết hạn (30 ngày)</div>
-            <div className="text-2xl font-bold mt-1 text-orange-600">
-              {
-                contracts.filter(
-                  (c) =>
-                    c.status === 'ACTIVE' &&
-                    new Date(c.end_date).getTime() - new Date().getTime() <
-                    30 * 24 * 60 * 60 * 1000
-                ).length
-              }
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="text-sm text-gray-500">Đã thanh lý</div>
-            <div className="text-2xl font-bold mt-1 text-gray-600">
-              {contracts.filter((c) => c.status === 'TERMINATED').length}
-            </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={showFilters ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setShowFilters((prev) => !prev)}
+              title="Bộ lọc"
+            >
+              <Filter className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-      )}
 
-      {/* Dialogs */}
-      <CreateContractDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
+        {/* Table */}
+        <div className="bg-white rounded-lg border">
+          {isLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+          ) : filteredContracts.length === 0 ? (
+            hasFilters ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Không tìm thấy hợp đồng nào
+              </div>
+            ) : (
+              <EmptyState
+                icon={FileText}
+                title="Chưa có hợp đồng nào"
+                description="Hãy thêm hợp đồng đầu tiên để bắt đầu quản lý"
+                actionLabel="Thêm hợp đồng"
+                onAction={() => setFormDialogOpen(true)}
+              />
+            )
+          ) : (
+            <ContractListTable
+              contracts={paginatedContracts}
+              selectedIds={selectedContractIds}
+              onSelectionChange={setSelectedContractIds}
+              onEdit={handleEdit}
+              onRenew={handleRenew}
+              onTransferRoom={handleTransferRoom}
+              onMoveOut={handleMoveOut}
+              onTransferContract={handleTransferContract}
+              onTerminate={handleTerminate}
+              onDelete={handleDelete}
+              page={page}
+              pageSize={pageSize}
+              totalCount={totalCount}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          )}
+        </div>
 
-      <ExtendContractDialog
-        open={extendDialogOpen}
-        onOpenChange={setExtendDialogOpen}
-        contract={selectedContract}
-      />
-
-      <TransferContractDialog
-        open={transferDialogOpen}
-        onOpenChange={setTransferDialogOpen}
-        contract={selectedContract}
-        defaultTransferType={transferDefaultType}
-      />
-
-      <TerminateContractDialog
-        open={terminateDialogOpen}
-        onOpenChange={setTerminateDialogOpen}
-        contract={selectedContract}
-      />
-
-      <RegisterMoveOutDialog
-        open={registerMoveOutDialogOpen}
-        onOpenChange={setRegisterMoveOutDialogOpen}
-        contract={selectedContract}
-      />
-
-      <ImportContractsDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-      />
-      </>
-      )}
+        {/* Dialogs */}
+        <ContractFormDialog
+          open={formDialogOpen}
+          onOpenChange={(open) => {
+            setFormDialogOpen(open);
+            if (!open) setSelectedContract(null);
+          }}
+          contract={selectedContract ?? undefined}
+        />
+        {selectedContract && (
+          <RenewDialog
+            open={renewDialogOpen}
+            onOpenChange={(open) => {
+              setRenewDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contract={selectedContract}
+          />
+        )}
+        {selectedContract && (
+          <TransferRoomDialog
+            open={transferRoomDialogOpen}
+            onOpenChange={(open) => {
+              setTransferRoomDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contract={selectedContract}
+          />
+        )}
+        {selectedContract && (
+          <MoveOutDialog
+            open={moveOutDialogOpen}
+            onOpenChange={(open) => {
+              setMoveOutDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contract={selectedContract}
+          />
+        )}
+        {selectedContract && (
+          <TransferContractDialog
+            open={transferContractDialogOpen}
+            onOpenChange={(open) => {
+              setTransferContractDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contract={selectedContract}
+          />
+        )}
+        {selectedContract && (
+          <TerminateDialog
+            open={terminateDialogOpen}
+            onOpenChange={(open) => {
+              setTerminateDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contract={selectedContract}
+          />
+        )}
+        {selectedContract && (
+          <DeleteContractDialog
+            open={deleteDialogOpen}
+            onOpenChange={(open) => {
+              setDeleteDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contract={selectedContract}
+          />
+        )}
+        <ContractImportExportDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          mode="import"
+        />
+      </div>
     </MainLayout>
   );
-};
-
-export default ContractsPage;
+}

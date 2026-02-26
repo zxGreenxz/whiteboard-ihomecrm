@@ -1,329 +1,307 @@
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useTransferContract } from '@/hooks/useContracts';
-import { useTenantsLegacy } from '@/hooks/useTenants';
-import { useRooms } from '@/hooks/useRooms';
-import { useBeds } from '@/hooks/useBeds';
-import { ArrowRightLeft } from 'lucide-react';
-import type { ContractWithRelations } from '@/hooks/useContracts';
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Loader2, UserPlus, X } from "lucide-react";
+
+import { transferContractFormSchema } from "@/lib/contractValidation";
+import type { TransferContractFormData } from "@/lib/contractValidation";
+import type { ContractWithRelations } from "@/types/contract";
+import { useTransferContract } from "@/hooks/useContractOperations";
+import {
+  CustomerSelectionDialog,
+  type CustomerBasic,
+} from "./CustomerSelectionDialog";
 
 interface TransferContractDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  contract: ContractWithRelations | null;
-  defaultTransferType?: 'TENANT_CHANGE' | 'ROOM_CHANGE' | 'BOTH_CHANGE';
+  contract: ContractWithRelations;
 }
 
-const transferSchema = z.object({
-  transfer_type: z.enum(['TENANT_CHANGE', 'ROOM_CHANGE', 'BOTH_CHANGE']),
-  new_tenant_id: z.string().optional(),
-  new_room_id: z.string().optional(),
-  new_bed_id: z.string().optional(),
-  new_rent_price: z.number().min(0).optional(),
-  transfer_fee: z.number().min(0).optional(),
-  reason: z.string().optional(),
-});
+export function TransferContractDialog({
+  open,
+  onOpenChange,
+  contract,
+}: TransferContractDialogProps) {
+  const transferContract = useTransferContract();
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerBasic | null>(null);
 
-type TransferFormData = z.infer<typeof transferSchema>;
-
-const TransferContractDialog = ({ open, onOpenChange, contract, defaultTransferType = 'ROOM_CHANGE' }: TransferContractDialogProps) => {
-  const [transferType, setTransferType] = useState<'TENANT_CHANGE' | 'ROOM_CHANGE' | 'BOTH_CHANGE'>(defaultTransferType);
-  const transferMutation = useTransferContract();
-
-  const { data: tenants } = useTenantsLegacy();
-  const { data: rooms } = useRooms();
-  const { data: beds } = useBeds();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-    watch,
-    reset,
-  } = useForm<TransferFormData>({
-    resolver: zodResolver(transferSchema),
+  const form = useForm<TransferContractFormData>({
+    resolver: zodResolver(transferContractFormSchema),
     defaultValues: {
-      transfer_type: defaultTransferType,
-      transfer_fee: 0,
+      new_customer_id: "",
+      new_rent_price: undefined,
+      new_deposit: undefined,
+      transfer_date: new Date().toISOString().split("T")[0],
+      notes: "",
     },
   });
 
-  // Sync transfer type when prop or dialog state changes
+  // Reset form when dialog opens
   useEffect(() => {
     if (open) {
-      setTransferType(defaultTransferType);
-      setValue('transfer_type', defaultTransferType);
+      form.reset({
+        new_customer_id: "",
+        new_rent_price: undefined,
+        new_deposit: undefined,
+        transfer_date: new Date().toISOString().split("T")[0],
+        notes: "",
+      });
+      setSelectedCustomer(null);
     }
-  }, [defaultTransferType, open, setValue]);
+  }, [open, contract, form]);
 
-  const watchedNewRoomId = watch('new_room_id');
-  const watchedNewBedId = watch('new_bed_id');
-
-  const handleClose = () => {
-    reset();
-    setTransferType(defaultTransferType);
-    onOpenChange(false);
+  const handleCustomerSelect = (customers: CustomerBasic[]) => {
+    // Single select mode — take first selected customer
+    const customer = customers[0] ?? null;
+    setSelectedCustomer(customer);
+    form.setValue("new_customer_id", customer?.id ?? "", { shouldValidate: true });
   };
 
-  const onSubmit = (data: TransferFormData) => {
-    if (!contract) return;
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    form.setValue("new_customer_id", "", { shouldValidate: true });
+  };
 
-    transferMutation.mutate(
+  const onSubmit = (data: TransferContractFormData) => {
+    transferContract.mutate(
       {
-        contract_id: contract.id,
-        transfer_type: data.transfer_type,
-        new_tenant_id: data.new_tenant_id,
-        new_room_id: data.new_room_id,
-        new_bed_id: data.new_bed_id,
-        new_rent_price: data.new_rent_price,
-        transfer_fee: data.transfer_fee,
-        reason: data.reason,
+        contractId: contract.id,
+        newCustomerId: data.new_customer_id,
+        newRentPrice: data.new_rent_price,
+        newDeposit: data.new_deposit,
+        transferDate: data.transfer_date,
+        notes: data.notes,
       },
       {
         onSuccess: () => {
-          handleClose();
+          onOpenChange(false);
         },
       }
     );
   };
 
-  if (!contract) return null;
-
-  const selectedNewRoom = rooms?.find(r => r.id === watchedNewRoomId);
-  const selectedNewBed = beds?.find(b => b.id === watchedNewBedId);
+  // Current contract info
+  const currentBuilding = contract.room?.building?.name || "—";
+  const currentRoom = contract.room?.name || "—";
+  const representativeCustomer = contract.contract_customers?.find(
+    (cc) => cc.is_representative
+  );
+  const currentCustomer = representativeCustomer?.customer?.full_name || "—";
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ArrowRightLeft className="h-5 w-5" />
-            {defaultTransferType === 'TENANT_CHANGE' ? 'Nhượng hợp đồng' : 'Chuyển Căn hộ/Giường'}
-          </DialogTitle>
-          <DialogDescription>
-            Hợp đồng: {contract.contract_number || contract.id.slice(0, 8)}
-          </DialogDescription>
+          <DialogTitle>Nhượng hợp đồng</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Current Contract Info */}
-          <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Khách hiện tại:</span>
-              <span className="font-medium">{contract.tenant?.full_name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Căn hộ/Giường hiện tại:</span>
-              <span className="font-medium">
-                {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : ''}
-                {contract.bed ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}` : ''}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Giá thuê hiện tại:</span>
-              <span className="font-medium">
-                {contract.rent_price.toLocaleString('vi-VN')} VND/tháng
-              </span>
-            </div>
-          </div>
+        {/* Current contract info */}
+        <div className="rounded-md border p-3 bg-muted/50 space-y-1 text-sm">
+          <p>
+            <span className="font-medium">Khách hàng hiện tại:</span>{" "}
+            {currentCustomer}
+          </p>
+          <p>
+            <span className="font-medium">Phòng:</span> {currentBuilding} -{" "}
+            {currentRoom}
+          </p>
+          <p>
+            <span className="font-medium">Giá thuê hiện tại:</span>{" "}
+            {contract.rent_price?.toLocaleString("vi-VN")} đ
+          </p>
+          <p>
+            <span className="font-medium">Tiền cọc hiện tại:</span>{" "}
+            {contract.total_deposit?.toLocaleString("vi-VN")} đ
+          </p>
+        </div>
 
-          {/* Transfer Type */}
-          <div className="space-y-2">
-            <Label>Loại chuyển đổi *</Label>
-            <Select
-              value={transferType}
-              onValueChange={(value: typeof transferType) => {
-                setTransferType(value);
-                setValue('transfer_type', value);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ROOM_CHANGE">Chuyển căn hộ (cùng khách)</SelectItem>
-                <SelectItem value="TENANT_CHANGE">Nhượng hợp đồng (cùng căn hộ)</SelectItem>
-                <SelectItem value="BOTH_CHANGE">Cả hai (khách mới + căn hộ mới)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* New customer selection */}
+            <FormField
+              control={form.control}
+              name="new_customer_id"
+              render={() => (
+                <FormItem>
+                  <FormLabel>
+                    Khách hàng mới <span className="text-red-500">*</span>
+                  </FormLabel>
+                  {selectedCustomer ? (
+                    <div className="flex items-center gap-2 rounded-md border p-2 bg-background">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {selectedCustomer.full_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {selectedCustomer.phone}
+                          {selectedCustomer.id_number &&
+                            ` · ${selectedCustomer.id_number}`}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={handleClearCustomer}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start text-muted-foreground"
+                      onClick={() => setCustomerDialogOpen(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Chọn khách hàng mới
+                    </Button>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          {/* New Tenant (for TENANT_CHANGE or BOTH_CHANGE) */}
-          {(transferType === 'TENANT_CHANGE' || transferType === 'BOTH_CHANGE') && (
-            <div className="space-y-2">
-              <Label>Khách hàng mới *</Label>
-              <Select
-                onValueChange={(value) => setValue('new_tenant_id', value)}
+            {/* New rent price */}
+            <FormField
+              control={form.control}
+              name="new_rent_price"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Giá thuê mới</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="Giữ nguyên nếu không thay đổi"
+                      {...field}
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value)
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* New deposit */}
+            <FormField
+              control={form.control}
+              name="new_deposit"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tiền cọc mới</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="Giữ nguyên nếu không thay đổi"
+                      {...field}
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value === ""
+                            ? undefined
+                            : Number(e.target.value)
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Transfer date */}
+            <FormField
+              control={form.control}
+              name="transfer_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Ngày nhượng <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Notes */}
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ghi chú</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Ghi chú nhượng hợp đồng..."
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn khách hàng mới..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {tenants?.filter(t => t.id !== contract.tenant_id).map((tenant) => (
-                    <SelectItem key={tenant.id} value={tenant.id}>
-                      {tenant.full_name} - {tenant.phone}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.new_tenant_id && (
-                <p className="text-sm text-red-500">{errors.new_tenant_id.message}</p>
-              )}
-            </div>
-          )}
+                Hủy
+              </Button>
+              <Button type="submit" disabled={transferContract.isPending}>
+                {transferContract.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Nhượng hợp đồng
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
 
-          {/* New Room/Bed (for ROOM_CHANGE or BOTH_CHANGE) */}
-          {(transferType === 'ROOM_CHANGE' || transferType === 'BOTH_CHANGE') && (
-            <>
-              {contract.room && (
-                <div className="space-y-2">
-                  <Label>Căn hộ mới *</Label>
-                  <Select
-                    onValueChange={(value) => {
-                      setValue('new_room_id', value);
-                      // Auto-fill new rent price
-                      const room = rooms?.find(r => r.id === value);
-                      if (room?.rent_price) {
-                        setValue('new_rent_price', room.rent_price);
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn căn hộ trống..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rooms?.map((room) => (
-                        <SelectItem key={room.id} value={room.id}>
-                          {room.building?.name} - {room.name} ({room.rent_price?.toLocaleString('vi-VN')} VND/tháng)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {contract.bed && (
-                <div className="space-y-2">
-                  <Label>Giường mới *</Label>
-                  <Select
-                    onValueChange={(value) => {
-                      setValue('new_bed_id', value);
-                      // Auto-fill new rent price
-                      const bed = beds?.find(b => b.id === value);
-                      if (bed?.rent_price) {
-                        setValue('new_rent_price', bed.rent_price);
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn giường trống..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {beds?.map((bed) => (
-                        <SelectItem key={bed.id} value={bed.id}>
-                          {bed.room?.building?.name} - {bed.room?.name} - {bed.name} ({bed.rent_price?.toLocaleString('vi-VN')} VND/tháng)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {(selectedNewRoom || selectedNewBed) && (
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-md">
-                  <p className="text-sm font-medium text-blue-900">
-                    Căn hộ/Giường mới: {selectedNewRoom?.name || selectedNewBed?.name}
-                  </p>
-                  <p className="text-xs text-blue-700 mt-1">
-                    Giá thuê mới: {(selectedNewRoom?.rent_price || selectedNewBed?.rent_price)?.toLocaleString('vi-VN')} VND/tháng
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* New Rent Price (Optional Override) */}
-          <div className="space-y-2">
-            <Label htmlFor="new_rent_price">Giá thuê mới (VND/tháng)</Label>
-            <Input
-              id="new_rent_price"
-              type="number"
-              {...register('new_rent_price', { valueAsNumber: true })}
-              placeholder="Để trống nếu giữ giá tự động"
-            />
-            <p className="text-xs text-gray-500">
-              Hệ thống tự động lấy giá từ căn hộ/giường mới
-            </p>
-          </div>
-
-          {/* Transfer Fee */}
-          {transferType === 'TENANT_CHANGE' && (
-            <div className="space-y-2">
-              <Label htmlFor="transfer_fee">Phí nhượng hợp đồng (VND)</Label>
-              <Input
-                id="transfer_fee"
-                type="number"
-                {...register('transfer_fee', { valueAsNumber: true })}
-                placeholder="0"
-              />
-              <p className="text-xs text-gray-500">
-                Phí mà khách mới phải trả (nếu có)
-              </p>
-            </div>
-          )}
-
-          {/* Reason */}
-          <div className="space-y-2">
-            <Label htmlFor="reason">Lý do chuyển đổi</Label>
-            <Textarea
-              id="reason"
-              {...register('reason')}
-              placeholder="Lý do chuyển căn hộ/nhượng hợp đồng..."
-              rows={3}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-            >
-              Hủy
-            </Button>
-            <Button
-              type="submit"
-              disabled={transferMutation.isPending}
-            >
-              {transferMutation.isPending ? 'Đang xử lý...' : 'Tạo yêu cầu chuyển đổi'}
-            </Button>
-          </DialogFooter>
-        </form>
+        {/* Customer Selection Dialog (single select) */}
+        <CustomerSelectionDialog
+          open={customerDialogOpen}
+          onOpenChange={setCustomerDialogOpen}
+          selectedCustomerIds={selectedCustomer ? [selectedCustomer.id] : []}
+          onSelect={handleCustomerSelect}
+        />
       </DialogContent>
     </Dialog>
   );
-};
-
-export default TransferContractDialog;
+}

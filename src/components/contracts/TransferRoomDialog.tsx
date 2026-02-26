@@ -1,0 +1,363 @@
+import { useEffect, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+
+import { transferRoomFormSchema } from "@/lib/contractValidation";
+import type { TransferRoomFormData } from "@/lib/contractValidation";
+import type { ContractWithRelations } from "@/types/contract";
+import { useTransferRoom } from "@/hooks/useContractOperations";
+import { useBuildings } from "@/hooks/useBuildings";
+import { useRooms } from "@/hooks/useRooms";
+import { useBeds } from "@/hooks/useBeds";
+
+interface TransferRoomDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contract: ContractWithRelations;
+}
+
+export function TransferRoomDialog({
+  open,
+  onOpenChange,
+  contract,
+}: TransferRoomDialogProps) {
+  const transferRoom = useTransferRoom();
+
+  // Data for cascading dropdowns
+  const { data: buildingsData } = useBuildings();
+  const buildings = useMemo(
+    () => (Array.isArray(buildingsData) ? buildingsData : []),
+    [buildingsData]
+  );
+
+  const { data: roomsData } = useRooms();
+  const allRooms = useMemo(
+    () => (Array.isArray(roomsData) ? roomsData : []),
+    [roomsData]
+  );
+
+  const { data: bedsData } = useBeds();
+  const allBeds = useMemo(
+    () => (Array.isArray(bedsData) ? bedsData : []),
+    [bedsData]
+  );
+
+  const form = useForm<TransferRoomFormData>({
+    resolver: zodResolver(transferRoomFormSchema),
+    defaultValues: {
+      new_room_id: "",
+      new_bed_id: null,
+      new_rent_price: undefined,
+      transfer_date: new Date().toISOString().split("T")[0],
+      notes: "",
+    },
+  });
+
+  // Local state for building selection (not part of form schema)
+  const selectedBuildingId = form.watch("_building_id" as any) as string | undefined;
+  const selectedRoomId = form.watch("new_room_id");
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        new_room_id: "",
+        new_bed_id: null,
+        new_rent_price: undefined,
+        transfer_date: new Date().toISOString().split("T")[0],
+        notes: "",
+      });
+      // Clear building selection
+      form.setValue("_building_id" as any, "");
+    }
+  }, [open, contract, form]);
+
+  // Cascading: filter rooms by selected building, only AVAILABLE
+  const availableRooms = useMemo(() => {
+    if (!selectedBuildingId) return [];
+    return allRooms.filter(
+      (r: any) => r.building_id === selectedBuildingId && r.status === "AVAILABLE"
+    );
+  }, [allRooms, selectedBuildingId]);
+
+  // Cascading: filter beds by selected room
+  const availableBeds = useMemo(() => {
+    if (!selectedRoomId) return [];
+    return allBeds.filter((b: any) => b.room_id === selectedRoomId);
+  }, [allBeds, selectedRoomId]);
+
+  // Reset room & bed when building changes
+  const handleBuildingChange = (buildingId: string) => {
+    form.setValue("_building_id" as any, buildingId);
+    form.setValue("new_room_id", "");
+    form.setValue("new_bed_id", null);
+  };
+
+  // Reset bed when room changes
+  const handleRoomChange = (roomId: string) => {
+    form.setValue("new_room_id", roomId);
+    form.setValue("new_bed_id", null);
+    form.trigger("new_room_id");
+  };
+
+  const onSubmit = (data: TransferRoomFormData) => {
+    transferRoom.mutate(
+      {
+        contractId: contract.id,
+        newRoomId: data.new_room_id,
+        newBedId: data.new_bed_id ?? undefined,
+        newRentPrice: data.new_rent_price,
+        transferDate: data.transfer_date,
+        notes: data.notes,
+      },
+      {
+        onSuccess: () => {
+          onOpenChange(false);
+        },
+      }
+    );
+  };
+
+  // Current contract info for display
+  const currentBuilding = contract.room?.building?.name || "—";
+  const currentRoom = contract.room?.name || "—";
+  const currentBed = contract.bed?.name || "—";
+  const representativeCustomer = contract.contract_customers?.find(
+    (cc) => cc.is_representative
+  );
+  const currentCustomer = representativeCustomer?.customer?.full_name || "—";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Chuyển phòng</DialogTitle>
+        </DialogHeader>
+
+        {/* Current contract info */}
+        <div className="rounded-md border p-3 bg-muted/50 space-y-1 text-sm">
+          <p>
+            <span className="font-medium">Khách hàng:</span> {currentCustomer}
+          </p>
+          <p>
+            <span className="font-medium">Toà nhà:</span> {currentBuilding}
+          </p>
+          <p>
+            <span className="font-medium">Phòng:</span> {currentRoom}
+          </p>
+          <p>
+            <span className="font-medium">Giường:</span> {currentBed}
+          </p>
+          <p>
+            <span className="font-medium">Giá thuê hiện tại:</span>{" "}
+            {contract.rent_price?.toLocaleString("vi-VN")} đ
+          </p>
+        </div>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* New building (cascading trigger, not in schema) */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Toà nhà mới <span className="text-red-500">*</span>
+              </label>
+              <Select
+                value={selectedBuildingId || ""}
+                onValueChange={handleBuildingChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn toà nhà" />
+                </SelectTrigger>
+                <SelectContent>
+                  {buildings.map((b: any) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* New room (AVAILABLE only) */}
+            <FormField
+              control={form.control}
+              name="new_room_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Phòng mới <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <Select
+                    value={field.value || ""}
+                    onValueChange={handleRoomChange}
+                    disabled={!selectedBuildingId}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          !selectedBuildingId
+                            ? "Chọn toà nhà trước"
+                            : availableRooms.length === 0
+                            ? "Không có phòng trống"
+                            : "Chọn phòng"
+                        } />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {availableRooms.map((r: any) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* New bed (optional) */}
+            <FormField
+              control={form.control}
+              name="new_bed_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Giường mới</FormLabel>
+                  <Select
+                    value={field.value || ""}
+                    onValueChange={(val) => field.onChange(val || null)}
+                    disabled={!selectedRoomId || availableBeds.length === 0}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          !selectedRoomId
+                            ? "Chọn phòng trước"
+                            : availableBeds.length === 0
+                            ? "Không có giường"
+                            : "Chọn giường"
+                        } />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {availableBeds.map((b: any) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* New rent price */}
+            <FormField
+              control={form.control}
+              name="new_rent_price"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Giá thuê mới</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={0}
+                      placeholder="Giữ nguyên nếu không thay đổi"
+                      {...field}
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value === "" ? undefined : Number(e.target.value)
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Transfer date */}
+            <FormField
+              control={form.control}
+              name="transfer_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Ngày chuyển <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Notes */}
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ghi chú</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Ghi chú chuyển phòng..."
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Hủy
+              </Button>
+              <Button type="submit" disabled={transferRoom.isPending}>
+                {transferRoom.isPending && (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                )}
+                Chuyển phòng
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
