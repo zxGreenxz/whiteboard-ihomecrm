@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
-import { FileText, Plus, Upload, Download, Filter } from 'lucide-react';
+import { FileText, Plus, Upload, Download, Filter, Search } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import EmptyState from '@/components/ui/EmptyState';
 import ContractStatsCards from '@/components/contracts/ContractStatsCards';
 import ContractListFilters from '@/components/contracts/ContractListFilters';
@@ -346,7 +347,7 @@ export default function ContractsPage() {
   // =============================================
 
   return (
-    <MainLayout title="Hợp đồng thuê" subtitle="Quản lý hợp đồng thuê" icon={FileText}>
+    <MainLayout title="Hợp đồng thuê" subtitle="Khách hàng > Hợp đồng" icon={FileText}>
       <div className="space-y-4">
         {/* Stats Cards */}
         <ContractStatsCards
@@ -355,7 +356,7 @@ export default function ContractsPage() {
           onFilterChange={handleStatFilterChange}
         />
 
-        {/* Filters */}
+        {/* Filters row */}
         {showFilters && (
           <ContractListFilters
             searchTerm={searchTerm}
@@ -379,23 +380,27 @@ export default function ContractsPage() {
           />
         )}
 
-        {/* Toolbar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button onClick={() => setFormDialogOpen(true)} size="sm">
-              <Plus className="h-4 w-4 mr-1" />
-              Thêm
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-1" />
-              Nhập
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportContracts(filteredContracts)}>
-              <Download className="h-4 w-4 mr-1" />
-              Xuất
-            </Button>
+        {/* Search + Toolbar row */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm theo mã HĐ, tên khách, SĐT, tên phòng..."
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9"
+            />
           </div>
           <div className="flex items-center gap-1">
+            <Button onClick={() => setFormDialogOpen(true)} size="icon" className="h-8 w-8 bg-green-500 hover:bg-green-600">
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setImportDialogOpen(true)} title="Nhập">
+              <Upload className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => exportContracts(filteredContracts)} title="Xuất">
+              <Download className="h-4 w-4" />
+            </Button>
             <Button
               variant={showFilters ? 'secondary' : 'ghost'}
               size="icon"

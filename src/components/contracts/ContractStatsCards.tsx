@@ -14,6 +14,7 @@ const STAT_CARDS: {
   icon: React.ElementType;
   iconColor: string;
   bgColor: string;
+  textColor: string;
   statKey: keyof ContractStats;
 }[] = [
   {
@@ -22,6 +23,7 @@ const STAT_CARDS: {
     icon: FileText,
     iconColor: 'text-green-600',
     bgColor: 'bg-green-50',
+    textColor: 'text-green-600',
     statKey: 'total',
   },
   {
@@ -30,6 +32,7 @@ const STAT_CARDS: {
     icon: Clock,
     iconColor: 'text-orange-500',
     bgColor: 'bg-orange-50',
+    textColor: 'text-orange-500',
     statKey: 'expiring',
   },
   {
@@ -38,6 +41,7 @@ const STAT_CARDS: {
     icon: AlertTriangle,
     iconColor: 'text-red-500',
     bgColor: 'bg-red-50',
+    textColor: 'text-red-500',
     statKey: 'expired',
   },
   {
@@ -46,6 +50,7 @@ const STAT_CARDS: {
     icon: FileX,
     iconColor: 'text-gray-500',
     bgColor: 'bg-gray-50',
+    textColor: 'text-gray-500',
     statKey: 'terminated',
   },
 ];
@@ -72,11 +77,11 @@ export default function ContractStatsCards({
                 : 'border-gray-200 bg-white hover:border-gray-300'
             )}
           >
-            <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', card.bgColor)}>
+            <div className={cn('flex h-10 w-10 items-center justify-center rounded-full', card.bgColor)}>
               <Icon className={cn('h-5 w-5', card.iconColor)} />
             </div>
             <div>
-              <p className="text-2xl font-bold">{stats[card.statKey]}</p>
+              <p className={cn('text-2xl font-bold', card.textColor)}>{stats[card.statKey]}</p>
               <p className="text-xs text-muted-foreground">{card.label}</p>
             </div>
           </button>

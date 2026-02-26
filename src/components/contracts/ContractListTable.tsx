@@ -72,12 +72,11 @@ function getRepresentativeCustomerName(contract: ContractWithRelations): string 
   return first?.customer?.full_name || '-';
 }
 
-function getLocationText(contract: ContractWithRelations): string {
-  const parts: string[] = [];
-  if (contract.room?.building?.name) parts.push(contract.room.building.name);
-  if (contract.room?.name) parts.push(contract.room.name);
-  if (contract.bed?.name) parts.push(contract.bed.name);
-  return parts.join(' - ') || '-';
+function getLocationText(contract: ContractWithRelations): { buildingCode: string; roomName: string } {
+  return {
+    buildingCode: contract.room?.building?.name || '-',
+    roomName: contract.room?.name || '',
+  };
 }
 
 export function getActionButtonStates(contract: ContractWithRelations) {
@@ -160,7 +159,7 @@ export default function ContractListTable({
               </TableHead>
               <TableHead>Mã HĐ</TableHead>
               <TableHead>Trạng thái</TableHead>
-              <TableHead className="w-[260px]">Thao tác</TableHead>
+              <TableHead className="w-[140px]">Thao tác</TableHead>
               <TableHead>Vị trí</TableHead>
               <TableHead>Khách hàng</TableHead>
               <TableHead className="text-right">Giá thuê</TableHead>
@@ -218,7 +217,10 @@ export default function ContractListTable({
                       />
                     </TableCell>
                     <TableCell className="text-sm">
-                      {getLocationText(contract)}
+                      <div>
+                        <div className="font-medium">{getLocationText(contract).buildingCode}</div>
+                        <div className="text-muted-foreground text-xs">{getLocationText(contract).roomName}</div>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       {getRepresentativeCustomerName(contract)}
@@ -327,67 +329,66 @@ function ActionButtons({
       icon: Pencil,
       onClick: () => onEdit(contract),
       disabled: actions.editDisabled,
-      className: 'text-green-600 hover:text-green-700 hover:bg-green-50',
+      bg: 'bg-green-500 hover:bg-green-600',
     },
     {
       label: 'Gia hạn',
       icon: CalendarPlus,
       onClick: () => onRenew(contract),
       disabled: actions.renewDisabled,
-      className: 'text-green-600 hover:text-green-700 hover:bg-green-50',
+      bg: 'bg-green-500 hover:bg-green-600',
     },
     {
       label: 'Chuyển phòng',
       icon: ArrowRightLeft,
       onClick: () => onTransferRoom(contract),
       disabled: actions.transferRoomDisabled,
-      className: 'text-orange-600 hover:text-orange-700 hover:bg-orange-50',
+      bg: 'bg-orange-500 hover:bg-orange-600',
     },
     {
       label: 'ĐK chuyển đi',
       icon: LogOut,
       onClick: () => onMoveOut(contract),
       disabled: actions.moveOutDisabled,
-      className: 'text-blue-600 hover:text-blue-700 hover:bg-blue-50',
+      bg: 'bg-blue-500 hover:bg-blue-600',
     },
     {
       label: 'Nhượng HĐ',
       icon: UserPlus,
       onClick: () => onTransferContract(contract),
       disabled: actions.transferContractDisabled,
-      className: 'text-purple-600 hover:text-purple-700 hover:bg-purple-50',
+      bg: 'bg-yellow-500 hover:bg-yellow-600',
     },
     {
       label: 'Thanh lý',
       icon: FileX,
       onClick: () => onTerminate(contract),
       disabled: actions.terminateDisabled,
-      className: 'text-red-600 hover:text-red-700 hover:bg-red-50',
+      bg: 'bg-red-500 hover:bg-red-600',
     },
     {
       label: 'Xóa',
       icon: Trash2,
       onClick: () => onDelete(contract),
       disabled: actions.deleteDisabled,
-      className: 'text-red-600 hover:text-red-700 hover:bg-red-50',
+      bg: 'bg-red-700 hover:bg-red-800',
     },
   ];
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex items-center gap-0.5">
+      <div className="grid grid-cols-4 gap-1 w-fit">
         {buttons.map((btn) => (
           <Tooltip key={btn.label}>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-7 w-7 ${btn.disabled ? 'opacity-40 cursor-not-allowed' : btn.className}`}
+              <button
+                type="button"
+                className={`h-7 w-7 rounded flex items-center justify-center text-white ${btn.disabled ? 'opacity-30 cursor-not-allowed bg-gray-400' : btn.bg} transition-colors`}
                 disabled={btn.disabled}
                 onClick={btn.onClick}
               >
                 <btn.icon className="h-3.5 w-3.5" />
-              </Button>
+              </button>
             </TooltipTrigger>
             <TooltipContent side="top">
               <p>{btn.label}</p>
