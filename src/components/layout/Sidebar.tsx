@@ -31,7 +31,6 @@ import {
   Map,
   MapPin,
   Bell,
-  ClipboardList,
   List,
   UserCircle,
   HelpCircle,
@@ -101,7 +100,6 @@ const navigationGroups: NavGroup[] = [
         ],
       },
       { title: 'Thông báo', href: '/notifications', icon: Bell },
-      { title: 'Công việc', href: '/tasks', icon: ClipboardList },
     ],
   },
   {
@@ -113,7 +111,6 @@ const navigationGroups: NavGroup[] = [
         items: [
           { title: 'Báo cáo BĐS', href: '/reports/real-estate', icon: Building2 },
           { title: 'Báo cáo Tài chính', href: '/reports/finance', icon: CreditCard },
-          { title: 'Báo cáo Công việc', href: '/reports/tasks', icon: ClipboardList },
         ],
       },
     ],

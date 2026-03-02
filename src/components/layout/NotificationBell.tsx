@@ -53,7 +53,7 @@ const NotificationBell = () => {
       navigate(`/contracts/${notification.contract_id}`);
       setOpen(false);
     } else if (notification.issue_id) {
-      navigate(`/issues/${notification.issue_id}`);
+      // TODO: Công việc đang xây dựng lại
       setOpen(false);
     }
   };

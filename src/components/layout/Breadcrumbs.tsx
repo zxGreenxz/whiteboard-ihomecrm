@@ -37,10 +37,8 @@ const routeLabels: Record<string, string> = {
   '/income-expense': 'Thu chi',
   '/payments': 'Thu chi',
 
-  // Thông báo & Công việc
+  // Thông báo
   '/notifications': 'Thông báo',
-  '/tasks': 'Công việc',
-  '/issues': 'Công việc',
 
   // Báo cáo
   '/reports': 'Báo cáo',
@@ -67,11 +65,6 @@ const routeLabels: Record<string, string> = {
   '/reports/finance/payment-schedule': 'Lịch thanh toán',
   '/reports/finance/overpayment': 'Tiền thừa',
   '/reports/finance/deposits': 'Danh sách tiền cọc',
-  '/reports/tasks': 'Báo cáo Công việc',
-  '/reports/tasks/overview': 'Tổng quan công việc',
-  '/reports/tasks/by-staff': 'CV theo nhân viên',
-  '/reports/tasks/by-room': 'CV theo căn hộ',
-  '/reports/tasks/by-apartment': 'CV theo căn hộ',
 
   // Cài đặt hệ thống
   '/settings': 'Cài đặt hệ thống',
@@ -88,7 +81,6 @@ const routeLabels: Record<string, string> = {
   '/settings/categories/asset-movements': 'Lịch sử di chuyển',
   '/settings/categories/asset-maintenance': 'Lịch sử sửa chữa',
   '/settings/categories/hotlines': 'Quản lý Hotline',
-  '/settings/categories/task-types': 'Loại công việc',
   '/settings/categories/general': 'Danh mục chung',
   '/settings/categories/floors': 'Danh sách tầng',
   '/settings/templates': 'Mẫu biểu',

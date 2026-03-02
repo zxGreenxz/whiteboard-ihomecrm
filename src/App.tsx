@@ -45,15 +45,12 @@ import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
 // CashBookPage moved to reports/finance/DailyCashbookReport - redirect via /cash-book route below
 
-// Assets & Issues Pages
+// Assets Pages
 import AssetsPage from "./pages/assets/AssetsPage";
-import IssuesPage from "./pages/issues/IssuesPage";
-import IssueDetailPage from "./pages/issues/IssueDetailPage";
 
 // Reports Pages
 import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
 import FinanceReportsPage from "./pages/reports/FinanceReportsPage";
-import TasksReportsPage from "./pages/reports/TasksReportsPage";
 
 // Real Estate Reports
 import VacantRoomsReport from "./pages/reports/real-estate/VacantRoomsReport";
@@ -75,11 +72,6 @@ import PaymentScheduleReport from "./pages/reports/finance/PaymentScheduleReport
 import OverpaymentReport from "./pages/reports/finance/OverpaymentReport";
 import DepositsReport from "./pages/reports/finance/DepositsReport";
 import ProfitDistributionReport from "./pages/reports/finance/ProfitDistributionReport";
-
-// Task Reports
-import TasksOverviewReport from "./pages/reports/tasks/TasksOverviewReport";
-import TasksByStaffReport from "./pages/reports/tasks/TasksByStaffReport";
-import TasksByRoomReport from "./pages/reports/tasks/TasksByRoomReport";
 
 // Settings Pages
 import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
@@ -103,7 +95,6 @@ import AssetTypesPage from "./pages/settings/categories/AssetTypesPage";
 import AssetMovementsPage from "./pages/settings/categories/AssetMovementsPage";
 import AssetMaintenancePage from "./pages/settings/categories/AssetMaintenancePage";
 import HotlinesPage from "./pages/settings/categories/HotlinesPage";
-import TaskTypesPage from "./pages/settings/categories/TaskTypesPage";
 import GeneralCategoriesPage from "./pages/settings/categories/GeneralCategoriesPage";
 import FloorsPage from "./pages/settings/categories/FloorsPage";
 
@@ -214,12 +205,7 @@ const App = () => (
           <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
 
-          {/* === CÔNG VIỆC === */}
-          {/* Primary route: /tasks, redirect /issues → /tasks */}
-          <Route path="/tasks" element={<ProtectedRoute><IssuesPage /></ProtectedRoute>} />
-          <Route path="/tasks/:id" element={<ProtectedRoute><IssueDetailPage /></ProtectedRoute>} />
-          <Route path="/issues" element={<Navigate to="/tasks" replace />} />
-          <Route path="/issues/:id" element={<Navigate to="/tasks" replace />} />
+          {/* === CÔNG VIỆC === (đang xây dựng lại) */}
 
           {/* === BÁO CÁO BĐS === */}
           <Route path="/reports/real-estate" element={<ProtectedRoute><RealEstateReportsPage /></ProtectedRoute>} />
@@ -248,12 +234,7 @@ const App = () => (
           <Route path="/reports/finance/overpayment" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
 
-          {/* === BÁO CÁO CÔNG VIỆC === */}
-          <Route path="/reports/tasks" element={<ProtectedRoute><TasksReportsPage /></ProtectedRoute>} />
-          <Route path="/reports/tasks/overview" element={<ProtectedRoute><TasksOverviewReport /></ProtectedRoute>} />
-          <Route path="/reports/tasks/by-staff" element={<ProtectedRoute><TasksByStaffReport /></ProtectedRoute>} />
-          <Route path="/reports/tasks/by-room" element={<ProtectedRoute><TasksByRoomReport /></ProtectedRoute>} />
-          <Route path="/reports/tasks/by-apartment" element={<ProtectedRoute><TasksByRoomReport /></ProtectedRoute>} />
+          {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
 
           {/* === CÀI ĐẶT HỆ THỐNG === */}
           <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />
@@ -275,7 +256,6 @@ const App = () => (
           <Route path="/settings/categories/asset-maintenance" element={<ProtectedRoute><AssetMaintenancePage /></ProtectedRoute>} />
           {/* Categories Sub-Pages - Khác */}
           <Route path="/settings/categories/hotlines" element={<ProtectedRoute><HotlinesPage /></ProtectedRoute>} />
-          <Route path="/settings/categories/task-types" element={<ProtectedRoute><TaskTypesPage /></ProtectedRoute>} />
           <Route path="/settings/categories/general" element={<ProtectedRoute><GeneralCategoriesPage /></ProtectedRoute>} />
           <Route path="/settings/categories/floors" element={<ProtectedRoute><FloorsPage /></ProtectedRoute>} />
           <Route path="/settings/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
