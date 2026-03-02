@@ -53,7 +53,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Import contract action dialogs
 import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
-import TransferContractDialog from '@/components/contracts/TransferContractDialog';
+import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 
