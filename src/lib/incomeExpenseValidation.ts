@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Schema cho hạng mục (item) trong phiếu thu/chi
-const itemSchema = z.object({
+export const itemSchema = z.object({
   income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),
   description: z.string().nullable().optional(),
   quantity: z.number().int().min(1, 'Số lượng phải >= 1'),

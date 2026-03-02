@@ -103,6 +103,16 @@ const IncomeExpenseForm = ({
 
   const voucherType = form.watch('type');
 
+  // When voucher type changes, reset items (income types differ from expense types)
+  useEffect(() => {
+    // Only reset items when type changes in create mode (not during initial load)
+    if (!voucher && open && form.formState.isDirty) {
+      setItemRows([]);
+      form.setValue('items', [], { shouldValidate: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voucherType]);
+
   // Populate form when editing or reset when adding
   useEffect(() => {
     if (!open) return;
@@ -219,6 +229,13 @@ const IncomeExpenseForm = ({
       })),
       { shouldValidate: form.formState.isSubmitted }
     );
+  };
+
+  const handleItemDescriptionChange = (index: number, value: string) => {
+    const updated = [...itemRows];
+    updated[index] = { ...updated[index], description: value || null };
+    setItemRows(updated);
+    syncItemsToForm(updated);
   };
 
   const handleItemQuantityChange = (index: number, value: number) => {
@@ -535,6 +552,20 @@ const IncomeExpenseForm = ({
                           <p className="text-sm font-medium truncate">
                             {item.type_name}
                           </p>
+                          <div>
+                            <label className="text-xs text-muted-foreground">
+                              Mô tả
+                            </label>
+                            <Input
+                              placeholder="Mô tả hạng mục..."
+                              value={item.description ?? ''}
+                              onChange={(e) =>
+                                handleItemDescriptionChange(index, e.target.value)
+                              }
+                              disabled={!canEdit}
+                              className="h-8"
+                            />
+                          </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1">
                               <label className="text-xs text-muted-foreground">

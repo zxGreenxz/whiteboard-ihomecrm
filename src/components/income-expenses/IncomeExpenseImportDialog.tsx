@@ -17,7 +17,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { parseExcelFile } from '@/lib/excelHelpers';
-import { excelImportRowSchema, type ExcelImportRow } from '@/lib/incomeExpenseValidation';
+import { type ExcelImportRow } from '@/lib/incomeExpenseValidation';
+import { validateImportRows } from '@/hooks/useIncomeExpensesHelpers';
 import { useImportIncomeExpenses, type ImportIncomeExpenseRow } from '@/hooks/useIncomeExpenses';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIncomeExpenseTypes } from '@/hooks/useIncomeExpenseTypes';
@@ -180,27 +181,42 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
     try {
       const rawRows = await parseExcelFile<Record<string, any>>(file, HEADER_MAPPING as any);
 
-      const validated: ParsedRow[] = rawRows.map((row, index) => {
-        // Normalize type and date before validation
-        const normalized = {
-          ...row,
-          type: normalizeType(row.type),
-          voucher_date: normalizeDate(row.voucher_date),
-          amount: typeof row.amount === 'number' ? row.amount : Number(row.amount) || 0,
-        };
+      // Normalize raw rows before validation
+      const normalizedRows = rawRows.map((row) => ({
+        ...row,
+        type: normalizeType(row.type),
+        voucher_date: normalizeDate(row.voucher_date),
+        amount: typeof row.amount === 'number' ? row.amount : Number(row.amount) || 0,
+      }));
 
-        const result = excelImportRowSchema.safeParse(normalized);
-        if (result.success) {
-          return { rowIndex: index + 2, data: result.data, valid: true };
+      // Use validateImportRows helper for validation
+      const { validRows, errors } = validateImportRows(normalizedRows);
+
+      // Build a set of error row indices for quick lookup
+      const errorIndices = new Set(errors.map((e) => e.rowIndex));
+
+      const validated: ParsedRow[] = [];
+
+      // Track which valid row to use next
+      let validIdx = 0;
+      for (let i = 0; i < normalizedRows.length; i++) {
+        if (errorIndices.has(i)) {
+          const err = errors.find((e) => e.rowIndex === i)!;
+          validated.push({
+            rowIndex: i + 2, // +2 for 1-indexed + header row
+            data: normalizedRows[i] as ExcelImportRow,
+            valid: false,
+            error: err.message,
+          });
+        } else if (validIdx < validRows.length) {
+          validated.push({
+            rowIndex: i + 2,
+            data: validRows[validIdx],
+            valid: true,
+          });
+          validIdx++;
         }
-        const errorMsg = result.error.issues.map((i) => i.message).join('; ');
-        return {
-          rowIndex: index + 2,
-          data: normalized as ExcelImportRow,
-          valid: false,
-          error: errorMsg,
-        };
-      });
+      }
 
       setParsedRows(validated);
       setStep('preview');

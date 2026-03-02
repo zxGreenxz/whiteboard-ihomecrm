@@ -1,13 +1,44 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import MainLayout from '@/components/layout/MainLayout';
 import IncomeExpenseTypeList from '@/components/income-expense-types/IncomeExpenseTypeList';
-import IncomeExpenseTypeForm from '@/components/income-expense-types/IncomeExpenseTypeForm';
 import {
   useIncomeExpenseTypes,
+  useCreateIncomeExpenseType,
+  useUpdateIncomeExpenseType,
   useDeleteIncomeExpenseType,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
+import {
+  incomeExpenseTypeFormSchema,
+  type IncomeExpenseTypeFormValues,
+} from '@/lib/incomeExpenseValidation';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +57,67 @@ export default function IncomeExpenseTypesPage() {
   const [deletingTypeId, setDeletingTypeId] = useState<string | null>(null);
 
   const { data: types, isLoading } = useIncomeExpenseTypes();
+  const createType = useCreateIncomeExpenseType();
+  const updateType = useUpdateIncomeExpenseType();
   const deleteType = useDeleteIncomeExpenseType();
+
+  const isEditing = !!editingType;
+
+  const form = useForm<IncomeExpenseTypeFormValues>({
+    resolver: zodResolver(incomeExpenseTypeFormSchema),
+    defaultValues: {
+      name: '',
+      type: undefined,
+      description: '',
+      is_default: false,
+    },
+  });
+
+  useEffect(() => {
+    if (editingType && isFormOpen) {
+      form.reset({
+        name: editingType.name,
+        type: editingType.type,
+        description: editingType.description ?? '',
+        is_default: editingType.is_default ?? false,
+      });
+    } else if (!editingType && isFormOpen) {
+      form.reset({
+        name: '',
+        type: undefined,
+        description: '',
+        is_default: false,
+      });
+    }
+  }, [editingType, isFormOpen, form]);
+
+  const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
+    try {
+      if (isEditing) {
+        await updateType.mutateAsync({
+          id: editingType.id,
+          updates: {
+            name: data.name,
+            type: data.type,
+            description: data.description || null,
+            is_default: data.is_default ?? false,
+          },
+        });
+      } else {
+        await createType.mutateAsync({
+          name: data.name,
+          type: data.type,
+          description: data.description || null,
+          is_default: data.is_default ?? false,
+        });
+      }
+      handleFormClose(false);
+    } catch {
+      // Errors handled by mutation hooks (toast)
+    }
+  };
+
+  const isPending = createType.isPending || updateType.isPending;
 
   const handleEdit = (type: IncomeExpenseType) => {
     setEditingType(type);
@@ -77,11 +168,97 @@ export default function IncomeExpenseTypesPage() {
         />
 
         {/* Type Form Dialog */}
-        <IncomeExpenseTypeForm
-          open={isFormOpen}
-          onOpenChange={handleFormClose}
-          type={editingType}
-        />
+        <Dialog open={isFormOpen} onOpenChange={handleFormClose}>
+          <DialogContent className="sm:max-w-[480px]">
+            <DialogHeader>
+              <DialogTitle>
+                {isEditing ? 'Sửa loại thu chi' : 'Thêm loại thu chi'}
+              </DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tên loại *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="VD: Tiền thuê phòng" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Loại *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn loại" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="income">Thu</SelectItem>
+                          <SelectItem value="expense">Chi</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Mô tả</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Mô tả loại thu chi..."
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="is_default"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                      <FormLabel className="cursor-pointer">Mặc định</FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleFormClose(false)}
+                  >
+                    Hủy
+                  </Button>
+                  <Button type="submit" disabled={isPending}>
+                    {isPending ? 'Đang lưu...' : 'Lưu'}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog

@@ -1,10 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowUpCircle,
-  ArrowDownCircle,
   TrendingUp,
   TrendingDown,
+  ArrowUpDown,
   FileText,
 } from "lucide-react";
 
@@ -37,7 +36,7 @@ export function IncomeExpenseStats({
             Tổng thu
           </CardTitle>
           <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-            <ArrowUpCircle className="h-5 w-5 text-emerald-600" />
+            <TrendingUp className="h-5 w-5 text-emerald-600" />
           </div>
         </CardHeader>
         <CardContent>
@@ -58,7 +57,7 @@ export function IncomeExpenseStats({
             Tổng chi
           </CardTitle>
           <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-            <ArrowDownCircle className="h-5 w-5 text-red-600" />
+            <TrendingDown className="h-5 w-5 text-red-600" />
           </div>
         </CardHeader>
         <CardContent>
@@ -87,11 +86,11 @@ export function IncomeExpenseStats({
               isDifferencePositive ? "bg-emerald-100" : "bg-red-100"
             }`}
           >
-            {isDifferencePositive ? (
-              <TrendingUp className="h-5 w-5 text-emerald-600" />
-            ) : (
-              <TrendingDown className="h-5 w-5 text-red-600" />
-            )}
+            <ArrowUpDown
+              className={`h-5 w-5 ${
+                isDifferencePositive ? "text-emerald-600" : "text-red-600"
+              }`}
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -109,11 +108,11 @@ export function IncomeExpenseStats({
         </CardContent>
       </Card>
 
-      {/* Tổng số giao dịch */}
+      {/* Tổng số phiếu */}
       <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Tổng số giao dịch
+            Tổng số phiếu
           </CardTitle>
           <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
             <FileText className="h-5 w-5 text-blue-600" />

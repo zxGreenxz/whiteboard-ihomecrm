@@ -7,7 +7,12 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
   useIncomeExpenseTypes,
   type IncomeExpenseType,
@@ -39,6 +44,7 @@ const IncomeExpenseItemSelector = ({
   useEffect(() => {
     if (open) {
       setCheckedIds(new Set(selectedTypeIds));
+      setIsTypeFormOpen(false);
     }
   }, [open, selectedTypeIds]);
 
@@ -64,83 +70,97 @@ const IncomeExpenseItemSelector = ({
     onOpenChange(false);
   };
 
+  const handleTypeCreated = (newType: IncomeExpenseType) => {
+    // Auto-add newly created type to selection
+    setCheckedIds((prev) => new Set([...prev, newType.id]));
+    setIsTypeFormOpen(false);
+  };
+
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>
-              Chọn hạng mục {voucherType === 'INCOME' ? 'thu' : 'chi'}
-            </DialogTitle>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>
+            Chọn hạng mục {voucherType === 'INCOME' ? 'thu' : 'chi'}
+          </DialogTitle>
+        </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Type list with checkboxes */}
-            <div className="max-h-[300px] overflow-y-auto space-y-2">
-              {isLoading ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  Đang tải...
-                </p>
-              ) : types.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  Chưa có loại {voucherType === 'INCOME' ? 'thu' : 'chi'} nào.
-                  Hãy thêm mới.
-                </p>
-              ) : (
-                types.map((t) => (
-                  <label
-                    key={t.id}
-                    className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent"
-                  >
-                    <Checkbox
-                      checked={checkedIds.has(t.id)}
-                      onCheckedChange={() => handleToggle(t.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.name}</p>
-                      {t.description && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {t.description}
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                ))
-              )}
-            </div>
-
-            {/* Add new type button */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => setIsTypeFormOpen(true)}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Thêm loại {voucherType === 'INCOME' ? 'thu' : 'chi'} mới
-            </Button>
-
-            {/* Action buttons */}
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={handleCancel}>
-                Huỷ
-              </Button>
-              <Button type="button" onClick={handleConfirm}>
-                Xác nhận
-              </Button>
-            </div>
+        <div className="space-y-4">
+          {/* Type list with checkboxes */}
+          <div className="max-h-[300px] overflow-y-auto space-y-2">
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Đang tải...
+              </p>
+            ) : types.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Chưa có loại {voucherType === 'INCOME' ? 'thu' : 'chi'} nào.
+                Hãy thêm mới.
+              </p>
+            ) : (
+              types.map((t) => (
+                <label
+                  key={t.id}
+                  className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent"
+                >
+                  <Checkbox
+                    checked={checkedIds.has(t.id)}
+                    onCheckedChange={() => handleToggle(t.id)}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{t.name}</p>
+                    {t.description && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {t.description}
+                      </p>
+                    )}
+                  </div>
+                </label>
+              ))
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Inline form to create new type */}
-      <IncomeExpenseTypeForm
-        open={isTypeFormOpen}
-        onOpenChange={setIsTypeFormOpen}
-        type={null}
-      />
-    </>
+          {/* Inline collapsible form to create new type */}
+          <Collapsible open={isTypeFormOpen} onOpenChange={setIsTypeFormOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Thêm loại {voucherType === 'INCOME' ? 'thu' : 'chi'} mới
+                {isTypeFormOpen ? (
+                  <ChevronUp className="h-4 w-4 ml-auto" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 ml-auto" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-3 rounded-lg border p-4 bg-muted/30">
+                <IncomeExpenseTypeForm
+                  defaultType={filterType}
+                  onCreated={handleTypeCreated}
+                  onCancel={() => setIsTypeFormOpen(false)}
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Action buttons */}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={handleCancel}>
+              Huỷ
+            </Button>
+            <Button type="button" onClick={handleConfirm}>
+              Xác nhận
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

@@ -27,7 +27,7 @@ import {
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { canEditVoucher } from '@/lib/incomeExpenseValidation';
 import {
-  MoreVertical,
+  MoreHorizontal,
   CheckCircle,
   XCircle,
   Pencil,
@@ -48,11 +48,8 @@ interface IncomeExpenseListProps {
   totalCount: number;
 }
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(amount);
+const formatVND = (amount: number): string => {
+  return amount.toLocaleString('vi-VN') + ' đ';
 };
 
 const IncomeExpenseList = ({
@@ -122,7 +119,7 @@ const IncomeExpenseList = ({
                       className={
                         isApproved
                           ? 'bg-green-100 text-green-800 hover:bg-green-100'
-                          : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100'
+                          : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
                       }
                     >
                       {isApproved ? 'Đã duyệt' : 'Chưa duyệt'}
@@ -137,7 +134,7 @@ const IncomeExpenseList = ({
                     : '—'}
                 </TableCell>
 
-                {/* Loại */}
+                {/* Loại (Thu/Chi badge) */}
                 <TableCell>
                   <Badge
                     variant="outline"
@@ -147,7 +144,7 @@ const IncomeExpenseList = ({
                         : 'bg-red-100 text-red-800 border-red-200'
                     }
                   >
-                    {voucher.type === 'INCOME' ? 'Thu' : 'Chi'}
+                    {voucher.type === 'INCOME' ? 'Phiếu thu' : 'Phiếu chi'}
                   </Badge>
                 </TableCell>
 
@@ -165,7 +162,7 @@ const IncomeExpenseList = ({
                 {/* Khách hàng */}
                 <TableCell>{voucher.tenant_name || '—'}</TableCell>
 
-                {/* Tổng tiền */}
+                {/* Tổng tiền (format VND) */}
                 <TableCell className="text-right">
                   <span
                     className={
@@ -174,7 +171,7 @@ const IncomeExpenseList = ({
                         : 'text-red-600 font-medium'
                     }
                   >
-                    {formatCurrency(voucher.total_amount)}
+                    {formatVND(voucher.total_amount)}
                   </span>
                 </TableCell>
 
@@ -183,7 +180,7 @@ const IncomeExpenseList = ({
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">

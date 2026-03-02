@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { Filter, X } from "lucide-react";
+import { SlidersHorizontal, X } from "lucide-react";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
 interface IncomeExpenseFiltersProps {
@@ -19,8 +19,8 @@ interface IncomeExpenseFiltersProps {
 }
 
 const TYPE_OPTIONS = [
-  { value: "INCOME", label: "Thu" },
-  { value: "EXPENSE", label: "Chi" },
+  { value: "INCOME", label: "Phiếu thu" },
+  { value: "EXPENSE", label: "Phiếu chi" },
 ] as const;
 
 const APPROVAL_STATUS_OPTIONS = [
@@ -43,15 +43,28 @@ export function IncomeExpenseFiltersBar({
   onChange,
 }: IncomeExpenseFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { data: buildings } = useBuildings();
-  const { data: rooms } = useRooms(filters.building_id ?? undefined);
+  const [localFilters, setLocalFilters] = useState<IncomeExpenseFilters>(filters);
 
-  const update = (patch: Partial<IncomeExpenseFilters>) => {
-    onChange({ ...filters, ...patch });
+  const { data: buildings } = useBuildings();
+  const { data: rooms } = useRooms(localFilters.building_id ?? undefined);
+
+  // Sync local state when parent filters change (e.g. external reset)
+  useEffect(() => {
+    setLocalFilters(filters);
+  }, [filters]);
+
+  const updateLocal = (patch: Partial<IncomeExpenseFilters>) => {
+    setLocalFilters((prev) => ({ ...prev, ...patch }));
+  };
+
+  const applyFilters = () => {
+    onChange(localFilters);
   };
 
   const clearFilters = () => {
-    onChange({ ...EMPTY_FILTERS });
+    const cleared = { ...EMPTY_FILTERS };
+    setLocalFilters(cleared);
+    onChange(cleared);
   };
 
   const hasActiveFilters =
@@ -70,7 +83,7 @@ export function IncomeExpenseFiltersBar({
         onClick={() => setIsOpen(!isOpen)}
         className={hasActiveFilters ? "border-primary text-primary" : ""}
       >
-        <Filter className="h-4 w-4 mr-2" />
+        <SlidersHorizontal className="h-4 w-4 mr-2" />
         Lọc
         {hasActiveFilters && (
           <span className="ml-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
@@ -88,9 +101,9 @@ export function IncomeExpenseFiltersBar({
                 Căn hộ
               </label>
               <Select
-                value={filters.building_id ?? "ALL"}
+                value={localFilters.building_id ?? "ALL"}
                 onValueChange={(v) =>
-                  update({
+                  updateLocal({
                     building_id: v === "ALL" ? null : v,
                     room_id: null,
                   })
@@ -116,9 +129,9 @@ export function IncomeExpenseFiltersBar({
                 Phòng
               </label>
               <Select
-                value={filters.room_id ?? "ALL"}
+                value={localFilters.room_id ?? "ALL"}
                 onValueChange={(v) =>
-                  update({ room_id: v === "ALL" ? null : v })
+                  updateLocal({ room_id: v === "ALL" ? null : v })
                 }
               >
                 <SelectTrigger>
@@ -156,9 +169,9 @@ export function IncomeExpenseFiltersBar({
                 Loại phiếu
               </label>
               <Select
-                value={filters.type ?? "ALL"}
+                value={localFilters.type ?? "ALL"}
                 onValueChange={(v) =>
-                  update({
+                  updateLocal({
                     type:
                       v === "ALL"
                         ? null
@@ -187,9 +200,9 @@ export function IncomeExpenseFiltersBar({
               </label>
               <Input
                 type="date"
-                value={filters.start_date ?? ""}
+                value={localFilters.start_date ?? ""}
                 onChange={(e) =>
-                  update({
+                  updateLocal({
                     start_date: e.target.value || null,
                   })
                 }
@@ -203,9 +216,9 @@ export function IncomeExpenseFiltersBar({
               </label>
               <Input
                 type="date"
-                value={filters.end_date ?? ""}
+                value={localFilters.end_date ?? ""}
                 onChange={(e) =>
-                  update({
+                  updateLocal({
                     end_date: e.target.value || null,
                   })
                 }
@@ -218,9 +231,9 @@ export function IncomeExpenseFiltersBar({
                 Trạng thái duyệt
               </label>
               <Select
-                value={filters.approval_status ?? "ALL"}
+                value={localFilters.approval_status ?? "ALL"}
                 onValueChange={(v) =>
-                  update({
+                  updateLocal({
                     approval_status:
                       v === "ALL"
                         ? null
@@ -245,7 +258,7 @@ export function IncomeExpenseFiltersBar({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 pt-2">
-            <Button size="sm" onClick={() => setIsOpen(false)}>
+            <Button size="sm" onClick={applyFilters}>
               Áp dụng
             </Button>
             <Button

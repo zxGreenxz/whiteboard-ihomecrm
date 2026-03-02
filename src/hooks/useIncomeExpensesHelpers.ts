@@ -53,18 +53,24 @@ export function canDeleteVoucher(status: 'UNAPPROVED' | 'APPROVED'): boolean {
 }
 
 // --- Pure helpers: approval state transitions ---
-export function applyApproval(
-  _voucher: { status: 'UNAPPROVED' | 'APPROVED'; approved_by: string | null; approved_at: string | null },
-  approverId: string,
-  approvedAt: string,
-): { status: 'APPROVED'; approved_by: string; approved_at: string } {
-  return { status: 'APPROVED', approved_by: approverId, approved_at: approvedAt };
+export interface ApprovableVoucher {
+  approval_status: 'UNAPPROVED' | 'APPROVED';
+  approved_by: string | null;
+  approved_at: string | null;
 }
 
-export function applyUnapproval(
-  _voucher: { status: 'UNAPPROVED' | 'APPROVED'; approved_by: string | null; approved_at: string | null },
-): { status: 'UNAPPROVED'; approved_by: null; approved_at: null } {
-  return { status: 'UNAPPROVED', approved_by: null, approved_at: null };
+export function applyApproval<T extends ApprovableVoucher>(
+  voucher: T,
+  approverId: string,
+  approvedAt: string,
+): T & { approval_status: 'APPROVED'; approved_by: string; approved_at: string } {
+  return { ...voucher, approval_status: 'APPROVED', approved_by: approverId, approved_at: approvedAt };
+}
+
+export function applyUnapproval<T extends ApprovableVoucher>(
+  voucher: T,
+): T & { approval_status: 'UNAPPROVED'; approved_by: null; approved_at: null } {
+  return { ...voucher, approval_status: 'UNAPPROVED', approved_by: null, approved_at: null };
 }
 
 // --- Pure helper: soft-delete filter ---
