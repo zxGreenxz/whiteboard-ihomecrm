@@ -10,14 +10,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import {
@@ -27,7 +19,6 @@ import {
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { canEditVoucher } from '@/lib/incomeExpenseValidation';
 import {
-  MoreHorizontal,
   CheckCircle,
   XCircle,
   Pencil,
@@ -92,15 +83,14 @@ const IncomeExpenseList = ({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Mã phiếu</TableHead>
-            <TableHead>Ngày</TableHead>
-            <TableHead>Loại</TableHead>
-            <TableHead>Tên phiếu</TableHead>
-            <TableHead>Căn hộ</TableHead>
-            <TableHead>Phòng</TableHead>
-            <TableHead>Khách hàng</TableHead>
-            <TableHead className="text-right">Tổng tiền</TableHead>
+            <TableHead>Mã</TableHead>
             <TableHead>Thao tác</TableHead>
+            <TableHead>Tên</TableHead>
+            <TableHead className="text-right">Số tiền</TableHead>
+            <TableHead>Tòa nhà</TableHead>
+            <TableHead>Ngày thu/chi</TableHead>
+            <TableHead>Người nhận/trả</TableHead>
+            <TableHead>Tài khoản</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -110,7 +100,7 @@ const IncomeExpenseList = ({
 
             return (
               <TableRow key={voucher.id}>
-                {/* Mã phiếu + Badge trạng thái */}
+                {/* Mã + Badge trạng thái */}
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{voucher.code}</span>
@@ -127,42 +117,64 @@ const IncomeExpenseList = ({
                   </div>
                 </TableCell>
 
-                {/* Ngày */}
+                {/* Thao tác - 3 icon buttons */}
                 <TableCell>
-                  {voucher.voucher_date
-                    ? format(new Date(voucher.voucher_date), 'dd/MM/yyyy', { locale: vi })
-                    : '—'}
+                  <div className="flex items-center gap-1">
+                    {/* Duyệt / Bỏ duyệt */}
+                    {isApproved ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                        onClick={() => onUnapprove(voucher.id)}
+                        title="Bỏ duyệt"
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-50"
+                        onClick={() => onApprove(voucher.id)}
+                        title="Duyệt"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Chỉnh sửa */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                      disabled={!editable}
+                      onClick={() => onEdit(voucher)}
+                      title="Chỉnh sửa"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+
+                    {/* Xóa */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      disabled={!editable}
+                      onClick={() => onDelete(voucher.id)}
+                      title="Xóa"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </TableCell>
 
-                {/* Loại (Thu/Chi badge) */}
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={
-                      voucher.type === 'INCOME'
-                        ? 'bg-green-100 text-green-800 border-green-200'
-                        : 'bg-red-100 text-red-800 border-red-200'
-                    }
-                  >
-                    {voucher.type === 'INCOME' ? 'Phiếu thu' : 'Phiếu chi'}
-                  </Badge>
-                </TableCell>
-
-                {/* Tên phiếu */}
+                {/* Tên */}
                 <TableCell className="max-w-[200px] truncate">
                   {voucher.name}
                 </TableCell>
 
-                {/* Căn hộ */}
-                <TableCell>{voucher.building_name || '—'}</TableCell>
-
-                {/* Phòng */}
-                <TableCell>{voucher.room_name || '—'}</TableCell>
-
-                {/* Khách hàng */}
-                <TableCell>{voucher.tenant_name || '—'}</TableCell>
-
-                {/* Tổng tiền (format VND) */}
+                {/* Số tiền (có dấu + màu) */}
                 <TableCell className="text-right">
                   <span
                     className={
@@ -171,56 +183,26 @@ const IncomeExpenseList = ({
                         : 'text-red-600 font-medium'
                     }
                   >
+                    {voucher.type === 'INCOME' ? '+' : '-'}
                     {formatVND(voucher.total_amount)}
                   </span>
                 </TableCell>
 
-                {/* Thao tác */}
+                {/* Tòa nhà */}
+                <TableCell>{voucher.building_name || '—'}</TableCell>
+
+                {/* Ngày thu/chi */}
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-
-                      {/* Duyệt / Bỏ duyệt */}
-                      {isApproved ? (
-                        <DropdownMenuItem onClick={() => onUnapprove(voucher.id)}>
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Bỏ duyệt
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onClick={() => onApprove(voucher.id)}>
-                          <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                          Duyệt
-                        </DropdownMenuItem>
-                      )}
-
-                      {/* Cập nhật - disabled khi APPROVED */}
-                      <DropdownMenuItem
-                        disabled={!editable}
-                        onClick={() => onEdit(voucher)}
-                      >
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Cập nhật
-                      </DropdownMenuItem>
-
-                      {/* Xoá - disabled khi APPROVED */}
-                      <DropdownMenuItem
-                        disabled={!editable}
-                        className={editable ? 'text-red-600' : ''}
-                        onClick={() => onDelete(voucher.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Xoá
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {voucher.voucher_date
+                    ? format(new Date(voucher.voucher_date), 'dd/MM/yyyy', { locale: vi })
+                    : '—'}
                 </TableCell>
+
+                {/* Người nhận/trả */}
+                <TableCell>{voucher.payer_name || '—'}</TableCell>
+
+                {/* Tài khoản */}
+                <TableCell>{voucher.account_name || '—'}</TableCell>
               </TableRow>
             );
           })}

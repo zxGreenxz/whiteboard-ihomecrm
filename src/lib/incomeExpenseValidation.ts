@@ -6,7 +6,12 @@ export const itemSchema = z.object({
   description: z.string().nullable().optional(),
   quantity: z.number().int().min(1, 'Số lượng phải >= 1'),
   unit_price: z.number().min(0, 'Đơn giá phải >= 0'),
-});
+  start_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu'),
+  end_date: z.string().min(1, 'Vui lòng chọn ngày kết thúc'),
+}).refine(
+  (data) => data.start_date <= data.end_date,
+  { message: 'Ngày bắt đầu không được sau ngày kết thúc', path: ['end_date'] }
+);
 
 // Schema cho form Phiếu thu/chi
 export const incomeExpenseFormSchema = z.object({
@@ -18,8 +23,13 @@ export const incomeExpenseFormSchema = z.object({
   room_id: z.string().nullable().optional(),
   bed_id: z.string().nullable().optional(),
   tenant_id: z.string().nullable().optional(),
+  contract_id: z.string().nullable().optional(),
+  payer_name: z.string().min(1, 'Vui lòng nhập tên người nộp'),
+  account_id: z.string().min(1, 'Vui lòng chọn tài khoản'),
   voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
   notes: z.string().nullable().optional(),
+  business_result_accounting: z.boolean().default(false),
+  attachments: z.array(z.string()).default([]),
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
 });
 

@@ -6,14 +6,18 @@ import type { IncomeExpenseFormValues, ExcelImportRow } from "@/lib/incomeExpens
 // --- Types ---
 
 export interface IncomeExpenseFilters {
+  area_id?: string | null;
   building_id?: string | null;
   room_id?: string | null;
+  bed_id?: string | null;
+  account_id?: string | null;
   cash_book_id?: string | null;
   type?: "INCOME" | "EXPENSE" | null;
   start_date?: string | null;
   end_date?: string | null;
   approval_status?: "UNAPPROVED" | "APPROVED" | null;
 }
+
 
 export interface IncomeExpenseItem {
   id: string;
@@ -24,7 +28,10 @@ export interface IncomeExpenseItem {
   quantity: number;
   unit_price: number;
   amount: number;
+  start_date: string | null;
+  end_date: string | null;
 }
+
 
 export interface IncomeExpenseWithRelations {
   id: string;
@@ -46,7 +53,25 @@ export interface IncomeExpenseWithRelations {
   approved_by: string | null;
   approved_at: string | null;
   notes: string | null;
+  payer_name: string | null;
+  account_id: string | null;
+  account_name: string | null;
+  contract_id: string | null;
+  attachments: string[];
+  business_result_accounting: boolean;
   items: IncomeExpenseItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Account {
+  id: string;
+  user_id: string;
+  name: string;
+  type: "bank" | "cash";
+  bank_name: string | null;
+  account_number: string | null;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -62,8 +87,11 @@ export const useIncomeExpenses = (
     queryKey: [
       "income-expenses",
       "list",
+      filters.area_id,
       filters.building_id,
       filters.room_id,
+      filters.bed_id,
+      filters.account_id,
       filters.type,
       filters.start_date,
       filters.end_date,
@@ -87,18 +115,40 @@ export const useIncomeExpenses = (
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),
           bed:beds!income_expenses_bed_id_fkey ( id, name ),
-          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name )
+          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
+          account:accounts!income_expenses_account_id_fkey ( id, name )
         `,
           { count: "exact" }
         )
         .is("deleted_at", null);
 
       // Apply filters
+      // For area_id, we need to get building IDs belonging to the area first
+      if (filters.area_id) {
+        const { data: areaBuildings } = await supabase
+          .from("buildings" as any)
+          .select("id")
+          .eq("area_id", filters.area_id)
+          .is("deleted_at", null);
+        const areaBuildingIds = (areaBuildings || []).map((b: any) => b.id);
+        if (areaBuildingIds.length > 0) {
+          query = query.in("building_id", areaBuildingIds);
+        } else {
+          // No buildings in this area, return empty
+          return { data: [], totalCount: 0 };
+        }
+      }
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
       }
       if (filters.room_id) {
         query = query.eq("room_id", filters.room_id);
+      }
+      if (filters.bed_id) {
+        query = query.eq("bed_id", filters.bed_id);
+      }
+      if (filters.account_id) {
+        query = query.eq("account_id", filters.account_id);
       }
       if (filters.type) {
         query = query.eq("type", filters.type);
@@ -169,6 +219,8 @@ export const useIncomeExpenses = (
             quantity: item.quantity,
             unit_price: Number(item.unit_price),
             amount: Number(item.amount),
+            start_date: item.start_date ?? null,
+            end_date: item.end_date ?? null,
           });
         }
       }
@@ -195,6 +247,12 @@ export const useIncomeExpenses = (
           approved_by: v.approved_by,
           approved_at: v.approved_at,
           notes: v.notes,
+          payer_name: v.payer_name ?? null,
+          account_id: v.account_id ?? null,
+          account_name: v.account?.name ?? null,
+          contract_id: v.contract_id ?? null,
+          attachments: v.attachments ?? [],
+          business_result_accounting: v.business_result_accounting ?? false,
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
@@ -235,8 +293,11 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
     queryKey: [
       "income-expenses",
       "stats",
+      filters.area_id,
       filters.building_id,
       filters.room_id,
+      filters.bed_id,
+      filters.account_id,
       filters.type,
       filters.start_date,
       filters.end_date,
@@ -246,7 +307,6 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       totalIncome: number;
       totalExpense: number;
       difference: number;
-      totalTransactions: number;
     }> => {
       let query = supabase
         .from("income_expenses" as any)
@@ -254,11 +314,31 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
         .is("deleted_at", null);
 
       // Apply same filters as useIncomeExpenses
+      // For area_id, get building IDs belonging to the area first
+      if (filters.area_id) {
+        const { data: areaBuildings } = await supabase
+          .from("buildings" as any)
+          .select("id")
+          .eq("area_id", filters.area_id)
+          .is("deleted_at", null);
+        const areaBuildingIds = (areaBuildings || []).map((b: any) => b.id);
+        if (areaBuildingIds.length > 0) {
+          query = query.in("building_id", areaBuildingIds);
+        } else {
+          return { totalIncome: 0, totalExpense: 0, difference: 0 };
+        }
+      }
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
       }
       if (filters.room_id) {
         query = query.eq("room_id", filters.room_id);
+      }
+      if (filters.bed_id) {
+        query = query.eq("bed_id", filters.bed_id);
+      }
+      if (filters.account_id) {
+        query = query.eq("account_id", filters.account_id);
       }
       if (filters.type) {
         query = query.eq("type", filters.type);
@@ -281,7 +361,6 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
           totalIncome: 0,
           totalExpense: 0,
           difference: 0,
-          totalTransactions: 0,
         };
       }
 
@@ -302,7 +381,6 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
         totalIncome,
         totalExpense,
         difference: totalIncome - totalExpense,
-        totalTransactions: rows.length,
       };
     },
   });
@@ -348,6 +426,11 @@ export const useCreateIncomeExpense = () => {
           room_id: input.room_id ?? null,
           bed_id: input.bed_id ?? null,
           tenant_id: input.tenant_id ?? null,
+          payer_name: input.payer_name ?? null,
+          account_id: input.account_id ?? null,
+          contract_id: input.contract_id ?? null,
+          attachments: input.attachments ?? [],
+          business_result_accounting: input.business_result_accounting ?? false,
           voucher_date: input.voucher_date,
           notes: input.notes ?? null,
         })
@@ -366,6 +449,8 @@ export const useCreateIncomeExpense = () => {
         description: item.description ?? null,
         quantity: item.quantity,
         unit_price: item.unit_price,
+        start_date: item.start_date ?? null,
+        end_date: item.end_date ?? null,
       }));
 
       const { error: itemsError } = await supabase
@@ -407,6 +492,11 @@ export const useUpdateIncomeExpense = () => {
           room_id: data.room_id ?? null,
           bed_id: data.bed_id ?? null,
           tenant_id: data.tenant_id ?? null,
+          payer_name: data.payer_name ?? null,
+          account_id: data.account_id ?? null,
+          contract_id: data.contract_id ?? null,
+          attachments: data.attachments ?? [],
+          business_result_accounting: data.business_result_accounting ?? false,
           voucher_date: data.voucher_date,
           notes: data.notes ?? null,
         })
@@ -444,6 +534,8 @@ export const useUpdateIncomeExpense = () => {
         description: item.description ?? null,
         quantity: item.quantity,
         unit_price: item.unit_price,
+        start_date: item.start_date ?? null,
+        end_date: item.end_date ?? null,
       }));
 
       const { error: itemsError } = await supabase

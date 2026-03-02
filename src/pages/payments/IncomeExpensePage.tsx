@@ -30,8 +30,11 @@ import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import { usePagination } from "@/hooks/usePagination";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
+  area_id: null,
   building_id: null,
   room_id: null,
+  bed_id: null,
+  account_id: null,
   cash_book_id: null,
   type: null,
   start_date: null,
@@ -133,7 +136,7 @@ const IncomeExpensePage = () => {
   return (
     <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
       <div className="space-y-4">
-        {/* Toolbar: Action buttons + Search + Filter toggle */}
+        {/* Toolbar: Action buttons + Search */}
         <div className="flex items-center gap-2">
           <Button onClick={handleAddVoucher}>
             <Plus className="h-4 w-4 mr-2" />
@@ -143,10 +146,6 @@ const IncomeExpensePage = () => {
             <Upload className="h-4 w-4 mr-2" />
             Import
           </Button>
-          <IncomeExpenseFiltersBar
-            filters={filters}
-            onChange={handleFiltersChange}
-          />
           <div className="relative flex-1 max-w-sm ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -158,6 +157,12 @@ const IncomeExpensePage = () => {
           </div>
         </div>
 
+        {/* Inline Filters */}
+        <IncomeExpenseFiltersBar
+          filters={filters}
+          onChange={handleFiltersChange}
+        />
+
         {/* Stats */}
         <IncomeExpenseStats
           stats={
@@ -165,7 +170,6 @@ const IncomeExpensePage = () => {
               totalIncome: 0,
               totalExpense: 0,
               difference: 0,
-              totalTransactions: 0,
             }
           }
           isLoading={isStatsLoading}

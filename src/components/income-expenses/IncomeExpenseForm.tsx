@@ -24,10 +24,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   incomeExpenseFormSchema,
   type IncomeExpenseFormValues,
@@ -41,9 +41,12 @@ import {
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useBeds } from '@/hooks/useBeds';
-import { useTenantsLegacy } from '@/hooks/useTenants';
+import { useAccounts } from '@/hooks/useAccounts';
+import { useContractsLegacy } from '@/hooks/useContracts';
 import type { IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
+import AttachmentUpload from './AttachmentUpload';
+import { useAuth } from '@/hooks/useAuth';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -58,6 +61,8 @@ interface FormItemRow {
   description: string | null;
   quantity: number;
   unit_price: number;
+  start_date: string;
+  end_date: string;
 }
 
 const IncomeExpenseForm = ({
@@ -69,6 +74,7 @@ const IncomeExpenseForm = ({
   const isEditing = !!voucher;
   const createMutation = useCreateIncomeExpense();
   const updateMutation = useUpdateIncomeExpense();
+  const { data: authUser } = useAuth();
 
   // Cascade dropdown state
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | undefined>(undefined);
@@ -84,7 +90,10 @@ const IncomeExpenseForm = ({
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(selectedBuildingId);
   const { data: beds = [] } = useBeds(selectedRoomId);
-  const { data: tenants = [] } = useTenantsLegacy();
+  const { data: accounts = [] } = useAccounts();
+  const { data: contracts = [] } = useContractsLegacy(
+    selectedRoomId ? { room_id: selectedRoomId, status: 'ACTIVE' } : undefined
+  );
 
   const form = useForm<IncomeExpenseFormValues>({
     resolver: zodResolver(incomeExpenseFormSchema),
@@ -95,8 +104,13 @@ const IncomeExpenseForm = ({
       room_id: null,
       bed_id: null,
       tenant_id: null,
+      contract_id: null,
+      payer_name: '',
+      account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
       notes: '',
+      business_result_accounting: false,
+      attachments: [],
       items: [],
     },
   });
@@ -121,6 +135,8 @@ const IncomeExpenseForm = ({
       setSelectedBuildingId(voucher.building_id);
       setSelectedRoomId(voucher.room_id ?? undefined);
 
+      const today = new Date().toISOString().split('T')[0];
+
       form.reset({
         type: voucher.type,
         name: voucher.name,
@@ -128,13 +144,20 @@ const IncomeExpenseForm = ({
         room_id: voucher.room_id ?? null,
         bed_id: voucher.bed_id ?? null,
         tenant_id: voucher.tenant_id ?? null,
+        contract_id: voucher.contract_id ?? null,
+        payer_name: voucher.payer_name ?? '',
+        account_id: voucher.account_id ?? '',
         voucher_date: voucher.voucher_date,
         notes: voucher.notes ?? '',
+        business_result_accounting: voucher.business_result_accounting ?? false,
+        attachments: voucher.attachments ?? [],
         items: voucher.items.map((item) => ({
           income_expense_type_id: item.income_expense_type_id,
           description: item.description,
           quantity: item.quantity,
           unit_price: item.unit_price,
+          start_date: item.start_date ?? today,
+          end_date: item.end_date ?? today,
         })),
       });
 
@@ -145,6 +168,8 @@ const IncomeExpenseForm = ({
           description: item.description,
           quantity: item.quantity,
           unit_price: item.unit_price,
+          start_date: item.start_date ?? today,
+          end_date: item.end_date ?? today,
         }))
       );
     } else {
@@ -157,8 +182,13 @@ const IncomeExpenseForm = ({
         room_id: null,
         bed_id: null,
         tenant_id: null,
+        contract_id: null,
+        payer_name: '',
+        account_id: '',
         voucher_date: new Date().toISOString().split('T')[0],
         notes: '',
+        business_result_accounting: false,
+        attachments: [],
         items: [],
       });
       setItemRows([]);
@@ -175,26 +205,32 @@ const IncomeExpenseForm = ({
     form.setValue('tenant_id', null);
   };
 
-  // Cascade: when room changes → clear bed, tenant
+  // Cascade: when room changes → clear bed, tenant, contract
   const handleRoomChange = (roomId: string) => {
     const value = roomId === '__none__' ? null : roomId;
     setSelectedRoomId(value ?? undefined);
     form.setValue('room_id', value);
     form.setValue('bed_id', null);
     form.setValue('tenant_id', null);
+    form.setValue('contract_id', null);
   };
 
   const handleBedChange = (bedId: string) => {
     form.setValue('bed_id', bedId === '__none__' ? null : bedId);
   };
 
-  const handleTenantChange = (tenantId: string) => {
-    form.setValue('tenant_id', tenantId === '__none__' ? null : tenantId);
+  const handleContractChange = (contractId: string) => {
+    form.setValue('contract_id', contractId === '__none__' ? null : contractId);
+  };
+
+  const handleAccountChange = (accountId: string) => {
+    form.setValue('account_id', accountId);
   };
 
   // Item selector callback
   const handleItemsSelected = (types: IncomeExpenseType[]) => {
     const existingIds = new Set(itemRows.map((r) => r.income_expense_type_id));
+    const today = new Date().toISOString().split('T')[0];
     const newRows: FormItemRow[] = [];
 
     for (const t of types) {
@@ -205,6 +241,8 @@ const IncomeExpenseForm = ({
           description: null,
           quantity: 1,
           unit_price: 0,
+          start_date: today,
+          end_date: today,
         });
       }
     }
@@ -226,6 +264,8 @@ const IncomeExpenseForm = ({
         description: r.description,
         quantity: r.quantity,
         unit_price: r.unit_price,
+        start_date: r.start_date,
+        end_date: r.end_date,
       })),
       { shouldValidate: form.formState.isSubmitted }
     );
@@ -248,6 +288,20 @@ const IncomeExpenseForm = ({
   const handleItemPriceChange = (index: number, value: number) => {
     const updated = [...itemRows];
     updated[index] = { ...updated[index], unit_price: value };
+    setItemRows(updated);
+    syncItemsToForm(updated);
+  };
+
+  const handleItemStartDateChange = (index: number, value: string) => {
+    const updated = [...itemRows];
+    updated[index] = { ...updated[index], start_date: value };
+    setItemRows(updated);
+    syncItemsToForm(updated);
+  };
+
+  const handleItemEndDateChange = (index: number, value: string) => {
+    const updated = [...itemRows];
+    updated[index] = { ...updated[index], end_date: value };
     setItemRows(updated);
     syncItemsToForm(updated);
   };
@@ -283,11 +337,9 @@ const IncomeExpenseForm = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {isEditing ? 'Sửa phiếu thu/chi' : 'Thêm phiếu thu/chi'}
-            </DialogTitle>
+            <DialogTitle>PHIẾU THU/CHI</DialogTitle>
           </DialogHeader>
 
           {isApproved && (
@@ -298,202 +350,244 @@ const IncomeExpenseForm = ({
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {/* Step 1: Voucher type radio */}
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Loại phiếu *</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        className="flex gap-4"
+              {/* Step 1: Voucher type tab toggle */}
+              <Tabs
+                value={form.watch('type')}
+                onValueChange={(value) => form.setValue('type', value as 'INCOME' | 'EXPENSE')}
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger
+                    value="INCOME"
+                    disabled={!canEdit}
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  >
+                    <ArrowUp className="h-4 w-4 mr-1" />
+                    Phiếu thu
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="EXPENSE"
+                    disabled={!canEdit}
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  >
+                    <ArrowDown className="h-4 w-4 mr-1" />
+                    Phiếu chi
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {/* Step 2: Thông tin chung - Grid layout */}
+              {/* Row 1: Tòa nhà, Phòng, Giường */}
+              <div className="grid grid-cols-3 gap-3">
+                <FormField
+                  control={form.control}
+                  name="building_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tòa nhà *</FormLabel>
+                      <Select
+                        onValueChange={handleBuildingChange}
+                        value={field.value || ''}
                         disabled={!canEdit}
                       >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="INCOME" id="type-income" />
-                          <Label htmlFor="type-income" className="cursor-pointer">
-                            Phiếu thu
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="EXPENSE" id="type-expense" />
-                          <Label htmlFor="type-expense" className="cursor-pointer">
-                            Phiếu chi
-                          </Label>
-                        </div>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn tòa nhà" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {buildings.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {/* Step 2: Form fields */}
-              {/* Building (required) */}
-              <FormField
-                control={form.control}
-                name="building_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Căn hộ *</FormLabel>
-                    <Select
-                      onValueChange={handleBuildingChange}
-                      value={field.value || ''}
-                      disabled={!canEdit}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn căn hộ" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {buildings.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="room_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phòng</FormLabel>
+                      <Select
+                        onValueChange={handleRoomChange}
+                        value={field.value ?? '__none__'}
+                        disabled={!canEdit || !selectedBuildingId}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn phòng" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                          {rooms.map((r) => (
+                            <SelectItem key={r.id} value={r.id}>
+                              {r.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {/* Room (cascade from building) */}
-              <FormField
-                control={form.control}
-                name="room_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phòng</FormLabel>
-                    <Select
-                      onValueChange={handleRoomChange}
-                      value={field.value ?? '__none__'}
-                      disabled={!canEdit || !selectedBuildingId}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn phòng" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                        {rooms.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="bed_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Giường</FormLabel>
+                      <Select
+                        onValueChange={handleBedChange}
+                        value={field.value ?? '__none__'}
+                        disabled={!canEdit || !selectedRoomId}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn giường" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                          {beds.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-              {/* Bed (cascade from room) */}
-              <FormField
-                control={form.control}
-                name="bed_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Giường</FormLabel>
-                    <Select
-                      onValueChange={handleBedChange}
-                      value={field.value ?? '__none__'}
-                      disabled={!canEdit || !selectedRoomId}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn giường" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                        {beds.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Tenant */}
-              <FormField
-                control={form.control}
-                name="tenant_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Khách hàng</FormLabel>
-                    <Select
-                      onValueChange={handleTenantChange}
-                      value={field.value ?? '__none__'}
-                      disabled={!canEdit}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn khách hàng" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                        {tenants.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.full_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Voucher name (required) */}
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {voucherType === 'EXPENSE' ? 'Tên phiếu chi' : 'Tên phiếu thu'} *
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="VD: Thu tiền phòng tháng 7"
-                        {...field}
+              {/* Row 2: Hợp đồng, Tên phiếu, Tên người nộp */}
+              <div className="grid grid-cols-3 gap-3">
+                <FormField
+                  control={form.control}
+                  name="contract_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hợp đồng</FormLabel>
+                      <Select
+                        onValueChange={handleContractChange}
+                        value={field.value ?? '__none__'}
                         disabled={!canEdit}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn hợp đồng" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                          {contracts.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.room?.name ? `${c.room.name} - ${c.tenant?.full_name ?? 'N/A'}` : c.id.slice(0, 8)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {/* Voucher date (required) */}
-              <FormField
-                control={form.control}
-                name="voucher_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {voucherType === 'EXPENSE' ? 'Ngày chi' : 'Ngày thu'} *
-                    </FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} disabled={!canEdit} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {voucherType === 'EXPENSE' ? 'Tên phiếu chi' : 'Tên phiếu thu'} *
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="VD: Thu tiền phòng tháng 7"
+                          {...field}
+                          disabled={!canEdit}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {/* Notes */}
+                <FormField
+                  control={form.control}
+                  name="payer_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tên người nộp *</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Nhập tên người nộp"
+                          {...field}
+                          disabled={!canEdit}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Row 3: Tài khoản, Ngày thực thu/chi */}
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="account_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tài khoản *</FormLabel>
+                      <Select
+                        onValueChange={handleAccountChange}
+                        value={field.value || ''}
+                        disabled={!canEdit}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn tài khoản" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {accounts.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name}{a.bank_name ? ` (${a.bank_name})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="voucher_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {voucherType === 'EXPENSE' ? 'Ngày thực chi' : 'Ngày thực thu'} *
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} disabled={!canEdit} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Row 4: Ghi chú */}
               <FormField
                 control={form.control}
                 name="notes"
@@ -515,6 +609,26 @@ const IncomeExpenseForm = ({
 
               {/* Step 3: Items */}
               <div className="space-y-3">
+                {/* Business result accounting toggle */}
+                <FormField
+                  control={form.control}
+                  name="business_result_accounting"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                      <FormLabel className="text-sm font-medium">
+                        Hạch toán kết quả kinh doanh?
+                      </FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={!canEdit}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex items-center justify-between">
                   <FormLabel>Hạng mục</FormLabel>
                   {canEdit && (
@@ -543,82 +657,60 @@ const IncomeExpenseForm = ({
                   </p>
                 ) : (
                   <div className="space-y-2">
+                    {/* Header row */}
+                    <div className="grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 text-xs text-muted-foreground font-medium px-1">
+                      <span>Hạng mục</span>
+                      <span>Số tiền</span>
+                      <span>Ngày bắt đầu</span>
+                      <span>Ngày kết thúc</span>
+                      <span></span>
+                    </div>
                     {itemRows.map((item, index) => (
                       <div
                         key={`${item.income_expense_type_id}-${index}`}
-                        className="flex items-center gap-2 rounded-lg border p-3"
+                        className="grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 items-center rounded-lg border p-2"
                       >
-                        <div className="flex-1 min-w-0 space-y-2">
-                          <p className="text-sm font-medium truncate">
-                            {item.type_name}
-                          </p>
-                          <div>
-                            <label className="text-xs text-muted-foreground">
-                              Mô tả
-                            </label>
-                            <Input
-                              placeholder="Mô tả hạng mục..."
-                              value={item.description ?? ''}
-                              onChange={(e) =>
-                                handleItemDescriptionChange(index, e.target.value)
-                              }
-                              disabled={!canEdit}
-                              className="h-8"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1">
-                              <label className="text-xs text-muted-foreground">
-                                Số lượng
-                              </label>
-                              <Input
-                                type="number"
-                                min={1}
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  handleItemQuantityChange(
-                                    index,
-                                    parseInt(e.target.value) || 1
-                                  )
-                                }
-                                disabled={!canEdit}
-                                className="h-8"
-                              />
-                            </div>
-                            <div className="flex-1">
-                              <label className="text-xs text-muted-foreground">
-                                Đơn giá
-                              </label>
-                              <Input
-                                type="number"
-                                min={0}
-                                value={item.unit_price}
-                                onChange={(e) =>
-                                  handleItemPriceChange(
-                                    index,
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                                disabled={!canEdit}
-                                className="h-8"
-                              />
-                            </div>
-                            <div className="flex-1">
-                              <label className="text-xs text-muted-foreground">
-                                Thành tiền
-                              </label>
-                              <p className="text-sm font-medium h-8 flex items-center">
-                                {(item.quantity * item.unit_price).toLocaleString('vi-VN')}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
+                        <p className="text-sm font-medium truncate">
+                          {item.type_name}
+                        </p>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.unit_price}
+                          onChange={(e) =>
+                            handleItemPriceChange(
+                              index,
+                              parseFloat(e.target.value) || 0
+                            )
+                          }
+                          disabled={!canEdit}
+                          className="h-8"
+                          placeholder="Số tiền"
+                        />
+                        <Input
+                          type="date"
+                          value={item.start_date}
+                          onChange={(e) =>
+                            handleItemStartDateChange(index, e.target.value)
+                          }
+                          disabled={!canEdit}
+                          className="h-8"
+                        />
+                        <Input
+                          type="date"
+                          value={item.end_date}
+                          onChange={(e) =>
+                            handleItemEndDateChange(index, e.target.value)
+                          }
+                          disabled={!canEdit}
+                          className="h-8"
+                        />
                         {canEdit && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="shrink-0 text-destructive hover:text-destructive"
+                            className="shrink-0 h-8 w-8 text-destructive hover:text-destructive"
                             onClick={() => handleRemoveItem(index)}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -639,6 +731,26 @@ const IncomeExpenseForm = ({
                   </div>
                 )}
               </div>
+
+              {/* Đính kèm */}
+              <FormField
+                control={form.control}
+                name="attachments"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Đính kèm</FormLabel>
+                    <FormControl>
+                      <AttachmentUpload
+                        attachments={field.value ?? []}
+                        onChange={field.onChange}
+                        disabled={!canEdit}
+                        userId={authUser?.id ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Action buttons */}
               <div className="flex justify-end gap-3 pt-4">

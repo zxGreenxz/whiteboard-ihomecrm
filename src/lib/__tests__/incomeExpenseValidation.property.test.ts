@@ -9,15 +9,36 @@ import { incomeExpenseFormSchema } from '../incomeExpenseValidation';
 
 const voucherTypeArb = fc.constantFrom('INCOME' as const, 'EXPENSE' as const);
 const voucherDateArb = fc
-  .date({ min: new Date(2020, 0, 1), max: new Date(2030, 11, 31) })
-  .map((d) => d.toISOString().split('T')[0]);
+  .integer({ min: 0, max: 3650 })
+  .map((offset) => {
+    const base = new Date(2020, 0, 1);
+    const d = new Date(base.getTime() + offset * 86400000);
+    return d.toISOString().split('T')[0];
+  });
+
+const validDatePairArb = fc
+  .tuple(
+    fc.integer({ min: 0, max: 3650 }), // offset from 2020-01-01 for start
+    fc.integer({ min: 0, max: 365 }),   // additional offset for end (ensures end >= start)
+  )
+  .map(([startOffset, endOffset]) => {
+    const base = new Date(2020, 0, 1);
+    const startDate = new Date(base.getTime() + startOffset * 86400000);
+    const endDate = new Date(startDate.getTime() + endOffset * 86400000);
+    return {
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0],
+    };
+  });
 
 const validItemArb = fc.record({
   income_expense_type_id: fc.uuid(),
   description: fc.option(fc.string({ maxLength: 200 }), { nil: null }),
   quantity: fc.integer({ min: 1, max: 10000 }),
   unit_price: fc.float({ min: 0, max: 1_000_000_000, noNaN: true }),
-});
+}).chain((item) =>
+  validDatePairArb.map((dates) => ({ ...item, ...dates }))
+);
 
 const validFormValuesArb = fc.record({
   type: voucherTypeArb,
@@ -26,8 +47,13 @@ const validFormValuesArb = fc.record({
   room_id: fc.option(fc.uuid(), { nil: null }),
   bed_id: fc.option(fc.uuid(), { nil: null }),
   tenant_id: fc.option(fc.uuid(), { nil: null }),
+  contract_id: fc.option(fc.uuid(), { nil: null }),
+  payer_name: fc.string({ minLength: 1, maxLength: 100 }),
+  account_id: fc.string({ minLength: 1, maxLength: 100 }),
   voucher_date: voucherDateArb,
   notes: fc.option(fc.string({ maxLength: 500 }), { nil: null }),
+  business_result_accounting: fc.boolean(),
+  attachments: fc.array(fc.string({ minLength: 1 }), { maxLength: 5 }),
   items: fc.array(validItemArb, { minLength: 1, maxLength: 10 }),
 });
 
@@ -81,14 +107,21 @@ function makeValidBase() {
     room_id: null,
     bed_id: null,
     tenant_id: null,
+    contract_id: null,
+    payer_name: 'Nguyen Van A',
+    account_id: '00000000-0000-0000-0000-000000000003',
     voucher_date: '2024-01-15',
     notes: null,
+    business_result_accounting: false,
+    attachments: [],
     items: [
       {
         income_expense_type_id: '00000000-0000-0000-0000-000000000002',
         description: null,
         quantity: 1,
         unit_price: 100,
+        start_date: '2024-01-15',
+        end_date: '2024-01-15',
       },
     ],
   };

@@ -1,23 +1,17 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  TrendingUp,
-  TrendingDown,
-  ArrowUpDown,
-  FileText,
-} from "lucide-react";
+import { Plus, Minus, FileText } from "lucide-react";
 
 interface IncomeExpenseStatsProps {
   stats: {
     totalIncome: number;
     totalExpense: number;
     difference: number;
-    totalTransactions: number;
   };
   isLoading?: boolean;
 }
 
-function formatVND(amount: number): string {
+export function formatVND(amount: number): string {
   return amount.toLocaleString("vi-VN") + " đ";
 }
 
@@ -25,109 +19,65 @@ export function IncomeExpenseStats({
   stats,
   isLoading,
 }: IncomeExpenseStatsProps) {
-  const isDifferencePositive = stats.difference >= 0;
+  const statCards = [
+    {
+      label: "Thu",
+      value: stats.totalIncome,
+      icon: Plus,
+      iconBg: "bg-emerald-100",
+      iconColor: "text-emerald-600",
+      valueColor: "text-emerald-600",
+      borderColor: "border-l-emerald-500",
+    },
+    {
+      label: "Chi",
+      value: stats.totalExpense,
+      icon: Minus,
+      iconBg: "bg-red-100",
+      iconColor: "text-red-600",
+      valueColor: "text-red-600",
+      borderColor: "border-l-red-500",
+    },
+    {
+      label: "Thu - chi",
+      value: stats.difference,
+      icon: FileText,
+      iconBg: "bg-blue-100",
+      iconColor: "text-blue-600",
+      valueColor: "text-blue-600",
+      borderColor: "border-l-blue-500",
+    },
+  ];
 
   return (
-    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-      {/* Tổng thu */}
-      <Card className="border-l-4 border-l-emerald-500 hover:shadow-md transition-shadow">
-        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Tổng thu
-          </CardTitle>
-          <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
-            <TrendingUp className="h-5 w-5 text-emerald-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-8 w-24" />
-          ) : (
-            <div className="text-2xl font-bold text-emerald-600">
-              {formatVND(stats.totalIncome)}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Tổng chi */}
-      <Card className="border-l-4 border-l-red-500 hover:shadow-md transition-shadow">
-        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Tổng chi
-          </CardTitle>
-          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
-            <TrendingDown className="h-5 w-5 text-red-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-8 w-24" />
-          ) : (
-            <div className="text-2xl font-bold text-red-600">
-              {formatVND(stats.totalExpense)}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Chênh lệch */}
-      <Card
-        className={`border-l-4 hover:shadow-md transition-shadow ${
-          isDifferencePositive ? "border-l-emerald-500" : "border-l-red-500"
-        }`}
-      >
-        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Chênh lệch
-          </CardTitle>
-          <div
-            className={`h-10 w-10 rounded-full flex items-center justify-center ${
-              isDifferencePositive ? "bg-emerald-100" : "bg-red-100"
-            }`}
+    <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+      {statCards.map((card) => {
+        const Icon = card.icon;
+        return (
+          <Card
+            key={card.label}
+            className={`border-l-4 ${card.borderColor} hover:shadow-md transition-shadow`}
           >
-            <ArrowUpDown
-              className={`h-5 w-5 ${
-                isDifferencePositive ? "text-emerald-600" : "text-red-600"
-              }`}
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-8 w-24" />
-          ) : (
-            <div
-              className={`text-2xl font-bold ${
-                isDifferencePositive ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
-              {formatVND(stats.difference)}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Tổng số phiếu */}
-      <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
-        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Tổng số phiếu
-          </CardTitle>
-          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-            <FileText className="h-5 w-5 text-blue-600" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-8 w-16" />
-          ) : (
-            <div className="text-3xl font-bold text-foreground">
-              {stats.totalTransactions.toLocaleString("vi-VN")}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            <CardContent className="flex items-center gap-4 p-4">
+              <div
+                className={`h-12 w-12 rounded-full ${card.iconBg} flex items-center justify-center shrink-0`}
+              >
+                <Icon className={`h-6 w-6 ${card.iconColor}`} />
+              </div>
+              <div className="min-w-0">
+                {isLoading ? (
+                  <Skeleton className="h-7 w-32" />
+                ) : (
+                  <div className={`text-xl font-bold ${card.valueColor} truncate`}>
+                    {formatVND(card.value)}
+                  </div>
+                )}
+                <div className="text-sm text-muted-foreground">{card.label}</div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -7,10 +6,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { SlidersHorizontal, X } from "lucide-react";
+import { useBeds } from "@/hooks/useBeds";
+import { useAccounts } from "@/hooks/useAccounts";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
 interface IncomeExpenseFiltersProps {
@@ -18,261 +18,169 @@ interface IncomeExpenseFiltersProps {
   onChange: (filters: IncomeExpenseFilters) => void;
 }
 
-const TYPE_OPTIONS = [
-  { value: "INCOME", label: "Phiếu thu" },
-  { value: "EXPENSE", label: "Phiếu chi" },
-] as const;
-
-const APPROVAL_STATUS_OPTIONS = [
-  { value: "APPROVED", label: "Đã duyệt" },
-  { value: "UNAPPROVED", label: "Chưa duyệt" },
-] as const;
-
-const EMPTY_FILTERS: IncomeExpenseFilters = {
-  building_id: null,
-  room_id: null,
-  cash_book_id: null,
-  type: null,
-  start_date: null,
-  end_date: null,
-  approval_status: null,
-};
-
 export function IncomeExpenseFiltersBar({
   filters,
   onChange,
 }: IncomeExpenseFiltersProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [localFilters, setLocalFilters] = useState<IncomeExpenseFilters>(filters);
+  const { data: areas } = useAreas();
+  const { data: allBuildings } = useBuildings();
+  const { data: rooms } = useRooms(filters.building_id ?? undefined);
+  const { data: beds } = useBeds(filters.room_id ?? undefined);
+  const { data: accounts } = useAccounts();
 
-  const { data: buildings } = useBuildings();
-  const { data: rooms } = useRooms(localFilters.building_id ?? undefined);
+  // Filter buildings by selected area
+  const filteredBuildings = filters.area_id
+    ? (allBuildings || []).filter((b) => b.area_id === filters.area_id)
+    : allBuildings || [];
 
-  // Sync local state when parent filters change (e.g. external reset)
-  useEffect(() => {
-    setLocalFilters(filters);
-  }, [filters]);
-
-  const updateLocal = (patch: Partial<IncomeExpenseFilters>) => {
-    setLocalFilters((prev) => ({ ...prev, ...patch }));
+  const handleChange = (patch: Partial<IncomeExpenseFilters>) => {
+    onChange({ ...filters, ...patch });
   };
 
-  const applyFilters = () => {
-    onChange(localFilters);
+  const handleAreaChange = (value: string) => {
+    const areaId = value === "ALL" ? null : value;
+    handleChange({
+      area_id: areaId,
+      building_id: null,
+      room_id: null,
+      bed_id: null,
+    });
   };
 
-  const clearFilters = () => {
-    const cleared = { ...EMPTY_FILTERS };
-    setLocalFilters(cleared);
-    onChange(cleared);
+  const handleBuildingChange = (value: string) => {
+    const buildingId = value === "ALL" ? null : value;
+    handleChange({
+      building_id: buildingId,
+      room_id: null,
+      bed_id: null,
+    });
   };
 
-  const hasActiveFilters =
-    filters.building_id ||
-    filters.room_id ||
-    filters.type ||
-    filters.start_date ||
-    filters.end_date ||
-    filters.approval_status;
+  const handleRoomChange = (value: string) => {
+    const roomId = value === "ALL" ? null : value;
+    handleChange({
+      room_id: roomId,
+      bed_id: null,
+    });
+  };
+
+  const handleBedChange = (value: string) => {
+    handleChange({ bed_id: value === "ALL" ? null : value });
+  };
+
+  const handleAccountChange = (value: string) => {
+    handleChange({ account_id: value === "ALL" ? null : value });
+  };
 
   return (
-    <div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setIsOpen(!isOpen)}
-        className={hasActiveFilters ? "border-primary text-primary" : ""}
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* Từ ngày */}
+      <Input
+        type="date"
+        value={filters.start_date ?? ""}
+        onChange={(e) => handleChange({ start_date: e.target.value || null })}
+        className="w-[140px] h-9 text-sm"
+        placeholder="Từ ngày"
+      />
+
+      {/* Đến ngày */}
+      <Input
+        type="date"
+        value={filters.end_date ?? ""}
+        onChange={(e) => handleChange({ end_date: e.target.value || null })}
+        className="w-[140px] h-9 text-sm"
+        placeholder="Đến ngày"
+      />
+
+      {/* Khu vực */}
+      <Select
+        value={filters.area_id ?? "ALL"}
+        onValueChange={handleAreaChange}
       >
-        <SlidersHorizontal className="h-4 w-4 mr-2" />
-        Lọc
-        {hasActiveFilters && (
-          <span className="ml-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
-            !
-          </span>
-        )}
-      </Button>
+        <SelectTrigger className="w-[150px] h-9 text-sm">
+          <SelectValue placeholder="Chọn khu vực" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Chọn khu vực</SelectItem>
+          {(areas || []).map((a) => (
+            <SelectItem key={a.id} value={a.id}>
+              {a.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      {isOpen && (
-        <div className="mt-3 p-4 border rounded-lg bg-background space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {/* Căn hộ */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Căn hộ
-              </label>
-              <Select
-                value={localFilters.building_id ?? "ALL"}
-                onValueChange={(v) =>
-                  updateLocal({
-                    building_id: v === "ALL" ? null : v,
-                    room_id: null,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn căn hộ" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả</SelectItem>
-                  {(buildings || []).map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Tòa nhà */}
+      <Select
+        value={filters.building_id ?? "ALL"}
+        onValueChange={handleBuildingChange}
+      >
+        <SelectTrigger className="w-[150px] h-9 text-sm">
+          <SelectValue placeholder="Chọn tòa nhà" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Chọn tòa nhà</SelectItem>
+          {filteredBuildings.map((b) => (
+            <SelectItem key={b.id} value={b.id}>
+              {b.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-            {/* Phòng - cascade filtered by Căn hộ */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Phòng
-              </label>
-              <Select
-                value={localFilters.room_id ?? "ALL"}
-                onValueChange={(v) =>
-                  updateLocal({ room_id: v === "ALL" ? null : v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn phòng" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả</SelectItem>
-                  {(rooms || []).map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Phòng */}
+      <Select
+        value={filters.room_id ?? "ALL"}
+        onValueChange={handleRoomChange}
+      >
+        <SelectTrigger className="w-[140px] h-9 text-sm">
+          <SelectValue placeholder="Chọn phòng" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Chọn phòng</SelectItem>
+          {(rooms || []).map((r) => (
+            <SelectItem key={r.id} value={r.id}>
+              {r.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-            {/* Sổ quỹ - placeholder */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Sổ quỹ
-              </label>
-              <Select value="ALL" disabled>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn sổ quỹ" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Giường */}
+      <Select
+        value={filters.bed_id ?? "ALL"}
+        onValueChange={handleBedChange}
+      >
+        <SelectTrigger className="w-[140px] h-9 text-sm">
+          <SelectValue placeholder="Chọn giường" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Chọn giường</SelectItem>
+          {(beds || []).map((bed) => (
+            <SelectItem key={bed.id} value={bed.id}>
+              {bed.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-            {/* Loại phiếu */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Loại phiếu
-              </label>
-              <Select
-                value={localFilters.type ?? "ALL"}
-                onValueChange={(v) =>
-                  updateLocal({
-                    type:
-                      v === "ALL"
-                        ? null
-                        : (v as "INCOME" | "EXPENSE"),
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Loại phiếu" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả</SelectItem>
-                  {TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Từ ngày */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Từ ngày
-              </label>
-              <Input
-                type="date"
-                value={localFilters.start_date ?? ""}
-                onChange={(e) =>
-                  updateLocal({
-                    start_date: e.target.value || null,
-                  })
-                }
-              />
-            </div>
-
-            {/* Đến ngày */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Đến ngày
-              </label>
-              <Input
-                type="date"
-                value={localFilters.end_date ?? ""}
-                onChange={(e) =>
-                  updateLocal({
-                    end_date: e.target.value || null,
-                  })
-                }
-              />
-            </div>
-
-            {/* Trạng thái duyệt */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-muted-foreground">
-                Trạng thái duyệt
-              </label>
-              <Select
-                value={localFilters.approval_status ?? "ALL"}
-                onValueChange={(v) =>
-                  updateLocal({
-                    approval_status:
-                      v === "ALL"
-                        ? null
-                        : (v as "APPROVED" | "UNAPPROVED"),
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Trạng thái" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Tất cả</SelectItem>
-                  {APPROVAL_STATUS_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-2">
-            <Button size="sm" onClick={applyFilters}>
-              Áp dụng
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearFilters}
-              disabled={!hasActiveFilters}
-            >
-              <X className="h-4 w-4 mr-1" />
-              Xoá bộ lọc
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Tài khoản */}
+      <Select
+        value={filters.account_id ?? "ALL"}
+        onValueChange={handleAccountChange}
+      >
+        <SelectTrigger className="w-[150px] h-9 text-sm">
+          <SelectValue placeholder="Tài khoản" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Tài khoản</SelectItem>
+          {(accounts || []).map((acc) => (
+            <SelectItem key={acc.id} value={acc.id}>
+              {acc.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
