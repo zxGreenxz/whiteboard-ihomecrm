@@ -83,6 +83,7 @@ const routeLabels: Record<string, string> = {
   '/settings/categories/hotlines': 'Quản lý Hotline',
   '/settings/categories/general': 'Danh mục chung',
   '/settings/categories/floors': 'Danh sách tầng',
+  '/settings/categories/task-types': 'Loại công việc',
   '/settings/templates': 'Mẫu biểu',
   '/settings/signatures': 'Mẫu chữ ký',
   '/settings/staff': 'Nhân viên',

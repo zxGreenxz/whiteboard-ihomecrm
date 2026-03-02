@@ -1,6 +1,6 @@
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { List, Landmark, Package, Phone, FolderOpen, Layers } from "lucide-react";
+import { List, Landmark, Package, Phone, FolderOpen, Layers, Wrench } from "lucide-react";
 import { Link } from "react-router-dom";
 
 interface CategoryItem {
@@ -44,12 +44,14 @@ const STANDALONE_ITEMS: CategoryItem[] = [
   { title: "Quản lý Hotline", href: "/settings/categories/hotlines", description: "Quản lý danh sách hotline" },
   { title: "Danh mục chung", href: "/settings/categories/general", description: "Quản lý danh mục chung" },
   { title: "Danh sách tầng", href: "/settings/categories/floors", description: "Quản lý danh sách tầng" },
+  { title: "Loại công việc", href: "/settings/categories/task-types", description: "Quản lý loại công việc vận hành" },
 ];
 
 const STANDALONE_ICONS: Record<string, React.ElementType> = {
   "Quản lý Hotline": Phone,
   "Danh mục chung": FolderOpen,
   "Danh sách tầng": Layers,
+  "Loại công việc": Wrench,
 };
 
 export default function CategoriesPage() {

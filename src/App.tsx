@@ -97,6 +97,7 @@ import AssetMaintenancePage from "./pages/settings/categories/AssetMaintenancePa
 import HotlinesPage from "./pages/settings/categories/HotlinesPage";
 import GeneralCategoriesPage from "./pages/settings/categories/GeneralCategoriesPage";
 import FloorsPage from "./pages/settings/categories/FloorsPage";
+import TaskTypesPage from "./pages/settings/categories/TaskTypesPage";
 
 // Account Pages
 import ProfilePage from "./pages/account/ProfilePage";
@@ -258,6 +259,7 @@ const App = () => (
           <Route path="/settings/categories/hotlines" element={<ProtectedRoute><HotlinesPage /></ProtectedRoute>} />
           <Route path="/settings/categories/general" element={<ProtectedRoute><GeneralCategoriesPage /></ProtectedRoute>} />
           <Route path="/settings/categories/floors" element={<ProtectedRoute><FloorsPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/task-types" element={<ProtectedRoute><TaskTypesPage /></ProtectedRoute>} />
           <Route path="/settings/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
           <Route path="/settings/signatures" element={<ProtectedRoute><SignaturesPage /></ProtectedRoute>} />
           <Route path="/settings/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />

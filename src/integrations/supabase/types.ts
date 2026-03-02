@@ -1122,6 +1122,48 @@ export type Database = {
           },
         ]
       }
+      departments: {
+        Row: {
+          id: string
+          user_id: string
+          code: string
+          name: string
+          description: string | null
+          manager_id: string | null
+          phone: string | null
+          email: string | null
+          is_active: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          code: string
+          name: string
+          description?: string | null
+          manager_id?: string | null
+          phone?: string | null
+          email?: string | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          code?: string
+          name?: string
+          description?: string | null
+          manager_id?: string | null
+          phone?: string | null
+          email?: string | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           amount: number
@@ -1514,6 +1556,108 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_groups: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          color: string | null
+          icon: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          color?: string | null
+          icon?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          color?: string | null
+          icon?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      job_types: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          job_group_id: string | null
+          description: string | null
+          default_priority: Database["public"]["Enums"]["issue_priority"] | null
+          customer_contact_deadline: number | null
+          acceptance_deadline: number | null
+          completion_deadline: number | null
+          business_hours_only: boolean | null
+          default_department_id: string | null
+          auto_assign: boolean | null
+          is_active: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          job_group_id?: string | null
+          description?: string | null
+          default_priority?: Database["public"]["Enums"]["issue_priority"] | null
+          customer_contact_deadline?: number | null
+          acceptance_deadline?: number | null
+          completion_deadline?: number | null
+          business_hours_only?: boolean | null
+          default_department_id?: string | null
+          auto_assign?: boolean | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          job_group_id?: string | null
+          description?: string | null
+          default_priority?: Database["public"]["Enums"]["issue_priority"] | null
+          customer_contact_deadline?: number | null
+          acceptance_deadline?: number | null
+          completion_deadline?: number | null
+          business_hours_only?: boolean | null
+          default_department_id?: string | null
+          auto_assign?: boolean | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_types_job_group_id_fkey"
+            columns: ["job_group_id"]
+            isOneToOne: false
+            referencedRelation: "job_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_types_default_department_id_fkey"
+            columns: ["default_department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
         ]
