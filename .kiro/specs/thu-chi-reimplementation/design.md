@@ -9,9 +9,10 @@ Thiết kế này tái triển khai hoàn toàn giao diện React, hooks, valida
 ### Quyết định thiết kế chính
 
 1. **Tái sử dụng database schema hiện có**: Không thay đổi migration files. Tất cả triggers (auto-generate code, auto-calc amount, auto-recalc total) và RPC (approve/unapprove) đã sẵn sàng.
-2. **Tái sử dụng hooks và helpers hiện có**: `useIncomeExpenses.ts`, `useIncomeExpensesHelpers.ts`, `useIncomeExpenseTypes.ts`, `incomeExpenseValidation.ts` đã có đầy đủ logic. Thiết kế tập trung vào cải thiện components.
+2. **Tái sử dụng hooks và helpers hiện có**: `useIncomeExpenses.ts`, `useIncomeExpensesHelpers.ts`, `useIncomeExpenseTypes.ts`, `incomeExpenseValidation.ts` đã có đầy đủ logic. Thiết kế tập trung vào cải thiện components UI.
 3. **Tuân thủ patterns hiện có**: Sử dụng cùng stack (shadcn/ui, TanStack Query, React Hook Form + Zod, Tailwind CSS) và cùng patterns với các module khác (vehicles, contracts).
 4. **Pure helper functions cho testability**: Tách logic nghiệp vụ thuần (validation, filtering, stats computation, code generation) vào `useIncomeExpensesHelpers.ts` để dễ test bằng property-based testing.
+5. **Tách UI components rõ ràng**: Mỗi component UI là một phần riêng biệt, có thể triển khai và review độc lập theo ảnh tham chiếu. Khi triển khai từng component, có thể yêu cầu người dùng gửi lại ảnh tham chiếu nếu cần.
 
 ## Kiến trúc
 
@@ -22,12 +23,14 @@ graph TB
     subgraph "React UI Layer"
         Page[IncomeExpensePage]
         Stats[IncomeExpenseStats]
+        Toolbar[Toolbar: Search + Buttons]
         Filters[IncomeExpenseFiltersBar]
         List[IncomeExpenseList]
         Form[IncomeExpenseForm]
         ItemSelector[IncomeExpenseItemSelector]
         ImportDialog[IncomeExpenseImportDialog]
         TypeForm[IncomeExpenseTypeForm]
+        DeleteDialog[AlertDialog - Xác nhận xoá]
     end
 
     subgraph "State & Data Layer"
@@ -36,7 +39,7 @@ graph TB
         Validation[Zod Schemas]
     end
 
-    subgraph "Backend (Supabase)"
+    subgraph "Backend (Supabase - Không thay đổi)"
         DB[(PostgreSQL)]
         Triggers[DB Triggers]
         RPC[RPC Functions]
@@ -44,10 +47,12 @@ graph TB
     end
 
     Page --> Stats
+    Page --> Toolbar
     Page --> Filters
     Page --> List
     Page --> Form
     Page --> ImportDialog
+    Page --> DeleteDialog
     Form --> ItemSelector
     ItemSelector --> TypeForm
 
@@ -62,7 +67,7 @@ graph TB
     DB --> RLS
 ```
 
-### Luồng dữ liệu
+### Luồng dữ liệu chính
 
 ```mermaid
 sequenceDiagram
@@ -95,7 +100,6 @@ sequenceDiagram
     H-->>P: Refresh danh sách
 ```
 
-
 ## Components và Interfaces
 
 ### Cấu trúc thư mục
@@ -103,16 +107,16 @@ sequenceDiagram
 ```
 src/
 ├── pages/payments/
-│   └── IncomeExpensePage.tsx          # Trang chính Thu chi
+│   └── IncomeExpensePage.tsx          # Trang chính Thu chi (container)
 ├── components/income-expenses/
-│   ├── IncomeExpenseStats.tsx         # Thẻ thống kê (Tổng thu/chi/chênh lệch)
-│   ├── IncomeExpenseFilters.tsx       # Thanh bộ lọc (Căn hộ, Phòng, Loại, Ngày, Trạng thái)
-│   ├── IncomeExpenseList.tsx          # Bảng danh sách phiếu + phân trang
-│   ├── IncomeExpenseForm.tsx          # Dialog form tạo/sửa phiếu thu/chi
-│   ├── IncomeExpenseItemSelector.tsx  # Dialog chọn hạng mục (checkbox list)
-│   └── IncomeExpenseImportDialog.tsx  # Dialog nhập Excel hàng loạt
+│   ├── IncomeExpenseStats.tsx         # Component 1: Thẻ thống kê (Tổng thu/chi/chênh lệch/số phiếu)
+│   ├── IncomeExpenseFilters.tsx       # Component 2: Thanh bộ lọc (Căn hộ, Phòng, Loại, Ngày, Trạng thái)
+│   ├── IncomeExpenseList.tsx          # Component 3: Bảng danh sách phiếu + phân trang + thao tác
+│   ├── IncomeExpenseForm.tsx          # Component 4: Dialog form tạo/sửa phiếu thu/chi
+│   ├── IncomeExpenseItemSelector.tsx  # Component 5: Dialog chọn hạng mục (checkbox list)
+│   └── IncomeExpenseImportDialog.tsx  # Component 6: Dialog nhập Excel hàng loạt
 ├── components/income-expense-types/
-│   └── IncomeExpenseTypeForm.tsx      # Form tạo loại thu chi mới (inline)
+│   └── IncomeExpenseTypeForm.tsx      # Component 7: Form tạo loại thu chi mới (inline trong ItemSelector)
 ├── hooks/
 │   ├── useIncomeExpenses.ts           # Query + mutation hooks (CRUD, approve, import)
 │   ├── useIncomeExpensesHelpers.ts    # Pure helper functions (testable)
@@ -127,43 +131,50 @@ src/
 
 ```mermaid
 graph TD
-    A[IncomeExpensePage] --> B[IncomeExpenseStats]
-    A --> C[IncomeExpenseFiltersBar]
-    A --> D[IncomeExpenseList]
-    A --> E[IncomeExpenseForm]
-    A --> F[IncomeExpenseImportDialog]
-    A --> G[AlertDialog - Delete Confirm]
+    A["IncomeExpensePage (Container)"] --> B["IncomeExpenseStats (Component 1)"]
+    A --> C["Toolbar: Search + Action Buttons"]
+    A --> D["IncomeExpenseFiltersBar (Component 2)"]
+    A --> E["IncomeExpenseList (Component 3)"]
+    A --> F["IncomeExpenseForm (Component 4)"]
+    A --> G["IncomeExpenseImportDialog (Component 6)"]
+    A --> H["AlertDialog - Xác nhận xoá"]
 
-    E --> H[IncomeExpenseItemSelector]
-    H --> I[IncomeExpenseTypeForm]
+    F --> I["IncomeExpenseItemSelector (Component 5)"]
+    I --> J["IncomeExpenseTypeForm (Component 7)"]
 
-    D --> J[DataTablePagination]
-    D --> K[DropdownMenu - Actions]
+    E --> K["DataTablePagination"]
+    E --> L["DropdownMenu - Thao tác"]
 ```
 
-### Component Interfaces
+### Chi tiết từng Component UI
 
-#### IncomeExpensePage (Container)
-- Quản lý state: filters, searchQuery, pagination, form open/close, editing voucher, delete target
-- Kết nối hooks: `useIncomeExpenses`, `useIncomeExpenseStats`, mutations (delete, approve, unapprove)
-- Render layout: Stats → Search + Filters → List → Form Dialog → Import Dialog → Delete Dialog
+#### Component 1: IncomeExpenseStats — Thẻ thống kê
 
-#### IncomeExpenseStats
+Hiển thị 4 thẻ Card phía trên danh sách:
+- **Tổng thu**: Tổng total_amount của Phiếu_thu khớp bộ lọc (màu xanh emerald, icon TrendingUp)
+- **Tổng chi**: Tổng total_amount của Phiếu_chi khớp bộ lọc (màu đỏ, icon TrendingDown)
+- **Chênh lệch**: Tổng thu - Tổng chi (xanh nếu >= 0, đỏ nếu < 0, icon ArrowUpDown)
+- **Tổng số phiếu**: Số lượng phiếu khớp bộ lọc (màu xanh dương, icon FileText)
+
 ```typescript
 interface IncomeExpenseStatsProps {
   stats: {
-    totalIncome: number;    // Tổng thu (xanh)
-    totalExpense: number;   // Tổng chi (đỏ)
-    difference: number;     // Chênh lệch
-    totalTransactions: number; // Tổng số phiếu
+    totalIncome: number;
+    totalExpense: number;
+    difference: number;
+    totalTransactions: number;
   };
   isLoading?: boolean;
 }
 ```
-- 4 thẻ Card với icon và màu sắc phân biệt
-- Format tiền VND: `toLocaleString('vi-VN') + ' đ'`
 
-#### IncomeExpenseFiltersBar
+Format tiền VND: `toLocaleString('vi-VN') + ' đ'`
+Layout: `grid grid-cols-2 lg:grid-cols-4`, mỗi Card có `border-l-4` với màu tương ứng.
+
+#### Component 2: IncomeExpenseFiltersBar — Thanh bộ lọc
+
+Toggle mở/đóng panel lọc bằng nút "Lọc" (icon SlidersHorizontal).
+
 ```typescript
 interface IncomeExpenseFiltersProps {
   filters: IncomeExpenseFilters;
@@ -180,11 +191,19 @@ interface IncomeExpenseFilters {
   approval_status?: 'UNAPPROVED' | 'APPROVED' | null;
 }
 ```
-- Toggle mở/đóng panel lọc
-- Cascading: chọn Căn hộ → reset Phòng
-- Nút "Áp dụng" và "Xoá bộ lọc"
 
-#### IncomeExpenseList
+Các tiêu chí lọc (grid responsive):
+- Căn hộ (dropdown danh sách buildings)
+- Phòng (dropdown cascade theo Căn hộ đã chọn)
+- Sổ quỹ (dropdown — placeholder, disabled)
+- Loại phiếu (dropdown: Tất cả / Phiếu thu / Phiếu chi)
+- Từ ngày — Đến ngày (date inputs)
+- Trạng thái duyệt (dropdown: Tất cả / Đã duyệt / Chưa duyệt)
+
+Nút "Áp dụng" và "Xoá bộ lọc". Cascade: chọn Căn hộ → reset Phòng.
+
+#### Component 3: IncomeExpenseList — Bảng danh sách phiếu
+
 ```typescript
 interface IncomeExpenseListProps {
   vouchers: IncomeExpenseWithRelations[];
@@ -197,28 +216,53 @@ interface IncomeExpenseListProps {
   totalCount: number;
 }
 ```
-- Bảng với các cột: Mã phiếu + Badge trạng thái, Ngày, Loại (Thu/Chi badge), Tên phiếu, Căn hộ, Phòng, Khách hàng, Tổng tiền, Thao tác
-- DropdownMenu thao tác: Duyệt/Bỏ duyệt, Cập nhật (disabled khi APPROVED), Xoá (disabled khi APPROVED)
-- Sắp xếp theo voucher_date giảm dần
-- Phân trang với DataTablePagination
 
-#### IncomeExpenseForm
+Các cột bảng:
+| Cột | Mô tả |
+|-----|-------|
+| Mã phiếu | `code` + Badge trạng thái duyệt (xanh "Đã duyệt" / cam "Chưa duyệt") |
+| Ngày | `voucher_date` format dd/MM/yyyy |
+| Loại | Badge "Phiếu thu" (xanh) / "Phiếu chi" (đỏ) |
+| Tên phiếu | `name` (truncate nếu dài) |
+| Căn hộ | `building_name` |
+| Phòng | `room_name` |
+| Khách hàng | `tenant_name` |
+| Tổng tiền | `total_amount` format VND, màu xanh (thu) / đỏ (chi) |
+| Thao tác | DropdownMenu: Duyệt/Bỏ duyệt, Cập nhật (disabled khi APPROVED), Xoá (disabled khi APPROVED) |
+
+Sắp xếp: `voucher_date` giảm dần.
+Phân trang: `DataTablePagination` với page size selector.
+Empty state: EmptyState component khi không có phiếu.
+Loading state: Skeleton rows.
+
+#### Component 4: IncomeExpenseForm — Dialog form tạo/sửa phiếu
+
 ```typescript
 interface IncomeExpenseFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  voucher: IncomeExpenseWithRelations | null; // null = tạo mới
-  defaultType: 'INCOME' | 'EXPENSE';
+  voucher?: IncomeExpenseWithRelations | null; // null = tạo mới
+  defaultType?: 'INCOME' | 'EXPENSE';
 }
 ```
-- Dialog form với 2 tab chọn loại: Phiếu thu / Phiếu chi
-- Cascading dropdowns: Căn hộ → Phòng → Giường
-- Dropdown Khách hàng (searchable)
-- Phần hạng mục: danh sách items + nút (+) mở ItemSelector
-- Mỗi item hiển thị: Tên loại (readonly), Mô tả, Số lượng, Đơn giá, Thành tiền (auto-calc)
-- Validation bằng Zod schema qua React Hook Form resolver
 
-#### IncomeExpenseItemSelector
+Cấu trúc form:
+1. **Chọn loại phiếu**: RadioGroup — Phiếu thu / Phiếu chi
+2. **Cascading dropdowns**: Căn hộ (*) → Phòng → Giường → Khách hàng
+   - Chọn Căn hộ → reset Phòng, Giường, Khách hàng
+   - Chọn Phòng → reset Giường
+3. **Thông tin phiếu**: Tên phiếu (*), Ngày thu/chi (*), Ghi chú
+4. **Hạng mục**: Danh sách items + nút (+) "Thêm hạng mục" mở ItemSelector
+   - Mỗi item: Tên loại (readonly), Mô tả, Số lượng, Đơn giá, Thành tiền (auto-calc)
+   - Nút xoá item (icon Trash2)
+   - Tổng cộng hiển thị cuối danh sách
+5. **Nút hành động**: Hủy / Lưu
+
+Validation: Zod schema qua React Hook Form resolver.
+Khi sửa phiếu đã duyệt: hiển thị thông báo "Phiếu đã được duyệt. Vui lòng bỏ duyệt trước khi sửa."
+
+#### Component 5: IncomeExpenseItemSelector — Dialog chọn hạng mục
+
 ```typescript
 interface IncomeExpenseItemSelectorProps {
   open: boolean;
@@ -228,22 +272,46 @@ interface IncomeExpenseItemSelectorProps {
   selectedTypeIds: string[];
 }
 ```
-- Danh sách checkbox các Loại_thu_chi, lọc theo voucherType (income/expense)
-- Nút "Thêm" mở IncomeExpenseTypeForm inline
-- Nút "Xác nhận" trả về danh sách types đã chọn
 
-#### IncomeExpenseImportDialog
+- Danh sách checkbox các Loại_thu_chi, lọc theo voucherType (income/expense)
+- Collapsible section "Thêm loại thu/chi mới" → mở IncomeExpenseTypeForm inline
+- Nút "Huỷ" và "Xác nhận"
+- Auto-check loại mới tạo
+
+#### Component 6: IncomeExpenseImportDialog — Dialog nhập Excel
+
 ```typescript
 interface IncomeExpenseImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 ```
-- Link "Tải file mẫu tại đây" → download Excel template
-- Vùng upload: click hoặc drag-drop, chấp nhận .xlsx/.xls
-- Parse file → validate từng dòng → tạo phiếu → báo cáo kết quả
 
-### Hooks
+3 bước (steps):
+1. **Upload**: Link "Tải file mẫu tại đây" + vùng drag-drop/click upload (.xlsx/.xls)
+2. **Preview**: Bảng xem trước dữ liệu parsed, hiển thị trạng thái hợp lệ/lỗi từng dòng, chi tiết lỗi
+3. **Result**: Kết quả nhập (số bản ghi thành công / lỗi), chi tiết lỗi
+
+#### Component 7: IncomeExpenseTypeForm — Form tạo loại thu chi
+
+```typescript
+interface IncomeExpenseTypeFormProps {
+  defaultType?: 'income' | 'expense';
+  onCreated?: (newType: IncomeExpenseType) => void;
+  onCancel?: () => void;
+}
+```
+
+Form inline với: Tên loại (*), Loại (thu/chi), Mô tả. Nút Huỷ / Lưu.
+
+#### Container: IncomeExpensePage
+
+Quản lý toàn bộ state và kết nối hooks:
+- State: filters, searchQuery, pagination, form open/close, editing voucher, delete target, import dialog
+- Hooks: `useIncomeExpenses`, `useIncomeExpenseStats`, mutations (delete, approve, unapprove)
+- Layout: Stats → Toolbar (Search + Buttons) → Filters → List → Form Dialog → Import Dialog → Delete Dialog
+
+### Hooks (Không thay đổi)
 
 #### useIncomeExpenses (Query)
 ```typescript
@@ -254,19 +322,14 @@ function useIncomeExpenses(
 ): UseQueryResult<{ data: IncomeExpenseWithRelations[]; totalCount: number }>
 ```
 - Query Supabase với joins: buildings(name), rooms(name), beds(name), tenants(full_name)
-- Apply filters: building_id, room_id, type, date range, approval_status
-- Apply search: ilike trên name, code, tenant_name
-- Sắp xếp: voucher_date desc
-- Phân trang: range(from, to)
+- Apply filters, search, sort (voucher_date desc), pagination
 
 #### useIncomeExpenseStats (Query)
 ```typescript
 function useIncomeExpenseStats(
   filters: IncomeExpenseFilters
-): UseQueryResult<ComputedIncomeExpenseStats>
+): UseQueryResult<{ totalIncome; totalExpense; difference; totalTransactions }>
 ```
-- Query tổng thu/chi theo filters hiện tại
-- Trả về: totalIncome, totalExpense, difference, totalTransactions
 
 #### Mutation Hooks
 - `useCreateIncomeExpense()`: INSERT voucher → INSERT items
@@ -276,22 +339,19 @@ function useIncomeExpenseStats(
 - `useUnapproveIncomeExpense()`: RPC `unapprove_voucher(id)`
 - `useImportIncomeExpenses()`: Batch create từ parsed Excel rows
 
-### Pure Helper Functions (useIncomeExpensesHelpers.ts)
-
-Các hàm thuần không phụ thuộc Supabase, dễ test:
+### Pure Helper Functions (useIncomeExpensesHelpers.ts — Không thay đổi)
 
 | Hàm | Mô tả |
 |-----|-------|
-| `createVoucherPayload(input)` | Tạo payload INSERT từ form data |
+| `createVoucherPayload(input)` | Tạo payload INSERT từ form data, luôn set approval_status = 'UNAPPROVED' |
 | `canEditVoucher(status)` | Trả về true nếu UNAPPROVED |
 | `canDeleteVoucher(status)` | Trả về true nếu UNAPPROVED |
-| `applyApproval(voucher)` | Trả về voucher với status=APPROVED |
-| `applyUnapproval(voucher)` | Trả về voucher với status=UNAPPROVED |
+| `applyApproval(voucher, approverId, approvedAt)` | Set APPROVED + approved_by + approved_at |
+| `applyUnapproval(voucher)` | Set UNAPPROVED + clear approved_by/at |
 | `filterNonDeleted(items)` | Lọc bỏ items có deleted_at |
-| `applyVoucherUpdate(voucher, updates)` | Apply updates lên voucher |
-| `applyVoucherFilters(vouchers, filters)` | Lọc danh sách theo filters |
+| `applyVoucherFilters(vouchers, filters)` | Lọc danh sách theo filters + search |
 | `paginateList(items, page, pageSize)` | Phân trang in-memory |
-| `computeIncomeExpenseStats(vouchers)` | Tính tổng thu/chi/chênh lệch |
+| `computeIncomeExpenseStats(vouchers)` | Tính tổng thu/chi/chênh lệch/số phiếu |
 | `filterRoomsByBuilding(rooms, buildingId)` | Lọc phòng theo căn hộ |
 | `filterBedsByRoom(beds, roomId)` | Lọc giường theo phòng |
 | `generateVoucherCode(type, yearMonth, seq)` | Sinh mã phiếu PT/PC{YYMM}{seq} |
@@ -302,7 +362,7 @@ Các hàm thuần không phụ thuộc Supabase, dễ test:
 
 ## Data Models
 
-### Database Schema (Hiện có - Không thay đổi)
+### Database Schema (Hiện có — Không thay đổi)
 
 ```mermaid
 erDiagram
@@ -361,28 +421,21 @@ erDiagram
 ### TypeScript Types
 
 ```typescript
-// Loại phiếu
 type VoucherType = 'INCOME' | 'EXPENSE';
-
-// Trạng thái duyệt
 type ApprovalStatus = 'UNAPPROVED' | 'APPROVED';
-
-// Loại thu chi (category)
 type IncomeExpenseTypeCategory = 'income' | 'expense';
 
-// Item trong phiếu
 interface IncomeExpenseItem {
   id: string;
   income_expense_id: string;
   income_expense_type_id: string;
-  type_name: string;          // joined from income_expense_types
+  type_name: string;
   description: string | null;
   quantity: number;
   unit_price: number;
-  amount: number;             // auto-calculated by trigger
+  amount: number;
 }
 
-// Phiếu thu/chi với relations
 interface IncomeExpenseWithRelations {
   id: string;
   user_id: string;
@@ -390,13 +443,13 @@ interface IncomeExpenseWithRelations {
   type: VoucherType;
   name: string;
   building_id: string;
-  building_name: string;      // joined from buildings
+  building_name: string;
   room_id: string | null;
-  room_name: string | null;   // joined from rooms
+  room_name: string | null;
   bed_id: string | null;
-  bed_name: string | null;    // joined from beds
+  bed_name: string | null;
   tenant_id: string | null;
-  tenant_name: string | null; // joined from tenants
+  tenant_name: string | null;
   voucher_date: string;
   total_amount: number;
   approval_status: ApprovalStatus;
@@ -408,7 +461,6 @@ interface IncomeExpenseWithRelations {
   updated_at: string;
 }
 
-// Loại thu chi
 interface IncomeExpenseType {
   id: string;
   user_id: string;
@@ -420,7 +472,6 @@ interface IncomeExpenseType {
   updated_at: string;
 }
 
-// Filters
 interface IncomeExpenseFilters {
   building_id?: string | null;
   room_id?: string | null;
@@ -432,10 +483,9 @@ interface IncomeExpenseFilters {
 }
 ```
 
-### Zod Validation Schemas
+### Zod Validation Schemas (Hiện có — Không thay đổi)
 
 ```typescript
-// Schema cho hạng mục (item)
 const itemSchema = z.object({
   income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),
   description: z.string().nullable().optional(),
@@ -443,7 +493,6 @@ const itemSchema = z.object({
   unit_price: z.number().min(0, 'Đơn giá phải >= 0'),
 });
 
-// Schema cho form Phiếu thu/chi
 const incomeExpenseFormSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   name: z.string().min(1, 'Vui lòng nhập tên phiếu'),
@@ -456,7 +505,6 @@ const incomeExpenseFormSchema = z.object({
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
 });
 
-// Schema cho import Excel
 const excelImportRowSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   building_name: z.string().min(1),
@@ -467,7 +515,6 @@ const excelImportRowSchema = z.object({
   amount: z.number().min(0),
 });
 
-// Schema cho loại thu chi
 const incomeExpenseTypeFormSchema = z.object({
   name: z.string().min(1, 'Vui lòng nhập tên loại'),
   type: z.enum(['income', 'expense']),
@@ -519,13 +566,13 @@ const incomeExpenseTypeFormSchema = z.object({
 
 *For any* item with quantity > 0 and unit_price >= 0, the item amount should equal quantity × unit_price. Furthermore, *for any* list of items, `calculateTotalFromItems` should return the sum of (quantity × unit_price) for all items, which equals the voucher's total_amount.
 
-**Validates: Requirements 2.7, 11.5, 11.6, 11.8, 11.9**
+**Validates: Requirements 2.8, 3.3, 11.5, 11.6, 11.8, 11.9**
 
 ### Property 5: New voucher always UNAPPROVED with valid code
 
 *For any* valid voucher creation input, `createVoucherPayload` should produce a payload with approval_status = 'UNAPPROVED'. Additionally, *for any* type (INCOME/EXPENSE), yearMonth, and sequence, `generateVoucherCode` should produce a code matching the pattern PT{YYMM}{3-digit seq} for INCOME or PC{YYMM}{3-digit seq} for EXPENSE, and `isValidVoucherCode` should return true for that code.
 
-**Validates: Requirements 2.9, 3.4, 11.4**
+**Validates: Requirements 2.10, 3.4, 11.4**
 
 ### Property 6: Zod validation round-trip
 
@@ -537,7 +584,7 @@ const incomeExpenseTypeFormSchema = z.object({
 
 *For any* input object missing at least one required field (type, name, building_id, voucher_date) or with an empty items array, or with items having invalid quantity (< 1) or invalid unit_price (< 0) or missing income_expense_type_id, `incomeExpenseFormSchema.safeParse` should return success = false with appropriate error messages.
 
-**Validates: Requirements 2.10, 2.11, 3.5, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.11**
+**Validates: Requirements 2.11, 2.12, 3.5, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.11**
 
 ### Property 8: Edit/delete guard by approval status
 
@@ -559,9 +606,9 @@ const incomeExpenseTypeFormSchema = z.object({
 
 ### Property 11: Voucher filter correctness
 
-*For any* list of vouchers and filter parameters (building_id, room_id, type, date range, approval_status), `applyVoucherFilters` should return only vouchers that match ALL specified filter criteria. When all filters are null/empty, all vouchers should be returned.
+*For any* list of vouchers and filter parameters (building_id, room_id, type, date range, approval_status, searchQuery), `applyVoucherFilters` should return only vouchers that match ALL specified filter criteria. When all filters are null/empty, all vouchers should be returned.
 
-**Validates: Requirements 7.3, 7.4**
+**Validates: Requirements 1.7, 7.3, 7.4**
 
 ### Property 12: Import row validation partitioning
 
@@ -586,12 +633,14 @@ const incomeExpenseTypeFormSchema = z.object({
 ### Approval Guard Errors
 - UI disable nút Cập nhật/Xoá khi phiếu đã duyệt (APPROVED)
 - Nếu user cố gắng sửa/xoá phiếu đã duyệt (edge case), server-side sẽ không cho phép
+- Hiển thị thông báo "Phiếu đã được duyệt. Vui lòng bỏ duyệt trước khi sửa."
 
 ### Import Errors
 - Từng dòng Excel được validate độc lập
 - Dòng hợp lệ được tạo, dòng lỗi được bỏ qua
 - Báo cáo kết quả hiển thị: số dòng thành công, số dòng lỗi, chi tiết lỗi từng dòng
 - File không đúng format (.xlsx/.xls): hiển thị lỗi "File không hợp lệ"
+- Không tìm thấy Căn hộ/Hạng mục matching: hiển thị lỗi chi tiết
 
 ### Network Errors
 - TanStack Query tự động retry (default 3 lần)
@@ -604,7 +653,7 @@ const incomeExpenseTypeFormSchema = z.object({
 
 Module Thu chi sử dụng kết hợp unit tests và property-based tests:
 
-- **Property-based tests**: Verify các correctness properties (12 properties) trên nhiều input ngẫu nhiên, sử dụng thư viện `fast-check` (đã có trong project). Mỗi property test chạy tối thiểu 100 iterations.
+- **Property-based tests**: Verify 12 correctness properties trên nhiều input ngẫu nhiên, sử dụng thư viện `fast-check` (đã có trong project). Mỗi property test chạy tối thiểu 100 iterations.
 - **Unit tests**: Verify các ví dụ cụ thể, edge cases, và integration points.
 
 ### Property-Based Testing
@@ -617,7 +666,7 @@ Module Thu chi sử dụng kết hợp unit tests và property-based tests:
 ```
 /**
  * Feature: thu-chi-reimplementation, Property {number}: {property_text}
- * **Validates: Requirements X.Y**
+ * Validates: Requirements X.Y
  */
 ```
 
@@ -627,12 +676,10 @@ Module Thu chi sử dụng kết hợp unit tests và property-based tests:
 
 | File | Nội dung |
 |------|----------|
-| `src/hooks/__tests__/useIncomeExpenses.property.test.ts` | Properties 1-5, 8-12 (helper functions) |
+| `src/hooks/__tests__/useIncomeExpensesHelpers.property.test.ts` | Properties 1-5, 8-12 (helper functions) |
 | `src/lib/__tests__/incomeExpenseValidation.property.test.ts` | Properties 6-7 (Zod validation) |
 
 ### Generators (fast-check Arbitraries)
-
-Các generators cần thiết cho property tests:
 
 ```typescript
 // Voucher type generator
@@ -641,11 +688,11 @@ const voucherTypeArb = fc.constantFrom('INCOME' as const, 'EXPENSE' as const);
 // Approval status generator
 const approvalStatusArb = fc.constantFrom('UNAPPROVED' as const, 'APPROVED' as const);
 
-// Valid voucher date generator (YYYY-MM-DD format)
+// Valid voucher date (YYYY-MM-DD)
 const voucherDateArb = fc.date({ min: new Date(2020, 0, 1), max: new Date(2030, 11, 31) })
   .map(d => d.toISOString().split('T')[0]);
 
-// Valid item generator
+// Valid item
 const validItemArb = fc.record({
   income_expense_type_id: fc.uuid(),
   description: fc.option(fc.string({ maxLength: 200 }), { nil: null }),
@@ -653,7 +700,7 @@ const validItemArb = fc.record({
   unit_price: fc.float({ min: 0, max: 1_000_000_000, noNaN: true }),
 });
 
-// Valid voucher form values generator
+// Valid form values
 const validFormValuesArb = fc.record({
   type: voucherTypeArb,
   name: fc.string({ minLength: 1, maxLength: 100 }),
@@ -666,7 +713,7 @@ const validFormValuesArb = fc.record({
   items: fc.array(validItemArb, { minLength: 1, maxLength: 10 }),
 });
 
-// Voucher with relations generator (for filter/stats tests)
+// Voucher with relations (for filter/stats tests)
 const voucherArb = fc.record({
   id: fc.uuid(),
   type: voucherTypeArb,
@@ -676,6 +723,9 @@ const voucherArb = fc.record({
   room_id: fc.option(fc.uuid(), { nil: null }),
   voucher_date: voucherDateArb,
   deleted_at: fc.option(fc.date().map(d => d.toISOString()), { nil: null }),
+  name: fc.string({ minLength: 1 }),
+  code: fc.string({ minLength: 1 }),
+  tenant_name: fc.option(fc.string(), { nil: null }),
 });
 ```
 
@@ -689,3 +739,5 @@ const voucherArb = fc.record({
 - Format VND: 1000000 → "1.000.000 đ"
 - canEditVoucher('APPROVED') → false
 - canEditVoucher('UNAPPROVED') → true
+- Empty filter → return all vouchers
+- Pagination page vượt quá tổng số trang → return empty data

@@ -193,7 +193,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
       const { validRows, errors } = validateImportRows(normalizedRows);
 
       // Build a set of error row indices for quick lookup
-      const errorIndices = new Set(errors.map((e) => e.rowIndex));
+      const errorIndices = new Set(errors.map((e) => e.row));
 
       const validated: ParsedRow[] = [];
 
@@ -201,12 +201,12 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
       let validIdx = 0;
       for (let i = 0; i < normalizedRows.length; i++) {
         if (errorIndices.has(i)) {
-          const err = errors.find((e) => e.rowIndex === i)!;
+          const err = errors.find((e) => e.row === i)!;
           validated.push({
             rowIndex: i + 2, // +2 for 1-indexed + header row
             data: normalizedRows[i] as ExcelImportRow,
             valid: false,
-            error: err.message,
+            error: err.errors.join('; '),
           });
         } else if (validIdx < validRows.length) {
           validated.push({

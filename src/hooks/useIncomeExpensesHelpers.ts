@@ -204,22 +204,19 @@ export function filterTenantsByRoomOrBed<T extends TenantFilterable>(tenants: T[
 }
 
 // --- Pure helper: voucher code validation ---
-export function generateVoucherCode(type: 'INCOME' | 'EXPENSE', yearMonth: string, sequence: number): string {
+export function generateVoucherCode(type: 'INCOME' | 'EXPENSE', yearMonth: string, seq: number): string {
   const prefix = type === 'INCOME' ? 'PT' : 'PC';
-  const [yyyy, mm] = yearMonth.split('-');
-  const yy = yyyy.slice(2);
-  const seq = String(sequence).padStart(3, '0');
-  return `${prefix}${yy}${mm}${seq}`;
+  return `${prefix}${yearMonth}${seq.toString().padStart(3, '0')}`;
 }
 
 export function isValidVoucherCode(code: string): boolean {
-  return /^P[TC]\d{7}$/.test(code);
+  return /^(PT|PC)\d{4}\d{3}$/.test(code);
 }
 
 // --- Pure helper: validate import rows ---
 export interface ImportRowError {
-  rowIndex: number;
-  message: string;
+  row: number;
+  errors: string[];
 }
 
 export interface ValidateImportRowsResult {
@@ -235,8 +232,8 @@ export function validateImportRows(rows: unknown[]): ValidateImportRowsResult {
     if (result.success) {
       validRows.push(result.data);
     } else {
-      const message = result.error.issues.map(issue => issue.message).join('; ');
-      errors.push({ rowIndex: i, message });
+      const rowErrors = result.error.issues.map(issue => issue.message);
+      errors.push({ row: i, errors: rowErrors });
     }
   }
   return { validRows, errors };

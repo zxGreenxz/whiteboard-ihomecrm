@@ -64,7 +64,9 @@ describe('Property 1: Phiếu mới luôn có trạng thái UNAPPROVED và mã p
         fc.integer({ min: 1, max: 12 }),
         fc.integer({ min: 1, max: 999 }),
         (type, year, month, sequence) => {
-          const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+          const yy = String(year).slice(2);
+          const mm = String(month).padStart(2, '0');
+          const yearMonth = `${yy}${mm}`;
           const code = generateVoucherCode(type, yearMonth, sequence);
 
           expect(isValidVoucherCode(code)).toBe(true);
@@ -91,14 +93,13 @@ describe('Property 1: Phiếu mới luôn có trạng thái UNAPPROVED và mã p
         fc.integer({ min: 1, max: 12 }),
         fc.integer({ min: 1, max: 999 }),
         (type, year, month, sequence) => {
-          const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+          const yy = String(year).slice(2);
+          const mm = String(month).padStart(2, '0');
+          const yearMonth = `${yy}${mm}`;
           const code = generateVoucherCode(type, yearMonth, sequence);
 
-          const yymm = code.slice(2, 6);
-          const expectedYY = String(year).slice(2);
-          const expectedMM = String(month).padStart(2, '0');
-
-          expect(yymm).toBe(`${expectedYY}${expectedMM}`);
+          const yymmFromCode = code.slice(2, 6);
+          expect(yymmFromCode).toBe(`${yy}${mm}`);
         },
       ),
       { numRuns: 100 },
@@ -236,20 +237,20 @@ describe('Property 7: Duyệt rồi bỏ duyệt là round-trip', () => {
         (approverId, year, month, day, hour, minute) => {
           const approvedAt = new Date(year, month - 1, day, hour, minute).toISOString();
           const original = {
-            status: 'UNAPPROVED' as const,
+            approval_status: 'UNAPPROVED' as const,
             approved_by: null as string | null,
             approved_at: null as string | null,
           };
 
           // Step 1: Approve
           const approved = applyApproval(original, approverId, approvedAt);
-          expect(approved.status).toBe('APPROVED');
+          expect(approved.approval_status).toBe('APPROVED');
           expect(approved.approved_by).toBe(approverId);
           expect(approved.approved_at).toBe(approvedAt);
 
           // Step 2: Unapprove
           const unapproved = applyUnapproval(approved);
-          expect(unapproved.status).toBe('UNAPPROVED');
+          expect(unapproved.approval_status).toBe('UNAPPROVED');
           expect(unapproved.approved_by).toBeNull();
           expect(unapproved.approved_at).toBeNull();
         },
@@ -356,16 +357,16 @@ describe('Property 8: Import Excel - số bản ghi tạo + số lỗi = tổng 
     );
   });
 
-  it('every error must have a rowIndex and a non-empty message', () => {
+  it('every error must have a row index and a non-empty errors array', () => {
     fc.assert(
       fc.property(mixedRowsArb, (rows) => {
         const { errors } = validateImportRows(rows);
         for (const err of errors) {
-          expect(typeof err.rowIndex).toBe('number');
-          expect(err.rowIndex).toBeGreaterThanOrEqual(0);
-          expect(err.rowIndex).toBeLessThan(rows.length);
-          expect(typeof err.message).toBe('string');
-          expect(err.message.length).toBeGreaterThan(0);
+          expect(typeof err.row).toBe('number');
+          expect(err.row).toBeGreaterThanOrEqual(0);
+          expect(err.row).toBeLessThan(rows.length);
+          expect(Array.isArray(err.errors)).toBe(true);
+          expect(err.errors.length).toBeGreaterThan(0);
         }
       }),
       { numRuns: 100 },

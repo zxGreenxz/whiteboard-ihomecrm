@@ -24,7 +24,6 @@ export interface IncomeExpenseItem {
   quantity: number;
   unit_price: number;
   amount: number;
-  notes: string | null;
 }
 
 export interface IncomeExpenseWithRelations {
@@ -77,6 +76,8 @@ export const useIncomeExpenses = (
       data: IncomeExpenseWithRelations[];
       totalCount: number;
     }> => {
+      const hasSearch = searchQuery && searchQuery.trim().length > 0;
+
       // Build the main query with joins
       let query = supabase
         .from("income_expenses" as any)
@@ -112,18 +113,14 @@ export const useIncomeExpenses = (
         query = query.eq("approval_status", filters.approval_status);
       }
 
-      // Apply search
-      if (searchQuery && searchQuery.trim()) {
-        const search = searchQuery.trim();
-        query = query.or(
-          `name.ilike.%${search}%,code.ilike.%${search}%`
-        );
+      // When searching, we need to fetch all filtered records and search client-side
+      // because tenant_name comes from a joined table and can't be searched server-side.
+      // When not searching, use server-side pagination for efficiency.
+      if (!hasSearch) {
+        const from = (pagination.page - 1) * pagination.pageSize;
+        const to = from + pagination.pageSize - 1;
+        query = query.range(from, to);
       }
-
-      // Pagination
-      const from = (pagination.page - 1) * pagination.pageSize;
-      const to = from + pagination.pageSize - 1;
-      query = query.range(from, to);
 
       // Order by voucher_date desc
       query = query.order("voucher_date", { ascending: false });
@@ -172,7 +169,6 @@ export const useIncomeExpenses = (
             quantity: item.quantity,
             unit_price: Number(item.unit_price),
             amount: Number(item.amount),
-            notes: item.notes,
           });
         }
       }
@@ -205,21 +201,29 @@ export const useIncomeExpenses = (
         })
       );
 
-      // If search includes tenant name, we need to filter client-side
-      // since tenant name comes from a joined table
-      let filtered = mapped;
-      if (searchQuery && searchQuery.trim()) {
-        const search = searchQuery.trim().toLowerCase();
-        filtered = mapped.filter(
+      // Apply client-side search (ilike on name, code, tenant_name)
+      if (hasSearch) {
+        const search = searchQuery!.trim().toLowerCase();
+        const filtered = mapped.filter(
           (v) =>
             v.name.toLowerCase().includes(search) ||
             v.code.toLowerCase().includes(search) ||
             (v.tenant_name && v.tenant_name.toLowerCase().includes(search))
         );
+
+        // Client-side pagination after search
+        const totalCount = filtered.length;
+        const from = (pagination.page - 1) * pagination.pageSize;
+        const paginated = filtered.slice(from, from + pagination.pageSize);
+
+        return {
+          data: paginated,
+          totalCount,
+        };
       }
 
       return {
-        data: filtered,
+        data: mapped,
         totalCount: count || 0,
       };
     },
@@ -563,13 +567,7 @@ export const useImportIncomeExpenses = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       if (result.successCount > 0) {
-        toast.success(
-          `Đã nhập ${result.successCount} phiếu thành công${
-            result.failedCount > 0
-              ? `, ${result.failedCount} phiếu lỗi`
-              : ""
-          }`
-        );
+        toast.success("Dữ liệu đã được TẠO thành công");
       }
       if (result.failedCount > 0 && result.successCount === 0) {
         toast.error(`Tất cả ${result.failedCount} phiếu đều lỗi`);

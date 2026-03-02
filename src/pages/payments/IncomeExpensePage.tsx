@@ -133,16 +133,29 @@ const IncomeExpensePage = () => {
   return (
     <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
       <div className="space-y-4">
-        {/* Header: Action buttons */}
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
-            <Upload className="h-4 w-4 mr-2" />
-            Import
-          </Button>
+        {/* Toolbar: Action buttons + Search + Filter toggle */}
+        <div className="flex items-center gap-2">
           <Button onClick={handleAddVoucher}>
             <Plus className="h-4 w-4 mr-2" />
             Thêm phiếu
           </Button>
+          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import
+          </Button>
+          <IncomeExpenseFiltersBar
+            filters={filters}
+            onChange={handleFiltersChange}
+          />
+          <div className="relative flex-1 max-w-sm ml-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm theo tên phiếu, khách hàng, mã phiếu..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              className="pl-9"
+            />
+          </div>
         </div>
 
         {/* Stats */}
@@ -157,23 +170,6 @@ const IncomeExpensePage = () => {
           }
           isLoading={isStatsLoading}
         />
-
-        {/* Search bar + Filters */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Tìm theo tên phiếu, khách hàng, mã phiếu..."
-              value={searchQuery}
-              onChange={handleSearchChange}
-              className="pl-9"
-            />
-          </div>
-          <IncomeExpenseFiltersBar
-            filters={filters}
-            onChange={handleFiltersChange}
-          />
-        </div>
 
         {/* List */}
         <IncomeExpenseList
