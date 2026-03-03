@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
 import { toast } from 'sonner';
 
-const BUCKET = 'income-expense-attachments';
+const DEFAULT_BUCKET = 'income-expense-attachments';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 const ACCEPT_STRING = 'image/jpeg,image/png,application/pdf';
@@ -14,6 +14,7 @@ interface AttachmentUploadProps {
   onChange: (urls: string[]) => void;
   disabled?: boolean;
   userId: string;
+  bucket?: string;
 }
 
 /**
@@ -35,10 +36,13 @@ export default function AttachmentUpload({
   onChange,
   disabled = false,
   userId,
+  bucket = DEFAULT_BUCKET,
 }: AttachmentUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const BUCKET = bucket;
 
   const handleUpload = useCallback(
     async (files: FileList | File[]) => {

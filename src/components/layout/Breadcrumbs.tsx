@@ -37,6 +37,9 @@ const routeLabels: Record<string, string> = {
   '/income-expense': 'Thu chi',
   '/payments': 'Thu chi',
 
+  // Công việc
+  '/tasks': 'Công việc',
+
   // Thông báo
   '/notifications': 'Thông báo',
 

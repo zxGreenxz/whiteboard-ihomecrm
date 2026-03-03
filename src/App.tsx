@@ -98,6 +98,7 @@ import HotlinesPage from "./pages/settings/categories/HotlinesPage";
 import GeneralCategoriesPage from "./pages/settings/categories/GeneralCategoriesPage";
 import FloorsPage from "./pages/settings/categories/FloorsPage";
 import TaskTypesPage from "./pages/settings/categories/TaskTypesPage";
+import TaskManagementPage from "./pages/TaskManagementPage";
 
 // Account Pages
 import ProfilePage from "./pages/account/ProfilePage";
@@ -206,7 +207,8 @@ const App = () => (
           <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
 
-          {/* === CÔNG VIỆC === (đang xây dựng lại) */}
+          {/* === CÔNG VIỆC === */}
+          <Route path="/tasks" element={<ProtectedRoute><TaskManagementPage /></ProtectedRoute>} />
 
           {/* === BÁO CÁO BĐS === */}
           <Route path="/reports/real-estate" element={<ProtectedRoute><RealEstateReportsPage /></ProtectedRoute>} />

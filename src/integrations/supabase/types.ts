@@ -1593,6 +1593,136 @@ export type Database = {
         }
         Relationships: []
       }
+      jobs: {
+        Row: {
+          id: string
+          user_id: string
+          code: string
+          title: string
+          description: string | null
+          building_id: string | null
+          room_id: string | null
+          bed_id: string | null
+          job_group_id: string | null
+          job_type_id: string | null
+          priority: string
+          assignee_id: string | null
+          deadline: string | null
+          status: string
+          visible_to_customer: boolean | null
+          attachments: Json | null
+          completion_time: string | null
+          completion_description: string | null
+          completion_attachments: Json | null
+          acceptance_result: string | null
+          customer_evaluation: string | null
+          customer_comments: string | null
+          accepted_at: string | null
+          started_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          code?: string
+          title: string
+          description?: string | null
+          building_id?: string | null
+          room_id?: string | null
+          bed_id?: string | null
+          job_group_id?: string | null
+          job_type_id?: string | null
+          priority?: string
+          assignee_id?: string | null
+          deadline?: string | null
+          status?: string
+          visible_to_customer?: boolean | null
+          attachments?: Json | null
+          completion_time?: string | null
+          completion_description?: string | null
+          completion_attachments?: Json | null
+          acceptance_result?: string | null
+          customer_evaluation?: string | null
+          customer_comments?: string | null
+          accepted_at?: string | null
+          started_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          code?: string
+          title?: string
+          description?: string | null
+          building_id?: string | null
+          room_id?: string | null
+          bed_id?: string | null
+          job_group_id?: string | null
+          job_type_id?: string | null
+          priority?: string
+          assignee_id?: string | null
+          deadline?: string | null
+          status?: string
+          visible_to_customer?: boolean | null
+          attachments?: Json | null
+          completion_time?: string | null
+          completion_description?: string | null
+          completion_attachments?: Json | null
+          acceptance_result?: string | null
+          customer_evaluation?: string | null
+          customer_comments?: string | null
+          accepted_at?: string | null
+          started_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_job_group_id_fkey"
+            columns: ["job_group_id"]
+            isOneToOne: false
+            referencedRelation: "job_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_job_type_id_fkey"
+            columns: ["job_type_id"]
+            isOneToOne: false
+            referencedRelation: "job_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_types: {
         Row: {
           id: string
