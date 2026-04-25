@@ -76,8 +76,8 @@ const CashbookList = ({
   }
 
   return (
-    <div className="bg-white rounded-lg border">
-      <Table>
+    <div className="bg-white rounded-lg border border-zinc-200 overflow-hidden">
+      <Table className="[&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[120px]">Mã</TableHead>

@@ -15,7 +15,7 @@ export interface IncomeExpenseFilters {
   type?: "INCOME" | "EXPENSE" | null;
   start_date?: string | null;
   end_date?: string | null;
-  approval_status?: "UNAPPROVED" | "APPROVED" | null;
+  approval_status?: "UNAPPROVED" | "APPROVED" | "CANCELLED" | null;
 }
 
 
@@ -49,7 +49,7 @@ export interface IncomeExpenseWithRelations {
   tenant_name: string | null;
   voucher_date: string;
   total_amount: number;
-  approval_status: "UNAPPROVED" | "APPROVED";
+  approval_status: "UNAPPROVED" | "APPROVED" | "CANCELLED";
   approved_by: string | null;
   approved_at: string | null;
   notes: string | null;
@@ -501,18 +501,11 @@ export const useUpdateIncomeExpense = () => {
           notes: data.notes ?? null,
         })
         .eq("id", id)
-        .eq("approval_status", "UNAPPROVED")
         .select()
         .single();
 
       if (voucherError) {
-        if (voucherError.code === "PGRST116") {
-          toast.error(
-            "Không thể cập nhật: phiếu đã được duyệt hoặc không tồn tại"
-          );
-        } else {
-          toast.error(voucherError.message || "Không thể cập nhật phiếu thu/chi");
-        }
+        toast.error(voucherError.message || "Không thể cập nhật phiếu thu/chi");
         throw voucherError;
       }
 
@@ -559,29 +552,30 @@ export const useUpdateIncomeExpense = () => {
   });
 };
 
-// Xoá phiếu thu/chi (soft delete, chỉ khi UNAPPROVED)
-export const useDeleteIncomeExpense = () => {
+// Huỷ phiếu thu/chi: KHÔNG xoá, chỉ đổi trạng thái sang CANCELLED.
+// Phiếu đã huỷ không được tính vào Tồn quỹ của tài khoản.
+export const useCancelIncomeExpense = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("income_expenses" as any)
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id)
-        .eq("approval_status", "UNAPPROVED");
+        .update({ approval_status: "CANCELLED" })
+        .eq("id", id);
 
       if (error) {
-        toast.error(error.message || "Không thể xoá phiếu thu/chi");
+        toast.error(error.message || "Không thể huỷ phiếu thu/chi");
         throw error;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      toast.success("Dữ liệu đã được XOÁ thành công");
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.success("Phiếu đã được HUỶ");
     },
     onError: (error) => {
-      console.error("Error deleting income expense:", error);
+      console.error("Error cancelling income expense:", error);
     },
   });
 };
@@ -672,56 +666,5 @@ export const useImportIncomeExpenses = () => {
   });
 };
 
-// Duyệt phiếu thu/chi
-export const useApproveIncomeExpense = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error } = await supabase.rpc("approve_voucher" as any, {
-        voucher_id: id,
-      });
-
-      if (error) {
-        toast.error(error.message || "Không thể duyệt phiếu thu/chi");
-        throw error;
-      }
-
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      toast.success("Phiếu đã được DUYỆT thành công");
-    },
-    onError: (error) => {
-      console.error("Error approving income expense:", error);
-    },
-  });
-};
-
-// Bỏ duyệt phiếu thu/chi
-export const useUnapproveIncomeExpense = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { data, error } = await supabase.rpc("unapprove_voucher" as any, {
-        voucher_id: id,
-      });
-
-      if (error) {
-        toast.error(error.message || "Không thể bỏ duyệt phiếu thu/chi");
-        throw error;
-      }
-
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      toast.success("Phiếu đã được BỎ DUYỆT thành công");
-    },
-    onError: (error) => {
-      console.error("Error unapproving income expense:", error);
-    },
-  });
-};
+// (Workflow Duyệt/Bỏ duyệt đã bị loại bỏ — phiếu mặc định APPROVED khi tạo,
+//  Huỷ thì set CANCELLED qua useCancelIncomeExpense.)

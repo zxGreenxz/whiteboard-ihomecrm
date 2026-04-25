@@ -81,7 +81,8 @@ export const validateTotalAmount = (
   return items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
 };
 
-// Validation: chỉ cho phép sửa/xoá khi UNAPPROVED
-export const canEditVoucher = (status: string): boolean => {
-  return status === 'UNAPPROVED';
+// Phiếu sau khi tạo là chốt — không cho sửa nội dung. Chỉ có thể Huỷ.
+// (Giữ hàm để các component cũ vẫn import được nếu cần.)
+export const canEditVoucher = (_status: string): boolean => {
+  return false;
 };

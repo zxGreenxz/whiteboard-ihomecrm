@@ -31,7 +31,6 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   incomeExpenseFormSchema,
   type IncomeExpenseFormValues,
-  canEditVoucher,
 } from '@/lib/incomeExpenseValidation';
 import {
   useCreateIncomeExpense,
@@ -332,8 +331,9 @@ const IncomeExpenseForm = ({
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const isApproved = voucher?.approval_status === 'APPROVED';
-  const canEdit = !voucher || canEditVoucher(voucher.approval_status);
+  // Phiếu đã tạo: chỉ xem (read-only). Tạo mới: edit được.
+  const isViewing = !!voucher;
+  const canEdit = !isViewing;
 
   const totalAmount = itemRows.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
@@ -345,12 +345,15 @@ const IncomeExpenseForm = ({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>PHIẾU THU/CHI</DialogTitle>
+            <DialogTitle>
+              {isViewing ? 'CHI TIẾT PHIẾU' : 'THÊM PHIẾU THU/CHI'}
+            </DialogTitle>
           </DialogHeader>
 
-          {isApproved && (
-            <p className="text-sm text-destructive">
-              Phiếu đã được duyệt. Vui lòng bỏ duyệt trước khi sửa.
+          {isViewing && (
+            <p className="text-sm text-muted-foreground">
+              Phiếu đã được ghi nhận. Để bỏ ghi nhận, hãy đóng dialog này và
+              ấn nút <b>Huỷ phiếu</b> trên dòng phiếu.
             </p>
           )}
 
@@ -816,7 +819,7 @@ const IncomeExpenseForm = ({
                   variant="outline"
                   onClick={() => onOpenChange(false)}
                 >
-                  Hủy
+                  {isViewing ? 'Đóng' : 'Huỷ bỏ'}
                 </Button>
                 {canEdit && (
                   <Button type="submit" disabled={isPending}>

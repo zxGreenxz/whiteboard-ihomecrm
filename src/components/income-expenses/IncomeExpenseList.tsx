@@ -17,24 +17,15 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
-import { canEditVoucher } from '@/lib/incomeExpenseValidation';
-import {
-  CheckCircle,
-  XCircle,
-  Pencil,
-  Trash2,
-  Receipt,
-} from 'lucide-react';
+import { Eye, Ban, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 interface IncomeExpenseListProps {
   vouchers: IncomeExpenseWithRelations[];
   isLoading: boolean;
-  onEdit: (voucher: IncomeExpenseWithRelations) => void;
-  onDelete: (id: string) => void;
-  onApprove: (id: string) => void;
-  onUnapprove: (id: string) => void;
+  onView: (voucher: IncomeExpenseWithRelations) => void;
+  onCancel: (id: string) => void;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -46,10 +37,8 @@ const formatVND = (amount: number): string => {
 const IncomeExpenseList = ({
   vouchers,
   isLoading,
-  onEdit,
-  onDelete,
-  onApprove,
-  onUnapprove,
+  onView,
+  onCancel,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -79,8 +68,8 @@ const IncomeExpenseList = ({
   }
 
   return (
-    <div className="bg-white rounded-lg border">
-      <Table>
+    <div className="bg-white rounded-lg border border-zinc-200 overflow-hidden">
+      <Table className="[&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
         <TableHeader>
           <TableRow>
             <TableHead>Mã</TableHead>
@@ -95,77 +84,67 @@ const IncomeExpenseList = ({
         </TableHeader>
         <TableBody>
           {vouchers.map((voucher) => {
-            const isApproved = voucher.approval_status === 'APPROVED';
-            const editable = canEditVoucher(voucher.approval_status);
+            const isCancelled = voucher.approval_status === 'CANCELLED';
 
             return (
-              <TableRow key={voucher.id}>
+              <TableRow
+                key={voucher.id}
+                className={isCancelled ? 'opacity-60' : ''}
+              >
                 {/* Mã + Badge trạng thái */}
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{voucher.code}</span>
-                    <Badge
-                      variant={isApproved ? 'default' : 'secondary'}
-                      className={
-                        isApproved
-                          ? 'bg-green-100 text-green-800 hover:bg-green-100'
-                          : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
-                      }
+                    <span
+                      className={`font-medium ${
+                        isCancelled ? 'line-through' : ''
+                      }`}
                     >
-                      {isApproved ? 'Đã duyệt' : 'Chưa duyệt'}
-                    </Badge>
+                      {voucher.code}
+                    </span>
+                    {isCancelled ? (
+                      <Badge
+                        variant="secondary"
+                        className="bg-red-100 text-red-700 hover:bg-red-100"
+                      >
+                        Đã huỷ
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="default"
+                        className="bg-green-100 text-green-800 hover:bg-green-100"
+                      >
+                        Đã ghi nhận
+                      </Badge>
+                    )}
                   </div>
                 </TableCell>
 
-                {/* Thao tác - 3 icon buttons */}
+                {/* Thao tác */}
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    {/* Duyệt / Bỏ duyệt */}
-                    {isApproved ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                        onClick={() => onUnapprove(voucher.id)}
-                        title="Bỏ duyệt"
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-green-500 hover:text-green-600 hover:bg-green-50"
-                        onClick={() => onApprove(voucher.id)}
-                        title="Duyệt"
-                      >
-                        <CheckCircle className="h-4 w-4" />
-                      </Button>
-                    )}
-
-                    {/* Chỉnh sửa */}
+                    {/* Xem chi tiết */}
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                      disabled={!editable}
-                      onClick={() => onEdit(voucher)}
-                      title="Chỉnh sửa"
+                      onClick={() => onView(voucher)}
+                      title="Xem chi tiết"
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Eye className="h-4 w-4" />
                     </Button>
 
-                    {/* Xóa */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      disabled={!editable}
-                      onClick={() => onDelete(voucher.id)}
-                      title="Xóa"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {/* Huỷ phiếu (chỉ khi chưa huỷ) */}
+                    {!isCancelled && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => onCancel(voucher.id)}
+                        title="Huỷ phiếu"
+                      >
+                        <Ban className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
 
@@ -188,8 +167,21 @@ const IncomeExpenseList = ({
                   </span>
                 </TableCell>
 
-                {/* Tòa nhà */}
-                <TableCell>{voucher.building_name || '—'}</TableCell>
+                {/* Tòa nhà + Phòng (sub-line) */}
+                <TableCell>
+                  {voucher.building_name ? (
+                    <div className="flex flex-col leading-tight">
+                      <span>{voucher.building_name}</span>
+                      {voucher.room_name && (
+                        <span className="text-xs text-muted-foreground">
+                          {voucher.room_name}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    '—'
+                  )}
+                </TableCell>
 
                 {/* Ngày thu/chi */}
                 <TableCell>

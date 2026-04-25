@@ -12,18 +12,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Upload, Search, Receipt } from "lucide-react";
+import { Plus, Upload, Search, Receipt, ListFilter } from "lucide-react";
 import { IncomeExpenseStats } from "@/components/income-expenses/IncomeExpenseStats";
 import { IncomeExpenseFiltersBar } from "@/components/income-expenses/IncomeExpenseFilters";
+import IncomeExpenseFilterPanel from "@/components/income-expenses/IncomeExpenseFilterPanel";
 import IncomeExpenseList from "@/components/income-expenses/IncomeExpenseList";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import {
   useIncomeExpenses,
   useIncomeExpenseStats,
-  useDeleteIncomeExpense,
-  useApproveIncomeExpense,
-  useUnapproveIncomeExpense,
+  useCancelIncomeExpense,
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
@@ -39,7 +38,8 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   type: null,
   start_date: null,
   end_date: null,
-  approval_status: null,
+  // Mặc định chỉ xem phiếu đã ghi nhận. User có thể đổi sang "Đã huỷ".
+  approval_status: "APPROVED",
 };
 
 const IncomeExpensePage = () => {
@@ -48,10 +48,11 @@ const IncomeExpensePage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [editingVoucher, setEditingVoucher] =
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [viewingVoucher, setViewingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
 
   // --- Pagination ---
   const pagination = usePagination(20);
@@ -70,9 +71,7 @@ const IncomeExpensePage = () => {
     useIncomeExpenseStats(filters);
 
   // --- Mutation hooks ---
-  const deleteMutation = useDeleteIncomeExpense();
-  const approveMutation = useApproveIncomeExpense();
-  const unapproveMutation = useUnapproveIncomeExpense();
+  const cancelMutation = useCancelIncomeExpense();
 
   // --- Handlers ---
   const handleFiltersChange = useCallback(
@@ -92,46 +91,32 @@ const IncomeExpensePage = () => {
   );
 
   const handleAddVoucher = useCallback(() => {
-    setEditingVoucher(null);
+    setViewingVoucher(null);
     setFormType("INCOME");
     setIsFormOpen(true);
   }, []);
 
-  const handleEdit = useCallback((voucher: IncomeExpenseWithRelations) => {
-    setEditingVoucher(voucher);
+  const handleView = useCallback((voucher: IncomeExpenseWithRelations) => {
+    setViewingVoucher(voucher);
     setFormType(voucher.type);
     setIsFormOpen(true);
   }, []);
 
   const handleFormClose = useCallback((open: boolean) => {
     setIsFormOpen(open);
-    if (!open) setEditingVoucher(null);
+    if (!open) setViewingVoucher(null);
   }, []);
 
-  const handleDelete = useCallback((id: string) => {
-    setDeleteTarget(id);
+  const handleCancelVoucher = useCallback((id: string) => {
+    setCancelTarget(id);
   }, []);
 
-  const confirmDelete = useCallback(() => {
-    if (deleteTarget) {
-      deleteMutation.mutate(deleteTarget);
+  const confirmCancel = useCallback(() => {
+    if (cancelTarget) {
+      cancelMutation.mutate(cancelTarget);
     }
-    setDeleteTarget(null);
-  }, [deleteTarget, deleteMutation]);
-
-  const handleApprove = useCallback(
-    (id: string) => {
-      approveMutation.mutate(id);
-    },
-    [approveMutation]
-  );
-
-  const handleUnapprove = useCallback(
-    (id: string) => {
-      unapproveMutation.mutate(id);
-    },
-    [unapproveMutation]
-  );
+    setCancelTarget(null);
+  }, [cancelTarget, cancelMutation]);
 
   return (
     <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
@@ -145,6 +130,14 @@ const IncomeExpensePage = () => {
           <Button variant="outline" onClick={() => setIsImportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsFilterPanelOpen(true)}
+            title="Lọc dữ liệu"
+          >
+            <ListFilter className="h-4 w-4 mr-2" />
+            Lọc dữ liệu
           </Button>
           <div className="relative flex-1 max-w-sm ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -179,10 +172,8 @@ const IncomeExpensePage = () => {
         <IncomeExpenseList
           vouchers={vouchers}
           isLoading={isLoading}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onApprove={handleApprove}
-          onUnapprove={handleUnapprove}
+          onView={handleView}
+          onCancel={handleCancelVoucher}
           pagination={pagination}
           totalCount={totalCount}
         />
@@ -192,7 +183,7 @@ const IncomeExpensePage = () => {
       <IncomeExpenseForm
         open={isFormOpen}
         onOpenChange={handleFormClose}
-        voucher={editingVoucher}
+        voucher={viewingVoucher}
         defaultType={formType}
       />
 
@@ -202,26 +193,35 @@ const IncomeExpensePage = () => {
         onOpenChange={setIsImportOpen}
       />
 
-      {/* Delete Confirmation */}
+      {/* Filter Side Panel */}
+      <IncomeExpenseFilterPanel
+        open={isFilterPanelOpen}
+        onOpenChange={setIsFilterPanelOpen}
+        filters={filters}
+        emptyFilters={EMPTY_FILTERS}
+        onApply={handleFiltersChange}
+      />
+
+      {/* Cancel Confirmation */}
       <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={() => setDeleteTarget(null)}
+        open={!!cancelTarget}
+        onOpenChange={() => setCancelTarget(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xoá</AlertDialogTitle>
+            <AlertDialogTitle>Xác nhận huỷ phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc chắn muốn xoá phiếu thu/chi này không? Hành động này
-              không thể hoàn tác.
+              Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến
+              tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={confirmCancel}
               className="bg-red-600 hover:bg-red-700"
             >
-              Xoá
+              Huỷ phiếu
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
