@@ -110,6 +110,8 @@ const IncomeExpenseForm = ({
       voucher_date: new Date().toISOString().split('T')[0],
       notes: '',
       business_result_accounting: false,
+      receive_bank_name: '',
+      receive_bank_account: '',
       attachments: [],
       items: [],
     },
@@ -150,6 +152,8 @@ const IncomeExpenseForm = ({
         voucher_date: voucher.voucher_date,
         notes: voucher.notes ?? '',
         business_result_accounting: voucher.business_result_accounting ?? false,
+        receive_bank_name: voucher.receive_bank_name ?? '',
+        receive_bank_account: voucher.receive_bank_account ?? '',
         attachments: voucher.attachments ?? [],
         items: voucher.items.map((item) => ({
           income_expense_type_id: item.income_expense_type_id,
@@ -188,6 +192,8 @@ const IncomeExpenseForm = ({
         voucher_date: new Date().toISOString().split('T')[0],
         notes: '',
         business_result_accounting: false,
+        receive_bank_name: '',
+        receive_bank_account: '',
         attachments: [],
         items: [],
       });
@@ -525,10 +531,19 @@ const IncomeExpenseForm = ({
                   name="payer_name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Tên người nộp *</FormLabel>
+                      <FormLabel>
+                        {voucherType === 'EXPENSE'
+                          ? 'Tên người nhận'
+                          : 'Tên người nộp'}{' '}
+                        *
+                      </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Nhập tên người nộp"
+                          placeholder={
+                            voucherType === 'EXPENSE'
+                              ? 'Nhập tên người nhận'
+                              : 'Nhập tên người nộp'
+                          }
                           {...field}
                           disabled={!canEdit}
                         />
@@ -538,6 +553,48 @@ const IncomeExpenseForm = ({
                   )}
                 />
               </div>
+
+              {/* Row chỉ phiếu chi: Số TK nhận + Ngân hàng nhận */}
+              {voucherType === 'EXPENSE' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="receive_bank_account"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Số TK nhận</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Số tài khoản người nhận"
+                            {...field}
+                            value={field.value ?? ''}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="receive_bank_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ngân hàng nhận</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="VD: Vietcombank"
+                            {...field}
+                            value={field.value ?? ''}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
               {/* Row 3: Tài khoản, Ngày thực thu/chi */}
               <div className="grid grid-cols-2 gap-3">

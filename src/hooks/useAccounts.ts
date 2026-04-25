@@ -15,6 +15,7 @@ export interface Account {
   bank_name: string | null;
   account_number: string | null;
   bank_account_holder: string | null;
+  branch: string | null;
   description: string | null;
   is_default: boolean;
   initial_amount: number;
@@ -34,6 +35,7 @@ export interface AccountFormValues {
   bank_name?: string | null;
   account_number?: string | null;
   bank_account_holder?: string | null;
+  branch?: string | null;
   description?: string | null;
   initial_amount: number;
   initial_date: string;
@@ -137,6 +139,7 @@ export const useCreateAccount = () => {
         bank_name: values.bank_name ?? null,
         account_number: values.account_number ?? null,
         bank_account_holder: values.bank_account_holder ?? null,
+        branch: values.branch ?? null,
         description: values.description ?? null,
         initial_amount: values.initial_amount,
         initial_date: values.initial_date,
@@ -175,6 +178,7 @@ export const useUpdateAccount = () => {
           bank_name: input.values.bank_name ?? null,
           account_number: input.values.account_number ?? null,
           bank_account_holder: input.values.bank_account_holder ?? null,
+          branch: input.values.branch ?? null,
           description: input.values.description ?? null,
           initial_amount: input.values.initial_amount,
           initial_date: input.values.initial_date,

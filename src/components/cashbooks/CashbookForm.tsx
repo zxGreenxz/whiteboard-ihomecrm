@@ -29,16 +29,58 @@ import {
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
 
-const schema = z.object({
-  type: z.enum(["cash", "bank", "ewallet"]),
-  name: z.string().min(1, "Tên tài khoản bắt buộc").max(120),
-  initial_amount: z.coerce.number().min(0, "Số dư đầu kỳ không âm"),
-  initial_date: z.string().min(1, "Ngày chốt đầu kỳ bắt buộc"),
-  description: z.string().nullable().optional(),
-  bank_name: z.string().nullable().optional(),
-  account_number: z.string().nullable().optional(),
-  bank_account_holder: z.string().nullable().optional(),
-});
+const schema = z
+  .object({
+    type: z.enum(["cash", "bank", "ewallet"]),
+    name: z.string().min(1, "Tên tài khoản bắt buộc").max(120),
+    initial_amount: z.coerce.number().min(0, "Số dư đầu kỳ không âm"),
+    initial_date: z.string().min(1, "Ngày chốt đầu kỳ bắt buộc"),
+    description: z.string().nullable().optional(),
+    bank_name: z.string().nullable().optional(),
+    account_number: z.string().nullable().optional(),
+    bank_account_holder: z.string().nullable().optional(),
+    branch: z.string().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "bank") {
+      if (!data.bank_name?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Vui lòng chọn ngân hàng",
+          path: ["bank_name"],
+        });
+      }
+      if (!data.account_number?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Số tài khoản bắt buộc",
+          path: ["account_number"],
+        });
+      }
+      if (!data.bank_account_holder?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Tên chủ tài khoản bắt buộc",
+          path: ["bank_account_holder"],
+        });
+      }
+    } else if (data.type === "ewallet") {
+      if (!data.account_number?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Số tài khoản bắt buộc",
+          path: ["account_number"],
+        });
+      }
+      if (!data.bank_account_holder?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Tên chủ tài khoản bắt buộc",
+          path: ["bank_account_holder"],
+        });
+      }
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -75,6 +117,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       bank_name: account?.bank_name ?? "",
       account_number: account?.account_number ?? "",
       bank_account_holder: account?.bank_account_holder ?? "",
+      branch: account?.branch ?? "",
     }),
     [account]
   );
@@ -103,6 +146,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       bank_account_holder: showBankFields
         ? values.bank_account_holder || null
         : null,
+      branch: values.type === "bank" ? values.branch || null : null,
     };
 
     if (isEditing && account) {
@@ -183,7 +227,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
               )}
             />
 
-            {showBankFields && (
+            {type === "bank" && (
               <div className="grid grid-cols-2 gap-3">
                 <FormField
                   control={form.control}
@@ -191,15 +235,11 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {type === "ewallet"
-                          ? "Nhà cung cấp ví"
-                          : "Ngân hàng"}
+                        Ngân hàng <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder={
-                            type === "ewallet" ? "Momo, ZaloPay…" : "Vietcombank…"
-                          }
+                          placeholder="VD: Vietcombank"
                           {...field}
                           value={field.value ?? ""}
                         />
@@ -213,7 +253,9 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   name="account_number"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Số tài khoản</FormLabel>
+                      <FormLabel>
+                        Số tài khoản <span className="text-red-500">*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value ?? ""} />
                       </FormControl>
@@ -225,8 +267,64 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   control={form.control}
                   name="bank_account_holder"
                   render={({ field }) => (
-                    <FormItem className="col-span-2">
-                      <FormLabel>Tên chủ tài khoản</FormLabel>
+                    <FormItem>
+                      <FormLabel>
+                        Tên chủ tài khoản{" "}
+                        <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="branch"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Chi nhánh</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="VD: CN Hà Nội"
+                          {...field}
+                          value={field.value ?? ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            {type === "ewallet" && (
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="account_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Số tài khoản <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="bank_account_holder"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Tên chủ tài khoản{" "}
+                        <span className="text-red-500">*</span>
+                      </FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value ?? ""} />
                       </FormControl>

@@ -59,6 +59,8 @@ export interface IncomeExpenseWithRelations {
   contract_id: string | null;
   attachments: string[];
   business_result_accounting: boolean;
+  receive_bank_name: string | null;
+  receive_bank_account: string | null;
   items: IncomeExpenseItem[];
   created_at: string;
   updated_at: string;
@@ -241,6 +243,8 @@ export const useIncomeExpenses = (
           contract_id: v.contract_id ?? null,
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? false,
+          receive_bank_name: v.receive_bank_name ?? null,
+          receive_bank_account: v.receive_bank_account ?? null,
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
@@ -419,6 +423,10 @@ export const useCreateIncomeExpense = () => {
           contract_id: input.contract_id ?? null,
           attachments: input.attachments ?? [],
           business_result_accounting: input.business_result_accounting ?? false,
+          receive_bank_name:
+            input.type === "EXPENSE" ? input.receive_bank_name ?? null : null,
+          receive_bank_account:
+            input.type === "EXPENSE" ? input.receive_bank_account ?? null : null,
           voucher_date: input.voucher_date,
           notes: input.notes ?? null,
         })
@@ -485,6 +493,10 @@ export const useUpdateIncomeExpense = () => {
           contract_id: data.contract_id ?? null,
           attachments: data.attachments ?? [],
           business_result_accounting: data.business_result_accounting ?? false,
+          receive_bank_name:
+            data.type === "EXPENSE" ? data.receive_bank_name ?? null : null,
+          receive_bank_account:
+            data.type === "EXPENSE" ? data.receive_bank_account ?? null : null,
           voucher_date: data.voucher_date,
           notes: data.notes ?? null,
         })
