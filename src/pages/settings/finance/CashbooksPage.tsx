@@ -25,6 +25,7 @@ import CashbookList from "@/components/cashbooks/CashbookList";
 import CashbookListMobile from "@/components/cashbooks/CashbookListMobile";
 import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CashbookLockDialog from "@/components/cashbooks/CashbookLockDialog";
+import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
 
 const CashbooksPage = () => {
   const isMobile = useIsMobile();
@@ -48,10 +49,15 @@ const CashbooksPage = () => {
   const [lockOpen, setLockOpen] = useState(false);
   const [lockTarget, setLockTarget] = useState<AccountWithBalance | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [detailAcc, setDetailAcc] = useState<AccountWithBalance | null>(null);
 
   const handleAdd = useCallback(() => {
     setEditing(null);
     setFormOpen(true);
+  }, []);
+
+  const handleView = useCallback((acc: AccountWithBalance) => {
+    setDetailAcc(acc);
   }, []);
 
   const handleEdit = useCallback((acc: AccountWithBalance) => {
@@ -109,6 +115,7 @@ const CashbooksPage = () => {
           <CashbookListMobile
             rows={rows}
             isLoading={isLoading}
+            onView={handleView}
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
             onLock={handleLock}
@@ -167,6 +174,7 @@ const CashbooksPage = () => {
             isLoading={isLoading}
             totalCount={totalCount}
             pagination={pagination}
+            onView={handleView}
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
             onLock={handleLock}
@@ -174,6 +182,16 @@ const CashbooksPage = () => {
           />
         </div>
       )}
+
+      <CashbookDetailDialog
+        open={!!detailAcc}
+        onOpenChange={(o) => {
+          if (!o) setDetailAcc(null);
+        }}
+        account={detailAcc}
+        onEdit={handleEdit}
+        onDelete={(id) => setDeleteId(id)}
+      />
 
       <CashbookForm
         open={formOpen}

@@ -20,13 +20,14 @@ import {
   accountTypeLabel,
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
-import { Lock, LockOpen, Pencil, Trash2, Wallet } from "lucide-react";
+import { Lock, LockOpen, Pencil, Trash2, Wallet, Eye } from "lucide-react";
 
 interface CashbookListProps {
   rows: AccountWithBalance[];
   isLoading: boolean;
   totalCount: number;
   pagination: PaginationState;
+  onView: (acc: AccountWithBalance) => void;
   onEdit: (acc: AccountWithBalance) => void;
   onDelete: (id: string) => void;
   onLock: (acc: AccountWithBalance) => void;
@@ -40,6 +41,7 @@ const CashbookList = ({
   isLoading,
   totalCount,
   pagination,
+  onView,
   onEdit,
   onDelete,
   onLock,
@@ -109,6 +111,15 @@ const CashbookList = ({
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                      onClick={() => onView(acc)}
+                      title="Xem chi tiết"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                     {isLocked ? (
                       <Button
                         variant="ghost"

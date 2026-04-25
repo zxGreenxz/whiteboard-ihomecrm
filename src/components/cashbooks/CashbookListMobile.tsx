@@ -11,6 +11,7 @@ import {
 interface Props {
   rows: AccountWithBalance[];
   isLoading: boolean;
+  onView: (acc: AccountWithBalance) => void;
   onEdit: (acc: AccountWithBalance) => void;
   onDelete: (id: string) => void;
   onLock: (acc: AccountWithBalance) => void;
@@ -34,6 +35,7 @@ const formatVND = (n: number) => n.toLocaleString("vi-VN");
 export function CashbookListMobile({
   rows,
   isLoading,
+  onView,
   onEdit,
   onDelete,
   onLock,
@@ -71,7 +73,13 @@ export function CashbookListMobile({
         return (
           <li key={acc.id}>
             <article
-              className={`relative bg-white border border-zinc-200 rounded-xl p-3.5 shadow-sm ${
+              role="button"
+              tabIndex={0}
+              onClick={() => onView(acc)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") onView(acc);
+              }}
+              className={`relative bg-white border border-zinc-200 rounded-xl p-3.5 shadow-sm cursor-pointer active:scale-[0.985] transition-transform ${
                 isLocked ? "ring-1 ring-orange-200" : ""
               }`}
             >
@@ -112,7 +120,10 @@ export function CashbookListMobile({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-zinc-100 pt-2">
+              <div
+                className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-zinc-100 pt-2"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <span>
                   Số dư đầu kỳ:{" "}
                   <span className="font-medium text-zinc-700 tabular-nums">
@@ -124,7 +135,10 @@ export function CashbookListMobile({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-amber-500 hover:bg-amber-50"
-                    onClick={() => (isLocked ? onUnlock(acc) : onLock(acc))}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      isLocked ? onUnlock(acc) : onLock(acc);
+                    }}
                     title={isLocked ? "Mở khoá sổ" : "Khoá sổ"}
                   >
                     <Lock className="h-4 w-4" />
@@ -133,7 +147,10 @@ export function CashbookListMobile({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-blue-500 hover:bg-blue-50"
-                    onClick={() => onEdit(acc)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(acc);
+                    }}
                     title="Sửa"
                   >
                     <Pencil className="h-4 w-4" />
@@ -142,7 +159,10 @@ export function CashbookListMobile({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-red-500 hover:bg-red-50"
-                    onClick={() => onDelete(acc.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(acc.id);
+                    }}
                     title="Xoá"
                   >
                     <Trash2 className="h-4 w-4" />

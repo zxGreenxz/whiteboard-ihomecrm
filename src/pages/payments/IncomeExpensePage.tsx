@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,8 +50,28 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
 
 const IncomeExpensePage = () => {
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [filters, setFilters] = useState<IncomeExpenseFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<IncomeExpenseFilters>(() => {
+    const accountId = searchParams.get("account_id");
+    return accountId
+      ? { ...EMPTY_FILTERS, account_id: accountId }
+      : EMPTY_FILTERS;
+  });
+
+  // Khi user vào /income-expense?account_id=xxx, pre-load filter và clear URL
+  useEffect(() => {
+    const accountId = searchParams.get("account_id");
+    if (accountId) {
+      setFilters((f) => ({ ...f, account_id: accountId }));
+      // Xoá query để URL sạch — filter chip vẫn hiển thị
+      const next = new URLSearchParams(searchParams);
+      next.delete("account_id");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
