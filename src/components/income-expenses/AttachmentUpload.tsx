@@ -62,11 +62,22 @@ export default function AttachmentUpload({
           }
 
           try {
-            const path = `${userId}/${Date.now()}-${file.name}`;
+            const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+            const path = `${userId}/${Date.now()}-${safeName}`;
             const publicUrl = await uploadFile(BUCKET, path, file);
             newUrls.push(publicUrl);
-          } catch {
-            toast.error('Không thể tải lên file đính kèm');
+          } catch (err: any) {
+            const msg = err?.message || err?.error || '';
+            console.error('[AttachmentUpload] upload failed:', err);
+            if (/bucket.*not.*found|404/i.test(msg)) {
+              toast.error(
+                `Bucket "${BUCKET}" chưa tồn tại. Hãy tạo bucket trên Supabase Storage hoặc apply migration.`
+              );
+            } else if (/row-level security|policy|permission|401|403/i.test(msg)) {
+              toast.error('Bucket chặn quyền upload (RLS). Cần policy cho thư mục theo user id.');
+            } else {
+              toast.error(`Không thể tải lên: ${msg || 'lỗi không xác định'}`);
+            }
           }
         }
 

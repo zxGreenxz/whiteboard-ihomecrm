@@ -28,6 +28,7 @@ import {
   type AccountType,
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const schema = z
   .object({
@@ -106,6 +107,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const isEditing = !!account;
   const createMut = useCreateAccount();
   const updateMut = useUpdateAccount();
+  const isMobile = useIsMobile();
 
   const defaults = useMemo<FormValues>(
     () => ({
@@ -161,7 +163,13 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent
+        className={
+          isMobile
+            ? "max-w-full w-full h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 rounded-none p-4 overflow-y-auto"
+            : "max-w-xl"
+        }
+      >
         <DialogHeader>
           <DialogTitle className="uppercase tracking-wide">
             {isEditing

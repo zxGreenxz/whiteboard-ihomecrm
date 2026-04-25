@@ -46,6 +46,7 @@ import type { IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -74,6 +75,7 @@ const IncomeExpenseForm = ({
   const createMutation = useCreateIncomeExpense();
   const updateMutation = useUpdateIncomeExpense();
   const { data: authUser } = useAuth();
+  const isMobile = useIsMobile();
 
   // Cascade dropdown state
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | undefined>(undefined);
@@ -343,7 +345,13 @@ const IncomeExpenseForm = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className={
+            isMobile
+              ? "max-w-full w-full h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 rounded-none p-4 overflow-y-auto"
+              : "sm:max-w-[800px] max-h-[90vh] overflow-y-auto"
+          }
+        >
           <DialogHeader>
             <DialogTitle>
               {isViewing ? 'CHI TIẾT PHIẾU' : 'THÊM PHIẾU THU/CHI'}
@@ -813,16 +821,32 @@ const IncomeExpenseForm = ({
               />
 
               {/* Action buttons */}
-              <div className="flex justify-end gap-3 pt-4">
+              <div
+                className={
+                  isMobile
+                    ? "sticky bottom-0 -mx-4 -mb-4 px-4 py-3 bg-white border-t border-zinc-200 flex gap-2 items-center"
+                    : "flex justify-end gap-3 pt-4"
+                }
+                style={
+                  isMobile
+                    ? { paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" }
+                    : undefined
+                }
+              >
                 <Button
                   type="button"
                   variant="outline"
+                  className={isMobile ? "flex-1" : ""}
                   onClick={() => onOpenChange(false)}
                 >
                   {isViewing ? 'Đóng' : 'Huỷ bỏ'}
                 </Button>
                 {canEdit && (
-                  <Button type="submit" disabled={isPending}>
+                  <Button
+                    type="submit"
+                    disabled={isPending}
+                    className={isMobile ? "flex-1" : ""}
+                  >
                     {isPending ? 'Đang lưu...' : 'Lưu'}
                   </Button>
                 )}

@@ -12,12 +12,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Upload, Search, Receipt, ListFilter } from "lucide-react";
+import { Plus, Upload, Search, Receipt, ListFilter, SlidersHorizontal } from "lucide-react";
 import { IncomeExpenseStats } from "@/components/income-expenses/IncomeExpenseStats";
+import { IncomeExpenseStatsMobile } from "@/components/income-expenses/IncomeExpenseStatsMobile";
 import { IncomeExpenseFiltersBar } from "@/components/income-expenses/IncomeExpenseFilters";
 import IncomeExpenseFilterPanel from "@/components/income-expenses/IncomeExpenseFilterPanel";
 import IncomeExpenseList from "@/components/income-expenses/IncomeExpenseList";
+import IncomeExpenseListMobile from "@/components/income-expenses/IncomeExpenseListMobile";
+import IncomeExpenseFAB from "@/components/income-expenses/IncomeExpenseFAB";
+import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpenseFilterChips";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
+import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import {
   useIncomeExpenses,
@@ -27,6 +32,7 @@ import {
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import { usePagination } from "@/hooks/usePagination";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
   area_id: null,
@@ -38,26 +44,24 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   type: null,
   start_date: null,
   end_date: null,
-  // Mặc định chỉ xem phiếu đã ghi nhận. User có thể đổi sang "Đã huỷ".
   approval_status: "APPROVED",
 };
 
 const IncomeExpensePage = () => {
-  // --- State ---
+  const isMobile = useIsMobile();
+
   const [filters, setFilters] = useState<IncomeExpenseFilters>(EMPTY_FILTERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [viewingVoucher, setViewingVoucher] =
+  const [detailVoucher, setDetailVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
 
-  // --- Pagination ---
-  const pagination = usePagination(20);
+  const pagination = usePagination(isMobile ? 50 : 20);
 
-  // --- Data hooks ---
   const { data: listResult, isLoading } = useIncomeExpenses(
     filters,
     { page: pagination.page, pageSize: pagination.pageSize },
@@ -70,10 +74,8 @@ const IncomeExpensePage = () => {
   const { data: stats, isLoading: isStatsLoading } =
     useIncomeExpenseStats(filters);
 
-  // --- Mutation hooks ---
   const cancelMutation = useCancelIncomeExpense();
 
-  // --- Handlers ---
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
       setFilters(newFilters);
@@ -91,20 +93,26 @@ const IncomeExpensePage = () => {
   );
 
   const handleAddVoucher = useCallback(() => {
-    setViewingVoucher(null);
     setFormType("INCOME");
     setIsFormOpen(true);
   }, []);
 
-  const handleView = useCallback((voucher: IncomeExpenseWithRelations) => {
-    setViewingVoucher(voucher);
-    setFormType(voucher.type);
+  const handleAddIncome = useCallback(() => {
+    setFormType("INCOME");
     setIsFormOpen(true);
+  }, []);
+
+  const handleAddExpense = useCallback(() => {
+    setFormType("EXPENSE");
+    setIsFormOpen(true);
+  }, []);
+
+  const handleView = useCallback((voucher: IncomeExpenseWithRelations) => {
+    setDetailVoucher(voucher);
   }, []);
 
   const handleFormClose = useCallback((open: boolean) => {
     setIsFormOpen(open);
-    if (!open) setViewingVoucher(null);
   }, []);
 
   const handleCancelVoucher = useCallback((id: string) => {
@@ -118,10 +126,139 @@ const IncomeExpensePage = () => {
     setCancelTarget(null);
   }, [cancelTarget, cancelMutation]);
 
+  const statsData = stats ?? {
+    totalIncome: 0,
+    totalExpense: 0,
+    difference: 0,
+  };
+
+  // ============== MOBILE LAYOUT ==============
+  if (isMobile) {
+    return (
+      <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
+        <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
+          {/* Search + filter row */}
+          <div className="flex items-center gap-2 px-3 pt-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Theo mã phiếu, tên..."
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className="pl-9 h-10 bg-white"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIsFilterPanelOpen(true)}
+              className="h-10 w-10 shrink-0 bg-white"
+              title="Lọc dữ liệu"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Stats */}
+          <IncomeExpenseStatsMobile
+            stats={statsData}
+            isLoading={isStatsLoading}
+          />
+
+          {/* Filter chips (active filters) */}
+          <IncomeExpenseFilterChips
+            filters={filters}
+            emptyFilters={EMPTY_FILTERS}
+            onChange={handleFiltersChange}
+          />
+
+          {/* List */}
+          <IncomeExpenseListMobile
+            vouchers={vouchers}
+            isLoading={isLoading}
+            onView={handleView}
+          />
+
+          {/* Pagination summary (mobile) */}
+          {totalCount > pagination.pageSize && (
+            <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
+              Hiển thị {vouchers.length} / {totalCount} phiếu
+              {pagination.page * pagination.pageSize < totalCount && (
+                <button
+                  className="ml-2 text-blue-600 font-medium"
+                  onClick={() => pagination.setPage(pagination.page + 1)}
+                >
+                  Xem thêm →
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* FAB */}
+        <IncomeExpenseFAB
+          onCreateIncome={handleAddIncome}
+          onCreateExpense={handleAddExpense}
+        />
+
+        {/* Dialogs */}
+        <IncomeExpenseForm
+          open={isFormOpen}
+          onOpenChange={handleFormClose}
+          voucher={null}
+          defaultType={formType}
+        />
+        <IncomeExpenseDetailDialog
+          open={!!detailVoucher}
+          onOpenChange={(o) => {
+            if (!o) setDetailVoucher(null);
+          }}
+          voucher={detailVoucher}
+          onCancel={handleCancelVoucher}
+        />
+        <IncomeExpenseImportDialog
+          open={isImportOpen}
+          onOpenChange={setIsImportOpen}
+        />
+        <IncomeExpenseFilterPanel
+          open={isFilterPanelOpen}
+          onOpenChange={setIsFilterPanelOpen}
+          filters={filters}
+          emptyFilters={EMPTY_FILTERS}
+          onApply={handleFiltersChange}
+          side="bottom"
+        />
+        <AlertDialog
+          open={!!cancelTarget}
+          onOpenChange={() => setCancelTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận huỷ phiếu</AlertDialogTitle>
+              <AlertDialogDescription>
+                Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến
+                tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Đóng</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmCancel}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Huỷ phiếu
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </MainLayout>
+    );
+  }
+
+  // ============== DESKTOP LAYOUT ==============
   return (
     <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
       <div className="space-y-4">
-        {/* Toolbar: Action buttons + Search */}
         <div className="flex items-center gap-2">
           <Button onClick={handleAddVoucher}>
             <Plus className="h-4 w-4 mr-2" />
@@ -150,25 +287,13 @@ const IncomeExpensePage = () => {
           </div>
         </div>
 
-        {/* Inline Filters */}
         <IncomeExpenseFiltersBar
           filters={filters}
           onChange={handleFiltersChange}
         />
 
-        {/* Stats */}
-        <IncomeExpenseStats
-          stats={
-            stats ?? {
-              totalIncome: 0,
-              totalExpense: 0,
-              difference: 0,
-            }
-          }
-          isLoading={isStatsLoading}
-        />
+        <IncomeExpenseStats stats={statsData} isLoading={isStatsLoading} />
 
-        {/* List */}
         <IncomeExpenseList
           vouchers={vouchers}
           isLoading={isLoading}
@@ -179,30 +304,33 @@ const IncomeExpensePage = () => {
         />
       </div>
 
-      {/* Form Dialog */}
       <IncomeExpenseForm
         open={isFormOpen}
         onOpenChange={handleFormClose}
-        voucher={viewingVoucher}
+        voucher={null}
         defaultType={formType}
       />
-
-      {/* Import Dialog */}
+      <IncomeExpenseDetailDialog
+        open={!!detailVoucher}
+        onOpenChange={(o) => {
+          if (!o) setDetailVoucher(null);
+        }}
+        voucher={detailVoucher}
+        onCancel={handleCancelVoucher}
+      />
       <IncomeExpenseImportDialog
         open={isImportOpen}
         onOpenChange={setIsImportOpen}
       />
-
-      {/* Filter Side Panel */}
       <IncomeExpenseFilterPanel
         open={isFilterPanelOpen}
         onOpenChange={setIsFilterPanelOpen}
         filters={filters}
         emptyFilters={EMPTY_FILTERS}
         onApply={handleFiltersChange}
+        side="right"
       />
 
-      {/* Cancel Confirmation */}
       <AlertDialog
         open={!!cancelTarget}
         onOpenChange={() => setCancelTarget(null)}

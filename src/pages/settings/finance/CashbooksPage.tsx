@@ -20,12 +20,15 @@ import {
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
 import { usePagination } from "@/hooks/usePagination";
+import { useIsMobile } from "@/hooks/use-mobile";
 import CashbookList from "@/components/cashbooks/CashbookList";
+import CashbookListMobile from "@/components/cashbooks/CashbookListMobile";
 import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CashbookLockDialog from "@/components/cashbooks/CashbookLockDialog";
 
 const CashbooksPage = () => {
-  const pagination = usePagination(10);
+  const isMobile = useIsMobile();
+  const pagination = usePagination(isMobile ? 50 : 10);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
 
@@ -86,38 +89,91 @@ const CashbooksPage = () => {
       subtitle="Cài đặt → Danh mục khác → Tài chính → Tài khoản"
       icon={Wallet}
     >
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Button onClick={handleAdd}>
-            <Plus className="h-4 w-4 mr-2" />
-            Thêm tài khoản
-          </Button>
-
+      {isMobile ? (
+        <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
           <form
             onSubmit={handleSearchSubmit}
-            className="relative flex-1 max-w-sm ml-auto"
+            className="px-3 pt-3 flex items-center gap-2"
           >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Tìm theo mã hoặc tên tài khoản..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="pl-9"
-            />
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Tìm mã hoặc tên tài khoản..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9 h-10 bg-white"
+              />
+            </div>
           </form>
-        </div>
 
-        <CashbookList
-          rows={rows}
-          isLoading={isLoading}
-          totalCount={totalCount}
-          pagination={pagination}
-          onEdit={handleEdit}
-          onDelete={(id) => setDeleteId(id)}
-          onLock={handleLock}
-          onUnlock={handleUnlock}
-        />
-      </div>
+          <CashbookListMobile
+            rows={rows}
+            isLoading={isLoading}
+            onEdit={handleEdit}
+            onDelete={(id) => setDeleteId(id)}
+            onLock={handleLock}
+            onUnlock={handleUnlock}
+          />
+
+          {totalCount > pagination.pageSize && (
+            <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
+              {rows.length} / {totalCount} tài khoản
+              {pagination.page * pagination.pageSize < totalCount && (
+                <button
+                  className="ml-2 text-blue-600 font-medium"
+                  onClick={() => pagination.setPage(pagination.page + 1)}
+                >
+                  Xem thêm →
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Mobile FAB */}
+          <button
+            type="button"
+            aria-label="Thêm tài khoản"
+            onClick={handleAdd}
+            className="fixed right-4 z-40 w-14 h-14 rounded-full bg-blue-600 text-white shadow-xl grid place-items-center active:scale-95 transition-transform"
+            style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Button onClick={handleAdd}>
+              <Plus className="h-4 w-4 mr-2" />
+              Thêm tài khoản
+            </Button>
+
+            <form
+              onSubmit={handleSearchSubmit}
+              className="relative flex-1 max-w-sm ml-auto"
+            >
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Tìm theo mã hoặc tên tài khoản..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-9"
+              />
+            </form>
+          </div>
+
+          <CashbookList
+            rows={rows}
+            isLoading={isLoading}
+            totalCount={totalCount}
+            pagination={pagination}
+            onEdit={handleEdit}
+            onDelete={(id) => setDeleteId(id)}
+            onLock={handleLock}
+            onUnlock={handleUnlock}
+          />
+        </div>
+      )}
 
       <CashbookForm
         open={formOpen}

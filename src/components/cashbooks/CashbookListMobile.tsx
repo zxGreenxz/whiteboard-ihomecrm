@@ -1,0 +1,160 @@
+import { Skeleton } from "@/components/ui/skeleton";
+import EmptyState from "@/components/ui/EmptyState";
+import { Wallet, Banknote, Smartphone, Lock, Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  accountTypeLabel,
+  type AccountWithBalance,
+  type AccountType,
+} from "@/hooks/useAccounts";
+
+interface Props {
+  rows: AccountWithBalance[];
+  isLoading: boolean;
+  onEdit: (acc: AccountWithBalance) => void;
+  onDelete: (id: string) => void;
+  onLock: (acc: AccountWithBalance) => void;
+  onUnlock: (acc: AccountWithBalance) => void;
+}
+
+const ICON: Record<AccountType, typeof Wallet> = {
+  cash: Wallet,
+  bank: Banknote,
+  ewallet: Smartphone,
+};
+
+const TYPE_TONE: Record<AccountType, string> = {
+  cash: "bg-amber-100 text-amber-700",
+  bank: "bg-blue-100 text-blue-700",
+  ewallet: "bg-violet-100 text-violet-700",
+};
+
+const formatVND = (n: number) => n.toLocaleString("vi-VN");
+
+export function CashbookListMobile({
+  rows,
+  isLoading,
+  onEdit,
+  onDelete,
+  onLock,
+  onUnlock,
+}: Props) {
+  if (isLoading) {
+    return (
+      <div className="px-3 py-3 space-y-2.5">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-28 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="py-8">
+        <EmptyState
+          icon={Wallet}
+          title="Chưa có tài khoản"
+          description="Thêm tài khoản qua nút (+) bên dưới."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <ul role="list" className="px-3 py-3 space-y-2.5 pb-24">
+      {rows.map((acc) => {
+        const Icon = ICON[acc.type] || Wallet;
+        const isLocked = !!acc.lock_date;
+        const balanceNeg = Number(acc.current_amount) < 0;
+
+        return (
+          <li key={acc.id}>
+            <article
+              className={`relative bg-white border border-zinc-200 rounded-xl p-3.5 shadow-sm ${
+                isLocked ? "ring-1 ring-orange-200" : ""
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span
+                    className={`shrink-0 w-9 h-9 rounded-lg grid place-items-center ${TYPE_TONE[acc.type]}`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-sm text-zinc-900 truncate">
+                        {acc.name}
+                      </span>
+                      {isLocked && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-orange-100 text-orange-700">
+                          Khoá sổ
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {acc.code} · {accountTypeLabel(acc.type)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                    Tồn quỹ
+                  </div>
+                  <div
+                    className={`text-base font-bold tabular-nums ${
+                      balanceNeg ? "text-red-600" : "text-emerald-600"
+                    }`}
+                  >
+                    {formatVND(Number(acc.current_amount))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-zinc-100 pt-2">
+                <span>
+                  Số dư đầu kỳ:{" "}
+                  <span className="font-medium text-zinc-700 tabular-nums">
+                    {formatVND(Number(acc.initial_amount))}
+                  </span>
+                </span>
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-amber-500 hover:bg-amber-50"
+                    onClick={() => (isLocked ? onUnlock(acc) : onLock(acc))}
+                    title={isLocked ? "Mở khoá sổ" : "Khoá sổ"}
+                  >
+                    <Lock className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-blue-500 hover:bg-blue-50"
+                    onClick={() => onEdit(acc)}
+                    title="Sửa"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-500 hover:bg-red-50"
+                    onClick={() => onDelete(acc.id)}
+                    title="Xoá"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </article>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export default CashbookListMobile;

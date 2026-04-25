@@ -30,6 +30,8 @@ interface IncomeExpenseFilterPanelProps {
   onApply: (next: IncomeExpenseFilters) => void;
   /** Filters trống — dùng khi Reset (giữ approval_status mặc định "APPROVED"). */
   emptyFilters: IncomeExpenseFilters;
+  /** Vị trí drawer: desktop "right", mobile "bottom" */
+  side?: "right" | "bottom";
 }
 
 const STATUS_OPTIONS = [
@@ -54,6 +56,7 @@ export function IncomeExpenseFilterPanel({
   filters,
   onApply,
   emptyFilters,
+  side = "right",
 }: IncomeExpenseFilterPanelProps) {
   // Local draft — chỉ commit khi bấm "Áp dụng"
   const [draft, setDraft] = useState<IncomeExpenseFilters>(filters);
@@ -88,8 +91,12 @@ export function IncomeExpenseFilterPanel({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="right"
-        className="sm:max-w-md w-full p-0 flex flex-col"
+        side={side}
+        className={
+          side === "bottom"
+            ? "h-[90vh] w-full p-0 flex flex-col rounded-t-2xl"
+            : "sm:max-w-md w-full p-0 flex flex-col"
+        }
       >
         <SheetHeader className="px-5 py-4 border-b">
           <SheetTitle>Bộ lọc</SheetTitle>
