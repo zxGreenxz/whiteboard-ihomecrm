@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local crawl artifacts (contains auth cookies + scraped data)
+crawl-resident/
+.claude/scheduled_tasks.lock

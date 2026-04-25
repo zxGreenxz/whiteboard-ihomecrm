@@ -88,6 +88,7 @@ import ServiceQuotasPage from "./pages/settings/categories/ServiceQuotasPage";
 import MetersPage from "./pages/settings/MetersPage";
 import IncomeExpenseTypesNewPage from "./pages/settings/IncomeExpenseTypesPage";
 import IncomeExpenseTemplatesPage from "./pages/settings/IncomeExpenseTemplatesPage";
+import CashbooksPage from "./pages/settings/finance/CashbooksPage";
 
 import SuppliersPage from "./pages/settings/categories/SuppliersPage";
 import WarehousesPage from "./pages/settings/categories/WarehousesPage";
@@ -251,6 +252,9 @@ const App = () => (
           <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
           <Route path="/settings/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesNewPage /></ProtectedRoute>} />
           <Route path="/settings/income-expense-templates" element={<ProtectedRoute><IncomeExpenseTemplatesPage /></ProtectedRoute>} />
+          {/* Cashbooks (Tài khoản) - Resident-aligned */}
+          <Route path="/setting/finance/cashbooks" element={<ProtectedRoute><CashbooksPage /></ProtectedRoute>} />
+          <Route path="/settings/finance/cashbooks" element={<Navigate to="/setting/finance/cashbooks" replace />} />
           {/* Categories Sub-Pages - Tài sản */}
           <Route path="/settings/categories/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/settings/categories/warehouses" element={<ProtectedRoute><WarehousesPage /></ProtectedRoute>} />

@@ -72,6 +72,24 @@ export function IncomeExpenseFiltersBar({
     handleChange({ account_id: value === "ALL" ? null : value });
   };
 
+  const handleTypeChange = (value: string) => {
+    handleChange({
+      type:
+        value === "ALL"
+          ? null
+          : (value as "INCOME" | "EXPENSE"),
+    });
+  };
+
+  const handleApprovalChange = (value: string) => {
+    handleChange({
+      approval_status:
+        value === "ALL"
+          ? null
+          : (value as "UNAPPROVED" | "APPROVED"),
+    });
+  };
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {/* Từ ngày */}
@@ -179,6 +197,33 @@ export function IncomeExpenseFiltersBar({
               {acc.name}
             </SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      {/* Loại phiếu */}
+      <Select value={filters.type ?? "ALL"} onValueChange={handleTypeChange}>
+        <SelectTrigger className="w-[140px] h-9 text-sm">
+          <SelectValue placeholder="Loại phiếu" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Tất cả loại</SelectItem>
+          <SelectItem value="INCOME">Phiếu thu</SelectItem>
+          <SelectItem value="EXPENSE">Phiếu chi</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {/* Trạng thái duyệt */}
+      <Select
+        value={filters.approval_status ?? "ALL"}
+        onValueChange={handleApprovalChange}
+      >
+        <SelectTrigger className="w-[150px] h-9 text-sm">
+          <SelectValue placeholder="Trạng thái duyệt" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
+          <SelectItem value="APPROVED">Đã duyệt</SelectItem>
+          <SelectItem value="UNAPPROVED">Chưa duyệt</SelectItem>
         </SelectContent>
       </Select>
     </div>
