@@ -21,6 +21,9 @@ export interface RecordPaymentRPCData {
   payment_date: string;
   notes?: string;
   receipt_image_url?: string;
+  /** Sổ quỹ tiếp nhận khoản thu — required to mirror Resident's flow
+   * (mỗi payment ⇒ 1 phiếu thu trong Thu chi). */
+  account_id?: string | null;
 }
 
 export interface AutoGenerateInvoicesRPCData {
@@ -68,6 +71,74 @@ export const useRecordPaymentRPC = () => {
       );
 
       if (error) throw error;
+
+      // ─────────────────────────────────────────────────────
+      // Mirror Resident: every invoice payment ⇒ 1 phiếu thu
+      // ─────────────────────────────────────────────────────
+      // Fetch the invoice details we need to seed the voucher.
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select(
+          'id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, tenant_id:contract_id'
+        )
+        .eq('id', data.invoice_id)
+        .single() as any;
+
+      // Resolve a default income type (identity='rent' preferred, fall back to
+      // any income type owned by this user).
+      const { data: incTypes } = await supabase
+        .from('income_expense_types' as any)
+        .select('id, identity, type, name')
+        .eq('user_id', user.id)
+        .eq('type', 'income')
+        .limit(50) as any;
+      const types = (incTypes ?? []) as Array<{ id: string; identity?: string }>;
+      const incomeTypeId =
+        types.find((t) => t.identity === 'rent')?.id ||
+        types.find((t) => t.identity === 'other')?.id ||
+        types[0]?.id;
+
+      if (inv && data.account_id && incomeTypeId) {
+        const meta = (user.user_metadata ?? {}) as Record<string, any>;
+        const creatorName: string =
+          meta.full_name || meta.name || user.email || 'Người dùng';
+
+        const { data: voucher, error: vErr } = await supabase
+          .from('income_expenses' as any)
+          .insert({
+            user_id: user.id,
+            type: 'INCOME',
+            name: `Thu tiền theo hóa đơn ${inv.invoice_number || ''} - ${inv.billing_month || ''}`,
+            building_id: inv.building_id,
+            room_id: inv.room_id,
+            bed_id: inv.bed_id,
+            contract_id: inv.contract_id,
+            account_id: data.account_id,
+            invoice_id: inv.id,
+            voucher_date: data.payment_date,
+            payer_name: data.notes ?? null,
+            notes: data.notes ?? null,
+            attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
+            approval_status: 'APPROVED',
+            creator_name: creatorName,
+          } as any)
+          .select()
+          .single();
+
+        if (!vErr && voucher) {
+          await supabase.from('income_expense_items' as any).insert({
+            income_expense_id: (voucher as any).id,
+            income_expense_type_id: incomeTypeId,
+            description: `Thanh toán hoá đơn ${inv.invoice_number || ''}`,
+            quantity: 1,
+            unit_price: data.amount,
+            start_date: data.payment_date,
+            end_date: data.payment_date,
+          });
+        }
+      }
+      // ─────────────────────────────────────────────────────
+
       return result;
     },
     onSuccess: () => {
@@ -76,6 +147,8 @@ export const useRecordPaymentRPC = () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
+      queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts-with-balance'] });
 
       toast({
         title: 'Thanh toán đã được ghi nhận thành công',

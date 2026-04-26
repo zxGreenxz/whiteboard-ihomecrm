@@ -42,6 +42,7 @@ import CT01FormPage from "./pages/customers/CT01FormPage";
 import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
 import InvoicesPage from "./pages/invoices/InvoicesPage";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
+import InvoicePrintPage from "./pages/invoices/InvoicePrintPage";
 import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
 import IncomeExpensePrintPage from "./pages/payments/IncomeExpensePrintPage";
 // CashBookPage moved to reports/finance/DailyCashbookReport - redirect via /cash-book route below
@@ -205,6 +206,7 @@ const App = () => (
           {/* === TÀI CHÍNH === */}
           <Route path="/meter-readings" element={<ProtectedRoute><MeterReadingsPage /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
+          <Route path="/invoices/print/:id" element={<ProtectedRoute><InvoicePrintPage /></ProtectedRoute>} />
           <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
           {/* Primary route: /income-expense, redirect /payments → /income-expense */}
           <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />

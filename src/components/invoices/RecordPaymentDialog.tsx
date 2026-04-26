@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
+import { useAccounts } from '@/hooks/useAccounts';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CreditCard, Banknote, Smartphone, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -37,6 +38,7 @@ const paymentSchema = z.object({
   amount: z.number().min(1, 'Số tiền phải lớn hơn 0'),
   payment_method: z.enum(['CASH', 'BANK_TRANSFER', 'MOMO', 'ZALO_PAY', 'VNPAY', 'OTHER']),
   payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
+  account_id: z.string().min(1, 'Vui lòng chọn tài khoản nhận'),
   notes: z.string().optional(),
 });
 
@@ -44,6 +46,7 @@ type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPaymentRPC();
+  const { data: accounts = [] } = useAccounts();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -180,6 +183,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           payment_date: data.payment_date,
           notes: data.notes,
           receipt_image_url: receiptImageUrl,
+          account_id: data.account_id,
         },
         {
           onSuccess: () => {
@@ -350,6 +354,33 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             {errors.payment_date && (
               <p className="text-sm text-red-500">{errors.payment_date.message}</p>
             )}
+          </div>
+
+          {/* Tài khoản (sổ quỹ) — required so we can mirror the payment as a phiếu thu */}
+          <div className="space-y-2">
+            <Label>Tài khoản nhận *</Label>
+            <Select
+              onValueChange={(v) => setValue('account_id', v)}
+              defaultValue=""
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((a: any) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                    {a.bank_name ? ` — ${a.bank_name}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.account_id && (
+              <p className="text-sm text-red-500">{errors.account_id.message}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của tài khoản này.
+            </p>
           </div>
 
           {/* Receipt Image Upload */}
