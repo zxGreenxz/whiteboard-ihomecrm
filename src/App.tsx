@@ -43,6 +43,7 @@ import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
 import InvoicesPage from "./pages/invoices/InvoicesPage";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
+import IncomeExpensePrintPage from "./pages/payments/IncomeExpensePrintPage";
 // CashBookPage moved to reports/finance/DailyCashbookReport - redirect via /cash-book route below
 
 // Assets Pages
@@ -207,6 +208,7 @@ const App = () => (
           <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
           {/* Primary route: /income-expense, redirect /payments → /income-expense */}
           <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
+          <Route path="/income-expense/print/:id" element={<ProtectedRoute><IncomeExpensePrintPage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
 
           {/* === CÔNG VIỆC === */}

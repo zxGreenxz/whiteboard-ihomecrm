@@ -97,7 +97,13 @@ export function IncomeExpenseDetailDialog({
                 variant="default"
                 className="h-8 w-8 bg-blue-500 hover:bg-blue-600"
                 title="In phiếu"
-                onClick={() => window.print()}
+                onClick={() =>
+                  window.open(
+                    `/income-expense/print/${voucher.id}`,
+                    "_blank",
+                    "noopener,width=900,height=1000"
+                  )
+                }
               >
                 <Printer className="h-4 w-4 text-white" />
               </Button>
