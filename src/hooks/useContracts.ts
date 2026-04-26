@@ -69,9 +69,9 @@ const CONTRACT_SELECT = `
   bed:beds!contracts_bed_id_fkey (
     id, name
   ),
-  contract_customers (
+  contract_customers!contract_customers_contract_id_fkey (
     id, contract_id, customer_id, is_representative, created_at, updated_at,
-    customer:customers (
+    customer:customers!contract_customers_customer_id_fkey (
       id, full_name, phone, id_number
     )
   ),
@@ -165,11 +165,23 @@ export const useCreateContract = () => {
 
       const { contract: contractData, customers, services } = payload;
 
+      // Guard: contract requires at least one customer (representative).
+      // Without this, the DB throws "null value in column tenant_id" which is
+      // confusing for the user.
+      const tenantId =
+        customers.find((c) => c.is_representative)?.customer_id ||
+        customers[0]?.customer_id;
+      if (!tenantId) {
+        throw new Error(
+          "Vui lòng chọn ít nhất một khách hàng cho hợp đồng (người đại diện)."
+        );
+      }
+
       // 1. Insert contract
       const insertData: any = {
         ...contractData,
         user_id: user.id,
-        tenant_id: customers.find((c) => c.is_representative)?.customer_id || customers[0]?.customer_id,
+        tenant_id: tenantId,
         status: "ACTIVE",
       };
 

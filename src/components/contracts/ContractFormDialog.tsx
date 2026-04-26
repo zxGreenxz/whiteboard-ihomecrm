@@ -286,6 +286,30 @@ export function ContractFormDialog({
 
   // ---- Submit handler ----
   const onSubmit = (data: ContractFormData) => {
+    // Resident requires at least one customer (representative tenant) on a
+    // contract — fail fast in the UI rather than letting Postgres throw a
+    // confusing NOT NULL violation on tenant_id.
+    if (selectedCustomers.length === 0) {
+      form.setError("root" as any, {
+        type: "manual",
+        message: "Vui lòng chọn ít nhất một khách hàng cho hợp đồng.",
+      });
+      // also surface as toast via window.alert fallback
+      try {
+        // best-effort UX nudge
+        const el = document.querySelector('[data-slot="dialog-content"]');
+        if (el) el.scrollTop = 0;
+      } catch {}
+      return;
+    }
+
+    // Make sure exactly one customer is flagged as representative; if none,
+    // promote the first.
+    const hasRep = selectedCustomers.some((c) => c.is_representative);
+    if (!hasRep) {
+      selectedCustomers[0].is_representative = true;
+    }
+
     const customers = selectedCustomers.map((c) => ({
       customer_id: c.id,
       is_representative: c.is_representative,
