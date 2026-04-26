@@ -99,7 +99,7 @@ const navigationGroups: NavGroup[] = [
           { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge },
           { title: 'Hoá đơn', href: '/invoices', icon: Receipt },
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard },
-          { title: 'Tài khoản', href: '/finance/cashbooks', icon: Wallet },
+          { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet },
         ],
       },
       { title: 'Công việc', href: '/tasks', icon: ClipboardList },

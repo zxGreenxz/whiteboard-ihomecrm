@@ -33,7 +33,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const schema = z
   .object({
     type: z.enum(["cash", "bank", "ewallet"]),
-    name: z.string().min(1, "Tên tài khoản bắt buộc").max(120),
+    name: z.string().min(1, "Tên sổ quỹ bắt buộc").max(120),
     initial_amount: z.coerce.number().min(0, "Số dư đầu kỳ không âm"),
     initial_date: z.string().min(1, "Ngày chốt đầu kỳ bắt buộc"),
     description: z.string().nullable().optional(),
@@ -173,8 +173,8 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
         <DialogHeader>
           <DialogTitle className="uppercase tracking-wide">
             {isEditing
-              ? "Cập nhật tài khoản"
-              : "Thêm tài khoản ngân hàng/tiền mặt"}
+              ? "Cập nhật sổ quỹ"
+              : "Thêm sổ quỹ"}
           </DialogTitle>
         </DialogHeader>
 
@@ -189,7 +189,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Loại tài khoản <span className="text-red-500">*</span>
+                    Loại sổ quỹ <span className="text-red-500">*</span>
                   </FormLabel>
                   <div className="grid grid-cols-3 gap-2">
                     {TYPE_OPTIONS.map((opt) => {
@@ -225,7 +225,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Tên tài khoản <span className="text-red-500">*</span>
+                    Tên sổ quỹ <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input placeholder="VD: Quỹ tiền mặt 102" {...field} />
@@ -386,7 +386,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   <FormControl>
                     <Textarea
                       rows={3}
-                      placeholder="Ghi chú thêm về tài khoản (tuỳ chọn)"
+                      placeholder="Ghi chú thêm về sổ quỹ (tuỳ chọn)"
                       {...field}
                       value={field.value ?? ""}
                     />

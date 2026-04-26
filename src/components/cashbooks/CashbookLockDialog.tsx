@@ -41,9 +41,9 @@ const CashbookLockDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Khoá sổ tài khoản</DialogTitle>
+          <DialogTitle>Khoá sổ quỹ</DialogTitle>
           <DialogDescription>
-            Sau khi khoá, mọi phiếu thu/chi của tài khoản{" "}
+            Sau khi khoá, mọi phiếu thu/chi của sổ quỹ{" "}
             <span className="font-medium">
               {account?.name} ({account?.code})
             </span>{" "}

@@ -91,8 +91,8 @@ const CashbooksPage = () => {
 
   return (
     <MainLayout
-      title="Tài khoản"
-      subtitle="Cài đặt → Danh mục khác → Tài chính → Tài khoản"
+      title="Sổ quỹ"
+      subtitle="Tài chính → Sổ quỹ"
       icon={Wallet}
     >
       {isMobile ? (
@@ -104,7 +104,7 @@ const CashbooksPage = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Tìm mã hoặc tên tài khoản..."
+                placeholder="Tìm mã hoặc tên sổ quỹ..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 h-10 bg-white"
@@ -124,7 +124,7 @@ const CashbooksPage = () => {
 
           {totalCount > pagination.pageSize && (
             <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
-              {rows.length} / {totalCount} tài khoản
+              {rows.length} / {totalCount} sổ quỹ
               {pagination.page * pagination.pageSize < totalCount && (
                 <button
                   className="ml-2 text-blue-600 font-medium"
@@ -139,7 +139,7 @@ const CashbooksPage = () => {
           {/* Mobile FAB */}
           <button
             type="button"
-            aria-label="Thêm tài khoản"
+            aria-label="Thêm sổ quỹ"
             onClick={handleAdd}
             className="fixed right-4 z-40 w-14 h-14 rounded-full bg-blue-600 text-white shadow-xl grid place-items-center active:scale-95 transition-transform"
             style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
@@ -152,7 +152,7 @@ const CashbooksPage = () => {
           <div className="flex items-center gap-2">
             <Button onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
-              Thêm tài khoản
+              Thêm sổ quỹ
             </Button>
 
             <form
@@ -161,7 +161,7 @@ const CashbooksPage = () => {
             >
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Tìm theo mã hoặc tên tài khoản..."
+                placeholder="Tìm theo mã hoặc tên sổ quỹ..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9"
@@ -219,11 +219,11 @@ const CashbooksPage = () => {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xoá tài khoản</AlertDialogTitle>
+            <AlertDialogTitle>Xác nhận xoá sổ quỹ</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn đang thực hiện thao tác xoá tài khoản ngân hàng/tiền mặt.
+              Bạn đang thực hiện thao tác xoá sổ quỹ.
               Việc này có thể ảnh hưởng đến các phiếu thu/chi đang gắn vào
-              tài khoản. Bạn có chắc chắn muốn xoá không?
+              sổ quỹ này. Bạn có chắc chắn muốn xoá không?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

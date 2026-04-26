@@ -286,9 +286,9 @@ export function IncomeExpenseFilterPanel({
             </Select>
           </div>
 
-          {/* Tài khoản */}
+          {/* Sổ quỹ */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Tài khoản</Label>
+            <Label className="text-sm font-medium">Sổ quỹ</Label>
             <Select
               value={draft.account_id ?? "ALL"}
               onValueChange={(v) =>
@@ -296,10 +296,10 @@ export function IncomeExpenseFilterPanel({
               }
             >
               <SelectTrigger>
-                <SelectValue placeholder="Chọn tài khoản" />
+                <SelectValue placeholder="Chọn sổ quỹ" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">Tất cả tài khoản</SelectItem>
+                <SelectItem value="ALL">Tất cả sổ quỹ</SelectItem>
                 {(accounts || []).map((acc) => (
                   <SelectItem key={acc.id} value={acc.id}>
                     {acc.name}

@@ -44,7 +44,7 @@ export interface AccountFormValues {
 
 const TYPE_LABEL: Record<AccountType, string> = {
   cash: "Tiền mặt",
-  bank: "Tài khoản ngân hàng",
+  bank: "Ngân hàng",
   ewallet: "Ví điện tử",
 };
 
@@ -62,7 +62,7 @@ export const useAccounts = () => {
         .order("name", { ascending: true });
 
       if (error) {
-        toast.error("Không thể tải danh sách tài khoản");
+        toast.error("Không thể tải danh sách sổ quỹ");
         throw error;
       }
 
@@ -107,7 +107,7 @@ export const useAccountsWithBalance = (params?: {
 
       if (error) {
         console.error("useAccountsWithBalance error", error);
-        toast.error("Không thể tải danh sách tài khoản");
+        toast.error("Không thể tải danh sách sổ quỹ");
         return { data: [], totalCount: 0 };
       }
 
@@ -153,7 +153,7 @@ export const useCreateAccount = () => {
         .single();
 
       if (error) {
-        toast.error(error.message || "Không thể tạo tài khoản");
+        toast.error(error.message || "Không thể tạo sổ quỹ");
         throw error;
       }
       return data;
@@ -187,7 +187,7 @@ export const useUpdateAccount = () => {
         .eq("id", input.id);
 
       if (error) {
-        toast.error(error.message || "Không thể cập nhật tài khoản");
+        toast.error(error.message || "Không thể cập nhật sổ quỹ");
         throw error;
       }
     },
@@ -209,7 +209,7 @@ export const useDeleteAccount = () => {
         .eq("id", id);
 
       if (error) {
-        toast.error(error.message || "Không thể xoá tài khoản");
+        toast.error(error.message || "Không thể xoá sổ quỹ");
         throw error;
       }
     },

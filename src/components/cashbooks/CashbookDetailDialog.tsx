@@ -88,7 +88,7 @@ export function CashbookDetailDialog({
             />
             {account.type === "bank" || account.type === "ewallet" ? (
               <>
-                <Row label="Tài khoản:" value={account.account_number} />
+                <Row label="Số tài khoản:" value={account.account_number} />
                 <Row label="Chủ TK:" value={account.bank_account_holder} />
               </>
             ) : null}

@@ -20,7 +20,7 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     title: "Tài chính",
     icon: Landmark,
     items: [
-      { title: "Tài khoản (sổ quỹ)", href: "/finance/cashbooks", description: "Quản lý tài khoản tiền mặt / ngân hàng / ví — đã chuyển sang VẬN HÀNH → Tài chính" },
+      { title: "Sổ quỹ", href: "/finance/cashbooks", description: "Quản lý sổ quỹ tiền mặt / ngân hàng / ví — đã chuyển sang VẬN HÀNH → Tài chính" },
       { title: "Gạch nợ tự động", href: "/settings/categories/auto-debt", description: "Cấu hình gạch nợ tự động" },
       { title: "Loại thu chi", href: "/settings/categories/income-expense-types", description: "Quản lý loại thu chi" },
       { title: "Định mức dịch vụ", href: "/settings/categories/service-quotas", description: "Quản lý định mức dịch vụ" },

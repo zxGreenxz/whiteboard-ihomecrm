@@ -141,7 +141,7 @@ export function IncomeExpenseDetailDialog({
                 </span>
               }
             />
-            <Row label="Tài khoản" value={voucher.account_name} />
+            <Row label="Sổ quỹ" value={voucher.account_name} />
             <Row
               label="Tòa nhà"
               value={

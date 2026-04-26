@@ -71,8 +71,8 @@ const CashbookList = ({
     return (
       <EmptyState
         icon={Wallet}
-        title="Chưa có tài khoản nào"
-        description="Hãy thêm tài khoản đầu tiên để bắt đầu quản lý tồn quỹ"
+        title="Chưa có sổ quỹ nào"
+        description="Hãy thêm sổ quỹ đầu tiên để bắt đầu quản lý tồn quỹ"
       />
     );
   }
@@ -84,8 +84,8 @@ const CashbookList = ({
           <TableRow>
             <TableHead className="w-[120px]">Mã</TableHead>
             <TableHead className="w-[140px]">Thao tác</TableHead>
-            <TableHead>Tên tài khoản</TableHead>
-            <TableHead>Loại tài khoản</TableHead>
+            <TableHead>Tên sổ quỹ</TableHead>
+            <TableHead>Loại sổ quỹ</TableHead>
             <TableHead className="text-right">Số dư đầu kỳ</TableHead>
             <TableHead className="text-right">Tồn quỹ</TableHead>
             <TableHead>Ghi chú</TableHead>

@@ -620,7 +620,7 @@ const IncomeExpenseForm = ({
                   name="account_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Tài khoản *</FormLabel>
+                      <FormLabel>Sổ quỹ *</FormLabel>
                       <Select
                         onValueChange={handleAccountChange}
                         value={field.value || ''}
@@ -628,7 +628,7 @@ const IncomeExpenseForm = ({
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Chọn tài khoản" />
+                            <SelectValue placeholder="Chọn sổ quỹ" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>

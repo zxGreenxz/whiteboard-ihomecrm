@@ -185,10 +185,10 @@ export function IncomeExpenseFiltersBar({
         onValueChange={handleAccountChange}
       >
         <SelectTrigger className="w-[150px] h-9 text-sm">
-          <SelectValue placeholder="Tài khoản" />
+          <SelectValue placeholder="Sổ quỹ" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="ALL">Tài khoản</SelectItem>
+          <SelectItem value="ALL">Sổ quỹ</SelectItem>
           {(accounts || []).map((acc) => (
             <SelectItem key={acc.id} value={acc.id}>
               {acc.name}

@@ -38,7 +38,7 @@ const paymentSchema = z.object({
   amount: z.number().min(1, 'Số tiền phải lớn hơn 0'),
   payment_method: z.enum(['CASH', 'BANK_TRANSFER', 'MOMO', 'ZALO_PAY', 'VNPAY', 'OTHER']),
   payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
-  account_id: z.string().min(1, 'Vui lòng chọn tài khoản nhận'),
+  account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ nhận'),
   notes: z.string().optional(),
 });
 
@@ -356,9 +356,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             )}
           </div>
 
-          {/* Tài khoản (sổ quỹ) — required so we can mirror the payment as a phiếu thu */}
+          {/* Sổ quỹ — required so we can mirror the payment as a phiếu thu */}
           <div className="space-y-2">
-            <Label>Tài khoản nhận *</Label>
+            <Label>Sổ quỹ nhận *</Label>
             <Select
               onValueChange={(v) => setValue('account_id', v)}
               defaultValue=""
@@ -379,7 +379,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               <p className="text-sm text-red-500">{errors.account_id.message}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của tài khoản này.
+              Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
             </p>
           </div>
 

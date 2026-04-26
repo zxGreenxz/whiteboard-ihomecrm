@@ -79,7 +79,7 @@ const IncomeExpenseList = ({
             <TableHead>Tòa nhà</TableHead>
             <TableHead>Ngày thu/chi</TableHead>
             <TableHead>Người nhận/trả</TableHead>
-            <TableHead>Tài khoản</TableHead>
+            <TableHead>Sổ quỹ</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

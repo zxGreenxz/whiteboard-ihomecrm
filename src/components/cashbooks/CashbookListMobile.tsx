@@ -56,8 +56,8 @@ export function CashbookListMobile({
       <div className="py-8">
         <EmptyState
           icon={Wallet}
-          title="Chưa có tài khoản"
-          description="Thêm tài khoản qua nút (+) bên dưới."
+          title="Chưa có sổ quỹ"
+          description="Thêm sổ quỹ qua nút (+) bên dưới."
         />
       </div>
     );
