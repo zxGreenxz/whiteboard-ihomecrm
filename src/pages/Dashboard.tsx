@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Building2, Home, DollarSign, AlertTriangle, BarChart3, Wallet, CheckSquare, ArrowRight, DoorOpen } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { useBuildings } from '@/hooks/useBuildings';
+import { OperationsSummary } from '@/components/dashboard/OperationsSummary';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
 import { DebtChart } from '@/components/dashboard/DebtChart';
@@ -176,6 +177,9 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Operations summary — Resident-style 3 widgets */}
+        <OperationsSummary buildingId={buildingId} />
 
         {/* Charts Row */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
