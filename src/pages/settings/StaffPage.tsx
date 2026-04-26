@@ -484,7 +484,9 @@ function RolesTab() {
 type StaffFormState = {
   /** Edit mode: the staff_id (auth user uuid) being edited. Empty for create. */
   staff_id?: string;
-  // Common fields:
+  /** Tên đăng nhập — required on create only, free-form characters. */
+  username: string;
+  // All identity fields are OPTIONAL.
   full_name: string;
   phone: string;
   email: string;
@@ -505,6 +507,7 @@ type StaffFormState = {
 };
 
 const emptyForm = (): StaffFormState => ({
+  username: "",
   full_name: "",
   phone: "",
   email: "",
@@ -608,6 +611,7 @@ function StaffTab() {
     const profile = m.profile || {};
     setForm({
       staff_id: m.staff_id,
+      username: "", // not editable post-creation
       full_name: profile.full_name || "",
       phone: profile.phone || "",
       email: profile.email || "",
@@ -628,21 +632,21 @@ function StaffTab() {
 
   const handleSave = async () => {
     if (!form) return;
-    if (!form.full_name.trim()) return;
     if (!form.role_id) return;
     if (!form.all_buildings && form.building_ids.length === 0) return;
 
     if (!isEdit) {
-      if (!form.phone.trim()) return;
+      if (!form.username.trim()) return;
       if (!form.password || form.password.length < 6) return;
       if (form.password !== form.confirmPassword) return;
       const payload: ProvisionStaffInput = {
-        full_name: form.full_name.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim() || undefined,
+        username: form.username.trim(),
         password: form.password,
         role_id: form.role_id,
         building_ids: form.all_buildings ? null : form.building_ids,
+        full_name: form.full_name.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        email: form.email.trim() || undefined,
         department: form.department.trim() || undefined,
         job_title: form.job_title.trim() || undefined,
         employee_code: form.employee_code.trim() || undefined,
@@ -871,21 +875,38 @@ function StaffTab() {
 
               {/* Basic info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {!isEdit && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="staff-username">Tên đăng nhập *</Label>
+                    <Input
+                      id="staff-username"
+                      placeholder="VD: phukim, an.nguyen, Nhân viên 01..."
+                      value={form.username}
+                      onChange={(e) => setForm({ ...form, username: e.target.value })}
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Cho phép bất kỳ ký tự nào (kể cả tiếng Việt có dấu, khoảng trắng).
+                      Đây là tên nhân viên dùng để đăng nhập.
+                    </p>
+                  </div>
+                )}
+
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="staff-fullname">Họ tên *</Label>
+                  <Label htmlFor="staff-fullname">Họ tên</Label>
                   <Input
                     id="staff-fullname"
-                    placeholder="VD: Nguyễn Văn A"
+                    placeholder="VD: Nguyễn Văn A (không bắt buộc)"
                     value={form.full_name}
                     onChange={(e) => setForm({ ...form, full_name: e.target.value })}
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="staff-phone">Số điện thoại {isEdit ? "" : "*"}</Label>
+                  <Label htmlFor="staff-phone">Số điện thoại</Label>
                   <Input
                     id="staff-phone"
-                    placeholder="0901234567"
+                    placeholder="0901234567 (không bắt buộc)"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     disabled={isEdit}
@@ -958,7 +979,7 @@ function StaffTab() {
                 <div className="border-t pt-4 space-y-3">
                   <div className="text-sm font-medium">Mật khẩu</div>
                   <p className="text-xs text-muted-foreground">
-                    Lưu ý: Nếu SĐT đã được đăng ký trước đó, nhân viên sẽ đăng nhập bằng mật khẩu cũ.
+                    Lưu ý: Nếu tên đăng nhập đã tồn tại trên hệ thống, bạn sẽ phải chọn tên khác.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -1110,11 +1131,10 @@ function StaffTab() {
             <Button
               onClick={handleSave}
               disabled={
-                !form?.full_name?.trim() ||
                 !form?.role_id ||
                 (!form?.all_buildings && (form?.building_ids?.length || 0) === 0) ||
                 (!isEdit && (
-                  !form?.phone?.trim() ||
+                  !form?.username?.trim() ||
                   !form?.password ||
                   form.password.length < 6 ||
                   form.password !== form.confirmPassword

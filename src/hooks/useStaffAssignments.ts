@@ -162,15 +162,18 @@ export const useUpdateStaffAssignment = () => {
 // =============================================================
 
 export interface ProvisionStaffInput {
-  full_name: string;
-  phone: string;          // required
-  email?: string;         // optional
-  username?: string;      // optional — used if no email/phone (Resident allows free-form)
+  /** Required: free-form login name. Anything goes — Vietnamese, spaces, etc.
+   *  System synthesizes a stable auth email from this. */
+  username: string;
   password: string;
   role_id: string;
   /** null/undefined = quản lý tất cả toà nhà (1 row, building_id=null).
    *  Empty array = same as null. Otherwise insert one row per id. */
   building_ids?: string[] | null;
+  // All identity fields below are OPTIONAL.
+  full_name?: string;
+  phone?: string;
+  email?: string;
   department?: string;
   job_title?: string;
   employee_code?: string;
@@ -187,11 +190,11 @@ const slugifyUsername = (raw: string): string => {
   return slug || 'user';
 };
 
+/** Turn the user-typed username into a stable auth email.
+ *  We always go through the slug → @username.ihomecrm.local channel so
+ *  the same input maps to the same account no matter the casing/diacritics. */
 const buildAuthEmail = (input: ProvisionStaffInput): string => {
-  if (input.email && input.email.includes('@')) return input.email.trim();
-  const phone = (input.phone || '').replace(/[^0-9]/g, '');
-  if (/^[0-9]{10,11}$/.test(phone)) return `${phone}@phone.ihomecrm.local`;
-  const slug = slugifyUsername(input.username || input.full_name || 'user');
+  const slug = slugifyUsername(input.username);
   return `${slug}@username.ihomecrm.local`;
 };
 
@@ -212,7 +215,8 @@ export const useProvisionStaff = () => {
         password: input.password,
         options: {
           data: {
-            full_name: input.full_name,
+            username: input.username,
+            full_name: input.full_name || input.username,
             phone: input.phone || null,
             email: input.email || null,
             employee_code: input.employee_code || null,
@@ -221,16 +225,22 @@ export const useProvisionStaff = () => {
           },
         },
       });
-      if (signUpErr) throw signUpErr;
+      if (signUpErr) {
+        // Re-throw with a friendlier message; the dialog displays this.
+        if (/already registered|duplicate/i.test(signUpErr.message)) {
+          throw new Error(`Tên đăng nhập "${input.username}" đã được sử dụng. Vui lòng chọn tên khác.`);
+        }
+        throw signUpErr;
+      }
       const newUserId = signUp.user?.id;
-      if (!newUserId) throw new Error("Không tạo được tài khoản — kiểm tra email/SĐT");
+      if (!newUserId) throw new Error("Không tạo được tài khoản — kiểm tra lại tên đăng nhập");
 
       // upsert profile (the auth trigger usually inserts a stub — we override with full data).
       // First try with extended columns; if any column doesn't exist yet (migration
       // 20260427_apply_staff_profile_fields.sql not applied), retry with the base set.
       const baseProfile = {
         id: newUserId,
-        full_name: input.full_name,
+        full_name: input.full_name || input.username,
         phone: input.phone || null,
         email: input.email || null,
       };
@@ -278,10 +288,7 @@ export const useProvisionStaff = () => {
       toast.success("Đã tạo tài khoản nhân viên thành công");
     },
     onError: (error: Error) => {
-      const msg = /already registered|duplicate/i.test(error.message)
-        ? "Email/SĐT đã được đăng ký trước đó"
-        : error.message;
-      toast.error(`Không tạo được nhân viên: ${msg}`);
+      toast.error(error.message);
     },
   });
 };
