@@ -59,12 +59,13 @@ import {
 } from "@/hooks/useRoles";
 import {
   useStaffAssignments,
-  useUpdateStaffAssignment,
-  useDeleteStaffAssignment,
   useProvisionStaff,
+  useUpdateStaffMember,
+  useRemoveStaffMember,
   type ProvisionStaffInput,
 } from "@/hooks/useStaffAssignments";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useAreas } from "@/hooks/useAreas";
 import type { Json } from "@/integrations/supabase/types";
 
 // Permission modules — full Resident parity (35 nhóm)
@@ -481,8 +482,8 @@ function RolesTab() {
 // ==================== STAFF TAB ====================
 
 type StaffFormState = {
-  // Edit-only:
-  id?: string;
+  /** Edit mode: the staff_id (auth user uuid) being edited. Empty for create. */
+  staff_id?: string;
   // Common fields:
   full_name: string;
   phone: string;
@@ -493,7 +494,11 @@ type StaffFormState = {
   employee_code: string;
   is_active: boolean;
   all_buildings: boolean;
-  building_id: string;
+  /** Multi-select buildings (empty when all_buildings = true) */
+  building_ids: string[];
+  /** Selected area filter (subset of areas) — purely a UI filter */
+  area_ids: string[];
+  building_search: string;
   // Create-only:
   password: string;
   confirmPassword: string;
@@ -509,43 +514,88 @@ const emptyForm = (): StaffFormState => ({
   employee_code: "",
   is_active: true,
   all_buildings: true,
-  building_id: "",
+  building_ids: [],
+  area_ids: [],
+  building_search: "",
   password: "",
   confirmPassword: "",
 });
+
+/** Group raw assignments rows by staff_id → {profile, role, building_ids[]} */
+type StaffMember = {
+  staff_id: string;
+  profile: any;
+  role_id: string;
+  role: any;
+  building_ids: string[];        // [] = all buildings
+  buildings: { id: string; name: string }[];
+  has_global: boolean;            // true if any row has building_id null
+  assignment_ids: string[];
+};
+
+function groupByStaff(assignments: any[]): StaffMember[] {
+  const map = new Map<string, StaffMember>();
+  for (const a of assignments || []) {
+    const sid = a.staff_id;
+    if (!map.has(sid)) {
+      map.set(sid, {
+        staff_id: sid,
+        profile: a.profile || null,
+        role_id: a.role_id,
+        role: a.role,
+        building_ids: [],
+        buildings: [],
+        has_global: false,
+        assignment_ids: [],
+      });
+    }
+    const m = map.get(sid)!;
+    m.assignment_ids.push(a.id);
+    if (a.building_id) {
+      m.building_ids.push(a.building_id);
+      if (a.building) m.buildings.push({ id: a.building.id, name: a.building.name });
+    } else {
+      m.has_global = true;
+    }
+  }
+  return Array.from(map.values());
+}
 
 function StaffTab() {
   const { data: assignments, isLoading: loadingAssignments } = useStaffAssignments();
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const { data: buildings, isLoading: loadingBuildings } = useBuildings();
+  const { data: areas } = useAreas();
   const provisionStaff = useProvisionStaff();
-  const updateAssignment = useUpdateStaffAssignment();
-  const deleteAssignment = useDeleteStaffAssignment();
+  const updateStaff = useUpdateStaffMember();
+  const removeStaff = useRemoveStaffMember();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [form, setForm] = useState<StaffFormState | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
 
   const isLoading = loadingAssignments || loadingRoles || loadingBuildings;
-  const isEdit = !!form?.id;
+  const isEdit = !!form?.staff_id;
 
-  const filteredAssignments = (assignments || []).filter((a) => {
+  const staffMembers = groupByStaff(assignments || []);
+
+  const filteredMembers = staffMembers.filter((m) => {
     if (!searchTerm) return true;
     const s = searchTerm.toLowerCase();
-    const roleName = (a.role as any)?.name?.toLowerCase() || "";
-    const buildingName = (a.building as any)?.name?.toLowerCase() || "";
-    const profile = (a as any).profile || {};
+    const roleName = m.role?.name?.toLowerCase() || "";
+    const profile = m.profile || {};
     const name = (profile.full_name || "").toLowerCase();
     const phone = (profile.phone || "").toLowerCase();
     const code = (profile.employee_code || "").toLowerCase();
+    const buildingNames = m.buildings.map((b) => b.name.toLowerCase()).join(" ");
     return (
       name.includes(s) ||
       phone.includes(s) ||
       code.includes(s) ||
       roleName.includes(s) ||
-      buildingName.includes(s)
+      buildingNames.includes(s)
     );
   });
 
@@ -554,20 +604,22 @@ function StaffTab() {
     setDialogOpen(true);
   };
 
-  const openEditDialog = (assignment: any) => {
-    const profile = assignment.profile || {};
+  const openEditDialog = (m: StaffMember) => {
+    const profile = m.profile || {};
     setForm({
-      id: assignment.id,
+      staff_id: m.staff_id,
       full_name: profile.full_name || "",
       phone: profile.phone || "",
       email: profile.email || "",
-      role_id: assignment.role_id || "",
+      role_id: m.role_id || "",
       department: profile.department || "",
       job_title: profile.job_title || "",
       employee_code: profile.employee_code || "",
       is_active: profile.is_active ?? true,
-      all_buildings: !assignment.building_id,
-      building_id: assignment.building_id || "",
+      all_buildings: m.has_global,
+      building_ids: m.building_ids,
+      area_ids: [],
+      building_search: "",
       password: "",
       confirmPassword: "",
     });
@@ -578,9 +630,9 @@ function StaffTab() {
     if (!form) return;
     if (!form.full_name.trim()) return;
     if (!form.role_id) return;
+    if (!form.all_buildings && form.building_ids.length === 0) return;
 
     if (!isEdit) {
-      // Create flow
       if (!form.phone.trim()) return;
       if (!form.password || form.password.length < 6) return;
       if (form.password !== form.confirmPassword) return;
@@ -590,7 +642,7 @@ function StaffTab() {
         email: form.email.trim() || undefined,
         password: form.password,
         role_id: form.role_id,
-        building_id: form.all_buildings ? null : form.building_id || null,
+        building_ids: form.all_buildings ? null : form.building_ids,
         department: form.department.trim() || undefined,
         job_title: form.job_title.trim() || undefined,
         employee_code: form.employee_code.trim() || undefined,
@@ -598,13 +650,16 @@ function StaffTab() {
       };
       await provisionStaff.mutateAsync(payload);
     } else {
-      // Edit flow — only update assignment role + building (profile fields update is
-      // a separate concern handled by the user editing their own profile).
-      await updateAssignment.mutateAsync({
-        id: form.id!,
-        updates: {
-          role_id: form.role_id,
-          building_id: form.all_buildings ? null : form.building_id || null,
+      await updateStaff.mutateAsync({
+        staff_id: form.staff_id!,
+        role_id: form.role_id,
+        building_ids: form.all_buildings ? null : form.building_ids,
+        profile_patch: {
+          full_name: form.full_name.trim(),
+          department: form.department.trim() || null,
+          job_title: form.job_title.trim() || null,
+          employee_code: form.employee_code.trim() || null,
+          is_active: form.is_active,
         },
       });
     }
@@ -613,10 +668,10 @@ function StaffTab() {
   };
 
   const handleDelete = async () => {
-    if (!deletingId) return;
-    await deleteAssignment.mutateAsync(deletingId);
+    if (!deletingStaffId) return;
+    await removeStaff.mutateAsync(deletingStaffId);
     setDeleteDialogOpen(false);
-    setDeletingId(null);
+    setDeletingStaffId(null);
   };
 
   if (isLoading) {
@@ -659,7 +714,7 @@ function StaffTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAssignments.length === 0 ? (
+              {filteredMembers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8">
                     <div className="flex flex-col items-center gap-2">
@@ -673,10 +728,8 @@ function StaffTab() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAssignments.map((assignment) => {
-                  const role = (assignment as any).role;
-                  const building = (assignment as any).building;
-                  const profile = (assignment as any).profile || {};
+                filteredMembers.map((m) => {
+                  const profile = m.profile || {};
                   const initials = (profile.full_name || "NV")
                     .split(" ")
                     .map((p: string) => p[0])
@@ -684,7 +737,7 @@ function StaffTab() {
                     .slice(0, 2)
                     .toUpperCase();
                   return (
-                    <TableRow key={assignment.id}>
+                    <TableRow key={m.staff_id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center text-xs font-semibold">
@@ -694,7 +747,7 @@ function StaffTab() {
                             <div className="font-medium">
                               {profile.full_name || (
                                 <span className="font-mono text-xs text-muted-foreground">
-                                  {assignment.staff_id.substring(0, 8)}…
+                                  {m.staff_id.substring(0, 8)}…
                                 </span>
                               )}
                             </div>
@@ -713,7 +766,7 @@ function StaffTab() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{role?.name || "—"}</Badge>
+                        <Badge variant="outline">{m.role?.name || "—"}</Badge>
                         {profile.job_title && (
                           <div className="text-xs text-muted-foreground mt-0.5">
                             {profile.job_title}
@@ -721,8 +774,30 @@ function StaffTab() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {building?.name || (
+                        {m.has_global ? (
                           <span className="text-muted-foreground italic">Tất cả toà nhà</span>
+                        ) : m.buildings.length === 0 ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : m.buildings.length <= 2 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {m.buildings.map((b) => (
+                              <Badge key={b.id} variant="secondary" className="text-xs">
+                                {b.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            <Badge variant="secondary" className="text-xs">
+                              {m.buildings[0].name}
+                            </Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              {m.buildings[1].name}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              +{m.buildings.length - 2}
+                            </Badge>
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
@@ -738,7 +813,7 @@ function StaffTab() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => openEditDialog(assignment)}
+                            onClick={() => openEditDialog(m)}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -747,7 +822,7 @@ function StaffTab() {
                             size="icon"
                             className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                             onClick={() => {
-                              setDeletingId(assignment.id);
+                              setDeletingStaffId(m.staff_id);
                               setDeleteDialogOpen(true);
                             }}
                           >
@@ -913,46 +988,116 @@ function StaffTab() {
                 </div>
               )}
 
-              {/* Buildings scope */}
+              {/* Buildings scope — Resident-style */}
               <div className="border-t pt-4 space-y-3">
-                <div className="text-sm font-medium">Quản lý toà nhà & công việc</div>
-                <div className="flex items-center justify-between border rounded-lg p-3">
-                  <div>
-                    <Label className="text-sm">Quản lý tất cả toà nhà</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Bật để cấp quyền trên toàn hệ thống
-                    </p>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">Quản lý toà nhà & công việc</div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-normal">Quản lý tất cả toà nhà</Label>
+                    <Switch
+                      checked={form.all_buildings}
+                      onCheckedChange={(v) =>
+                        setForm({
+                          ...form,
+                          all_buildings: !!v,
+                          building_ids: v ? [] : form.building_ids,
+                          area_ids: v ? [] : form.area_ids,
+                        })
+                      }
+                    />
                   </div>
-                  <Switch
-                    checked={form.all_buildings}
-                    onCheckedChange={(v) =>
-                      setForm({
-                        ...form,
-                        all_buildings: !!v,
-                        building_id: v ? "" : form.building_id,
-                      })
-                    }
-                  />
                 </div>
+
                 {!form.all_buildings && (
-                  <div className="space-y-1.5">
-                    <Label>Chọn toà nhà</Label>
-                    <Select
-                      value={form.building_id}
-                      onValueChange={(val) => setForm({ ...form, building_id: val })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn toà nhà" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(buildings || []).map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <>
+                    {/* Khu vực filter */}
+                    {(areas || []).length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-sm">Khu vực</Label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {(areas || []).map((a: any) => {
+                            const checked = form.area_ids.includes(a.id);
+                            return (
+                              <label
+                                key={a.id}
+                                className="flex items-center gap-2 text-sm cursor-pointer"
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(v) => {
+                                    const next = v
+                                      ? [...form.area_ids, a.id]
+                                      : form.area_ids.filter((x) => x !== a.id);
+                                    setForm({ ...form, area_ids: next });
+                                  }}
+                                />
+                                <span>{a.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tòa nhà search + multi-select */}
+                    <div className="space-y-2">
+                      <Label className="text-sm">Tòa nhà</Label>
+                      <Input
+                        placeholder="Tìm kiếm toà nhà..."
+                        value={form.building_search}
+                        onChange={(e) =>
+                          setForm({ ...form, building_search: e.target.value })
+                        }
+                      />
+                      {(() => {
+                        const search = form.building_search.trim().toLowerCase();
+                        const list = (buildings || []).filter((b: any) => {
+                          // area filter
+                          if (form.area_ids.length > 0) {
+                            if (!b.area_id || !form.area_ids.includes(b.area_id)) return false;
+                          }
+                          // search filter
+                          if (search && !(b.name || "").toLowerCase().includes(search)) return false;
+                          return true;
+                        });
+                        if (list.length === 0) {
+                          return (
+                            <p className="text-xs text-muted-foreground italic px-1">
+                              Không có toà nhà phù hợp.
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-56 overflow-y-auto border rounded-md p-2">
+                            {list.map((b: any) => {
+                              const checked = form.building_ids.includes(b.id);
+                              return (
+                                <label
+                                  key={b.id}
+                                  className="flex items-start gap-2 text-sm cursor-pointer"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(v) => {
+                                      const next = v
+                                        ? [...form.building_ids, b.id]
+                                        : form.building_ids.filter((x) => x !== b.id);
+                                      setForm({ ...form, building_ids: next });
+                                    }}
+                                    className="mt-0.5"
+                                  />
+                                  <span className="leading-tight">{b.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                      {form.building_ids.length === 0 && (
+                        <p className="text-xs text-red-600">Chọn ít nhất 1 toà nhà</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -967,6 +1112,7 @@ function StaffTab() {
               disabled={
                 !form?.full_name?.trim() ||
                 !form?.role_id ||
+                (!form?.all_buildings && (form?.building_ids?.length || 0) === 0) ||
                 (!isEdit && (
                   !form?.phone?.trim() ||
                   !form?.password ||
@@ -974,7 +1120,7 @@ function StaffTab() {
                   form.password !== form.confirmPassword
                 )) ||
                 provisionStaff.isPending ||
-                updateAssignment.isPending
+                updateStaff.isPending
               }
               className="bg-green-600 hover:bg-green-700"
             >

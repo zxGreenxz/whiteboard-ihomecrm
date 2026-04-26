@@ -168,7 +168,9 @@ export interface ProvisionStaffInput {
   username?: string;      // optional — used if no email/phone (Resident allows free-form)
   password: string;
   role_id: string;
-  building_id?: string | null;  // null = quản lý tất cả toà nhà
+  /** null/undefined = quản lý tất cả toà nhà (1 row, building_id=null).
+   *  Empty array = same as null. Otherwise insert one row per id. */
+  building_ids?: string[] | null;
   department?: string;
   job_title?: string;
   employee_code?: string;
@@ -252,19 +254,24 @@ export const useProvisionStaff = () => {
         }
       }
 
-      const { data: assignment, error: assignErr } = await supabase
+      const buildingIds = (input.building_ids && input.building_ids.length > 0)
+        ? input.building_ids
+        : [null]; // null = "tất cả toà nhà"
+
+      const rowsToInsert = buildingIds.map((bid) => ({
+        user_id: owner.id,
+        staff_id: newUserId,
+        role_id: input.role_id,
+        building_id: bid,
+      }));
+
+      const { data: assignments, error: assignErr } = await supabase
         .from("staff_assignments")
-        .insert({
-          user_id: owner.id,
-          staff_id: newUserId,
-          role_id: input.role_id,
-          building_id: input.building_id || null,
-        })
-        .select()
-        .single();
+        .insert(rowsToInsert)
+        .select();
       if (assignErr) throw assignErr;
 
-      return assignment;
+      return assignments;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
@@ -275,6 +282,140 @@ export const useProvisionStaff = () => {
         ? "Email/SĐT đã được đăng ký trước đó"
         : error.message;
       toast.error(`Không tạo được nhân viên: ${msg}`);
+    },
+  });
+};
+
+// =============================================================
+// Edit a staff member's assignments — sets role_id + buildings
+// to the given target. Diffs against existing rows: insert missing,
+// delete extras, update role_id on common rows.
+// =============================================================
+
+export interface UpdateStaffMemberInput {
+  staff_id: string;
+  role_id: string;
+  building_ids?: string[] | null; // null/empty → all buildings (single row, building_id=null)
+  profile_patch?: {
+    full_name?: string;
+    department?: string | null;
+    job_title?: string | null;
+    employee_code?: string | null;
+    is_active?: boolean;
+  };
+}
+
+export const useUpdateStaffMember = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: UpdateStaffMemberInput) => {
+      const { data: { user: owner } } = await supabase.auth.getUser();
+      if (!owner) throw new Error("Bạn chưa đăng nhập");
+
+      // 1) Sync profile fields (gracefully degrade if extended cols missing)
+      if (input.profile_patch) {
+        const tryExt = await supabase
+          .from("profiles")
+          .update(input.profile_patch as any)
+          .eq("id", input.staff_id);
+        if (tryExt.error) {
+          const baseOnly: any = {};
+          if (input.profile_patch.full_name !== undefined) baseOnly.full_name = input.profile_patch.full_name;
+          if (Object.keys(baseOnly).length > 0) {
+            await supabase.from("profiles").update(baseOnly).eq("id", input.staff_id);
+          }
+        }
+      }
+
+      // 2) Fetch existing assignments for this staff
+      const { data: existing, error: fetchErr } = await supabase
+        .from("staff_assignments")
+        .select("id, building_id, role_id")
+        .eq("staff_id", input.staff_id);
+      if (fetchErr) throw fetchErr;
+
+      const wantBuildings: (string | null)[] = (input.building_ids && input.building_ids.length > 0)
+        ? input.building_ids
+        : [null];
+
+      const have = new Map<string, { id: string; role_id: string }>();
+      for (const r of existing || []) {
+        // Use a sentinel for null building_id
+        const key = r.building_id ?? "__null__";
+        have.set(key, { id: r.id, role_id: r.role_id });
+      }
+      const want = new Set(wantBuildings.map((b) => b ?? "__null__"));
+
+      // 3) Delete rows whose building is no longer in `want`
+      const toDelete: string[] = [];
+      for (const [key, val] of have.entries()) {
+        if (!want.has(key)) toDelete.push(val.id);
+      }
+      if (toDelete.length > 0) {
+        const { error } = await supabase
+          .from("staff_assignments")
+          .delete()
+          .in("id", toDelete);
+        if (error) throw error;
+      }
+
+      // 4) Update role_id on rows we're keeping (if role changed)
+      const toUpdateIds: string[] = [];
+      for (const [key, val] of have.entries()) {
+        if (want.has(key) && val.role_id !== input.role_id) toUpdateIds.push(val.id);
+      }
+      if (toUpdateIds.length > 0) {
+        const { error } = await supabase
+          .from("staff_assignments")
+          .update({ role_id: input.role_id })
+          .in("id", toUpdateIds);
+        if (error) throw error;
+      }
+
+      // 5) Insert missing rows
+      const toInsert = wantBuildings
+        .filter((b) => !have.has(b ?? "__null__"))
+        .map((b) => ({
+          user_id: owner.id,
+          staff_id: input.staff_id,
+          role_id: input.role_id,
+          building_id: b,
+        }));
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from("staff_assignments").insert(toInsert);
+        if (error) throw error;
+      }
+
+      return { staff_id: input.staff_id };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
+      toast.success("Đã cập nhật phân quyền nhân viên");
+    },
+    onError: (error: Error) => {
+      toast.error(`Không cập nhật được: ${error.message}`);
+    },
+  });
+};
+
+// Remove an entire staff member (deletes all assignments for that staff_id).
+export const useRemoveStaffMember = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (staff_id: string) => {
+      const { error } = await supabase
+        .from("staff_assignments")
+        .delete()
+        .eq("staff_id", staff_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
+      toast.success("Đã xoá nhân viên");
+    },
+    onError: (error: Error) => {
+      toast.error(`Không xoá được: ${error.message}`);
     },
   });
 };
