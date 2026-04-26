@@ -29,6 +29,16 @@ interface RoomWithContract {
   };
 }
 
+interface SupabaseContractRow {
+  id: string;
+  end_date: string;
+  status: string;
+  contract_customers?: Array<{
+    is_representative: boolean;
+    customer?: { id: string; full_name: string } | null;
+  }>;
+}
+
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "Tất cả trạng thái" },
   { value: "OCCUPIED", label: "Đang thuê" },
@@ -50,23 +60,26 @@ const BuildingMapPage = () => {
   const { data: allRooms = [], isLoading: roomsLoading } = useRooms();
   const { data: floors = [], isLoading: floorsLoading } = useFloors(selectedBuildingId || undefined);
 
-  // Get rooms with active contracts
+  // Get rooms with their ACTIVE contracts. The join goes:
+  //   rooms ⟵ contracts ⟵ contract_customers ⟵ customers
+  // We pick the representative customer to display as the "tenant" name.
   const { data: roomsWithContracts = [] } = useQuery({
     queryKey: ["rooms-with-contracts", selectedBuildingId],
     queryFn: async (): Promise<RoomWithContract[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
       let query = supabase
         .from("rooms")
         .select(
-          "id, name, rent_price, floor, status, contracts!inner(id, end_date, status, tenant:tenants(full_name))"
-        ) as any;
-
-      query = query
-        .eq("user_id", user.id)
+          `id, name, rent_price, floor, status, building_id,
+           contracts!inner (
+             id, end_date, status,
+             contract_customers!contract_customers_contract_id_fkey (
+               is_representative,
+               customer:customers!contract_customers_customer_id_fkey ( id, full_name )
+             )
+           )`
+        )
         .is("deleted_at", null)
-        .eq("contracts.status", "ACTIVE");
+        .eq("contracts.status", "ACTIVE") as any;
 
       if (selectedBuildingId) {
         query = query.eq("building_id", selectedBuildingId);
@@ -75,14 +88,27 @@ const BuildingMapPage = () => {
       const { data, error } = await query;
       if (error) throw error;
 
-      return data.map((room: any) => ({
-        id: room.id,
-        name: room.name,
-        rent_price: room.rent_price,
-        floor: room.floor,
-        status: room.status,
-        activeContract: room.contracts[0] || undefined,
-      }));
+      return (data || []).map((room: any) => {
+        const c: SupabaseContractRow | undefined = room.contracts?.[0];
+        const reps = c?.contract_customers || [];
+        const repTenant =
+          reps.find((cc) => cc.is_representative)?.customer ||
+          reps[0]?.customer;
+        return {
+          id: room.id,
+          name: room.name,
+          rent_price: room.rent_price,
+          floor: room.floor,
+          status: room.status,
+          activeContract: c
+            ? {
+                id: c.id,
+                end_date: c.end_date,
+                tenant: repTenant ? { full_name: repTenant.full_name } : undefined,
+              }
+            : undefined,
+        };
+      });
     },
     enabled: !!selectedBuildingId,
   });

@@ -26,3 +26,9 @@ dist-ssr
 # Local crawl artifacts (contains auth cookies + scraped data)
 crawl-resident/
 .claude/scheduled_tasks.lock
+
+# Supabase service role key (DO NOT COMMIT)
+.env.local
+
+# Excel data dumps
+data excel/
