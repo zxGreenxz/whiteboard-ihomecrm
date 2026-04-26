@@ -20,6 +20,7 @@ import {
   Search,
   CheckCircle,
   Trash2,
+  Table as TableIcon,
 } from 'lucide-react';
 
 interface InvoiceListToolbarProps {
@@ -29,6 +30,7 @@ interface InvoiceListToolbarProps {
   onAdd: () => void;
   onImport: () => void;
   onAutoGenerate: () => void;
+  onExcelMode: () => void;
   onBulkApprove: () => void;
   onBulkDelete: () => void;
 }
@@ -49,6 +51,7 @@ const InvoiceListToolbar = ({
   onAdd,
   onImport,
   onAutoGenerate,
+  onExcelMode,
   onBulkApprove,
   onBulkDelete,
 }: InvoiceListToolbarProps) => {
@@ -82,6 +85,14 @@ const InvoiceListToolbar = ({
       onClick: onAutoGenerate,
       bg: 'bg-green-500',
       hoverBg: 'hover:bg-green-600',
+      textColor: 'text-white',
+    },
+    {
+      icon: TableIcon,
+      label: 'Mode Excel — Tạo nhanh',
+      onClick: onExcelMode,
+      bg: 'bg-indigo-500',
+      hoverBg: 'hover:bg-indigo-600',
       textColor: 'text-white',
     },
     {
