@@ -1,7 +1,7 @@
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Phone, Mail, MapPin, Building2, Edit, ArrowRight, Trash2, Eye } from "lucide-react";
+import { Phone, Mail, MapPin, Building2, Edit, ArrowRight, Trash2, Eye, UserPlus, Users, Search as SearchIcon } from "lucide-react";
 import type { LeadWithRelations } from "@/hooks/useLeads";
 import { formatDate } from "@/lib/utils";
 
@@ -73,6 +73,32 @@ export function LeadCard({ lead, onEdit, onConvert, onDelete, onViewDetail }: Le
         {lead.appointment_date && (
           <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
             Hẹn: {formatDate(lead.appointment_date)}
+          </div>
+        )}
+
+        {/* Người giới thiệu / CTV / Người tìm khách */}
+        {((lead as any).referrer_name ||
+          (lead as any).ctv_name ||
+          (lead as any).finder_name) && (
+          <div className="text-xs text-muted-foreground mt-2 pt-2 border-t space-y-1">
+            {(lead as any).referrer_name && (
+              <div className="flex items-center gap-1.5">
+                <UserPlus className="w-3 h-3" />
+                <span>Giới thiệu: {(lead as any).referrer_name}</span>
+              </div>
+            )}
+            {(lead as any).ctv_name && (
+              <div className="flex items-center gap-1.5">
+                <Users className="w-3 h-3" />
+                <span>CTV: {(lead as any).ctv_name}</span>
+              </div>
+            )}
+            {(lead as any).finder_name && (
+              <div className="flex items-center gap-1.5">
+                <SearchIcon className="w-3 h-3" />
+                <span>Tìm khách: {(lead as any).finder_name}</span>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

@@ -41,6 +41,9 @@ const leadSchema = z.object({
   appointment_date: z.string().optional(),
   assigned_staff_id: z.string().optional(),
   status: z.enum(["B1_LEAD", "B2_APPOINTMENT", "B3_CONSULTATION", "CONVERTED", "FAILED"]),
+  referrer_name: z.string().optional(),
+  ctv_name: z.string().optional(),
+  finder_name: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -68,6 +71,9 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
       appointment_date: "",
       assigned_staff_id: undefined,
       status: "B1_LEAD",
+      referrer_name: "",
+      ctv_name: "",
+      finder_name: "",
       notes: "",
     },
   });
@@ -86,8 +92,11 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
         room_id: data.room_id || null,
         appointment_date: data.appointment_date || null,
         assigned_staff_id: data.assigned_staff_id || null,
+        referrer_name: data.referrer_name || null,
+        ctv_name: data.ctv_name || null,
+        finder_name: data.finder_name || null,
         notes: data.notes || null,
-      });
+      } as any);
       form.reset();
       onOpenChange(false);
     } catch (error) {
@@ -276,6 +285,49 @@ export function CreateLeadDialog({ open, onOpenChange }: CreateLeadDialogProps) 
                   </FormItem>
                 )}
               />
+
+              {/* Người giới thiệu / CTV / Người tìm khách (theo Resident) */}
+              <div className="grid grid-cols-3 gap-3">
+                <FormField
+                  control={form.control}
+                  name="referrer_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Người giới thiệu</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Tên" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="ctv_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>CTV</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Cộng tác viên" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="finder_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Người tìm khách</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Sale" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               {/* Ghi chú */}
               <FormField
