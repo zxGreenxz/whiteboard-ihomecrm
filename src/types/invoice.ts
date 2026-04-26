@@ -62,6 +62,7 @@ export interface Invoice {
   template_id: string | null;
   approved_at: string | null; // TIMESTAMPTZ
   approved_by: string | null;
+  creator_name: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

@@ -224,6 +224,10 @@ export const useCreateInvoice = () => {
       const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
       const invoice_number = await generateInvoiceNumber(user.id);
 
+      const meta = (user.user_metadata ?? {}) as Record<string, any>;
+      const creatorName: string =
+        meta.full_name || meta.name || user.email || 'Người dùng';
+
       // Insert invoice
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
@@ -248,6 +252,7 @@ export const useCreateInvoice = () => {
           previous_debt: invoiceFields.previous_debt || 0,
           notes: invoiceFields.notes || null,
           template_id: invoiceFields.template_id || null,
+          creator_name: creatorName,
         } as any)
         .select()
         .single();

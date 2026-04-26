@@ -88,7 +88,7 @@ const InvoiceListTable = ({
 
   return (
     <TooltipProvider>
-      <Table>
+      <Table className="[&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
         <TableHeader>
           <TableRow>
             <TableHead className="w-10">
@@ -108,12 +108,15 @@ const InvoiceListTable = ({
             <TableHead className="text-right">Tổng tiền</TableHead>
             <TableHead className="text-right">Đã thanh toán</TableHead>
             <TableHead className="text-right">Còn nợ</TableHead>
+            <TableHead className="text-right">Nợ cộng dồn</TableHead>
+            <TableHead>Hạn TT</TableHead>
+            <TableHead>Người tạo</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {invoices.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={13} className="h-24 text-center text-muted-foreground">
                 Không có hoá đơn nào
               </TableCell>
             </TableRow>
@@ -307,6 +310,27 @@ const InvoiceListTable = ({
                   >
                     {formatCurrency(remaining)}
                   </TableCell>
+
+                  {/* Nợ cộng dồn = previous_debt + remaining */}
+                  <TableCell
+                    className={`text-right text-sm ${
+                      ((invoice.previous_debt || 0) + remaining) > 0
+                        ? 'text-red-600 font-medium'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {formatCurrency((invoice.previous_debt || 0) + remaining)}
+                  </TableCell>
+
+                  {/* Hạn TT + sub-line "Còn N ngày" / "Quá hạn N ngày" */}
+                  <TableCell className="text-sm">
+                    <DueCell dueDate={invoice.due_date} status={invoice.status} />
+                  </TableCell>
+
+                  {/* Người tạo */}
+                  <TableCell className="text-sm text-muted-foreground">
+                    {invoice.creator_name || '—'}
+                  </TableCell>
                 </TableRow>
               );
             })
@@ -316,5 +340,37 @@ const InvoiceListTable = ({
     </TooltipProvider>
   );
 };
+
+/**
+ * Hạn TT cell — show date + "Còn N ngày" or "Quá hạn N ngày" indicator,
+ * matching Resident's invoice list layout.
+ */
+function DueCell({ dueDate, status }: { dueDate: string | null; status: string }) {
+  if (!dueDate) return <span className="text-muted-foreground">—</span>;
+  const due = new Date(dueDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
+  const dateStr = due.toLocaleDateString('vi-VN');
+
+  let sub: React.ReactNode = null;
+  if (status === 'PAID') {
+    sub = <span className="text-xs text-emerald-600">Đã thanh toán</span>;
+  } else if (diffDays < 0) {
+    sub = <span className="text-xs text-red-600 font-medium">Quá hạn {Math.abs(diffDays)} ngày</span>;
+  } else if (diffDays === 0) {
+    sub = <span className="text-xs text-amber-600 font-medium">Hết hạn hôm nay</span>;
+  } else if (diffDays <= 14) {
+    sub = <span className="text-xs text-amber-600">Còn {diffDays} ngày</span>;
+  }
+
+  return (
+    <div className="flex flex-col leading-tight">
+      <span>{dateStr}</span>
+      {sub}
+    </div>
+  );
+}
 
 export default InvoiceListTable;
