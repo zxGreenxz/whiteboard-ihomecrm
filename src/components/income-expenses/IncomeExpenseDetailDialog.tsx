@@ -172,6 +172,7 @@ export function IncomeExpenseDetailDialog({
                   : "—"
               }
             />
+            <Row label="Người tạo" value={voucher.creator_name} />
             <Row
               label="Hạch toán kết quả kinh doanh"
               value={

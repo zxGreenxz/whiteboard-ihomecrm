@@ -61,6 +61,7 @@ export interface IncomeExpenseWithRelations {
   business_result_accounting: boolean;
   receive_bank_name: string | null;
   receive_bank_account: string | null;
+  creator_name: string | null;
   items: IncomeExpenseItem[];
   created_at: string;
   updated_at: string;
@@ -245,6 +246,7 @@ export const useIncomeExpenses = (
           business_result_accounting: v.business_result_accounting ?? false,
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
+          creator_name: v.creator_name ?? null,
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
@@ -407,11 +409,16 @@ export const useCreateIncomeExpense = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      const meta = (user.user_metadata ?? {}) as Record<string, any>;
+      const creatorName: string =
+        meta.full_name || meta.name || user.email || "Người dùng";
+
       // 1. Insert the voucher
       const { data: voucher, error: voucherError } = await supabase
         .from("income_expenses" as any)
         .insert({
           user_id: user.id,
+          creator_name: creatorName,
           type: input.type,
           name: input.name,
           building_id: input.building_id,
