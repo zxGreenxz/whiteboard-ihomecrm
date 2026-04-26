@@ -83,7 +83,6 @@ import StaffPage from "./pages/settings/StaffPage";
 // Categories Sub-Pages
 import BankAccountsPage from "./pages/settings/categories/BankAccountsPage";
 import AutoDebtPage from "./pages/settings/categories/AutoDebtPage";
-import IncomeExpenseTypesPage from "./pages/settings/categories/IncomeExpenseTypesPage";
 import ServiceQuotasPage from "./pages/settings/categories/ServiceQuotasPage";
 import MetersPage from "./pages/settings/MetersPage";
 import IncomeExpenseTypesNewPage from "./pages/settings/IncomeExpenseTypesPage";
@@ -244,11 +243,15 @@ const App = () => (
 
           {/* === CÀI ĐẶT HỆ THỐNG === */}
           <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />
+          <Route path="/general-setting" element={<Navigate to="/settings/general" replace />} />
           <Route path="/settings/categories" element={<ProtectedRoute><CategoriesPage /></ProtectedRoute>} />
           {/* Categories Sub-Pages - Tài chính */}
           <Route path="/settings/categories/bank-accounts" element={<ProtectedRoute><BankAccountsPage /></ProtectedRoute>} />
           <Route path="/settings/categories/auto-debt" element={<ProtectedRoute><AutoDebtPage /></ProtectedRoute>} />
-          <Route path="/settings/categories/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesPage /></ProtectedRoute>} />
+          {/* Loại thu chi: page chính ở /settings/income-expense-types.
+              Hai URL còn lại (legacy + Resident-style) redirect về để tránh trùng. */}
+          <Route path="/settings/categories/income-expense-types" element={<Navigate to="/settings/income-expense-types" replace />} />
+          <Route path="/setting/finance/income-expense-types" element={<Navigate to="/settings/income-expense-types" replace />} />
           <Route path="/settings/categories/service-quotas" element={<ProtectedRoute><ServiceQuotasPage /></ProtectedRoute>} />
           <Route path="/settings/categories/meters" element={<Navigate to="/settings/meters" replace />} />
           <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
