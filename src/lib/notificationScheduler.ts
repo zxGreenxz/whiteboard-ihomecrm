@@ -107,12 +107,12 @@ export async function checkInvoicePaymentReminders(userId: string): Promise<void
       id,
       invoice_number,
       due_date,
-      amount,
-      amount_paid,
-      tenant:tenants(full_name)
+      total_amount,
+      paid_amount,
+      contract:contracts(tenant:tenants(full_name))
     `)
     .eq('user_id', userId)
-    .in('status', ['UNPAID', 'PARTIAL_PAID']);
+    .in('status', ['APPROVED', 'PARTIAL_PAID']);
 
   if (!invoices) return;
 
@@ -121,7 +121,7 @@ export async function checkInvoicePaymentReminders(userId: string): Promise<void
   for (const invoice of invoices) {
     const dueDate = new Date(invoice.due_date);
     const daysUntilDue = differenceInDays(dueDate, today);
-    const remainingAmount = invoice.amount - invoice.amount_paid;
+    const remainingAmount = ((invoice as any).total_amount || 0) - ((invoice as any).paid_amount || 0);
 
     // Check if we should send reminder
     if (daysUntilDue > 0 && reminderDays.includes(daysUntilDue)) {
@@ -140,7 +140,7 @@ export async function checkInvoicePaymentReminders(userId: string): Promise<void
       await createPaymentReminderNotification(
         invoice.id,
         userId,
-        invoice.tenant?.full_name || '',
+        (invoice as any).contract?.tenant?.full_name || '',
         invoice.invoice_number || '',
         remainingAmount,
         invoice.due_date
@@ -177,9 +177,9 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
       id,
       invoice_number,
       due_date,
-      amount,
-      amount_paid,
-      tenant:tenants(full_name)
+      total_amount,
+      paid_amount,
+      contract:contracts(tenant:tenants(full_name))
     `)
     .eq('user_id', userId)
     .in('status', ['UNPAID', 'PARTIAL_PAID'])
@@ -190,7 +190,7 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
   const today = new Date();
 
   for (const invoice of invoices) {
-    const remainingAmount = invoice.amount - invoice.amount_paid;
+    const remainingAmount = ((invoice as any).total_amount || 0) - ((invoice as any).paid_amount || 0);
 
     // Check last notification
     const { data: lastNotification } = await supabase
@@ -222,7 +222,7 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
       await createOverdueNotification(
         invoice.id,
         userId,
-        invoice.tenant?.full_name || '',
+        (invoice as any).contract?.tenant?.full_name || '',
         invoice.invoice_number || '',
         remainingAmount
       );

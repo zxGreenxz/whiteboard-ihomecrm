@@ -203,10 +203,14 @@ export const useProvisionStaff = () => {
 
   return useMutation({
     mutationFn: async (input: ProvisionStaffInput) => {
-      const {
-        data: { user: owner },
-      } = await supabase.auth.getUser();
-      if (!owner) throw new Error("Bạn chưa đăng nhập");
+      // Save admin session BEFORE signUp. supabase.auth.signUp() auto-switches
+      // the client session to the newly-created user, which would make every
+      // subsequent profile-upsert / staff_assignment-insert run as the new
+      // (un-privileged) user → RLS 403, then on retry "User already registered"
+      // 422, and an orphan auth row stuck in the database.
+      const { data: { session: adminSession } } = await supabase.auth.getSession();
+      if (!adminSession) throw new Error("Bạn chưa đăng nhập");
+      const owner = adminSession.user;
 
       const authEmail = buildAuthEmail(input);
 
@@ -225,8 +229,15 @@ export const useProvisionStaff = () => {
           },
         },
       });
+
+      // Restore admin session IMMEDIATELY — even on signUp error, because the
+      // client may already have partially switched.
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
+
       if (signUpErr) {
-        // Re-throw with a friendlier message; the dialog displays this.
         if (/already registered|duplicate/i.test(signUpErr.message)) {
           throw new Error(`Tên đăng nhập "${input.username}" đã được sử dụng. Vui lòng chọn tên khác.`);
         }
