@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useJobs, useUpdateJobStatus, useDeleteJob } from "@/hooks/useJobs";
+import { useAuth } from "@/hooks/useAuth";
 import { usePagination } from "@/hooks/usePagination";
 import { filterJobs, paginateJobs } from "@/lib/jobValidation";
 import { TaskStatusStats } from "@/components/tasks/TaskStatusStats";
@@ -26,12 +27,16 @@ import TaskAcceptanceDialog from "@/components/tasks/TaskAcceptanceDialog";
 import type { TaskFilters, JobWithRelations } from "@/types/jobs";
 import { defaultTaskFilters } from "@/types/jobs";
 
+type TaskTab = "ALL" | "MINE" | "WATCHING";
+
 export default function TaskManagementPage() {
+  const { data: authUser } = useAuth();
   // State management
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<TaskFilters>(defaultTaskFilters);
   const [appliedFilters, setAppliedFilters] = useState<TaskFilters>(defaultTaskFilters);
+  const [activeTab, setActiveTab] = useState<TaskTab>("ALL");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobWithRelations | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -45,8 +50,36 @@ export default function TaskManagementPage() {
   const updateJobStatus = useUpdateJobStatus();
   const deleteJob = useDeleteJob();
 
+  // Tab filter — Resident pattern
+  const myUserId = authUser?.id ?? null;
+  const tabFiltered = (allJobs as JobWithRelations[]).filter((job) => {
+    if (activeTab === "MINE") {
+      return myUserId
+        ? (job as any).assignee_id === myUserId ||
+            (job as any).profiles?.id === myUserId
+        : false;
+    }
+    if (activeTab === "WATCHING") {
+      // No "watcher" model yet → fallback to created_by_id
+      return myUserId ? (job as any).created_by_id === myUserId : false;
+    }
+    return true;
+  });
+
+  const tabCounts = {
+    ALL: (allJobs as JobWithRelations[]).length,
+    MINE: (allJobs as JobWithRelations[]).filter((j: any) =>
+      myUserId
+        ? j.assignee_id === myUserId || j.profiles?.id === myUserId
+        : false
+    ).length,
+    WATCHING: (allJobs as JobWithRelations[]).filter((j: any) =>
+      myUserId ? j.created_by_id === myUserId : false
+    ).length,
+  };
+
   // Client-side search filter
-  const searchFiltered = (allJobs as JobWithRelations[]).filter(
+  const searchFiltered = tabFiltered.filter(
     (job) =>
       job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.code.toLowerCase().includes(searchQuery.toLowerCase())
@@ -125,6 +158,43 @@ export default function TaskManagementPage() {
       subtitle="Quản lý công việc vận hành"
       icon={ClipboardList}
     >
+      {/* Tabs — match Resident "Tất cả / Việc của tôi / Đang theo dõi" */}
+      <div className="flex items-center gap-1 mb-4 border-b">
+        {([
+          ["ALL", "Tất cả"],
+          ["MINE", "Việc của tôi"],
+          ["WATCHING", "Đang theo dõi"],
+        ] as const).map(([key, label]) => {
+          const active = activeTab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setActiveTab(key as TaskTab);
+                pagination.setPage(1);
+              }}
+              className={`relative px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
+                active
+                  ? "text-primary border-b-2 border-primary -mb-px"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+              <span
+                className={`inline-flex items-center rounded-full px-1.5 text-xs ${
+                  active
+                    ? "bg-red-100 text-red-600"
+                    : "bg-zinc-100 text-zinc-600"
+                }`}
+              >
+                {tabCounts[key]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Stats */}
       <TaskStatusStats jobs={allJobs as JobWithRelations[]} />
 

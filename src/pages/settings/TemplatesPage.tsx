@@ -50,6 +50,7 @@ const TAB_ICONS: Record<TemplateType, React.ReactNode> = {
   handover_report: <ClipboardList className="h-4 w-4" />,
   invoice: <Receipt className="h-4 w-4" />,
   receipt: <Wallet className="h-4 w-4" />,
+  other: <FileText className="h-4 w-4" />,
 };
 
 interface TemplateListProps {

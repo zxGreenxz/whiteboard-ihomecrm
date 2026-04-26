@@ -17,7 +17,8 @@ export type TemplateType =
   | "lease_contract"
   | "handover_report"
   | "invoice"
-  | "receipt";
+  | "receipt"
+  | "other";
 
 export interface DocumentTemplate {
   id: string;
@@ -57,6 +58,7 @@ export const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
   handover_report: "BB bàn giao",
   invoice: "Mẫu hóa đơn",
   receipt: "Mẫu thu chi",
+  other: "Biểu mẫu khác",
 };
 
 export const TEMPLATE_TYPES: TemplateType[] = [
@@ -66,6 +68,7 @@ export const TEMPLATE_TYPES: TemplateType[] = [
   "handover_report",
   "invoice",
   "receipt",
+  "other",
 ];
 
 // Default template variables for each type
@@ -103,6 +106,7 @@ export const DEFAULT_TEMPLATE_VARIABLES: Record<TemplateType, Record<string, str
     { key: "amount", label: "Số tiền" },
     { key: "payment_method", label: "Phương thức thanh toán" },
   ],
+  other: [],
 };
 
 // Helper function to generate template code
