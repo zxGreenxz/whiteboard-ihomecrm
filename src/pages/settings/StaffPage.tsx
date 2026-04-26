@@ -59,27 +59,64 @@ import {
 } from "@/hooks/useRoles";
 import {
   useStaffAssignments,
-  useCreateStaffAssignment,
   useUpdateStaffAssignment,
   useDeleteStaffAssignment,
+  useProvisionStaff,
+  type ProvisionStaffInput,
 } from "@/hooks/useStaffAssignments";
 import { useBuildings } from "@/hooks/useBuildings";
 import type { Json } from "@/integrations/supabase/types";
 
-// Permission modules
+// Permission modules — full Resident parity (35 nhóm)
 const PERMISSION_MODULES = [
-  { key: "buildings", label: "Toà nhà" },
-  { key: "contracts", label: "Hợp đồng" },
-  { key: "invoices", label: "Hoá đơn" },
-  { key: "reports", label: "Báo cáo" },
-  { key: "settings", label: "Cài đặt" },
+  { key: "dashboard",        label: "Bảng tin" },
+  { key: "notifications",    label: "Thông báo" },
+  { key: "messages",         label: "Nhắn tin" },
+  { key: "tasks",            label: "Công việc" },
+  { key: "buildings",        label: "Căn hộ (toà nhà)" },
+  { key: "rooms",            label: "Phòng" },
+  { key: "beds",             label: "Giường" },
+  { key: "services",         label: "Phí dịch vụ" },
+  { key: "service_quotas",   label: "Định mức" },
+  { key: "meters",           label: "Công tơ" },
+  { key: "meter_readings",   label: "Chốt công tơ" },
+  { key: "deposits",         label: "Cọc giữ chỗ" },
+  { key: "contracts",        label: "Hợp đồng" },
+  { key: "customers",        label: "Cư dân" },
+  { key: "vehicles",         label: "Phương tiện" },
+  { key: "cashbooks",        label: "Sổ quỹ" },
+  { key: "invoices",         label: "Hoá đơn" },
+  { key: "income_expenses",  label: "Thu chi" },
+  { key: "excess_amounts",   label: "Tiền thừa" },
+  { key: "suppliers",        label: "Nhà cung cấp" },
+  { key: "warehouses",       label: "Kho" },
+  { key: "asset_types",      label: "Loại tài sản" },
+  { key: "assets",           label: "Tài sản" },
+  { key: "reports_real_estate", label: "Báo cáo BĐS" },
+  { key: "reports_finance",  label: "Báo cáo tài chính" },
+  { key: "reports_tasks",    label: "Báo cáo công việc" },
+  { key: "roles",            label: "Loại tài khoản" },
+  { key: "users",            label: "Người dùng" },
+  { key: "subscription",     label: "Gói cước" },
+  { key: "settings",         label: "Cài đặt" },
+  { key: "areas",            label: "Khu vực" },
+  { key: "hotline",          label: "Cài đặt Hotline" },
+  { key: "iot_devices",      label: "Thiết bị IOT" },
+  { key: "building_layout",  label: "Sơ đồ toà nhà" },
+  { key: "leads",            label: "Khách hẹn" },
+  { key: "auto_debt",        label: "Gạch nợ tự động" },
+  { key: "templates",        label: "Biểu mẫu" },
+  { key: "zalo_oa",          label: "Zalo OA" },
+  { key: "task_types",       label: "Loại công việc" },
+  { key: "categories",       label: "Danh mục khác" },
+  { key: "e_invoices",       label: "Hoá đơn điện tử" },
 ] as const;
 
 const PERMISSION_ACTIONS = [
-  { key: "view", label: "Xem" },
-  { key: "create", label: "Tạo" },
-  { key: "edit", label: "Sửa" },
-  { key: "delete", label: "Xóa" },
+  { key: "view",   label: "Xem" },
+  { key: "create", label: "Thêm" },
+  { key: "edit",   label: "Sửa" },
+  { key: "delete", label: "Xoá" },
 ] as const;
 
 type PermissionsMap = Record<string, Record<string, boolean>>;
@@ -443,77 +480,136 @@ function RolesTab() {
 
 // ==================== STAFF TAB ====================
 
+type StaffFormState = {
+  // Edit-only:
+  id?: string;
+  // Common fields:
+  full_name: string;
+  phone: string;
+  email: string;
+  role_id: string;
+  department: string;
+  job_title: string;
+  employee_code: string;
+  is_active: boolean;
+  all_buildings: boolean;
+  building_id: string;
+  // Create-only:
+  password: string;
+  confirmPassword: string;
+};
+
+const emptyForm = (): StaffFormState => ({
+  full_name: "",
+  phone: "",
+  email: "",
+  role_id: "",
+  department: "",
+  job_title: "",
+  employee_code: "",
+  is_active: true,
+  all_buildings: true,
+  building_id: "",
+  password: "",
+  confirmPassword: "",
+});
+
 function StaffTab() {
   const { data: assignments, isLoading: loadingAssignments } = useStaffAssignments();
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const { data: buildings, isLoading: loadingBuildings } = useBuildings();
-  const createAssignment = useCreateStaffAssignment();
+  const provisionStaff = useProvisionStaff();
   const updateAssignment = useUpdateStaffAssignment();
   const deleteAssignment = useDeleteStaffAssignment();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editingAssignment, setEditingAssignment] = useState<{
-    id?: string;
-    staff_id: string;
-    role_id: string;
-    building_id: string;
-  } | null>(null);
+  const [form, setForm] = useState<StaffFormState | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const isLoading = loadingAssignments || loadingRoles || loadingBuildings;
+  const isEdit = !!form?.id;
 
   const filteredAssignments = (assignments || []).filter((a) => {
     if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
+    const s = searchTerm.toLowerCase();
     const roleName = (a.role as any)?.name?.toLowerCase() || "";
     const buildingName = (a.building as any)?.name?.toLowerCase() || "";
+    const profile = (a as any).profile || {};
+    const name = (profile.full_name || "").toLowerCase();
+    const phone = (profile.phone || "").toLowerCase();
+    const code = (profile.employee_code || "").toLowerCase();
     return (
-      a.staff_id.toLowerCase().includes(search) ||
-      roleName.includes(search) ||
-      buildingName.includes(search)
+      name.includes(s) ||
+      phone.includes(s) ||
+      code.includes(s) ||
+      roleName.includes(s) ||
+      buildingName.includes(s)
     );
   });
 
   const openCreateDialog = () => {
-    setEditingAssignment({
-      staff_id: "",
-      role_id: "",
-      building_id: "",
-    });
+    setForm(emptyForm());
     setDialogOpen(true);
   };
 
   const openEditDialog = (assignment: any) => {
-    setEditingAssignment({
+    const profile = assignment.profile || {};
+    setForm({
       id: assignment.id,
-      staff_id: assignment.staff_id,
-      role_id: assignment.role_id,
+      full_name: profile.full_name || "",
+      phone: profile.phone || "",
+      email: profile.email || "",
+      role_id: assignment.role_id || "",
+      department: profile.department || "",
+      job_title: profile.job_title || "",
+      employee_code: profile.employee_code || "",
+      is_active: profile.is_active ?? true,
+      all_buildings: !assignment.building_id,
       building_id: assignment.building_id || "",
+      password: "",
+      confirmPassword: "",
     });
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!editingAssignment || !editingAssignment.staff_id || !editingAssignment.role_id) return;
+    if (!form) return;
+    if (!form.full_name.trim()) return;
+    if (!form.role_id) return;
 
-    const payload = {
-      staff_id: editingAssignment.staff_id,
-      role_id: editingAssignment.role_id,
-      building_id: editingAssignment.building_id || null,
-    };
-
-    if (editingAssignment.id) {
-      await updateAssignment.mutateAsync({
-        id: editingAssignment.id,
-        updates: payload,
-      });
+    if (!isEdit) {
+      // Create flow
+      if (!form.phone.trim()) return;
+      if (!form.password || form.password.length < 6) return;
+      if (form.password !== form.confirmPassword) return;
+      const payload: ProvisionStaffInput = {
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || undefined,
+        password: form.password,
+        role_id: form.role_id,
+        building_id: form.all_buildings ? null : form.building_id || null,
+        department: form.department.trim() || undefined,
+        job_title: form.job_title.trim() || undefined,
+        employee_code: form.employee_code.trim() || undefined,
+        is_active: form.is_active,
+      };
+      await provisionStaff.mutateAsync(payload);
     } else {
-      await createAssignment.mutateAsync(payload);
+      // Edit flow — only update assignment role + building (profile fields update is
+      // a separate concern handled by the user editing their own profile).
+      await updateAssignment.mutateAsync({
+        id: form.id!,
+        updates: {
+          role_id: form.role_id,
+          building_id: form.all_buildings ? null : form.building_id || null,
+        },
+      });
     }
     setDialogOpen(false);
-    setEditingAssignment(null);
+    setForm(null);
   };
 
   const handleDelete = async () => {
@@ -545,7 +641,7 @@ function StaffTab() {
         </div>
         <Button onClick={openCreateDialog} className="bg-green-600 hover:bg-green-700">
           <Plus className="h-4 w-4 mr-2" />
-          Gán nhân viên
+          Thêm người dùng
         </Button>
       </div>
 
@@ -554,7 +650,8 @@ function StaffTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nhân viên (ID)</TableHead>
+                <TableHead>Nhân viên</TableHead>
+                <TableHead>SĐT / Email</TableHead>
                 <TableHead>Vai trò</TableHead>
                 <TableHead>Toà nhà</TableHead>
                 <TableHead className="text-center">Trạng thái</TableHead>
@@ -564,35 +661,64 @@ function StaffTab() {
             <TableBody>
               {filteredAssignments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     <div className="flex flex-col items-center gap-2">
                       <Users className="h-12 w-12 text-gray-300" />
                       <p className="text-muted-foreground">
                         {searchTerm
                           ? "Không tìm thấy nhân viên nào"
-                          : "Chưa có nhân viên nào được gán. Nhấn 'Gán nhân viên' để thêm."}
+                          : "Chưa có nhân viên nào. Nhấn 'Thêm người dùng' để tạo mới."}
                       </p>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredAssignments.map((assignment) => {
-                  const role = assignment.role as any;
-                  const building = assignment.building as any;
+                  const role = (assignment as any).role;
+                  const building = (assignment as any).building;
+                  const profile = (assignment as any).profile || {};
+                  const initials = (profile.full_name || "NV")
+                    .split(" ")
+                    .map((p: string) => p[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase();
                   return (
                     <TableRow key={assignment.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center text-xs font-semibold">
-                            NV
+                          <div className="h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center text-xs font-semibold">
+                            {initials}
                           </div>
-                          <span className="font-mono text-sm">
-                            {assignment.staff_id.substring(0, 8)}...
-                          </span>
+                          <div>
+                            <div className="font-medium">
+                              {profile.full_name || (
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {assignment.staff_id.substring(0, 8)}…
+                                </span>
+                              )}
+                            </div>
+                            {profile.employee_code && (
+                              <div className="text-xs text-muted-foreground">
+                                Mã: {profile.employee_code}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="text-sm">{profile.phone || "—"}</div>
+                        {profile.email && (
+                          <div className="text-xs text-muted-foreground">{profile.email}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <Badge variant="outline">{role?.name || "—"}</Badge>
+                        {profile.job_title && (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {profile.job_title}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         {building?.name || (
@@ -600,7 +726,11 @@ function StaffTab() {
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge className="bg-green-100 text-green-700">Hoạt động</Badge>
+                        {profile.is_active === false ? (
+                          <Badge className="bg-gray-100 text-gray-700">Tạm khoá</Badge>
+                        ) : (
+                          <Badge className="bg-green-100 text-green-700">Hoạt động</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -634,108 +764,221 @@ function StaffTab() {
         </CardContent>
       </Card>
 
-      {/* Create/Edit Assignment Dialog */}
+      {/* Create / Edit Manager Dialog — Resident-style fields */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingAssignment?.id ? "Cập nhật phân quyền" : "Gán nhân viên"}
+              {isEdit ? "Cập nhật người dùng" : "Thêm người dùng"}
             </DialogTitle>
             <DialogDescription>
-              Gán vai trò và toà nhà cho nhân viên
+              {isEdit
+                ? "Cập nhật vai trò và phạm vi quản lý của nhân viên"
+                : "Tạo tài khoản nhân viên mới với loại tài khoản, phạm vi và mật khẩu khởi tạo"}
             </DialogDescription>
           </DialogHeader>
 
-          {editingAssignment && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="staff-id">ID Nhân viên *</Label>
-                <Input
-                  id="staff-id"
-                  placeholder="Nhập User ID của nhân viên"
-                  value={editingAssignment.staff_id}
-                  onChange={(e) =>
-                    setEditingAssignment({
-                      ...editingAssignment,
-                      staff_id: e.target.value,
-                    })
-                  }
-                  disabled={!!editingAssignment.id}
+          {form && (
+            <div className="space-y-5">
+              {/* Active toggle */}
+              <div className="flex items-center justify-between border rounded-lg p-3 bg-muted/30">
+                <div>
+                  <Label className="text-sm font-medium">Hoạt động</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Tắt nếu tài khoản này tạm thời không sử dụng
+                  </p>
+                </div>
+                <Switch
+                  checked={form.is_active}
+                  onCheckedChange={(v) => setForm({ ...form, is_active: !!v })}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Nhập UUID của tài khoản nhân viên trong hệ thống
-                </p>
               </div>
 
-              <div className="space-y-2">
-                <Label>Vai trò *</Label>
-                <Select
-                  value={editingAssignment.role_id}
-                  onValueChange={(val) =>
-                    setEditingAssignment({
-                      ...editingAssignment,
-                      role_id: val,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn vai trò" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(roles || []).map((role) => (
-                      <SelectItem key={role.id} value={role.id}>
-                        {role.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Basic info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="staff-fullname">Họ tên *</Label>
+                  <Input
+                    id="staff-fullname"
+                    placeholder="VD: Nguyễn Văn A"
+                    value={form.full_name}
+                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-phone">Số điện thoại {isEdit ? "" : "*"}</Label>
+                  <Input
+                    id="staff-phone"
+                    placeholder="0901234567"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    disabled={isEdit}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-email">Email</Label>
+                  <Input
+                    id="staff-email"
+                    placeholder="email@domain.com (không bắt buộc)"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    disabled={isEdit}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Loại người dùng *</Label>
+                  <Select
+                    value={form.role_id}
+                    onValueChange={(val) => setForm({ ...form, role_id: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn loại tài khoản" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(roles || []).map((role) => (
+                        <SelectItem key={role.id} value={role.id}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-dept">Bộ phận</Label>
+                  <Input
+                    id="staff-dept"
+                    placeholder="Chọn bộ phận"
+                    value={form.department}
+                    onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-job">Chức danh</Label>
+                  <Input
+                    id="staff-job"
+                    placeholder="Chức danh"
+                    value={form.job_title}
+                    onChange={(e) => setForm({ ...form, job_title: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-code">Mã nhân viên</Label>
+                  <Input
+                    id="staff-code"
+                    placeholder="VD: NV001"
+                    value={form.employee_code}
+                    onChange={(e) => setForm({ ...form, employee_code: e.target.value })}
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Toà nhà (tuỳ chọn)</Label>
-                <Select
-                  value={editingAssignment.building_id}
-                  onValueChange={(val) =>
-                    setEditingAssignment({
-                      ...editingAssignment,
-                      building_id: val === "__all__" ? "" : val,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Tất cả toà nhà" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Tất cả toà nhà</SelectItem>
-                    {(buildings || []).map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Để trống nếu nhân viên quản lý tất cả toà nhà
-                </p>
+              {/* Password (create only) */}
+              {!isEdit && (
+                <div className="border-t pt-4 space-y-3">
+                  <div className="text-sm font-medium">Mật khẩu</div>
+                  <p className="text-xs text-muted-foreground">
+                    Lưu ý: Nếu SĐT đã được đăng ký trước đó, nhân viên sẽ đăng nhập bằng mật khẩu cũ.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="staff-pw">Mật khẩu *</Label>
+                      <Input
+                        id="staff-pw"
+                        type="password"
+                        placeholder="Tối thiểu 6 ký tự"
+                        value={form.password}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="staff-pw2">Xác nhận mật khẩu *</Label>
+                      <Input
+                        id="staff-pw2"
+                        type="password"
+                        placeholder="Nhập lại mật khẩu"
+                        value={form.confirmPassword}
+                        onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  {form.password && form.confirmPassword && form.password !== form.confirmPassword && (
+                    <p className="text-xs text-red-600">Mật khẩu xác nhận không khớp</p>
+                  )}
+                </div>
+              )}
+
+              {/* Buildings scope */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="text-sm font-medium">Quản lý toà nhà & công việc</div>
+                <div className="flex items-center justify-between border rounded-lg p-3">
+                  <div>
+                    <Label className="text-sm">Quản lý tất cả toà nhà</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Bật để cấp quyền trên toàn hệ thống
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.all_buildings}
+                    onCheckedChange={(v) =>
+                      setForm({
+                        ...form,
+                        all_buildings: !!v,
+                        building_id: v ? "" : form.building_id,
+                      })
+                    }
+                  />
+                </div>
+                {!form.all_buildings && (
+                  <div className="space-y-1.5">
+                    <Label>Chọn toà nhà</Label>
+                    <Select
+                      value={form.building_id}
+                      onValueChange={(val) => setForm({ ...form, building_id: val })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn toà nhà" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(buildings || []).map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
+              Hủy bỏ
             </Button>
             <Button
               onClick={handleSave}
               disabled={
-                !editingAssignment?.staff_id ||
-                !editingAssignment?.role_id ||
-                createAssignment.isPending ||
+                !form?.full_name?.trim() ||
+                !form?.role_id ||
+                (!isEdit && (
+                  !form?.phone?.trim() ||
+                  !form?.password ||
+                  form.password.length < 6 ||
+                  form.password !== form.confirmPassword
+                )) ||
+                provisionStaff.isPending ||
                 updateAssignment.isPending
               }
               className="bg-green-600 hover:bg-green-700"
             >
-              {editingAssignment?.id ? "Cập nhật" : "Gán"}
+              {isEdit ? "Cập nhật" : "Lưu"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -37,6 +37,11 @@ const isPhoneNumber = (input: string): boolean => {
 };
 
 /**
+ * Checks if input looks like an email (RFC-light: contains "@" with chars on both sides)
+ */
+const isEmail = (input: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.trim());
+
+/**
  * Converts phone number to email format for Supabase Auth
  * Example: 0901234567 → 0901234567@phone.ihomecrm.local
  */
@@ -45,13 +50,30 @@ const phoneToEmail = (phone: string): string => {
 };
 
 /**
- * Normalizes identifier (phone or email) to email format
+ * Converts a free-form username to a synthetic email for Supabase Auth.
+ * Lowercased, accents stripped, anything not [a-z0-9._-] becomes "-".
+ * Example: "Nguyễn Tâm" → "nguyen-tam@username.ihomecrm.local"
+ */
+const usernameToEmail = (raw: string): string => {
+  const slug = raw
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slug || 'user'}@username.ihomecrm.local`;
+};
+
+/**
+ * Normalizes identifier (email | phone | free-form username) → email format
+ * for Supabase Auth.
  */
 const normalizeIdentifier = (identifier: string): string => {
-  if (isPhoneNumber(identifier)) {
-    return phoneToEmail(identifier);
-  }
-  return identifier.trim();
+  const trimmed = identifier.trim();
+  if (isEmail(trimmed)) return trimmed;
+  if (isPhoneNumber(trimmed)) return phoneToEmail(trimmed);
+  // Treat anything else as a username (allow Vietnamese, spaces, etc.).
+  return usernameToEmail(trimmed);
 };
 
 // =============================================
