@@ -43,7 +43,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
       const { data, error } = await supabase
         .from("profiles")
         .select("id, full_name")
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (error) throw error;
       return data || [];

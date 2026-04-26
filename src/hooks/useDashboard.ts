@@ -261,7 +261,7 @@ export const useAlerts = (buildingId?: string | null) => {
       // Overdue invoices
       const { data: overdueInvoices } = await supabase
         .from("invoices")
-        .select("id, title, due_date, total_amount, paid_amount, contract:contracts(tenant:tenants(full_name))")
+        .select("id, invoice_number, due_date, total_amount, paid_amount, contract:contracts(tenant:tenants(full_name))")
         .eq("user_id", user.id)
         .in("status", ["APPROVED", "PARTIAL_PAID"])
         .lt("due_date", new Date().toISOString())
@@ -274,7 +274,7 @@ export const useAlerts = (buildingId?: string | null) => {
           id: invoice.id,
           type: "overdue_invoice",
           title: "Hóa đơn quá hạn",
-          description: `${invoice.contract?.tenant?.full_name || "Khách hàng"} - ${invoice.title || "Hóa đơn"} - Nợ ${debt.toLocaleString()}đ`,
+          description: `${invoice.contract?.tenant?.full_name || "Khách hàng"} - ${invoice.invoice_number || "Hóa đơn"} - Nợ ${debt.toLocaleString()}đ`,
           severity: "high",
           date: invoice.due_date,
           link: `/invoices/${invoice.id}`,
