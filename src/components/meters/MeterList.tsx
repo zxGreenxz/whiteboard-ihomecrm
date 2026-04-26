@@ -97,17 +97,18 @@ const MeterList = ({ meters, onEdit, isLoading }: MeterListProps) => {
 
   return (
     <>
-      <div className="bg-white rounded-lg border">
-        <Table>
+      <div className="bg-white rounded-lg border border-zinc-200 overflow-hidden">
+        <Table className="[&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
           <TableHeader>
             <TableRow>
               <TableHead>Mã công tơ</TableHead>
               <TableHead>Tên công tơ</TableHead>
               <TableHead>Loại công tơ</TableHead>
-              <TableHead>Phòng</TableHead>
               <TableHead>Tòa nhà</TableHead>
+              <TableHead>Phòng</TableHead>
+              <TableHead className="text-right">Chỉ số đầu</TableHead>
+              <TableHead className="text-right">Chỉ số chốt gần nhất</TableHead>
               <TableHead>Trạng thái</TableHead>
-              <TableHead>Chỉ số gần nhất</TableHead>
               <TableHead className="text-right">Thao tác</TableHead>
             </TableRow>
           </TableHeader>
@@ -121,17 +122,31 @@ const MeterList = ({ meters, onEdit, isLoading }: MeterListProps) => {
                     {METER_TYPE_LABELS[meter.meter_type] || meter.meter_type}
                   </Badge>
                 </TableCell>
-                <TableCell>{meter.room_name || '—'}</TableCell>
                 <TableCell>{meter.building_name || '—'}</TableCell>
+                <TableCell>{meter.room_name || '—'}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {meter.initial_reading != null
+                    ? Number(meter.initial_reading).toLocaleString('vi-VN')
+                    : '—'}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {meter.latest_reading != null ? (
+                    <div className="flex flex-col leading-tight items-end">
+                      <span className="font-medium">
+                        {Number(meter.latest_reading).toLocaleString('vi-VN')}
+                      </span>
+                      {meter.latest_reading_date && (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(meter.latest_reading_date).toLocaleDateString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+                  ) : '—'}
+                </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANTS[meter.status] || 'outline'}>
                     {STATUS_LABELS[meter.status] || meter.status}
                   </Badge>
-                </TableCell>
-                <TableCell>
-                  {meter.latest_reading != null
-                    ? Number(meter.latest_reading).toLocaleString('vi-VN')
-                    : '—'}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
