@@ -48,7 +48,6 @@ export const useDeposits = (filters?: {
             id, name, code
           )
         `)
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (filters?.status) {

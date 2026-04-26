@@ -149,7 +149,6 @@ function useSetting<T>(key: SettingKey, defaultValue: T) {
       const { data, error } = await supabase
         .from('settings')
         .select('*')
-        .eq('user_id', user.id)
         .eq('key', key)
         .maybeSingle();
 
@@ -309,7 +308,6 @@ export function useIndividualSetting(key: string, defaultValue: IndividualSettin
       const { data, error } = await supabase
         .from('settings')
         .select('value')
-        .eq('user_id', user.id)
         .eq('key', key)
         .maybeSingle();
 
@@ -412,7 +410,6 @@ export function useGeneralSettings() {
       const { data, error } = await supabase
         .from('settings')
         .select('key, value')
-        .eq('user_id', user.id)
         .in('key', keys);
 
       if (error) throw error;

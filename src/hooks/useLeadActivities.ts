@@ -42,7 +42,6 @@ export const useLeadActivities = (leadId?: string) => {
         .from("lead_activities")
         .select("*")
         .eq("lead_id", leadId)
-        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

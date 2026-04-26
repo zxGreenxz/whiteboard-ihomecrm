@@ -150,7 +150,6 @@ export const useDocumentTemplates = (category?: TemplateCategory) => {
       let query = supabase
         .from("document_templates")
         .select("*")
-        .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -186,7 +185,6 @@ export const useDocumentTemplatesByType = (type?: TemplateType) => {
       let query = supabase
         .from("document_templates")
         .select("*")
-        .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 

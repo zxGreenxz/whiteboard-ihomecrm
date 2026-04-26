@@ -41,7 +41,7 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
             )
           )
         `)
-        .eq('user_id', user.id);
+        ;
 
       if (start_date) {
         paymentsQuery = paymentsQuery.gte("payment_date", start_date);
@@ -77,7 +77,7 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
       let expensesQuery = supabase
         .from("expenses")
         .select("*")
-        .eq('user_id', user.id);
+        ;
 
       if (start_date) {
         expensesQuery = expensesQuery.gte("expense_date", start_date);
@@ -175,7 +175,7 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
       let incomeQuery = supabase
         .from("payments")
         .select("amount")
-        .eq('user_id', user.id);
+        ;
 
       if (start_date) {
         incomeQuery = incomeQuery.gte("payment_date", start_date);
@@ -193,7 +193,7 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
       let expenseQuery = supabase
         .from("expenses")
         .select("amount")
-        .eq('user_id', user.id);
+        ;
 
       if (start_date) {
         expenseQuery = expenseQuery.gte("expense_date", start_date);
@@ -235,13 +235,11 @@ export const useCashBookSummary = (start_date?: string, end_date?: string) => {
         const { data: prevIncome } = await supabase
           .from("payments")
           .select("amount")
-          .eq('user_id', user.id)
           .lt("payment_date", start_date);
 
         const { data: prevExpense } = await supabase
           .from("expenses")
           .select("amount")
-          .eq('user_id', user.id)
           .lt("expense_date", start_date);
 
         // Previous APPROVED income_expenses
@@ -282,7 +280,6 @@ export const useCashFlowByDay = (start_date: string, end_date: string) => {
       const { data: payments } = await supabase
         .from("payments")
         .select("payment_date, amount")
-        .eq('user_id', user.id)
         .gte("payment_date", start_date)
         .lte("payment_date", end_date);
 
@@ -290,7 +287,6 @@ export const useCashFlowByDay = (start_date: string, end_date: string) => {
       const { data: expenses } = await supabase
         .from("expenses")
         .select("expense_date, amount")
-        .eq('user_id', user.id)
         .gte("expense_date", start_date)
         .lte("expense_date", end_date);
 

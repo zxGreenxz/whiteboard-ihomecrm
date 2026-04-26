@@ -80,7 +80,6 @@ export const useDashboardStats = (buildingId?: string | null) => {
       let occupiedRoomsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
-        .eq("user_id", user.id)
         .eq("status", "ACTIVE")
         .not("room_id", "is", null);
 
@@ -101,7 +100,6 @@ export const useDashboardStats = (buildingId?: string | null) => {
       const { data: payments } = await supabase
         .from("payments")
         .select("amount")
-        .eq("user_id", user.id)
         .gte("payment_date", monthStart.toISOString())
         .lte("payment_date", monthEnd.toISOString());
 
@@ -111,7 +109,6 @@ export const useDashboardStats = (buildingId?: string | null) => {
       const { data: unpaidInvoices } = await supabase
         .from("invoices")
         .select("total_amount, paid_amount")
-        .eq("user_id", user.id)
         .in("status", ["APPROVED", "PARTIAL_PAID"]);
 
       const totalDebt = unpaidInvoices?.reduce((sum, inv) => {
@@ -123,7 +120,6 @@ export const useDashboardStats = (buildingId?: string | null) => {
       const { count: newContracts } = await supabase
         .from("contracts")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
         .gte("created_at", monthStart.toISOString())
         .lte("created_at", monthEnd.toISOString());
 
@@ -131,7 +127,6 @@ export const useDashboardStats = (buildingId?: string | null) => {
       const { count: unresolvedIssues } = await supabase
         .from("issues")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
         .not("status", "in", '("RESOLVED","CLOSED")');
 
       return {
@@ -167,7 +162,6 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
         const { data: payments } = await supabase
           .from("payments")
           .select("amount")
-          .eq("user_id", user.id)
           .gte("payment_date", monthStart.toISOString())
           .lte("payment_date", monthEnd.toISOString());
 
@@ -217,7 +211,6 @@ export const useOccupancyChart = (buildingId?: string | null) => {
       let contractsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
-        .eq("user_id", user.id)
         .eq("status", "ACTIVE")
         .not("room_id", "is", null);
 
@@ -262,7 +255,6 @@ export const useAlerts = (buildingId?: string | null) => {
       const { data: overdueInvoices } = await supabase
         .from("invoices")
         .select("id, invoice_number, due_date, total_amount, paid_amount, contract:contracts(tenant:tenants(full_name))")
-        .eq("user_id", user.id)
         .in("status", ["APPROVED", "PARTIAL_PAID"])
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
@@ -288,7 +280,6 @@ export const useAlerts = (buildingId?: string | null) => {
       const { data: expiringContracts } = await supabase
         .from("contracts")
         .select("id, contract_number, end_date, tenant:tenants(full_name)")
-        .eq("user_id", user.id)
         .eq("status", "ACTIVE")
         .lte("end_date", thirtyDaysFromNow.toISOString())
         .gte("end_date", new Date().toISOString())
@@ -315,7 +306,6 @@ export const useAlerts = (buildingId?: string | null) => {
       const { data: urgentIssues } = await supabase
         .from("issues")
         .select("id, title, priority, created_at")
-        .eq("user_id", user.id)
         .eq("priority", "URGENT")
         .not("status", "in", '("RESOLVED","CLOSED")')
         .lt("created_at", twentyFourHoursAgo.toISOString())
@@ -359,7 +349,6 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const { data: recentContracts } = await supabase
         .from("contracts")
         .select("id, contract_number, created_at, tenant:tenants(full_name), room:rooms(name)")
-        .eq("user_id", user.id)
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
         .limit(5);
@@ -378,7 +367,6 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const { data: recentPayments } = await supabase
         .from("payments")
         .select("id, amount, payment_date, invoice:invoices(contract:contracts(tenant:tenants(full_name)))")
-        .eq("user_id", user.id)
         .gte("payment_date", sevenDaysAgo.toISOString())
         .order("payment_date", { ascending: false })
         .limit(5);
@@ -398,7 +386,6 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const { data: recentIssues } = await supabase
         .from("issues")
         .select("id, title, priority, created_at")
-        .eq("user_id", user.id)
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
         .limit(5);

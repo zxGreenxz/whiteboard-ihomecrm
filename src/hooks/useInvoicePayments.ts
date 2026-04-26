@@ -89,7 +89,6 @@ export const useRecordPaymentRPC = () => {
       const { data: incTypes } = await supabase
         .from('income_expense_types' as any)
         .select('id, identity, type, name')
-        .eq('user_id', user.id)
         .eq('type', 'income')
         .limit(50) as any;
       const types = (incTypes ?? []) as Array<{ id: string; identity?: string }>;
@@ -254,7 +253,6 @@ export const useImportInvoicesFromExcel = () => {
       const { data: contracts, error: contractsError } = await supabase
         .from('contracts')
         .select('id, room_id')
-        .eq('user_id', user.id)
         .eq('status', 'ACTIVE');
 
       if (contractsError) throw contractsError;
@@ -267,7 +265,7 @@ export const useImportInvoicesFromExcel = () => {
       const { data: services, error: servicesError } = await supabase
         .from('services')
         .select('id, name, price')
-        .eq('user_id', user.id);
+        ;
 
       if (servicesError) throw servicesError;
 

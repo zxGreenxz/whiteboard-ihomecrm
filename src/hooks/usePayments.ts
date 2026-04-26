@@ -51,7 +51,6 @@ export const usePayments = (filters?: {
             )
           )
         `)
-        .eq('user_id', user.id)
         .order("payment_date", { ascending: false });
 
       if (filters?.start_date) {
@@ -99,7 +98,6 @@ export const usePayment = (id: string) => {
           )
         `)
         .eq("id", id)
-        .eq('user_id', user.id)
         .single();
 
       if (error) {
@@ -182,7 +180,7 @@ export const usePaymentsSummary = (start_date?: string, end_date?: string) => {
       let query = supabase
         .from("payments")
         .select("amount, payment_method, payment_date")
-        .eq('user_id', user.id);
+        ;
 
       if (start_date) {
         query = query.gte("payment_date", start_date);

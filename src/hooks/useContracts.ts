@@ -100,7 +100,6 @@ export const useContracts = () => {
       const { data, error } = await (supabase as any)
         .from("contracts")
         .select(CONTRACT_SELECT)
-        .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -134,7 +133,6 @@ export const useContract = (id?: string) => {
         .from("contracts")
         .select(CONTRACT_SELECT)
         .eq("id", id)
-        .eq("user_id", user.id)
         .single();
 
       if (error) {
@@ -293,7 +291,6 @@ export const useUpdateContract = () => {
         .from("contracts")
         .update(updates as any)
         .eq("id", id)
-        .eq("user_id", user.id)
         .select()
         .single();
 
@@ -366,7 +363,7 @@ export const useDeleteContract = () => {
         .from("contracts")
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq("id", contractId)
-        .eq("user_id", user.id);
+        ;
 
       if (error) throw error;
     },
@@ -590,7 +587,6 @@ export const useContractsLegacy = (filters?: {
       let query = supabase
         .from("contracts")
         .select(LEGACY_CONTRACT_SELECT, { count: "exact" })
-        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (filters?.status) query = query.eq("status", filters.status as any);
@@ -776,7 +772,6 @@ export const useUnpaidInvoices = (contractId?: string) => {
         .from("invoices")
         .select("*")
         .eq("contract_id", contractId)
-        .eq("user_id", user.id)
         .in("status", ["PENDING", "OVERDUE", "PARTIAL"] as any);
 
       if (error) throw error;
@@ -880,7 +875,6 @@ export const usePendingTerminations = () => {
           )
         `
         )
-        .eq("user_id", user.id)
         .in("status", ["DRAFT", "PENDING_APPROVAL"])
         .order("created_at", { ascending: false });
 
@@ -916,7 +910,7 @@ export const useApproveTermination = () => {
           approved_at: new Date().toISOString(),
         })
         .eq("id", data.termination_id)
-        .eq("user_id", user.id);
+        ;
       if (termError) throw termError;
 
       const { error: contractError } = await supabase
@@ -926,7 +920,7 @@ export const useApproveTermination = () => {
           updated_at: new Date().toISOString(),
         } as any)
         .eq("id", data.contract_id)
-        .eq("user_id", user.id);
+        ;
       if (contractError) throw contractError;
 
       const { error: completeError } = await supabase
@@ -936,7 +930,7 @@ export const useApproveTermination = () => {
           refund_date: new Date().toISOString(),
         } as any)
         .eq("id", data.termination_id)
-        .eq("user_id", user.id);
+        ;
       if (completeError) throw completeError;
 
       if (data.refund_amount !== 0) {
@@ -1026,7 +1020,7 @@ export const useRejectTermination = () => {
             : undefined,
         })
         .eq("id", data.termination_id)
-        .eq("user_id", user.id);
+        ;
 
       if (error) throw error;
       return { success: true };
@@ -1086,7 +1080,6 @@ export const useBulkCreateContracts = () => {
         .from("rooms")
         .select("id, name, code")
         .eq("building_id", building_id)
-        .eq("user_id", user.id)
         .is("deleted_at", null);
 
       if (!rooms) throw new Error("Không thể tải danh sách căn hộ");
@@ -1094,7 +1087,6 @@ export const useBulkCreateContracts = () => {
       const { data: existingTenants } = await (supabase as any)
         .from("tenants")
         .select("id, full_name, phone")
-        .eq("user_id", user.id)
         .is("deleted_at", null);
 
       const results = {
@@ -1249,7 +1241,6 @@ export const useEstimateTerminationCosts = () => {
           `*, contract_services(*, service:services(*))`
         )
         .eq("id", data.contract_id)
-        .eq("user_id", user.id)
         .single();
 
       if (contractError || !contract) throw new Error("Contract not found");
@@ -1258,7 +1249,6 @@ export const useEstimateTerminationCosts = () => {
         .from("invoices")
         .select("*")
         .eq("contract_id", data.contract_id)
-        .eq("user_id", user.id)
         .in("status", ["PENDING", "OVERDUE", "PARTIAL"] as any);
 
       const moveOutDate = new Date(data.move_out_date);

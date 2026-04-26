@@ -82,7 +82,6 @@ export const useInvoices = (
       let query = (supabase
         .from('invoices')
         .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
-        .eq('user_id', user.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -146,7 +145,6 @@ export const useInvoicesLegacy = (filters?: {
       let query = (supabase
         .from('invoices')
         .select(INVOICE_LIST_SELECT) as any)
-        .eq('user_id', user.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -185,7 +183,6 @@ export const useInvoice = (invoiceId?: string) => {
         .from('invoices')
         .select(INVOICE_LIST_SELECT) as any)
         .eq('id', invoiceId)
-        .eq('user_id', user.id)
         .is('deleted_at', null)
         .single();
 
@@ -325,7 +322,6 @@ export const useUpdateInvoice = () => {
         .from('invoices')
         .select('status')
         .eq('id', id)
-        .eq('user_id', user.id)
         .single();
 
       if (fetchError) throw fetchError;
@@ -365,7 +361,6 @@ export const useUpdateInvoice = () => {
           template_id: invoiceFields.template_id || null,
         } as any)
         .eq('id', id)
-        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -444,7 +439,6 @@ export const useDeleteInvoice = () => {
         .from('invoices')
         .select('status')
         .eq('id', invoiceId)
-        .eq('user_id', user.id)
         .single();
 
       if (fetchError) throw fetchError;
@@ -456,7 +450,7 @@ export const useDeleteInvoice = () => {
         .from('invoices')
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', invoiceId)
-        .eq('user_id', user.id);
+        ;
 
       if (error) throw error;
     },
@@ -500,7 +494,6 @@ export const useBulkDeleteInvoices = () => {
         .from('invoices')
         .update({ deleted_at: new Date().toISOString() } as any)
         .in('id', invoiceIds)
-        .eq('user_id', user.id)
         .eq('status', 'DRAFT' as any); // Only allow deleting DRAFT invoices
 
       if (error) throw error;
@@ -546,7 +539,6 @@ export const useApproveInvoice = () => {
           approved_by: user.id,
         } as any)
         .eq('id', invoiceId)
-        .eq('user_id', user.id)
         .eq('status', 'DRAFT' as any)
         .select()
         .single();
@@ -597,7 +589,6 @@ export const useUnapproveInvoice = () => {
           approved_by: null,
         } as any)
         .eq('id', invoiceId)
-        .eq('user_id', user.id)
         .eq('status', 'APPROVED' as any)
         .select()
         .single();
@@ -650,7 +641,6 @@ export const useBulkApproveInvoices = () => {
           approved_by: user.id,
         } as any)
         .in('id', invoiceIds)
-        .eq('user_id', user.id)
         .eq('status', 'DRAFT' as any)
         .select();
 
@@ -749,7 +739,6 @@ export const useCheckOverdueInvoices = () => {
       const { data: overdueInvoices, error: fetchError } = await supabase
         .from('invoices')
         .select('id')
-        .eq('user_id', user.id)
         .is('deleted_at', null)
         .in('status', ['APPROVED', 'PARTIAL_PAID'] as any)
         .lt('due_date', today);
@@ -764,7 +753,7 @@ export const useCheckOverdueInvoices = () => {
         .from('invoices')
         .update({ status: 'OVERDUE' as any } as any)
         .in('id', overdueIds)
-        .eq('user_id', user.id);
+        ;
 
       if (updateError) throw updateError;
 
@@ -803,7 +792,7 @@ export const useExcessAmount = (contractId?: string) => {
         .from('excess_amounts' as any) as any)
         .select('amount')
         .eq('contract_id', contractId)
-        .eq('user_id', user.id);
+        ;
 
       if (error) throw error;
 
@@ -987,7 +976,6 @@ export const useMeterReadings = (contractId?: string) => {
             id, name, unit
           )
         `)
-        .eq('user_id', user.id)
         .order('reading_date', { ascending: false });
 
       if (contractId) {
@@ -1133,7 +1121,6 @@ export const useCancelInvoice = () => {
         .from('invoices')
         .update({ status: 'CANCELLED' as any } as any)
         .eq('id', invoiceId)
-        .eq('user_id', user.id)
         .select()
         .single();
 

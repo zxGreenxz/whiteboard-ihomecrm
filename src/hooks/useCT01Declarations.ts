@@ -20,7 +20,6 @@ export const useCT01Declarations = (customerId: string) => {
       const { data, error } = await (supabase
         .from("ct01_declarations") as any)
         .select("*")
-        .eq("user_id", user.id)
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false });
 

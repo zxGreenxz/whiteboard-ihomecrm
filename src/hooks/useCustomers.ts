@@ -29,7 +29,6 @@ export const useCustomers = (
       let query = (supabase
         .from("customers")
         .select("*", { count: "exact" }) as any)
-        .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -173,7 +172,6 @@ export const useCustomer = (id: string) => {
         .from("customers")
         .select("*")
         .eq("id", id)
-        .eq("user_id", user.id)
         .is("deleted_at", null)
         .single();
 
@@ -205,7 +203,6 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
       let baseQuery = supabase
         .from("customers")
         .select("id, customer_type, is_foreign", { count: "exact" })
-        .eq("user_id", user.id)
         .is("deleted_at", null);
 
       // Apply status filter

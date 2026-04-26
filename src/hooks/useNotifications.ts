@@ -74,7 +74,6 @@ export function useNotifications() {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .order('created_at', { ascending: false });
 
@@ -101,7 +100,6 @@ export function useUnreadNotificationsCount() {
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .eq('status', 'PENDING');
 
@@ -127,7 +125,6 @@ export function useRecentNotifications(limit: number = 5) {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -180,7 +177,6 @@ export function useMarkAllAsRead() {
       const { error } = await supabase
         .from('notifications')
         .update({ status: 'READ' })
-        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .neq('status', 'READ');
 
@@ -268,7 +264,6 @@ export function useDeleteAllRead() {
       const { error } = await supabase
         .from('notifications')
         .delete()
-        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .eq('status', 'READ');
 

@@ -112,7 +112,7 @@ export const useRegisterMoveOut = () => {
         .from("contracts")
         .update(updateData as any)
         .eq("id", params.contractId)
-        .eq("user_id", user.id);
+        ;
 
       if (error) throw error;
     },

@@ -188,7 +188,6 @@ export const useToggleDefaultTemplate = () => {
         const { error: unsetError } = await supabase
           .from("income_expense_templates" as any)
           .update({ is_default: false })
-          .eq("user_id", user.id)
           .eq("is_income_template", is_income_template)
           .is("deleted_at", null);
 

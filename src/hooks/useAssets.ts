@@ -109,7 +109,6 @@ export const useAssets = (filters?: {
             id, name
           )
         `)
-        .eq('user_id', user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -161,7 +160,6 @@ export const useAsset = (id: string) => {
           )
         `)
         .eq("id", id)
-        .eq('user_id', user.id)
         .is("deleted_at", null)
         .single();
 
@@ -275,7 +273,6 @@ export const useAssetHandovers = (contract_id?: string) => {
             )
           )
         `)
-        .eq('user_id', user.id)
         .order("handover_date", { ascending: false });
 
       if (contract_id) {
@@ -353,7 +350,6 @@ export const useAssetMovements = (asset_id?: string) => {
             )
           )
         `)
-        .eq('user_id', user.id)
         .order("movement_date", { ascending: false });
 
       if (asset_id) {
@@ -425,7 +421,6 @@ export const useAssetMaintenance = (filters?: {
             id, full_name
           )
         `)
-        .eq('user_id', user.id)
         .order("maintenance_date", { ascending: false });
 
       if (filters?.asset_id) {

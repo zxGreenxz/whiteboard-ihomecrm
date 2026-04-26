@@ -46,7 +46,6 @@ export const useVehicles = (
         `,
           { count: "exact" }
         ) as any)
-        .eq("user_id", user.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -125,7 +124,6 @@ export const useVehicle = (id: string) => {
         `
         )
         .eq("id", id)
-        .eq("user_id", user.id)
         .single();
 
       if (error) {

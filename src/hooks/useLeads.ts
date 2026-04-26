@@ -56,7 +56,6 @@ export const useLeads = (filters?: {
             id, name, code
           )
         `)
-        .eq('user_id', user.id)
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
@@ -104,7 +103,6 @@ export const useLead = (id: string) => {
           )
         `)
         .eq("id", id)
-        .eq('user_id', user.id)
         .single();
 
       if (error) {
