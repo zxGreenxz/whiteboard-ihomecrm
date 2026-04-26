@@ -34,8 +34,8 @@ const DATA_DIR = path.resolve('dataexcel');
 const ELEC_PRICE = 3500;
 const WATER_PRICE = 100000; // /Người
 const PDV_PRICE = 150000;   // /Phòng
-const SETTLEMENT_MONTH = '2026-03'; // chỉ số đầu của Excel tháng 4 = chỉ số cuối tháng 3
-const READING_DATE = '2026-03-31';
+const SETTLEMENT_MONTH = '2026-04'; // chỉ số cuối Excel sheet "04" — dùng làm chỉ số đầu cho kỳ tháng 5
+const READING_DATE = '2026-04-30';
 
 // Build-name normalize: bỏ "/" "-" "  " và lower-case để so sánh tên file vs tên DB.
 function norm(name) {
@@ -213,6 +213,18 @@ async function ensureSeedReading({ user_id, meter_id, reading_date, settlement_m
 }
 
 (async function main() {
+  // 0) Cleanup: xoá reading seed sai trước đó (settlement_month='2026-03') để re-seed bằng chỉ số cuối tháng 4.
+  if (process.env.RESEED === '1') {
+    const { error: delErr, count } = await sb
+      .from('meter_readings')
+      .delete({ count: 'exact' })
+      .eq('settlement_month', '2026-03')
+      .eq('status', 'APPROVED')
+      .like('notes', 'Seed từ file Excel%');
+    if (delErr) console.warn('Cleanup warning:', delErr);
+    else console.log(`Cleanup: xoá ${count ?? 0} reading seed cũ (2026-03).`);
+  }
+
   // 1) Buildings + chọn user_id chung
   const { data: buildings, error: e1 } = await sb
     .from('buildings')
@@ -328,12 +340,14 @@ async function ensureSeedReading({ user_id, meter_id, reading_date, settlement_m
         initial_reading: rec.chiSoDau,
       });
       okMeter++;
+      // Bỏ qua phòng chưa có chỉ số cuối tháng 4
+      if (rec.chiSoCuoi == null || rec.chiSoCuoi < rec.chiSoDau) continue;
       const readingId = await ensureSeedReading({
         user_id: userId,
         meter_id: meterId,
         reading_date: READING_DATE,
         settlement_month: SETTLEMENT_MONTH,
-        current_reading: rec.chiSoDau,
+        current_reading: rec.chiSoCuoi,
         service_id: elecId,
       });
       if (readingId) okReading++;
