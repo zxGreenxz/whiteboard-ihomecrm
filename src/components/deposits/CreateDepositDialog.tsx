@@ -44,6 +44,7 @@ const depositSchema = z.object({
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
   status: z.enum(["PENDING", "CONFIRMED", "CONVERTED", "REFUNDED", "FORFEITED"]),
+  ctv_name: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -75,6 +76,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       deposit_date: new Date().toISOString().split('T')[0],
       hold_until_date: "",
       status: "PENDING",
+      ctv_name: "",
       notes: "",
     },
   });
@@ -106,8 +108,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
         deposit_date: data.deposit_date,
         hold_until_date: data.hold_until_date,
         status: data.status,
+        ctv_name: data.ctv_name || null,
         notes: data.notes || null,
-      });
+      } as any);
 
       form.reset();
       onOpenChange(false);
@@ -323,6 +326,20 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                         <SelectItem value="FORFEITED">Mất cọc</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="ctv_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>CTV (cộng tác viên)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Tên cộng tác viên" {...field} value={field.value ?? ""} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

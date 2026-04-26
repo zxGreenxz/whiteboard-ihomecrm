@@ -52,6 +52,7 @@ const depositSchema = z.object({
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
   status: z.enum(["PENDING", "CONFIRMED", "CONVERTED", "REFUNDED", "FORFEITED"]),
+  ctv_name: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -81,6 +82,7 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
       deposit_date: "",
       hold_until_date: "",
       status: "PENDING",
+      ctv_name: "",
       notes: "",
     },
   });
@@ -95,6 +97,7 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
         deposit_date: deposit.deposit_date || "",
         hold_until_date: deposit.hold_until_date || "",
         status: deposit.status || "PENDING",
+        ctv_name: (deposit as any).ctv_name || "",
         notes: deposit.notes || "",
       });
     }
@@ -106,8 +109,9 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
         id: deposit.id,
         ...data,
         bed_id: data.bed_id || null,
+        ctv_name: data.ctv_name || null,
         notes: data.notes || null,
-      });
+      } as any);
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to update deposit:", error);
@@ -283,6 +287,20 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                           <SelectItem value="FORFEITED">Mất cọc</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="ctv_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>CTV (cộng tác viên)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Tên cộng tác viên" {...field} value={field.value ?? ""} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

@@ -142,12 +142,14 @@ const DepositsPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Mã</TableHead>
               <TableHead>Khách hàng</TableHead>
               <TableHead>SĐT</TableHead>
               <TableHead>Căn hộ/Giường</TableHead>
+              <TableHead>CTV</TableHead>
               <TableHead>Số tiền</TableHead>
-              <TableHead>Ngày đặt cọc</TableHead>
-              <TableHead>Giữ đến ngày</TableHead>
+              <TableHead>Ngày cọc</TableHead>
+              <TableHead>Ngày vào ở</TableHead>
               <TableHead>Trạng thái</TableHead>
               <TableHead>Thao tác</TableHead>
             </TableRow>
@@ -155,7 +157,7 @@ const DepositsPage = () => {
           <TableBody>
             {filteredDeposits.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={10}>
                   {deposits.length === 0 && statusFilter === "ALL" && !searchQuery ? (
                     <EmptyState
                       icon={DollarSign}
@@ -174,6 +176,9 @@ const DepositsPage = () => {
             ) : (
               filteredDeposits.map((deposit) => (
                 <TableRow key={deposit.id}>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {(deposit as any).code || "-"}
+                  </TableCell>
                   <TableCell className="font-medium">
                     {deposit.tenant?.full_name || "-"}
                   </TableCell>
@@ -181,6 +186,9 @@ const DepositsPage = () => {
                   <TableCell>
                     {deposit.room?.name || "-"}
                     {deposit.bed && ` - ${deposit.bed.name}`}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {(deposit as any).ctv_name || "-"}
                   </TableCell>
                   <TableCell>{formatCurrency(deposit.amount)}</TableCell>
                   <TableCell>

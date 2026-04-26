@@ -188,6 +188,8 @@ const App = () => (
           {/* === KHÁCH HÀNG === */}
           <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
           <Route path="/deposits" element={<ProtectedRoute><DepositsPage /></ProtectedRoute>} />
+          <Route path="/reservations" element={<Navigate to="/deposits" replace />} />
+          <Route path="/reservations/all" element={<Navigate to="/deposits" replace />} />
           <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
           <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetailPage /></ProtectedRoute>} />
           {/* Primary route: /customers (new CustomersPage), redirect /tenants → /customers */}
