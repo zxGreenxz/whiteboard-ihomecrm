@@ -177,11 +177,17 @@ export const useCreateContract = () => {
         );
       }
 
-      // 1. Insert contract
+      // 1. Insert contract.
+      // NOTE: contracts.tenant_id is the legacy column that used to FK to
+      // `tenants`. The authoritative customer link is in contract_customers
+      // (see Bundle 2). After Bundle 3 the FK is dropped and the column is
+      // nullable; we leave it NULL on new rows to avoid confusion. tenantId
+      // is still used for the empty-customer guard above.
+      void tenantId;
       const insertData: any = {
         ...contractData,
         user_id: user.id,
-        tenant_id: tenantId,
+        tenant_id: null,
         status: "ACTIVE",
       };
 
