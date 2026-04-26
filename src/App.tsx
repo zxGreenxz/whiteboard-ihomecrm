@@ -261,9 +261,11 @@ const App = () => (
           <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
           <Route path="/settings/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesNewPage /></ProtectedRoute>} />
           <Route path="/settings/income-expense-templates" element={<ProtectedRoute><IncomeExpenseTemplatesPage /></ProtectedRoute>} />
-          {/* Cashbooks (Tài khoản) - Resident-aligned */}
-          <Route path="/setting/finance/cashbooks" element={<ProtectedRoute><CashbooksPage /></ProtectedRoute>} />
-          <Route path="/settings/finance/cashbooks" element={<Navigate to="/setting/finance/cashbooks" replace />} />
+          {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
+              VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
+          <Route path="/finance/cashbooks" element={<ProtectedRoute><CashbooksPage /></ProtectedRoute>} />
+          <Route path="/setting/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
+          <Route path="/settings/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           {/* Categories Sub-Pages - Tài sản */}
           <Route path="/settings/categories/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/settings/categories/warehouses" element={<ProtectedRoute><WarehousesPage /></ProtectedRoute>} />
