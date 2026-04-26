@@ -179,6 +179,42 @@ export function IncomeExpenseDetailDialog({
               }
             />
             <Row label="Người tạo" value={voucher.creator_name} />
+            {voucher.repeat_cycle && voucher.repeat_cycle !== "NONE" && (
+              <Row
+                label="Lặp lại"
+                value={
+                  <span>
+                    {{
+                      WEEK: "Hàng tuần",
+                      MONTH: "Hàng tháng",
+                      QUARTER: "Hàng quý",
+                      YEAR: "Hàng năm",
+                    }[voucher.repeat_cycle as string] || voucher.repeat_cycle}
+                    {voucher.repeat_infinity
+                      ? " · vô hạn"
+                      : voucher.repeat_count
+                      ? ` · ${voucher.repeat_count} lần`
+                      : ""}
+                    {voucher.repeat_next_date
+                      ? ` · kế tiếp ${format(
+                          new Date(voucher.repeat_next_date),
+                          "dd-MM-yyyy"
+                        )}`
+                      : ""}
+                  </span>
+                }
+              />
+            )}
+            {voucher.repeat_parent_id && (
+              <Row
+                label="Phiếu gốc"
+                value={
+                  <span className="text-xs text-muted-foreground">
+                    Tự động lập từ phiếu cha
+                  </span>
+                }
+              />
+            )}
             <Row
               label="Hạch toán kết quả kinh doanh"
               value={

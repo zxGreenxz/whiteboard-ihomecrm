@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Upload, Search, Receipt, ListFilter, SlidersHorizontal } from "lucide-react";
+import { Plus, Upload, Search, Receipt, ListFilter, SlidersHorizontal, RefreshCcw } from "lucide-react";
 import { IncomeExpenseStats } from "@/components/income-expenses/IncomeExpenseStats";
 import { IncomeExpenseStatsMobile } from "@/components/income-expenses/IncomeExpenseStatsMobile";
 import { IncomeExpenseFiltersBar } from "@/components/income-expenses/IncomeExpenseFilters";
@@ -29,6 +29,7 @@ import {
   useIncomeExpenses,
   useIncomeExpenseStats,
   useCancelIncomeExpense,
+  useGenerateRecurringVouchers,
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
@@ -96,6 +97,7 @@ const IncomeExpensePage = () => {
     useIncomeExpenseStats(filters);
 
   const cancelMutation = useCancelIncomeExpense();
+  const generateRecurringMutation = useGenerateRecurringVouchers();
 
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
@@ -288,6 +290,17 @@ const IncomeExpensePage = () => {
           <Button variant="outline" onClick={() => setIsImportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => generateRecurringMutation.mutate()}
+            disabled={generateRecurringMutation.isPending}
+            title="Sinh các phiếu thu/chi định kỳ đã đến hạn"
+          >
+            <RefreshCcw className="h-4 w-4 mr-2" />
+            {generateRecurringMutation.isPending
+              ? "Đang sinh..."
+              : "Sinh phiếu lặp lại"}
           </Button>
           <Button
             variant="outline"

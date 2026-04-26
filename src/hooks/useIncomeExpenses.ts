@@ -62,6 +62,12 @@ export interface IncomeExpenseWithRelations {
   receive_bank_name: string | null;
   receive_bank_account: string | null;
   creator_name: string | null;
+  repeat_cycle: 'NONE' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | null;
+  repeat_infinity: boolean;
+  repeat_count: number;
+  repeat_remaining: number;
+  repeat_next_date: string | null;
+  repeat_parent_id: string | null;
   items: IncomeExpenseItem[];
   created_at: string;
   updated_at: string;
@@ -247,6 +253,12 @@ export const useIncomeExpenses = (
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,
+          repeat_cycle: v.repeat_cycle ?? 'NONE',
+          repeat_infinity: !!v.repeat_infinity,
+          repeat_count: Number(v.repeat_count ?? 0),
+          repeat_remaining: Number(v.repeat_remaining ?? 0),
+          repeat_next_date: v.repeat_next_date ?? null,
+          repeat_parent_id: v.repeat_parent_id ?? null,
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
@@ -434,6 +446,16 @@ export const useCreateIncomeExpense = () => {
             input.type === "EXPENSE" ? input.receive_bank_name ?? null : null,
           receive_bank_account:
             input.type === "EXPENSE" ? input.receive_bank_account ?? null : null,
+          repeat_cycle: input.repeat_cycle ?? "NONE",
+          repeat_infinity: !!input.repeat_infinity,
+          repeat_count: input.repeat_count ?? 0,
+          repeat_remaining: input.repeat_infinity
+            ? 0
+            : Number(input.repeat_count ?? 0),
+          repeat_next_date:
+            input.repeat_cycle && input.repeat_cycle !== "NONE"
+              ? input.voucher_date
+              : null,
           voucher_date: input.voucher_date,
           notes: input.notes ?? null,
         })
@@ -675,3 +697,32 @@ export const useImportIncomeExpenses = () => {
 
 // (Workflow Duyệt/Bỏ duyệt đã bị loại bỏ — phiếu mặc định APPROVED khi tạo,
 //  Huỷ thì set CANCELLED qua useCancelIncomeExpense.)
+
+// Sinh các phiếu lặp lại tới hôm nay (RPC).
+export const useGenerateRecurringVouchers = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+      const { data, error } = await (supabase.rpc as any)(
+        "generate_recurring_vouchers",
+        { p_user_id: user.id }
+      );
+      if (error) {
+        toast.error(error.message || "Không thể sinh phiếu lặp lại");
+        throw error;
+      }
+      return (data ?? []) as Array<{ parent_id: string; child_id: string; voucher_date: string }>;
+    },
+    onSuccess: (rows) => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.success(
+        rows.length === 0
+          ? "Không có phiếu lặp lại đến hạn"
+          : `Đã sinh ${rows.length} phiếu lặp lại`
+      );
+    },
+  });
+};

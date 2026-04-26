@@ -32,6 +32,13 @@ export const incomeExpenseFormSchema = z.object({
   attachments: z.array(z.string()).default([]),
   receive_bank_name: z.string().nullable().optional(),     // chỉ phiếu chi
   receive_bank_account: z.string().nullable().optional(),  // chỉ phiếu chi
+  // Cài đặt lặp lại (mirror Resident "Cài đặt lặp lại")
+  repeat_cycle: z
+    .enum(['NONE', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'])
+    .default('NONE')
+    .optional(),
+  repeat_infinity: z.boolean().default(false).optional(),
+  repeat_count: z.coerce.number().int().min(0).default(0).optional(),
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
 });
 

@@ -113,6 +113,9 @@ const IncomeExpenseForm = ({
       business_result_accounting: false,
       receive_bank_name: '',
       receive_bank_account: '',
+      repeat_cycle: 'NONE',
+      repeat_infinity: false,
+      repeat_count: 0,
       attachments: [],
       items: [],
     },
@@ -155,6 +158,9 @@ const IncomeExpenseForm = ({
         business_result_accounting: voucher.business_result_accounting ?? false,
         receive_bank_name: voucher.receive_bank_name ?? '',
         receive_bank_account: voucher.receive_bank_account ?? '',
+        repeat_cycle: (voucher.repeat_cycle as any) ?? 'NONE',
+        repeat_infinity: voucher.repeat_infinity ?? false,
+        repeat_count: voucher.repeat_count ?? 0,
         attachments: voucher.attachments ?? [],
         items: voucher.items.map((item) => ({
           income_expense_type_id: item.income_expense_type_id,
@@ -798,6 +804,96 @@ const IncomeExpenseForm = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Cài đặt lặp lại — mirror Resident */}
+              <div className="rounded-lg border border-zinc-200 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <FormLabel className="text-sm font-semibold">
+                    Cài đặt lặp lại
+                  </FormLabel>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="repeat_cycle"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Chu kỳ</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value ?? 'NONE'}
+                          disabled={!canEdit}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="NONE">Không lặp lại</SelectItem>
+                            <SelectItem value="WEEK">Hàng tuần</SelectItem>
+                            <SelectItem value="MONTH">Hàng tháng</SelectItem>
+                            <SelectItem value="QUARTER">Hàng quý</SelectItem>
+                            <SelectItem value="YEAR">Hàng năm</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="repeat_count"
+                    render={({ field }) => {
+                      const cycle = form.watch('repeat_cycle');
+                      const inf = form.watch('repeat_infinity');
+                      const disabled = !canEdit || cycle === 'NONE' || inf;
+                      return (
+                        <FormItem>
+                          <FormLabel>Số lần lặp</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={0}
+                              {...field}
+                              value={field.value ?? 0}
+                              disabled={disabled}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="repeat_infinity"
+                    render={({ field }) => {
+                      const cycle = form.watch('repeat_cycle');
+                      const disabled = !canEdit || cycle === 'NONE';
+                      return (
+                        <FormItem className="flex items-end justify-between rounded-md border p-2">
+                          <FormLabel className="text-xs">Lặp vô hạn</FormLabel>
+                          <FormControl>
+                            <Switch
+                              checked={!!field.value}
+                              onCheckedChange={field.onChange}
+                              disabled={disabled}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      );
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Hệ thống sẽ tự động sinh phiếu con đến ngày hôm nay theo chu kỳ.
+                  Bạn có thể chạy thủ công bằng nút <b>Sinh phiếu lặp lại</b>{' '}
+                  trên thanh công cụ.
+                </p>
               </div>
 
               {/* Đính kèm */}
