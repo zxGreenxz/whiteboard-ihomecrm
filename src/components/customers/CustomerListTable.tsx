@@ -144,7 +144,20 @@ export default function CustomerListTable({
                   </div>
                 </div>
               </TableCell>
-              <TableCell className="text-sm">—</TableCell>
+              <TableCell className="text-sm">
+                {(customer as any).current_building_name ? (
+                  <div className="flex flex-col leading-tight">
+                    <span>{(customer as any).current_building_name}</span>
+                    {(customer as any).current_room_name && (
+                      <span className="text-xs text-muted-foreground">
+                        Phòng {(customer as any).current_room_name}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  '—'
+                )}
+              </TableCell>
               <TableCell className="text-sm">{customer.id_number || '—'}</TableCell>
               <TableCell className="text-sm">{formatDate(customer.date_of_birth) || '—'}</TableCell>
               <TableCell className="text-sm max-w-[200px] truncate">

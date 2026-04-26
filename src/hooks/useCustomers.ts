@@ -107,8 +107,49 @@ export const useCustomers = (
         return { data: [], count: 0 };
       }
 
+      const customers = (data || []) as Customer[];
+
+      // Enrich with current room/building from latest ACTIVE contract.
+      // Done as a follow-up query because PostgREST embed paths get
+      // unwieldy through contract_customers.
+      if (customers.length > 0) {
+        const ids = customers.map((c) => c.id);
+        const CHUNK = 80;
+        const map = new Map<string, { building_name: string; room_name: string }>();
+        for (let i = 0; i < ids.length; i += CHUNK) {
+          const slice = ids.slice(i, i + CHUNK).join(',');
+          const { data: links } = await (supabase
+            .from("contract_customers")
+            .select(
+              `customer_id,
+               contract:contracts!contract_customers_contract_id_fkey (
+                 status, end_date,
+                 room:rooms!contracts_room_id_fkey (
+                   name,
+                   building:buildings!rooms_building_id_fkey ( name )
+                 )
+               )`
+            ) as any)
+            .in('customer_id', slice.split(','));
+          for (const l of (links || []) as any[]) {
+            if (!l.contract || l.contract.status !== 'ACTIVE') continue;
+            const bn = l.contract.room?.building?.name || '';
+            const rn = l.contract.room?.name || '';
+            if (!bn && !rn) continue;
+            // Prefer the most recent contract if multiple
+            const prev = map.get(l.customer_id);
+            if (!prev) map.set(l.customer_id, { building_name: bn, room_name: rn });
+          }
+        }
+        for (const c of customers) {
+          const cur = map.get(c.id);
+          (c as any).current_building_name = cur?.building_name || null;
+          (c as any).current_room_name = cur?.room_name || null;
+        }
+      }
+
       return {
-        data: (data || []) as Customer[],
+        data: customers,
         count: count || 0,
       };
     },
