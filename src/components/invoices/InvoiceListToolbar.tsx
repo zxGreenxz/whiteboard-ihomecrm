@@ -31,6 +31,7 @@ interface InvoiceListToolbarProps {
   onImport: () => void;
   onAutoGenerate: () => void;
   onExcelMode: () => void;
+  onDownloadImage: () => void;
   onBulkApprove: () => void;
   onBulkDelete: () => void;
 }
@@ -52,6 +53,7 @@ const InvoiceListToolbar = ({
   onImport,
   onAutoGenerate,
   onExcelMode,
+  onDownloadImage,
   onBulkApprove,
   onBulkDelete,
 }: InvoiceListToolbarProps) => {
@@ -106,7 +108,7 @@ const InvoiceListToolbar = ({
     {
       icon: ImageDown,
       label: 'Tải ảnh hoá đơn',
-      onClick: () => showTodo('Tải ảnh hoá đơn'),
+      onClick: onDownloadImage,
       bg: 'bg-purple-500',
       hoverBg: 'hover:bg-purple-600',
       textColor: 'text-white',
