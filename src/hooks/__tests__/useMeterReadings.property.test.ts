@@ -270,21 +270,14 @@ describe('Property 13: Approval round-trip', () => {
 // ============================================================
 
 describe('Property 14: Permission based on approval status', () => {
-  it('canEditReading and canDeleteReading return true for UNAPPROVED, false for APPROVED', () => {
+  it('canEditReading/canDeleteReading allow edits for both UNAPPROVED and APPROVED (auto-approve flow)', () => {
     fc.assert(
       fc.property(
         statusArb,
         (status) => {
-          const canEdit = canEditReading(status);
-          const canDelete = canDeleteReading(status);
-
-          if (status === 'UNAPPROVED') {
-            expect(canEdit).toBe(true);
-            expect(canDelete).toBe(true);
-          } else {
-            expect(canEdit).toBe(false);
-            expect(canDelete).toBe(false);
-          }
+          // Auto-approve flow: edits are owner-controlled, not gated by status.
+          expect(canEditReading(status)).toBe(true);
+          expect(canDeleteReading(status)).toBe(true);
         },
       ),
       { numRuns: 100 },

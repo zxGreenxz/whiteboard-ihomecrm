@@ -29,41 +29,52 @@ const nonDraftStatusArb = fc.constantFrom<InvoiceStatus>(...nonDraftStatuses);
  * **Validates: Requirements 3.6, 4.4**
  */
 describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/xoá phụ thuộc trạng thái', () => {
-  it('canEditInvoice returns true only when status is DRAFT', () => {
+  it('canEditInvoice returns true for DRAFT/APPROVED with paid_amount=0', () => {
     fc.assert(
       fc.property(statusArb, (status) => {
-        const result = canEditInvoice(status);
-        if (status === 'DRAFT') {
-          expect(result).toBe(true);
-        } else {
-          expect(result).toBe(false);
-        }
+        const result = canEditInvoice({ status, paid_amount: 0 });
+        const allowed = status === 'DRAFT' || status === 'APPROVED';
+        expect(result).toBe(allowed);
       }),
       { numRuns: 100 },
     );
   });
 
-  it('canDeleteInvoice returns true only when status is DRAFT', () => {
+  it('canDeleteInvoice mirrors canEditInvoice', () => {
     fc.assert(
       fc.property(statusArb, (status) => {
-        const result = canDeleteInvoice(status);
-        if (status === 'DRAFT') {
-          expect(result).toBe(true);
-        } else {
-          expect(result).toBe(false);
-        }
+        const result = canDeleteInvoice({ status, paid_amount: 0 });
+        const allowed = status === 'DRAFT' || status === 'APPROVED';
+        expect(result).toBe(allowed);
       }),
       { numRuns: 100 },
     );
   });
 
-  it('canEditInvoice and canDeleteInvoice always return false for non-DRAFT statuses', () => {
+  it('canEditInvoice/canDeleteInvoice always false for PAID/PARTIAL_PAID/CANCELLED', () => {
+    const lockedStatuses: InvoiceStatus[] = ['PAID', 'PARTIAL_PAID', 'OVERDUE', 'CANCELLED'];
+    const lockedArb = fc.constantFrom<InvoiceStatus>(...lockedStatuses);
     fc.assert(
-      fc.property(nonDraftStatusArb, (status) => {
-        expect(canEditInvoice(status)).toBe(false);
-        expect(canDeleteInvoice(status)).toBe(false);
+      fc.property(lockedArb, fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }), (status, paid) => {
+        // OVERDUE may have paid_amount=0; the rule disallows OVERDUE regardless.
+        if (status === 'OVERDUE') {
+          expect(canEditInvoice({ status, paid_amount: paid })).toBe(false);
+          return;
+        }
+        expect(canEditInvoice({ status, paid_amount: paid })).toBe(false);
+        expect(canDeleteInvoice({ status, paid_amount: paid })).toBe(false);
       }),
       { numRuns: 100 },
+    );
+  });
+
+  it('any positive paid_amount blocks edit/delete even for APPROVED', () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0.01, max: 1_000_000, noNaN: true, noDefaultInfinity: true }), (paid) => {
+        expect(canEditInvoice({ status: 'APPROVED', paid_amount: paid })).toBe(false);
+        expect(canDeleteInvoice({ status: 'APPROVED', paid_amount: paid })).toBe(false);
+      }),
+      { numRuns: 50 },
     );
   });
 });
@@ -82,10 +93,10 @@ describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/xoá ph�
  *
  * **Validates: Requirements 1.12**
  */
-describe('Feature: invoice-reimplementation, Property 4: Hoá đơn mới luôn có trạng thái DRAFT', () => {
-  const INITIAL_INVOICE_STATUS: InvoiceStatus = 'DRAFT';
+describe('Feature: invoice-reimplementation, Property 4: Hoá đơn mới được auto-approved', () => {
+  const INITIAL_INVOICE_STATUS: InvoiceStatus = 'APPROVED';
 
-  it('initial invoice status is always DRAFT regardless of other invoice data', () => {
+  it('initial invoice status is APPROVED and editable when paid_amount=0', () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -100,13 +111,10 @@ describe('Feature: invoice-reimplementation, Property 4: Hoá đơn mới luôn 
           total_amount: fc.double({ min: 0, max: 100_000_000, noNaN: true, noDefaultInfinity: true }),
         }),
         (_invoiceData) => {
-          // No matter what data is provided, a new invoice must start as DRAFT
-          expect(INITIAL_INVOICE_STATUS).toBe('DRAFT');
-
-          // DRAFT invoices should be editable and deletable
-          expect(canEditInvoice(INITIAL_INVOICE_STATUS)).toBe(true);
-          expect(canDeleteInvoice(INITIAL_INVOICE_STATUS)).toBe(true);
-          expect(canApproveInvoice(INITIAL_INVOICE_STATUS)).toBe(true);
+          expect(INITIAL_INVOICE_STATUS).toBe('APPROVED');
+          // Newly created invoices have paid_amount=0, so they remain editable/deletable.
+          expect(canEditInvoice({ status: INITIAL_INVOICE_STATUS, paid_amount: 0 })).toBe(true);
+          expect(canDeleteInvoice({ status: INITIAL_INVOICE_STATUS, paid_amount: 0 })).toBe(true);
         },
       ),
       { numRuns: 100 },
@@ -143,7 +151,7 @@ describe('Feature: invoice-reimplementation, Property 7: Duyệt/Bỏ duyệt l�
     return status;
   }
 
-  it('DRAFT → approve → APPROVED → unapprove → DRAFT is a round-trip', () => {
+  it('DRAFT → approve → APPROVED → unapprove → DRAFT is a round-trip (legacy hooks still callable)', () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -157,20 +165,14 @@ describe('Feature: invoice-reimplementation, Property 7: Duyệt/Bỏ duyệt l�
           const afterApprove = approve(initial);
           expect(afterApprove).toBe('APPROVED');
 
-          // After approval, edit/delete should be blocked
-          expect(canEditInvoice(afterApprove)).toBe(false);
-          expect(canDeleteInvoice(afterApprove)).toBe(false);
-
           // Step 2: Unapprove (APPROVED → DRAFT)
           const afterUnapprove = unapprove(afterApprove);
           expect(afterUnapprove).toBe('DRAFT');
-
-          // After unapproval, should be back to initial state
           expect(afterUnapprove).toBe(initial);
 
-          // Edit/delete should be allowed again
-          expect(canEditInvoice(afterUnapprove)).toBe(true);
-          expect(canDeleteInvoice(afterUnapprove)).toBe(true);
+          // Edit/delete are allowed for both DRAFT and APPROVED (paid=0)
+          expect(canEditInvoice({ status: afterUnapprove, paid_amount: 0 })).toBe(true);
+          expect(canDeleteInvoice({ status: afterUnapprove, paid_amount: 0 })).toBe(true);
         },
       ),
       { numRuns: 100 },

@@ -16,8 +16,6 @@ import {
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import {
-  CheckCircle,
-  XCircle,
   Pencil,
   DollarSign,
   History,
@@ -25,18 +23,16 @@ import {
   Printer,
 } from 'lucide-react';
 import type { InvoiceWithRelations } from '@/types/invoice';
-import { canApproveInvoice, canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
+import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
 
 interface InvoiceListTableProps {
   invoices: InvoiceWithRelations[];
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
-  onApprove: (invoice: InvoiceWithRelations) => void;
   onEdit: (invoice: InvoiceWithRelations) => void;
   onDelete: (invoice: InvoiceWithRelations) => void;
   onRecordPayment: (invoice: InvoiceWithRelations) => void;
-  onUnapprove: (invoice: InvoiceWithRelations) => void;
   onViewDetail: (invoice: InvoiceWithRelations) => void;
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
 }
@@ -70,17 +66,16 @@ const InvoiceListTable = ({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
-  onApprove,
   onEdit,
   onDelete,
   onRecordPayment,
-  onUnapprove,
   onViewDetail,
   onViewHistory,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
-  const draftInvoices = invoices.filter((inv) => inv.status === 'DRAFT');
-  const isAllDraftSelected = draftInvoices.length > 0 && selectedIds.length === draftInvoices.length;
+  const selectableInvoices = invoices.filter((inv) => (inv.paid_amount ?? 0) === 0);
+  const isAllSelected =
+    selectableInvoices.length > 0 && selectedIds.length === selectableInvoices.length;
 
   const showTodo = (feature: string) => {
     console.log(`TODO: ${feature}`);
@@ -94,10 +89,10 @@ const InvoiceListTable = ({
           <TableRow>
             <TableHead className="w-10">
               <Checkbox
-                checked={isAllDraftSelected}
+                checked={isAllSelected}
                 onCheckedChange={onToggleSelectAll}
-                disabled={draftInvoices.length === 0}
-                aria-label="Chọn tất cả hoá đơn nháp"
+                disabled={selectableInvoices.length === 0}
+                aria-label="Chọn tất cả hoá đơn chưa thu tiền"
               />
             </TableHead>
             <TableHead className="w-[100px]">Mã</TableHead>
@@ -124,8 +119,7 @@ const InvoiceListTable = ({
           ) : (
             invoices.map((invoice) => {
               const remaining = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
-              const isDraft = invoice.status === 'DRAFT';
-              const isApproved = invoice.status === 'APPROVED';
+              const isSelectable = (invoice.paid_amount ?? 0) === 0;
               const rentAmount = sumByType(invoice.invoice_items, ['RENT']);
               const serviceAmount = sumByType(invoice.invoice_items, ['SERVICE', 'PENALTY']);
               const customerName = invoice.tenant?.full_name ?? '—';
@@ -140,7 +134,7 @@ const InvoiceListTable = ({
                     <Checkbox
                       checked={selectedIds.includes(invoice.id)}
                       onCheckedChange={() => onToggleSelect(invoice.id)}
-                      disabled={!isDraft}
+                      disabled={!isSelectable}
                       aria-label={`Chọn hoá đơn ${invoice.invoice_number}`}
                     />
                   </TableCell>
@@ -158,39 +152,8 @@ const InvoiceListTable = ({
                   {/* Thao tác - inline icon buttons */}
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      {/* Duyệt / Bỏ duyệt */}
-                      {canApproveInvoice(invoice.status) ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 rounded-full bg-green-100 text-green-600 hover:bg-green-200"
-                              onClick={() => onApprove(invoice)}
-                            >
-                              <CheckCircle className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Duyệt</TooltipContent>
-                        </Tooltip>
-                      ) : isApproved ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 rounded-full bg-orange-100 text-orange-600 hover:bg-orange-200"
-                              onClick={() => onUnapprove(invoice)}
-                            >
-                              <XCircle className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Bỏ duyệt</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-
                       {/* Cập nhật */}
-                      {canEditInvoice(invoice.status) && (
+                      {canEditInvoice(invoice) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -264,7 +227,7 @@ const InvoiceListTable = ({
                       </Tooltip>
 
                       {/* Xoá */}
-                      {canDeleteInvoice(invoice.status) && (
+                      {canDeleteInvoice(invoice) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button

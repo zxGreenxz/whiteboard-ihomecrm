@@ -240,19 +240,16 @@ export function applyUnapproval<T extends ReadingWithStatus>(
 }
 
 /**
- * Check if a reading can be edited (only UNAPPROVED).
- * Requirement: 5.1, 5.2
+ * Auto-approve flow: all readings are editable/deletable by the owner.
+ * The DB-level guard against editing readings already used by an invoice item
+ * lives in RLS / service code if needed.
  */
-export function canEditReading(status: 'UNAPPROVED' | 'APPROVED'): boolean {
-  return status === 'UNAPPROVED';
+export function canEditReading(_status: 'UNAPPROVED' | 'APPROVED'): boolean {
+  return true;
 }
 
-/**
- * Check if a reading can be deleted (only UNAPPROVED).
- * Requirement: 5.3
- */
-export function canDeleteReading(status: 'UNAPPROVED' | 'APPROVED'): boolean {
-  return status === 'UNAPPROVED';
+export function canDeleteReading(_status: 'UNAPPROVED' | 'APPROVED'): boolean {
+  return true;
 }
 
 /**

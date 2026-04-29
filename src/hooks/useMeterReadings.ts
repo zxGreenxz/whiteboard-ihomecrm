@@ -276,7 +276,9 @@ export const useCreateMeterReading = () => {
           current_reading: input.current_reading,
           notes: input.notes ?? null,
           meter_image_url: input.meter_image_url ?? null,
-          status: "UNAPPROVED",
+          status: "APPROVED",
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
         } as any)
         .select()
         .single();
@@ -314,6 +316,7 @@ export const useBulkCreateMeterReadings = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      const approvedAt = new Date().toISOString();
       const readingsToInsert = inputs.map((input) => ({
         user_id: user.id,
         meter_id: input.meter_id,
@@ -321,7 +324,9 @@ export const useBulkCreateMeterReadings = () => {
         current_reading: input.current_reading,
         notes: input.notes ?? null,
         meter_image_url: input.meter_image_url ?? null,
-        status: "UNAPPROVED",
+        status: "APPROVED",
+        approved_by: user.id,
+        approved_at: approvedAt,
       }));
 
       const { data, error } = await supabase
@@ -418,24 +423,15 @@ export const useUpdateMeterReading = () => {
     mutationFn: async (input: UpdateMeterReadingInput) => {
       const { id, ...updates } = input;
 
-      const query = supabase
+      const { data, error } = await (supabase
         .from("meter_readings")
         .update(updates as any)
-        .eq("id", id) as any;
-
-      const { data, error } = await query
-        .eq("status", "UNAPPROVED")
+        .eq("id", id)
         .select()
-        .single();
+        .single() as any);
 
       if (error) {
-        if (error.code === "PGRST116") {
-          toast.error(
-            "Không thể cập nhật: chỉ số đã được duyệt hoặc không tồn tại"
-          );
-        } else {
-          toast.error("Không thể cập nhật chỉ số");
-        }
+        toast.error("Không thể cập nhật chỉ số");
         throw error;
       }
 
@@ -491,14 +487,11 @@ export const useBulkDeleteMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      const query = supabase
+      const { data, error } = await (supabase
         .from("meter_readings")
         .update({ deleted_at: new Date().toISOString() } as any)
-        .in("id", ids) as any;
-
-      const { data, error } = await query
-        .eq("status", "UNAPPROVED")
-        .select("id");
+        .in("id", ids)
+        .select("id") as any);
 
       if (error) {
         toast.error("Không thể xoá chỉ số hàng loạt");
@@ -510,7 +503,7 @@ export const useBulkDeleteMeterReadings = () => {
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
       const deletedCount = data?.length ?? 0;
-      toast.success(`Đã xoá ${deletedCount} chỉ số chưa duyệt thành công`);
+      toast.success(`Đã xoá ${deletedCount} chỉ số thành công`);
     },
     onError: (error) => {
       console.error("Error bulk deleting meter readings:", error);

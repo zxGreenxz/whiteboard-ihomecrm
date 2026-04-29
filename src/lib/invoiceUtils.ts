@@ -86,17 +86,28 @@ export function calculateInvoiceTotals(
 // Status Permission Checks
 // =============================================
 
-/** Only DRAFT invoices can be edited. */
-export function canEditInvoice(status: InvoiceStatus): boolean {
-  return status === 'DRAFT';
+/** Shape needed for edit/delete permission checks. */
+type InvoiceLike = { status: InvoiceStatus; paid_amount?: number | null };
+
+/**
+ * Edit allowed for DRAFT and APPROVED invoices that have no payments yet.
+ * Once any amount is recorded (PARTIAL_PAID/PAID) or the invoice is CANCELLED,
+ * edits are blocked to protect financial data.
+ */
+export function canEditInvoice(invoice: InvoiceLike): boolean {
+  if (invoice.status !== 'DRAFT' && invoice.status !== 'APPROVED') return false;
+  return (invoice.paid_amount ?? 0) === 0;
 }
 
-/** Only DRAFT invoices can be deleted. */
-export function canDeleteInvoice(status: InvoiceStatus): boolean {
-  return status === 'DRAFT';
+/** Delete uses the same rule as edit — locked once payments exist. */
+export function canDeleteInvoice(invoice: InvoiceLike): boolean {
+  return canEditInvoice(invoice);
 }
 
-/** Only DRAFT invoices can be approved. */
+/**
+ * Kept for legacy callers (tests, hooks). Auto-approve on create means there
+ * are no DRAFT invoices in the normal flow, so this returns false in practice.
+ */
 export function canApproveInvoice(status: InvoiceStatus): boolean {
   return status === 'DRAFT';
 }

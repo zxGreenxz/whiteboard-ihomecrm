@@ -18,7 +18,6 @@ import {
   LayoutGrid,
   Filter,
   Search,
-  CheckCircle,
   Trash2,
   Table as TableIcon,
 } from 'lucide-react';
@@ -32,7 +31,6 @@ interface InvoiceListToolbarProps {
   onAutoGenerate: () => void;
   onExcelMode: () => void;
   onDownloadImage: () => void;
-  onBulkApprove: () => void;
   onBulkDelete: () => void;
 }
 
@@ -54,7 +52,6 @@ const InvoiceListToolbar = ({
   onAutoGenerate,
   onExcelMode,
   onDownloadImage,
-  onBulkApprove,
   onBulkDelete,
 }: InvoiceListToolbarProps) => {
   const { toast } = useToast();
@@ -189,10 +186,6 @@ const InvoiceListToolbar = ({
           <span className="text-sm text-muted-foreground">
             Đã chọn {selectedCount} hoá đơn
           </span>
-          <Button size="sm" onClick={onBulkApprove}>
-            <CheckCircle className="h-4 w-4 mr-1" />
-            Duyệt hàng loạt
-          </Button>
           <Button variant="destructive" size="sm" onClick={onBulkDelete}>
             <Trash2 className="h-4 w-4 mr-1" />
             Xoá hàng loạt

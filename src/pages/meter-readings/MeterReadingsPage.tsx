@@ -23,8 +23,6 @@ import MeterReadingForm from "@/components/meter-readings/MeterReadingForm";
 import MeterReadingImportDialog from "@/components/meter-readings/MeterReadingImportDialog";
 import {
   useMeterReadingsList,
-  useApproveMeterReading,
-  useUnapproveMeterReading,
   useDeleteMeterReading,
   type MeterReadingDetailed,
 } from "@/hooks/useMeterReadings";
@@ -71,8 +69,6 @@ const MeterReadingsPage = () => {
   const totalCount = listResult?.totalCount ?? 0;
 
   // --- Mutation hooks ---
-  const approveMutation = useApproveMeterReading();
-  const unapproveMutation = useUnapproveMeterReading();
   const deleteMutation = useDeleteMeterReading();
 
   // --- Handlers ---
@@ -109,20 +105,6 @@ const MeterReadingsPage = () => {
     }
     setDeleteTarget(null);
   }, [deleteTarget, deleteMutation]);
-
-  const handleApprove = useCallback(
-    (id: string) => {
-      approveMutation.mutate(id);
-    },
-    [approveMutation]
-  );
-
-  const handleUnapprove = useCallback(
-    (id: string) => {
-      unapproveMutation.mutate(id);
-    },
-    [unapproveMutation]
-  );
 
   const handleClearSelection = useCallback(() => {
     setSelectedIds([]);
@@ -166,8 +148,6 @@ const MeterReadingsPage = () => {
           onSelectionChange={setSelectedIds}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onApprove={handleApprove}
-          onUnapprove={handleUnapprove}
           pagination={pagination}
           totalCount={totalCount}
         />

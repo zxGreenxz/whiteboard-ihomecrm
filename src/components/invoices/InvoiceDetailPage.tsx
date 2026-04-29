@@ -132,7 +132,7 @@ const InvoiceDetailPage = () => {
   const items: InvoiceItem[] = invoice.invoice_items ?? [];
   const payments: Payment[] = invoice.payments ?? [];
   const remaining = invoice.remaining_amount ?? invoice.total_amount - (invoice.paid_amount ?? 0);
-  const editable = canEditInvoice(invoice.status);
+  const editable = canEditInvoice(invoice);
 
   // ---- Render ----
 

@@ -84,19 +84,27 @@ describe('status permission checks', () => {
     'DRAFT', 'APPROVED', 'PAID', 'PARTIAL_PAID', 'OVERDUE', 'CANCELLED',
   ];
 
-  it('canEditInvoice returns true only for DRAFT', () => {
+  it('canEditInvoice returns true for DRAFT/APPROVED with paid_amount=0', () => {
     for (const s of allStatuses) {
-      expect(canEditInvoice(s)).toBe(s === 'DRAFT');
+      const allowed = (s === 'DRAFT' || s === 'APPROVED');
+      expect(canEditInvoice({ status: s, paid_amount: 0 })).toBe(allowed);
     }
   });
 
-  it('canDeleteInvoice returns true only for DRAFT', () => {
-    for (const s of allStatuses) {
-      expect(canDeleteInvoice(s)).toBe(s === 'DRAFT');
-    }
+  it('canEditInvoice returns false once any payment is recorded', () => {
+    expect(canEditInvoice({ status: 'APPROVED', paid_amount: 1 })).toBe(false);
+    expect(canEditInvoice({ status: 'DRAFT', paid_amount: 1 })).toBe(false);
   });
 
-  it('canApproveInvoice returns true only for DRAFT', () => {
+  it('canDeleteInvoice mirrors canEditInvoice', () => {
+    for (const s of allStatuses) {
+      const allowed = (s === 'DRAFT' || s === 'APPROVED');
+      expect(canDeleteInvoice({ status: s, paid_amount: 0 })).toBe(allowed);
+    }
+    expect(canDeleteInvoice({ status: 'APPROVED', paid_amount: 100 })).toBe(false);
+  });
+
+  it('canApproveInvoice still returns true only for DRAFT (legacy)', () => {
     for (const s of allStatuses) {
       expect(canApproveInvoice(s)).toBe(s === 'DRAFT');
     }

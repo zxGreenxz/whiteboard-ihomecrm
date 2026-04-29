@@ -6,7 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Pencil, Trash2, DollarSign, Undo2 } from 'lucide-react';
+import { MoreVertical, Pencil, Trash2, DollarSign } from 'lucide-react';
 import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
@@ -15,7 +15,6 @@ interface InvoiceActionMenuProps {
   onEdit?: (invoice: InvoiceWithRelations) => void;
   onDelete?: (invoice: InvoiceWithRelations) => void;
   onRecordPayment?: (invoice: InvoiceWithRelations) => void;
-  onUnapprove?: (invoice: InvoiceWithRelations) => void;
 }
 
 const InvoiceActionMenu = ({
@@ -23,14 +22,12 @@ const InvoiceActionMenu = ({
   onEdit,
   onDelete,
   onRecordPayment,
-  onUnapprove,
 }: InvoiceActionMenuProps) => {
-  const showEdit = canEditInvoice(invoice.status);
-  const showDelete = canDeleteInvoice(invoice.status);
+  const showEdit = canEditInvoice(invoice);
+  const showDelete = canDeleteInvoice(invoice);
   const showPayment = invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID';
-  const showUnapprove = invoice.status === 'APPROVED';
 
-  const hasAnyAction = showEdit || showDelete || showPayment || showUnapprove;
+  const hasAnyAction = showEdit || showDelete || showPayment;
   if (!hasAnyAction) return null;
 
   return (
@@ -52,13 +49,6 @@ const InvoiceActionMenu = ({
           <DropdownMenuItem onClick={() => onRecordPayment?.(invoice)}>
             <DollarSign className="h-4 w-4 mr-2" />
             Thu tiền
-          </DropdownMenuItem>
-        )}
-
-        {showUnapprove && (
-          <DropdownMenuItem onClick={() => onUnapprove?.(invoice)}>
-            <Undo2 className="h-4 w-4 mr-2" />
-            Bỏ duyệt
           </DropdownMenuItem>
         )}
 

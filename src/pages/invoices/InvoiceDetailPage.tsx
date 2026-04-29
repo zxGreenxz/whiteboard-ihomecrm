@@ -21,7 +21,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Receipt,
   ArrowLeft,
-  CheckCircle,
   DollarSign,
   Printer,
   AlertCircle,
@@ -30,7 +29,8 @@ import {
   Pencil,
   XCircle,
 } from 'lucide-react';
-import { useInvoice, useApproveInvoice, useCancelInvoice } from '@/hooks/useInvoices';
+import { useInvoice, useCancelInvoice } from '@/hooks/useInvoices';
+import { canEditInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState } from 'react';
@@ -46,7 +46,6 @@ const InvoiceDetailPage = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const { data: invoice, isLoading } = useInvoice(id || '');
-  const approveMutation = useApproveInvoice();
   const cancelMutation = useCancelInvoice();
 
   if (!id) {
@@ -109,12 +108,6 @@ const InvoiceDetailPage = () => {
   const outstandingAmount = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
   const isOverdue = invoice.status !== 'PAID' && invoice.due_date && new Date(invoice.due_date) < new Date();
 
-  const handleApprove = () => {
-    if (confirm('Bạn có chắc chắn muốn duyệt hóa đơn này?')) {
-      approveMutation.mutate(invoice.id);
-    }
-  };
-
   const handleCancel = () => {
     if (confirm('Bạn có chắc chắn muốn hủy hóa đơn này? Hành động này không thể hoàn tác.')) {
       cancelMutation.mutate(invoice.id);
@@ -139,24 +132,14 @@ const InvoiceDetailPage = () => {
 
         <div className="flex-1" />
 
-        {invoice.status === 'DRAFT' && (
-          <>
-            <Button
-              variant="outline"
-              onClick={() => setEditDialogOpen(true)}
-            >
-              <Pencil className="h-4 w-4 mr-2" />
-              Chỉnh sửa
-            </Button>
-            <Button
-              variant="default"
-              onClick={handleApprove}
-              disabled={approveMutation.isPending}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              {approveMutation.isPending ? 'Đang duyệt...' : 'Duyệt hóa đơn'}
-            </Button>
-          </>
+        {canEditInvoice(invoice) && (
+          <Button
+            variant="outline"
+            onClick={() => setEditDialogOpen(true)}
+          >
+            <Pencil className="h-4 w-4 mr-2" />
+            Chỉnh sửa
+          </Button>
         )}
 
         {(invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (

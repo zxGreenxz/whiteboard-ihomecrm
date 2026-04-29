@@ -154,15 +154,15 @@ describe('Feature: meter-reading-full-reimplementation, Property 6: Previous rea
 
 /**
  * Feature: meter-reading-full-reimplementation
- * Property 11: New reading payload always UNAPPROVED
+ * Property 11: New reading payload always APPROVED (auto-approve flow)
  *
- * createMeterReadingPayload luôn có status='UNAPPROVED'.
+ * createMeterReadingPayload luôn có status='APPROVED' kèm approved_by/approved_at.
  * notes và meter_image_url là null khi không cung cấp.
  * user_id, meter_id, reading_date, current_reading khớp input.
  *
  * **Validates: Yêu cầu 2.4, 8.10**
  */
-describe('Feature: meter-reading-full-reimplementation, Property 11: New reading payload always UNAPPROVED', () => {
+describe('Feature: meter-reading-full-reimplementation, Property 11: New reading payload always APPROVED', () => {
   const payloadInputArb = fc.record({
     user_id: fc.uuid(),
     meter_id: fc.uuid(),
@@ -176,12 +176,15 @@ describe('Feature: meter-reading-full-reimplementation, Property 11: New reading
     meter_image_url: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined }),
   });
 
-  it('should always produce status UNAPPROVED and match input fields', () => {
+  it('should always produce status APPROVED with approved_by/approved_at and match input fields', () => {
     fc.assert(
       fc.property(payloadInputArb, (input) => {
         const payload = createMeterReadingPayload(input);
 
-        expect(payload.status).toBe('UNAPPROVED');
+        expect(payload.status).toBe('APPROVED');
+        expect(payload.approved_by).toBe(input.user_id);
+        expect(typeof payload.approved_at).toBe('string');
+        expect(payload.approved_at.length).toBeGreaterThan(0);
         expect(payload.user_id).toBe(input.user_id);
         expect(payload.meter_id).toBe(input.meter_id);
         expect(payload.reading_date).toBe(input.reading_date);

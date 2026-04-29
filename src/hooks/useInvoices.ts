@@ -238,7 +238,9 @@ export const useCreateInvoice = () => {
           billing_month: invoiceFields.billing_month,
           issue_date: invoiceFields.issue_date,
           due_date: invoiceFields.due_date,
-          status: 'DRAFT' as any,
+          status: 'APPROVED' as any,
+          approved_at: new Date().toISOString(),
+          approved_by: user.id,
           subtotal,
           discount_amount: invoiceFields.discount_amount || 0,
           tax_percent: invoiceFields.tax_percent || 0,
@@ -320,12 +322,12 @@ export const useUpdateInvoice = () => {
       // Fetch current invoice to check status
       const { data: current, error: fetchError } = await supabase
         .from('invoices')
-        .select('status')
+        .select('status, paid_amount')
         .eq('id', id)
         .single();
 
       if (fetchError) throw fetchError;
-      if (!canEditInvoice(current.status as InvoiceStatus)) {
+      if (!canEditInvoice({ status: current.status as InvoiceStatus, paid_amount: current.paid_amount })) {
         throw new Error('Không thể chỉnh sửa hoá đơn ở trạng thái này');
       }
 
@@ -437,12 +439,12 @@ export const useDeleteInvoice = () => {
       // Fetch current invoice to check status
       const { data: current, error: fetchError } = await supabase
         .from('invoices')
-        .select('status')
+        .select('status, paid_amount')
         .eq('id', invoiceId)
         .single();
 
       if (fetchError) throw fetchError;
-      if (!canDeleteInvoice(current.status as InvoiceStatus)) {
+      if (!canDeleteInvoice({ status: current.status as InvoiceStatus, paid_amount: current.paid_amount })) {
         throw new Error('Không thể xoá hoá đơn ở trạng thái này');
       }
 

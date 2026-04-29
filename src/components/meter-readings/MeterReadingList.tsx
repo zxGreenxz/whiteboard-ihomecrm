@@ -29,8 +29,6 @@ import type { MeterReadingDetailed } from '@/hooks/useMeterReadings';
 import { canEditReading, canDeleteReading } from '@/hooks/useMeterReadingsHelpers';
 import {
   MoreHorizontal,
-  CheckCircle,
-  XCircle,
   Pencil,
   Trash2,
   ClipboardList,
@@ -49,8 +47,6 @@ interface MeterReadingListProps {
   onSelectionChange: (ids: string[]) => void;
   onEdit: (reading: MeterReadingDetailed) => void;
   onDelete: (id: string) => void;
-  onApprove: (id: string) => void;
-  onUnapprove: (id: string) => void;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -89,8 +85,6 @@ const MeterReadingList = ({
   onSelectionChange,
   onEdit,
   onDelete,
-  onApprove,
-  onUnapprove,
   pagination,
   totalCount,
 }: MeterReadingListProps) => {
@@ -217,22 +211,6 @@ const MeterReadingList = ({
                     <DropdownMenuContent align="start">
                       <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-
-                      {/* Duyệt - chỉ hiện khi UNAPPROVED */}
-                      {!isApproved && (
-                        <DropdownMenuItem onClick={() => onApprove(reading.id)}>
-                          <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                          Duyệt
-                        </DropdownMenuItem>
-                      )}
-
-                      {/* Bỏ duyệt - chỉ hiện khi APPROVED */}
-                      {isApproved && (
-                        <DropdownMenuItem onClick={() => onUnapprove(reading.id)}>
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Bỏ duyệt
-                        </DropdownMenuItem>
-                      )}
 
                       {/* Cập nhật - disabled khi APPROVED */}
                       <DropdownMenuItem

@@ -50,7 +50,9 @@ export interface CreateMeterReadingPayload {
   current_reading: number;
   notes: string | null;
   meter_image_url: string | null;
-  status: 'UNAPPROVED';
+  status: 'APPROVED';
+  approved_by: string;
+  approved_at: string;
 }
 
 /**
@@ -101,7 +103,7 @@ export function isLoadEnabled(filters: LoadEnabledFilters): boolean {
 }
 
 /**
- * Create a meter reading payload with status='UNAPPROVED'.
+ * Create a meter reading payload that is auto-approved.
  * Converts optional notes/meter_image_url to null when not provided.
  *
  * Requirements: 2.4
@@ -114,6 +116,8 @@ export function createMeterReadingPayload(input: CreateMeterReadingPayloadInput)
     current_reading: input.current_reading,
     notes: input.notes || null,
     meter_image_url: input.meter_image_url || null,
-    status: 'UNAPPROVED',
+    status: 'APPROVED',
+    approved_by: input.user_id,
+    approved_at: new Date().toISOString(),
   };
 }
