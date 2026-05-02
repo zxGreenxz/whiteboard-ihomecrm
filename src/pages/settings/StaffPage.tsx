@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   UserCog,
   Plus,
@@ -630,10 +631,24 @@ function StaffTab() {
     setDialogOpen(true);
   };
 
+  const phoneIsValid = (p: string) => p === "" || /^[0-9]{10,11}$/.test(p);
+  const emailIsValid = (e: string) => e === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
   const handleSave = async () => {
     if (!form) return;
     if (!form.role_id) return;
     if (!form.all_buildings && form.building_ids.length === 0) return;
+
+    const phone = form.phone.trim();
+    const email = form.email.trim();
+    if (!phoneIsValid(phone)) {
+      toast.error("Số điện thoại phải có 10-11 chữ số (hoặc bỏ trống).");
+      return;
+    }
+    if (!emailIsValid(email)) {
+      toast.error("Email không đúng định dạng (hoặc bỏ trống).");
+      return;
+    }
 
     if (!isEdit) {
       if (!form.username.trim()) return;
@@ -645,8 +660,8 @@ function StaffTab() {
         role_id: form.role_id,
         building_ids: form.all_buildings ? null : form.building_ids,
         full_name: form.full_name.trim() || undefined,
-        phone: form.phone.trim() || undefined,
-        email: form.email.trim() || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
         department: form.department.trim() || undefined,
         job_title: form.job_title.trim() || undefined,
         employee_code: form.employee_code.trim() || undefined,
@@ -660,6 +675,8 @@ function StaffTab() {
         building_ids: form.all_buildings ? null : form.building_ids,
         profile_patch: {
           full_name: form.full_name.trim(),
+          phone: phone || null,
+          email: email || null,
           department: form.department.trim() || null,
           job_title: form.job_title.trim() || null,
           employee_code: form.employee_code.trim() || null,
@@ -909,8 +926,10 @@ function StaffTab() {
                     placeholder="0901234567 (không bắt buộc)"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    disabled={isEdit}
                   />
+                  {form.phone.trim() !== "" && !/^[0-9]{10,11}$/.test(form.phone.trim()) && (
+                    <p className="text-xs text-red-600">Phải là 10-11 chữ số</p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -920,8 +939,10 @@ function StaffTab() {
                     placeholder="email@domain.com (không bắt buộc)"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    disabled={isEdit}
                   />
+                  {form.email.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) && (
+                    <p className="text-xs text-red-600">Email không đúng định dạng</p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">

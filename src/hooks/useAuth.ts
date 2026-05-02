@@ -191,7 +191,7 @@ export const useLogin = () => {
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi đăng nhập',
         description: error.message === 'Invalid login credentials'
-          ? 'Số điện thoại/Email hoặc mật khẩu không đúng'
+          ? 'Tên đăng nhập / Số điện thoại / Email hoặc mật khẩu không đúng'
           : error.message,
       });
     },

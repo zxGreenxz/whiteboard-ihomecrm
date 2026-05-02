@@ -23,16 +23,7 @@ const Login = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.identifier.trim()) {
-      newErrors.identifier = 'Số điện thoại hoặc Email không được để trống';
-    } else {
-      // Check if it's a phone number (10-11 digits)
-      const isPhone = /^[0-9]{10,11}$/.test(formData.identifier.trim());
-      // Check if it's an email
-      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.identifier.trim());
-
-      if (!isPhone && !isEmail) {
-        newErrors.identifier = 'Vui lòng nhập số điện thoại (10-11 số) hoặc email hợp lệ';
-      }
+      newErrors.identifier = 'Tên đăng nhập, Số điện thoại hoặc Email không được để trống';
     }
 
     if (!formData.password) {
@@ -81,11 +72,11 @@ const Login = () => {
           <CardContent className="space-y-4">
             {/* Phone or Email */}
             <div className="space-y-2">
-              <Label htmlFor="identifier">Số điện thoại hoặc Email</Label>
+              <Label htmlFor="identifier">Tên đăng nhập, Số điện thoại hoặc Email</Label>
               <Input
                 id="identifier"
                 type="text"
-                placeholder="0901234567 hoặc email@example.com"
+                placeholder="VD: nathan / 0901234567 / email@example.com"
                 value={formData.identifier}
                 onChange={(e) => handleChange('identifier', e.target.value)}
                 className={errors.identifier ? 'border-red-500' : ''}

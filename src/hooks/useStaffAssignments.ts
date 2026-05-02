@@ -214,6 +214,11 @@ export const useProvisionStaff = () => {
 
       const authEmail = buildAuthEmail(input);
 
+      // The auth trigger (handle_new_user) reads ALL these fields from
+      // raw_user_meta_data and populates profiles in a single transaction.
+      // No client-side upsert is needed — and trying to do one would fail
+      // RLS anyway because at this point staff_assignments doesn't exist
+      // yet (admin can only update profiles of staff they already manage).
       const { data: signUp, error: signUpErr } = await supabase.auth.signUp({
         email: authEmail,
         password: input.password,
@@ -226,6 +231,7 @@ export const useProvisionStaff = () => {
             employee_code: input.employee_code || null,
             department: input.department || null,
             job_title: input.job_title || null,
+            is_active: input.is_active ?? true,
           },
         },
       });
@@ -245,35 +251,6 @@ export const useProvisionStaff = () => {
       }
       const newUserId = signUp.user?.id;
       if (!newUserId) throw new Error("Không tạo được tài khoản — kiểm tra lại tên đăng nhập");
-
-      // upsert profile (the auth trigger usually inserts a stub — we override with full data).
-      // First try with extended columns; if any column doesn't exist yet (migration
-      // 20260427_apply_staff_profile_fields.sql not applied), retry with the base set.
-      const baseProfile = {
-        id: newUserId,
-        full_name: input.full_name || input.username,
-        phone: input.phone || null,
-        email: input.email || null,
-      };
-      const extendedProfile = {
-        ...baseProfile,
-        department: input.department || null,
-        job_title: input.job_title || null,
-        employee_code: input.employee_code || null,
-        is_active: input.is_active ?? true,
-      };
-      const tryExt = await supabase
-        .from("profiles")
-        .upsert(extendedProfile as any, { onConflict: "id" });
-      if (tryExt.error) {
-        console.warn("profile upsert with extended columns failed; retrying base:", tryExt.error.message);
-        const fallback = await supabase
-          .from("profiles")
-          .upsert(baseProfile as any, { onConflict: "id" });
-        if (fallback.error) {
-          console.warn("profile upsert (base) also failed:", fallback.error.message);
-        }
-      }
 
       const buildingIds = (input.building_ids && input.building_ids.length > 0)
         ? input.building_ids
@@ -316,6 +293,8 @@ export interface UpdateStaffMemberInput {
   building_ids?: string[] | null; // null/empty → all buildings (single row, building_id=null)
   profile_patch?: {
     full_name?: string;
+    phone?: string | null;
+    email?: string | null;
     department?: string | null;
     job_title?: string | null;
     employee_code?: string | null;
@@ -331,19 +310,15 @@ export const useUpdateStaffMember = () => {
       const { data: { user: owner } } = await supabase.auth.getUser();
       if (!owner) throw new Error("Bạn chưa đăng nhập");
 
-      // 1) Sync profile fields (gracefully degrade if extended cols missing)
+      // 1) Sync profile fields. Admin RLS policy (profiles_admin_update,
+      //    migration 20260502000001) allows the user_id of any
+      //    staff_assignments row to update that staff's profile.
       if (input.profile_patch) {
-        const tryExt = await supabase
+        const { error } = await supabase
           .from("profiles")
           .update(input.profile_patch as any)
           .eq("id", input.staff_id);
-        if (tryExt.error) {
-          const baseOnly: any = {};
-          if (input.profile_patch.full_name !== undefined) baseOnly.full_name = input.profile_patch.full_name;
-          if (Object.keys(baseOnly).length > 0) {
-            await supabase.from("profiles").update(baseOnly).eq("id", input.staff_id);
-          }
-        }
+        if (error) throw error;
       }
 
       // 2) Fetch existing assignments for this staff
