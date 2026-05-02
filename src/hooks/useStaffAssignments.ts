@@ -392,15 +392,17 @@ export const useUpdateStaffMember = () => {
   });
 };
 
-// Remove an entire staff member (deletes all assignments for that staff_id).
+// Remove a staff member completely. Calls SECURITY DEFINER RPC
+// `delete_staff_member` which DELETEs from auth.users — cascades
+// wipe profiles + staff_assignments + any user-owned data.
+// Single source of truth: auth.users.
 export const useRemoveStaffMember = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (staff_id: string) => {
-      const { error } = await supabase
-        .from("staff_assignments")
-        .delete()
-        .eq("staff_id", staff_id);
+      const { error } = await supabase.rpc("delete_staff_member", {
+        p_staff_id: staff_id,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
