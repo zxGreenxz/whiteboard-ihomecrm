@@ -354,7 +354,7 @@ const IncomeExpenseForm = ({
         <DialogContent
           className={
             isMobile
-              ? "max-w-full w-full h-[100vh] !top-0 !left-0 !translate-x-0 !translate-y-0 rounded-none p-4 overflow-y-auto"
+              ? "max-w-full w-full h-[100dvh] !top-0 !left-0 !translate-x-0 !translate-y-0 rounded-none p-4 overflow-y-auto"
               : "sm:max-w-[800px] max-h-[90vh] overflow-y-auto"
           }
         >
