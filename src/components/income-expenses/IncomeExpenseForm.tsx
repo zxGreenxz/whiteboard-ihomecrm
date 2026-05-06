@@ -102,8 +102,6 @@ const IncomeExpenseForm = ({
       account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
       business_result_accounting: false,
-      receive_bank_name: '',
-      receive_bank_account: '',
       repeat_cycle: 'NONE',
       repeat_infinity: false,
       repeat_count: 0,
@@ -144,8 +142,6 @@ const IncomeExpenseForm = ({
         account_id: voucher.account_id ?? '',
         voucher_date: voucher.voucher_date,
         business_result_accounting: voucher.business_result_accounting ?? false,
-        receive_bank_name: voucher.receive_bank_name ?? '',
-        receive_bank_account: voucher.receive_bank_account ?? '',
         repeat_cycle: (voucher.repeat_cycle as any) ?? 'NONE',
         repeat_infinity: voucher.repeat_infinity ?? false,
         repeat_count: voucher.repeat_count ?? 0,
@@ -184,8 +180,6 @@ const IncomeExpenseForm = ({
         account_id: '',
         voucher_date: new Date().toISOString().split('T')[0],
         business_result_accounting: false,
-        receive_bank_name: '',
-        receive_bank_account: '',
         attachments: [],
         items: [],
       });
@@ -464,34 +458,28 @@ const IncomeExpenseForm = ({
                 />
               </div>
 
-              {/* Row 2: Tên người nộp/nhận, Ngày thực thu/chi */}
+              {/* Row 2: (chỉ EXPENSE) Tên người nhận + Ngày, hoặc (INCOME) chỉ Ngày */}
               <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="payer_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        {voucherType === 'EXPENSE'
-                          ? 'Tên người nhận'
-                          : 'Tên người nộp'}{' '}
-                        *
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={
-                            voucherType === 'EXPENSE'
-                              ? 'Nhập tên người nhận'
-                              : 'Nhập tên người nộp'
-                          }
-                          {...field}
-                          disabled={!canEdit}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {voucherType === 'EXPENSE' && (
+                  <FormField
+                    control={form.control}
+                    name="payer_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tên người nhận</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Nhập tên người nhận"
+                            {...field}
+                            value={field.value ?? ''}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}
@@ -509,48 +497,6 @@ const IncomeExpenseForm = ({
                   )}
                 />
               </div>
-
-              {/* Row chỉ phiếu chi: Số TK nhận + Ngân hàng nhận */}
-              {voucherType === 'EXPENSE' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    control={form.control}
-                    name="receive_bank_account"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Số TK nhận</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Số tài khoản người nhận"
-                            {...field}
-                            value={field.value ?? ''}
-                            disabled={!canEdit}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="receive_bank_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ngân hàng nhận</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="VD: Vietcombank"
-                            {...field}
-                            value={field.value ?? ''}
-                            disabled={!canEdit}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              )}
 
               {/* Row 3: Tên phiếu (textarea lớn — gộp tên + ghi chú) */}
               <FormField

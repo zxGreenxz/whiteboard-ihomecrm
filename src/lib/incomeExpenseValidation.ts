@@ -22,13 +22,11 @@ export const incomeExpenseFormSchema = z.object({
   building_id: z.string().min(1, 'Vui lòng chọn căn hộ'),
   room_id: z.string().nullable().optional(),
   tenant_id: z.string().nullable().optional(),
-  payer_name: z.string().min(1, 'Vui lòng nhập tên người nộp/nhận'),
+  payer_name: z.string().nullable().optional(),
   account_id: z.string().min(1, 'Vui lòng chọn tài khoản'),
   voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
   business_result_accounting: z.boolean().default(false),
   attachments: z.array(z.string()).default([]),
-  receive_bank_name: z.string().nullable().optional(),     // chỉ phiếu chi
-  receive_bank_account: z.string().nullable().optional(),  // chỉ phiếu chi
   // Cài đặt lặp lại (mirror Resident "Cài đặt lặp lại")
   repeat_cycle: z
     .enum(['NONE', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'])

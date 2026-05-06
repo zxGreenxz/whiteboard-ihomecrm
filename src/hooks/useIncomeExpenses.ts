@@ -431,10 +431,6 @@ export const useCreateIncomeExpense = () => {
           account_id: input.account_id ?? null,
           attachments: input.attachments ?? [],
           business_result_accounting: input.business_result_accounting ?? false,
-          receive_bank_name:
-            input.type === "EXPENSE" ? input.receive_bank_name ?? null : null,
-          receive_bank_account:
-            input.type === "EXPENSE" ? input.receive_bank_account ?? null : null,
           repeat_cycle: input.repeat_cycle ?? "NONE",
           repeat_infinity: !!input.repeat_infinity,
           repeat_count: input.repeat_count ?? 0,
@@ -508,10 +504,6 @@ export const useUpdateIncomeExpense = () => {
           account_id: data.account_id ?? null,
           attachments: data.attachments ?? [],
           business_result_accounting: data.business_result_accounting ?? false,
-          receive_bank_name:
-            data.type === "EXPENSE" ? data.receive_bank_name ?? null : null,
-          receive_bank_account:
-            data.type === "EXPENSE" ? data.receive_bank_account ?? null : null,
           voucher_date: data.voucher_date,
         })
         .eq("id", id)
