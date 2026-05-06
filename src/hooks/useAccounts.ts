@@ -170,7 +170,7 @@ export const useUpdateAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; values: AccountFormValues }) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("accounts" as any)
         .update({
           name: input.values.name,
@@ -184,11 +184,17 @@ export const useUpdateAccount = () => {
           initial_date: input.values.initial_date,
           is_default: input.values.is_default ?? false,
         })
-        .eq("id", input.id);
+        .eq("id", input.id)
+        .select("id");
 
       if (error) {
         toast.error(error.message || "Không thể cập nhật sổ quỹ");
         throw error;
+      }
+      if (!data || data.length === 0) {
+        const msg = "Bạn không có quyền chỉnh sửa sổ quỹ này";
+        toast.error(msg);
+        throw new Error(msg);
       }
     },
     onSuccess: () => {
@@ -203,14 +209,20 @@ export const useDeleteAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("accounts" as any)
         .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
 
       if (error) {
         toast.error(error.message || "Không thể xoá sổ quỹ");
         throw error;
+      }
+      if (!data || data.length === 0) {
+        const msg = "Bạn không có quyền xoá sổ quỹ này";
+        toast.error(msg);
+        throw new Error(msg);
       }
     },
     onSuccess: () => {
@@ -225,13 +237,19 @@ export const useLockAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; lock_date: string }) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("accounts" as any)
         .update({ lock_date: input.lock_date })
-        .eq("id", input.id);
+        .eq("id", input.id)
+        .select("id");
       if (error) {
         toast.error(error.message || "Không thể khoá sổ");
         throw error;
+      }
+      if (!data || data.length === 0) {
+        const msg = "Bạn không có quyền khoá sổ quỹ này";
+        toast.error(msg);
+        throw new Error(msg);
       }
     },
     onSuccess: () => {
@@ -246,13 +264,19 @@ export const useUnlockAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("accounts" as any)
         .update({ lock_date: null })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
       if (error) {
         toast.error(error.message || "Không thể mở khoá sổ");
         throw error;
+      }
+      if (!data || data.length === 0) {
+        const msg = "Bạn không có quyền mở khoá sổ quỹ này";
+        toast.error(msg);
+        throw new Error(msg);
       }
     },
     onSuccess: () => {
