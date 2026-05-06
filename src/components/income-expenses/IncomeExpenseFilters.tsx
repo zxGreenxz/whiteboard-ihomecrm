@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 import { useAccounts } from "@/hooks/useAccounts";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
@@ -25,7 +24,6 @@ export function IncomeExpenseFiltersBar({
   const { data: areas } = useAreas();
   const { data: allBuildings } = useBuildings();
   const { data: rooms } = useRooms(filters.building_id ?? undefined);
-  const { data: beds } = useBeds(filters.room_id ?? undefined);
   const { data: accounts } = useAccounts();
 
   // Filter buildings by selected area
@@ -43,7 +41,6 @@ export function IncomeExpenseFiltersBar({
       area_id: areaId,
       building_id: null,
       room_id: null,
-      bed_id: null,
     });
   };
 
@@ -52,7 +49,6 @@ export function IncomeExpenseFiltersBar({
     handleChange({
       building_id: buildingId,
       room_id: null,
-      bed_id: null,
     });
   };
 
@@ -60,12 +56,7 @@ export function IncomeExpenseFiltersBar({
     const roomId = value === "ALL" ? null : value;
     handleChange({
       room_id: roomId,
-      bed_id: null,
     });
-  };
-
-  const handleBedChange = (value: string) => {
-    handleChange({ bed_id: value === "ALL" ? null : value });
   };
 
   const handleAccountChange = (value: string) => {
@@ -156,24 +147,6 @@ export function IncomeExpenseFiltersBar({
           {(rooms || []).map((r) => (
             <SelectItem key={r.id} value={r.id}>
               {r.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Giường */}
-      <Select
-        value={filters.bed_id ?? "ALL"}
-        onValueChange={handleBedChange}
-      >
-        <SelectTrigger className="w-[140px] h-9 text-sm">
-          <SelectValue placeholder="Chọn giường" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Chọn giường</SelectItem>
-          {(beds || []).map((bed) => (
-            <SelectItem key={bed.id} value={bed.id}>
-              {bed.name}
             </SelectItem>
           ))}
         </SelectContent>

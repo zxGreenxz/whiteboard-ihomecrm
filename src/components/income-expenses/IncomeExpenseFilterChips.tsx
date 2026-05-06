@@ -65,7 +65,6 @@ export function IncomeExpenseFilterChips({
           area_id: null,
           building_id: null,
           room_id: null,
-          bed_id: null,
         },
       });
   }
@@ -76,7 +75,7 @@ export function IncomeExpenseFilterChips({
       chips.push({
         key: "building_id",
         label: b.name,
-        patch: { building_id: null, room_id: null, bed_id: null },
+        patch: { building_id: null, room_id: null },
       });
   }
 

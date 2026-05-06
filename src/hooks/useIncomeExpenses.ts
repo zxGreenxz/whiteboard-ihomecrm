@@ -9,7 +9,6 @@ export interface IncomeExpenseFilters {
   area_id?: string | null;
   building_id?: string | null;
   room_id?: string | null;
-  bed_id?: string | null;
   account_id?: string | null;
   cash_book_id?: string | null;
   type?: "INCOME" | "EXPENSE" | null;
@@ -87,7 +86,6 @@ export const useIncomeExpenses = (
       filters.area_id,
       filters.building_id,
       filters.room_id,
-      filters.bed_id,
       filters.account_id,
       filters.type,
       filters.start_date,
@@ -140,9 +138,6 @@ export const useIncomeExpenses = (
       }
       if (filters.room_id) {
         query = query.eq("room_id", filters.room_id);
-      }
-      if (filters.bed_id) {
-        query = query.eq("bed_id", filters.bed_id);
       }
       if (filters.account_id) {
         query = query.eq("account_id", filters.account_id);
@@ -302,7 +297,6 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       filters.area_id,
       filters.building_id,
       filters.room_id,
-      filters.bed_id,
       filters.account_id,
       filters.type,
       filters.start_date,
@@ -339,9 +333,6 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       }
       if (filters.room_id) {
         query = query.eq("room_id", filters.room_id);
-      }
-      if (filters.bed_id) {
-        query = query.eq("bed_id", filters.bed_id);
       }
       if (filters.account_id) {
         query = query.eq("account_id", filters.account_id);
@@ -435,11 +426,9 @@ export const useCreateIncomeExpense = () => {
           name: input.name,
           building_id: input.building_id,
           room_id: input.room_id ?? null,
-          bed_id: input.bed_id ?? null,
           tenant_id: input.tenant_id ?? null,
           payer_name: input.payer_name ?? null,
           account_id: input.account_id ?? null,
-          contract_id: input.contract_id ?? null,
           attachments: input.attachments ?? [],
           business_result_accounting: input.business_result_accounting ?? false,
           receive_bank_name:
@@ -457,7 +446,6 @@ export const useCreateIncomeExpense = () => {
               ? input.voucher_date
               : null,
           voucher_date: input.voucher_date,
-          notes: input.notes ?? null,
         })
         .select()
         .single();
@@ -515,11 +503,9 @@ export const useUpdateIncomeExpense = () => {
           name: data.name,
           building_id: data.building_id,
           room_id: data.room_id ?? null,
-          bed_id: data.bed_id ?? null,
           tenant_id: data.tenant_id ?? null,
           payer_name: data.payer_name ?? null,
           account_id: data.account_id ?? null,
-          contract_id: data.contract_id ?? null,
           attachments: data.attachments ?? [],
           business_result_accounting: data.business_result_accounting ?? false,
           receive_bank_name:
@@ -527,7 +513,6 @@ export const useUpdateIncomeExpense = () => {
           receive_bank_account:
             data.type === "EXPENSE" ? data.receive_bank_account ?? null : null,
           voucher_date: data.voucher_date,
-          notes: data.notes ?? null,
         })
         .eq("id", id)
         .select()

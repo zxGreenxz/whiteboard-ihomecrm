@@ -18,7 +18,6 @@ import {
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
@@ -68,7 +67,6 @@ export function IncomeExpenseFilterPanel({
   const { data: areas } = useAreas();
   const { data: allBuildings } = useBuildings();
   const { data: rooms } = useRooms(draft.building_id ?? undefined);
-  const { data: beds } = useBeds(draft.room_id ?? undefined);
   const { data: accounts } = useAccounts();
   const { data: types } = useIncomeExpenseTypes();
 
@@ -190,7 +188,6 @@ export function IncomeExpenseFilterPanel({
                   area_id: v === "ALL" ? null : v,
                   building_id: null,
                   room_id: null,
-                  bed_id: null,
                 })
               }
             >
@@ -217,7 +214,6 @@ export function IncomeExpenseFilterPanel({
                 patch({
                   building_id: v === "ALL" ? null : v,
                   room_id: null,
-                  bed_id: null,
                 })
               }
             >
@@ -243,7 +239,6 @@ export function IncomeExpenseFilterPanel({
               onValueChange={(v) =>
                 patch({
                   room_id: v === "ALL" ? null : v,
-                  bed_id: null,
                 })
               }
               disabled={!draft.building_id}
@@ -256,30 +251,6 @@ export function IncomeExpenseFilterPanel({
                 {(rooms || []).map((r) => (
                   <SelectItem key={r.id} value={r.id}>
                     {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Giường */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Giường</Label>
-            <Select
-              value={draft.bed_id ?? "ALL"}
-              onValueChange={(v) =>
-                patch({ bed_id: v === "ALL" ? null : v })
-              }
-              disabled={!draft.room_id}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn giường" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả giường</SelectItem>
-                {(beds || []).map((bed) => (
-                  <SelectItem key={bed.id} value={bed.id}>
-                    {bed.name}
                   </SelectItem>
                 ))}
               </SelectContent>

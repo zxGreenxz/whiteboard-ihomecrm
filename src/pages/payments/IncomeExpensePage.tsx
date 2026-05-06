@@ -40,7 +40,6 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   area_id: null,
   building_id: null,
   room_id: null,
-  bed_id: null,
   account_id: null,
   cash_book_id: null,
   type: null,
