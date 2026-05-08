@@ -9,6 +9,71 @@ import type {
 } from "@/types/customer";
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
 
+// Resolve building/room/bed filter → customer IDs.
+// contracts has no customer_id (link is via contract_customers) and no
+// building_id (building is reached via rooms.building_id). Returns [] when
+// nothing matches so callers can short-circuit.
+async function resolveCustomerIdsByLocation(filters: {
+  building_id?: string;
+  room_id?: string;
+  bed_id?: string;
+}): Promise<string[]> {
+  let contractIds: string[] = [];
+
+  const sb = supabase as any;
+
+  if (filters.bed_id) {
+    const { data } = await sb
+      .from("contracts")
+      .select("id")
+      .eq("bed_id", filters.bed_id)
+      .is("deleted_at", null);
+    contractIds = ((data || []) as any[]).map((c) => c.id);
+  } else if (filters.room_id) {
+    const { data: beds } = await sb
+      .from("beds")
+      .select("id")
+      .eq("room_id", filters.room_id);
+    const bedIds = ((beds || []) as any[]).map((b) => b.id);
+    let q = sb.from("contracts").select("id").is("deleted_at", null);
+    q = bedIds.length > 0
+      ? q.or(`room_id.eq.${filters.room_id},bed_id.in.(${bedIds.join(",")})`)
+      : q.eq("room_id", filters.room_id);
+    const { data } = await q;
+    contractIds = ((data || []) as any[]).map((c) => c.id);
+  } else if (filters.building_id) {
+    const { data: rooms } = await sb
+      .from("rooms")
+      .select("id")
+      .eq("building_id", filters.building_id);
+    const roomIds = ((rooms || []) as any[]).map((r) => r.id);
+    if (roomIds.length === 0) return [];
+    const { data: beds } = await sb
+      .from("beds")
+      .select("id")
+      .in("room_id", roomIds);
+    const bedIds = ((beds || []) as any[]).map((b) => b.id);
+    let q = sb.from("contracts").select("id").is("deleted_at", null);
+    q = bedIds.length > 0
+      ? q.or(`room_id.in.(${roomIds.join(",")}),bed_id.in.(${bedIds.join(",")})`)
+      : q.in("room_id", roomIds);
+    const { data } = await q;
+    contractIds = ((data || []) as any[]).map((c) => c.id);
+  }
+
+  if (contractIds.length === 0) return [];
+
+  const { data: links } = await sb
+    .from("contract_customers")
+    .select("customer_id")
+    .in("contract_id", contractIds);
+  return [
+    ...new Set(
+      ((links || []) as any[]).map((l) => l.customer_id).filter(Boolean) as string[]
+    ),
+  ];
+}
+
 // =============================================
 // useCustomers - Query customers with filters and pagination
 // Requirements: 1.1, 1.5, 1.6, 1.9
@@ -58,40 +123,15 @@ export const useCustomers = (
         }
       }
 
-      // Filter by building/room/bed via contracts table
-      // Customers with active contracts in those locations
+      // Filter by building/room/bed via contract_customers junction table
       if (filters?.building_id || filters?.room_id || filters?.bed_id) {
-        // We need to find customer IDs that have contracts in the specified location
-        let contractQuery = supabase
-          .from("contracts")
-          .select("customer_id")
-          .is("deleted_at", null);
-
-        if (filters.building_id) {
-          contractQuery = contractQuery.eq("building_id", filters.building_id);
-        }
-        if (filters.room_id) {
-          contractQuery = contractQuery.eq("room_id", filters.room_id);
-        }
-        if (filters.bed_id) {
-          contractQuery = contractQuery.eq("bed_id", filters.bed_id);
-        }
-
-        const { data: contractData } = await contractQuery;
-        const customerIds = [
-          ...new Set(
-            (contractData || [])
-              .map((c: any) => c.customer_id)
-              .filter(Boolean)
-          ),
-        ];
-
-        if (customerIds.length > 0) {
-          query = query.in("id", customerIds);
-        } else {
-          // No customers match the location filter
-          return { data: [], count: 0 };
-        }
+        const customerIds = await resolveCustomerIdsByLocation({
+          building_id: filters.building_id,
+          room_id: filters.room_id,
+          bed_id: filters.bed_id,
+        });
+        if (customerIds.length === 0) return { data: [], count: 0 };
+        query = query.in("id", customerIds);
       }
 
       // Apply pagination
@@ -210,33 +250,13 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
         baseQuery = baseQuery.eq("status_v2", filters.status) as any;
       }
 
-      // Apply location filters via contracts
-      let customerIds: string[] | null = null;
+      // Apply location filters via contract_customers junction table
       if (filters?.building_id || filters?.room_id || filters?.bed_id) {
-        let contractQuery = supabase
-          .from("contracts")
-          .select("customer_id")
-          .is("deleted_at", null);
-
-        if (filters.building_id) {
-          contractQuery = contractQuery.eq("building_id", filters.building_id);
-        }
-        if (filters.room_id) {
-          contractQuery = contractQuery.eq("room_id", filters.room_id);
-        }
-        if (filters.bed_id) {
-          contractQuery = contractQuery.eq("bed_id", filters.bed_id);
-        }
-
-        const { data: contractData } = await contractQuery;
-        customerIds = [
-          ...new Set(
-            (contractData || [])
-              .map((c: any) => c.customer_id)
-              .filter(Boolean)
-          ),
-        ];
-
+        const customerIds = await resolveCustomerIdsByLocation({
+          building_id: filters.building_id,
+          room_id: filters.room_id,
+          bed_id: filters.bed_id,
+        });
         if (customerIds.length === 0) {
           return { total: 0, individual: 0, organization: 0, foreign: 0 };
         }
