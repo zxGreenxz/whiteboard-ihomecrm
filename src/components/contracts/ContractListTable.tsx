@@ -29,6 +29,7 @@ import {
   UserPlus,
   FileX,
   Trash2,
+  Printer,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -49,6 +50,7 @@ interface ContractListTableProps {
   onTransferContract: (contract: ContractWithRelations) => void;
   onTerminate: (contract: ContractWithRelations) => void;
   onDelete: (contract: ContractWithRelations) => void;
+  onPrint: (contract: ContractWithRelations) => void;
   page: number;
   pageSize: number;
   totalCount: number;
@@ -107,6 +109,7 @@ export default function ContractListTable({
   onTransferContract,
   onTerminate,
   onDelete,
+  onPrint,
   page,
   pageSize,
   totalCount,
@@ -214,6 +217,7 @@ export default function ContractListTable({
                         onTransferContract={onTransferContract}
                         onTerminate={onTerminate}
                         onDelete={onDelete}
+                        onPrint={onPrint}
                       />
                     </TableCell>
                     <TableCell className="text-sm">
@@ -310,6 +314,7 @@ interface ActionButtonsProps {
   onTransferContract: (contract: ContractWithRelations) => void;
   onTerminate: (contract: ContractWithRelations) => void;
   onDelete: (contract: ContractWithRelations) => void;
+  onPrint: (contract: ContractWithRelations) => void;
 }
 
 function ActionButtons({
@@ -322,6 +327,7 @@ function ActionButtons({
   onTransferContract,
   onTerminate,
   onDelete,
+  onPrint,
 }: ActionButtonsProps) {
   const buttons = [
     {
@@ -330,6 +336,13 @@ function ActionButtons({
       onClick: () => onEdit(contract),
       disabled: actions.editDisabled,
       bg: 'bg-green-500 hover:bg-green-600',
+    },
+    {
+      label: 'In hợp đồng',
+      icon: Printer,
+      onClick: () => onPrint(contract),
+      disabled: false,
+      bg: 'bg-sky-500 hover:bg-sky-600',
     },
     {
       label: 'Gia hạn',

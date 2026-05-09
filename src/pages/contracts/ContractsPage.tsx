@@ -15,6 +15,7 @@ import { TransferContractDialog } from '@/components/contracts/TransferContractD
 import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 import { ContractImportExportDialog } from '@/components/contracts/ContractImportExportDialog';
+import { PrintContractDialog } from '@/components/contracts/PrintContractDialog';
 import { exportContracts } from '@/lib/contractExcelHelpers';
 
 import { useContracts } from '@/hooks/useContracts';
@@ -61,6 +62,7 @@ export default function ContractsPage() {
   const [transferContractDialogOpen, setTransferContractDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Selection
@@ -332,6 +334,11 @@ export default function ContractsPage() {
     setDeleteDialogOpen(true);
   }, []);
 
+  const handlePrint = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setPrintDialogOpen(true);
+  }, []);
+
   const hasFilters =
     searchTerm ||
     areaFilter !== 'all' ||
@@ -443,6 +450,7 @@ export default function ContractsPage() {
               onTransferContract={handleTransferContract}
               onTerminate={handleTerminate}
               onDelete={handleDelete}
+              onPrint={handlePrint}
               page={page}
               pageSize={pageSize}
               totalCount={totalCount}
@@ -525,6 +533,14 @@ export default function ContractsPage() {
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
           mode="import"
+        />
+        <PrintContractDialog
+          open={printDialogOpen}
+          onOpenChange={(open) => {
+            setPrintDialogOpen(open);
+            if (!open) setSelectedContract(null);
+          }}
+          contract={selectedContract}
         />
       </div>
     </MainLayout>

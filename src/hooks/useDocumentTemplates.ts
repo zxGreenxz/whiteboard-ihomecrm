@@ -71,6 +71,19 @@ export const TEMPLATE_TYPES: TemplateType[] = [
   "other",
 ];
 
+// Map TemplateCategory -> TemplateType.
+// CreateTemplateDialog only collects `category`, but TemplatesPage filters by `type`.
+// Without this mapping new templates are invisible in every tab.
+export const CATEGORY_TO_TYPE: Record<TemplateCategory, TemplateType> = {
+  CONTRACT_NEW: "lease_contract",
+  CONTRACT_TERMINATION: "other",
+  CONTRACT_EXTENSION: "other",
+  CONTRACT_TRANSFER: "other",
+  INVOICE: "invoice",
+  RECEIPT: "receipt",
+  HANDOVER: "handover_report",
+};
+
 // Default template variables for each type
 export const DEFAULT_TEMPLATE_VARIABLES: Record<TemplateType, Record<string, string>[]> = {
   signature: [

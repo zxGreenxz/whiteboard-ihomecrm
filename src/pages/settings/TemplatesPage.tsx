@@ -42,6 +42,8 @@ import {
 import { CreateTemplateDialog } from "@/components/document-templates/CreateTemplateDialog";
 import { EditTemplateDialog } from "@/components/document-templates/EditTemplateDialog";
 import { DeleteTemplateDialog } from "@/components/document-templates/DeleteTemplateDialog";
+import { TemplateCodesDialog } from "@/components/document-templates/TemplateCodesDialog";
+import { Code2 } from "lucide-react";
 
 const TAB_ICONS: Record<TemplateType, React.ReactNode> = {
   signature: <PenTool className="h-4 w-4" />,
@@ -248,6 +250,7 @@ const TemplatesPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [codesDialogOpen, setCodesDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
 
   const handleEdit = (template: DocumentTemplate) => {
@@ -277,13 +280,22 @@ const TemplatesPage = () => {
             </div>
           </div>
 
-          <Button
-            onClick={() => setCreateDialogOpen(true)}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Thêm mẫu
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCodesDialogOpen(true)}
+            >
+              <Code2 className="h-4 w-4 mr-2" />
+              Xem mã biến
+            </Button>
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Thêm mẫu
+            </Button>
+          </div>
         </div>
 
         {/* Tabs for 6 template types */}
@@ -324,6 +336,11 @@ const TemplatesPage = () => {
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           template={selectedTemplate}
+        />
+
+        <TemplateCodesDialog
+          open={codesDialogOpen}
+          onOpenChange={setCodesDialogOpen}
         />
       </div>
     </MainLayout>

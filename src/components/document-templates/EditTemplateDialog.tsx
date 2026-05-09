@@ -33,6 +33,7 @@ import {
   DocumentTemplate,
   TemplateCategory,
   CATEGORY_LABELS,
+  CATEGORY_TO_TYPE,
 } from "@/hooks/useDocumentTemplates";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -109,6 +110,7 @@ export function EditTemplateDialog({ open, onOpenChange, template }: Props) {
         description: values.description,
         file: values.file?.[0],
         is_default: values.is_default,
+        type: CATEGORY_TO_TYPE[values.category],
       });
 
       form.reset();
