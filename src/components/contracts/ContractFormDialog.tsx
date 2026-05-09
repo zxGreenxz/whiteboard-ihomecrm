@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Select,
   SelectContent,
@@ -509,7 +510,12 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Ngày ký</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -526,7 +532,12 @@ export function ContractFormDialog({
                           Ngày bắt đầu <span className="text-destructive">*</span>
                         </FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -543,7 +554,12 @@ export function ContractFormDialog({
                           Hạn hợp đồng <span className="text-destructive">*</span>
                         </FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -712,7 +728,12 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Ngày BĐ tính tiền</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

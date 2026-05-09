@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Plus } from "lucide-react";
 import { useCustomers } from "@/hooks/useCustomers";
+import { CreateCustomerDialog } from "@/components/customers/CreateCustomerDialog";
 
 export interface CustomerBasic {
   id: string;
@@ -35,9 +36,28 @@ export function CustomerSelectionDialog({
 }: CustomerSelectionDialogProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [createOpen, setCreateOpen] = useState(false);
+  const knownIdsRef = useRef<Set<string>>(new Set());
 
   const { data: customerData, isLoading } = useCustomers(undefined, undefined);
   const customers = customerData?.data ?? [];
+
+  // Auto-check newly created customers (any id we've never seen before).
+  useEffect(() => {
+    if (!open) return;
+    const known = knownIdsRef.current;
+    const newcomers = customers.filter((c) => !known.has(c.id));
+    if (newcomers.length === 0) return;
+    if (known.size > 0) {
+      // Not the initial population — these are genuinely new rows.
+      setCheckedIds((prev) => {
+        const next = new Set(prev);
+        for (const c of newcomers) next.add(c.id);
+        return next;
+      });
+    }
+    for (const c of customers) known.add(c.id);
+  }, [customers, open]);
 
   // Reset checked state when dialog opens
   const handleOpenChange = useCallback(
@@ -45,10 +65,11 @@ export function CustomerSelectionDialog({
       if (nextOpen) {
         setCheckedIds(new Set(selectedCustomerIds));
         setSearchTerm("");
+        knownIdsRef.current = new Set(customers.map((c) => c.id));
       }
       onOpenChange(nextOpen);
     },
-    [selectedCustomerIds, onOpenChange]
+    [selectedCustomerIds, onOpenChange, customers]
   );
 
   // Filter customers by search term (name, phone, id_number)
@@ -95,15 +116,27 @@ export function CustomerSelectionDialog({
           <DialogTitle>Chọn khách hàng</DialogTitle>
         </DialogHeader>
 
-        {/* Search input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Tìm theo tên, SĐT, CCCD..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
+        {/* Search + create */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm theo tên, SĐT, CCCD..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+            className="shrink-0"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Tạo mới
+          </Button>
         </div>
 
         {/* Customer list */}
@@ -153,6 +186,11 @@ export function CustomerSelectionDialog({
             Xác nhận{checkedIds.size > 0 && ` (${checkedIds.size})`}
           </Button>
         </DialogFooter>
+
+        <CreateCustomerDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -109,6 +109,28 @@ export const DEFAULT_TEMPLATE_VARIABLES: Record<TemplateType, Record<string, str
   other: [],
 };
 
+// Sanitize a filename for use as a Supabase Storage object key.
+// Storage object keys reject Vietnamese diacritics, spaces, and most punctuation —
+// uploads silently fail with "Invalid key" otherwise. Strip diacritics, replace
+// whitespace with `_`, drop unsupported chars. Original filename is still kept
+// in the `file_name` column for display/download.
+function sanitizeStorageFileName(name: string): string {
+  const lastDot = name.lastIndexOf(".");
+  const base = lastDot > 0 ? name.slice(0, lastDot) : name;
+  const ext = lastDot > 0 ? name.slice(lastDot + 1).toLowerCase() : "";
+  const safeBase =
+    base
+      .normalize("NFD")
+      .replace(/\p{M}+/gu, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80) || "file";
+  return ext ? `${safeBase}.${ext}` : safeBase;
+}
+
 // Helper function to generate template code
 async function generateTemplateCode(userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -253,9 +275,10 @@ export const useCreateDocumentTemplate = () => {
       // 1. Generate code
       const code = await generateTemplateCode(user.id);
 
-      // 2. Upload file to storage
+      // 2. Upload file to storage (sanitize name — Storage rejects diacritics/spaces)
       const fileExt = payload.file.name.split(".").pop();
-      const fileName = `${Date.now()}_${payload.file.name}`;
+      const safeName = sanitizeStorageFileName(payload.file.name);
+      const fileName = `${Date.now()}_${safeName}`;
       const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -263,10 +286,11 @@ export const useCreateDocumentTemplate = () => {
         .upload(filePath, payload.file, {
           cacheControl: "3600",
           upsert: false,
+          contentType: payload.file.type || undefined,
         });
 
       if (uploadError) {
-        toast.error("Không thể tải file lên");
+        toast.error(`Không thể tải file lên: ${uploadError.message}`);
         throw uploadError;
       }
 
@@ -363,9 +387,10 @@ export const useUpdateDocumentTemplate = () => {
           .eq("id", payload.id)
           .single();
 
-        // Upload new file
+        // Upload new file (sanitize name — Storage rejects diacritics/spaces)
         const fileExt = payload.file.name.split(".").pop();
-        const fileName = `${Date.now()}_${payload.file.name}`;
+        const safeName = sanitizeStorageFileName(payload.file.name);
+        const fileName = `${Date.now()}_${safeName}`;
         const filePath = `${user.id}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
@@ -373,10 +398,11 @@ export const useUpdateDocumentTemplate = () => {
           .upload(filePath, payload.file, {
             cacheControl: "3600",
             upsert: false,
+            contentType: payload.file.type || undefined,
           });
 
         if (uploadError) {
-          toast.error("Không thể tải file lên");
+          toast.error(`Không thể tải file lên: ${uploadError.message}`);
           throw uploadError;
         }
 
