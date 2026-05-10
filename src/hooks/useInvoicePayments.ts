@@ -76,6 +76,8 @@ export const useRecordPaymentRPC = () => {
 
       if (error) throw error;
 
+      const newPaymentId = (result as any)?.payment_id ?? null;
+
       // ─────────────────────────────────────────────────────
       // Mirror Resident: every invoice payment ⇒ 1 phiếu thu
       // ─────────────────────────────────────────────────────
@@ -120,6 +122,7 @@ export const useRecordPaymentRPC = () => {
             contract_id: inv.contract_id,
             account_id: data.account_id,
             invoice_id: inv.id,
+            payment_id: newPaymentId,
             voucher_date: data.payment_date,
             payer_name: data.notes ?? null,
             notes: data.notes ?? null,

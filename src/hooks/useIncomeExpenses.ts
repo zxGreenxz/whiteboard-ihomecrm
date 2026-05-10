@@ -562,26 +562,51 @@ export const useUpdateIncomeExpense = () => {
   });
 };
 
-// Huỷ phiếu thu/chi: KHÔNG xoá, chỉ đổi trạng thái sang CANCELLED.
-// Phiếu đã huỷ không được tính vào Tồn quỹ của tài khoản.
+// Huỷ phiếu thu/chi: đổi trạng thái sang CANCELLED. Nếu là phiếu INCOME mirror
+// từ thanh toán hoá đơn (có payment_id), cũng xoá payment row tương ứng để
+// trigger recompute invoice paid_amount/status (qua trigger DB).
 export const useCancelIncomeExpense = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
+      const { data: voucher, error: fetchErr } = await supabase
+        .from("income_expenses" as any)
+        .select("id, type, payment_id, approval_status")
+        .eq("id", id)
+        .maybeSingle() as any;
+      if (fetchErr) {
+        toast.error(fetchErr.message || "Không thể đọc phiếu");
+        throw fetchErr;
+      }
+
       const { error } = await supabase
         .from("income_expenses" as any)
         .update({ approval_status: "CANCELLED" })
         .eq("id", id);
-
       if (error) {
         toast.error(error.message || "Không thể huỷ phiếu thu/chi");
         throw error;
+      }
+
+      if (voucher?.type === "INCOME" && voucher?.payment_id) {
+        const { error: payErr } = await supabase
+          .from("payments")
+          .delete()
+          .eq("id", voucher.payment_id);
+        if (payErr) {
+          toast.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
+          throw payErr;
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
       toast.success("Phiếu đã được HUỶ");
     },
     onError: (error) => {
@@ -1104,23 +1129,43 @@ export const useCancelIncomeExpenseBatch = () => {
       const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
       if (ids.length === 0) return { count: 0 };
 
-      // 2. UPDATE chuyển CANCELLED (chỉ với phiếu đang APPROVED)
+      // 2. UPDATE chuyển CANCELLED (chỉ với phiếu đang APPROVED), trả về cả payment_id
+      //    để cascade xoá payment hoá đơn tương ứng (nếu có).
       const { data, error } = await supabase
         .from("income_expenses" as any)
         .update({ approval_status: "CANCELLED" })
         .in("id", ids)
         .eq("approval_status", "APPROVED")
-        .select("id");
+        .select("id, type, payment_id");
       if (error) {
         toast.error(error.message || "Không thể huỷ phiếu trong đợt");
         throw error;
       }
+
+      const paymentIdsToDelete = ((data ?? []) as any[])
+        .filter((v) => v.type === "INCOME" && v.payment_id)
+        .map((v) => v.payment_id);
+      if (paymentIdsToDelete.length > 0) {
+        const { error: payErr } = await supabase
+          .from("payments")
+          .delete()
+          .in("id", paymentIdsToDelete);
+        if (payErr) {
+          toast.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
+          throw payErr;
+        }
+      }
+
       return { count: (data ?? []).length };
     },
     onSuccess: ({ count }) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
       toast.success(
         count === 0
           ? "Không còn phiếu nào trong đợt cần huỷ"
