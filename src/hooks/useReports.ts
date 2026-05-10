@@ -435,8 +435,9 @@ export function useDebtReport() {
         .select(`
           id,
           invoice_number,
-          amount,
-          amount_paid,
+          total_amount,
+          paid_amount,
+          remaining_amount,
           due_date,
           status,
           created_at,
@@ -450,7 +451,7 @@ export function useDebtReport() {
             buildings (name)
           )
         `)
-        .eq("status", "PENDING")
+        .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
         .order("due_date", { ascending: true });
 
       if (error) throw error;
@@ -458,7 +459,7 @@ export function useDebtReport() {
       const today = new Date();
       return data.map(invoice => {
         const daysOverdue = differenceInDays(today, new Date(invoice.due_date));
-        const remainingAmount = invoice.amount - (invoice.amount_paid || 0);
+        const remainingAmount = invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0));
 
         let agingCategory = "0-30";
         if (daysOverdue > 90) agingCategory = ">90";
@@ -467,6 +468,8 @@ export function useDebtReport() {
 
         return {
           ...invoice,
+          amount: invoice.total_amount,
+          amount_paid: invoice.paid_amount,
           days_overdue: Math.max(0, daysOverdue),
           remaining_amount: remainingAmount,
           aging_category: agingCategory,
@@ -488,9 +491,11 @@ export function useCustomerDebtReport() {
         .from("invoices")
         .select(`
           id,
-          amount,
-          amount_paid,
+          total_amount,
+          paid_amount,
+          remaining_amount,
           due_date,
+          status,
           tenants (
             id,
             full_name,
@@ -502,14 +507,14 @@ export function useCustomerDebtReport() {
             buildings (name)
           )
         `)
-        .eq("status", "PENDING")
+        .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
         .order("due_date", { ascending: true });
 
       if (error) throw error;
 
       // Group by tenant
       const tenantDebts: Record<string, any> = {};
-      data.forEach(invoice => {
+      data.forEach((invoice: any) => {
         const tenantId = invoice.tenants?.id;
         if (!tenantId) return;
 
@@ -518,16 +523,22 @@ export function useCustomerDebtReport() {
             tenant: invoice.tenants,
             room: invoice.rooms,
             totalDebt: 0,
+            paidTotal: 0,
             invoiceCount: 0,
             oldestDueDate: invoice.due_date,
             invoices: [],
           };
         }
 
-        const remaining = invoice.amount - (invoice.amount_paid || 0);
+        const remaining = invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0));
         tenantDebts[tenantId].totalDebt += remaining;
+        tenantDebts[tenantId].paidTotal += invoice.paid_amount || 0;
         tenantDebts[tenantId].invoiceCount++;
-        tenantDebts[tenantId].invoices.push(invoice);
+        tenantDebts[tenantId].invoices.push({
+          ...invoice,
+          amount: invoice.total_amount,
+          amount_paid: invoice.paid_amount,
+        });
       });
 
       return Object.values(tenantDebts).map((debt: any) => ({
@@ -561,10 +572,12 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
 
       if (error) throw error;
 
-      return data.map(invoice => ({
+      return data.map((invoice: any) => ({
         ...invoice,
+        amount: invoice.total_amount,
+        amount_paid: invoice.paid_amount,
         days_until_due: differenceInDays(new Date(invoice.due_date), today),
-        remaining_amount: invoice.amount - (invoice.amount_paid || 0),
+        remaining_amount: invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)),
       }));
     },
   });
@@ -582,8 +595,9 @@ export function useOverpaymentReport() {
         .from("invoices")
         .select(`
           id,
-          amount,
-          amount_paid,
+          invoice_number,
+          total_amount,
+          paid_amount,
           tenants (
             id,
             full_name,
@@ -594,16 +608,18 @@ export function useOverpaymentReport() {
             buildings (name)
           )
         `)
-        .gt("amount_paid", 0);
+        .gt("paid_amount", 0);
 
       if (error) throw error;
 
       // Filter for overpayments
       return data
-        .filter(invoice => (invoice.amount_paid || 0) > invoice.amount)
-        .map(invoice => ({
+        .filter((invoice: any) => (invoice.paid_amount || 0) > invoice.total_amount)
+        .map((invoice: any) => ({
           ...invoice,
-          overpaid_amount: (invoice.amount_paid || 0) - invoice.amount,
+          amount: invoice.total_amount,
+          amount_paid: invoice.paid_amount,
+          overpaid_amount: (invoice.paid_amount || 0) - invoice.total_amount,
         }));
     },
   });
