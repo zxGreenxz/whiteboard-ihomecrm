@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -104,6 +104,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
 
+  // ID sổ quỹ trùng tên tòa nhà của hoá đơn — dùng làm default cho mọi dòng mới.
+  const defaultAccountId = useMemo(() => {
+    if (!invoice || !accounts.length) return '';
+    const buildingName = invoice.building?.name?.trim();
+    if (!buildingName) return '';
+    return (accounts as any[]).find((a) => a.name?.trim() === buildingName)?.id ?? '';
+  }, [invoice, accounts]);
+
   // Auto-fill số tiền của dòng đầu = outstanding khi mở dialog
   useEffect(() => {
     if (invoice && outstandingAmount > 0) {
@@ -113,12 +121,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   // Auto-default sổ quỹ nhận của DÒNG ĐẦU theo tên tòa nhà (account.name === building.name)
   useEffect(() => {
-    if (!invoice || !accounts.length) return;
-    const buildingName = invoice.building?.name?.trim();
-    if (!buildingName) return;
-    const match = (accounts as any[]).find((a) => a.name?.trim() === buildingName);
-    if (match) setValue('payment_lines.0.account_id', match.id);
-  }, [accounts, invoice, setValue]);
+    if (!defaultAccountId) return;
+    setValue('payment_lines.0.account_id', defaultAccountId);
+  }, [defaultAccountId, setValue]);
 
   // Auto-compute tiền thối = max(0, totalPaid - outstanding), trừ khi user tự sửa
   useEffect(() => {
@@ -364,7 +369,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     variant="outline"
                     title="Thêm dòng thanh toán"
                     onClick={() =>
-                      append({ amount: 0, payment_method: 'TM', account_id: '' })
+                      append({ amount: 0, payment_method: 'TM', account_id: defaultAccountId })
                     }
                   >
                     <Plus className="h-4 w-4" />
@@ -541,7 +546,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 size="sm"
                 className="w-full"
                 onClick={() =>
-                  append({ amount: 0, payment_method: 'TM', account_id: '' })
+                  append({ amount: 0, payment_method: 'TM', account_id: defaultAccountId })
                 }
               >
                 <Plus className="h-4 w-4 mr-2" />
