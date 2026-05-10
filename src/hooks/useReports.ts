@@ -441,10 +441,14 @@ export function useDebtReport() {
           due_date,
           status,
           created_at,
+          building:buildings!invoices_building_id_fkey (id, name),
+          room:rooms!invoices_room_id_fkey (id, name),
           contract:contracts!invoices_contract_id_fkey (
             id,
-            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone ),
-            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
+            contract_customers!contract_customers_contract_id_fkey (
+              is_representative,
+              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+            )
           )
         `)
         .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
@@ -462,9 +466,11 @@ export function useDebtReport() {
         else if (daysOverdue > 60) agingCategory = "61-90";
         else if (daysOverdue > 30) agingCategory = "31-60";
 
-        const tenant = invoice.contract?.tenant ?? null;
-        const room = invoice.contract?.room
-          ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
+        const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
+          || invoice.contract?.contract_customers?.[0];
+        const tenant = cust?.customer ? { id: cust.customer.id, full_name: cust.customer.full_name, phone: cust.customer.phone } : null;
+        const room = invoice.room
+          ? { room_number: invoice.room.name, buildings: invoice.building }
           : null;
 
         return {
@@ -499,10 +505,14 @@ export function useCustomerDebtReport() {
           remaining_amount,
           due_date,
           status,
+          building:buildings!invoices_building_id_fkey (id, name),
+          room:rooms!invoices_room_id_fkey (id, name),
           contract:contracts!invoices_contract_id_fkey (
             id,
-            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone, email ),
-            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
+            contract_customers!contract_customers_contract_id_fkey (
+              is_representative,
+              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone, email)
+            )
           )
         `)
         .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
@@ -510,14 +520,16 @@ export function useCustomerDebtReport() {
 
       if (error) throw error;
 
-      // Group by tenant
+      // Group by customer
       const tenantDebts: Record<string, any> = {};
       data.forEach((invoice: any) => {
-        const tenant = invoice.contract?.tenant;
+        const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
+          || invoice.contract?.contract_customers?.[0];
+        const tenant = cust?.customer ?? null;
         const tenantId = tenant?.id;
         if (!tenantId) return;
-        const room = invoice.contract?.room
-          ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
+        const room = invoice.room
+          ? { room_number: invoice.room.name, buildings: invoice.building }
           : null;
 
         if (!tenantDebts[tenantId]) {
@@ -566,10 +578,14 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
         .from("invoices")
         .select(`
           *,
+          building:buildings!invoices_building_id_fkey (id, name),
+          room:rooms!invoices_room_id_fkey (id, name),
           contract:contracts!invoices_contract_id_fkey (
             id,
-            tenant:tenants!contracts_tenant_id_fkey ( full_name, phone ),
-            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
+            contract_customers!contract_customers_contract_id_fkey (
+              is_representative,
+              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+            )
           )
         `)
         .lte("due_date", futureDate.toISOString())
@@ -577,17 +593,21 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
 
       if (error) throw error;
 
-      return data.map((invoice: any) => ({
-        ...invoice,
-        amount: invoice.total_amount,
-        amount_paid: invoice.paid_amount,
-        tenants: invoice.contract?.tenant ?? null,
-        rooms: invoice.contract?.room
-          ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
-          : null,
-        days_until_due: differenceInDays(new Date(invoice.due_date), today),
-        remaining_amount: invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)),
-      }));
+      return data.map((invoice: any) => {
+        const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
+          || invoice.contract?.contract_customers?.[0];
+        return {
+          ...invoice,
+          amount: invoice.total_amount,
+          amount_paid: invoice.paid_amount,
+          tenants: cust?.customer ?? null,
+          rooms: invoice.room
+            ? { room_number: invoice.room.name, buildings: invoice.building }
+            : null,
+          days_until_due: differenceInDays(new Date(invoice.due_date), today),
+          remaining_amount: invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)),
+        };
+      });
     },
   });
 }
@@ -607,10 +627,14 @@ export function useOverpaymentReport() {
           invoice_number,
           total_amount,
           paid_amount,
+          building:buildings!invoices_building_id_fkey (id, name),
+          room:rooms!invoices_room_id_fkey (id, name),
           contract:contracts!invoices_contract_id_fkey (
             id,
-            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone ),
-            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
+            contract_customers!contract_customers_contract_id_fkey (
+              is_representative,
+              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+            )
           )
         `)
         .gt("paid_amount", 0);
@@ -620,16 +644,20 @@ export function useOverpaymentReport() {
       // Filter for overpayments
       return data
         .filter((invoice: any) => (invoice.paid_amount || 0) > invoice.total_amount)
-        .map((invoice: any) => ({
-          ...invoice,
-          amount: invoice.total_amount,
-          amount_paid: invoice.paid_amount,
-          tenants: invoice.contract?.tenant ?? null,
-          rooms: invoice.contract?.room
-            ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
-            : null,
-          overpaid_amount: (invoice.paid_amount || 0) - invoice.total_amount,
-        }));
+        .map((invoice: any) => {
+          const cust = (invoice.contract?.contract_customers || []).find((c: any) => c.is_representative)
+            || invoice.contract?.contract_customers?.[0];
+          return {
+            ...invoice,
+            amount: invoice.total_amount,
+            amount_paid: invoice.paid_amount,
+            tenants: cust?.customer ?? null,
+            rooms: invoice.room
+              ? { room_number: invoice.room.name, buildings: invoice.building }
+              : null,
+            overpaid_amount: (invoice.paid_amount || 0) - invoice.total_amount,
+          };
+        });
     },
   });
 }
