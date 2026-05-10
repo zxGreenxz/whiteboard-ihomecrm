@@ -66,12 +66,9 @@ const itemTypeLabels: Record<string, string> = {
 };
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
-  CASH: 'Tiền mặt',
-  BANK_TRANSFER: 'Chuyển khoản',
-  MOMO: 'MoMo',
-  VNPAY: 'VNPay',
-  ZALO_PAY: 'ZaloPay',
-  OTHER: 'Khác',
+  TM: 'TM',
+  TK: 'TK',
+  TT: 'TT',
 };
 
 // ---------------------------------------------------------------------------

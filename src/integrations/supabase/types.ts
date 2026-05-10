@@ -3405,13 +3405,7 @@ export type Database = {
         | "GENERAL_ANNOUNCEMENT"
         | "CUSTOM"
       payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
-      payment_method:
-        | "CASH"
-        | "BANK_TRANSFER"
-        | "MOMO"
-        | "VNPAY"
-        | "ZALO_PAY"
-        | "OTHER"
+      payment_method: "TM" | "TK" | "TT"
       pricing_type:
         | "DON_GIA_CO_DINH_THANG"
         | "DON_GIA_CO_DINH_DONG_HO"
@@ -3655,14 +3649,7 @@ export const Constants = {
         "CUSTOM",
       ],
       payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
-      payment_method: [
-        "CASH",
-        "BANK_TRANSFER",
-        "MOMO",
-        "VNPAY",
-        "ZALO_PAY",
-        "OTHER",
-      ],
+      payment_method: ["TM", "TK", "TT"],
       pricing_type: [
         "DON_GIA_CO_DINH_THANG",
         "DON_GIA_CO_DINH_DONG_HO",

@@ -66,7 +66,7 @@ const TerminationApprovalsTab = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentMethod, setPaymentMethod] = useState('TM');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -421,8 +421,9 @@ const TerminationApprovalsTab = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CASH">Tiền mặt</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">Chuyển khoản</SelectItem>
+                    <SelectItem value="TM">TM</SelectItem>
+                    <SelectItem value="TK">TK</SelectItem>
+                    <SelectItem value="TT">TT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

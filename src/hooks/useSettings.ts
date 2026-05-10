@@ -55,8 +55,8 @@ export interface InvoiceConfig {
 
 export interface PaymentConfig {
   // Cấu hình thanh toán
-  allowed_payment_methods: ('CASH' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'OTHER')[];
-  default_payment_method: 'CASH' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'OTHER';
+  allowed_payment_methods: ('TM' | 'TK' | 'TT')[];
+  default_payment_method: 'TM' | 'TK' | 'TT';
   auto_send_receipt: boolean; // Tự động gửi biên lai
   receipt_template_id?: string;
 }
@@ -113,8 +113,8 @@ const DEFAULT_INVOICE_CONFIG: InvoiceConfig = {
 };
 
 const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
-  allowed_payment_methods: ['CASH', 'BANK_TRANSFER', 'MOMO', 'VNPAY'],
-  default_payment_method: 'CASH',
+  allowed_payment_methods: ['TM', 'TK', 'TT'],
+  default_payment_method: 'TM',
   auto_send_receipt: false,
 };
 

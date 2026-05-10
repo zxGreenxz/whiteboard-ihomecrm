@@ -25,7 +25,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import type { InvoiceWithRelations } from '@/types/invoice';
-import { DollarSign, CreditCard, Banknote, Smartphone, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
+import { DollarSign, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface RecordPaymentDialogProps {
@@ -36,7 +36,7 @@ interface RecordPaymentDialogProps {
 
 const paymentSchema = z.object({
   amount: z.number().min(1, 'Số tiền phải lớn hơn 0'),
-  payment_method: z.enum(['CASH', 'BANK_TRANSFER', 'MOMO', 'ZALO_PAY', 'VNPAY', 'OTHER']),
+  payment_method: z.enum(['TM', 'TK', 'TT']),
   payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
   account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ nhận'),
   notes: z.string().optional(),
@@ -62,7 +62,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
-      payment_method: 'CASH',
+      payment_method: 'TM',
       payment_date: new Date().toISOString().split('T')[0],
     },
   });
@@ -308,37 +308,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="CASH">
-                  <div className="flex items-center gap-2">
-                    <Banknote className="h-4 w-4" />
-                    Tiền mặt
-                  </div>
-                </SelectItem>
-                <SelectItem value="BANK_TRANSFER">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    Chuyển khoản
-                  </div>
-                </SelectItem>
-                <SelectItem value="MOMO">
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4" />
-                    MoMo
-                  </div>
-                </SelectItem>
-                <SelectItem value="ZALO_PAY">
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4" />
-                    ZaloPay
-                  </div>
-                </SelectItem>
-                <SelectItem value="VNPAY">
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="h-4 w-4" />
-                    VNPay
-                  </div>
-                </SelectItem>
-                <SelectItem value="OTHER">Khác</SelectItem>
+                <SelectItem value="TM">TM</SelectItem>
+                <SelectItem value="TK">TK</SelectItem>
+                <SelectItem value="TT">TT</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -535,7 +535,7 @@ export async function processTermination(params: {
           : `Thu thêm từ thanh lý hợp đồng`,
         reference_type: 'CONTRACT_TERMINATION',
         reference_id: params.termination_id,
-        payment_method: params.payment_method || 'CASH',
+        payment_method: params.payment_method || 'TM',
         notes: params.notes,
       }])
       .select()

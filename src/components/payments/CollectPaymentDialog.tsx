@@ -39,7 +39,7 @@ const paymentSchema = z.object({
   type: z.enum(["income", "expense"]),
   invoice_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
-  payment_method: z.enum(["CASH", "BANK_TRANSFER", "MOMO", "ZALO_PAY", "CREDIT_CARD", "OTHER"]),
+  payment_method: z.enum(["TM", "TK", "TT"]),
   payment_date: z.string().min(1, "Ngày thanh toán là bắt buộc"),
   receipt_number: z.string().optional(),
   income_expense_type_id: z.string().optional(),
@@ -71,7 +71,7 @@ export function CollectPaymentDialog({
       type: defaultType,
       invoice_id: preSelectedInvoiceId || "",
       amount: 0,
-      payment_method: "CASH",
+      payment_method: "TM",
       payment_date: new Date().toISOString().split('T')[0],
       receipt_number: "",
       income_expense_type_id: "",
@@ -135,7 +135,7 @@ export function CollectPaymentDialog({
         type: defaultType,
         invoice_id: preSelectedInvoiceId || "",
         amount: 0,
-        payment_method: "CASH",
+        payment_method: "TM",
         payment_date: new Date().toISOString().split('T')[0],
         receipt_number: "",
         income_expense_type_id: "",
@@ -364,12 +364,9 @@ export function CollectPaymentDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="CASH">Tiền mặt</SelectItem>
-                        <SelectItem value="BANK_TRANSFER">Chuyển khoản</SelectItem>
-                        <SelectItem value="MOMO">MoMo</SelectItem>
-                        <SelectItem value="ZALO_PAY">ZaloPay</SelectItem>
-                        <SelectItem value="CREDIT_CARD">Thẻ tín dụng</SelectItem>
-                        <SelectItem value="OTHER">Khác</SelectItem>
+                        <SelectItem value="TM">TM</SelectItem>
+                        <SelectItem value="TK">TK</SelectItem>
+                        <SelectItem value="TT">TT</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

@@ -6,14 +6,7 @@ import { z } from 'zod';
 
 const invoiceItemTypeEnum = z.enum(['RENT', 'SERVICE', 'PENALTY', 'DISCOUNT', 'OTHER']);
 
-const paymentMethodEnum = z.enum([
-  'CASH',
-  'BANK_TRANSFER',
-  'MOMO',
-  'VNPAY',
-  'ZALO_PAY',
-  'OTHER',
-]);
+const paymentMethodEnum = z.enum(['TM', 'TK', 'TT']);
 
 // ============================================================
 // Invoice Item Schema

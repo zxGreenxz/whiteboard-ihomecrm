@@ -949,7 +949,7 @@ export const useApproveTermination = () => {
                 : "Thu thêm từ thanh lý hợp đồng",
               reference_type: "CONTRACT_TERMINATION",
               reference_id: data.termination_id,
-              payment_method: data.payment_method || "CASH",
+              payment_method: data.payment_method || "TM",
               notes: data.notes,
             },
           ]);

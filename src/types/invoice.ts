@@ -23,13 +23,7 @@ export type InvoiceItemType =
   | 'DISCOUNT'
   | 'OTHER';
 
-export type PaymentMethod =
-  | 'CASH'
-  | 'BANK_TRANSFER'
-  | 'MOMO'
-  | 'VNPAY'
-  | 'ZALO_PAY'
-  | 'OTHER';
+export type PaymentMethod = 'TM' | 'TK' | 'TT';
 
 // =============================================
 // Core Entities (matching database tables)

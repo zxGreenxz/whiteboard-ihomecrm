@@ -20,12 +20,9 @@ interface PaymentReceiptDialogProps {
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CASH: "Tiền mặt",
-  BANK_TRANSFER: "Chuyển khoản",
-  MOMO: "MoMo",
-  ZALO_PAY: "ZaloPay",
-  CREDIT_CARD: "Thẻ tín dụng",
-  OTHER: "Khác",
+  TM: "TM",
+  TK: "TK",
+  TT: "TT",
 };
 
 export function PaymentReceiptDialog({

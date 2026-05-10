@@ -306,12 +306,9 @@ export function exportPayments(payments: Array<{
   };
 }>): void {
   const methodMap: Record<string, string> = {
-    CASH: 'Tiền mặt',
-    BANK_TRANSFER: 'Chuyển khoản',
-    MOMO: 'MoMo',
-    ZALO_PAY: 'ZaloPay',
-    VNPAY: 'VNPay',
-    OTHER: 'Khác',
+    TM: 'TM',
+    TK: 'TK',
+    TT: 'TT',
   };
 
   const columns: ExportColumn<typeof payments[0]>[] = [

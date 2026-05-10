@@ -29,12 +29,9 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import type { PaymentWithRelations } from "@/hooks/usePayments";
 
 const PAYMENT_METHODS: Record<string, { label: string; color: string }> = {
-  CASH: { label: "Tiền mặt", color: "bg-green-100 text-green-800" },
-  BANK_TRANSFER: { label: "Chuyển khoản", color: "bg-blue-100 text-blue-800" },
-  MOMO: { label: "MoMo", color: "bg-pink-100 text-pink-800" },
-  ZALO_PAY: { label: "ZaloPay", color: "bg-purple-100 text-purple-800" },
-  CREDIT_CARD: { label: "Thẻ tín dụng", color: "bg-yellow-100 text-yellow-800" },
-  OTHER: { label: "Khác", color: "bg-gray-100 text-gray-800" },
+  TM: { label: "TM", color: "bg-zinc-100 text-zinc-800" },
+  TK: { label: "TK", color: "bg-zinc-100 text-zinc-800" },
+  TT: { label: "TT", color: "bg-zinc-100 text-zinc-800" },
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
