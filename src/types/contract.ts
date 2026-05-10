@@ -78,6 +78,7 @@ export interface ContractCustomer {
   contract_id: string;
   customer_id: string;
   is_representative: boolean;
+  notes: string | null;
   customer?: {
     id: string;
     full_name: string;
@@ -144,7 +145,7 @@ export interface ContractFormData {
   notes?: string;
   discount_months?: number;
   discount_amount_per_month?: number;
-  customers: { customer_id: string; is_representative: boolean }[];
+  customers: { customer_id: string; is_representative: boolean; notes?: string | null }[];
   services: { service_id: string; unit_price: number; initial_reading?: number }[];
 }
 

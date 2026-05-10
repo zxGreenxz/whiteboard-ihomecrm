@@ -32,10 +32,10 @@ import DepositsPage from "./pages/deposits/DepositsPage";
 import ContractsPage from "./pages/contracts/ContractsPage";
 import ContractDetailPage from "./pages/contracts/ContractDetailPage";
 import TenantsPage from "./pages/tenants/TenantsPage";
-import TenantDetailPage from "./pages/tenants/TenantDetailPage";
 import VehiclesPage from "./pages/vehicles/VehiclesPage";
 import CustomersPage from "./pages/customers/CustomersPage";
 import CustomerFormPage from "./pages/customers/CustomerFormPage";
+import CustomerDetailPage from "./pages/customers/CustomerDetailPage";
 import CT01FormPage from "./pages/customers/CT01FormPage";
 
 // Finance Pages
@@ -198,7 +198,7 @@ const App = () => (
           <Route path="/customers/new" element={<ProtectedRoute><CustomerFormPage /></ProtectedRoute>} />
           <Route path="/customers/:id/edit" element={<ProtectedRoute><CustomerFormPage /></ProtectedRoute>} />
           <Route path="/customers/:id/ct01" element={<ProtectedRoute><CT01FormPage /></ProtectedRoute>} />
-          <Route path="/customers/:id" element={<ProtectedRoute><TenantDetailPage /></ProtectedRoute>} />
+          <Route path="/customers/:id" element={<ProtectedRoute><CustomerDetailPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<Navigate to="/customers" replace />} />
           <Route path="/tenants/:id" element={<Navigate to="/customers" replace />} />
           <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />

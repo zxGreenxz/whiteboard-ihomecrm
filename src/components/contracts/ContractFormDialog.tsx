@@ -35,7 +35,11 @@ import { contractFormSchema } from "@/lib/contractValidation";
 import type { ContractFormData } from "@/lib/contractValidation";
 import type { ContractWithRelations, PaymentCycle } from "@/types/contract";
 import { PAYMENT_CYCLE_LABELS } from "@/types/contract";
-import { useCreateContract, useUpdateContract } from "@/hooks/useContracts";
+import {
+  useCreateContract,
+  useSyncContractCustomers,
+  useUpdateContract,
+} from "@/hooks/useContracts";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useBeds } from "@/hooks/useBeds";
@@ -58,6 +62,7 @@ interface ContractFormDialogProps {
 
 interface SelectedCustomer extends CustomerBasic {
   is_representative: boolean;
+  notes: string | null;
 }
 
 interface SelectedService extends ServiceBasic {
@@ -79,7 +84,11 @@ export function ContractFormDialog({
   // Mutations
   const createContract = useCreateContract();
   const updateContract = useUpdateContract();
-  const isPending = createContract.isPending || updateContract.isPending;
+  const syncCustomers = useSyncContractCustomers();
+  const isPending =
+    createContract.isPending ||
+    updateContract.isPending ||
+    syncCustomers.isPending;
 
   // Data hooks
   const { data: buildings = [] } = useBuildings();
@@ -169,6 +178,7 @@ export function ContractFormDialog({
           phone: cc.customer?.phone ?? "",
           id_number: cc.customer?.id_number ?? null,
           is_representative: cc.is_representative,
+          notes: cc.notes ?? null,
         })) ?? [];
       setSelectedCustomers(customers);
 
@@ -233,7 +243,7 @@ export function ContractFormDialog({
   const handleCustomersSelected = (customers: CustomerBasic[]) => {
     const newCustomers: SelectedCustomer[] = customers.map((c) => {
       const existing = selectedCustomers.find((sc) => sc.id === c.id);
-      return existing ?? { ...c, is_representative: false };
+      return existing ?? { ...c, is_representative: false, notes: null };
     });
     // Ensure at least one representative
     if (newCustomers.length > 0 && !newCustomers.some((c) => c.is_representative)) {
@@ -259,6 +269,14 @@ export function ContractFormDialog({
         ...c,
         is_representative: c.id === customerId,
       }))
+    );
+  };
+
+  const handleCustomerNotesChange = (customerId: string, value: string) => {
+    setSelectedCustomers((prev) =>
+      prev.map((c) =>
+        c.id === customerId ? { ...c, notes: value === "" ? null : value } : c
+      )
     );
   };
 
@@ -314,6 +332,7 @@ export function ContractFormDialog({
     const customers = selectedCustomers.map((c) => ({
       customer_id: c.id,
       is_representative: c.is_representative,
+      notes: c.notes,
     }));
 
     const services = selectedServices.map((s) => ({
@@ -349,7 +368,16 @@ export function ContractFormDialog({
 
       updateContract.mutate(
         { id: contract.id, updates },
-        { onSuccess: () => onOpenChange(false) }
+        {
+          onSuccess: () => {
+            // Sync khách hàng (đại diện + ghi chú) — luồng update không
+            // tự đụng tới contract_customers, phải gọi tay sau khi update.
+            syncCustomers.mutate(
+              { contractId: contract.id, customers },
+              { onSuccess: () => onOpenChange(false) }
+            );
+          },
+        }
       );
     } else {
       // Create mode
@@ -617,40 +645,52 @@ export function ContractFormDialog({
                       onValueChange={handleRepresentativeChange}
                     >
                       {selectedCustomers.map((customer) => (
-                        <div
-                          key={customer.id}
-                          className="flex items-center gap-3 px-4 py-3"
-                        >
-                          <RadioGroupItem
-                            value={customer.id}
-                            id={`rep-${customer.id}`}
-                          />
-                          <Label
-                            htmlFor={`rep-${customer.id}`}
-                            className="flex-1 cursor-pointer"
-                          >
-                            <span className="text-sm font-medium">
-                              {customer.full_name}
-                            </span>
-                            <span className="text-xs text-muted-foreground ml-2">
-                              {customer.phone}
-                              {customer.id_number && ` · ${customer.id_number}`}
-                            </span>
-                            {customer.is_representative && (
-                              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
-                                Đại diện
+                        <div key={customer.id} className="px-4 py-3 space-y-2">
+                          <div className="flex items-center gap-3">
+                            <RadioGroupItem
+                              value={customer.id}
+                              id={`rep-${customer.id}`}
+                            />
+                            <Label
+                              htmlFor={`rep-${customer.id}`}
+                              className="flex-1 cursor-pointer"
+                            >
+                              <span className="text-sm font-medium">
+                                {customer.full_name}
                               </span>
-                            )}
-                          </Label>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleRemoveCustomer(customer.id)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                              <span className="text-xs text-muted-foreground ml-2">
+                                {customer.phone}
+                                {customer.id_number && ` · ${customer.id_number}`}
+                              </span>
+                              {customer.is_representative && (
+                                <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">
+                                  Đại diện
+                                </span>
+                              )}
+                            </Label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleRemoveCustomer(customer.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <Textarea
+                            placeholder={
+                              customer.is_representative
+                                ? "Ghi chú cho người đại diện..."
+                                : "Ghi chú riêng cho khách này..."
+                            }
+                            value={customer.notes ?? ""}
+                            onChange={(e) =>
+                              handleCustomerNotesChange(customer.id, e.target.value)
+                            }
+                            rows={2}
+                            className="text-sm"
+                          />
                         </div>
                       ))}
                     </RadioGroup>

@@ -49,6 +49,7 @@ import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 // Import contract action dialogs
@@ -106,6 +107,39 @@ const ContractDetailPage = () => {
   const contractCustomers = (contract?.contract_customers ?? [])
     .slice()
     .sort((a, b) => Number(b.is_representative) - Number(a.is_representative));
+
+  // Phương tiện gắn với các khách trong hợp đồng (gom theo customer_id)
+  const customerIds = contractCustomers.map((cc) => cc.customer_id);
+  const { data: contractVehicles = [] } = useQuery({
+    queryKey: ['contract-vehicles', id, customerIds.join(',')],
+    enabled: customerIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('vehicles')
+        .select('id, customer_id, vehicle_type, vehicle_name, brand, model, license_plate, color, parking_fee')
+        .in('customer_id', customerIds)
+        .is('deleted_at', null);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        customer_id: string;
+        vehicle_type: string | null;
+        vehicle_name: string | null;
+        brand: string | null;
+        model: string | null;
+        license_plate: string | null;
+        color: string | null;
+        parking_fee: number | null;
+      }>;
+    },
+  });
+
+  const vehiclesByCustomer = new Map<string, typeof contractVehicles>();
+  for (const v of contractVehicles) {
+    const arr = vehiclesByCustomer.get(v.customer_id) ?? [];
+    arr.push(v);
+    vehiclesByCustomer.set(v.customer_id, arr);
+  }
 
   // Fetch contract history (extensions, transfers, terminations)
   const [contractHistory, setContractHistory] = useState<ContractHistoryItem[]>([]);
@@ -568,7 +602,9 @@ const ContractDetailPage = () => {
                 <CardContent>
                   {contractCustomers.length > 0 ? (
                     <div className="space-y-4">
-                      {contractCustomers.map((cc, index) => (
+                      {contractCustomers.map((cc, index) => {
+                        const vehicles = vehiclesByCustomer.get(cc.customer_id) ?? [];
+                        return (
                         <div key={cc.id} className={index > 0 ? 'pt-4 border-t' : ''}>
                           <div className="flex items-center gap-2 mb-2">
                             <span className="font-medium text-sm">
@@ -605,7 +641,51 @@ const ContractDetailPage = () => {
                               </div>
                             </div>
                           </div>
-                          <div className="mt-2">
+                          {vehicles.length > 0 && (
+                            <div className="mt-3">
+                              <div className="text-gray-600 text-xs mb-1">
+                                Phương tiện ({vehicles.length})
+                              </div>
+                              <div className="space-y-1">
+                                {vehicles.map((v) => (
+                                  <div
+                                    key={v.id}
+                                    className="text-sm bg-gray-50 rounded px-2 py-1.5 flex items-center justify-between gap-2"
+                                  >
+                                    <span>
+                                      <span className="font-medium">
+                                        {v.license_plate || 'Chưa có biển số'}
+                                      </span>
+                                      {v.vehicle_name && (
+                                        <span className="text-gray-600 ml-2">
+                                          · {v.vehicle_name}
+                                        </span>
+                                      )}
+                                      {v.color && (
+                                        <span className="text-gray-500 ml-2">· {v.color}</span>
+                                      )}
+                                    </span>
+                                    {v.parking_fee != null && v.parking_fee > 0 && (
+                                      <span className="text-xs text-gray-600">
+                                        {formatCurrency(v.parking_fee)}/tháng
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {cc.notes && (
+                            <div className="mt-3">
+                              <div className="text-gray-600 text-xs mb-1">
+                                {cc.is_representative ? 'Ghi chú đại diện' : 'Ghi chú'}
+                              </div>
+                              <div className="text-sm bg-amber-50 border border-amber-200 rounded p-2 whitespace-pre-wrap">
+                                {cc.notes}
+                              </div>
+                            </div>
+                          )}
+                          <div className="mt-3">
                             <Button
                               variant="outline"
                               size="sm"
@@ -615,7 +695,8 @@ const ContractDetailPage = () => {
                             </Button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-sm text-gray-500 py-4 text-center">

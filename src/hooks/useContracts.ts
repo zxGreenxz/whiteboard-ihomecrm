@@ -70,7 +70,7 @@ const CONTRACT_SELECT = `
     id, name
   ),
   contract_customers!contract_customers_contract_id_fkey (
-    id, contract_id, customer_id, is_representative, created_at, updated_at,
+    id, contract_id, customer_id, is_representative, notes, created_at, updated_at,
     customer:customers!contract_customers_customer_id_fkey (
       id, full_name, phone, email, id_number
     )
@@ -203,6 +203,7 @@ export const useCreateContract = () => {
           contract_id: contract.id,
           customer_id: c.customer_id,
           is_representative: c.is_representative,
+          notes: c.notes ?? null,
         }));
 
         const { error: customersError } = await (supabase as any)
@@ -311,6 +312,54 @@ export const useUpdateContract = () => {
       } else {
         toast.error(error?.message || "Có lỗi xảy ra. Vui lòng thử lại.");
       }
+    },
+  });
+};
+
+// =============================================
+// useSyncContractCustomers — replace contract_customers for a contract.
+// Dùng cho luồng Cập nhật hợp đồng: xoá hết các bản ghi cũ rồi insert lại
+// theo danh sách trong form (đại diện, ghi chú, …).
+// =============================================
+
+export const useSyncContractCustomers = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      contractId,
+      customers,
+    }: {
+      contractId: string;
+      customers: Array<{
+        customer_id: string;
+        is_representative: boolean;
+        notes?: string | null;
+      }>;
+    }) => {
+      const { error: delErr } = await (supabase as any)
+        .from("contract_customers")
+        .delete()
+        .eq("contract_id", contractId);
+      if (delErr) throw delErr;
+
+      if (customers.length === 0) return;
+
+      const rows = customers.map((c) => ({
+        contract_id: contractId,
+        customer_id: c.customer_id,
+        is_representative: c.is_representative,
+        notes: c.notes ?? null,
+      }));
+
+      const { error: insErr } = await (supabase as any)
+        .from("contract_customers")
+        .insert(rows);
+      if (insErr) throw insErr;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["contracts", vars.contractId] });
     },
   });
 };
