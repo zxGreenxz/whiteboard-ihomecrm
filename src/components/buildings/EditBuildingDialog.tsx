@@ -32,8 +32,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateBuilding } from "@/hooks/useBuildings";
 import { useAreas } from "@/hooks/useAreas";
 import type { Database } from "@/integrations/supabase/types";
+import { CommissionTiersField } from "./CommissionTiersField";
+import { DEFAULT_COMMISSION_TIERS, type CommissionTier } from "@/types/building";
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
+
+const commissionTierSchema = z.object({
+  min_months: z.number().min(0),
+  max_months: z.number().min(0),
+  rate_percent: z.number().min(0).max(100),
+}).refine((d) => d.min_months <= d.max_months, {
+  message: "Tháng bắt đầu phải <= tháng kết thúc",
+});
 
 const buildingSchema = z.object({
   area_id: z.string().optional(),
@@ -47,6 +57,7 @@ const buildingSchema = z.object({
   street_address: z.string().optional(),
   total_floors: z.string().optional(),
   description: z.string().optional(),
+  commission_tiers: z.array(commissionTierSchema).default(DEFAULT_COMMISSION_TIERS),
 });
 
 type BuildingFormValues = z.infer<typeof buildingSchema>;
@@ -80,6 +91,8 @@ export function EditBuildingDialog({
       street_address: building.street_address || "",
       total_floors: building.total_floors?.toString() || "",
       description: building.description || "",
+      commission_tiers:
+        ((building as any).commission_tiers as CommissionTier[]) ?? DEFAULT_COMMISSION_TIERS,
     },
   });
 
@@ -98,6 +111,8 @@ export function EditBuildingDialog({
         street_address: building.street_address || "",
         total_floors: building.total_floors?.toString() || "",
         description: building.description || "",
+        commission_tiers:
+          ((building as any).commission_tiers as CommissionTier[]) ?? DEFAULT_COMMISSION_TIERS,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +134,7 @@ export function EditBuildingDialog({
           street_address: data.street_address || null,
           total_floors: data.total_floors ? parseInt(data.total_floors) : null,
           description: data.description || null,
+          commission_tiers: data.commission_tiers as any,
         },
       });
       onOpenChange(false);
@@ -342,6 +358,25 @@ export function EditBuildingDialog({
                         <Textarea
                           placeholder="Mô tả chi tiết về tòa nhà..."
                           {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Hoa hồng môi giới */}
+              <div className="space-y-4 pt-4 border-t">
+                <FormField
+                  control={form.control}
+                  name="commission_tiers"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <CommissionTiersField
+                          value={(field.value as CommissionTier[]) ?? []}
+                          onChange={field.onChange}
                         />
                       </FormControl>
                       <FormMessage />

@@ -11,6 +11,22 @@
 export type BuildingStatus = 'ACTIVE' | 'INACTIVE';
 
 // =============================================
+// Commission tiers
+// =============================================
+
+/** Một bậc hoa hồng môi giới: số tháng HĐ trong [min, max] thì tính rate% tiền phòng */
+export interface CommissionTier {
+  min_months: number;
+  max_months: number;
+  rate_percent: number;
+}
+
+export const DEFAULT_COMMISSION_TIERS: CommissionTier[] = [
+  { min_months: 5, max_months: 6, rate_percent: 50 },
+  { min_months: 10, max_months: 12, rate_percent: 60 },
+];
+
+// =============================================
 // Core Entity
 // =============================================
 
@@ -32,6 +48,7 @@ export interface Building {
   description: string | null;
   images: any;
   amenities: any;
+  commission_tiers: CommissionTier[];
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -84,6 +101,7 @@ export interface BuildingFormData {
   status: BuildingStatus;
   contract_template_id?: string | null;
   invoice_template_id?: string | null;
+  commission_tiers?: CommissionTier[];
 }
 
 /** Form data shape for building service rows in the services table */

@@ -32,13 +32,15 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
 import { buildingSchema } from '@/lib/buildingValidation';
-import type { BuildingFormData, BuildingServiceFormData, BuildingWithRelations } from '@/types/building';
+import type { BuildingFormData, BuildingServiceFormData, BuildingWithRelations, CommissionTier } from '@/types/building';
+import { DEFAULT_COMMISSION_TIERS } from '@/types/building';
 import { useCreateBuilding, useUpdateBuilding } from '@/hooks/useBuildings';
 import { useBuildingServices, useUpsertBuildingServices } from '@/hooks/useBuildingServices';
 import { useServices } from '@/hooks/useServices';
 import { useDocumentTemplatesByType } from '@/hooks/useDocumentTemplates';
 import BuildingAddressSection from './BuildingAddressSection';
 import BuildingServicesSection from './BuildingServicesSection';
+import { CommissionTiersField } from './CommissionTiersField';
 
 interface BuildingFormDialogProps {
   open: boolean;
@@ -79,6 +81,7 @@ export default function BuildingFormDialog({
       street_address: '',
       area_id: '',
       status: 'ACTIVE',
+      commission_tiers: DEFAULT_COMMISSION_TIERS,
     },
   });
 
@@ -101,6 +104,9 @@ export default function BuildingFormDialog({
           invoice_template_id:
             (building as { invoice_template_id?: string | null })
               .invoice_template_id ?? null,
+          commission_tiers:
+            ((building as { commission_tiers?: CommissionTier[] })
+              .commission_tiers as CommissionTier[]) ?? DEFAULT_COMMISSION_TIERS,
         });
       } else {
         form.reset({
@@ -114,6 +120,7 @@ export default function BuildingFormDialog({
           status: 'ACTIVE',
           contract_template_id: null,
           invoice_template_id: null,
+          commission_tiers: DEFAULT_COMMISSION_TIERS,
         });
       }
     }
@@ -161,6 +168,7 @@ export default function BuildingFormDialog({
             status: data.status,
             contract_template_id: data.contract_template_id ?? null,
             invoice_template_id: data.invoice_template_id ?? null,
+            commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
           },
         });
         await upsertServices.mutateAsync({
@@ -180,6 +188,7 @@ export default function BuildingFormDialog({
           status: data.status,
           contract_template_id: data.contract_template_id ?? null,
           invoice_template_id: data.invoice_template_id ?? null,
+          commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
         });
         await upsertServices.mutateAsync({
           buildingId: newBuilding.id,
@@ -383,6 +392,30 @@ export default function BuildingFormDialog({
                       )}
                     />
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Section 5: Hoa hồng môi giới */}
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase">
+                    Hoa hồng môi giới
+                  </h3>
+                  <FormField
+                    control={form.control}
+                    name="commission_tiers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <CommissionTiersField
+                            value={(field.value as CommissionTier[]) ?? []}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </CardContent>
               </Card>
 

@@ -1,5 +1,18 @@
 import { z } from 'zod';
 
+export const commissionTierSchema = z.object({
+  min_months: z.number().min(0),
+  max_months: z.number().min(0),
+  rate_percent: z.number().min(0).max(100),
+}).refine((d) => d.min_months <= d.max_months, {
+  message: 'Tháng bắt đầu phải <= tháng kết thúc',
+});
+
+export const DEFAULT_COMMISSION_TIERS_DATA = [
+  { min_months: 5, max_months: 6, rate_percent: 50 },
+  { min_months: 10, max_months: 12, rate_percent: 60 },
+];
+
 export const buildingSchema = z.object({
   name: z.string().min(1, 'Tên toà nhà không được để trống'),
   code: z.string().optional().or(z.literal('')),
@@ -11,6 +24,7 @@ export const buildingSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),
+  commission_tiers: z.array(commissionTierSchema).default(DEFAULT_COMMISSION_TIERS_DATA),
 });
 
 export const buildingServiceSchema = z.object({

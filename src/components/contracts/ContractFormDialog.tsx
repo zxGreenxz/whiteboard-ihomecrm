@@ -51,6 +51,7 @@ import {
   ServiceSelectionDialog,
   type ServiceBasic,
 } from "./ServiceSelectionDialog";
+import { CommissionVoucherModal } from "./CommissionVoucherModal";
 
 interface ContractFormDialogProps {
   open: boolean;
@@ -115,6 +116,9 @@ export function ContractFormDialog({
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+
+  // Commission voucher modal — open after successful create (not edit)
+  const [commissionContractId, setCommissionContractId] = useState<string | null>(null);
 
   // Form
   const form = useForm<ContractFormData>({
@@ -410,12 +414,21 @@ export function ContractFormDialog({
           customers,
           services,
         },
-        { onSuccess: () => onOpenChange(false) }
+        {
+          onSuccess: (contract) => {
+            // Đóng dialog HĐ trước rồi mở modal tạo phiếu chi hoa hồng
+            onOpenChange(false);
+            if (contract?.id) {
+              setCommissionContractId(contract.id);
+            }
+          },
+        }
       );
     }
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-0">
@@ -1041,5 +1054,15 @@ export function ContractFormDialog({
         />
       </DialogContent>
     </Dialog>
+
+    {/* Modal tạo phiếu chi hoa hồng — chỉ mở sau khi tạo HĐ thành công */}
+    <CommissionVoucherModal
+      open={!!commissionContractId}
+      contractId={commissionContractId}
+      onOpenChange={(o) => {
+        if (!o) setCommissionContractId(null);
+      }}
+    />
+    </>
   );
 }
