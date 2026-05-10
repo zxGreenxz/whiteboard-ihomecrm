@@ -84,20 +84,22 @@ export const useRecordPaymentRPC = () => {
         .eq('id', data.invoice_id)
         .single() as any;
 
-      // Resolve a default income type (identity='rent' preferred, fall back to
-      // any income type owned by this user).
-      const { data: incTypes } = await supabase
+      const { data: incTypes, error: incTypesErr } = await supabase
         .from('income_expense_types' as any)
-        .select('id, identity, type, name')
+        .select('id, is_default, type, name')
         .eq('type', 'income')
         .limit(50) as any;
-      const types = (incTypes ?? []) as Array<{ id: string; identity?: string }>;
-      const incomeTypeId =
-        types.find((t) => t.identity === 'rent')?.id ||
-        types.find((t) => t.identity === 'other')?.id ||
-        types[0]?.id;
+      if (incTypesErr) throw incTypesErr;
+      const types = (incTypes ?? []) as Array<{ id: string; is_default?: boolean }>;
+      const incomeTypeId = types.find((t) => t.is_default)?.id || types[0]?.id;
 
-      if (inv && data.account_id && incomeTypeId) {
+      if (inv && data.account_id) {
+        if (!incomeTypeId) {
+          throw new Error(
+            'Chưa có loại thu nào trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
+          );
+        }
+
         const meta = (user.user_metadata ?? {}) as Record<string, any>;
         const creatorName: string =
           meta.full_name || meta.name || user.email || 'Người dùng';
@@ -124,8 +126,11 @@ export const useRecordPaymentRPC = () => {
           .select()
           .single();
 
-        if (!vErr && voucher) {
-          await supabase.from('income_expense_items' as any).insert({
+        if (vErr) throw vErr;
+
+        const { error: itemErr } = await supabase
+          .from('income_expense_items' as any)
+          .insert({
             income_expense_id: (voucher as any).id,
             income_expense_type_id: incomeTypeId,
             description: `Thanh toán hoá đơn ${inv.invoice_number || ''}`,
@@ -134,7 +139,7 @@ export const useRecordPaymentRPC = () => {
             start_date: data.payment_date,
             end_date: data.payment_date,
           });
-        }
+        if (itemErr) throw itemErr;
       }
       // ─────────────────────────────────────────────────────
 
