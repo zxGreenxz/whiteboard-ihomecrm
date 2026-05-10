@@ -74,7 +74,9 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
       unit: service.unit || "",
       quota_id: service.quota_id || "",
       tax_rate: String(service.tax_rate ?? 0),
-      building_ids: service.service_buildings.map((sb) => sb.building_id),
+      building_ids: service.building_services
+        .filter((bs) => bs.is_active)
+        .map((bs) => bs.building_id),
       description: service.description || "",
     },
   });
@@ -89,7 +91,9 @@ export function EditServiceDialog({ open, onOpenChange, service }: EditServiceDi
         unit: service.unit || "",
         quota_id: service.quota_id || "",
         tax_rate: String(service.tax_rate ?? 0),
-        building_ids: service.service_buildings.map((sb) => sb.building_id),
+        building_ids: service.building_services
+        .filter((bs) => bs.is_active)
+        .map((bs) => bs.building_id),
         description: service.description || "",
       });
     }

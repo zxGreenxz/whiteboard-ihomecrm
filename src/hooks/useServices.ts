@@ -37,7 +37,7 @@ export const UNIT_OPTIONS = [
 ];
 
 export type ServiceWithBuildings = Service & {
-  service_buildings: { building_id: string }[];
+  building_services: { building_id: string; is_active: boolean }[];
 };
 
 // Fetch services with building associations, optional filters
@@ -50,7 +50,7 @@ export const useServices = (filters?: {
     queryFn: async () => {
       let query = supabase
         .from("services")
-        .select("*, service_buildings(building_id)")
+        .select("*, building_services(building_id, is_active)")
         .is("deleted_at", null)
         .order("name", { ascending: true });
 
@@ -67,10 +67,12 @@ export const useServices = (filters?: {
 
       let result = (data || []) as ServiceWithBuildings[];
 
-      // Client-side filter by building_id through junction table
+      // Client-side filter by building_id through junction table (active only)
       if (filters?.building_id) {
         result = result.filter((s) =>
-          s.service_buildings.some((sb) => sb.building_id === filters.building_id)
+          s.building_services.some(
+            (bs) => bs.building_id === filters.building_id && bs.is_active
+          )
         );
       }
 
@@ -79,7 +81,7 @@ export const useServices = (filters?: {
   });
 };
 
-// Create service + service_buildings
+// Create service + building_services links
 export const useCreateService = () => {
   const queryClient = useQueryClient();
 
@@ -109,19 +111,20 @@ export const useCreateService = () => {
         throw error;
       }
 
-      // Insert service_buildings
+      // Insert building_services for each picked building (is_active=true).
       if (building_ids && building_ids.length > 0) {
-        const { error: sbError } = await supabase
-          .from("service_buildings")
+        const { error: bsError } = await supabase
+          .from("building_services")
           .insert(
             building_ids.map((bid) => ({
               service_id: data.id,
               building_id: bid,
+              is_active: true,
             }))
           );
-        if (sbError) {
+        if (bsError) {
           toast.error("Không thể gán dịch vụ cho tòa nhà");
-          throw sbError;
+          throw bsError;
         }
       }
 
@@ -129,12 +132,14 @@ export const useCreateService = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
+      queryClient.invalidateQueries({ queryKey: ["building-services"] });
       toast.success("Dữ liệu đã được TẠO thành công");
     },
   });
 };
 
-// Update service + manage service_buildings
+// Update service + reconcile building_services links.
+// Diff-based so we preserve unit_price_override on rows that stay.
 export const useUpdateService = () => {
   const queryClient = useQueryClient();
 
@@ -164,29 +169,68 @@ export const useUpdateService = () => {
         throw error;
       }
 
-      // Replace service_buildings
       if (building_ids !== undefined) {
-        const { error: delError } = await supabase
-          .from("service_buildings")
-          .delete()
+        // Load current links for this service so we can diff (preserves
+        // unit_price_override on untouched rows).
+        const { data: existing, error: existingError } = await supabase
+          .from("building_services")
+          .select("id, building_id, is_active")
           .eq("service_id", id);
-        if (delError) {
+        if (existingError) {
           toast.error("Không thể cập nhật danh sách tòa nhà");
-          throw delError;
+          throw existingError;
         }
 
-        if (building_ids.length > 0) {
-          const { error: sbError } = await supabase
-            .from("service_buildings")
+        const desired = new Set(building_ids);
+        const existingMap = new Map(
+          (existing ?? []).map((r) => [r.building_id, r])
+        );
+
+        const idsToDelete = (existing ?? [])
+          .filter((r) => !desired.has(r.building_id))
+          .map((r) => r.id);
+        const idsToActivate = (existing ?? [])
+          .filter((r) => desired.has(r.building_id) && !r.is_active)
+          .map((r) => r.id);
+        const buildingsToInsert = building_ids.filter(
+          (bid) => !existingMap.has(bid)
+        );
+
+        if (idsToDelete.length > 0) {
+          const { error: delError } = await supabase
+            .from("building_services")
+            .delete()
+            .in("id", idsToDelete);
+          if (delError) {
+            toast.error("Không thể cập nhật danh sách tòa nhà");
+            throw delError;
+          }
+        }
+
+        if (idsToActivate.length > 0) {
+          const { error: actError } = await supabase
+            .from("building_services")
+            .update({ is_active: true })
+            .in("id", idsToActivate);
+          if (actError) {
+            toast.error("Không thể cập nhật danh sách tòa nhà");
+            throw actError;
+          }
+        }
+
+        if (buildingsToInsert.length > 0) {
+          const { error: insError } = await supabase
+            .from("building_services")
             .insert(
-              building_ids.map((bid) => ({
+              buildingsToInsert.map((bid) => ({
                 service_id: id,
                 building_id: bid,
+                is_active: true,
               }))
             );
-          if (sbError) {
+          if (insError) {
             toast.error("Không thể cập nhật danh sách tòa nhà");
-            throw sbError;
+            throw insError;
           }
         }
       }
@@ -195,6 +239,7 @@ export const useUpdateService = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
+      queryClient.invalidateQueries({ queryKey: ["building-services"] });
       toast.success("Dữ liệu đã được CẬP NHẬT thành công");
     },
   });
