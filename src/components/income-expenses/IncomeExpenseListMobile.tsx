@@ -130,7 +130,10 @@ export function IncomeExpenseListMobile({
                   {v.building_name && (
                     <>
                       <span>·</span>
-                      <span className="truncate">{v.building_name}</span>
+                      <span className="truncate">
+                        {v.building_name}
+                        {v.room_name ? ` - ${v.room_name}` : ''}
+                      </span>
                     </>
                   )}
                 </div>
