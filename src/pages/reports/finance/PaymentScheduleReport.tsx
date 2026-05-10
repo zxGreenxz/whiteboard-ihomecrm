@@ -1,126 +1,202 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { Calendar, Clock, CheckCircle2, XCircle } from "lucide-react";
-import { ReportLayout } from "@/components/reports/ReportLayout";
-import { ReportCard } from "@/components/reports/ReportCard";
-import { ExportButtons } from "@/components/reports/ExportButtons";
+import { ChevronRight } from "lucide-react";
 import { usePaymentScheduleReport } from "@/hooks/useReports";
+import { useAreas } from "@/hooks/useAreas";
+import { useBuildings } from "@/hooks/useBuildings";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
-
 export default function PaymentScheduleReport() {
-  const [daysFilter, setDaysFilter] = useState(30);
-  const { data: rawInvoices, isLoading } = usePaymentScheduleReport(daysFilter);
+  const [areaId, setAreaId] = useState<string>("all");
+  const [buildingId, setBuildingId] = useState<string>("all");
+  const [roomId, setRoomId] = useState<string>("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
-  // Cast to any[] to handle hook's runtime data shape
-  const invoices = (rawInvoices || []) as any[];
+  const { data: areas = [] } = useAreas();
+  const { data: buildings = [] } = useBuildings();
+  const { data: invoices = [], isLoading } = usePaymentScheduleReport(365);
 
-  const upcoming = invoices.filter(i => i.days_until_due >= 0 && i.status !== "PAID");
-  const overdue = invoices.filter(i => i.days_until_due < 0 && i.status !== "PAID");
-  const paid = invoices.filter(i => i.status === "PAID");
-  const totalDue = upcoming.reduce((sum: number, i: any) => sum + (i.remaining_amount || 0), 0);
+  // Group invoices by room → "đã lên hóa đơn đến ngày" = latest billing_period_end per room
+  const rows = useMemo(() => {
+    const byRoom = new Map<string, any>();
+    (invoices as any[]).forEach((inv) => {
+      const roomKey = inv.rooms?.room_number ? `${inv.rooms?.buildings?.name || ""}|${inv.rooms?.room_number}` : inv.id;
+      const billedThrough = inv.billing_period_end || inv.due_date;
+      if (!byRoom.has(roomKey)) {
+        byRoom.set(roomKey, {
+          building: inv.rooms?.buildings?.name || "—",
+          room: inv.rooms?.room_number || "—",
+          tenant: inv.tenants?.full_name || "—",
+          billedThrough,
+        });
+      } else {
+        const r = byRoom.get(roomKey);
+        if (new Date(billedThrough) > new Date(r.billedThrough)) {
+          r.billedThrough = billedThrough;
+        }
+      }
+    });
 
-  const stats = (
-    <>
-      <ReportCard title="HĐ cần thu trong tháng" value={upcoming.length} icon={Clock} description={`Trong ${daysFilter} ngày tới`} />
-      <ReportCard title="Quá hạn" value={overdue.length} icon={XCircle} description="Chưa thanh toán" />
-      <ReportCard title="Đã thanh toán" value={paid.length} icon={CheckCircle2} description="Trong kỳ" />
-      <ReportCard title="Dự kiến thu" value={formatCurrency(totalDue)} icon={Calendar} description="Tổng tiền cần thu" />
-    </>
-  );
+    let arr = Array.from(byRoom.values());
 
-  const exportData = invoices.map((inv: any) => ({
-    "Mã HĐ": inv.invoice_number || "",
-    "Khách hàng": inv.tenants?.full_name || "N/A",
-    "Căn hộ": `${inv.rooms?.buildings?.name || inv.rooms?.name || ""} - ${inv.rooms?.room_number || inv.rooms?.name || ""}`,
-    "Ngày đáo hạn": format(new Date(inv.due_date), "dd/MM/yyyy", { locale: vi }),
-    "Số tiền": inv.total_amount || inv.amount || 0,
-    "Còn lại": inv.remaining_amount || 0,
-    "Trạng thái": inv.status === "PAID" ? "Đã thanh toán" : inv.days_until_due < 0 ? "Quá hạn" : "Chưa thanh toán",
-  }));
+    if (buildingId !== "all") {
+      const b = (buildings || []).find((x) => x.id === buildingId);
+      if (b) arr = arr.filter((r) => r.building === b.name);
+    }
+    if (startDate) arr = arr.filter((r) => new Date(r.billedThrough) >= new Date(startDate));
+    if (endDate) arr = arr.filter((r) => new Date(r.billedThrough) <= new Date(endDate));
+
+    return arr.sort((a, b) =>
+      new Date(b.billedThrough).getTime() - new Date(a.billedThrough).getTime()
+    );
+  }, [invoices, buildingId, buildings, startDate, endDate]);
+
+  const totalCount = rows.length;
+  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <MainLayout>
-      <ReportLayout
-        title="Lịch thanh toán"
-        description="HĐ cần thu trong tháng, ngày đáo hạn, số tiền"
-        icon={<Calendar className="h-8 w-8" />}
-        backPath="/reports/finance"
-        actions={<ExportButtons data={exportData} filename="lich-thanh-toan" />}
-        stats={stats}
-      >
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Danh sách hóa đơn</CardTitle>
-              <Tabs value={daysFilter.toString()} onValueChange={(v) => setDaysFilter(Number(v))}>
-                <TabsList>
-                  <TabsTrigger value="7">7 ngày</TabsTrigger>
-                  <TabsTrigger value="30">30 ngày</TabsTrigger>
-                  <TabsTrigger value="90">90 ngày</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : invoices.length > 0 ? (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Trạng thái</TableHead>
-                      <TableHead>Mã HĐ</TableHead>
-                      <TableHead>Khách hàng</TableHead>
-                      <TableHead>Căn hộ</TableHead>
-                      <TableHead>Ngày đáo hạn</TableHead>
-                      <TableHead className="text-right">Số tiền</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoices.map((inv: any) => (
-                      <TableRow key={inv.id}>
-                        <TableCell>
-                          <Badge variant={
-                            inv.status === "PAID" ? "default" :
-                            inv.days_until_due < 0 ? "destructive" : "secondary"
-                          }>
-                            {inv.status === "PAID" ? "Đã thanh toán" :
-                             inv.days_until_due < 0 ? `Quá hạn ${Math.abs(inv.days_until_due)} ngày` :
-                             `Còn ${inv.days_until_due} ngày`}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">{inv.invoice_number || ""}</TableCell>
-                        <TableCell>{inv.tenants?.full_name || "N/A"}</TableCell>
-                        <TableCell>{inv.rooms?.buildings?.name || ""} - {inv.rooms?.room_number || inv.rooms?.name || ""}</TableCell>
-                        <TableCell>{format(new Date(inv.due_date), "dd/MM/yyyy", { locale: vi })}</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatCurrency(inv.remaining_amount || 0)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">Không có hóa đơn nào</div>
-            )}
-          </CardContent>
-        </Card>
-      </ReportLayout>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/reports/finance" className="hover:text-primary">
+            Báo cáo tài chính
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <span className="text-foreground font-medium">Lịch thanh toán</span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <Select value={areaId} onValueChange={setAreaId}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Chọn khu vực" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả khu vực</SelectItem>
+              {(areas as any[]).map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={buildingId} onValueChange={setBuildingId}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Chọn tòa nhà" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả tòa nhà</SelectItem>
+              {buildings.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={roomId} onValueChange={setRoomId}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Chọn phòng" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả phòng</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Chọn ngày</span>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-[180px]"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Ngày kết thúc</span>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-[180px]"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tòa nhà</TableHead>
+                <TableHead>Căn hộ</TableHead>
+                <TableHead>Giường</TableHead>
+                <TableHead>Khách hàng</TableHead>
+                <TableHead>Đã lên hóa đơn đến ngày</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={5}><Skeleton className="h-6 w-full" /></TableCell>
+                  </TableRow>
+                ))
+              ) : pageRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    Không có dữ liệu nào để hiển thị
+                  </TableCell>
+                </TableRow>
+              ) : (
+                pageRows.map((r, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{r.building}</TableCell>
+                    <TableCell>{r.room}</TableCell>
+                    <TableCell>—</TableCell>
+                    <TableCell>{r.tenant}</TableCell>
+                    <TableCell>
+                      {r.billedThrough
+                        ? format(new Date(r.billedThrough), "dd/MM/yyyy", { locale: vi })
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Số bản ghi</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(parseInt(v, 10)); setPage(1); }}>
+              <SelectTrigger className="w-[80px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50, 100].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            {totalCount === 0
+              ? "1 - 0 trên tổng số 0 bản ghi"
+              : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
+          </div>
+        </div>
+      </div>
     </MainLayout>
   );
 }
