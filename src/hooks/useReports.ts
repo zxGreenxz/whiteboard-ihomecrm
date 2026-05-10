@@ -441,14 +441,10 @@ export function useDebtReport() {
           due_date,
           status,
           created_at,
-          tenants (
+          contract:contracts!invoices_contract_id_fkey (
             id,
-            full_name,
-            phone
-          ),
-          rooms (
-            room_number,
-            buildings (name)
+            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone ),
+            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
           )
         `)
         .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
@@ -457,7 +453,7 @@ export function useDebtReport() {
       if (error) throw error;
 
       const today = new Date();
-      return data.map(invoice => {
+      return data.map((invoice: any) => {
         const daysOverdue = differenceInDays(today, new Date(invoice.due_date));
         const remainingAmount = invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0));
 
@@ -466,10 +462,17 @@ export function useDebtReport() {
         else if (daysOverdue > 60) agingCategory = "61-90";
         else if (daysOverdue > 30) agingCategory = "31-60";
 
+        const tenant = invoice.contract?.tenant ?? null;
+        const room = invoice.contract?.room
+          ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
+          : null;
+
         return {
           ...invoice,
           amount: invoice.total_amount,
           amount_paid: invoice.paid_amount,
+          tenants: tenant,
+          rooms: room,
           days_overdue: Math.max(0, daysOverdue),
           remaining_amount: remainingAmount,
           aging_category: agingCategory,
@@ -496,15 +499,10 @@ export function useCustomerDebtReport() {
           remaining_amount,
           due_date,
           status,
-          tenants (
+          contract:contracts!invoices_contract_id_fkey (
             id,
-            full_name,
-            phone,
-            email
-          ),
-          rooms (
-            room_number,
-            buildings (name)
+            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone, email ),
+            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
           )
         `)
         .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
@@ -515,13 +513,17 @@ export function useCustomerDebtReport() {
       // Group by tenant
       const tenantDebts: Record<string, any> = {};
       data.forEach((invoice: any) => {
-        const tenantId = invoice.tenants?.id;
+        const tenant = invoice.contract?.tenant;
+        const tenantId = tenant?.id;
         if (!tenantId) return;
+        const room = invoice.contract?.room
+          ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
+          : null;
 
         if (!tenantDebts[tenantId]) {
           tenantDebts[tenantId] = {
-            tenant: invoice.tenants,
-            room: invoice.rooms,
+            tenant,
+            room,
             totalDebt: 0,
             paidTotal: 0,
             invoiceCount: 0,
@@ -564,8 +566,11 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
         .from("invoices")
         .select(`
           *,
-          tenants (full_name, phone),
-          rooms (room_number, buildings (name))
+          contract:contracts!invoices_contract_id_fkey (
+            id,
+            tenant:tenants!contracts_tenant_id_fkey ( full_name, phone ),
+            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
+          )
         `)
         .lte("due_date", futureDate.toISOString())
         .order("due_date", { ascending: true });
@@ -576,6 +581,10 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
         ...invoice,
         amount: invoice.total_amount,
         amount_paid: invoice.paid_amount,
+        tenants: invoice.contract?.tenant ?? null,
+        rooms: invoice.contract?.room
+          ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
+          : null,
         days_until_due: differenceInDays(new Date(invoice.due_date), today),
         remaining_amount: invoice.remaining_amount ?? (invoice.total_amount - (invoice.paid_amount || 0)),
       }));
@@ -598,14 +607,10 @@ export function useOverpaymentReport() {
           invoice_number,
           total_amount,
           paid_amount,
-          tenants (
+          contract:contracts!invoices_contract_id_fkey (
             id,
-            full_name,
-            phone
-          ),
-          rooms (
-            room_number,
-            buildings (name)
+            tenant:tenants!contracts_tenant_id_fkey ( id, full_name, phone ),
+            room:rooms!contracts_room_id_fkey ( room_number, building:buildings!rooms_building_id_fkey (name) )
           )
         `)
         .gt("paid_amount", 0);
@@ -619,6 +624,10 @@ export function useOverpaymentReport() {
           ...invoice,
           amount: invoice.total_amount,
           amount_paid: invoice.paid_amount,
+          tenants: invoice.contract?.tenant ?? null,
+          rooms: invoice.contract?.room
+            ? { room_number: invoice.contract.room.room_number, buildings: invoice.contract.room.building }
+            : null,
           overpaid_amount: (invoice.paid_amount || 0) - invoice.total_amount,
         }));
     },
