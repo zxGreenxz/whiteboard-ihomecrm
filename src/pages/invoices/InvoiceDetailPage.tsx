@@ -24,6 +24,7 @@ import {
   DollarSign,
   Printer,
   AlertCircle,
+  CheckCircle,
   Image,
   ExternalLink,
   Pencil,
