@@ -821,7 +821,7 @@ export const useUnpaidInvoices = (contractId?: string) => {
         .from("invoices")
         .select("*")
         .eq("contract_id", contractId)
-        .in("status", ["PENDING", "OVERDUE", "PARTIAL"] as any);
+        .in("status", ["APPROVED", "OVERDUE", "PARTIAL_PAID"] as any);
 
       if (error) throw error;
       return data || [];
@@ -1298,7 +1298,7 @@ export const useEstimateTerminationCosts = () => {
         .from("invoices")
         .select("*")
         .eq("contract_id", data.contract_id)
-        .in("status", ["PENDING", "OVERDUE", "PARTIAL"] as any);
+        .in("status", ["APPROVED", "OVERDUE", "PARTIAL_PAID"] as any);
 
       const moveOutDate = new Date(data.move_out_date);
       const contractEndDate = new Date(contract.end_date);
