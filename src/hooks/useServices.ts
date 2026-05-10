@@ -120,7 +120,8 @@ export const useCreateService = () => {
             }))
           );
         if (sbError) {
-          console.error("Error inserting service_buildings:", sbError);
+          toast.error("Không thể gán dịch vụ cho tòa nhà");
+          throw sbError;
         }
       }
 
@@ -165,10 +166,14 @@ export const useUpdateService = () => {
 
       // Replace service_buildings
       if (building_ids !== undefined) {
-        await supabase
+        const { error: delError } = await supabase
           .from("service_buildings")
           .delete()
           .eq("service_id", id);
+        if (delError) {
+          toast.error("Không thể cập nhật danh sách tòa nhà");
+          throw delError;
+        }
 
         if (building_ids.length > 0) {
           const { error: sbError } = await supabase
@@ -180,7 +185,8 @@ export const useUpdateService = () => {
               }))
             );
           if (sbError) {
-            console.error("Error updating service_buildings:", sbError);
+            toast.error("Không thể cập nhật danh sách tòa nhà");
+            throw sbError;
           }
         }
       }
