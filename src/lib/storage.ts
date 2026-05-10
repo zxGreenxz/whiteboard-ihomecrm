@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export { sanitizeStorageFileName } from "./storageKey";
+
 /**
  * Upload a file to Supabase Storage
  * @param bucket - The storage bucket name

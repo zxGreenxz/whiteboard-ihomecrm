@@ -55,7 +55,7 @@ import {
 import { useUnrecordedMeters } from '@/hooks/useMeters';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { uploadFile } from '@/lib/storage';
+import { uploadFile, sanitizeStorageFileName } from '@/lib/storage';
 import { toast } from 'sonner';
 import { ImagePlus, Loader2 } from 'lucide-react';
 
@@ -221,7 +221,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const handleImageUpload = async (index: number, file: File) => {
     try {
       setUploadingIndex(index);
-      const path = `readings/${Date.now()}_${file.name}`;
+      const path = `readings/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
       const url = await uploadFile(STORAGE_BUCKET, path, file);
       form.setValue(`readings.${index}.meter_image_url`, url);
     } catch (error) {
