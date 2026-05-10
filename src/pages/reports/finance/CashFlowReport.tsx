@@ -1,141 +1,210 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { TrendingUp, ArrowUpCircle, ArrowDownCircle, Activity } from "lucide-react";
-import { ReportLayout } from "@/components/reports/ReportLayout";
-import { ReportCard } from "@/components/reports/ReportCard";
-import { ExportButtons } from "@/components/reports/ExportButtons";
-import { DateRangePicker } from "@/components/reports/DateRangePicker";
-import { useCashFlowReport } from "@/hooks/useReports";
+import { ChevronRight } from "lucide-react";
+import { useCashFlowByDay } from "@/hooks/useCashBook";
 import { useBuildings } from "@/hooks/useBuildings";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { DateRange } from "react-day-picker";
-import { startOfYear } from "date-fns";
-import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart,
+} from "recharts";
+
+const formatCurrency = (n: number) =>
+  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+
+const QUARTER_LABEL = ["I", "II", "III", "IV"];
 
 export default function CashFlowReport() {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfYear(new Date()),
-    to: new Date(),
-  });
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState<number>(currentYear);
   const [buildingId, setBuildingId] = useState<string>("all");
+  const [series, setSeries] = useState<{
+    income: boolean;
+    expense: boolean;
+    net: boolean;
+  }>({ income: true, expense: true, net: true });
 
-  const { data: cashFlow, isLoading } = useCashFlowReport(dateRange?.from, dateRange?.to);
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+
   const { data: buildings = [] } = useBuildings();
+  const { data: byDay = [], isLoading } = useCashFlowByDay(startDate, endDate);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-    }).format(amount);
-  };
+  // Aggregate to 12 months
+  const monthly = useMemo(() => {
+    const result = Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1,
+      label: `TH${i + 1}`,
+      income: 0,
+      expense: 0,
+      net: 0,
+    }));
+    (byDay as any[]).forEach((d) => {
+      const m = parseInt(d.date.substring(5, 7), 10) - 1;
+      if (m >= 0 && m < 12) {
+        result[m].income += d.income || 0;
+        result[m].expense += d.expense || 0;
+      }
+    });
+    result.forEach((r) => (r.net = r.income - r.expense));
+    return result;
+  }, [byDay]);
 
-  const totalIncome = cashFlow?.reduce((sum, m) => sum + m.income, 0) || 0;
-  const totalExpense = cashFlow?.reduce((sum, m) => sum + m.expense, 0) || 0;
-  const avgNetFlow = cashFlow && cashFlow.length > 0
-    ? (totalIncome - totalExpense) / cashFlow.length
-    : 0;
+  // Quarter aggregation
+  const quarterly = useMemo(() => {
+    return [0, 1, 2, 3].map((q) => {
+      const months = monthly.slice(q * 3, q * 3 + 3);
+      const income = months.reduce((s, m) => s + m.income, 0);
+      const expense = months.reduce((s, m) => s + m.expense, 0);
+      return { quarter: q + 1, label: QUARTER_LABEL[q], income, expense, net: income - expense };
+    });
+  }, [monthly]);
 
-  const stats = (
-    <>
-      <ReportCard
-        title="Tổng thu"
-        value={formatCurrency(totalIncome)}
-        icon={ArrowUpCircle}
-        description="Trong kỳ báo cáo"
-      />
-      <ReportCard
-        title="Tổng chi"
-        value={formatCurrency(totalExpense)}
-        icon={ArrowDownCircle}
-        description="Trong kỳ báo cáo"
-      />
-      <ReportCard
-        title="Dòng tiền ròng"
-        value={formatCurrency(totalIncome - totalExpense)}
-        icon={TrendingUp}
-        description="Thu - Chi"
-      />
-      <ReportCard
-        title="Trung bình/tháng"
-        value={formatCurrency(avgNetFlow)}
-        icon={Activity}
-        description="Dòng tiền TB"
-      />
-    </>
-  );
+  const yearTotals = useMemo(() => {
+    const income = monthly.reduce((s, m) => s + m.income, 0);
+    const expense = monthly.reduce((s, m) => s + m.expense, 0);
+    return { income, expense, net: income - expense };
+  }, [monthly]);
 
-  const exportData = cashFlow?.map(item => ({
-    "Tháng": item.month,
-    "Thu": item.income,
-    "Chi": item.expense,
-    "Dòng tiền ròng": item.netFlow,
-  })) || [];
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   return (
     <MainLayout>
-    <ReportLayout
-      title="Báo cáo Dòng tiền"
-      description="Phân tích dòng tiền vào/ra và xu hướng"
-      icon={<TrendingUp className="h-8 w-8" />}
-      backPath="/reports/finance"
-      actions={
-        <ExportButtons
-          data={exportData}
-          filename="bao-cao-dong-tien"
-        />
-      }
-      filters={
-        <div className="flex flex-wrap gap-4 items-end">
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
-          <Select value={buildingId} onValueChange={setBuildingId}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Tất cả toà nhà" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả toà nhà</SelectItem>
-              {buildings.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/reports/finance" className="hover:text-primary">
+            Báo cáo tài chính
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <span className="text-foreground font-medium">Dòng tiền</span>
         </div>
-      }
-      stats={stats}
-    >
-      {isLoading ? (
-        <Skeleton className="h-[400px] w-full" />
-      ) : cashFlow && cashFlow.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Biểu đồ dòng tiền</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
-              <ComposedChart data={cashFlow}>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Năm</span>
+            <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Tòa nhà</span>
+            <Select value={buildingId} onValueChange={setBuildingId}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Chọn tòa nhà" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tất cả tòa nhà</SelectItem>
+                {buildings.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="rounded-md border p-4">
+          <h3 className="text-base font-semibold mb-3">Biểu đồ dòng tiền thu chi thực tế</h3>
+          <div className="flex gap-2 mb-3">
+            <Button
+              size="sm"
+              variant={series.income ? "default" : "outline"}
+              onClick={() => setSeries((s) => ({ ...s, income: !s.income }))}
+            >
+              Thu vào
+            </Button>
+            <Button
+              size="sm"
+              variant={series.expense ? "default" : "outline"}
+              onClick={() => setSeries((s) => ({ ...s, expense: !s.expense }))}
+            >
+              Chi ra
+            </Button>
+            <Button
+              size="sm"
+              variant={series.net ? "default" : "outline"}
+              onClick={() => setSeries((s) => ({ ...s, net: !s.net }))}
+            >
+              Chênh lệch
+            </Button>
+          </div>
+          {isLoading ? (
+            <Skeleton className="h-[320px] w-full" />
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={monthly}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <XAxis dataKey="label" />
+                <YAxis tickFormatter={(v) => new Intl.NumberFormat("vi-VN", { notation: "compact" }).format(Number(v))} />
+                <Tooltip formatter={(v) => formatCurrency(Number(v))} />
                 <Legend />
-                <Bar dataKey="income" fill="#10B981" name="Thu" />
-                <Bar dataKey="expense" fill="#EF4444" name="Chi" />
-                <Line type="monotone" dataKey="netFlow" stroke="#3B82F6" strokeWidth={2} name="Dòng tiền ròng" />
-              </ComposedChart>
+                {series.income && <Bar dataKey="income" fill="#10B981" name="Thu vào" />}
+                {series.expense && <Bar dataKey="expense" fill="#EF4444" name="Chi ra" />}
+                {series.net && <Bar dataKey="net" fill="#3B82F6" name="Chênh lệch" />}
+              </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="text-center py-8 text-muted-foreground">
-          Không có dữ liệu
+          )}
         </div>
-      )}
-    </ReportLayout>
+
+        <div className="rounded-md border p-4">
+          <h3 className="text-base font-semibold mb-3">Bảng thu chi theo tháng và quý</h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead><strong>Quý</strong></TableHead>
+                <TableHead className="text-right"><strong>Doanh thu</strong></TableHead>
+                <TableHead className="text-right"><strong>Chi phí</strong></TableHead>
+                <TableHead className="text-right"><strong>Lợi nhuận</strong></TableHead>
+                <TableHead><strong>Tháng</strong></TableHead>
+                <TableHead className="text-right"><strong>Doanh thu</strong></TableHead>
+                <TableHead className="text-right"><strong>Chi phí</strong></TableHead>
+                <TableHead className="text-right"><strong>Lợi nhuận</strong></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {quarterly.flatMap((q) => {
+                const monthsOfQ = monthly.slice((q.quarter - 1) * 3, q.quarter * 3);
+                return monthsOfQ.map((m, idx) => (
+                  <TableRow key={`${q.quarter}-${m.month}`}>
+                    {idx === 0 ? (
+                      <>
+                        <TableCell rowSpan={3}><strong>{q.label}</strong></TableCell>
+                        <TableCell rowSpan={3} className="text-right">{formatCurrency(q.income)}</TableCell>
+                        <TableCell rowSpan={3} className="text-right">{formatCurrency(q.expense)}</TableCell>
+                        <TableCell rowSpan={3} className="text-right">{formatCurrency(q.net)}</TableCell>
+                      </>
+                    ) : null}
+                    <TableCell>{m.month}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(m.income)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(m.expense)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(m.net)}</TableCell>
+                  </TableRow>
+                ));
+              })}
+              <TableRow className="bg-muted/50 font-semibold">
+                <TableCell colSpan={4}><strong>Cả năm</strong></TableCell>
+                <TableCell className="text-right">{formatCurrency(yearTotals.income)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(yearTotals.expense)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(yearTotals.net)}</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </MainLayout>
   );
 }
