@@ -45,13 +45,16 @@ export interface RecentActivity {
   amount?: number;
 }
 
-// Helper to get building IDs for filtering
-const getBuildingIds = async (userId: string, buildingId?: string | null): Promise<string[]> => {
+// Helper to get building IDs for filtering. Trust RLS for staff/admin/owner
+// visibility (buildings_select_staff already covers employer↔staff scope) so
+// staff users see employer's buildings instead of an empty list, which would
+// silently fall through to "all visible contracts" and produce nonsense like
+// totalRooms=0 + occupiedRooms=252 → availableRooms=-252.
+const getBuildingIds = async (_userId: string, buildingId?: string | null): Promise<string[]> => {
   if (buildingId) return [buildingId];
   const { data: userBuildings } = await supabase
     .from("buildings")
     .select("id")
-    .eq("user_id", userId)
     .is("deleted_at", null);
   return userBuildings?.map(b => b.id) || [];
 };
