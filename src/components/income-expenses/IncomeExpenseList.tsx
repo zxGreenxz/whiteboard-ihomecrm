@@ -72,13 +72,13 @@ const IncomeExpenseList = ({
       <Table className="[&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
         <TableHeader>
           <TableRow>
-            <TableHead>Mã</TableHead>
             <TableHead>Thao tác</TableHead>
             <TableHead>Tên</TableHead>
             <TableHead className="text-right">Số tiền</TableHead>
             <TableHead>Tòa nhà</TableHead>
             <TableHead>Ngày thu/chi</TableHead>
             <TableHead>Người nhận/trả</TableHead>
+            <TableHead>Người tạo</TableHead>
             <TableHead>Sổ quỹ</TableHead>
           </TableRow>
         </TableHeader>
@@ -91,34 +91,6 @@ const IncomeExpenseList = ({
                 key={voucher.id}
                 className={isCancelled ? 'opacity-60' : ''}
               >
-                {/* Mã + Badge trạng thái */}
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-medium ${
-                        isCancelled ? 'line-through' : ''
-                      }`}
-                    >
-                      {voucher.code}
-                    </span>
-                    {isCancelled ? (
-                      <Badge
-                        variant="secondary"
-                        className="bg-red-100 text-red-700 hover:bg-red-100"
-                      >
-                        Đã huỷ
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="default"
-                        className="bg-green-100 text-green-800 hover:bg-green-100"
-                      >
-                        Đã ghi nhận
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-
                 {/* Thao tác */}
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -148,9 +120,30 @@ const IncomeExpenseList = ({
                   </div>
                 </TableCell>
 
-                {/* Tên */}
-                <TableCell className="max-w-[200px] truncate">
-                  {voucher.name}
+                {/* Tên + Badge trạng thái */}
+                <TableCell className="max-w-[260px]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`truncate ${isCancelled ? 'line-through' : ''}`}
+                    >
+                      {voucher.name}
+                    </span>
+                    {isCancelled ? (
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100"
+                      >
+                        Đã huỷ
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="default"
+                        className="shrink-0 bg-green-100 text-green-800 hover:bg-green-100"
+                      >
+                        Đã ghi nhận
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
 
                 {/* Số tiền (có dấu + màu) */}
@@ -192,6 +185,9 @@ const IncomeExpenseList = ({
 
                 {/* Người nhận/trả */}
                 <TableCell>{voucher.payer_name || '—'}</TableCell>
+
+                {/* Người tạo */}
+                <TableCell>{voucher.creator_name || '—'}</TableCell>
 
                 {/* Tài khoản */}
                 <TableCell>{voucher.account_name || '—'}</TableCell>
