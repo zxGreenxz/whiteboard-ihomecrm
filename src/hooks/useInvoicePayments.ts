@@ -234,6 +234,137 @@ export const useRecordPaymentRPC = () => {
 
 
 // =============================================
+// useRecordRefundRPC - For settlement invoices with NEGATIVE total
+// (i.e. landlord owes tenant). Creates an EXPENSE voucher (Phiếu chi)
+// linked to the invoice; recompute_invoice_for_id picks it up via the
+// `[Hoàn trả thanh lý]` marker in notes and flips the invoice to PAID.
+// =============================================
+
+export interface RecordRefundRPCData {
+  invoice_id: string;
+  amount: number;          // positive number — the refund cash out
+  payment_date: string;
+  account_id: string;      // sổ quỹ chi tiền ra
+  notes?: string;
+}
+
+export const useRecordRefundRPC = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: RecordRefundRPCData) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (data.amount <= 0) throw new Error('Số tiền hoàn trả phải > 0');
+
+      const { data: inv, error: invErr } = await supabase
+        .from('invoices')
+        .select('id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount')
+        .eq('id', data.invoice_id)
+        .single() as any;
+      if (invErr || !inv) throw invErr ?? new Error('Không tìm thấy hoá đơn');
+
+      // Pick / create an expense category for refund.
+      const { data: existingType } = await supabase
+        .from('income_expense_types' as any)
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('type', 'expense')
+        .eq('name', 'Hoàn trả thanh lý')
+        .limit(1)
+        .maybeSingle() as any;
+
+      let typeId: string | undefined = existingType?.id;
+      if (!typeId) {
+        const { data: created, error: cErr } = await supabase
+          .from('income_expense_types' as any)
+          .insert({
+            user_id: user.id,
+            type: 'expense',
+            name: 'Hoàn trả thanh lý',
+            description: 'Tự tạo khi ghi nhận hoàn trả hoá đơn thanh lý',
+          })
+          .select('id')
+          .single() as any;
+        if (cErr) throw cErr;
+        typeId = created.id;
+      }
+
+      const meta = (user.user_metadata ?? {}) as Record<string, any>;
+      const creatorName: string =
+        meta.full_name || meta.name || user.email || 'Người dùng';
+
+      // The `[Hoàn trả thanh lý]` prefix is the marker recompute_invoice_for_id
+      // looks for to count this voucher against a negative-total invoice.
+      const voucherNotes =
+        '[Hoàn trả thanh lý] HĐ ' + (inv.invoice_number || '') +
+        (data.notes ? '\n' + data.notes : '');
+
+      const { data: voucher, error: vErr } = await supabase
+        .from('income_expenses' as any)
+        .insert({
+          user_id: user.id,
+          type: 'EXPENSE',
+          name: `Hoàn trả khách thanh lý — HĐ ${inv.invoice_number || ''}`,
+          building_id: inv.building_id,
+          room_id: inv.room_id,
+          bed_id: inv.bed_id,
+          contract_id: inv.contract_id,
+          account_id: data.account_id,
+          invoice_id: inv.id,
+          voucher_date: data.payment_date,
+          total_amount: data.amount,
+          attachments: [],
+          approval_status: 'APPROVED',
+          creator_name: creatorName,
+          notes: voucherNotes,
+        } as any)
+        .select()
+        .single();
+      if (vErr) throw vErr;
+
+      const { error: itemErr } = await supabase
+        .from('income_expense_items' as any)
+        .insert({
+          income_expense_id: (voucher as any).id,
+          income_expense_type_id: typeId,
+          description: `Hoàn trả khách — HĐ ${inv.invoice_number || ''}`,
+          quantity: 1,
+          unit_price: data.amount,
+          start_date: data.payment_date,
+          end_date: data.payment_date,
+        });
+      if (itemErr) throw itemErr;
+
+      return { voucher_id: (voucher as any).id };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts-with-balance'] });
+
+      toast({
+        title: 'Hoàn trả đã được ghi nhận',
+        description: 'Phiếu chi đã được lập trong Thu chi.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi khi ghi nhận hoàn trả',
+        description: error.message,
+      });
+    },
+  });
+};
+
+
+// =============================================
 // useAutoGenerateInvoicesRPC - Mutation calling RPC generate_invoices_for_building
 // Requirements: 6.3
 // =============================================

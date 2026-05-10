@@ -38,6 +38,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
+import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 
@@ -229,15 +230,22 @@ const InvoiceDetailPage = () => {
 
         <div className="flex-1" />
 
-        {(invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID') && (
-          <Button
-            variant="default"
-            onClick={() => setPaymentDialogOpen(true)}
-          >
-            <DollarSign className="h-4 w-4 mr-2" />
-            Ghi nhận thanh toán
-          </Button>
-        )}
+        {(invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID') &&
+          (() => {
+            const total = invoice.total_amount || 0;
+            const paid = invoice.paid_amount || 0;
+            const isRefund = total < 0 || paid > total;
+            return (
+              <Button
+                variant="default"
+                className={isRefund ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                onClick={() => setPaymentDialogOpen(true)}
+              >
+                <DollarSign className="h-4 w-4 mr-2" />
+                {isRefund ? 'Hoàn trả khách' : 'Ghi nhận thanh toán'}
+              </Button>
+            );
+          })()}
 
         <Button variant="outline" onClick={() => setPrintDialogOpen(true)}>
           <Printer className="h-4 w-4 mr-2" />
@@ -540,12 +548,25 @@ const InvoiceDetailPage = () => {
         </div>
       </div>
 
-      {/* Payment Dialog */}
-      <RecordPaymentDialog
-        open={paymentDialogOpen}
-        onOpenChange={setPaymentDialogOpen}
-        invoice={invoice}
-      />
+      {/* Payment / Refund Dialog — switches based on outstanding sign */}
+      {(() => {
+        const total = invoice.total_amount || 0;
+        const paid = invoice.paid_amount || 0;
+        const isRefund = total < 0 || paid > total;
+        return isRefund ? (
+          <RecordRefundDialog
+            open={paymentDialogOpen}
+            onOpenChange={setPaymentDialogOpen}
+            invoice={invoice}
+          />
+        ) : (
+          <RecordPaymentDialog
+            open={paymentDialogOpen}
+            onOpenChange={setPaymentDialogOpen}
+            invoice={invoice}
+          />
+        );
+      })()}
 
       {/* Print Dialog */}
       <PrintInvoiceDialog
