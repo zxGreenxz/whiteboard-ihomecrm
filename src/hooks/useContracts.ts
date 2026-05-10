@@ -72,7 +72,7 @@ const CONTRACT_SELECT = `
   contract_customers!contract_customers_contract_id_fkey (
     id, contract_id, customer_id, is_representative, created_at, updated_at,
     customer:customers!contract_customers_customer_id_fkey (
-      id, full_name, phone, id_number
+      id, full_name, phone, email, id_number
     )
   ),
   contract_services (

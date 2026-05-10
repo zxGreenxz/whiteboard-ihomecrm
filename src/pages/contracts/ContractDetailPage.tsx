@@ -101,43 +101,15 @@ const ContractDetailPage = () => {
   const [contractServices, setContractServices] = useState<ContractService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
 
-  // Fetch contract tenants directly (separate query to avoid join issues)
-  const [contractTenants, setContractTenants] = useState<Array<{
-    id: string;
-    tenant_id: string;
-    is_representative: boolean;
-    move_in_date: string | null;
-    tenant: { id: string; full_name: string; phone: string; email: string | null } | null;
-  }>>([]);
+  // Customers attached to this contract — read from contract.contract_customers
+  // (đại diện đứng đầu, sau đó tới các khách còn lại)
+  const contractCustomers = (contract?.contract_customers ?? [])
+    .slice()
+    .sort((a, b) => Number(b.is_representative) - Number(a.is_representative));
 
   // Fetch contract history (extensions, transfers, terminations)
   const [contractHistory, setContractHistory] = useState<ContractHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-
-  // Fetch contract tenants when contract ID changes
-  useEffect(() => {
-    const fetchContractTenants = async () => {
-      if (!id) return;
-      try {
-        const { data, error } = await (supabase as any)
-          .from('contract_tenants')
-          .select(`
-            id, tenant_id, is_representative, move_in_date,
-            tenant:tenants(id, full_name, phone, email)
-          `)
-          .eq('contract_id', id)
-          .order('is_representative', { ascending: false });
-
-        if (!error && data) {
-          setContractTenants(data);
-        }
-      } catch (e) {
-        console.error('Error fetching contract tenants:', e);
-      }
-    };
-
-    fetchContractTenants();
-  }, [id]);
 
   // Fetch contract services when contract ID changes
   useEffect(() => {
@@ -586,23 +558,23 @@ const ContractDetailPage = () => {
                   <CardTitle className="flex items-center gap-2">
                     <User className="h-5 w-5" />
                     Thông tin khách hàng
-                    {contractTenants.length > 1 && (
+                    {contractCustomers.length > 1 && (
                       <Badge variant="secondary" className="ml-2">
-                        {contractTenants.length} người
+                        {contractCustomers.length} người
                       </Badge>
                     )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {contractTenants.length > 0 ? (
+                  {contractCustomers.length > 0 ? (
                     <div className="space-y-4">
-                      {contractTenants.map((ct, index) => (
-                        <div key={ct.id} className={index > 0 ? 'pt-4 border-t' : ''}>
+                      {contractCustomers.map((cc, index) => (
+                        <div key={cc.id} className={index > 0 ? 'pt-4 border-t' : ''}>
                           <div className="flex items-center gap-2 mb-2">
                             <span className="font-medium text-sm">
-                              {ct.tenant?.full_name || 'N/A'}
+                              {cc.customer?.full_name || 'N/A'}
                             </span>
-                            {ct.is_representative && (
+                            {cc.is_representative && (
                               <Badge variant="default" className="text-xs bg-green-500 hover:bg-green-600">
                                 Đại diện
                               </Badge>
@@ -614,21 +586,30 @@ const ContractDetailPage = () => {
                                 <Phone className="h-3 w-3" />
                                 Số điện thoại
                               </div>
-                              <div className="font-medium">{ct.tenant?.phone || 'N/A'}</div>
+                              <div className="font-medium">{cc.customer?.phone || 'N/A'}</div>
                             </div>
                             <div>
                               <div className="text-gray-600 flex items-center gap-1">
                                 <Mail className="h-3 w-3" />
                                 Email
                               </div>
-                              <div className="font-medium">{ct.tenant?.email || 'N/A'}</div>
+                              <div className="font-medium">{cc.customer?.email || 'N/A'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-600 flex items-center gap-1">
+                                <CreditCard className="h-3 w-3" />
+                                CCCD/CMND
+                              </div>
+                              <div className="font-medium">
+                                {cc.customer?.id_number || 'N/A'}
+                              </div>
                             </div>
                           </div>
                           <div className="mt-2">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => navigate(`/tenants/${ct.tenant_id}`)}
+                              onClick={() => navigate(`/customers/${cc.customer_id}`)}
                             >
                               Xem chi tiết
                             </Button>
@@ -637,46 +618,9 @@ const ContractDetailPage = () => {
                       ))}
                     </div>
                   ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="text-gray-600">Họ tên</div>
-                          <div className="font-medium">{contract.tenant?.full_name || 'N/A'}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600 flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
-                            Số điện thoại
-                          </div>
-                          <div className="font-medium">{contract.tenant?.phone || 'N/A'}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600 flex items-center gap-1">
-                            <Mail className="h-3 w-3" />
-                            Email
-                          </div>
-                          <div className="font-medium">{contract.tenant?.email || 'N/A'}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-600 flex items-center gap-1">
-                            <CreditCard className="h-3 w-3" />
-                            CCCD/CMND
-                          </div>
-                          <div className="font-medium">
-                            {(contract.tenant as any)?.id_number || 'N/A'}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-4 border-t">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/tenants/${contract.tenant_id}`)}
-                        >
-                          Xem chi tiết khách hàng
-                        </Button>
-                      </div>
-                    </>
+                    <div className="text-sm text-gray-500 py-4 text-center">
+                      Hợp đồng chưa có khách hàng nào.
+                    </div>
                   )}
                 </CardContent>
               </Card>

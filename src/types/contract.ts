@@ -82,6 +82,7 @@ export interface ContractCustomer {
     id: string;
     full_name: string;
     phone: string;
+    email: string | null;
     id_number: string | null;
   } | null;
   created_at: string;
