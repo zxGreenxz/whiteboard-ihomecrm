@@ -24,6 +24,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -66,7 +67,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [changeUserEdited, setChangeUserEdited] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { data: authUser } = useAuth();
+  const currentUserId = authUser?.id ?? null;
 
   const {
     handleSubmit,
@@ -91,16 +93,21 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
-  }, []);
-
   // Auto-fill amount with outstanding amount when dialog opens
   useEffect(() => {
     if (invoice && outstandingAmount > 0) {
       setValue('amount', outstandingAmount);
     }
   }, [invoice, outstandingAmount, setValue]);
+
+  // Auto-default sổ quỹ nhận theo tên tòa nhà của hoá đơn (account.name === building.name)
+  useEffect(() => {
+    if (!invoice || !accounts.length) return;
+    const buildingName = invoice.building?.name?.trim();
+    if (!buildingName) return;
+    const match = (accounts as any[]).find((a) => a.name?.trim() === buildingName);
+    if (match) setValue('account_id', match.id);
+  }, [accounts, invoice, setValue]);
 
   // Auto-compute tiền thối = max(0, amount - outstanding) trừ khi user tự sửa
   useEffect(() => {
@@ -372,8 +379,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           <div className="space-y-2">
             <Label>Sổ quỹ nhận *</Label>
             <Select
-              onValueChange={(v) => setValue('account_id', v)}
-              defaultValue=""
+              value={watch('account_id') ?? ''}
+              onValueChange={(v) => setValue('account_id', v, { shouldValidate: true })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
