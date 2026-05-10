@@ -240,6 +240,15 @@ const App = () => (
           <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><TerminationsReport /></ProtectedRoute>} />
 
           {/* === BÁO CÁO TÀI CHÍNH === */}
+          {/* Resident-style URLs (canonical) */}
+          <Route path="/report/finance/cashbook" element={<ProtectedRoute><DailyCashbookReport /></ProtectedRoute>} />
+          <Route path="/report/finance/cash-flow" element={<ProtectedRoute><CashFlowReport /></ProtectedRoute>} />
+          <Route path="/report/finance-by-month" element={<ProtectedRoute><ProfitDistributionReport /></ProtectedRoute>} />
+          <Route path="/report/finance/debt" element={<ProtectedRoute><CustomerDebtReport /></ProtectedRoute>} />
+          <Route path="/report/finance/billing-calendar" element={<ProtectedRoute><PaymentScheduleReport /></ProtectedRoute>} />
+          <Route path="/report/finance/prepaid" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
+          <Route path="/report/finance/deposit" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
+          {/* Legacy URLs (kept for backward compatibility, also serve as hub) */}
           <Route path="/reports/finance" element={<ProtectedRoute><FinanceReportsPage /></ProtectedRoute>} />
           <Route path="/reports/finance/daily-cashbook" element={<ProtectedRoute><DailyCashbookReport /></ProtectedRoute>} />
           <Route path="/reports/finance/cash-book" element={<ProtectedRoute><DailyCashbookReport /></ProtectedRoute>} />

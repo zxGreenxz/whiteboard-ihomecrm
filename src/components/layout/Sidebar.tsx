@@ -38,6 +38,11 @@ import {
   History,
   Smartphone,
   Wallet,
+  Book,
+  TrendingUp,
+  PieChart,
+  Calendar,
+  Coins,
 } from 'lucide-react';
 
 interface NavItem {
@@ -109,12 +114,19 @@ const navigationGroups: NavGroup[] = [
   {
     label: 'BÁO CÁO',
     items: [
+      { title: 'Báo cáo bất động sản', href: '/reports/real-estate', icon: BarChart3 },
       {
-        title: 'Báo cáo',
-        icon: BarChart3,
+        title: 'Báo cáo tài chính',
+        icon: CreditCard,
         items: [
-          { title: 'Báo cáo BĐS', href: '/reports/real-estate', icon: Building2 },
-          { title: 'Báo cáo Tài chính', href: '/reports/finance', icon: CreditCard },
+          { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book },
+          { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp },
+          { title: 'Phân bổ lợi nhuận', href: '/report/finance-by-month', icon: PieChart },
+          { title: 'Công nợ hợp đồng mới', href: '/reports/finance/new-contract-debt', icon: FileText },
+          { title: 'Khách nợ tiền', href: '/report/finance/debt', icon: Users },
+          { title: 'Lịch thanh toán', href: '/report/finance/billing-calendar', icon: Calendar },
+          { title: 'Tiền thừa', href: '/report/finance/prepaid', icon: Coins },
+          { title: 'Danh sách tiền cọc', href: '/report/finance/deposit', icon: Wallet },
         ],
       },
     ],
