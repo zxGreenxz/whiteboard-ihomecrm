@@ -88,3 +88,42 @@ export const validateTotalAmount = (
 export const canEditVoucher = (_status: string): boolean => {
   return false;
 };
+
+// =============================================
+// Phiếu Thu/Chi Tổng (Batch)
+// =============================================
+
+// Mỗi hạng mục trong phiếu tổng = 1 phiếu lẻ sẽ được sinh ra,
+// nên hạng mục có riêng building/room (khác với schema phiếu lẻ thường).
+export const batchItemSchema = z
+  .object({
+    building_id: z.string().min(1, 'Vui lòng chọn tòa nhà'),
+    room_id: z.string().nullable().optional(),
+    income_expense_type_id: z.string().min(1, 'Vui lòng chọn loại hạng mục'),
+    type_name: z.string().optional(),
+    description: z.string().nullable().optional(),
+    quantity: z.number().int().min(1).default(1),
+    unit_price: z.number().min(0, 'Số tiền phải >= 0'),
+    start_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu'),
+    end_date: z.string().min(1, 'Vui lòng chọn ngày kết thúc'),
+  })
+  .refine((data) => data.start_date <= data.end_date, {
+    message: 'Ngày bắt đầu không được sau ngày kết thúc',
+    path: ['end_date'],
+  });
+
+export const incomeExpenseBatchFormSchema = z.object({
+  type: z.enum(['INCOME', 'EXPENSE'], {
+    required_error: 'Vui lòng chọn loại phiếu',
+  }),
+  shared_name: z.string().min(1, 'Vui lòng nhập tên phiếu chung'),
+  account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ'),
+  voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
+  payer_name: z.string().nullable().optional(),
+  business_result_accounting: z.boolean().default(false),
+  attachments: z.array(z.string()).default([]),
+  notes: z.string().nullable().optional(),
+  items: z.array(batchItemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
+});
+
+export type IncomeExpenseBatchFormValues = z.infer<typeof incomeExpenseBatchFormSchema>;

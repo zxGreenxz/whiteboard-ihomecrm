@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, X, ArrowUp, ArrowDown, Layers } from "lucide-react";
 
 interface Props {
   onCreateIncome: () => void;
   onCreateExpense: () => void;
+  onCreateBatch?: () => void;
 }
 
-export function IncomeExpenseFAB({ onCreateIncome, onCreateExpense }: Props) {
+export function IncomeExpenseFAB({
+  onCreateIncome,
+  onCreateExpense,
+  onCreateBatch,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const lastY = useRef(0);
@@ -72,6 +77,21 @@ export function IncomeExpenseFAB({ onCreateIncome, onCreateExpense }: Props) {
             <ArrowDown className="h-4 w-4 text-white" />
           </span>
         </button>
+        {onCreateBatch && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2.5 pl-4 pr-2 py-2 bg-white rounded-full shadow-lg border border-zinc-200 active:scale-95 transition-transform"
+            onClick={() => {
+              close();
+              onCreateBatch();
+            }}
+          >
+            <span className="text-sm font-medium text-zinc-700">Phiếu tổng</span>
+            <span className="w-9 h-9 rounded-full bg-indigo-500 grid place-items-center">
+              <Layers className="h-4 w-4 text-white" />
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Main FAB */}

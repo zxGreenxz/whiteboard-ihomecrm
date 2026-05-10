@@ -13,7 +13,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Upload, Search, Receipt, ListFilter, SlidersHorizontal, RefreshCcw } from "lucide-react";
+import { Plus, Upload, Search, Receipt, ListFilter, SlidersHorizontal, RefreshCcw, ChevronDown, Layers, FileText } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { IncomeExpenseStats } from "@/components/income-expenses/IncomeExpenseStats";
 import { IncomeExpenseStatsMobile } from "@/components/income-expenses/IncomeExpenseStatsMobile";
 import { IncomeExpenseFiltersBar } from "@/components/income-expenses/IncomeExpenseFilters";
@@ -25,11 +32,16 @@ import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpense
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
+import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
+import IncomeExpenseBatchList from "@/components/income-expenses/IncomeExpenseBatchList";
+import IncomeExpenseBatchDetailDialog from "@/components/income-expenses/IncomeExpenseBatchDetailDialog";
 import {
   useIncomeExpenses,
   useIncomeExpenseStats,
   useCancelIncomeExpense,
   useGenerateRecurringVouchers,
+  useIncomeExpenseBatches,
+  useCancelIncomeExpenseBatch,
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
@@ -73,13 +85,17 @@ const IncomeExpensePage = () => {
   }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"individual" | "batch">("individual");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [detailVoucher, setDetailVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(isMobile ? 50 : 20);
 
@@ -89,13 +105,28 @@ const IncomeExpensePage = () => {
     searchQuery || undefined
   );
 
+  const { data: batchResult, isLoading: isBatchLoading } =
+    useIncomeExpenseBatches(
+      filters,
+      { page: pagination.page, pageSize: pagination.pageSize },
+      searchQuery || undefined
+    );
+
   const vouchers = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;
+  const batches = batchResult?.data ?? [];
+  const batchTotalCount = batchResult?.totalCount ?? 0;
+
+  const detailBatch =
+    detailBatchId !== null
+      ? batches.find((b) => b.id === detailBatchId) ?? null
+      : null;
 
   const { data: stats, isLoading: isStatsLoading } =
     useIncomeExpenseStats(filters);
 
   const cancelMutation = useCancelIncomeExpense();
+  const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const generateRecurringMutation = useGenerateRecurringVouchers();
 
   const handleFiltersChange = useCallback(
@@ -129,8 +160,17 @@ const IncomeExpensePage = () => {
     setIsFormOpen(true);
   }, []);
 
+  const handleAddBatch = useCallback((type: "INCOME" | "EXPENSE" = "EXPENSE") => {
+    setFormType(type);
+    setIsBatchFormOpen(true);
+  }, []);
+
   const handleView = useCallback((voucher: IncomeExpenseWithRelations) => {
     setDetailVoucher(voucher);
+  }, []);
+
+  const handleViewBatch = useCallback((batchId: string) => {
+    setDetailBatchId(batchId);
   }, []);
 
   const handleFormClose = useCallback((open: boolean) => {
@@ -141,12 +181,31 @@ const IncomeExpensePage = () => {
     setCancelTarget(id);
   }, []);
 
+  const handleCancelBatch = useCallback((batchId: string) => {
+    setCancelBatchTarget(batchId);
+  }, []);
+
   const confirmCancel = useCallback(() => {
     if (cancelTarget) {
       cancelMutation.mutate(cancelTarget);
     }
     setCancelTarget(null);
   }, [cancelTarget, cancelMutation]);
+
+  const confirmCancelBatch = useCallback(() => {
+    if (cancelBatchTarget) {
+      cancelBatchMutation.mutate(cancelBatchTarget);
+    }
+    setCancelBatchTarget(null);
+  }, [cancelBatchTarget, cancelBatchMutation]);
+
+  const handleViewModeChange = useCallback(
+    (v: string) => {
+      setViewMode(v as "individual" | "batch");
+      pagination.setPage(1);
+    },
+    [pagination]
+  );
 
   const statsData = stats ?? {
     totalIncome: 0,
@@ -194,15 +253,38 @@ const IncomeExpensePage = () => {
             onChange={handleFiltersChange}
           />
 
-          {/* List */}
-          <IncomeExpenseListMobile
-            vouchers={vouchers}
-            isLoading={isLoading}
-            onView={handleView}
-          />
+          {/* View mode toggle */}
+          <div className="px-3 pt-1">
+            <Tabs value={viewMode} onValueChange={handleViewModeChange}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="individual">Phiếu lẻ</TabsTrigger>
+                <TabsTrigger value="batch">Phiếu tổng</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
-          {/* Pagination summary (mobile) */}
-          {totalCount > pagination.pageSize && (
+          {/* List */}
+          {viewMode === "individual" ? (
+            <IncomeExpenseListMobile
+              vouchers={vouchers}
+              isLoading={isLoading}
+              onView={handleView}
+            />
+          ) : (
+            <div className="px-3 pt-2">
+              <IncomeExpenseBatchList
+                batches={batches}
+                isLoading={isBatchLoading}
+                onView={handleViewBatch}
+                onCancel={handleCancelBatch}
+                pagination={pagination}
+                totalCount={batchTotalCount}
+              />
+            </div>
+          )}
+
+          {/* Pagination summary (mobile) — chỉ cho view phiếu lẻ */}
+          {viewMode === "individual" && totalCount > pagination.pageSize && (
             <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
               Hiển thị {vouchers.length} / {totalCount} phiếu
               {pagination.page * pagination.pageSize < totalCount && (
@@ -221,6 +303,7 @@ const IncomeExpensePage = () => {
         <IncomeExpenseFAB
           onCreateIncome={handleAddIncome}
           onCreateExpense={handleAddExpense}
+          onCreateBatch={() => handleAddBatch("EXPENSE")}
         />
 
         {/* Dialogs */}
@@ -230,6 +313,11 @@ const IncomeExpensePage = () => {
           voucher={null}
           defaultType={formType}
         />
+        <IncomeExpenseBatchForm
+          open={isBatchFormOpen}
+          onOpenChange={setIsBatchFormOpen}
+          defaultType={formType}
+        />
         <IncomeExpenseDetailDialog
           open={!!detailVoucher}
           onOpenChange={(o) => {
@@ -237,6 +325,14 @@ const IncomeExpensePage = () => {
           }}
           voucher={detailVoucher}
           onCancel={handleCancelVoucher}
+        />
+        <IncomeExpenseBatchDetailDialog
+          open={!!detailBatch}
+          onOpenChange={(o) => {
+            if (!o) setDetailBatchId(null);
+          }}
+          batch={detailBatch}
+          onCancel={handleCancelBatch}
         />
         <IncomeExpenseImportDialog
           open={isImportOpen}
@@ -273,6 +369,30 @@ const IncomeExpensePage = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <AlertDialog
+          open={!!cancelBatchTarget}
+          onOpenChange={() => setCancelBatchTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận huỷ cả đợt</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tất cả phiếu trong đợt sẽ được đánh dấu <b>Đã huỷ</b> cùng lúc
+                và không còn ảnh hưởng đến tồn quỹ. Các phiếu vẫn được lưu lại
+                trong lịch sử.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Đóng</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmCancelBatch}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Huỷ cả đợt
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </MainLayout>
     );
   }
@@ -282,10 +402,28 @@ const IncomeExpensePage = () => {
     <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Button onClick={handleAddVoucher}>
-            <Plus className="h-4 w-4 mr-2" />
-            Thêm phiếu
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Thêm phiếu
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuItem onClick={handleAddVoucher}>
+                <FileText className="h-4 w-4 mr-2" />
+                Thêm phiếu lẻ
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleAddBatch("EXPENSE")}>
+                <Layers className="h-4 w-4 mr-2" />
+                Thêm phiếu tổng
+                <span className="ml-auto text-[10px] text-muted-foreground">
+                  Gom nhiều tòa
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" onClick={() => setIsImportOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import
@@ -327,20 +465,50 @@ const IncomeExpensePage = () => {
 
         <IncomeExpenseStats stats={statsData} isLoading={isStatsLoading} />
 
-        <IncomeExpenseList
-          vouchers={vouchers}
-          isLoading={isLoading}
-          onView={handleView}
-          onCancel={handleCancelVoucher}
-          pagination={pagination}
-          totalCount={totalCount}
-        />
+        {/* View mode toggle */}
+        <Tabs value={viewMode} onValueChange={handleViewModeChange}>
+          <TabsList>
+            <TabsTrigger value="individual" className="gap-1.5">
+              <FileText className="h-4 w-4" />
+              Phiếu lẻ
+            </TabsTrigger>
+            <TabsTrigger value="batch" className="gap-1.5">
+              <Layers className="h-4 w-4" />
+              Phiếu tổng (gom nhóm)
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {viewMode === "individual" ? (
+          <IncomeExpenseList
+            vouchers={vouchers}
+            isLoading={isLoading}
+            onView={handleView}
+            onCancel={handleCancelVoucher}
+            pagination={pagination}
+            totalCount={totalCount}
+          />
+        ) : (
+          <IncomeExpenseBatchList
+            batches={batches}
+            isLoading={isBatchLoading}
+            onView={handleViewBatch}
+            onCancel={handleCancelBatch}
+            pagination={pagination}
+            totalCount={batchTotalCount}
+          />
+        )}
       </div>
 
       <IncomeExpenseForm
         open={isFormOpen}
         onOpenChange={handleFormClose}
         voucher={null}
+        defaultType={formType}
+      />
+      <IncomeExpenseBatchForm
+        open={isBatchFormOpen}
+        onOpenChange={setIsBatchFormOpen}
         defaultType={formType}
       />
       <IncomeExpenseDetailDialog
@@ -350,6 +518,14 @@ const IncomeExpensePage = () => {
         }}
         voucher={detailVoucher}
         onCancel={handleCancelVoucher}
+      />
+      <IncomeExpenseBatchDetailDialog
+        open={!!detailBatch}
+        onOpenChange={(o) => {
+          if (!o) setDetailBatchId(null);
+        }}
+        batch={detailBatch}
+        onCancel={handleCancelBatch}
       />
       <IncomeExpenseImportDialog
         open={isImportOpen}
@@ -383,6 +559,31 @@ const IncomeExpensePage = () => {
               className="bg-red-600 hover:bg-red-700"
             >
               Huỷ phiếu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!cancelBatchTarget}
+        onOpenChange={() => setCancelBatchTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận huỷ cả đợt</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tất cả phiếu trong đợt sẽ được đánh dấu <b>Đã huỷ</b> cùng lúc và
+              không còn ảnh hưởng đến tồn quỹ. Các phiếu vẫn được lưu lại trong
+              lịch sử.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCancelBatch}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Huỷ cả đợt
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
