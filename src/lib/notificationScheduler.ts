@@ -182,7 +182,7 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
       contract:contracts(tenant:tenants(full_name))
     `)
     .eq('user_id', userId)
-    .in('status', ['UNPAID', 'PARTIAL_PAID'])
+    .in('status', ['APPROVED', 'PARTIAL_PAID'])
     .lt('due_date', new Date().toISOString());
 
   if (!invoices) return;

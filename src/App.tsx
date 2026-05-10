@@ -212,6 +212,8 @@ const App = () => (
           <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
           <Route path="/income-expense/print/:id" element={<ProtectedRoute><IncomeExpensePrintPage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
+          <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />
+          <Route path="/payments/income-expense" element={<Navigate to="/income-expense" replace />} />
 
           {/* === CÔNG VIỆC === */}
           <Route path="/tasks" element={<ProtectedRoute><TaskManagementPage /></ProtectedRoute>} />
@@ -266,6 +268,7 @@ const App = () => (
           <Route path="/finance/cashbooks" element={<ProtectedRoute><CashbooksPage /></ProtectedRoute>} />
           <Route path="/setting/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/settings/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
+          <Route path="/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           {/* Categories Sub-Pages - Tài sản */}
           <Route path="/settings/categories/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
           <Route path="/settings/categories/warehouses" element={<ProtectedRoute><WarehousesPage /></ProtectedRoute>} />
