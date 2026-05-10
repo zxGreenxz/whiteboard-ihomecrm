@@ -82,8 +82,10 @@ function StatBlock({
 export function OperationsSummary({ buildingId }: { buildingId?: string | null }) {
   const { data: leads = [], isLoading: leadsLoading } = useLeads();
   const { data: deposits = [], isLoading: depositsLoading } = useDeposits();
-  const contractsResult = useContracts(buildingId ? { building_id: buildingId } : undefined);
-  const contracts = contractsResult.data?.data ?? [];
+  const contractsResult = useContracts();
+  const contracts = (contractsResult.data ?? []).filter((c: any) =>
+    !buildingId || c.room?.building_id === buildingId,
+  );
   const contractsLoading = contractsResult.isLoading;
 
   const now = new Date();

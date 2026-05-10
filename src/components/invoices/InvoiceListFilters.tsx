@@ -30,10 +30,10 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(filters.building_id);
   const { data: beds = [] } = useBeds(compact ? undefined : filters.room_id);
-  const { data: contractsData } = useContracts(
-    !compact && filters.room_id ? { room_id: filters.room_id } : undefined,
-  );
-  const contracts = contractsData?.data ?? [];
+  const { data: contractsData } = useContracts();
+  const contracts = (!compact && filters.room_id
+    ? (contractsData ?? []).filter((c: any) => c.room_id === filters.room_id)
+    : (contractsData ?? []));
 
   // Month Picker state
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);

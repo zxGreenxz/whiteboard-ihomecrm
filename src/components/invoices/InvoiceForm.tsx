@@ -116,10 +116,10 @@ const InvoiceForm = ({
   const { data: buildings } = useBuildings();
   const { data: rooms } = useRooms(buildingId || undefined);
   const { data: beds } = useBeds(roomId || undefined);
-  const { data: contractsData } = useContracts(
-    roomId ? { room_id: roomId, status: 'ACTIVE' } : undefined,
+  const { data: contractsData } = useContracts();
+  const contracts = (contractsData ?? []).filter((c: any) =>
+    c.status === 'ACTIVE' && (!roomId || c.room_id === roomId),
   );
-  const contracts = contractsData?.data ?? [];
   const { data: templates } = useDocumentTemplates('INVOICE');
   const { data: contractDetail } = useContractWithServices(contractId || undefined);
 

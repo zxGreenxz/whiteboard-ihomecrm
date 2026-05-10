@@ -63,8 +63,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const [selectedElectricReadingId, setSelectedElectricReadingId] = useState<string>();
   const [selectedWaterReadingId, setSelectedWaterReadingId] = useState<string>();
   const createMutation = useCreateInvoice();
-  const { data: contractsData } = useContracts({ status: 'ACTIVE' });
-  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
+  const { data: contractsData } = useContracts();
+  const contracts = (contractsData ?? []).filter((c: any) => c.status === 'ACTIVE');
   const { data: meterReadings } = useMeterReadings(selectedContractId);
   const { data: vehicles } = useVehicles({ contract_id: selectedContractId });
 
@@ -314,13 +314,19 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                 <SelectValue placeholder="Chọn hợp đồng..." />
               </SelectTrigger>
               <SelectContent>
-                {contracts?.map((contract) => (
-                  <SelectItem key={contract.id} value={contract.id}>
-                    {contract.contract_number || contract.id.slice(0, 8)} - {contract.tenant?.full_name}
-                    {contract.room && ` - ${contract.room.name}`}
-                    {contract.bed && ` - ${contract.bed.name}`}
-                  </SelectItem>
-                ))}
+                {contracts?.map((contract: any) => {
+                  const rep = contract.contract_customers?.find((cc: any) => cc.is_representative)
+                    ?? contract.contract_customers?.[0];
+                  const customerName = rep?.customer?.full_name ?? contract.tenant?.full_name ?? '';
+                  return (
+                    <SelectItem key={contract.id} value={contract.id}>
+                      {contract.contract_number || contract.id.slice(0, 8)}
+                      {customerName && ` - ${customerName}`}
+                      {contract.room && ` - ${contract.room.name}`}
+                      {contract.bed && ` - ${contract.bed.name}`}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             {errors.contract_id && (
@@ -328,18 +334,23 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             )}
           </div>
 
-          {selectedContract && (
-            <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Khách hàng:</span>
-                <span className="font-medium">{selectedContract.tenant?.full_name}</span>
+          {selectedContract && (() => {
+            const rep = (selectedContract as any).contract_customers?.find((cc: any) => cc.is_representative)
+              ?? (selectedContract as any).contract_customers?.[0];
+            const customerName = rep?.customer?.full_name ?? (selectedContract as any).tenant?.full_name ?? '—';
+            return (
+              <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Khách hàng:</span>
+                  <span className="font-medium">{customerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Giá thuê:</span>
+                  <span className="font-medium">{formatCurrency(selectedContract.rent_price)}/tháng</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Giá thuê:</span>
-                <span className="font-medium">{formatCurrency(selectedContract.rent_price)}/tháng</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Dates Grid */}
           <div className="grid grid-cols-2 gap-4">

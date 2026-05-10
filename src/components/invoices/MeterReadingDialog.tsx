@@ -47,8 +47,8 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
 
   const recordMutation = useRecordMeterReading();
-  const { data: contractsData } = useContracts({ status: 'ACTIVE' });
-  const contracts = Array.isArray(contractsData?.data) ? contractsData.data : [];
+  const { data: contractsData } = useContracts();
+  const contracts = (contractsData ?? []).filter((c: any) => c.status === 'ACTIVE');
   const { data: previousReadings } = useMeterReadings(selectedContractId);
 
   const {
