@@ -4,6 +4,7 @@ import {
   mapMeterToReading,
   getPreviousReadingFromList,
   getMeterNameFromList,
+  formatSimpleMeterName,
   isLoadEnabled,
 } from '../meterReadingFormUtils';
 
@@ -134,14 +135,14 @@ describe('Fix Validation: getPreviousReadingFromList (Bug 1.2, 1.4)', () => {
 });
 
 /**
- * Property 1: getMeterNameFromList lookup + field access
+ * Property 1: getMeterNameFromList lookup + simplified display
  * **Validates: Requirements 2.2, 2.3**
  *
- * getMeterNameFromList finds meter by meter_id and returns meter_name || meter_code.
- * Fixed code uses m.meter_id for lookup and meter_name/meter_code for display.
+ * getMeterNameFromList finds meter by meter_id and returns the simplified
+ * display name (meter_code with the meter-type prefix stripped).
  */
 describe('Fix Validation: getMeterNameFromList (Bug 1.2, 1.3)', () => {
-  it('should return meter_name when meter exists and has meter_name', () => {
+  it('should return formatSimpleMeterName(meter_code) when meter exists', () => {
     fc.assert(
       fc.property(
         fc.array(unrecordedMeterArb, { minLength: 1, maxLength: 20 }),
@@ -152,8 +153,7 @@ describe('Fix Validation: getMeterNameFromList (Bug 1.2, 1.3)', () => {
 
           const result = getMeterNameFromList(targetMeter.meter_id, meters);
 
-          // FIXED: result === targetMeter.meter_name (since meter_name is non-empty)
-          expect(result).toBe(targetMeter.meter_name || targetMeter.meter_code);
+          expect(result).toBe(formatSimpleMeterName(targetMeter.meter_code));
         },
       ),
       { numRuns: 100 },

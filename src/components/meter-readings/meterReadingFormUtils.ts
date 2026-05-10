@@ -82,14 +82,27 @@ export function getPreviousReadingFromList(meterId: string, metersList: Unrecord
 }
 
 /**
+ * Strip meter type prefix from a meter code.
+ * "CTD-111PVC-101" -> "111PVC-101", "CTN-A-12" -> "A-12".
+ * Returns the original code if it has no dash separator.
+ */
+export function formatSimpleMeterName(code: string | null | undefined): string {
+  if (!code) return '';
+  const parts = code.split('-');
+  if (parts.length <= 1) return code;
+  return parts.slice(1).join('-');
+}
+
+/**
  * Get display name for a meter from the unrecorded meters list.
- * Returns meter_name if non-empty, otherwise meter_code, or '' if not found.
+ * Trả về tên rút gọn dạng "Tòa nhà-Phòng" (vd "111PVC-101"), bỏ prefix loại công tơ.
  *
  * Requirements: 2.3
  */
 export function getMeterNameFromList(meterId: string, metersList: UnrecordedMeter[]): string {
   const meter = metersList.find((m) => m.meter_id === meterId);
-  return meter?.meter_name || meter?.meter_code || '';
+  if (!meter) return '';
+  return formatSimpleMeterName(meter.meter_code);
 }
 
 /**

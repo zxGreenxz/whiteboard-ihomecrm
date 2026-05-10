@@ -3,6 +3,7 @@ import {
   mapMeterToReading,
   getPreviousReadingFromList,
   getMeterNameFromList,
+  formatSimpleMeterName,
   isLoadEnabled,
   type UnrecordedMeter,
 } from './meterReadingFormUtils';
@@ -75,8 +76,9 @@ interface MeterReadingFormProps {
 const METER_TYPE_OPTIONS = [
   { value: 'ELECTRICITY', label: 'Điện' },
   { value: 'WATER', label: 'Nước' },
-  { value: 'GAS', label: 'Gas' },
 ] as const;
+
+const DEFAULT_METER_TYPE: 'ELECTRICITY' = 'ELECTRICITY';
 
 const STORAGE_BUCKET = 'meter-images';
 
@@ -108,7 +110,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
     defaultValues: {
       building_id: '',
       room_id: '',
-      meter_type: null,
+      meter_type: DEFAULT_METER_TYPE,
       settlement_month: currentMonth,
       reading_date: new Date().toISOString().slice(0, 10),
       readings: [],
@@ -159,7 +161,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       form.reset({
         building_id: '',
         room_id: '',
-        meter_type: null,
+        meter_type: DEFAULT_METER_TYPE,
         settlement_month: currentMonth,
         reading_date: new Date().toISOString().slice(0, 10),
         readings: [],
@@ -242,7 +244,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
 
   const getMeterName = (meterId: string): string => {
     if (isEditing && reading) {
-      return reading.meter_name || reading.meter_code || '';
+      return formatSimpleMeterName(reading.meter_code);
     }
     return getMeterNameFromList(meterId, metersList);
   };
@@ -404,22 +406,21 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                   name="meter_type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Loại công tơ</FormLabel>
+                      <FormLabel>Loại công tơ *</FormLabel>
                       <Select
                         onValueChange={(val) => {
-                          field.onChange(val === '__all__' ? null : val);
+                          field.onChange(val);
                           setShowMetersTable(false);
                         }}
-                        value={field.value ?? '__all__'}
+                        value={field.value ?? DEFAULT_METER_TYPE}
                         disabled={isEditing}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Tất cả" />
+                            <SelectValue />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="__all__">Tất cả</SelectItem>
                           {METER_TYPE_OPTIONS.map((opt) => (
                             <SelectItem key={opt.value} value={opt.value}>
                               {opt.label}
@@ -505,7 +506,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                         <TableHead>Tên công tơ</TableHead>
                         <TableHead className="text-right">Chỉ số đầu</TableHead>
                         <TableHead className="text-right">Chỉ số mới</TableHead>
-                        <TableHead>Ghi chú</TableHead>
+                        <TableHead className="hidden sm:table-cell">Ghi chú</TableHead>
                         <TableHead>Hình ảnh</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -569,8 +570,8 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                               </div>
                             </TableCell>
 
-                            {/* Ghi chú */}
-                            <TableCell>
+                            {/* Ghi chú (ẩn trên mobile) */}
+                            <TableCell className="hidden sm:table-cell">
                               <FormField
                                 control={form.control}
                                 name={`readings.${index}.notes`}

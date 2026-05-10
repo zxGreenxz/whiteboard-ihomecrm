@@ -6,6 +6,7 @@ import {
   getPreviousReadingFromList,
   createMeterReadingPayload,
   getMeterNameFromList,
+  formatSimpleMeterName,
 } from '../meterReadingFormUtils';
 import type { UnrecordedMeter } from '../meterReadingFormUtils';
 
@@ -241,28 +242,18 @@ describe('Feature: meter-reading-full-reimplementation, Property 11: New reading
 
 /**
  * Feature: meter-reading-full-reimplementation
- * Property 22: Meter name from list
+ * Property 22: Meter name from list (simplified display)
  *
- * getMeterNameFromList trả về meter_name (hoặc meter_code nếu meter_name rỗng),
- * hoặc '' nếu không tìm thấy.
+ * getMeterNameFromList trả về tên rút gọn từ meter_code (bỏ prefix loại công tơ,
+ * vd "CTD-111PVC-101" -> "111PVC-101"), hoặc '' nếu không tìm thấy meter.
  *
  * **Validates: Yêu cầu 2.3**
  */
 describe('Feature: meter-reading-full-reimplementation, Property 22: Meter name from list', () => {
-  it('should return meter_name when meter is found and meter_name is non-empty', () => {
-    const meterWithNameArb = fc.record({
-      meter_id: fc.uuid(),
-      meter_code: fc.string({ minLength: 1, maxLength: 20 }),
-      meter_name: fc.string({ minLength: 1, maxLength: 50 }),
-      room_name: fc.string({ maxLength: 50 }),
-      meter_type_value: meterTypeArb,
-      last_reading: fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
-      last_reading_date: fc.constant(null as string | null),
-    });
-
+  it('should return formatSimpleMeterName(meter_code) when meter is found', () => {
     fc.assert(
       fc.property(
-        fc.array(meterWithNameArb, { minLength: 1, maxLength: 20 }),
+        fc.array(unrecordedMeterArb, { minLength: 1, maxLength: 20 }),
         fc.nat({ max: 19 }),
         (meters, indexRaw) => {
           const index = indexRaw % meters.length;
@@ -270,35 +261,7 @@ describe('Feature: meter-reading-full-reimplementation, Property 22: Meter name 
 
           const result = getMeterNameFromList(target.meter_id, meters);
 
-          expect(result).toBe(target.meter_name);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('should return meter_code when meter_name is empty', () => {
-    const meterWithEmptyNameArb = fc.record({
-      meter_id: fc.uuid(),
-      meter_code: fc.string({ minLength: 1, maxLength: 20 }),
-      meter_name: fc.constant(''),
-      room_name: fc.string({ maxLength: 50 }),
-      meter_type_value: meterTypeArb,
-      last_reading: fc.double({ min: 0, max: 1_000_000, noNaN: true, noDefaultInfinity: true }),
-      last_reading_date: fc.constant(null as string | null),
-    });
-
-    fc.assert(
-      fc.property(
-        fc.array(meterWithEmptyNameArb, { minLength: 1, maxLength: 20 }),
-        fc.nat({ max: 19 }),
-        (meters, indexRaw) => {
-          const index = indexRaw % meters.length;
-          const target = meters[index];
-
-          const result = getMeterNameFromList(target.meter_id, meters);
-
-          expect(result).toBe(target.meter_code);
+          expect(result).toBe(formatSimpleMeterName(target.meter_code));
         },
       ),
       { numRuns: 100 },
@@ -320,5 +283,28 @@ describe('Feature: meter-reading-full-reimplementation, Property 22: Meter name 
       ),
       { numRuns: 100 },
     );
+  });
+});
+
+/**
+ * formatSimpleMeterName: bỏ prefix loại công tơ trong meter code.
+ * Cho code có dạng "<PREFIX>-<rest>", trả về "<rest>".
+ * Cho code không có dấu "-", trả về nguyên giá trị.
+ */
+describe('formatSimpleMeterName', () => {
+  it('strips the first dash-separated segment when there is more than one segment', () => {
+    expect(formatSimpleMeterName('CTD-111PVC-101')).toBe('111PVC-101');
+    expect(formatSimpleMeterName('CTN-A-12')).toBe('A-12');
+    expect(formatSimpleMeterName('X-Y')).toBe('Y');
+  });
+
+  it('returns the original code when there is no dash separator', () => {
+    expect(formatSimpleMeterName('ABC')).toBe('ABC');
+  });
+
+  it('returns empty string for falsy input', () => {
+    expect(formatSimpleMeterName('')).toBe('');
+    expect(formatSimpleMeterName(null)).toBe('');
+    expect(formatSimpleMeterName(undefined)).toBe('');
   });
 });
