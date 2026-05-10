@@ -637,7 +637,7 @@ export function useDepositsReport() {
         .from("deposits")
         .select(`
           *,
-          leads (
+          tenants (
             id,
             full_name,
             phone,
@@ -652,8 +652,9 @@ export function useDepositsReport() {
 
       if (error) throw error;
 
-      return data.map(deposit => ({
+      return data.map((deposit: any) => ({
         ...deposit,
+        leads: deposit.tenants,
         days_held: differenceInDays(new Date(), new Date(deposit.deposit_date)),
       }));
     },
