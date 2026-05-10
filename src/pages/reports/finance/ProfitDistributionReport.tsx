@@ -1,176 +1,256 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { PieChart as PieChartIcon, TrendingUp, DollarSign, Percent } from "lucide-react";
-import { ReportLayout } from "@/components/reports/ReportLayout";
-import { ReportCard } from "@/components/reports/ReportCard";
-import { ExportButtons } from "@/components/reports/ExportButtons";
-import { DateRangePicker } from "@/components/reports/DateRangePicker";
-import { useProfitDistributionReport } from "@/hooks/useReports";
+import { ChevronRight, DollarSign } from "lucide-react";
+import { useIncomeExpenses } from "@/hooks/useIncomeExpenses";
+import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { DateRange } from "react-day-picker";
-import { startOfMonth } from "date-fns";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 
-const COLORS = ["#10B981", "#3B82F6", "#F59E0B", "#EF4444"];
+const formatCurrency = (n: number) =>
+  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+
+const StatCard = ({
+  label,
+  value,
+  bg,
+  ring,
+}: {
+  label: string;
+  value: number;
+  bg: string;
+  ring: string;
+}) => (
+  <div className="flex-1 rounded-lg border bg-card p-4 flex items-center justify-between">
+    <div className={`h-12 w-12 rounded-full ${ring} flex items-center justify-center ${bg}`}>
+      <DollarSign className="h-6 w-6" />
+    </div>
+    <div className="text-right">
+      <div className="text-2xl font-bold">{formatCurrency(value)}</div>
+      <div className="text-sm text-muted-foreground">{label}</div>
+    </div>
+  </div>
+);
 
 export default function ProfitDistributionReport() {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfMonth(new Date()),
-    to: new Date(),
-  });
+  const now = new Date();
+  const [monthStr, setMonthStr] = useState<string>(format(now, "MM-yyyy"));
+  const [areaId, setAreaId] = useState<string>("all");
   const [buildingId, setBuildingId] = useState<string>("all");
+  const [roomId, setRoomId] = useState<string>("all");
+  const [bedId, setBedId] = useState<string>("all");
+  const [voucherType, setVoucherType] = useState<string>("all");
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
-  const { data: profitData, isLoading } = useProfitDistributionReport(dateRange?.from, dateRange?.to);
+  // Parse monthStr "MM-yyyy" → start/end date
+  const [mm, yyyy] = monthStr.split("-").map((s) => parseInt(s, 10));
+  const monthDate = new Date(yyyy, (mm || 1) - 1, 1);
+  const startDate = format(startOfMonth(monthDate), "yyyy-MM-dd");
+  const endDate = format(endOfMonth(monthDate), "yyyy-MM-dd");
+
+  const { data: areas = [] } = useAreas();
   const { data: buildings = [] } = useBuildings();
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-    }).format(amount);
-  };
-
-  const pieData = profitData ? [
-    { name: "Tiền thuê", value: profitData.breakdown.rent, color: COLORS[0] },
-    { name: "Dịch vụ", value: profitData.breakdown.services, color: COLORS[1] },
-    { name: "Khác", value: profitData.breakdown.other, color: COLORS[2] },
-  ].filter(item => item.value > 0) : [];
-
-  const stats = profitData && (
-    <>
-      <ReportCard
-        title="Tổng doanh thu"
-        value={formatCurrency(profitData.totalRevenue)}
-        icon={DollarSign}
-        description="Trong kỳ báo cáo"
-      />
-      <ReportCard
-        title="Tổng chi phí"
-        value={formatCurrency(profitData.totalExpenses)}
-        icon={TrendingUp}
-        description="Trong kỳ báo cáo"
-      />
-      <ReportCard
-        title="Lợi nhuận ròng"
-        value={formatCurrency(profitData.netProfit)}
-        icon={PieChartIcon}
-        description="Doanh thu - Chi phí"
-      />
-      <ReportCard
-        title="Biên lợi nhuận"
-        value={`${profitData.profitMargin.toFixed(1)}%`}
-        icon={Percent}
-        description="Profit margin"
-      />
-    </>
+  const { data: result, isLoading } = useIncomeExpenses(
+    {
+      area_id: areaId === "all" ? undefined : areaId,
+      building_id: buildingId === "all" ? undefined : buildingId,
+      room_id: roomId === "all" ? undefined : roomId,
+      type: voucherType === "all" ? undefined : (voucherType as any),
+      start_date: startDate,
+      end_date: endDate,
+      approval_status: "APPROVED" as any,
+    },
+    { page, pageSize }
   );
 
-  const exportData = pieData.map(item => ({
-    "Loại": item.name,
-    "Giá trị": item.value,
-    "Tỷ lệ %": ((item.value / profitData!.totalRevenue) * 100).toFixed(2),
-  }));
+  const rows = result?.data ?? [];
+  const totalCount = result?.totalCount ?? 0;
+
+  const totals = useMemo(() => {
+    const income = rows
+      .filter((r: any) => r.type === "INCOME")
+      .reduce((s: number, r: any) => s + r.total_amount, 0);
+    const expense = rows
+      .filter((r: any) => r.type === "EXPENSE")
+      .reduce((s: number, r: any) => s + r.total_amount, 0);
+    return { income, expense, profit: income - expense };
+  }, [rows]);
+
+  const monthOptions = useMemo(() => {
+    const out: string[] = [];
+    const d = new Date();
+    for (let i = 0; i < 24; i++) {
+      const dt = new Date(d.getFullYear(), d.getMonth() - i, 1);
+      out.push(format(dt, "MM-yyyy"));
+    }
+    return out;
+  }, []);
 
   return (
     <MainLayout>
-    <ReportLayout
-      title="Báo cáo Phân bổ lợi nhuận"
-      description="Phân tích cấu trúc doanh thu và lợi nhuận"
-      icon={<PieChartIcon className="h-8 w-8" />}
-      backPath="/reports/finance"
-      actions={
-        <ExportButtons
-          data={exportData}
-          filename="bao-cao-phan-bo-loi-nhuan"
-        />
-      }
-      filters={
-        <div className="flex flex-wrap gap-4 items-end">
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
-          <Select value={buildingId} onValueChange={setBuildingId}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Tất cả toà nhà" />
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/reports/finance" className="hover:text-primary">
+            Báo cáo tài chính
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <span className="text-foreground font-medium">Phân bổ lợi nhuận</span>
+        </div>
+
+        {/* 3 Stat cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard label="Doanh thu" value={totals.income} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
+          <StatCard label="Chi phí" value={totals.expense} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
+          <StatCard label="Lợi nhuận" value={totals.profit} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-end gap-3">
+          <Select value={monthStr} onValueChange={setMonthStr}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tất cả toà nhà</SelectItem>
-              {buildings.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
+              {monthOptions.map((m) => (
+                <SelectItem key={m} value={m}>{m}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-      }
-      stats={stats}
-    >
-      {isLoading ? (
-        <Skeleton className="h-[400px] w-full" />
-      ) : profitData ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Cấu trúc doanh thu</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry) => `${entry.name}: ${((entry.value / profitData.totalRevenue) * 100).toFixed(1)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Thống kê tài chính</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Tổng doanh thu:</span>
-                <span className="font-semibold text-lg">{formatCurrency(profitData.totalRevenue)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Tổng chi phí:</span>
-                <span className="font-semibold text-lg">{formatCurrency(profitData.totalExpenses)}</span>
-              </div>
-              <div className="border-t pt-2 flex justify-between items-center">
-                <span className="font-semibold">Lợi nhuận ròng:</span>
-                <span className="font-bold text-xl text-green-600">{formatCurrency(profitData.netProfit)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Biên lợi nhuận:</span>
-                <span className="font-semibold text-lg">{profitData.profitMargin.toFixed(1)}%</span>
-              </div>
-            </CardContent>
-          </Card>
+          <Select value={areaId} onValueChange={setAreaId}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Chọn khu vực" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả khu vực</SelectItem>
+              {(areas as any[]).map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={buildingId} onValueChange={setBuildingId}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Chọn tòa nhà" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả tòa nhà</SelectItem>
+              {buildings.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={roomId} onValueChange={setRoomId}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Chọn phòng" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả phòng</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={bedId} onValueChange={setBedId}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Chọn giường" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả giường</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={voucherType} onValueChange={setVoucherType}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Loại thu chi" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả loại</SelectItem>
+              <SelectItem value="INCOME">Thu</SelectItem>
+              <SelectItem value="EXPENSE">Chi</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      ) : (
-        <div className="text-center py-8 text-muted-foreground">
-          Không có dữ liệu
+
+        {/* Table */}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tháng</TableHead>
+                <TableHead>Mô tả</TableHead>
+                <TableHead>Tòa nhà</TableHead>
+                <TableHead>Phòng</TableHead>
+                <TableHead className="text-right">Doanh thu</TableHead>
+                <TableHead className="text-right">Chi phí</TableHead>
+                <TableHead>Phân loại</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={7}><Skeleton className="h-6 w-full" /></TableCell>
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    Không có dữ liệu nào để hiển thị
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r: any) => (
+                  <TableRow key={r.id}>
+                    <TableCell>{format(new Date(r.voucher_date), "MM/yyyy")}</TableCell>
+                    <TableCell>{r.name}</TableCell>
+                    <TableCell>{r.building_name || "—"}</TableCell>
+                    <TableCell>{r.room_name || "—"}</TableCell>
+                    <TableCell className="text-right">
+                      {r.type === "INCOME" ? formatCurrency(r.total_amount) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {r.type === "EXPENSE" ? formatCurrency(r.total_amount) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {(r.items || []).map((it: any) => it.type_name).filter(Boolean).join(", ") || "—"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
-      )}
-    </ReportLayout>
+
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Số bản ghi</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(parseInt(v, 10)); setPage(1); }}>
+              <SelectTrigger className="w-[80px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50, 100].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            {totalCount === 0
+              ? "1 - 0 trên tổng số 0 bản ghi"
+              : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
+          </div>
+        </div>
+      </div>
     </MainLayout>
   );
 }
