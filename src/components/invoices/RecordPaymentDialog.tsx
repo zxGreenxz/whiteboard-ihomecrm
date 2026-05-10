@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
@@ -26,7 +26,7 @@ import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
-import { DollarSign, CheckCircle, Upload, X, Image, Loader2 } from 'lucide-react';
+import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface RecordPaymentDialogProps {
@@ -35,12 +35,16 @@ interface RecordPaymentDialogProps {
   invoice: InvoiceWithRelations | null;
 }
 
-const paymentSchema = z.object({
-  amount: z.number().min(1, 'Số tiền phải lớn hơn 0'),
-  change_amount: z.number().min(0).default(0),
+const paymentLineSchema = z.object({
+  amount: z.number().min(1, 'Số tiền phải > 0'),
   payment_method: z.enum(['TM', 'TK', 'TT']),
-  payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
   account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ nhận'),
+});
+
+const paymentSchema = z.object({
+  payment_lines: z.array(paymentLineSchema).min(1, 'Phải có ít nhất 1 dòng thanh toán'),
+  change_amount: z.number().min(0).default(0),
+  payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
   change_account_id: z.string().optional(),
   notes: z.string().optional(),
 }).refine(
@@ -77,45 +81,52 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     watch,
     reset,
     register,
+    control,
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
+      payment_lines: [{ amount: 0, payment_method: 'TM', account_id: '' }],
       change_amount: 0,
-      payment_method: 'TM',
       payment_date: new Date().toISOString().split('T')[0],
     },
   });
 
-  const watchedAmount = watch('amount');
+  const { fields, append, remove } = useFieldArray({ control, name: 'payment_lines' });
+
+  const watchedLines = watch('payment_lines');
   const watchedChangeAmount = watch('change_amount');
   const watchedChangeAccountId = watch('change_account_id');
-  const watchedPaymentMethod = watch('payment_method');
+
+  const totalPaid = (watchedLines ?? []).reduce(
+    (s, l) => s + (Number((l as any)?.amount) || 0),
+    0,
+  );
 
   const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
 
-  // Auto-fill amount with outstanding amount when dialog opens
+  // Auto-fill số tiền của dòng đầu = outstanding khi mở dialog
   useEffect(() => {
     if (invoice && outstandingAmount > 0) {
-      setValue('amount', outstandingAmount);
+      setValue('payment_lines.0.amount', outstandingAmount);
     }
   }, [invoice, outstandingAmount, setValue]);
 
-  // Auto-default sổ quỹ nhận theo tên tòa nhà của hoá đơn (account.name === building.name)
+  // Auto-default sổ quỹ nhận của DÒNG ĐẦU theo tên tòa nhà (account.name === building.name)
   useEffect(() => {
     if (!invoice || !accounts.length) return;
     const buildingName = invoice.building?.name?.trim();
     if (!buildingName) return;
     const match = (accounts as any[]).find((a) => a.name?.trim() === buildingName);
-    if (match) setValue('account_id', match.id);
+    if (match) setValue('payment_lines.0.account_id', match.id);
   }, [accounts, invoice, setValue]);
 
-  // Auto-compute tiền thối = max(0, amount - outstanding) trừ khi user tự sửa
+  // Auto-compute tiền thối = max(0, totalPaid - outstanding), trừ khi user tự sửa
   useEffect(() => {
     if (!changeUserEdited) {
-      const computed = Math.max(0, (watchedAmount || 0) - outstandingAmount);
+      const computed = Math.max(0, totalPaid - outstandingAmount);
       setValue('change_amount', computed);
     }
-  }, [watchedAmount, outstandingAmount, changeUserEdited, setValue]);
+  }, [totalPaid, outstandingAmount, changeUserEdited, setValue]);
 
   // Pre-select sổ quỹ thối theo current user (Joey -> Hiển Thối, Nathan -> Hiệp Thối)
   useEffect(() => {
@@ -223,29 +234,27 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         }
       }
 
-      recordMutation.mutate(
-        {
+      // Lặp qua từng dòng thanh toán; tiền thối chỉ kèm ở dòng cuối
+      // (sau khi tất cả payments đã ghi nhận, mirror change voucher 1 lần).
+      for (let i = 0; i < data.payment_lines.length; i++) {
+        const line = data.payment_lines[i];
+        const isLast = i === data.payment_lines.length - 1;
+        await recordMutation.mutateAsync({
           invoice_id: invoice.id,
-          amount: data.amount,
-          payment_method: data.payment_method,
+          amount: line.amount,
+          payment_method: line.payment_method,
           payment_date: data.payment_date,
           notes: data.notes,
-          receipt_image_url: receiptImageUrl,
-          account_id: data.account_id,
-          change_amount: data.change_amount,
-          change_account_id: data.change_account_id,
-        },
-        {
-          onSuccess: () => {
-            handleClose();
-          },
-          onSettled: () => {
-            setIsUploading(false);
-          },
-        }
-      );
+          receipt_image_url: i === 0 ? receiptImageUrl : undefined,
+          account_id: line.account_id,
+          change_amount: isLast ? data.change_amount : 0,
+          change_account_id: isLast ? data.change_account_id : null,
+        });
+      }
+      handleClose();
     } catch (error) {
       console.error('Payment error:', error);
+    } finally {
       setIsUploading(false);
     }
   };
@@ -259,7 +268,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }).format(amount);
   };
 
-  const newPaidAmount = (invoice.paid_amount || 0) + (watchedAmount || 0);
+  const newPaidAmount = (invoice.paid_amount || 0) + totalPaid;
   const newOutstanding = (invoice.total_amount || 0) - newPaidAmount;
   const willBePaid = newOutstanding <= 0;
   const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0;
@@ -308,99 +317,269 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </div>
           </div>
 
-          {/* Số tiền thanh toán + Tiền thối — 2 cột */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="amount">Số tiền thanh toán *</Label>
-              <Input
-                id="amount"
-                type="text"
-                inputMode="numeric"
-                value={formatVN(watchedAmount || 0)}
-                onChange={(e) => setValue('amount', parseVN(e.target.value), { shouldValidate: true })}
-                placeholder="0"
-              />
-              {errors.amount && (
-                <p className="text-sm text-red-500">{errors.amount.message}</p>
-              )}
-            </div>
+          {fields.length === 1 ? (
+            <>
+              {/* Số tiền thanh toán + Tiền thối + nút "+" — 1 dòng */}
+              <div className="flex gap-4 items-start">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="amount">Số tiền thanh toán *</Label>
+                  <Input
+                    id="amount"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatVN(watchedLines?.[0]?.amount || 0)}
+                    onChange={(e) =>
+                      setValue('payment_lines.0.amount', parseVN(e.target.value), {
+                        shouldValidate: true,
+                      })
+                    }
+                    placeholder="0"
+                  />
+                  {errors.payment_lines?.[0]?.amount && (
+                    <p className="text-sm text-red-500">
+                      {errors.payment_lines[0]?.amount?.message}
+                    </p>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="change_amount">Tiền thối</Label>
+                  <Input
+                    id="change_amount"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatVN(watchedChangeAmount || 0)}
+                    onChange={(e) => {
+                      setChangeUserEdited(true);
+                      setValue('change_amount', parseVN(e.target.value), {
+                        shouldValidate: true,
+                      });
+                    }}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="pt-7">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    title="Thêm dòng thanh toán"
+                    onClick={() =>
+                      append({ amount: 0, payment_method: 'TM', account_id: '' })
+                    }
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="change_amount">Tiền thối</Label>
-              <Input
-                id="change_amount"
-                type="text"
-                inputMode="numeric"
-                value={formatVN(watchedChangeAmount || 0)}
-                onChange={(e) => {
-                  setChangeUserEdited(true);
-                  setValue('change_amount', parseVN(e.target.value), { shouldValidate: true });
-                }}
-                placeholder="0"
-              />
-              {errors.change_amount && (
-                <p className="text-sm text-red-500">{errors.change_amount.message}</p>
-              )}
-            </div>
-          </div>
+              {/* Phương thức thanh toán */}
+              <div className="space-y-2">
+                <Label>Phương thức thanh toán *</Label>
+                <Select
+                  value={watchedLines?.[0]?.payment_method ?? 'TM'}
+                  onValueChange={(value) =>
+                    setValue('payment_lines.0.payment_method', value as any, {
+                      shouldValidate: true,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TM">TM</SelectItem>
+                    <SelectItem value="TK">TK</SelectItem>
+                    <SelectItem value="TT">TT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Payment Method */}
-          <div className="space-y-2">
-            <Label>Phương thức thanh toán *</Label>
-            <Select
-              value={watchedPaymentMethod}
-              onValueChange={(value) => setValue('payment_method', value as any)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="TM">TM</SelectItem>
-                <SelectItem value="TK">TK</SelectItem>
-                <SelectItem value="TT">TT</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Ngày thanh toán */}
+              <div className="space-y-2">
+                <Label htmlFor="payment_date">Ngày thanh toán *</Label>
+                <Input id="payment_date" type="date" {...register('payment_date')} />
+                {errors.payment_date && (
+                  <p className="text-sm text-red-500">{errors.payment_date.message}</p>
+                )}
+              </div>
 
-          {/* Payment Date */}
-          <div className="space-y-2">
-            <Label htmlFor="payment_date">Ngày thanh toán *</Label>
-            <Input
-              id="payment_date"
-              type="date"
-              {...register('payment_date')}
-            />
-            {errors.payment_date && (
-              <p className="text-sm text-red-500">{errors.payment_date.message}</p>
-            )}
-          </div>
+              {/* Sổ quỹ nhận */}
+              <div className="space-y-2">
+                <Label>Sổ quỹ nhận *</Label>
+                <Select
+                  value={watchedLines?.[0]?.account_id ?? ''}
+                  onValueChange={(v) =>
+                    setValue('payment_lines.0.account_id', v, { shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((a: any) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                        {a.bank_name ? ` — ${a.bank_name}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.payment_lines?.[0]?.account_id && (
+                  <p className="text-sm text-red-500">
+                    {errors.payment_lines[0]?.account_id?.message}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Multi-line mode: stack từng dòng (Số tiền · PT · Sổ quỹ · −) */}
+              {fields.map((field, idx) => (
+                <div
+                  key={field.id}
+                  className="border border-zinc-200 rounded-lg p-3 space-y-3 bg-zinc-50/50"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-zinc-700">
+                      Thanh toán #{idx + 1}
+                    </span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      title="Xoá dòng"
+                      onClick={() => remove(idx)}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Số tiền *</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatVN(watchedLines?.[idx]?.amount || 0)}
+                        onChange={(e) =>
+                          setValue(
+                            `payment_lines.${idx}.amount` as const,
+                            parseVN(e.target.value),
+                            { shouldValidate: true },
+                          )
+                        }
+                        placeholder="0"
+                      />
+                      {errors.payment_lines?.[idx]?.amount && (
+                        <p className="text-sm text-red-500">
+                          {errors.payment_lines[idx]?.amount?.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phương thức *</Label>
+                      <Select
+                        value={watchedLines?.[idx]?.payment_method ?? 'TM'}
+                        onValueChange={(v) =>
+                          setValue(
+                            `payment_lines.${idx}.payment_method` as const,
+                            v as any,
+                            { shouldValidate: true },
+                          )
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="TM">TM</SelectItem>
+                          <SelectItem value="TK">TK</SelectItem>
+                          <SelectItem value="TT">TT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sổ quỹ nhận *</Label>
+                    <Select
+                      value={watchedLines?.[idx]?.account_id ?? ''}
+                      onValueChange={(v) =>
+                        setValue(
+                          `payment_lines.${idx}.account_id` as const,
+                          v,
+                          { shouldValidate: true },
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts.map((a: any) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                            {a.bank_name ? ` — ${a.bank_name}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.payment_lines?.[idx]?.account_id && (
+                      <p className="text-sm text-red-500">
+                        {errors.payment_lines[idx]?.account_id?.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
 
-          {/* Sổ quỹ — required so we can mirror the payment as a phiếu thu */}
-          <div className="space-y-2">
-            <Label>Sổ quỹ nhận *</Label>
-            <Select
-              value={watch('account_id') ?? ''}
-              onValueChange={(v) => setValue('account_id', v, { shouldValidate: true })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((a: any) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                    {a.bank_name ? ` — ${a.bank_name}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.account_id && (
-              <p className="text-sm text-red-500">{errors.account_id.message}</p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
-            </p>
-          </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() =>
+                  append({ amount: 0, payment_method: 'TM', account_id: '' })
+                }
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Thêm dòng thanh toán
+              </Button>
+
+              {/* Ngày thanh toán */}
+              <div className="space-y-2">
+                <Label htmlFor="payment_date">Ngày thanh toán *</Label>
+                <Input id="payment_date" type="date" {...register('payment_date')} />
+                {errors.payment_date && (
+                  <p className="text-sm text-red-500">{errors.payment_date.message}</p>
+                )}
+              </div>
+
+              {/* Tiền thối — DƯỚI cùng cụm payment lines */}
+              <div className="space-y-2">
+                <Label htmlFor="change_amount_multi">Tiền thối</Label>
+                <Input
+                  id="change_amount_multi"
+                  type="text"
+                  inputMode="numeric"
+                  value={formatVN(watchedChangeAmount || 0)}
+                  onChange={(e) => {
+                    setChangeUserEdited(true);
+                    setValue('change_amount', parseVN(e.target.value), {
+                      shouldValidate: true,
+                    });
+                  }}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Tổng đã nhập: {formatVN(totalPaid)} đ — Còn phải thu:{' '}
+                  {formatVN(outstandingAmount)} đ
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Sổ quỹ tiền thối — bắt buộc nếu Tiền thối > 0 */}
           {(watchedChangeAmount ?? 0) > 0 && (
@@ -502,7 +681,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           </div>
 
           {/* Payment Preview */}
-          {watchedAmount > 0 && (
+          {totalPaid > 0 && (
             <div className="bg-blue-50 border-2 border-blue-200 p-4 rounded-md space-y-3">
               <h4 className="font-bold text-blue-900">Sau khi thanh toán:</h4>
 
@@ -572,7 +751,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </Button>
             <Button
               type="submit"
-              disabled={isProcessing || !watchedAmount}
+              disabled={isProcessing || totalPaid <= 0}
             >
               {isProcessing ? (
                 <>
