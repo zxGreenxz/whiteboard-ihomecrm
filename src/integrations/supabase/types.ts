@@ -2308,42 +2308,6 @@ export type Database = {
           },
         ]
       }
-      service_buildings: {
-        Row: {
-          building_id: string
-          created_at: string
-          id: string
-          service_id: string
-        }
-        Insert: {
-          building_id: string
-          created_at?: string
-          id?: string
-          service_id: string
-        }
-        Update: {
-          building_id?: string
-          created_at?: string
-          id?: string
-          service_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "service_buildings_building_id_fkey"
-            columns: ["building_id"]
-            isOneToOne: false
-            referencedRelation: "buildings"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "service_buildings_service_id_fkey"
-            columns: ["service_id"]
-            isOneToOne: false
-            referencedRelation: "services"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       service_quota_tiers: {
         Row: {
           created_at: string

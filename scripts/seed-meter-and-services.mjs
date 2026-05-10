@@ -1,7 +1,7 @@
 /**
  * Seed: tạo công tơ điện cho mọi phòng + 1 reading APPROVED dùng "Chỉ số đầu" trong sheet "04"
  * của file Excel ở dataexcel/, đồng thời tạo 3 service chuẩn (Tiền điện, Tiền nước, Phí dịch vụ)
- * và gán vào tất cả tòa nhà qua service_buildings + building_services (PDV=150k, Nước=100k/người, Điện=3500/kWh).
+ * và gán vào tất cả tòa nhà qua building_services (PDV=150k, Nước=100k/người, Điện=3500/kWh).
  *
  * Idempotent: chạy lại không trùng lặp dữ liệu.
  *
@@ -111,18 +111,6 @@ async function ensureCanonicalService({ name, code, fee_type, type, unit, unit_p
   if (error) throw error;
   console.log(`  + service created: ${name} (${fee_type}) id=${data.id}`);
   return data.id;
-}
-
-async function ensureServiceBuildingLink(service_id, building_id) {
-  const { data: row } = await sb
-    .from('service_buildings')
-    .select('service_id')
-    .eq('service_id', service_id)
-    .eq('building_id', building_id)
-    .limit(1);
-  if (row && row.length > 0) return;
-  const { error } = await sb.from('service_buildings').insert({ service_id, building_id });
-  if (error) throw error;
 }
 
 async function ensureBuildingService({ building_id, service_id, unit_price_override }) {
@@ -281,12 +269,7 @@ async function ensureSeedReading({ user_id, meter_id, reading_date, settlement_m
   let okReading = 0;
   for (const b of buildings) {
     console.log(`\n=== Toà ${b.name} ===`);
-    // Gán 3 service vào tòa
-    await Promise.all([
-      ensureServiceBuildingLink(elecId, b.id),
-      ensureServiceBuildingLink(waterId, b.id),
-      ensureServiceBuildingLink(pdvId, b.id),
-    ]);
+    // Gán 3 service vào tòa qua building_services (single source of truth).
     await Promise.all([
       ensureBuildingService({ building_id: b.id, service_id: elecId, unit_price_override: ELEC_PRICE }),
       ensureBuildingService({ building_id: b.id, service_id: waterId, unit_price_override: WATER_PRICE }),
