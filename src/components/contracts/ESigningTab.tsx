@@ -47,6 +47,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useContractsLegacy, type ContractWithRelations } from '@/hooks/useContracts';
+import { getRepresentativeEmail, getRepresentativeName } from '@/lib/contractCustomerHelpers';
 
 // E-signing status types
 type ESigningStatus = 'NOT_SENT' | 'SENT' | 'VIEWED' | 'SIGNED';
@@ -89,11 +90,7 @@ const ESigningTab = () => {
       return;
     }
 
-    const tenantName =
-      selectedContract.contract_tenants?.find(ct => ct.is_representative)?.tenant?.full_name
-      || selectedContract.contract_tenants?.[0]?.tenant?.full_name
-      || selectedContract.tenant?.full_name
-      || 'N/A';
+    const tenantName = getRepresentativeName(selectedContract as any, 'N/A');
 
     const roomName = selectedContract.room
       ? `${selectedContract.room.building?.name} - ${selectedContract.room.name}`
@@ -249,11 +246,7 @@ const ESigningTab = () => {
                   : activeContracts.filter(c => signingRecords.some(r => r.contractId === c.id && r.status === filterStatus))
                 ).map((contract) => {
                   const record = signingRecords.find(r => r.contractId === contract.id);
-                  const tenantName =
-                    contract.contract_tenants?.find(ct => ct.is_representative)?.tenant?.full_name
-                    || contract.contract_tenants?.[0]?.tenant?.full_name
-                    || contract.tenant?.full_name
-                    || 'N/A';
+                  const tenantName = getRepresentativeName(contract as any, 'N/A');
                   const roomName = contract.room
                     ? `${contract.room.building?.name} - ${contract.room.name}`
                     : contract.bed
@@ -291,11 +284,7 @@ const ESigningTab = () => {
                               size="sm"
                               onClick={() => {
                                 setSelectedContract(contract);
-                                const email =
-                                  contract.contract_tenants?.find(ct => ct.is_representative)?.tenant?.email
-                                  || contract.contract_tenants?.[0]?.tenant?.email
-                                  || contract.tenant?.email
-                                  || '';
+                                const email = getRepresentativeEmail(contract as any, '');
                                 setRecipientEmail(email || '');
                                 setSendDialogOpen(true);
                               }}

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useExtendContract } from '@/hooks/useContracts';
+import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import { RefreshCw } from 'lucide-react';
 import { format, addMonths } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -100,7 +101,7 @@ const ExtendContractDialog = ({ open, onOpenChange, contract }: ExtendContractDi
           <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Khách hàng:</span>
-              <span className="font-medium">{contract.tenant?.full_name}</span>
+              <span className="font-medium">{getRepresentativeName(contract as any)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Căn hộ/Giường:</span>

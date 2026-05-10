@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { useRecordMeterReading, useMeterReadings } from '@/hooks/useInvoices';
 import { useContracts } from '@/hooks/useContracts';
+import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import { Gauge, Zap, Droplet } from 'lucide-react';
 
 interface MeterReadingDialogProps {
@@ -153,7 +154,7 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
               <SelectContent>
                 {contracts?.map((contract) => (
                   <SelectItem key={contract.id} value={contract.id}>
-                    {contract.contract_number || contract.id.slice(0, 8)} - {contract.tenant?.full_name}
+                    {contract.contract_number || contract.id.slice(0, 8)} - {getRepresentativeName(contract as any, '')}
                     {contract.room && ` - ${contract.room.name}`}
                     {contract.bed && ` - ${contract.bed.name}`}
                   </SelectItem>

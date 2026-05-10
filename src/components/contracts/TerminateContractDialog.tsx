@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useTerminateContract, useUnpaidInvoices } from '@/hooks/useContracts';
+import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import { XCircle, AlertTriangle, FileText, Users, Wallet, Calculator } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -230,7 +231,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
               <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Khách hàng:</span>
-                  <span className="font-medium">{contract.tenant?.full_name}</span>
+                  <span className="font-medium">{getRepresentativeName(contract as any)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Căn hộ/Giường:</span>
@@ -281,7 +282,7 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Khách hàng:</span>
-                    <div className="font-medium">{contract.tenant?.full_name}</div>
+                    <div className="font-medium">{getRepresentativeName(contract as any)}</div>
                   </div>
                   <div>
                     <span className="text-gray-600">Căn hộ/Giường:</span>

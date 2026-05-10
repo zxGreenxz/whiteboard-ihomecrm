@@ -2,8 +2,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import ErrorBoundary from "./components/errors/ErrorBoundary";
+
+// Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
+// đổ về danh sách).
+function TenantToCustomerRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/customers/${id ?? ''}`} replace />;
+}
 
 // Auth Pages
 import Register from "./pages/auth/Register";
@@ -200,7 +207,7 @@ const App = () => (
           <Route path="/customers/:id/ct01" element={<ProtectedRoute><CT01FormPage /></ProtectedRoute>} />
           <Route path="/customers/:id" element={<ProtectedRoute><CustomerDetailPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<Navigate to="/customers" replace />} />
-          <Route path="/tenants/:id" element={<Navigate to="/customers" replace />} />
+          <Route path="/tenants/:id" element={<TenantToCustomerRedirect />} />
           <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
 
           {/* === TÀI CHÍNH === */}

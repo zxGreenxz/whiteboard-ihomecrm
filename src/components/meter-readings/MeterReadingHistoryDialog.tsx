@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { History, Zap, Droplet, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 import { useMeterReadings } from '@/hooks/useInvoices';
 import { useContract } from '@/hooks/useContracts';
+import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import {
@@ -102,7 +103,7 @@ const MeterReadingHistoryDialog = ({
             Lịch sử ghi chỉ số
           </DialogTitle>
           <DialogDescription>
-            Hợp đồng: {contract.contract_number || contract.id.slice(0, 8)} - {contract.tenant?.full_name}
+            Hợp đồng: {contract.contract_number || contract.id.slice(0, 8)} - {getRepresentativeName(contract as any, '')}
           </DialogDescription>
         </DialogHeader>
 

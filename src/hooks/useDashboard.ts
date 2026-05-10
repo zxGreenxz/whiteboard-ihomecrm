@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
+import { getRepresentativeName } from "@/lib/contractCustomerHelpers";
 
 export interface DashboardStats {
   totalRooms: number;
@@ -255,9 +256,17 @@ export const useAlerts = (buildingId?: string | null) => {
       const alerts: Alert[] = [];
 
       // Overdue invoices
-      const { data: overdueInvoices } = await supabase
+      const { data: overdueInvoices } = await (supabase as any)
         .from("invoices")
-        .select("id, invoice_number, due_date, total_amount, paid_amount, contract:contracts(tenant:tenants(full_name))")
+        .select(
+          `id, invoice_number, due_date, total_amount, paid_amount,
+           contract:contracts(
+             contract_customers!contract_customers_contract_id_fkey(
+               is_representative,
+               customer:customers!contract_customers_customer_id_fkey(full_name)
+             )
+           )`
+        )
         .in("status", ["APPROVED", "PARTIAL_PAID"])
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
@@ -265,11 +274,12 @@ export const useAlerts = (buildingId?: string | null) => {
 
       overdueInvoices?.forEach((invoice: any) => {
         const debt = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
+        const customerName = getRepresentativeName(invoice.contract, "Khách hàng");
         alerts.push({
           id: invoice.id,
           type: "overdue_invoice",
           title: "Hóa đơn quá hạn",
-          description: `${invoice.contract?.tenant?.full_name || "Khách hàng"} - ${invoice.invoice_number || "Hóa đơn"} - Nợ ${debt.toLocaleString()}đ`,
+          description: `${customerName} - ${invoice.invoice_number || "Hóa đơn"} - Nợ ${debt.toLocaleString()}đ`,
           severity: "high",
           date: invoice.due_date,
           link: `/invoices/${invoice.id}`,
@@ -280,9 +290,15 @@ export const useAlerts = (buildingId?: string | null) => {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-      const { data: expiringContracts } = await supabase
+      const { data: expiringContracts } = await (supabase as any)
         .from("contracts")
-        .select("id, contract_number, end_date, tenant:tenants(full_name)")
+        .select(
+          `id, contract_number, end_date,
+           contract_customers!contract_customers_contract_id_fkey(
+             is_representative,
+             customer:customers!contract_customers_customer_id_fkey(full_name)
+           )`
+        )
         .eq("status", "ACTIVE")
         .lte("end_date", thirtyDaysFromNow.toISOString())
         .gte("end_date", new Date().toISOString())
@@ -291,11 +307,12 @@ export const useAlerts = (buildingId?: string | null) => {
 
       expiringContracts?.forEach((contract: any) => {
         const daysLeft = Math.ceil((new Date(contract.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const customerName = getRepresentativeName(contract, "Khách hàng");
         alerts.push({
           id: contract.id,
           type: "expiring_contract",
           title: "Hợp đồng sắp hết hạn",
-          description: `${contract.tenant?.full_name || "Khách hàng"} - ${contract.contract_number} - Còn ${daysLeft} ngày`,
+          description: `${customerName} - ${contract.contract_number} - Còn ${daysLeft} ngày`,
           severity: daysLeft <= 7 ? "high" : daysLeft <= 15 ? "medium" : "low",
           date: contract.end_date,
           link: `/contracts/${contract.id}`,
@@ -349,37 +366,56 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { data: recentContracts } = await supabase
+      const { data: recentContracts } = await (supabase as any)
         .from("contracts")
-        .select("id, contract_number, created_at, tenant:tenants(full_name), room:rooms(name)")
+        .select(
+          `id, contract_number, created_at,
+           contract_customers!contract_customers_contract_id_fkey(
+             is_representative,
+             customer:customers!contract_customers_customer_id_fkey(full_name)
+           ),
+           room:rooms(name)`
+        )
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
         .limit(5);
 
       recentContracts?.forEach((contract: any) => {
+        const customerName = getRepresentativeName(contract, "Khách hàng");
         activities.push({
           id: contract.id,
           type: "contract",
           title: "Hợp đồng mới",
-          description: `${contract.tenant?.full_name || "Khách hàng"} - ${contract.room?.name || "Căn hộ"}`,
+          description: `${customerName} - ${contract.room?.name || "Căn hộ"}`,
           date: contract.created_at,
         });
       });
 
       // Recent payments (last 7 days)
-      const { data: recentPayments } = await supabase
+      const { data: recentPayments } = await (supabase as any)
         .from("payments")
-        .select("id, amount, payment_date, invoice:invoices(contract:contracts(tenant:tenants(full_name)))")
+        .select(
+          `id, amount, payment_date,
+           invoice:invoices(
+             contract:contracts(
+               contract_customers!contract_customers_contract_id_fkey(
+                 is_representative,
+                 customer:customers!contract_customers_customer_id_fkey(full_name)
+               )
+             )
+           )`
+        )
         .gte("payment_date", sevenDaysAgo.toISOString())
         .order("payment_date", { ascending: false })
         .limit(5);
 
       recentPayments?.forEach((payment: any) => {
+        const customerName = getRepresentativeName(payment.invoice?.contract, "Khách hàng");
         activities.push({
           id: payment.id,
           type: "payment",
           title: "Thu tiền",
-          description: `${payment.invoice?.contract?.tenant?.full_name || "Khách hàng"}`,
+          description: customerName,
           date: payment.payment_date,
           amount: payment.amount,
         });
