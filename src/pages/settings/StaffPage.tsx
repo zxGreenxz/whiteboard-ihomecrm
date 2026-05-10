@@ -114,14 +114,26 @@ const PERMISSION_MODULES = [
   { key: "e_invoices",       label: "Hoá đơn điện tử" },
 ] as const;
 
-const PERMISSION_ACTIONS = [
-  { key: "view",   label: "Xem" },
-  { key: "create", label: "Thêm" },
-  { key: "edit",   label: "Sửa" },
-  { key: "delete", label: "Xoá" },
+// 2 nhóm quyền: "Xem" (view) và "Quản lý" (gộp create + edit + delete).
+// Vẫn lưu thành 4 trường trong roles.permissions để DB RLS dùng staff_can()
+// kiểm tra từng action — chỉ UI gộp lại cho gọn.
+const PERMISSION_BUCKETS = [
+  { key: "view",   label: "Xem",      writes: ["view"] as const },
+  { key: "manage", label: "Quản lý",  writes: ["create", "edit", "delete"] as const },
 ] as const;
 
 type PermissionsMap = Record<string, Record<string, boolean>>;
+
+const isBucketChecked = (
+  perms: PermissionsMap,
+  moduleKey: string,
+  bucketKey: typeof PERMISSION_BUCKETS[number]["key"],
+): boolean => {
+  const bucket = PERMISSION_BUCKETS.find((b) => b.key === bucketKey);
+  if (!bucket) return false;
+  const mp = perms[moduleKey] || {};
+  return bucket.writes.every((w) => !!mp[w]);
+};
 
 function parsePermissions(permissions: Json): PermissionsMap {
   if (typeof permissions === "object" && permissions !== null && !Array.isArray(permissions)) {
@@ -133,10 +145,7 @@ function parsePermissions(permissions: Json): PermissionsMap {
 function buildDefaultPermissions(): PermissionsMap {
   const perms: PermissionsMap = {};
   for (const mod of PERMISSION_MODULES) {
-    perms[mod.key] = {};
-    for (const act of PERMISSION_ACTIONS) {
-      perms[mod.key][act.key] = false;
-    }
+    perms[mod.key] = { view: false, create: false, edit: false, delete: false };
   }
   return perms;
 }
@@ -209,40 +218,43 @@ function RolesTab() {
     setDeletingRoleId(null);
   };
 
-  const togglePermission = (moduleKey: string, actionKey: string) => {
+  const toggleBucket = (
+    moduleKey: string,
+    bucketKey: typeof PERMISSION_BUCKETS[number]["key"],
+    next: boolean,
+  ) => {
+    if (!editingRole) return;
+    const bucket = PERMISSION_BUCKETS.find((b) => b.key === bucketKey);
+    if (!bucket) return;
+    const mp = { ...(editingRole.permissions[moduleKey] || {}) };
+    for (const w of bucket.writes) mp[w] = next;
+    setEditingRole({
+      ...editingRole,
+      permissions: { ...editingRole.permissions, [moduleKey]: mp },
+    });
+  };
+
+  const toggleAllModule = (moduleKey: string, checked: boolean) => {
     if (!editingRole) return;
     setEditingRole({
       ...editingRole,
       permissions: {
         ...editingRole.permissions,
         [moduleKey]: {
-          ...(editingRole.permissions[moduleKey] || {}),
-          [actionKey]: !(editingRole.permissions[moduleKey]?.[actionKey]),
+          view: checked,
+          create: checked,
+          edit: checked,
+          delete: checked,
         },
-      },
-    });
-  };
-
-  const toggleAllModule = (moduleKey: string, checked: boolean) => {
-    if (!editingRole) return;
-    const modulePerms: Record<string, boolean> = {};
-    for (const act of PERMISSION_ACTIONS) {
-      modulePerms[act.key] = checked;
-    }
-    setEditingRole({
-      ...editingRole,
-      permissions: {
-        ...editingRole.permissions,
-        [moduleKey]: modulePerms,
       },
     });
   };
 
   const isModuleAllChecked = (moduleKey: string) => {
     if (!editingRole) return false;
-    const mp = editingRole.permissions[moduleKey];
-    if (!mp) return false;
-    return PERMISSION_ACTIONS.every((a) => mp[a.key]);
+    return PERMISSION_BUCKETS.every((b) =>
+      isBucketChecked(editingRole.permissions, moduleKey, b.key),
+    );
   };
 
   const countPermissions = (permissions: Json) => {
@@ -395,11 +407,11 @@ function RolesTab() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[160px]">Module</TableHead>
-                        <TableHead className="text-center w-[80px]">Tất cả</TableHead>
-                        {PERMISSION_ACTIONS.map((act) => (
-                          <TableHead key={act.key} className="text-center w-[80px]">
-                            {act.label}
+                        <TableHead className="w-[200px]">Module</TableHead>
+                        <TableHead className="text-center w-[100px]">Tất cả</TableHead>
+                        {PERMISSION_BUCKETS.map((b) => (
+                          <TableHead key={b.key} className="text-center w-[120px]">
+                            {b.label}
                           </TableHead>
                         ))}
                       </TableRow>
@@ -416,14 +428,16 @@ function RolesTab() {
                               }
                             />
                           </TableCell>
-                          {PERMISSION_ACTIONS.map((act) => (
-                            <TableCell key={act.key} className="text-center">
+                          {PERMISSION_BUCKETS.map((b) => (
+                            <TableCell key={b.key} className="text-center">
                               <Checkbox
-                                checked={
-                                  !!editingRole.permissions[mod.key]?.[act.key]
-                                }
-                                onCheckedChange={() =>
-                                  togglePermission(mod.key, act.key)
+                                checked={isBucketChecked(
+                                  editingRole.permissions,
+                                  mod.key,
+                                  b.key,
+                                )}
+                                onCheckedChange={(checked) =>
+                                  toggleBucket(mod.key, b.key, !!checked)
                                 }
                               />
                             </TableCell>
