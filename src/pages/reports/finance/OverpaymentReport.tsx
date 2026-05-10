@@ -1,97 +1,167 @@
-import { PlusCircle, DollarSign, Users, TrendingUp } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { ReportLayout } from "@/components/reports/ReportLayout";
-import { ReportCard } from "@/components/reports/ReportCard";
-import { ExportButtons } from "@/components/reports/ExportButtons";
+import { ChevronRight } from "lucide-react";
 import { useOverpaymentReport } from "@/hooks/useReports";
+import { useAreas } from "@/hooks/useAreas";
+import { useBuildings } from "@/hooks/useBuildings";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
+const formatCurrency = (n: number) =>
+  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
 
 export default function OverpaymentReport() {
-  const { data: overpayments, isLoading } = useOverpaymentReport();
+  const [areaId, setAreaId] = useState<string>("all");
+  const [buildingId, setBuildingId] = useState<string>("all");
+  const [roomId, setRoomId] = useState<string>("all");
+  const [bedId, setBedId] = useState<string>("all");
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
 
-  const totalOverpaid = overpayments?.reduce((sum, o) => sum + o.overpaid_amount, 0) || 0;
-  const avgOverpaid = overpayments && overpayments.length > 0 ? totalOverpaid / overpayments.length : 0;
-  const uniqueCustomers = new Set(overpayments?.map(o => o.tenants?.id).filter(Boolean)).size;
+  const { data: areas = [] } = useAreas();
+  const { data: buildings = [] } = useBuildings();
+  const { data: overpayments = [], isLoading } = useOverpaymentReport();
 
-  const stats = (
-    <>
-      <ReportCard title="Khách trả thừa" value={overpayments?.length || 0} icon={Users} description="Số trường hợp" />
-      <ReportCard title="Tổng tiền thừa" value={formatCurrency(totalOverpaid)} icon={DollarSign} description="Cần hoàn lại" />
-      <ReportCard title="Trung bình" value={formatCurrency(avgOverpaid)} icon={TrendingUp} description="Tiền thừa TB" />
-      <ReportCard title="Khách unique" value={uniqueCustomers} icon={PlusCircle} description="Số khách có tiền thừa" />
-    </>
-  );
+  const filtered = useMemo(() => {
+    let arr = [...(overpayments as any[])];
+    if (buildingId !== "all") {
+      const b = (buildings || []).find((x) => x.id === buildingId);
+      if (b) arr = arr.filter((o) => o.rooms?.buildings?.name === b.name);
+    }
+    return arr;
+  }, [overpayments, buildingId, buildings]);
 
-  const exportData = overpayments?.map(op => ({
-    "Khách hàng": op.tenants?.full_name || "N/A",
-    "Điện thoại": op.tenants?.phone || "",
-    "Căn hộ": `${op.rooms?.buildings?.name || ""} - ${op.rooms?.room_number || ""}`,
-    "Số tiền HĐ": op.amount,
-    "Đã thanh toán": op.amount_paid || 0,
-    "Tiền thừa": op.overpaid_amount,
-  })) || [];
+  const total = filtered.reduce((s, o: any) => s + (o.overpaid_amount || 0), 0);
+  const totalCount = filtered.length;
+  const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <MainLayout>
-      <ReportLayout
-        title="Báo cáo Tiền thừa"
-        description="Khách trả thừa, cần hoàn lại"
-        icon={<PlusCircle className="h-8 w-8" />}
-        backPath="/reports/finance"
-        actions={<ExportButtons data={exportData} filename="bao-cao-tien-thua" />}
-        stats={stats}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle>Danh sách tiền thừa</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : overpayments && overpayments.length > 0 ? (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Khách hàng</TableHead>
-                      <TableHead>Liên hệ</TableHead>
-                      <TableHead>Căn hộ</TableHead>
-                      <TableHead className="text-right">Số tiền HĐ</TableHead>
-                      <TableHead className="text-right">Đã thanh toán</TableHead>
-                      <TableHead className="text-right">Tiền thừa</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {overpayments.map((op) => (
-                      <TableRow key={op.id}>
-                        <TableCell className="font-medium">{op.tenants?.full_name || "N/A"}</TableCell>
-                        <TableCell className="text-sm">{op.tenants?.phone || "-"}</TableCell>
-                        <TableCell>{op.rooms?.buildings?.name} - {op.rooms?.room_number}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(op.amount)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(op.amount_paid || 0)}</TableCell>
-                        <TableCell className="text-right font-semibold text-green-600">
-                          +{formatCurrency(op.overpaid_amount)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">Không có tiền thừa nào</div>
-            )}
-          </CardContent>
-        </Card>
-      </ReportLayout>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to="/reports/finance" className="hover:text-primary">
+            Báo cáo tài chính
+          </Link>
+          <ChevronRight className="h-4 w-4" />
+          <span className="text-foreground font-medium">Tiền thừa</span>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <Select value={areaId} onValueChange={setAreaId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Chọn khu vực" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả khu vực</SelectItem>
+              {(areas as any[]).map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={buildingId} onValueChange={setBuildingId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Chọn tòa nhà" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả tòa nhà</SelectItem>
+              {buildings.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={roomId} onValueChange={setRoomId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Chọn phòng" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả phòng</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={bedId} onValueChange={setBedId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Chọn giường" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả giường</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
+
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Mã</TableHead>
+                <TableHead>Tòa nhà</TableHead>
+                <TableHead>Căn hộ</TableHead>
+                <TableHead>Giường</TableHead>
+                <TableHead>Khách hàng</TableHead>
+                <TableHead className="text-right">Số tiền thừa</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell>
+                  </TableRow>
+                ))
+              ) : pageRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    Không có dữ liệu nào để hiển thị
+                  </TableCell>
+                </TableRow>
+              ) : (
+                pageRows.map((op: any) => (
+                  <TableRow key={op.id}>
+                    <TableCell>{op.invoice_number || op.id?.substring(0, 8) || "—"}</TableCell>
+                    <TableCell>{op.rooms?.buildings?.name || "—"}</TableCell>
+                    <TableCell>{op.rooms?.room_number || "—"}</TableCell>
+                    <TableCell>—</TableCell>
+                    <TableCell>{op.tenants?.full_name || "—"}</TableCell>
+                    <TableCell className="text-right text-green-600 font-semibold">
+                      {formatCurrency(op.overpaid_amount || 0)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Số bản ghi</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(parseInt(v, 10)); setPage(1); }}>
+              <SelectTrigger className="w-[80px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50, 100].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            {totalCount === 0
+              ? "1 - 0 trên tổng số 0 bản ghi"
+              : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
+          </div>
+        </div>
+      </div>
     </MainLayout>
   );
 }
