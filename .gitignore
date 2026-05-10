@@ -30,6 +30,10 @@ crawl-resident/
 # Supabase service role key (DO NOT COMMIT)
 .env.local
 
+# Claude personal config (creds, PAT) — DO NOT COMMIT
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Excel data dumps
 data excel/
 dataexcel/
