@@ -35,6 +35,8 @@ import { canEditInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
@@ -48,6 +50,26 @@ const InvoiceDetailPage = () => {
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const cancelMutation = useCancelInvoice();
+
+  // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
+  // returns để giữ thứ tự hooks ổn định giữa các render).
+  const { data: relatedVouchers = [] } = useQuery({
+    queryKey: ['invoice-vouchers', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('income_expenses' as any)
+        .select(
+          'id, code, type, name, voucher_date, approval_status, items:income_expense_items(unit_price, quantity)',
+        )
+        .eq('invoice_id', id!)
+        .eq('approval_status', 'APPROVED')
+        .is('deleted_at', null)
+        .order('voucher_date', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
 
   if (!id) {
     return (
@@ -108,6 +130,19 @@ const InvoiceDetailPage = () => {
   };
 
   const outstandingAmount = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
+
+  const voucherAmount = (v: any): number =>
+    (v.items ?? []).reduce(
+      (sum: number, it: any) =>
+        sum + Number(it.unit_price || 0) * Number(it.quantity || 0),
+      0,
+    );
+  const totalReceived = relatedVouchers
+    .filter((v) => v.type === 'INCOME')
+    .reduce((s, v) => s + voucherAmount(v), 0);
+  const totalRefunded = relatedVouchers
+    .filter((v) => v.type === 'EXPENSE')
+    .reduce((s, v) => s + voucherAmount(v), 0);
   const isOverdue = invoice.status !== 'PAID' && invoice.due_date && new Date(invoice.due_date) < new Date();
 
   const handleCancel = () => {
@@ -405,18 +440,76 @@ const InvoiceDetailPage = () => {
               <CardTitle>Tóm tắt thanh toán</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tổng tiền:</span>
-                  <span className="font-bold">{formatCurrency(invoice.total_amount || 0)}</span>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Tổng tiền hoá đơn:</span>
+                <span className="font-bold">{formatCurrency(invoice.total_amount || 0)}</span>
+              </div>
+
+              {/* Breakdown từng phiếu thu / chi */}
+              {relatedVouchers.length > 0 && (
+                <div className="border-t pt-3 space-y-1.5">
+                  {relatedVouchers.map((v) => {
+                    const isIncome = v.type === 'INCOME';
+                    const amt = voucherAmount(v);
+                    return (
+                      <div
+                        key={v.id}
+                        className="flex justify-between items-start text-[13px] gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-mono text-zinc-800">{v.code}</div>
+                          <div className="text-[11px] text-zinc-500">
+                            {isIncome ? 'Phiếu thu' : 'Phiếu chi tiền thối'}
+                            {v.voucher_date
+                              ? ` · ${format(new Date(v.voucher_date), 'dd/MM/yyyy')}`
+                              : ''}
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 font-medium tabular-nums ${
+                            isIncome ? 'text-green-600' : 'text-red-600'
+                          }`}
+                        >
+                          {isIncome ? '+' : '−'}
+                          {formatCurrency(amt)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
+              )}
+
+              {/* Tổng đã thu net */}
+              <div className="border-t pt-3 space-y-1.5 text-sm">
+                {totalReceived > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Tổng thu (+):</span>
+                    <span className="font-medium text-green-600 tabular-nums">
+                      {formatCurrency(totalReceived)}
+                    </span>
+                  </div>
+                )}
+                {totalRefunded > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Tổng thối (−):</span>
+                    <span className="font-medium text-red-600 tabular-nums">
+                      {formatCurrency(totalRefunded)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Đã thanh toán:</span>
-                  <span className="font-medium text-green-600">{formatCurrency(invoice.paid_amount || 0)}</span>
+                  <span className="text-gray-600">Đã thanh toán net:</span>
+                  <span className="font-medium text-green-700 tabular-nums">
+                    {formatCurrency(invoice.paid_amount || 0)}
+                  </span>
                 </div>
                 <div className="border-t pt-2 flex justify-between">
                   <span className="text-gray-900 font-medium">Còn lại:</span>
-                  <span className={`font-bold text-lg ${outstandingAmount > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
+                  <span
+                    className={`font-bold text-lg tabular-nums ${
+                      outstandingAmount > 0 ? 'text-orange-600' : 'text-gray-500'
+                    }`}
+                  >
                     {formatCurrency(outstandingAmount)}
                   </span>
                 </div>
