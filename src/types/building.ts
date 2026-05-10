@@ -82,6 +82,8 @@ export interface BuildingFormData {
   street_address: string;
   area_id?: string;
   status: BuildingStatus;
+  contract_template_id?: string | null;
+  invoice_template_id?: string | null;
 }
 
 /** Form data shape for building service rows in the services table */

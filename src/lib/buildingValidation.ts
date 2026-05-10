@@ -9,6 +9,8 @@ export const buildingSchema = z.object({
   street_address: z.string().min(1, 'Địa chỉ chi tiết không được để trống'),
   area_id: z.string().uuid().optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
+  contract_template_id: z.string().uuid().nullable().optional(),
+  invoice_template_id: z.string().uuid().nullable().optional(),
 });
 
 export const buildingServiceSchema = z.object({

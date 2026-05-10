@@ -33,6 +33,7 @@ import {
   useDocumentTemplatesByType,
   useUpdateDocumentTemplate,
   useDownloadTemplate,
+  useViewTemplate,
   DocumentTemplate,
   TemplateType,
   TEMPLATE_TYPE_LABELS,
@@ -66,6 +67,7 @@ function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
   const { data: templates, isLoading } = useDocumentTemplatesByType(templateType);
   const updateMutation = useUpdateDocumentTemplate();
   const downloadMutation = useDownloadTemplate();
+  const viewMutation = useViewTemplate();
 
   const filteredTemplates = useMemo(() => {
     if (!templates) return [];
@@ -97,7 +99,7 @@ function TemplateList({ templateType, onEdit, onDelete }: TemplateListProps) {
   };
 
   const handleView = (template: DocumentTemplate) => {
-    window.open(template.file_url, "_blank");
+    viewMutation.mutate({ file_url: template.file_url });
   };
 
   if (isLoading) {

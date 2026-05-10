@@ -95,6 +95,12 @@ export default function BuildingFormDialog({
           street_address: building.street_address ?? '',
           area_id: building.area_id ?? '',
           status: building.status,
+          contract_template_id:
+            (building as { contract_template_id?: string | null })
+              .contract_template_id ?? null,
+          invoice_template_id:
+            (building as { invoice_template_id?: string | null })
+              .invoice_template_id ?? null,
         });
       } else {
         form.reset({
@@ -106,6 +112,8 @@ export default function BuildingFormDialog({
           street_address: '',
           area_id: '',
           status: 'ACTIVE',
+          contract_template_id: null,
+          invoice_template_id: null,
         });
       }
     }
@@ -151,6 +159,8 @@ export default function BuildingFormDialog({
             street_address: data.street_address,
             area_id: data.area_id || null,
             status: data.status,
+            contract_template_id: data.contract_template_id ?? null,
+            invoice_template_id: data.invoice_template_id ?? null,
           },
         });
         await upsertServices.mutateAsync({
@@ -168,6 +178,8 @@ export default function BuildingFormDialog({
           street_address: data.street_address,
           area_id: data.area_id || null,
           status: data.status,
+          contract_template_id: data.contract_template_id ?? null,
+          invoice_template_id: data.invoice_template_id ?? null,
         });
         await upsertServices.mutateAsync({
           buildingId: newBuilding.id,
@@ -310,38 +322,66 @@ export default function BuildingFormDialog({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm">Mẫu in hóa đơn</Label>
-                      <Select disabled>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                          {(invoiceTemplates || []).map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm">Mẫu hợp đồng</Label>
-                      <Select disabled>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                          {(leaseTemplates || []).map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <FormField
+                      control={form.control}
+                      name="invoice_template_id"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel className="text-sm">Mẫu in hóa đơn</FormLabel>
+                          <Select
+                            value={field.value ?? '__none__'}
+                            onValueChange={(v) =>
+                              field.onChange(v === '__none__' ? null : v)
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                              {(invoiceTemplates || []).map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="contract_template_id"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel className="text-sm">Mẫu hợp đồng</FormLabel>
+                          <Select
+                            value={field.value ?? '__none__'}
+                            onValueChange={(v) =>
+                              field.onChange(v === '__none__' ? null : v)
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                              {(leaseTemplates || []).map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </div>
                 </CardContent>
               </Card>

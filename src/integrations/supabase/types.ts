@@ -386,12 +386,14 @@ export type Database = {
           amenities: Json | null
           area_id: string | null
           code: string | null
+          contract_template_id: string | null
           created_at: string
           deleted_at: string | null
           description: string | null
           district: string
           id: string
           images: Json | null
+          invoice_template_id: string | null
           name: string
           province: string
           status: Database["public"]["Enums"]["building_status"]
@@ -407,12 +409,14 @@ export type Database = {
           amenities?: Json | null
           area_id?: string | null
           code?: string | null
+          contract_template_id?: string | null
           created_at?: string
           deleted_at?: string | null
           description?: string | null
           district: string
           id?: string
           images?: Json | null
+          invoice_template_id?: string | null
           name: string
           province: string
           status?: Database["public"]["Enums"]["building_status"]
@@ -428,12 +432,14 @@ export type Database = {
           amenities?: Json | null
           area_id?: string | null
           code?: string | null
+          contract_template_id?: string | null
           created_at?: string
           deleted_at?: string | null
           description?: string | null
           district?: string
           id?: string
           images?: Json | null
+          invoice_template_id?: string | null
           name?: string
           province?: string
           status?: Database["public"]["Enums"]["building_status"]
@@ -451,6 +457,20 @@ export type Database = {
             columns: ["area_id"]
             isOneToOne: false
             referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buildings_contract_template_id_fkey"
+            columns: ["contract_template_id"]
+            isOneToOne: false
+            referencedRelation: "document_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buildings_invoice_template_id_fkey"
+            columns: ["invoice_template_id"]
+            isOneToOne: false
+            referencedRelation: "document_templates"
             referencedColumns: ["id"]
           },
         ]

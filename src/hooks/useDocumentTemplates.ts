@@ -501,7 +501,43 @@ export const useDeleteDocumentTemplate = () => {
   });
 };
 
-// 6. DOWNLOAD TEMPLATE
+// Extract storage object path from a Supabase Storage URL.
+//   ".../object/public/document-templates/<user>/<file>" → "<user>/<file>"
+//   ".../object/sign/document-templates/<user>/<file>"  → "<user>/<file>"
+function extractTemplatePath(url: string): string | null {
+  const m = url.match(
+    /\/object\/(?:public|sign|authenticated)\/document-templates\/(.+?)(?:\?|$)/,
+  );
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// Open a template file in a new tab. Bucket is private, so a public URL
+// returns 400 — generate a short-lived signed URL instead.
+export const useViewTemplate = () => {
+  return useMutation({
+    mutationFn: async (template: { file_url: string }) => {
+      const path = extractTemplatePath(template.file_url);
+      if (!path) {
+        window.open(template.file_url, "_blank");
+        return;
+      }
+      const { data, error } = await supabase.storage
+        .from("document-templates")
+        .createSignedUrl(path, 60); // 1-minute view link
+      if (error || !data?.signedUrl) {
+        throw new Error(error?.message ?? "no signed url");
+      }
+      window.open(data.signedUrl, "_blank");
+    },
+    onError: (error) => {
+      console.error("Error viewing template:", error);
+      toast.error("Không thể mở file");
+    },
+  });
+};
+
+// 6. DOWNLOAD TEMPLATE — go through the SDK so the user session can
+// authenticate against the private bucket.
 export const useDownloadTemplate = () => {
   return useMutation({
     mutationFn: async ({
@@ -511,12 +547,24 @@ export const useDownloadTemplate = () => {
       fileUrl: string;
       fileName: string;
     }) => {
-      const response = await fetch(fileUrl);
-      if (!response.ok) {
-        throw new Error("Failed to download file");
+      const path = extractTemplatePath(fileUrl);
+      let blob: Blob;
+      if (path) {
+        const { data, error } = await supabase.storage
+          .from("document-templates")
+          .download(path);
+        if (error || !data) {
+          throw new Error(error?.message ?? "download failed");
+        }
+        blob = data;
+      } else {
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to download file (${response.status})`);
+        }
+        blob = await response.blob();
       }
 
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -529,7 +577,8 @@ export const useDownloadTemplate = () => {
     onSuccess: () => {
       toast.success("Tải xuống thành công");
     },
-    onError: () => {
+    onError: (error) => {
+      console.error("Error downloading template:", error);
       toast.error("Có lỗi xảy ra khi tải file");
     },
   });
