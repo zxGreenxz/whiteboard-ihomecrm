@@ -176,6 +176,15 @@ export interface InvoiceWithRelations extends Invoice {
   contract?: {
     id: string;
     contract_number: string | null;
+    contract_customers?: Array<{
+      id: string;
+      is_representative: boolean;
+      customer: {
+        id: string;
+        full_name: string;
+        phone: string | null;
+      } | null;
+    }>;
   };
   building?: {
     id: string;

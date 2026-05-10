@@ -46,7 +46,10 @@ const INVOICE_LIST_SELECT = `
   *,
   contract:contracts!invoices_contract_id_fkey (
     id, contract_number,
-    tenant:tenants!contracts_tenant_id_fkey (id, full_name, phone)
+    contract_customers!contract_customers_contract_id_fkey (
+      id, is_representative,
+      customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+    )
   ),
   building:buildings!invoices_building_id_fkey (id, name),
   room:rooms!invoices_room_id_fkey (id, name),

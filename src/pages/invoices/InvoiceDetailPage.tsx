@@ -160,6 +160,19 @@ const InvoiceDetailPage = () => {
         return m && y ? `${parseInt(m, 10)}/${y}` : invoice.billing_month;
       })()
     : '';
+
+  // Khách đại diện (đặt theo contract_customers; ưu tiên is_representative,
+  // fallback khách đầu tiên).
+  const contractCustomers = invoice.contract?.contract_customers ?? [];
+  const representativeCustomer =
+    contractCustomers.find((cc) => cc.is_representative)?.customer ??
+    contractCustomers[0]?.customer ??
+    null;
+
+  // Hiển thị "Toà - Phòng[ · Giường]" cho ô Căn hộ.
+  const apartmentLabel = [buildingName, roomName + (bedName ? ` · ${bedName}` : '')]
+    .filter((s) => s.trim())
+    .join(' - ');
   const titleParts = [
     buildingName,
     roomName + (bedName ? ` · ${bedName}` : ''),
@@ -247,7 +260,7 @@ const InvoiceDetailPage = () => {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <div className="text-gray-600">Số hóa đơn</div>
-                  <div className="font-medium">{invoice.title || 'N/A'}</div>
+                  <div className="font-medium">{invoice.invoice_number || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Hợp đồng</div>
@@ -255,29 +268,19 @@ const InvoiceDetailPage = () => {
                 </div>
                 <div>
                   <div className="text-gray-600">Khách hàng</div>
-                  <div className="font-medium">{invoice.contract?.tenant?.full_name || 'N/A'}</div>
+                  <div className="font-medium">{representativeCustomer?.full_name || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Số điện thoại</div>
-                  <div className="font-medium">{invoice.contract?.tenant?.phone || 'N/A'}</div>
+                  <div className="font-medium">{representativeCustomer?.phone || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Căn hộ</div>
-                  <div className="font-medium">
-                    {invoice.contract?.room?.name || invoice.contract?.bed?.name || 'N/A'}
-                  </div>
+                  <div className="font-medium">{apartmentLabel || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Kỳ thanh toán</div>
-                  <div className="font-medium">
-                    {invoice.billing_period_start && invoice.billing_period_end && (
-                      <>
-                        {format(new Date(invoice.billing_period_start), 'dd/MM', { locale: vi })}
-                        {' - '}
-                        {format(new Date(invoice.billing_period_end), 'dd/MM/yyyy', { locale: vi })}
-                      </>
-                    )}
-                  </div>
+                  <div className="font-medium">{billingLabel || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-gray-600">Ngày phát hành</div>
