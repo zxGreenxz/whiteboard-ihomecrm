@@ -71,6 +71,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const { data: bldSvc } = useBuildingServices(buildingId);
 
   // Resolve default prices from building_services (fall back to service.unit_price).
+  // Chỉ xét dịch vụ đang BẬT cho toà — nếu không có thì giữ fallback hard-code.
+  // Tránh bug: nhiều dịch vụ điện cùng tên kiểu "Điện 3k5"/"Điện MB405" sẽ
+  // ghi đè lẫn nhau và lấy phải cái đã tắt.
   const defaults = useMemo(() => {
     let elec = 3500;
     let water = 100000;
@@ -78,7 +81,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     let elecServiceId: string | null = null;
     let waterServiceId: string | null = null;
     let pdvServiceId: string | null = null;
-    for (const bs of bldSvc ?? []) {
+    for (const bs of (bldSvc ?? []).filter((b: any) => b.is_active)) {
       const name = bs.service?.name?.toLowerCase() ?? '';
       const price = bs.unit_price_override ?? bs.service?.unit_price ?? 0;
       if (name.includes('điện')) {
