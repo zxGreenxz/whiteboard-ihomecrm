@@ -123,17 +123,21 @@ export function InvoiceListMobile({ invoices, isLoading, onViewDetail }: Props) 
               }`}
               style={{ borderLeft: `3px solid ${status.accent}` }}
             >
-              {/* Row 1: số hoá đơn + status badge + tổng tiền */}
-              <div className="flex items-start justify-between gap-2 mb-1.5">
+              {/* Row 1: Toà nhà - Phòng + (status badge nếu khác Đã duyệt) + tổng tiền */}
+              <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <span className="font-mono font-medium text-sm text-zinc-900">
-                    {inv.invoice_number || inv.id.slice(0, 8)}
+                  <span className="font-medium text-sm text-zinc-900 truncate">
+                    {voucherTitle}
                   </span>
-                  <span
-                    className={`px-2 py-0.5 text-[11px] font-medium rounded-full ${status.badge}`}
-                  >
-                    {status.label}
-                  </span>
+                  {/* Mặc định mọi hoá đơn = Đã duyệt → ẩn badge này, chỉ hiện
+                      khi trạng thái khác (Nháp/Một phần/Đã thu/Quá hạn/Đã huỷ) */}
+                  {inv.status !== 'APPROVED' && (
+                    <span
+                      className={`px-2 py-0.5 text-[11px] font-medium rounded-full ${status.badge}`}
+                    >
+                      {status.label}
+                    </span>
+                  )}
                 </div>
                 <span
                   className={`shrink-0 text-[15px] font-bold tabular-nums ${status.amount}`}
@@ -142,13 +146,8 @@ export function InvoiceListMobile({ invoices, isLoading, onViewDetail }: Props) 
                 </span>
               </div>
 
-              {/* Row 2: Toà nhà - Phòng */}
-              <div className="text-[13px] text-zinc-600 mb-1 line-clamp-1">
-                <span className="font-medium">{voucherTitle}</span>
-              </div>
-
-              {/* Row 3: kỳ · đã thu */}
-              <div className="flex items-center justify-between gap-2 mt-1 text-[12px] text-zinc-400">
+              {/* Row 2: kỳ · đã thu */}
+              <div className="flex items-center justify-between gap-2 text-[12px] text-zinc-400">
                 <span className="truncate min-w-0">
                   {billingLabel ? `Kỳ ${billingLabel}` : '—'}
                 </span>

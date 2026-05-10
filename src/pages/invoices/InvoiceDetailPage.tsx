@@ -92,9 +92,10 @@ const InvoiceDetailPage = () => {
   };
 
   const getStatusBadge = (status: string) => {
+    // Mặc định mọi hoá đơn = APPROVED → không hiển thị badge cho trạng thái này.
+    if (status === 'APPROVED') return null;
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       DRAFT: { variant: 'outline', label: 'Nháp' },
-      APPROVED: { variant: 'default', label: 'Đã duyệt' },
       PARTIAL_PAID: { variant: 'secondary', label: 'Trả 1 phần' },
       PAID: { variant: 'default', label: 'Đã thanh toán' },
       OVERDUE: { variant: 'destructive', label: 'Quá hạn' },
@@ -120,38 +121,45 @@ const InvoiceDetailPage = () => {
       subtitle="Chi tiết hóa đơn"
       icon={Receipt}
     >
-      {/* Header Actions */}
-      <div className="flex items-center gap-2 mb-6">
+      {/* Header Actions: 3 nút phụ icon-only (gọn, không che nút thanh toán),
+          2 nút action chính giữ nguyên label */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
         <Button
           variant="outline"
+          size="icon"
+          className="h-9 w-9"
           onClick={() => navigate('/invoices')}
+          title="Quay lại danh sách"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Quay lại
+          <ArrowLeft className="h-4 w-4" />
         </Button>
-
-        <div className="flex-1" />
 
         {canEditInvoice(invoice) && (
           <Button
             variant="outline"
+            size="icon"
+            className="h-9 w-9"
             onClick={() => setEditDialogOpen(true)}
+            title="Chỉnh sửa"
           >
-            <Pencil className="h-4 w-4 mr-2" />
-            Chỉnh sửa
+            <Pencil className="h-4 w-4" />
           </Button>
         )}
 
         {(invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
           <Button
             variant="destructive"
+            size="icon"
+            className="h-9 w-9"
             onClick={handleCancel}
             disabled={cancelMutation.isPending}
+            title={cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
           >
-            <XCircle className="h-4 w-4 mr-2" />
-            {cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
+            <XCircle className="h-4 w-4" />
           </Button>
         )}
+
+        <div className="flex-1" />
 
         {(invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID') && (
           <Button

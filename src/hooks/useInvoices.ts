@@ -194,8 +194,7 @@ export const useInvoice = (invoiceId?: string) => {
 };
 
 // =============================================
-// useCreateInvoice - Create invoice + invoice_items, status = DRAFT
-// Requirements: 1.12, 3.1
+// useCreateInvoice - Create invoice + invoice_items, status = APPROVED (mặc định đã duyệt)
 // =============================================
 
 export const useCreateInvoice = () => {
@@ -292,7 +291,7 @@ export const useCreateInvoice = () => {
 
       toast({
         title: 'Dữ liệu đã được TẠO thành công',
-        description: 'Hoá đơn mới đã được tạo ở trạng thái nháp.',
+        description: 'Hoá đơn mới đã được duyệt và sẵn sàng ghi nhận thanh toán.',
       });
     },
     onError: (error: Error) => {
