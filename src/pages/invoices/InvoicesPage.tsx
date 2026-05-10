@@ -184,8 +184,8 @@ const InvoicesPage = () => {
           {/* Statistics */}
           <InvoiceStatsSummary filters={statsFilters} />
 
-          {/* Filters */}
-          <InvoiceListFilters filters={filters} onFiltersChange={handleFiltersChange} />
+          {/* Filters — compact: chỉ Toà nhà · Phòng · Tháng */}
+          <InvoiceListFilters filters={filters} onFiltersChange={handleFiltersChange} compact />
 
           {/* Toolbar */}
           <InvoiceListToolbar

@@ -1,7 +1,6 @@
 import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import { Receipt } from 'lucide-react';
-import { format } from 'date-fns';
 import type { InvoiceWithRelations, InvoiceStatus } from '@/types/invoice';
 
 interface Props {
@@ -64,13 +63,11 @@ const STATUS: Record<InvoiceStatus, StatusStyle> = {
   },
 };
 
-const formatDate = (d: string | null | undefined) => {
-  if (!d) return '—';
-  try {
-    return format(new Date(d), 'dd/MM/yyyy');
-  } catch {
-    return '—';
-  }
+const formatBillingMonth = (m: string | null | undefined) => {
+  if (!m) return null;
+  const [year, month] = m.split('-');
+  if (!year || !month) return m;
+  return `Th${parseInt(month, 10)}/${year}`;
 };
 
 export function InvoiceListMobile({ invoices, isLoading, onViewDetail }: Props) {
@@ -101,12 +98,13 @@ export function InvoiceListMobile({ invoices, isLoading, onViewDetail }: Props) 
       {invoices.map((inv) => {
         const status = STATUS[inv.status] ?? STATUS.DRAFT;
         const isCancelled = inv.status === 'CANCELLED';
-        const tenantName = inv.tenant?.full_name?.trim() || '—';
-        const roomLabel = inv.room?.name
-          ? inv.bed?.name
-            ? `${inv.room.name} · ${inv.bed.name}`
-            : inv.room.name
-          : null;
+        const buildingName = inv.building?.name?.trim();
+        const roomName = inv.room?.name?.trim();
+        const voucherTitle =
+          buildingName && roomName
+            ? `${buildingName} - ${roomName}`
+            : roomName || buildingName || '—';
+        const billingLabel = formatBillingMonth(inv.billing_month);
 
         return (
           <li key={inv.id}>
@@ -144,28 +142,16 @@ export function InvoiceListMobile({ invoices, isLoading, onViewDetail }: Props) 
                 </span>
               </div>
 
-              {/* Row 2: khách thuê · phòng/giường */}
+              {/* Row 2: Toà nhà - Phòng */}
               <div className="text-[13px] text-zinc-600 mb-1 line-clamp-1">
-                <span className="font-medium">{tenantName}</span>
-                {roomLabel && (
-                  <>
-                    <span className="mx-1.5 text-zinc-300">·</span>
-                    <span>{roomLabel}</span>
-                  </>
-                )}
+                <span className="font-medium">{voucherTitle}</span>
               </div>
 
-              {/* Row 3: hạn thanh toán · kỳ · đã thu */}
+              {/* Row 3: kỳ · đã thu */}
               <div className="flex items-center justify-between gap-2 mt-1 text-[12px] text-zinc-400">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="truncate">Hạn: {formatDate(inv.due_date)}</span>
-                  {inv.billing_month && (
-                    <>
-                      <span>·</span>
-                      <span className="truncate">Kỳ {inv.billing_month}</span>
-                    </>
-                  )}
-                </div>
+                <span className="truncate min-w-0">
+                  {billingLabel ? `Kỳ ${billingLabel}` : '—'}
+                </span>
                 <span className="shrink-0 tabular-nums">
                   Đã thu {formatCompact(inv.paid_amount)}
                 </span>

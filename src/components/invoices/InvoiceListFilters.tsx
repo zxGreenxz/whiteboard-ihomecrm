@@ -18,18 +18,20 @@ import type { InvoiceFilters } from '@/types/invoice';
 interface InvoiceListFiltersProps {
   filters: InvoiceFilters;
   onFiltersChange: (filters: InvoiceFilters) => void;
+  /** Khi true: chỉ render Toà nhà / Phòng / Tháng (dùng cho mobile). */
+  compact?: boolean;
 }
 
 const ALL_VALUE = '__all__';
 
 const MONTHS = ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'];
 
-const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProps) => {
+const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: InvoiceListFiltersProps) => {
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(filters.building_id);
-  const { data: beds = [] } = useBeds(filters.room_id);
+  const { data: beds = [] } = useBeds(compact ? undefined : filters.room_id);
   const { data: contractsData } = useContracts(
-    filters.room_id ? { room_id: filters.room_id } : undefined,
+    !compact && filters.room_id ? { room_id: filters.room_id } : undefined,
   );
   const contracts = contractsData?.data ?? [];
 
@@ -76,16 +78,18 @@ const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProp
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-4">
+    <div className={compact ? 'flex flex-wrap items-center gap-2 px-3 pt-3' : 'flex flex-wrap items-center gap-2 mb-4'}>
       {/* Chọn khu vực - TODO: not implemented yet */}
-      <Select disabled>
-        <SelectTrigger className="h-9 text-sm w-[150px]">
-          <SelectValue placeholder="Chọn khu vực" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__placeholder__">Chọn khu vực</SelectItem>
-        </SelectContent>
-      </Select>
+      {!compact && (
+        <Select disabled>
+          <SelectTrigger className="h-9 text-sm w-[150px]">
+            <SelectValue placeholder="Chọn khu vực" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__placeholder__">Chọn khu vực</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
 
       {/* Chọn toà nhà */}
       <Select value={filters.building_id ?? ALL_VALUE} onValueChange={handleBuildingChange}>
@@ -114,32 +118,36 @@ const InvoiceListFilters = ({ filters, onFiltersChange }: InvoiceListFiltersProp
       </Select>
 
       {/* Chọn giường */}
-      <Select value={filters.bed_id ?? ALL_VALUE} onValueChange={handleBedChange}>
-        <SelectTrigger className="h-9 text-sm w-[140px]">
-          <SelectValue placeholder="Chọn giường" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>Tất cả giường</SelectItem>
-          {beds.map((b: any) => (
-            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {!compact && (
+        <Select value={filters.bed_id ?? ALL_VALUE} onValueChange={handleBedChange}>
+          <SelectTrigger className="h-9 text-sm w-[140px]">
+            <SelectValue placeholder="Chọn giường" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_VALUE}>Tất cả giường</SelectItem>
+            {beds.map((b: any) => (
+              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {/* Hợp đồng */}
-      <Select value={filters.contract_id ?? ALL_VALUE} onValueChange={handleContractChange}>
-        <SelectTrigger className="h-9 text-sm w-[150px]">
-          <SelectValue placeholder="Hợp đồng" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>Tất cả HĐ</SelectItem>
-          {contracts.map((c: any) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.contract_number ?? c.tenant?.full_name ?? c.id.slice(0, 8)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {!compact && (
+        <Select value={filters.contract_id ?? ALL_VALUE} onValueChange={handleContractChange}>
+          <SelectTrigger className="h-9 text-sm w-[150px]">
+            <SelectValue placeholder="Hợp đồng" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_VALUE}>Tất cả HĐ</SelectItem>
+            {contracts.map((c: any) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.contract_number ?? c.tenant?.full_name ?? c.id.slice(0, 8)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {/* Chọn tháng - Custom Month Picker */}
       <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
