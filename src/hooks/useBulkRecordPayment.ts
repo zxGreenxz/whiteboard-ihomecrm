@@ -1,8 +1,18 @@
 // =============================================
 // Bulk Record Payment Hook
 // Loop qua nhiều hoá đơn, mỗi hoá đơn có thể có 3 sub-payment (TM/TK/TT)
-// + 1 phiếu thối nếu khách trả dư. Mirror logic của useRecordPaymentRPC
-// nhưng KHÔNG invalidate per-iteration (chỉ 1 lần ở onSettled).
+// + 1 phiếu thối nếu khách trả dư.
+//
+// LƯU Ý: KHÔNG dùng RPC record_invoice_payment vì RPC đó check
+// `WHERE user_id = p_user_id` (chỉ owner gọi được) — staff được RLS
+// allow write nhưng RPC vẫn từ chối. Thay vào đó insert trực tiếp vào
+// payments + income_expenses, dựa vào trigger DB recompute_invoice_for_id
+// (migration 20260510000010) tự cập nhật paid_amount/status invoice.
+//
+// `user_id` của payment + voucher = owner của invoice (không phải staff)
+// để RLS staff_can('invoices', ...) match đúng.
+//
+// KHÔNG invalidate per-iteration (chỉ 1 lần ở onSettled).
 // =============================================
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -96,7 +106,7 @@ export const useBulkRecordPayment = () => {
           const { data: inv, error: invErr } = await (supabase
             .from('invoices')
             .select(
-              'id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount',
+              'id, user_id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount',
             )
             .eq('id', item.invoice_id)
             .single() as any);
@@ -134,31 +144,34 @@ export const useBulkRecordPayment = () => {
             continue;
           }
 
-          // ── Mỗi sub-line: RPC record_invoice_payment + voucher INCOME ──
+          // ── Mỗi sub-line: INSERT payment + voucher INCOME (bypass RPC) ──
+          // user_id = owner của invoice (RLS staff_can dùng owner làm scope)
+          const ownerId = (inv as any).user_id as string;
           for (let i = 0; i < subLines.length; i++) {
             const line = subLines[i];
             const isFirst = i === 0;
 
-            const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)(
-              'record_invoice_payment',
-              {
-                p_user_id: user.id,
-                p_invoice_id: item.invoice_id,
-                p_amount: line.amount,
-                p_payment_method: line.method,
-                p_payment_date: params.payment_date,
-                p_notes: item.notes ?? null,
-                p_receipt_image_url:
+            const { data: paymentRow, error: payErr } = await supabase
+              .from('payments' as any)
+              .insert({
+                user_id: ownerId,
+                invoice_id: item.invoice_id,
+                amount: line.amount,
+                payment_method: line.method,
+                payment_date: params.payment_date,
+                notes: item.notes ?? null,
+                receipt_image_url:
                   isFirst ? (item.receipt_image_url ?? null) : null,
-              },
-            );
-            if (rpcErr) throw rpcErr;
-            const newPaymentId = (rpcRes as any)?.payment_id ?? null;
+              } as any)
+              .select('id')
+              .single();
+            if (payErr) throw payErr;
+            const newPaymentId = (paymentRow as any)?.id ?? null;
 
             const { data: voucher, error: vErr } = await supabase
               .from('income_expenses' as any)
               .insert({
-                user_id: user.id,
+                user_id: ownerId,
                 type: 'INCOME',
                 name: `Thu tiền theo hóa đơn ${(inv as any).invoice_number || ''} - ${(inv as any).billing_month || ''}`,
                 building_id: (inv as any).building_id,
@@ -207,7 +220,7 @@ export const useBulkRecordPayment = () => {
             const { data: refundVoucher, error: rvErr } = await supabase
               .from('income_expenses' as any)
               .insert({
-                user_id: user.id,
+                user_id: ownerId,
                 type: 'EXPENSE',
                 name: `Tiền thối hoá đơn ${(inv as any).invoice_number || ''} - ${(inv as any).billing_month || ''}`,
                 building_id: (inv as any).building_id,
