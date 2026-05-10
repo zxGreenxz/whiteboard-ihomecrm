@@ -116,10 +116,29 @@ const InvoiceDetailPage = () => {
     }
   };
 
+  const buildingName = (invoice as any).building?.name?.trim() || '';
+  const roomName = (invoice as any).room?.name?.trim() || '';
+  const bedName = (invoice as any).bed?.name?.trim() || '';
+  const billingLabel = invoice.billing_month
+    ? (() => {
+        const [y, m] = invoice.billing_month.split('-');
+        return m && y ? `${parseInt(m, 10)}/${y}` : invoice.billing_month;
+      })()
+    : '';
+  const titleParts = [
+    buildingName,
+    roomName + (bedName ? ` · ${bedName}` : ''),
+    billingLabel,
+  ].filter((s) => s && s.trim());
+  const invoiceTitle =
+    titleParts.length > 0
+      ? titleParts.join(' - ')
+      : invoice.invoice_number || invoice.id.slice(0, 8);
+
   return (
     <MainLayout
-      title={`Hóa đơn ${invoice.title || invoice.id.slice(0, 8)}`}
-      subtitle="Chi tiết hóa đơn"
+      title={invoiceTitle}
+      subtitle={invoice.invoice_number ? `Hoá đơn ${invoice.invoice_number}` : 'Chi tiết hoá đơn'}
       icon={Receipt}
     >
       {/* Header Actions: 3 nút phụ icon-only (gọn, không che nút thanh toán),
