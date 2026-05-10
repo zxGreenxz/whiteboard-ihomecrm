@@ -36,13 +36,27 @@ interface RecordPaymentDialogProps {
 
 const paymentSchema = z.object({
   amount: z.number().min(1, 'Số tiền phải lớn hơn 0'),
+  change_amount: z.number().min(0).default(0),
   payment_method: z.enum(['TM', 'TK', 'TT']),
   payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
   account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ nhận'),
+  change_account_id: z.string().optional(),
   notes: z.string().optional(),
-});
+}).refine(
+  (data) => data.change_amount === 0 || !!data.change_account_id,
+  { message: 'Vui lòng chọn sổ quỹ tiền thối', path: ['change_account_id'] },
+);
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
+
+const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
+const parseVN = (s: string): number => {
+  const digits = s.replace(/\D/g, '');
+  return digits ? parseInt(digits, 10) : 0;
+};
+
+const JOEY_USER_ID = 'd45a7506-5250-4d99-ac94-9f73cbd4df17';
+const NATHAN_USER_ID = 'df8d1df5-1c24-4723-9733-4640c43c382b';
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPaymentRPC();
@@ -51,26 +65,35 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [changeUserEdited, setChangeUserEdited] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const {
-    register,
     handleSubmit,
     formState: { errors },
     setValue,
     watch,
     reset,
+    register,
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
+      change_amount: 0,
       payment_method: 'TM',
       payment_date: new Date().toISOString().split('T')[0],
     },
   });
 
   const watchedAmount = watch('amount');
+  const watchedChangeAmount = watch('change_amount');
+  const watchedChangeAccountId = watch('change_account_id');
   const watchedPaymentMethod = watch('payment_method');
 
   const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
+  }, []);
 
   // Auto-fill amount with outstanding amount when dialog opens
   useEffect(() => {
@@ -79,10 +102,28 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }
   }, [invoice, outstandingAmount, setValue]);
 
+  // Auto-compute tiền thối = max(0, amount - outstanding) trừ khi user tự sửa
+  useEffect(() => {
+    if (!changeUserEdited) {
+      const computed = Math.max(0, (watchedAmount || 0) - outstandingAmount);
+      setValue('change_amount', computed);
+    }
+  }, [watchedAmount, outstandingAmount, changeUserEdited, setValue]);
+
+  // Pre-select sổ quỹ thối theo current user (Joey -> Hiển Thối, Nathan -> Hiệp Thối)
+  useEffect(() => {
+    if (!watchedChangeAmount || watchedChangeAccountId || !accounts.length || !currentUserId) return;
+    let target: any | undefined;
+    if (currentUserId === JOEY_USER_ID) target = (accounts as any[]).find((a) => a.name === 'Hiển Thối');
+    else if (currentUserId === NATHAN_USER_ID) target = (accounts as any[]).find((a) => a.name === 'Hiệp Thối');
+    if (target) setValue('change_account_id', target.id);
+  }, [watchedChangeAmount, watchedChangeAccountId, accounts, currentUserId, setValue]);
+
   const handleClose = () => {
     reset();
     setReceiptImage(null);
     setReceiptPreview(null);
+    setChangeUserEdited(false);
     onOpenChange(false);
   };
 
@@ -184,6 +225,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           notes: data.notes,
           receipt_image_url: receiptImageUrl,
           account_id: data.account_id,
+          change_amount: data.change_amount,
+          change_account_id: data.change_account_id,
         },
         {
           onSuccess: () => {
@@ -258,43 +301,40 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </div>
           </div>
 
-          {/* Payment Amount */}
-          <div className="space-y-2">
-            <Label htmlFor="amount">Số tiền thanh toán *</Label>
-            <Input
-              id="amount"
-              type="number"
-              {...register('amount', { valueAsNumber: true })}
-              placeholder="0"
-            />
-            {errors.amount && (
-              <p className="text-sm text-red-500">{errors.amount.message}</p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setValue('amount', outstandingAmount)}
-              >
-                Toàn bộ
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setValue('amount', outstandingAmount / 2)}
-              >
-                1/2
-              </Button>
+          {/* Số tiền thanh toán + Tiền thối — 2 cột */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="amount">Số tiền thanh toán *</Label>
+              <Input
+                id="amount"
+                type="text"
+                inputMode="numeric"
+                value={formatVN(watchedAmount || 0)}
+                onChange={(e) => setValue('amount', parseVN(e.target.value), { shouldValidate: true })}
+                placeholder="0"
+              />
+              {errors.amount && (
+                <p className="text-sm text-red-500">{errors.amount.message}</p>
+              )}
             </div>
-            {watchedAmount > outstandingAmount && outstandingAmount > 0 && (
-              <Alert className="bg-amber-50 border-amber-200">
-                <AlertDescription className="text-amber-800 text-sm">
-                  Số tiền vượt quá còn lại — phần dư sẽ được ghi nhận vào tiền thừa của khách thuê.
-                </AlertDescription>
-              </Alert>
-            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="change_amount">Tiền thối</Label>
+              <Input
+                id="change_amount"
+                type="text"
+                inputMode="numeric"
+                value={formatVN(watchedChangeAmount || 0)}
+                onChange={(e) => {
+                  setChangeUserEdited(true);
+                  setValue('change_amount', parseVN(e.target.value), { shouldValidate: true });
+                }}
+                placeholder="0"
+              />
+              {errors.change_amount && (
+                <p className="text-sm text-red-500">{errors.change_amount.message}</p>
+              )}
+            </div>
           </div>
 
           {/* Payment Method */}
@@ -354,6 +394,35 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
             </p>
           </div>
+
+          {/* Sổ quỹ tiền thối — bắt buộc nếu Tiền thối > 0 */}
+          {(watchedChangeAmount ?? 0) > 0 && (
+            <div className="space-y-2">
+              <Label>Sổ quỹ tiền thối *</Label>
+              <Select
+                value={watchedChangeAccountId ?? ''}
+                onValueChange={(v) => setValue('change_account_id', v, { shouldValidate: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn sổ quỹ chi tiền thối" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a: any) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                      {a.bank_name ? ` — ${a.bank_name}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.change_account_id && (
+                <p className="text-sm text-red-500">{errors.change_account_id.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Hệ thống sẽ tạo phiếu chi hạng mục "Tiền thối" trong sổ quỹ này.
+              </p>
+            </div>
+          )}
 
           {/* Receipt Image Upload */}
           <div className="space-y-2">
