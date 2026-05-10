@@ -32,7 +32,9 @@ import {
   Printer,
   ChevronLeft,
   ChevronRight,
+  Eye,
 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import type { ContractWithRelations } from '@/types/contract';
 import {
   getContractDisplayStatus,
@@ -197,7 +199,12 @@ export default function ContractListTable({
                       />
                     </TableCell>
                     <TableCell className="font-medium">
-                      {contract.contract_number || '-'}
+                      <Link
+                        to={`/contracts/${contract.id}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {contract.contract_number || contract.id.slice(0, 8)}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <span
@@ -329,7 +336,15 @@ function ActionButtons({
   onDelete,
   onPrint,
 }: ActionButtonsProps) {
+  const navigate = useNavigate();
   const buttons = [
+    {
+      label: 'Xem chi tiết',
+      icon: Eye,
+      onClick: () => navigate(`/contracts/${contract.id}`),
+      disabled: false,
+      bg: 'bg-slate-500 hover:bg-slate-600',
+    },
     {
       label: 'Cập nhật',
       icon: Pencil,
