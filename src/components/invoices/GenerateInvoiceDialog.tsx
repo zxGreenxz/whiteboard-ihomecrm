@@ -26,6 +26,8 @@ import type { InvoiceFormData } from '@/types/invoice';
 import { useContracts } from '@/hooks/useContracts';
 import { useMeterReadings } from '@/hooks/useInvoices';
 import { useVehicles } from '@/hooks/useVehicles';
+import { useBuildings } from '@/hooks/useBuildings';
+import { useRooms } from '@/hooks/useRooms';
 import MeterReadingSelector from '@/components/invoices/MeterReadingSelector';
 import { Receipt, Plus, Trash2, Home, Zap, Droplet } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -62,9 +64,18 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const [selectedElectricReadingId, setSelectedElectricReadingId] = useState<string>();
   const [selectedWaterReadingId, setSelectedWaterReadingId] = useState<string>();
+  const [filterBuildingId, setFilterBuildingId] = useState<string>('');
+  const [filterRoomId, setFilterRoomId] = useState<string>('');
   const createMutation = useCreateInvoice();
   const { data: contractsData } = useContracts();
-  const contracts = (contractsData ?? []).filter((c: any) => c.status === 'ACTIVE');
+  const allActiveContracts = (contractsData ?? []).filter((c: any) => c.status === 'ACTIVE');
+  const contracts = allActiveContracts.filter((c: any) => {
+    if (filterBuildingId && c.room?.building_id !== filterBuildingId) return false;
+    if (filterRoomId && c.room_id !== filterRoomId) return false;
+    return true;
+  });
+  const { data: buildings = [] } = useBuildings();
+  const { data: rooms = [] } = useRooms(filterBuildingId || undefined);
   const { data: meterReadings } = useMeterReadings(selectedContractId);
   const { data: vehicles } = useVehicles({ contract_id: selectedContractId });
 
@@ -173,6 +184,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     setSelectedContractId('');
     setSelectedElectricReadingId(undefined);
     setSelectedWaterReadingId(undefined);
+    setFilterBuildingId('');
+    setFilterRoomId('');
     onOpenChange(false);
   };
 
@@ -300,6 +313,57 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Lọc theo Toà nhà · Phòng — thu hẹp dropdown Hợp đồng */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Toà nhà</Label>
+              <Select
+                value={filterBuildingId || '__all__'}
+                onValueChange={(value) => {
+                  const next = value === '__all__' ? '' : value;
+                  setFilterBuildingId(next);
+                  setFilterRoomId('');
+                  setValue('contract_id', '');
+                  setSelectedContractId('');
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Tất cả toà nhà" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Tất cả toà nhà</SelectItem>
+                  {(buildings as any[]).map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Phòng</Label>
+              <Select
+                value={filterRoomId || '__all__'}
+                onValueChange={(value) => {
+                  const next = value === '__all__' ? '' : value;
+                  setFilterRoomId(next);
+                  setValue('contract_id', '');
+                  setSelectedContractId('');
+                }}
+                disabled={!filterBuildingId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={filterBuildingId ? 'Tất cả phòng' : 'Chọn toà nhà trước'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Tất cả phòng</SelectItem>
+                  {(rooms as any[]).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Contract Selection */}
           <div className="space-y-2">
             <Label>Hợp đồng *</Label>
