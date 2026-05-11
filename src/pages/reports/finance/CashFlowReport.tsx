@@ -35,7 +35,9 @@ export default function CashFlowReport() {
   const endDate = `${year}-12-31`;
 
   const { data: buildings = [] } = useBuildings();
-  const { data: byDay = [], isLoading } = useCashFlowByDay(startDate, endDate);
+  const { data: byDay = [], isLoading } = useCashFlowByDay(startDate, endDate, {
+    building_id: buildingId === "all" ? undefined : buildingId,
+  });
 
   // Aggregate to 12 months
   const monthly = useMemo(() => {
@@ -116,9 +118,10 @@ export default function CashFlowReport() {
           </div>
         </div>
 
-        <div className="rounded-md border p-4">
-          <h3 className="text-base font-semibold mb-3">Biểu đồ dòng tiền thu chi thực tế</h3>
-          <div className="flex gap-2 mb-3">
+        <div className="rounded-md border bg-card">
+          <div className="border-b p-4 flex items-center justify-between flex-wrap gap-3">
+            <h3 className="text-base font-semibold">Biểu đồ dòng tiền thu chi thực tế</h3>
+            <div className="flex gap-2">
             <Button
               size="sm"
               variant={series.income ? "default" : "outline"}
@@ -140,7 +143,9 @@ export default function CashFlowReport() {
             >
               Chênh lệch
             </Button>
+            </div>
           </div>
+          <div className="p-4">
           {isLoading ? (
             <Skeleton className="h-[320px] w-full" />
           ) : (
@@ -157,49 +162,52 @@ export default function CashFlowReport() {
               </BarChart>
             </ResponsiveContainer>
           )}
+          </div>
         </div>
 
-        <div className="rounded-md border p-4">
-          <h3 className="text-base font-semibold mb-3">Bảng thu chi theo tháng và quý</h3>
+        <div className="rounded-md border bg-card">
+          <div className="border-b p-4">
+            <h3 className="text-base font-semibold">Bảng thu chi theo tháng và quý</h3>
+          </div>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead><strong>Quý</strong></TableHead>
-                <TableHead className="text-right"><strong>Doanh thu</strong></TableHead>
-                <TableHead className="text-right"><strong>Chi phí</strong></TableHead>
-                <TableHead className="text-right"><strong>Lợi nhuận</strong></TableHead>
-                <TableHead><strong>Tháng</strong></TableHead>
-                <TableHead className="text-right"><strong>Doanh thu</strong></TableHead>
-                <TableHead className="text-right"><strong>Chi phí</strong></TableHead>
-                <TableHead className="text-right"><strong>Lợi nhuận</strong></TableHead>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="border-r font-semibold text-center w-16">Quý</TableHead>
+                <TableHead className="border-r text-right font-semibold">Doanh thu</TableHead>
+                <TableHead className="border-r text-right font-semibold">Chi phí</TableHead>
+                <TableHead className="border-r-2 text-right font-semibold">Lợi nhuận</TableHead>
+                <TableHead className="border-r font-semibold text-center w-16">Tháng</TableHead>
+                <TableHead className="border-r text-right font-semibold">Doanh thu</TableHead>
+                <TableHead className="border-r text-right font-semibold">Chi phí</TableHead>
+                <TableHead className="text-right font-semibold">Lợi nhuận</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {quarterly.flatMap((q) => {
                 const monthsOfQ = monthly.slice((q.quarter - 1) * 3, q.quarter * 3);
                 return monthsOfQ.map((m, idx) => (
-                  <TableRow key={`${q.quarter}-${m.month}`}>
+                  <TableRow key={`${q.quarter}-${m.month}`} className={q.quarter % 2 === 0 ? "bg-muted/10" : ""}>
                     {idx === 0 ? (
                       <>
-                        <TableCell rowSpan={3}><strong>{q.label}</strong></TableCell>
-                        <TableCell rowSpan={3} className="text-right">{formatCurrency(q.income)}</TableCell>
-                        <TableCell rowSpan={3} className="text-right">{formatCurrency(q.expense)}</TableCell>
-                        <TableCell rowSpan={3} className="text-right">{formatCurrency(q.net)}</TableCell>
+                        <TableCell rowSpan={3} className="border-r text-center align-middle font-semibold">{q.label}</TableCell>
+                        <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums">{formatCurrency(q.income)}</TableCell>
+                        <TableCell rowSpan={3} className="border-r text-right align-middle tabular-nums">{formatCurrency(q.expense)}</TableCell>
+                        <TableCell rowSpan={3} className="border-r-2 text-right align-middle tabular-nums">{formatCurrency(q.net)}</TableCell>
                       </>
                     ) : null}
-                    <TableCell>{m.month}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(m.income)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(m.expense)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(m.net)}</TableCell>
+                    <TableCell className="border-r text-center">{m.month}</TableCell>
+                    <TableCell className="border-r text-right tabular-nums text-emerald-700">{formatCurrency(m.income)}</TableCell>
+                    <TableCell className="border-r text-right tabular-nums text-red-700">{formatCurrency(m.expense)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(m.net)}</TableCell>
                   </TableRow>
                 ));
               })}
-              <TableRow className="bg-muted/50 font-semibold">
-                <TableCell colSpan={4}><strong>Cả năm</strong></TableCell>
-                <TableCell className="text-right">{formatCurrency(yearTotals.income)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(yearTotals.expense)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(yearTotals.net)}</TableCell>
-                <TableCell />
+              <TableRow className="bg-muted/60 font-bold border-t-2">
+                <TableCell className="border-r font-bold">Cả năm</TableCell>
+                <TableCell className="border-r text-right tabular-nums">{formatCurrency(yearTotals.income)}</TableCell>
+                <TableCell className="border-r text-right tabular-nums">{formatCurrency(yearTotals.expense)}</TableCell>
+                <TableCell className="border-r-2 text-right tabular-nums">{formatCurrency(yearTotals.net)}</TableCell>
+                <TableCell colSpan={4} />
               </TableRow>
             </TableBody>
           </Table>

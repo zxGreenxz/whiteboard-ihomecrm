@@ -49,11 +49,16 @@ export default function DailyCashbookReport() {
   const { data: areas = [] } = useAreas();
   const { data: buildings = [] } = useBuildings();
   const { data: accounts = [] } = useAccounts();
+  const filterOpts = {
+    building_id: buildingId === "all" ? undefined : buildingId,
+    account_id: accountId === "all" ? undefined : accountId,
+  };
   const { data: byDay = [], isLoading } = useCashFlowByDay(
     startDate || "",
-    endDate || ""
+    endDate || "",
+    filterOpts
   );
-  const { data: summary } = useCashBookSummary(startDate, endDate);
+  const { data: summary } = useCashBookSummary(startDate, endDate, filterOpts);
 
   const accountName = accountId === "all"
     ? "Tất cả"
@@ -132,16 +137,16 @@ export default function DailyCashbookReport() {
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>
 
-        <div className="rounded-md border">
+        <div className="rounded-md border bg-card">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Ngày</TableHead>
-                <TableHead>Tài khoản</TableHead>
-                <TableHead className="text-right">Số dư đầu ngày</TableHead>
-                <TableHead className="text-right">Tổng thu</TableHead>
-                <TableHead className="text-right">Tổng chi</TableHead>
-                <TableHead className="text-right">Tồn cuối ngày</TableHead>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="border-r font-semibold">Ngày</TableHead>
+                <TableHead className="border-r font-semibold">Tài khoản</TableHead>
+                <TableHead className="border-r text-right font-semibold">Số dư đầu ngày</TableHead>
+                <TableHead className="border-r text-right font-semibold">Tổng thu</TableHead>
+                <TableHead className="border-r text-right font-semibold">Tổng chi</TableHead>
+                <TableHead className="text-right font-semibold">Tồn cuối ngày</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -160,22 +165,22 @@ export default function DailyCashbookReport() {
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((r) => (
-                  <TableRow key={r.date}>
-                    <TableCell>
+                rows.map((r, idx) => (
+                  <TableRow key={r.date} className={idx % 2 === 1 ? "bg-muted/20" : ""}>
+                    <TableCell className="border-r">
                       {format(new Date(r.date), "dd-MM-yyyy", { locale: vi })}
                     </TableCell>
-                    <TableCell>{accountName}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="border-r">{accountName}</TableCell>
+                    <TableCell className="border-r text-right tabular-nums">
                       {formatCurrency(r.startBalance)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(r.income)}
+                    <TableCell className="border-r text-right tabular-nums text-emerald-700">
+                      {r.income ? formatCurrency(r.income) : "0 ₫"}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(r.expense)}
+                    <TableCell className="border-r text-right tabular-nums text-red-700">
+                      {r.expense ? formatCurrency(r.expense) : "0 ₫"}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right tabular-nums font-medium">
                       {formatCurrency(r.endBalance)}
                     </TableCell>
                   </TableRow>
