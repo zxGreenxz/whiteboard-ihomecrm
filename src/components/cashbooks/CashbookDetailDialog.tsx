@@ -49,9 +49,16 @@ export function CashbookDetailDialog({
 
   if (!account) return null;
 
+  const isRefundLogAccount =
+    typeof account.name === "string" && account.name.trim().endsWith("Thối");
+
   const handleViewIncomeExpense = () => {
     onOpenChange(false);
-    navigate(`/income-expense?account_id=${account.id}`);
+    if (isRefundLogAccount) {
+      navigate(`/finance/refund-log?account_id=${account.id}`);
+    } else {
+      navigate(`/income-expense?account_id=${account.id}`);
+    }
   };
 
   return (

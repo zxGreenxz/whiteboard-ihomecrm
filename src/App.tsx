@@ -52,6 +52,7 @@ import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import InvoicePrintPage from "./pages/invoices/InvoicePrintPage";
 import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
 import IncomeExpensePrintPage from "./pages/payments/IncomeExpensePrintPage";
+import RefundLogPage from "./pages/payments/RefundLogPage";
 // CashBookPage moved to reports/finance/DailyCashbookReport - redirect via /cash-book route below
 
 // Assets Pages
@@ -218,6 +219,7 @@ const App = () => (
           {/* Primary route: /income-expense, redirect /payments → /income-expense */}
           <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
           <Route path="/income-expense/print/:id" element={<ProtectedRoute><IncomeExpensePrintPage /></ProtectedRoute>} />
+          <Route path="/finance/refund-log" element={<ProtectedRoute><RefundLogPage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expense" element={<Navigate to="/income-expense" replace />} />
