@@ -146,7 +146,7 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const importMutation = useImportIncomeExpenses();
-  const { data: buildings } = useBuildings();
+  const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: incomeTypes } = useIncomeExpenseTypes('income');
   const { data: expenseTypes } = useIncomeExpenseTypes('expense');
 

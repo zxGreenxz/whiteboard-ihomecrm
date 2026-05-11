@@ -8,12 +8,15 @@ type Building = Database["public"]["Tables"]["buildings"]["Row"];
 type BuildingInsert = Database["public"]["Tables"]["buildings"]["Insert"];
 type BuildingUpdate = Database["public"]["Tables"]["buildings"]["Update"];
 
-// Fetch all buildings with area info and non-deleted rooms count
-export const useBuildings = () => {
+// Fetch all buildings with area info and non-deleted rooms count.
+// Mặc định ẩn tòa ảo (is_virtual=true) — chỉ form thu/chi mới truyền { includeVirtual: true }
+// để cho phép chọn mục "Chung" (tòa ảo đại diện chi phí không thuộc tòa thật).
+export const useBuildings = (options?: { includeVirtual?: boolean }) => {
+  const includeVirtual = options?.includeVirtual ?? false;
   return useQuery({
-    queryKey: ["buildings"],
+    queryKey: ["buildings", { includeVirtual }],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("buildings")
         .select(`
           *,
@@ -21,8 +24,11 @@ export const useBuildings = () => {
           rooms:rooms(count)
         `)
         .is("deleted_at", null)
-        .is("rooms.deleted_at", null)
-        .order("created_at", { ascending: false });
+        .is("rooms.deleted_at", null);
+      if (!includeVirtual) {
+        q = q.eq("is_virtual" as any, false);
+      }
+      const { data, error } = await q.order("created_at", { ascending: false });
 
       if (error) {
         console.error('useBuildings error:', error);

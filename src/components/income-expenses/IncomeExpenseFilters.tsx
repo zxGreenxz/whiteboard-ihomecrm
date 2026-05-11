@@ -22,7 +22,7 @@ export function IncomeExpenseFiltersBar({
   onChange,
 }: IncomeExpenseFiltersProps) {
   const { data: areas } = useAreas();
-  const { data: allBuildings } = useBuildings();
+  const { data: allBuildings } = useBuildings({ includeVirtual: true });
   const { data: rooms } = useRooms(filters.building_id ?? undefined);
   const { data: accounts } = useAccounts();
 

@@ -144,7 +144,10 @@ export const useIncomeExpenses = (
         query = query.eq("room_id", filters.room_id);
       }
       if (filters.account_id) {
-        query = query.eq("account_id", filters.account_id);
+        // OR: account_id (phiếu thường) HOẶC change_account_id (sổ X Thối nhận metadata thối)
+        query = query.or(
+          `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
+        );
       }
       if (filters.type) {
         query = query.eq("type", filters.type);
@@ -339,7 +342,9 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
         query = query.eq("room_id", filters.room_id);
       }
       if (filters.account_id) {
-        query = query.eq("account_id", filters.account_id);
+        query = query.or(
+          `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
+        );
       }
       if (filters.type) {
         query = query.eq("type", filters.type);
@@ -944,7 +949,9 @@ export const useIncomeExpenseBatches = (
 
       if (areaBuildingIds) voucherQuery = voucherQuery.in("building_id", areaBuildingIds);
       if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
-      if (filters.account_id) voucherQuery = voucherQuery.eq("account_id", filters.account_id);
+      if (filters.account_id) voucherQuery = voucherQuery.or(
+        `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
+      );
       if (filters.start_date) voucherQuery = voucherQuery.gte("voucher_date", filters.start_date);
       if (filters.end_date) voucherQuery = voucherQuery.lte("voucher_date", filters.end_date);
 

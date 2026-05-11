@@ -129,6 +129,8 @@ export const useRecordPaymentRPC = () => {
             attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
             approval_status: 'APPROVED',
             creator_name: creatorName,
+            change_amount: data.change_amount ?? 0,
+            change_account_id: data.change_account_id ?? null,
           } as any)
           .select()
           .single();
@@ -150,61 +152,8 @@ export const useRecordPaymentRPC = () => {
       }
       // ─────────────────────────────────────────────────────
 
-      // ─────────────────────────────────────────────────────
-      // Tiền thối: tạo phiếu chi 'Tiền thối' vào sổ quỹ chỉ định
-      // ─────────────────────────────────────────────────────
-      if (inv && (data.change_amount ?? 0) > 0 && data.change_account_id) {
-        const { data: refundType, error: refundTypeErr } = await supabase
-          .from('income_expense_types' as any)
-          .select('id')
-          .eq('type', 'expense')
-          .eq('name', 'Tiền thối')
-          .limit(1)
-          .maybeSingle() as any;
-        if (refundTypeErr) throw refundTypeErr;
-        if (!refundType?.id) {
-          throw new Error('Chưa có loại chi "Tiền thối". Vào Cài đặt → Loại thu/chi để tạo trước.');
-        }
-
-        const meta = (user.user_metadata ?? {}) as Record<string, any>;
-        const creatorName: string =
-          meta.full_name || meta.name || user.email || 'Người dùng';
-
-        const { data: refundVoucher, error: rvErr } = await supabase
-          .from('income_expenses' as any)
-          .insert({
-            user_id: user.id,
-            type: 'EXPENSE',
-            name: `Tiền thối hoá đơn ${inv.invoice_number || ''} - ${inv.billing_month || ''}`,
-            building_id: inv.building_id,
-            room_id: inv.room_id,
-            bed_id: inv.bed_id,
-            contract_id: inv.contract_id,
-            account_id: data.change_account_id,
-            invoice_id: inv.id,
-            voucher_date: data.payment_date,
-            attachments: [],
-            approval_status: 'APPROVED',
-            creator_name: creatorName,
-          } as any)
-          .select()
-          .single();
-        if (rvErr) throw rvErr;
-
-        const { error: refundItemErr } = await supabase
-          .from('income_expense_items' as any)
-          .insert({
-            income_expense_id: (refundVoucher as any).id,
-            income_expense_type_id: refundType.id,
-            description: `Tiền thối hoá đơn ${inv.invoice_number || ''}`,
-            quantity: 1,
-            unit_price: data.change_amount,
-            start_date: data.payment_date,
-            end_date: data.payment_date,
-          });
-        if (refundItemErr) throw refundItemErr;
-      }
-      // ─────────────────────────────────────────────────────
+      // Tiền thối không còn tạo phiếu chi riêng — chỉ là metadata
+      // change_amount + change_account_id trên phiếu thu INCOME (đã ghi ở trên).
 
       return result;
     },

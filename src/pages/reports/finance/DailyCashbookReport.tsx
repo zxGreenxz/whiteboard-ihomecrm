@@ -47,7 +47,7 @@ export default function DailyCashbookReport() {
   const endDate = dateRange?.to ? toLocalDateStr(dateRange.to) : undefined;
 
   const { data: areas = [] } = useAreas();
-  const { data: buildings = [] } = useBuildings();
+  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: accounts = [] } = useAccounts();
   const filterOpts = {
     building_id: buildingId === "all" ? undefined : buildingId,

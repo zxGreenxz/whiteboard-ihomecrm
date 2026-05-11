@@ -65,7 +65,7 @@ export function IncomeExpenseFilterPanel({
   }, [open, filters]);
 
   const { data: areas } = useAreas();
-  const { data: allBuildings } = useBuildings();
+  const { data: allBuildings } = useBuildings({ includeVirtual: true });
   const { data: rooms } = useRooms(draft.building_id ?? undefined);
   const { data: accounts } = useAccounts();
   const { data: types } = useIncomeExpenseTypes();

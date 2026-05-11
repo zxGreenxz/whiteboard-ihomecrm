@@ -344,7 +344,8 @@ export function useOccupancyTrend(buildingId?: string) {
 /**
  * Expense ratio over revenue report — grouped by income_expense_types.category, by month.
  * Numerator: SUM(income_expense_items.amount) WHERE expense voucher APPROVED + (optional) category.
- * Denominator: SUM(invoices.paid_amount) WHERE status IN ('PAID','PARTIAL_PAID') by billing_month.
+ * Denominator: SUM(income_expenses.total_amount) WHERE type='INCOME' APPROVED by voucher_date month.
+ * (Doanh thu = thu thực tế đã ghi nhận, KHÔNG lấy từ invoices.total_amount để tránh tính HĐ chưa thu.)
  */
 export function useExpenseRatioReport(
   startDate?: Date,
@@ -371,35 +372,10 @@ export function useExpenseRatioReport(
         (d) => format(d, "yyyy-MM")
       );
 
-      // --- Revenue from invoices (paid_amount), keyed by billing_month text 'YYYY-MM'
-      const startMonthKey = format(rangeStart, "yyyy-MM");
-      const endMonthKey = format(rangeEnd, "yyyy-MM");
-
-      // Doanh thu = tổng total_amount của invoices đã duyệt/đang vận hành
-      // (loại DRAFT, PENDING_APPROVAL, CANCELLED). Bao gồm cả APPROVED, PAID,
-      // PARTIAL_PAID, OVERDUE — phản ánh doanh thu ghi nhận trên invoice.
-      let invoiceQuery = supabase
-        .from("invoices")
-        .select("total_amount, paid_amount, billing_month, building_id")
-        .is("deleted_at", null)
-        .in("status", ["APPROVED", "PAID", "PARTIAL_PAID", "OVERDUE"])
-        .gte("billing_month", startMonthKey)
-        .lte("billing_month", endMonthKey);
-      if (buildingId) invoiceQuery = invoiceQuery.eq("building_id", buildingId);
-
-      const { data: invoices, error: invErr } = await invoiceQuery;
-      if (invErr) throw invErr;
-
       const revenueByMonth: Record<string, number> = {};
       for (const m of months) revenueByMonth[m] = 0;
-      for (const inv of invoices ?? []) {
-        const m = (inv as any).billing_month as string | null;
-        if (!m) continue;
-        if (revenueByMonth[m] === undefined) continue;
-        revenueByMonth[m] += Number((inv as any).total_amount ?? 0);
-      }
 
-      // --- Expenses from income_expenses + items + types
+      // --- Auth + date range cho cả revenue (INCOME) và expense (EXPENSE)
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -426,6 +402,27 @@ export function useExpenseRatioReport(
 
       const startDateStr = format(rangeStart, "yyyy-MM-dd");
       const endDateStr = format(rangeEnd, "yyyy-MM-dd");
+
+      // --- Revenue = SUM(income_expenses.total_amount) WHERE type='INCOME' approved by voucher_date month
+      let incomeQuery = supabase
+        .from("income_expenses" as any)
+        .select("voucher_date, building_id, total_amount")
+        .eq("user_id", user.id)
+        .eq("type", "INCOME")
+        .eq("approval_status", "APPROVED")
+        .is("deleted_at", null)
+        .gte("voucher_date", startDateStr)
+        .lte("voucher_date", endDateStr);
+      if (buildingId) incomeQuery = incomeQuery.eq("building_id", buildingId);
+
+      const { data: incomeVouchers, error: incErr } = await incomeQuery;
+      if (incErr) throw incErr;
+
+      for (const v of (incomeVouchers ?? []) as any[]) {
+        const m = (v.voucher_date as string | null)?.slice(0, 7);
+        if (!m || revenueByMonth[m] === undefined) continue;
+        revenueByMonth[m] += Number(v.total_amount ?? 0);
+      }
 
       let voucherQuery = supabase
         .from("income_expenses" as any)

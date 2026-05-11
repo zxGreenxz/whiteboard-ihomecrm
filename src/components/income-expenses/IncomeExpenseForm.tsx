@@ -85,8 +85,8 @@ const IncomeExpenseForm = ({
   // Item rows with type_name for display (not part of Zod schema)
   const [itemRows, setItemRows] = useState<FormItemRow[]>([]);
 
-  // Cascade data hooks
-  const { data: buildings = [] } = useBuildings();
+  // Cascade data hooks — includeVirtual để hiển thị tòa "Chung" cho chi/thu chung công ty
+  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: rooms = [] } = useRooms(selectedBuildingId);
   const { data: accounts = [] } = useAccounts();
 

@@ -23,7 +23,7 @@ export function IncomeExpenseFilterChips({
   onChange,
 }: Props) {
   const { data: areas } = useAreas();
-  const { data: buildings } = useBuildings();
+  const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: accounts } = useAccounts();
 
   const chips: Chip[] = [];

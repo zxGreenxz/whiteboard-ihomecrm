@@ -64,7 +64,7 @@ export default function ExpenseRatioReport() {
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [buildingId, setBuildingId] = useState<string | undefined>();
 
-  const { data: buildings } = useBuildings();
+  const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: categoriesList } = useIncomeExpenseTypeCategories("expense");
   const { data, isLoading } = useExpenseRatioReport(
     dateRange?.from,

@@ -57,7 +57,7 @@ export default function ProfitDistributionReport() {
   const endDate = format(endOfMonth(monthDate), "yyyy-MM-dd");
 
   const { data: areas = [] } = useAreas();
-  const { data: buildings = [] } = useBuildings();
+  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
 
   const { data: result, isLoading } = useIncomeExpenses(
     {

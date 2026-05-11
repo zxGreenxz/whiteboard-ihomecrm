@@ -202,7 +202,7 @@ const IncomeExpenseBatchForm = ({
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
   const [itemRows, setItemRows] = useState<BatchItemRow[]>([]);
 
-  const { data: buildings = [] } = useBuildings();
+  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: accounts = [] } = useAccounts();
 
   const form = useForm<IncomeExpenseBatchFormValues>({

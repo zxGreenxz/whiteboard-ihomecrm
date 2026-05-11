@@ -34,7 +34,7 @@ export default function CashFlowReport() {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
 
-  const { data: buildings = [] } = useBuildings();
+  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: byDay = [], isLoading } = useCashFlowByDay(startDate, endDate, {
     building_id: buildingId === "all" ? undefined : buildingId,
   });

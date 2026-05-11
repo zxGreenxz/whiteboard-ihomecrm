@@ -24,7 +24,6 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
-import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -49,7 +48,16 @@ const paymentSchema = z.object({
   notes: z.string().optional(),
 }).refine(
   (data) => data.change_amount === 0 || !!data.change_account_id,
-  { message: 'Vui lòng chọn sổ quỹ tiền thối', path: ['change_account_id'] },
+  { message: 'Vui lòng chọn sổ ghi nhận tiền thối', path: ['change_account_id'] },
+).refine(
+  (data) => {
+    if (data.change_amount === 0) return true;
+    const tmTotal = data.payment_lines
+      .filter((l) => l.payment_method === 'TM')
+      .reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    return tmTotal >= data.change_amount;
+  },
+  { message: 'Tiền thối chỉ áp dụng với phương thức TM và phải ≤ tổng tiền TM', path: ['change_amount'] },
 );
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -60,9 +68,6 @@ const parseVN = (s: string): number => {
   return digits ? parseInt(digits, 10) : 0;
 };
 
-const JOEY_USER_ID = 'd45a7506-5250-4d99-ac94-9f73cbd4df17';
-const NATHAN_USER_ID = 'df8d1df5-1c24-4723-9733-4640c43c382b';
-
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPaymentRPC();
   const { data: accounts = [] } = useAccounts();
@@ -71,8 +76,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [changeUserEdited, setChangeUserEdited] = useState(false);
-  const { data: authUser } = useAuth();
-  const currentUserId = authUser?.id ?? null;
 
   const {
     handleSubmit,
@@ -125,22 +128,30 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     setValue('payment_lines.0.account_id', defaultAccountId);
   }, [defaultAccountId, setValue]);
 
-  // Auto-compute tiền thối = max(0, totalPaid - outstanding), trừ khi user tự sửa
-  useEffect(() => {
-    if (!changeUserEdited) {
-      const computed = Math.max(0, totalPaid - outstandingAmount);
-      setValue('change_amount', computed);
-    }
-  }, [totalPaid, outstandingAmount, changeUserEdited, setValue]);
+  // Tổng tiền TM (tiền thối chỉ áp dụng cho phương thức TM)
+  const tmTotal = (watchedLines ?? [])
+    .filter((l: any) => l?.payment_method === 'TM')
+    .reduce((s, l: any) => s + (Number(l?.amount) || 0), 0);
 
-  // Pre-select sổ quỹ thối theo current user (Joey -> Hiển Thối, Nathan -> Hiệp Thối)
+  // Auto-compute tiền thối: chỉ tính khi có line TM. Cap theo tmTotal để không khấu trừ âm.
   useEffect(() => {
-    if (!watchedChangeAmount || watchedChangeAccountId || !accounts.length || !currentUserId) return;
-    let target: any | undefined;
-    if (currentUserId === JOEY_USER_ID) target = (accounts as any[]).find((a) => a.name === 'Hiển Thối');
-    else if (currentUserId === NATHAN_USER_ID) target = (accounts as any[]).find((a) => a.name === 'Hiệp Thối');
+    if (changeUserEdited) return;
+    if (tmTotal === 0) {
+      setValue('change_amount', 0);
+      return;
+    }
+    const overpaid = Math.max(0, totalPaid - outstandingAmount);
+    setValue('change_amount', Math.min(overpaid, tmTotal));
+  }, [totalPaid, outstandingAmount, tmTotal, changeUserEdited, setValue]);
+
+  // Pre-select sổ ghi nhận thối: tìm account thuộc user có name kết thúc "Thối"
+  useEffect(() => {
+    if (!watchedChangeAmount || watchedChangeAccountId || !accounts.length) return;
+    const target = (accounts as any[]).find(
+      (a) => typeof a.name === 'string' && a.name.trim().endsWith('Thối'),
+    );
     if (target) setValue('change_account_id', target.id);
-  }, [watchedChangeAmount, watchedChangeAccountId, accounts, currentUserId, setValue]);
+  }, [watchedChangeAmount, watchedChangeAccountId, accounts, setValue]);
 
   const handleClose = () => {
     reset();
@@ -239,21 +250,39 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         }
       }
 
-      // Lặp qua từng dòng thanh toán; tiền thối chỉ kèm ở dòng cuối
-      // (sau khi tất cả payments đã ghi nhận, mirror change voucher 1 lần).
+      // Tiền thối CHỈ áp dụng line TM. Khấu trừ vào line TM CUỐI CÙNG:
+      //   - phiếu thu line đó: amount = line.amount - change_amount (số thực thu)
+      //   - metadata change_amount / change_account_id gắn lên phiếu thu này
+      // Các line khác (TM trước đó, TK, TT): giữ nguyên amount, không metadata thối.
+      const change = data.change_amount || 0;
+      const tmDeductIdx = change > 0
+        ? (() => {
+            for (let i = data.payment_lines.length - 1; i >= 0; i--) {
+              if (data.payment_lines[i].payment_method === 'TM') return i;
+            }
+            return -1;
+          })()
+        : -1;
+
       for (let i = 0; i < data.payment_lines.length; i++) {
         const line = data.payment_lines[i];
-        const isLast = i === data.payment_lines.length - 1;
+        const isDeductLine = i === tmDeductIdx;
+        const deducted = isDeductLine ? change : 0;
+        const effectiveAmount = line.amount - deducted;
+        if (effectiveAmount <= 0) {
+          // Line bị khấu trừ hết → không tạo phiếu. (Hiếm — đã chặn ở zod.)
+          continue;
+        }
         await recordMutation.mutateAsync({
           invoice_id: invoice.id,
-          amount: line.amount,
+          amount: effectiveAmount,
           payment_method: line.payment_method,
           payment_date: data.payment_date,
           notes: data.notes,
           receipt_image_url: i === 0 ? receiptImageUrl : undefined,
           account_id: line.account_id,
-          change_amount: isLast ? data.change_amount : 0,
-          change_account_id: isLast ? data.change_account_id : null,
+          change_amount: deducted,
+          change_account_id: isDeductLine ? (data.change_account_id ?? null) : null,
         });
       }
       handleClose();
@@ -586,16 +615,16 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </>
           )}
 
-          {/* Sổ quỹ tiền thối — bắt buộc nếu Tiền thối > 0 */}
+          {/* Sổ ghi nhận tiền thối — bắt buộc nếu Tiền thối > 0 */}
           {(watchedChangeAmount ?? 0) > 0 && (
             <div className="space-y-2">
-              <Label>Sổ quỹ tiền thối *</Label>
+              <Label>Sổ ghi nhận tiền thối *</Label>
               <Select
                 value={watchedChangeAccountId ?? ''}
                 onValueChange={(v) => setValue('change_account_id', v, { shouldValidate: true })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn sổ quỹ chi tiền thối" />
+                  <SelectValue placeholder="Chọn sổ ghi nhận tiền thối" />
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((a: any) => (
@@ -606,6 +635,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Chỉ áp dụng cho TM. Số tiền thối được ghi vào sổ này để audit — không trừ số dư sổ.
+              </p>
               {errors.change_account_id && (
                 <p className="text-sm text-red-500">{errors.change_account_id.message}</p>
               )}
