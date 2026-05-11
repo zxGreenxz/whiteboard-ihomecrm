@@ -21,9 +21,19 @@ export const useIncomeExpenseTypes = (filterType?: "income" | "expense") => {
   return useQuery({
     queryKey: ["income-expense-types", filterType],
     queryFn: async (): Promise<IncomeExpenseType[]> => {
+      // Filter by current user explicitly. RLS policies (super_admin, staff
+      // visibility) would otherwise return rows from multiple owners, causing
+      // identically-named seeded types (e.g. "Hoa hồng môi giới") to appear
+      // as duplicates in the picker UI.
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return [];
+
       let query = supabase
         .from("income_expense_types" as any)
         .select("*")
+        .eq("user_id", user.id)
         .order("name", { ascending: true });
 
       if (filterType) {
