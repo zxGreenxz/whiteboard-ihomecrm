@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -18,6 +18,7 @@ import {
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseTypeForm from '@/components/income-expense-types/IncomeExpenseTypeForm';
+import EditIncomeExpenseTypeDialog from '@/components/income-expense-types/EditIncomeExpenseTypeDialog';
 
 interface IncomeExpenseItemSelectorProps {
   open: boolean;
@@ -39,6 +40,9 @@ const IncomeExpenseItemSelector = ({
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isTypeFormOpen, setIsTypeFormOpen] = useState(false);
+  const [editingType, setEditingType] = useState<IncomeExpenseType | null>(
+    null
+  );
 
   // Sync checkedIds with selectedTypeIds when dialog opens
   useEffect(() => {
@@ -99,18 +103,31 @@ const IncomeExpenseItemSelector = ({
               </p>
             ) : (
               types.map((t) => (
-                <label
+                <div
                   key={t.id}
-                  className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent"
+                  className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent"
                 >
-                  <Checkbox
-                    checked={checkedIds.has(t.id)}
-                    onCheckedChange={() => handleToggle(t.id)}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{t.name}</p>
-                  </div>
-                </label>
+                  <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+                    <Checkbox
+                      checked={checkedIds.has(t.id)}
+                      onCheckedChange={() => handleToggle(t.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{t.name}</p>
+                    </div>
+                  </label>
+                  <button
+                    type="button"
+                    aria-label={`Sửa hạng mục ${t.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingType(t);
+                    }}
+                    className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -155,6 +172,22 @@ const IncomeExpenseItemSelector = ({
           </div>
         </div>
       </DialogContent>
+
+      <EditIncomeExpenseTypeDialog
+        open={!!editingType}
+        onOpenChange={(o) => {
+          if (!o) setEditingType(null);
+        }}
+        type={editingType}
+        onDeleted={(deletedId) => {
+          setCheckedIds((prev) => {
+            if (!prev.has(deletedId)) return prev;
+            const next = new Set(prev);
+            next.delete(deletedId);
+            return next;
+          });
+        }}
+      />
     </Dialog>
   );
 };
