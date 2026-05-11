@@ -22,19 +22,19 @@ export const useIncomeExpenseTypes = (filterType?: "income" | "expense") => {
   return useQuery({
     queryKey: ["income-expense-types", filterType],
     queryFn: async (): Promise<IncomeExpenseType[]> => {
-      // Filter by current user explicitly. RLS policies (super_admin, staff
-      // visibility) would otherwise return rows from multiple owners, causing
-      // identically-named seeded types (e.g. "Hoa hồng môi giới") to appear
-      // as duplicates in the picker UI.
+      // RLS đã mở cho mọi user authenticated (migration 20260511000002),
+      // nên không filter theo user_id ở đây. Nhiều user đã được seed cùng
+      // tên ("Hoa hồng môi giới", "Thưởng nóng Sale", ...) → dedup
+      // client-side theo (lower(name), type), ưu tiên row của user hiện
+      // tại để pencil/sửa thao tác đúng record của họ.
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return [];
+      const currentUserId = user?.id ?? null;
 
       let query = supabase
         .from("income_expense_types" as any)
         .select("*")
-        .eq("user_id", user.id)
         .order("name", { ascending: true });
 
       if (filterType) {
@@ -48,7 +48,25 @@ export const useIncomeExpenseTypes = (filterType?: "income" | "expense") => {
         return [];
       }
 
-      return (data || []) as unknown as IncomeExpenseType[];
+      const rows = (data ?? []) as unknown as IncomeExpenseType[];
+
+      const ownershipRank = (r: IncomeExpenseType) =>
+        currentUserId && r.user_id === currentUserId ? 0 : 1;
+      const sorted = [...rows].sort((a, b) => {
+        const diff = ownershipRank(a) - ownershipRank(b);
+        if (diff !== 0) return diff;
+        return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+      });
+
+      const seen = new Map<string, IncomeExpenseType>();
+      for (const row of sorted) {
+        const key = `${row.type}::${row.name.trim().toLowerCase()}`;
+        if (!seen.has(key)) seen.set(key, row);
+      }
+
+      return Array.from(seen.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, "vi", { sensitivity: "base" })
+      );
     },
   });
 };
@@ -63,15 +81,11 @@ export const useIncomeExpenseTypeCategories = (
   return useQuery({
     queryKey: ["income-expense-type-categories", filterType],
     queryFn: async (): Promise<string[]> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
-
+      // Categories cũng dùng chung — không filter theo user_id (xem hook
+      // useIncomeExpenseTypes phía trên).
       let query = supabase
         .from("income_expense_types" as any)
         .select("category")
-        .eq("user_id", user.id)
         .not("category", "is", null);
 
       if (filterType) {
