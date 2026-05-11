@@ -9,6 +9,7 @@ export interface IncomeExpenseType {
   user_id: string;
   name: string;
   type: "income" | "expense";
+  category: string | null;
   description: string | null;
   is_default: boolean;
   created_at: string;
@@ -52,6 +53,49 @@ export const useIncomeExpenseTypes = (filterType?: "income" | "expense") => {
   });
 };
 
+/**
+ * Distinct, non-null categories cho user hiện tại (lọc theo type nếu truyền).
+ * Dùng cho combobox gom nhóm trong form Thêm/Sửa loại thu chi.
+ */
+export const useIncomeExpenseTypeCategories = (
+  filterType?: "income" | "expense"
+) => {
+  return useQuery({
+    queryKey: ["income-expense-type-categories", filterType],
+    queryFn: async (): Promise<string[]> => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      let query = supabase
+        .from("income_expense_types" as any)
+        .select("category")
+        .eq("user_id", user.id)
+        .not("category", "is", null);
+
+      if (filterType) {
+        query = query.eq("type", filterType);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error("useIncomeExpenseTypeCategories error:", error);
+        return [];
+      }
+
+      const set = new Set<string>();
+      for (const row of (data ?? []) as Array<{ category: string | null }>) {
+        const c = (row.category ?? "").trim();
+        if (c) set.add(c);
+      }
+      return Array.from(set).sort((a, b) =>
+        a.localeCompare(b, "vi", { sensitivity: "base" })
+      );
+    },
+  });
+};
+
 // --- Mutation Hooks ---
 
 export const useCreateIncomeExpenseType = () => {
@@ -61,6 +105,7 @@ export const useCreateIncomeExpenseType = () => {
     mutationFn: async (input: {
       name: string;
       type: "income" | "expense";
+      category?: string | null;
       description?: string | null;
       is_default?: boolean;
     }) => {
@@ -76,6 +121,7 @@ export const useCreateIncomeExpenseType = () => {
           user_id: user.id,
           name: input.name,
           type: input.type,
+          category: input.category ?? null,
           description: input.description ?? null,
           is_default: input.is_default ?? false,
         })
@@ -91,6 +137,9 @@ export const useCreateIncomeExpenseType = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
+      queryClient.invalidateQueries({
+        queryKey: ["income-expense-type-categories"],
+      });
       toast.success("Loại thu chi đã được TẠO thành công");
     },
     onError: (error) => {
@@ -111,6 +160,7 @@ export const useUpdateIncomeExpenseType = () => {
       updates: {
         name?: string;
         type?: "income" | "expense";
+        category?: string | null;
         description?: string | null;
         is_default?: boolean;
       };
@@ -131,6 +181,9 @@ export const useUpdateIncomeExpenseType = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
+      queryClient.invalidateQueries({
+        queryKey: ["income-expense-type-categories"],
+      });
       toast.success("Loại thu chi đã được CẬP NHẬT thành công");
     },
     onError: (error) => {
@@ -177,6 +230,9 @@ export const useDeleteIncomeExpenseType = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
+      queryClient.invalidateQueries({
+        queryKey: ["income-expense-type-categories"],
+      });
       toast.success("Loại thu chi đã được XOÁ thành công");
     },
     onError: (error) => {

@@ -45,6 +45,7 @@ export const incomeExpenseTypeFormSchema = z.object({
   type: z.enum(['income', 'expense'], {
     required_error: 'Vui lòng chọn loại',
   }),
+  category: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   is_default: z.boolean().optional().default(false),
 });

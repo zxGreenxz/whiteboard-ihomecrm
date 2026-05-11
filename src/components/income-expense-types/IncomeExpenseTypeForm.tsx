@@ -27,6 +27,7 @@ import {
   useCreateIncomeExpenseType,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
+import CategoryCombobox from './CategoryCombobox';
 
 interface IncomeExpenseTypeFormProps {
   defaultType?: 'income' | 'expense';
@@ -40,12 +41,16 @@ const IncomeExpenseTypeForm = ({
   onCancel,
 }: IncomeExpenseTypeFormProps) => {
   const createType = useCreateIncomeExpenseType();
+  // Khi form được nhúng vào dialog chọn hạng mục thu/chi, defaultType được
+  // truyền sẵn → người dùng không cần (và không nên) đổi lại Thu/Chi.
+  const lockType = !!defaultType;
 
   const form = useForm<IncomeExpenseTypeFormValues>({
     resolver: zodResolver(incomeExpenseTypeFormSchema),
     defaultValues: {
       name: '',
       type: defaultType ?? undefined,
+      category: '',
       description: '',
       is_default: false,
     },
@@ -55,6 +60,7 @@ const IncomeExpenseTypeForm = ({
     form.reset({
       name: '',
       type: defaultType ?? undefined,
+      category: '',
       description: '',
       is_default: false,
     });
@@ -65,6 +71,7 @@ const IncomeExpenseTypeForm = ({
       const result = await createType.mutateAsync({
         name: data.name,
         type: data.type,
+        category: data.category?.trim() ? data.category.trim() : null,
         description: data.description || null,
         is_default: data.is_default ?? false,
       });
@@ -83,32 +90,57 @@ const IncomeExpenseTypeForm = ({
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Tên loại *</FormLabel>
+              <FormLabel>Tên hạng mục *</FormLabel>
               <FormControl>
-                <Input placeholder="VD: Tiền thuê phòng" {...field} />
+                <Input placeholder="VD: Vệ sinh máy lạnh" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
+        {!lockType && (
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Loại Thu/Chi *</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn loại" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="income">Thu</SelectItem>
+                    <SelectItem value="expense">Chi</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
         <FormField
           control={form.control}
-          name="type"
+          name="category"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Loại *</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn loại" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="income">Thu</SelectItem>
-                  <SelectItem value="expense">Chi</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormLabel>Nhóm (Loại)</FormLabel>
+              <FormControl>
+                <CategoryCombobox
+                  value={field.value ?? null}
+                  onChange={(v) => field.onChange(v ?? '')}
+                  filterType={defaultType}
+                  placeholder="VD: Bảo trì máy lạnh"
+                />
+              </FormControl>
+              <p className="text-xs text-muted-foreground">
+                Gom nhiều hạng mục vào cùng một nhóm để tổng hợp chi phí dễ
+                hơn. Gõ tên mới để tạo nhóm mới.
+              </p>
               <FormMessage />
             </FormItem>
           )}

@@ -50,6 +50,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Plus } from 'lucide-react';
+import CategoryCombobox from '@/components/income-expense-types/CategoryCombobox';
 
 export default function IncomeExpenseTypesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -68,16 +69,20 @@ export default function IncomeExpenseTypesPage() {
     defaultValues: {
       name: '',
       type: undefined,
+      category: '',
       description: '',
       is_default: false,
     },
   });
+
+  const watchedType = form.watch('type');
 
   useEffect(() => {
     if (editingType && isFormOpen) {
       form.reset({
         name: editingType.name,
         type: editingType.type,
+        category: editingType.category ?? '',
         description: editingType.description ?? '',
         is_default: editingType.is_default ?? false,
       });
@@ -85,6 +90,7 @@ export default function IncomeExpenseTypesPage() {
       form.reset({
         name: '',
         type: undefined,
+        category: '',
         description: '',
         is_default: false,
       });
@@ -93,12 +99,16 @@ export default function IncomeExpenseTypesPage() {
 
   const onSubmit = async (data: IncomeExpenseTypeFormValues) => {
     try {
+      const normalizedCategory = data.category?.trim()
+        ? data.category.trim()
+        : null;
       if (isEditing) {
         await updateType.mutateAsync({
           id: editingType.id,
           updates: {
             name: data.name,
             type: data.type,
+            category: normalizedCategory,
             description: data.description || null,
             is_default: data.is_default ?? false,
           },
@@ -107,6 +117,7 @@ export default function IncomeExpenseTypesPage() {
         await createType.mutateAsync({
           name: data.name,
           type: data.type,
+          category: normalizedCategory,
           description: data.description || null,
           is_default: data.is_default ?? false,
         });
@@ -195,7 +206,7 @@ export default function IncomeExpenseTypesPage() {
                   name="type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Loại *</FormLabel>
+                      <FormLabel>Loại Thu/Chi *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -207,6 +218,28 @@ export default function IncomeExpenseTypesPage() {
                           <SelectItem value="expense">Chi</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nhóm (Loại)</FormLabel>
+                      <FormControl>
+                        <CategoryCombobox
+                          value={field.value ?? null}
+                          onChange={(v) => field.onChange(v ?? '')}
+                          filterType={watchedType}
+                          placeholder="VD: Bảo trì máy lạnh"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Gom nhiều hạng mục vào cùng một nhóm để tổng hợp chi
+                        phí dễ hơn. Gõ tên mới để tạo nhóm mới.
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
