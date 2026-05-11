@@ -674,15 +674,16 @@ export function useDepositsReport() {
         .from("deposits")
         .select(`
           *,
-          tenants (
+          tenant:tenants!deposits_tenant_id_fkey (
             id,
             full_name,
             phone,
             email
           ),
-          rooms (
-            room_number,
-            buildings (name)
+          room:rooms!deposits_room_id_fkey (
+            id,
+            name,
+            building:buildings!rooms_building_id_fkey (id, name)
           )
         `)
         .order("deposit_date", { ascending: false });
@@ -691,7 +692,9 @@ export function useDepositsReport() {
 
       return data.map((deposit: any) => ({
         ...deposit,
-        leads: deposit.tenants,
+        tenants: deposit.tenant,
+        rooms: deposit.room ? { room_number: deposit.room.name, buildings: deposit.room.building } : null,
+        leads: deposit.tenant,
         days_held: differenceInDays(new Date(), new Date(deposit.deposit_date)),
       }));
     },
