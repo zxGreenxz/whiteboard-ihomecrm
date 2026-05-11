@@ -110,6 +110,15 @@ export const useRecordPaymentRPC = () => {
         const creatorName: string =
           meta.full_name || meta.name || user.email || 'Người dùng';
 
+        const change = data.change_amount ?? 0;
+        const grossPaid = data.amount + change;
+        const refundNote = change > 0
+          ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${change.toLocaleString('vi-VN')}`
+          : null;
+        const composedNotes = [data.notes?.trim() || null, refundNote]
+          .filter(Boolean)
+          .join(' — ') || null;
+
         const { data: voucher, error: vErr } = await supabase
           .from('income_expenses' as any)
           .insert({
@@ -125,11 +134,11 @@ export const useRecordPaymentRPC = () => {
             payment_id: newPaymentId,
             voucher_date: data.payment_date,
             payer_name: data.notes ?? null,
-            notes: data.notes ?? null,
+            notes: composedNotes,
             attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
             approval_status: 'APPROVED',
             creator_name: creatorName,
-            change_amount: data.change_amount ?? 0,
+            change_amount: change,
             change_account_id: data.change_account_id ?? null,
           } as any)
           .select()
