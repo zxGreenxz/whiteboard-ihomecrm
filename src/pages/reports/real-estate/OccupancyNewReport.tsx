@@ -72,8 +72,8 @@ export default function OccupancyNewReport() {
   return (
     <MainLayout>
       <ReportLayout
-        title="Tỷ lệ lấp đầy (Phiên bản mới)"
-        description="Biểu đồ trend tỷ lệ lấp đầy theo tháng và thống kê theo toà nhà"
+        title="Tỉ lệ lấp đầy"
+        description="Biểu đồ trend tỉ lệ lấp đầy theo tháng và thống kê theo toà nhà"
         icon={<TrendingUp className="h-8 w-8" />}
         actions={<ExportButtons data={exportData} filename="ty-le-lap-day-moi" />}
         stats={stats}

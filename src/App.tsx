@@ -65,12 +65,12 @@ import FinanceReportsPage from "./pages/reports/FinanceReportsPage";
 import VacantRoomsReport from "./pages/reports/real-estate/VacantRoomsReport";
 import ExpiringContractsReport from "./pages/reports/real-estate/ExpiringContractsReport";
 import OccupancyReport from "./pages/reports/real-estate/OccupancyReport";
-import OccupancyOldReport from "./pages/reports/real-estate/OccupancyOldReport";
 import OccupancyNewReport from "./pages/reports/real-estate/OccupancyNewReport";
 import RenewalsTransfersReport from "./pages/reports/real-estate/RenewalsTransfersReport";
 import PromotionsReport from "./pages/reports/real-estate/PromotionsReport";
 import NewLeasesReport from "./pages/reports/real-estate/NewLeasesReport";
 import TerminationsReport from "./pages/reports/real-estate/TerminationsReport";
+import ExpenseRatioReport from "./pages/reports/real-estate/ExpenseRatioReport";
 
 // Finance Reports
 import DailyCashbookReport from "./pages/reports/finance/DailyCashbookReport";
@@ -233,11 +233,11 @@ const App = () => (
           <Route path="/reports/real-estate/expiring" element={<ProtectedRoute><ExpiringContractsReport /></ProtectedRoute>} />
           <Route path="/reports/real-estate/renewals-transfers" element={<ProtectedRoute><RenewalsTransfersReport /></ProtectedRoute>} />
           <Route path="/reports/real-estate/occupancy" element={<ProtectedRoute><OccupancyReport /></ProtectedRoute>} />
-          <Route path="/reports/real-estate/occupancy-old" element={<ProtectedRoute><OccupancyOldReport /></ProtectedRoute>} />
           <Route path="/reports/real-estate/occupancy-new" element={<ProtectedRoute><OccupancyNewReport /></ProtectedRoute>} />
           <Route path="/reports/real-estate/promotions" element={<ProtectedRoute><PromotionsReport /></ProtectedRoute>} />
           <Route path="/reports/real-estate/new-leases" element={<ProtectedRoute><NewLeasesReport /></ProtectedRoute>} />
           <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><TerminationsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/expense-ratio" element={<ProtectedRoute><ExpenseRatioReport /></ProtectedRoute>} />
 
           {/* === BÁO CÁO TÀI CHÍNH === */}
           {/* Resident-style URLs (canonical) */}

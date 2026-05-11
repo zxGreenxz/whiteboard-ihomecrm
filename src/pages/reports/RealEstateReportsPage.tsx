@@ -3,11 +3,11 @@ import {
   Home,
   Clock,
   RefreshCw,
-  BarChart3,
   BarChart,
   Tag,
   PlusCircle,
   XCircle,
+  Percent,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
@@ -40,16 +40,8 @@ const reports = [
     bgColor: "bg-teal-50",
   },
   {
-    title: "Tỉ lệ lấp đầy (cũ)",
-    description: "Thống kê tỉ lệ lấp đầy phiên bản cũ",
-    icon: BarChart3,
-    path: "/reports/real-estate/occupancy-old",
-    color: "text-green-600",
-    bgColor: "bg-green-50",
-  },
-  {
-    title: "Tỉ lệ lấp đầy (mới)",
-    description: "Thống kê tỉ lệ lấp đầy phiên bản mới với biểu đồ",
+    title: "Tỉ lệ lấp đầy",
+    description: "Thống kê tỉ lệ lấp đầy theo toà nhà với biểu đồ trend",
     icon: BarChart,
     path: "/reports/real-estate/occupancy-new",
     color: "text-emerald-600",
@@ -78,6 +70,14 @@ const reports = [
     path: "/reports/real-estate/terminations",
     color: "text-red-600",
     bgColor: "bg-red-50",
+  },
+  {
+    title: "Tỉ lệ chi phí / Doanh thu",
+    description: "Thống kê tỉ lệ chi phí theo nhóm hạng mục, phân theo tháng",
+    icon: Percent,
+    path: "/reports/real-estate/expense-ratio",
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
   },
 ];
 
