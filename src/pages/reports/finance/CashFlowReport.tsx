@@ -149,16 +149,16 @@ export default function CashFlowReport() {
           {isLoading ? (
             <Skeleton className="h-[320px] w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={monthly}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" />
-                <YAxis tickFormatter={(v) => new Intl.NumberFormat("vi-VN", { notation: "compact" }).format(Number(v))} />
+            <ResponsiveContainer width="100%" height={360}>
+              <BarChart data={monthly} barCategoryGap="20%" barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => new Intl.NumberFormat("vi-VN", { notation: "compact" }).format(Number(v))} />
                 <Tooltip formatter={(v) => formatCurrency(Number(v))} />
                 <Legend />
-                {series.income && <Bar dataKey="income" fill="#10B981" name="Thu vào" />}
-                {series.expense && <Bar dataKey="expense" fill="#EF4444" name="Chi ra" />}
-                {series.net && <Bar dataKey="net" fill="#3B82F6" name="Chênh lệch" />}
+                {series.income && <Bar dataKey="income" fill="#10B981" name="Thu vào" radius={[4,4,0,0]} maxBarSize={32} />}
+                {series.expense && <Bar dataKey="expense" fill="#EF4444" name="Chi ra" radius={[4,4,0,0]} maxBarSize={32} />}
+                {series.net && <Bar dataKey="net" fill="#3B82F6" name="Chênh lệch" radius={[4,4,0,0]} maxBarSize={32} />}
               </BarChart>
             </ResponsiveContainer>
           )}
