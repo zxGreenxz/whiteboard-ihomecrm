@@ -1,6 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { addDays, differenceInDays } from "date-fns";
+import {
+  addDays,
+  differenceInDays,
+  eachMonthOfInterval,
+  endOfMonth,
+  format,
+  startOfMonth,
+  subMonths,
+} from "date-fns";
 
 
 // ==================== REAL ESTATE REPORTS ====================
@@ -40,21 +48,36 @@ export function useVacantRoomsReport(buildingId?: string, floorId?: string) {
       // Get active contracts to determine which rooms are occupied
       const { data: activeContracts, error: contractsError } = await supabase
         .from("contracts")
-        .select("room_id, end_date")
-        .in("status", ["ACTIVE", "DRAFT", "EXTENDED"])
+        .select("room_id")
+        .in("status", ["ACTIVE", "EXTENDED"])
         .is("deleted_at", null);
 
       if (contractsError) throw contractsError;
 
       const occupiedRoomIds = new Set(activeContracts?.map(c => c.room_id) || []);
 
+      // Get ended contracts (TERMINATED / EXPIRED) to compute days_vacant per room
+      const { data: endedContracts } = await supabase
+        .from("contracts")
+        .select("room_id, end_date, actual_end_date")
+        .in("status", ["TERMINATED", "EXPIRED"])
+        .is("deleted_at", null);
+
+      const lastEndByRoom = new Map<string, string>();
+      for (const c of endedContracts ?? []) {
+        const effectiveEnd = (c as any).actual_end_date || (c as any).end_date;
+        if (!effectiveEnd) continue;
+        const prev = lastEndByRoom.get(c.room_id);
+        if (!prev || new Date(effectiveEnd).getTime() > new Date(prev).getTime()) {
+          lastEndByRoom.set(c.room_id, effectiveEnd);
+        }
+      }
+
       // Filter vacant rooms (not occupied)
       let vacantRooms = (rooms || [])
         .filter(room => !occupiedRoomIds.has(room.id))
         .map(room => {
-          // Find the most recent ended contract for this room
-          const lastContract = activeContracts?.find(c => c.room_id === room.id);
-          const lastEndDate = lastContract?.end_date;
+          const lastEndDate = lastEndByRoom.get(room.id) ?? null;
           const daysVacant = lastEndDate
             ? differenceInDays(new Date(), new Date(lastEndDate))
             : null;
@@ -111,7 +134,7 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
             buildings (id, name)
           )
         `)
-        .eq("status", "ACTIVE")
+        .in("status", ["ACTIVE", "EXTENDED"])
         .is("deleted_at", null)
         .gte("end_date", today.toISOString())
         .lte("end_date", futureDate.toISOString())
@@ -166,13 +189,13 @@ export function useRenewalsTransfersReport(
         `)
         .in("status", ["EXTENDED", "TRANSFERRED"])
         .is("deleted_at", null)
-        .order("updated_at", { ascending: false });
+        .order("start_date", { ascending: false });
 
       if (startDate) {
-        query = query.gte("updated_at", startDate);
+        query = query.gte("start_date", startDate);
       }
       if (endDate) {
-        query = query.lte("updated_at", endDate);
+        query = query.lte("start_date", endDate);
       }
 
       const { data, error } = await query;
@@ -314,6 +337,192 @@ export function useOccupancyTrend(buildingId?: string) {
       }
 
       return months;
+    },
+  });
+}
+
+/**
+ * Expense ratio over revenue report — grouped by income_expense_types.category, by month.
+ * Numerator: SUM(income_expense_items.amount) WHERE expense voucher APPROVED + (optional) category.
+ * Denominator: SUM(invoices.paid_amount) WHERE status IN ('PAID','PARTIAL_PAID') by billing_month.
+ */
+export function useExpenseRatioReport(
+  startDate?: Date,
+  endDate?: Date,
+  category?: string,
+  buildingId?: string
+) {
+  return useQuery({
+    queryKey: [
+      "reports",
+      "expense-ratio",
+      startDate?.toISOString(),
+      endDate?.toISOString(),
+      category ?? null,
+      buildingId ?? null,
+    ],
+    queryFn: async () => {
+      const rangeEnd = endDate ? endOfMonth(endDate) : endOfMonth(new Date());
+      const rangeStart = startDate
+        ? startOfMonth(startDate)
+        : startOfMonth(subMonths(rangeEnd, 5));
+
+      const months = eachMonthOfInterval({ start: rangeStart, end: rangeEnd }).map(
+        (d) => format(d, "yyyy-MM")
+      );
+
+      // --- Revenue from invoices (paid_amount), keyed by billing_month text 'YYYY-MM'
+      const startMonthKey = format(rangeStart, "yyyy-MM");
+      const endMonthKey = format(rangeEnd, "yyyy-MM");
+
+      // Doanh thu = tổng total_amount của invoices đã duyệt/đang vận hành
+      // (loại DRAFT, PENDING_APPROVAL, CANCELLED). Bao gồm cả APPROVED, PAID,
+      // PARTIAL_PAID, OVERDUE — phản ánh doanh thu ghi nhận trên invoice.
+      let invoiceQuery = supabase
+        .from("invoices")
+        .select("total_amount, paid_amount, billing_month, building_id")
+        .is("deleted_at", null)
+        .in("status", ["APPROVED", "PAID", "PARTIAL_PAID", "OVERDUE"])
+        .gte("billing_month", startMonthKey)
+        .lte("billing_month", endMonthKey);
+      if (buildingId) invoiceQuery = invoiceQuery.eq("building_id", buildingId);
+
+      const { data: invoices, error: invErr } = await invoiceQuery;
+      if (invErr) throw invErr;
+
+      const revenueByMonth: Record<string, number> = {};
+      for (const m of months) revenueByMonth[m] = 0;
+      for (const inv of invoices ?? []) {
+        const m = (inv as any).billing_month as string | null;
+        if (!m) continue;
+        if (revenueByMonth[m] === undefined) continue;
+        revenueByMonth[m] += Number((inv as any).total_amount ?? 0);
+      }
+
+      // --- Expenses from income_expenses + items + types
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        return {
+          summary: {
+            totalExpense: 0,
+            totalRevenue: 0,
+            avgRatio: 0,
+            peakMonth: "",
+            peakRatio: 0,
+          },
+          byMonth: months.map((m) => ({
+            month: m,
+            revenue: revenueByMonth[m] ?? 0,
+            expensesByCategory: {} as Record<string, number>,
+            totalExpense: 0,
+            ratio: null as number | null,
+          })),
+          byTypeName: [] as Array<{ category: string; typeName: string; total: number }>,
+          categories: [] as string[],
+        };
+      }
+
+      const startDateStr = format(rangeStart, "yyyy-MM-dd");
+      const endDateStr = format(rangeEnd, "yyyy-MM-dd");
+
+      let voucherQuery = supabase
+        .from("income_expenses" as any)
+        .select(
+          `id, voucher_date, building_id, type, approval_status,
+           income_expense_items (
+             amount,
+             income_expense_type:income_expense_type_id (id, name, category, type)
+           )`
+        )
+        .eq("user_id", user.id)
+        .eq("type", "EXPENSE")
+        .eq("approval_status", "APPROVED")
+        .is("deleted_at", null)
+        .gte("voucher_date", startDateStr)
+        .lte("voucher_date", endDateStr);
+      if (buildingId) voucherQuery = voucherQuery.eq("building_id", buildingId);
+
+      const { data: vouchers, error: vErr } = await voucherQuery;
+      if (vErr) throw vErr;
+
+      const UNCATEGORIZED = "(Chưa phân nhóm)";
+      const expensesByMonthCategory: Record<string, Record<string, number>> = {};
+      const byTypeNameMap: Record<string, { category: string; typeName: string; total: number }> = {};
+      const categoriesSet = new Set<string>();
+
+      for (const m of months) expensesByMonthCategory[m] = {};
+
+      for (const voucher of (vouchers ?? []) as any[]) {
+        const month = (voucher.voucher_date as string | null)?.slice(0, 7);
+        if (!month || expensesByMonthCategory[month] === undefined) continue;
+        const items = (voucher.income_expense_items ?? []) as Array<{
+          amount: number | null;
+          income_expense_type: { name: string | null; category: string | null; type: string | null } | null;
+        }>;
+        for (const item of items) {
+          const typeRow = item.income_expense_type;
+          if (!typeRow || typeRow.type !== "expense") continue;
+          const cat = (typeRow.category ?? "").trim() || UNCATEGORIZED;
+          if (category !== undefined && cat !== category) continue;
+          const amt = Number(item.amount ?? 0);
+          if (!amt) continue;
+          expensesByMonthCategory[month][cat] = (expensesByMonthCategory[month][cat] ?? 0) + amt;
+          categoriesSet.add(cat);
+
+          const tName = (typeRow.name ?? "").trim() || "(Không tên)";
+          const tKey = `${cat}|${tName}`;
+          if (!byTypeNameMap[tKey]) {
+            byTypeNameMap[tKey] = { category: cat, typeName: tName, total: 0 };
+          }
+          byTypeNameMap[tKey].total += amt;
+        }
+      }
+
+      const byMonth = months.map((m) => {
+        const expByCat = expensesByMonthCategory[m] ?? {};
+        const totalExpense = Object.values(expByCat).reduce((s, v) => s + v, 0);
+        const revenue = revenueByMonth[m] ?? 0;
+        const ratio = revenue > 0 ? (totalExpense / revenue) * 100 : null;
+        return {
+          month: m,
+          revenue,
+          expensesByCategory: expByCat,
+          totalExpense,
+          ratio,
+        };
+      });
+
+      const totalExpense = byMonth.reduce((s, r) => s + r.totalExpense, 0);
+      const totalRevenue = byMonth.reduce((s, r) => s + r.revenue, 0);
+      const ratioMonths = byMonth.filter((r) => r.ratio !== null) as Array<{
+        month: string;
+        ratio: number;
+      }>;
+      const avgRatio =
+        ratioMonths.length > 0
+          ? ratioMonths.reduce((s, r) => s + (r.ratio as number), 0) / ratioMonths.length
+          : 0;
+      const peak = ratioMonths.reduce<{ month: string; ratio: number } | null>(
+        (best, cur) => (best === null || cur.ratio > best.ratio ? cur : best),
+        null
+      );
+
+      return {
+        summary: {
+          totalExpense,
+          totalRevenue,
+          avgRatio,
+          peakMonth: peak?.month ?? "",
+          peakRatio: peak?.ratio ?? 0,
+        },
+        byMonth,
+        byTypeName: Object.values(byTypeNameMap).sort((a, b) => b.total - a.total),
+        categories: Array.from(categoriesSet).sort((a, b) =>
+          a.localeCompare(b, "vi", { sensitivity: "base" })
+        ),
+      };
     },
   });
 }
@@ -788,7 +997,7 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
           tenants:tenant_id (full_name, phone),
           rooms:room_id (
             id,
-            room_number,
+            name,
             buildings:building_id (id, name)
           )
         `)
@@ -823,6 +1032,9 @@ export function usePromotionsReport(startDate?: Date, endDate?: Date, buildingId
 
         return {
           ...contract,
+          rooms: contract.rooms
+            ? { ...contract.rooms, room_number: contract.rooms.name }
+            : null,
           monthly_rent: contract.rent_price,
           discount_amount: discountAmount,
           discount_type: discountType === "percent" ? "Phần trăm" : "Cố định",
@@ -857,7 +1069,7 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
           tenants:tenant_id (full_name, phone),
           rooms:room_id (
             id,
-            room_number,
+            name,
             buildings:building_id (id, name)
           )
         `)
@@ -887,6 +1099,9 @@ export function useNewLeasesReport(startDate?: Date, endDate?: Date, buildingId?
 
         return {
           ...contract,
+          rooms: contract.rooms
+            ? { ...contract.rooms, room_number: contract.rooms.name }
+            : null,
           monthly_rent: contract.rent_price,
           deposit_amount: contract.total_deposit,
           duration_months: durationMonths,
@@ -904,8 +1119,8 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
   return useQuery({
     queryKey: ["reports", "terminations", startDate?.toISOString(), endDate?.toISOString(), buildingId],
     queryFn: async () => {
-      // Get terminated contracts
-      let query = supabase
+      // Get terminated/expired contracts (filter date client-side để fallback end_date khi actual_end_date null)
+      const query = supabase
         .from("contracts")
         .select(`
           id,
@@ -920,20 +1135,13 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
           tenants:tenant_id (full_name, phone),
           rooms:room_id (
             id,
-            room_number,
+            name,
             buildings:building_id (id, name)
           )
         `)
         .in("status", ["TERMINATED", "EXPIRED"])
         .is("deleted_at", null)
-        .order("actual_end_date", { ascending: false });
-
-      if (startDate) {
-        query = query.gte("actual_end_date", startDate.toISOString());
-      }
-      if (endDate) {
-        query = query.lte("actual_end_date", endDate.toISOString());
-      }
+        .order("actual_end_date", { ascending: false, nullsFirst: false });
 
       const { data: contracts, error: contractsError } = await query;
       if (contractsError) throw contractsError;
@@ -951,25 +1159,38 @@ export function useTerminationsReport(startDate?: Date, endDate?: Date, building
 
       const termMap = new Map(terminations.map(t => [t.contract_id, t]));
 
+      // Filter by building, then by date with fallback actual_end_date ?? end_date
+      const startMs = startDate ? startDate.getTime() : -Infinity;
+      const endMs = endDate ? endDate.getTime() : Infinity;
       let filtered = contracts || [];
       if (buildingId) {
         filtered = filtered.filter((c: any) => c.rooms?.buildings?.id === buildingId);
       }
+      filtered = filtered.filter((c: any) => {
+        const effective = c.actual_end_date || c.end_date;
+        if (!effective) return false;
+        const ms = new Date(effective).getTime();
+        return ms >= startMs && ms <= endMs;
+      });
 
-      // Get total contracts count for termination rate
+      // Mẫu số tỉ lệ: contracts đã từng đi vào vận hành (loại DRAFT), không deleted
       const { count: totalContracts } = await supabase
         .from("contracts")
         .select("id", { count: "exact", head: true })
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .neq("status", "DRAFT");
 
       return {
         items: filtered.map((contract: any) => {
           const term = termMap.get(contract.id);
-          const endDate = contract.actual_end_date || contract.end_date;
-          const durationActual = differenceInDays(new Date(endDate), new Date(contract.start_date));
+          const effectiveEnd = contract.actual_end_date || contract.end_date;
+          const durationActual = differenceInDays(new Date(effectiveEnd), new Date(contract.start_date));
 
           return {
             ...contract,
+            rooms: contract.rooms
+              ? { ...contract.rooms, room_number: contract.rooms.name }
+              : null,
             termination_reason: term?.notes || term?.termination_type || null,
             termination_type: term?.termination_type || (contract.status === "EXPIRED" ? "Hết hạn" : "Thanh lý"),
             duration_actual: durationActual,
