@@ -451,7 +451,7 @@ export function useDebtReport() {
             )
           )
         `)
-        .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
+        .in("status", ["APPROVED", "PARTIAL_PAID", "OVERDUE"])
         .order("due_date", { ascending: true });
 
       if (error) throw error;
@@ -515,7 +515,7 @@ export function useCustomerDebtReport() {
             )
           )
         `)
-        .in("status", ["PENDING", "PARTIAL", "OVERDUE", "SENT"])
+        .in("status", ["APPROVED", "PARTIAL_PAID", "OVERDUE"])
         .order("due_date", { ascending: true });
 
       if (error) throw error;
