@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { differenceInMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { CommissionTier } from "@/types/building";
@@ -7,26 +8,44 @@ import type { CommissionTier } from "@/types/building";
 // Utils
 // =============================================
 
-/** Số tháng HĐ = round((end - start) / 30 ngày) — tính chính xác theo spec user */
+/**
+ * Số tháng HĐ = số tháng dương lịch trọn vẹn (date-fns differenceInMonths).
+ * VD: 14/5/2026 → 31/5/2027 = 12 tháng (12 tháng tròn + 17 ngày lẻ).
+ * Phần ngày lẻ không cộng thêm tháng — phù hợp cách hiểu HĐ thuê thực tế.
+ */
 export function calcContractMonths(startDate: string, endDate: string): number {
-  const start = new Date(startDate).getTime();
-  const end = new Date(endDate).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return 0;
-  const days = (end - start) / 86400000;
-  return Math.round(days / 30);
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  if (end < start) return 0;
+  return differenceInMonths(end, start);
 }
 
-/** Tier khớp số tháng [min, max]; trả null nếu không khớp */
+/**
+ * Tier khớp số tháng:
+ *   - Trong [min, max] → trả tier đó (exact match).
+ *   - Vượt max của tier cao nhất → fallback dùng tier cao nhất
+ *     (HĐ dài hơn vẫn áp dụng % của mốc lớn nhất user đã cấu hình).
+ *   - Dưới min của tier thấp nhất → null (HĐ quá ngắn, không trả HH).
+ */
 export function findMatchingTier(
   months: number,
   tiers: CommissionTier[] | null | undefined
 ): CommissionTier | null {
-  if (!Array.isArray(tiers)) return null;
-  return (
-    tiers.find(
-      (t) => months >= Number(t.min_months) && months <= Number(t.max_months)
-    ) ?? null
+  if (!Array.isArray(tiers) || tiers.length === 0) return null;
+
+  const exact = tiers.find(
+    (t) => months >= Number(t.min_months) && months <= Number(t.max_months)
   );
+  if (exact) return exact;
+
+  const topTier = tiers.reduce((best, t) =>
+    Number(t.max_months) > Number(best.max_months) ? t : best
+  );
+  if (months > Number(topTier.max_months)) return topTier;
+
+  return null;
 }
 
 // =============================================

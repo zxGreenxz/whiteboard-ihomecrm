@@ -98,7 +98,12 @@ export function CommissionVoucherModal({
   const tierLabel = useMemo(() => {
     if (!prefill?.matched_tier) return null;
     const t = prefill.matched_tier;
-    return `${t.rate_percent}% tiền phòng (mốc ${t.min_months}-${t.max_months} tháng)`;
+    const exact =
+      prefill.months >= Number(t.min_months) &&
+      prefill.months <= Number(t.max_months);
+    return exact
+      ? `${t.rate_percent}% tiền phòng (mốc ${t.min_months}-${t.max_months} tháng)`
+      : `${t.rate_percent}% tiền phòng (vượt mốc, áp dụng mốc cao nhất ${t.min_months}-${t.max_months} tháng)`;
   }, [prefill]);
 
   const [submitting, setSubmitting] = useState(false);
