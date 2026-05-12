@@ -31,6 +31,20 @@ export interface CreateContractPayload {
   };
   customers: { customer_id: string; is_representative: boolean }[];
   services: { service_id: string; unit_price: number; initial_reading?: number }[];
+  /**
+   * Items cho hoá đơn cọc + tháng đầu. Dialog đã preview/cho user chỉnh,
+   * hook chỉ việc insert đúng như payload (không tự tính lại để đỡ đè
+   * mất chỉnh sửa của user).
+   */
+  invoiceItems?: Array<{
+    type: "RENT" | "SERVICE" | "DISCOUNT" | "OTHER";
+    description: string;
+    unit_price: number;
+    quantity: number;
+    service_id?: string | null;
+    from_date?: string | null;
+    to_date?: string | null;
+  }>;
 }
 
 export interface UpdateContractPayload {
@@ -161,20 +175,18 @@ export const useContract = (id?: string) => {
 // hợp đồng được tạo. Best-effort: nếu fail thì hợp đồng vẫn còn, người dùng
 // có thể tự tạo hoá đơn sau.
 //
-// Item phát sinh:
-//   - RENT: 1 × rent_price (tháng đầu)
-//   - DISCOUNT: khuyến mãi tháng đầu (nếu có discounts)
-//   - OTHER: tiền cọc phải đóng (total_deposit - deposit_paid) nếu > 0
-//   - SERVICE: các dịch vụ tính cố định (theo tháng/phòng/người),
-//     bỏ qua dịch vụ tính theo đồng hồ (sẽ chốt khi ghi chỉ số).
+// Items được dialog tính sẵn (có cho user chỉnh trước khi lưu) và truyền
+// xuống qua payload.invoiceItems. Hook chỉ insert đúng nội dung đó.
 // =============================================
 async function createFirstInvoiceForContract(args: {
   contract: any;
   contractData: CreateContractPayload["contract"];
-  services: CreateContractPayload["services"];
+  invoiceItems: NonNullable<CreateContractPayload["invoiceItems"]>;
   userId: string;
 }) {
-  const { contract, contractData, services, userId } = args;
+  const { contract, contractData, invoiceItems, userId } = args;
+
+  if (!invoiceItems || invoiceItems.length === 0) return;
 
   // Lấy building_id từ room — invoice cần building_id NOT NULL.
   const { data: room } = await supabase
@@ -193,105 +205,14 @@ async function createFirstInvoiceForContract(args: {
   const startBilling = contractData.start_billing_date || contractData.start_date;
   const issue_date = new Date().toISOString().split("T")[0];
   const due_date = contractData.end_billing_date || startBilling;
-  // billing_month theo định dạng YYYY-MM lấy từ start_billing_date.
   const billing_month = startBilling.substring(0, 7);
 
-  // Lấy pricing_type + name của services trong payload để biết dịch vụ nào
-  // tính cố định / theo đồng hồ.
-  const serviceIds = services.map((s) => s.service_id);
-  let serviceDetails: Array<{ id: string; name: string; pricing_type: string | null }> = [];
-  if (serviceIds.length > 0) {
-    const { data: svc } = await (supabase as any)
-      .from("services")
-      .select("id, name, pricing_type")
-      .in("id", serviceIds);
-    serviceDetails = svc || [];
-  }
-  const detailById = new Map(serviceDetails.map((s) => [s.id, s]));
-
-  const items: any[] = [];
-  let sort_order = 0;
-
-  // RENT — tháng đầu.
-  if ((contractData.rent_price ?? 0) > 0) {
-    items.push({
-      service_id: null,
-      type: "RENT",
-      description: "Tiền thuê tháng đầu",
-      unit_price: contractData.rent_price,
-      quantity: 1,
-      coefficient: 1,
-      from_date: startBilling,
-      to_date: contractData.end_billing_date || null,
-      sort_order: sort_order++,
-    });
-  }
-
-  // DISCOUNT — khuyến mãi tháng đầu (nếu có).
-  if (
-    contractData.discounts &&
-    contractData.discounts.months > 0 &&
-    contractData.discounts.amount_per_month > 0
-  ) {
-    items.push({
-      service_id: null,
-      type: "DISCOUNT",
-      description: `Khuyến mãi tháng đầu (${contractData.discounts.months} tháng × ${contractData.discounts.amount_per_month.toLocaleString("vi-VN")}₫)`,
-      unit_price: -Math.abs(contractData.discounts.amount_per_month),
-      quantity: 1,
-      coefficient: 1,
-      sort_order: sort_order++,
-    });
-  }
-
-  // Dịch vụ cố định — bỏ qua đồng hồ (sẽ chốt khi ghi chỉ số).
-  const METERED_PRICING = new Set([
-    "DON_GIA_CO_DINH_DONG_HO",
-    "DON_GIA_BIEN_DONG",
-  ]);
-  for (const s of services) {
-    const detail = detailById.get(s.service_id);
-    if (!detail) continue;
-    if (METERED_PRICING.has(detail.pricing_type ?? "")) continue;
-    if (!s.unit_price || s.unit_price <= 0) continue;
-    items.push({
-      service_id: s.service_id,
-      type: "SERVICE",
-      description: detail.name,
-      unit_price: s.unit_price,
-      quantity: 1,
-      coefficient: 1,
-      sort_order: sort_order++,
-    });
-  }
-
-  // OTHER — tiền cọc phải đóng (cọc còn nợ).
-  const depositRemaining = Math.max(
+  const subtotal = invoiceItems.reduce(
+    (sum, it) => sum + it.unit_price * it.quantity,
     0,
-    (contractData.total_deposit ?? 0) - (contractData.deposit_paid ?? 0)
-  );
-  if (depositRemaining > 0) {
-    items.push({
-      service_id: null,
-      type: "OTHER",
-      description: "Tiền cọc",
-      unit_price: depositRemaining,
-      quantity: 1,
-      coefficient: 1,
-      sort_order: sort_order++,
-    });
-  }
-
-  if (items.length === 0) return; // không có gì để bill
-
-  // Tính tổng.
-  const subtotal = items.reduce(
-    (sum, it) => sum + it.unit_price * it.quantity * it.coefficient,
-    0
   );
   const total_amount = subtotal;
 
-  // Sinh invoice_number.
   const { generateInvoiceNumber } = await import("@/lib/invoiceUtils");
   const invoice_number = await generateInvoiceNumber(userId);
 
@@ -326,25 +247,25 @@ async function createFirstInvoiceForContract(args: {
 
   if (invErr) throw invErr;
 
-  const invoiceItems = items.map((it) => ({
+  const rows = invoiceItems.map((it, idx) => ({
     invoice_id: invoice.id,
-    service_id: it.service_id,
+    service_id: it.service_id ?? null,
     type: it.type,
     description: it.description,
     unit_price: it.unit_price,
     quantity: it.quantity,
-    coefficient: it.coefficient,
-    amount: it.unit_price * it.quantity * it.coefficient,
+    coefficient: 1,
+    amount: it.unit_price * it.quantity,
     previous_reading: null,
     current_reading: null,
     from_date: it.from_date ?? null,
     to_date: it.to_date ?? null,
-    sort_order: it.sort_order,
+    sort_order: idx,
   }));
 
   const { error: itemsErr } = await supabase
     .from("invoice_items")
-    .insert(invoiceItems as any);
+    .insert(rows as any);
   if (itemsErr) throw itemsErr;
 }
 
@@ -449,19 +370,23 @@ export const useCreateContract = () => {
         }
       }
 
-      // 5. Auto-tạo hoá đơn cọc + tháng đầu (best-effort)
-      try {
-        await createFirstInvoiceForContract({
-          contract,
-          contractData,
-          services,
-          userId: user.id,
-        });
-      } catch (e) {
-        console.error("Auto-create first invoice failed:", e);
-        toast.error(
-          "Đã tạo hợp đồng nhưng chưa tạo được hoá đơn cọc + tháng đầu. Vui lòng tạo hoá đơn thủ công."
-        );
+      // 5. Auto-tạo hoá đơn cọc + tháng đầu (best-effort).
+      // Items đã được dialog tính + cho user chỉnh, nên hook chỉ insert đúng
+      // những gì user đã preview.
+      if (payload.invoiceItems && payload.invoiceItems.length > 0) {
+        try {
+          await createFirstInvoiceForContract({
+            contract,
+            contractData,
+            invoiceItems: payload.invoiceItems,
+            userId: user.id,
+          });
+        } catch (e) {
+          console.error("Auto-create first invoice failed:", e);
+          toast.error(
+            "Đã tạo hợp đồng nhưng chưa tạo được hoá đơn cọc + tháng đầu. Vui lòng tạo hoá đơn thủ công."
+          );
+        }
       }
 
       return contract as unknown as Contract;

@@ -54,6 +54,28 @@ interface IncomeExpenseFormProps {
   onOpenChange: (open: boolean) => void;
   voucher?: IncomeExpenseWithRelations | null;
   defaultType?: 'INCOME' | 'EXPENSE';
+  /**
+   * Khi mở dialog ở chế độ "tạo mới" (không có voucher), prefill các field
+   * này để rút ngắn thao tác cho user. Vẫn cho phép user sửa lại trước khi
+   * lưu — chỉ là giá trị khởi tạo.
+   */
+  defaultPrefill?: {
+    building_id?: string;
+    room_id?: string | null;
+    name?: string;
+    items?: Array<{
+      income_expense_type_id: string;
+      type_name: string;
+      quantity: number;
+      unit_price: number;
+      description?: string | null;
+    }>;
+  };
+  /**
+   * Callback sau khi tạo mới phiếu thành công (không gọi khi edit).
+   * Param `totalAmount` là tổng items đã lưu, để caller cập nhật UI ngoài.
+   */
+  onSaved?: (totalAmount: number) => void;
 }
 
 interface FormItemRow {
@@ -71,6 +93,8 @@ const IncomeExpenseForm = ({
   onOpenChange,
   voucher,
   defaultType,
+  defaultPrefill,
+  onSaved,
 }: IncomeExpenseFormProps) => {
   const isEditing = !!voucher;
   const createMutation = useCreateIncomeExpense();
@@ -171,24 +195,49 @@ const IncomeExpenseForm = ({
         }))
       );
     } else {
-      setSelectedBuildingId(undefined);
-      setSelectedRoomId(undefined);
+      const prefillBuilding = defaultPrefill?.building_id;
+      const prefillRoom = defaultPrefill?.room_id ?? null;
+      setSelectedBuildingId(prefillBuilding ?? undefined);
+      setSelectedRoomId(prefillRoom ?? undefined);
+
+      const today = new Date().toISOString().split('T')[0];
+      const prefillItemsForm = (defaultPrefill?.items ?? []).map((it) => ({
+        income_expense_type_id: it.income_expense_type_id,
+        description: it.description ?? null,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        start_date: today,
+        end_date: today,
+      }));
+      const prefillItemsRows = (defaultPrefill?.items ?? []).map((it) => ({
+        income_expense_type_id: it.income_expense_type_id,
+        type_name: it.type_name,
+        description: it.description ?? null,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        start_date: today,
+        end_date: today,
+      }));
+
       form.reset({
         type: defaultType ?? 'INCOME',
-        name: '',
-        building_id: '',
-        room_id: null,
+        name: defaultPrefill?.name ?? '',
+        building_id: prefillBuilding ?? '',
+        room_id: prefillRoom,
         tenant_id: null,
         payer_name: '',
         account_id: '',
-        voucher_date: new Date().toISOString().split('T')[0],
+        voucher_date: today,
         business_result_accounting: false,
+        repeat_cycle: 'NONE',
+        repeat_infinity: false,
+        repeat_count: 0,
         attachments: [],
-        items: [],
+        items: prefillItemsForm,
       });
-      setItemRows([]);
+      setItemRows(prefillItemsRows);
     }
-  }, [voucher, open, defaultType, form]);
+  }, [voucher, open, defaultType, defaultPrefill, form]);
 
   // Cascade: when building changes → clear room, tenant
   const handleBuildingChange = (buildingId: string) => {
@@ -302,6 +351,13 @@ const IncomeExpenseForm = ({
         await updateMutation.mutateAsync({ id: voucher.id, data });
       } else {
         await createMutation.mutateAsync(data);
+        // Báo cho caller (vd ContractFormDialog) biết phiếu vừa tạo có tổng
+        // bao nhiêu để cập nhật field "Đã đặt cọc" ngay tại form HĐ.
+        const total = data.items.reduce(
+          (sum, it) => sum + (it.quantity ?? 0) * (it.unit_price ?? 0),
+          0,
+        );
+        onSaved?.(total);
       }
       onOpenChange(false);
     } catch {

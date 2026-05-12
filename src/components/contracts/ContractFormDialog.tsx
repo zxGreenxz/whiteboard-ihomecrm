@@ -56,6 +56,12 @@ import {
   type ServiceBasic,
 } from "./ServiceSelectionDialog";
 import { CommissionVoucherModal } from "./CommissionVoucherModal";
+import {
+  buildFirstInvoiceItems,
+  type FirstInvoiceItem,
+} from "@/lib/firstInvoiceBuilder";
+import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
+import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 
 interface ContractFormDialogProps {
   open: boolean;
@@ -118,6 +124,23 @@ export function ContractFormDialog({
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+
+  // Invoice preview (hoá đơn cọc + tháng đầu) — items được tự sinh từ
+  // rent/cọc/services, user có thể chỉnh trực tiếp; khi lưu HĐ items này
+  // được dùng làm nội dung hoá đơn. Reset khi inputs đổi (xem useEffect).
+  const [invoiceItems, setInvoiceItems] = useState<FirstInvoiceItem[]>([]);
+
+  // Phiếu thu cọc — mở từ nút "+" cạnh "Đã đặt cọc" để user tạo phiếu thu
+  // ngay tại form HĐ. Lookup id của type "Tiền cọc" trong income types.
+  const [depositVoucherOpen, setDepositVoucherOpen] = useState(false);
+  const { data: incomeTypes = [] } = useIncomeExpenseTypes("income");
+  const depositIncomeType = useMemo(
+    () =>
+      incomeTypes.find(
+        (t) => t.name.trim().toLowerCase() === "tiền cọc",
+      ),
+    [incomeTypes],
+  );
 
   // Commission voucher modal — open after successful create (not edit)
   const [commissionContractId, setCommissionContractId] = useState<string | null>(null);
@@ -245,6 +268,87 @@ export function ContractFormDialog({
     const dd = String(next.getDate()).padStart(2, "0");
     form.setValue("end_billing_date", `${yyyy}-${mm}-${dd}`);
   }, [startBilling, endBilling, form]);
+
+  // Tự sinh items hoá đơn cọc + tháng đầu khi inputs đổi. User chỉnh trực
+  // tiếp trên bảng preview vẫn được — nhưng nếu họ đổi rent/dates/services
+  // sau khi chỉnh thì preview bị tính lại đè lên (UX rõ ràng hơn là cố
+  // giữ override mơ hồ).
+  const rentPriceWatch = form.watch("rent_price") ?? 0;
+  const totalDepositWatch = form.watch("total_deposit") ?? 0;
+  const depositPaidWatch = form.watch("deposit_paid") ?? 0;
+  const discountMonthsWatch = form.watch("discount_months") ?? 0;
+  const discountAmtWatch = form.watch("discount_amount_per_month") ?? 0;
+  const servicesKey = useMemo(
+    () =>
+      selectedServices
+        .map((s) => `${s.id}:${s.unit_price}:${s.quantity}`)
+        .join("|"),
+    [selectedServices],
+  );
+  useEffect(() => {
+    if (!open) return;
+    if (isEditMode) return; // edit mode không sinh hoá đơn tự động
+    const items = buildFirstInvoiceItems({
+      rent_price: rentPriceWatch,
+      total_deposit: totalDepositWatch,
+      deposit_paid: depositPaidWatch,
+      start_billing_date: startBilling || undefined,
+      end_billing_date: endBilling || undefined,
+      discount_months: discountMonthsWatch,
+      discount_amount_per_month: discountAmtWatch,
+      services: selectedServices.map((s) => ({
+        service_id: s.id,
+        name: s.name,
+        unit_price: s.unit_price,
+        pricing_type: s.pricing_type ?? null,
+      })),
+    });
+    setInvoiceItems(items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    isEditMode,
+    rentPriceWatch,
+    totalDepositWatch,
+    depositPaidWatch,
+    startBilling,
+    endBilling,
+    discountMonthsWatch,
+    discountAmtWatch,
+    servicesKey,
+  ]);
+
+  const invoiceSubtotal = useMemo(
+    () => invoiceItems.reduce((sum, it) => sum + it.unit_price * it.quantity, 0),
+    [invoiceItems],
+  );
+
+  const updateInvoiceItem = (
+    id: string,
+    field: "description" | "quantity" | "unit_price",
+    value: string | number,
+  ) => {
+    setInvoiceItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, [field]: value } : it)),
+    );
+  };
+
+  const removeInvoiceItem = (id: string) => {
+    setInvoiceItems((prev) => prev.filter((it) => it.id !== id));
+  };
+
+  const addInvoiceItem = () => {
+    setInvoiceItems((prev) => [
+      ...prev,
+      {
+        id: `manual-${Date.now()}-${prev.length}`,
+        type: "OTHER",
+        description: "Khoản thu khác",
+        unit_price: 0,
+        quantity: 1,
+      },
+    ]);
+  };
 
   // ---- Cascading handlers ----
   const handleBuildingChange = (buildingId: string) => {
@@ -469,6 +573,17 @@ export function ContractFormDialog({
           },
           customers,
           services,
+          // Items hoá đơn cọc + tháng đầu — đã được user xem trước/chỉnh
+          // trong section preview, gửi xuống đúng những gì user thấy.
+          invoiceItems: invoiceItems.map((it) => ({
+            type: it.type,
+            description: it.description,
+            unit_price: it.unit_price,
+            quantity: it.quantity,
+            service_id: it.service_id ?? null,
+            from_date: it.from_date ?? null,
+            to_date: it.to_date ?? null,
+          })),
         },
         {
           onSuccess: (contract) => {
@@ -889,7 +1004,9 @@ export function ContractFormDialog({
                     )}
                   />
 
-                  {/* Đã đặt cọc (readonly) */}
+                  {/* Đã đặt cọc — readonly, có nút "+" để tạo phiếu thu
+                      cọc ngay tại form HĐ, sau khi lưu phiếu thì cộng dồn
+                      vào ô này. */}
                   <FormField
                     control={form.control}
                     name="deposit_paid"
@@ -897,14 +1014,26 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Đã đặt cọc</FormLabel>
                         <FormControl>
-                          <CurrencyInput
-                            readOnly
-                            className="bg-muted"
-                            value={field.value}
-                            onChange={field.onChange}
-                            onBlur={field.onBlur}
-                            name={field.name}
-                          />
+                          <div className="flex gap-2">
+                            <CurrencyInput
+                              readOnly
+                              className="bg-muted flex-1"
+                              value={field.value}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              name={field.name}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title="Tạo phiếu thu cọc"
+                              disabled={!selectedRoomId}
+                              onClick={() => setDepositVoucherOpen(true)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1080,6 +1209,106 @@ export function ContractFormDialog({
                 )}
               </div>
 
+              {/* ===== Section 5: Xem trước hoá đơn cọc + tháng đầu ===== */}
+              {!isEditMode && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Xem trước hoá đơn cọc + tháng đầu
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addInvoiceItem}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Thêm dòng
+                    </Button>
+                  </div>
+
+                  {invoiceItems.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      Chưa có dữ liệu — hãy nhập tiền thuê / tiền cọc / ngày tính tiền để xem trước hoá đơn.
+                    </p>
+                  ) : (
+                    <div className="border rounded-md overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="text-left px-3 py-2 font-medium">Mô tả</th>
+                            <th className="text-right px-3 py-2 font-medium w-20">SL</th>
+                            <th className="text-right px-3 py-2 font-medium w-36">Đơn giá</th>
+                            <th className="text-right px-3 py-2 font-medium w-36">Thành tiền</th>
+                            <th className="w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {invoiceItems.map((it) => (
+                            <tr key={it.id}>
+                              <td className="px-3 py-2">
+                                <Input
+                                  className="h-8 text-sm"
+                                  value={it.description}
+                                  onChange={(e) =>
+                                    updateInvoiceItem(it.id, "description", e.target.value)
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <NumberInput
+                                  min={1}
+                                  className="w-16 h-8 text-right ml-auto"
+                                  value={it.quantity}
+                                  onChange={(v) =>
+                                    updateInvoiceItem(it.id, "quantity", v || 1)
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <CurrencyInput
+                                  suffix={false}
+                                  className="w-32 h-8 text-right ml-auto"
+                                  value={it.unit_price}
+                                  onChange={(v) =>
+                                    updateInvoiceItem(it.id, "unit_price", v)
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium tabular-nums">
+                                {formatVND(it.unit_price * it.quantity)}
+                              </td>
+                              <td className="px-3 py-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => removeInvoiceItem(it.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t bg-muted/30">
+                            <td colSpan={3} className="px-3 py-2 text-right font-semibold">
+                              Tổng cộng
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                              {formatVND(invoiceSubtotal)}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ===== Footer buttons ===== */}
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button
@@ -1126,6 +1355,60 @@ export function ContractFormDialog({
         if (!o) setCommissionContractId(null);
       }}
     />
+
+    {/* Phiếu thu cọc nhanh — mở từ nút + cạnh "Đã đặt cọc". Prefill toà
+        nhà / phòng / hạng mục "Tiền cọc" + tên "Cọc giữ phòng X Toà nhà Y"
+        để user nhập nhanh số tiền. Sau khi lưu, cộng dồn vào field "Đã đặt cọc". */}
+    {depositVoucherOpen && (() => {
+      const room = (rooms as any[])?.find((r) => r.id === selectedRoomId);
+      const building = (buildings as any[])?.find(
+        (b) => b.id === selectedBuildingId,
+      );
+      const roomName = room?.name ?? "";
+      const buildingName = building?.name ?? "";
+      const voucherName =
+        roomName && buildingName
+          ? `Cọc giữ phòng ${roomName} Toà nhà ${buildingName}`
+          : roomName
+            ? `Cọc giữ phòng ${roomName}`
+            : "Cọc giữ phòng";
+      const remaining = Math.max(
+        0,
+        (form.getValues("total_deposit") ?? 0) -
+          (form.getValues("deposit_paid") ?? 0),
+      );
+      const prefillItems = depositIncomeType
+        ? [
+            {
+              income_expense_type_id: depositIncomeType.id,
+              type_name: depositIncomeType.name,
+              quantity: 1,
+              unit_price: remaining,
+            },
+          ]
+        : [];
+      return (
+        <IncomeExpenseForm
+          open={depositVoucherOpen}
+          onOpenChange={setDepositVoucherOpen}
+          defaultType="INCOME"
+          defaultPrefill={{
+            building_id: selectedBuildingId || undefined,
+            room_id: selectedRoomId || null,
+            name: voucherName,
+            items: prefillItems,
+          }}
+          onSaved={(total) => {
+            // Cộng dồn vào "Đã đặt cọc" để user lưu HĐ thấy đúng số.
+            const cur = form.getValues("deposit_paid") ?? 0;
+            form.setValue("deposit_paid", cur + total, {
+              shouldDirty: true,
+              shouldValidate: true,
+            });
+          }}
+        />
+      );
+    })()}
     </>
   );
 }
