@@ -35,6 +35,12 @@ export function IncomeExpenseFilterChips({
       label: "Đã huỷ",
       patch: { approval_status: "APPROVED" },
     });
+  } else if (filters.approval_status === "UNAPPROVED") {
+    chips.push({
+      key: "approval_status",
+      label: "Nháp",
+      patch: { approval_status: "APPROVED" },
+    });
   }
 
   if (filters.type) {

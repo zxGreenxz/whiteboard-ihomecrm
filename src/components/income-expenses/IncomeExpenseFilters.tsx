@@ -74,7 +74,7 @@ export function IncomeExpenseFiltersBar({
 
   const handleApprovalChange = (value: string) => {
     handleChange({
-      approval_status: value as "APPROVED" | "CANCELLED",
+      approval_status: value as "UNAPPROVED" | "APPROVED" | "CANCELLED",
     });
   };
 
@@ -182,7 +182,7 @@ export function IncomeExpenseFiltersBar({
         </SelectContent>
       </Select>
 
-      {/* Trạng thái — chỉ 2 lựa chọn, mặc định Đã ghi nhận */}
+      {/* Trạng thái — mặc định Đã ghi nhận */}
       <Select
         value={filters.approval_status ?? "APPROVED"}
         onValueChange={handleApprovalChange}
@@ -192,6 +192,7 @@ export function IncomeExpenseFiltersBar({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="APPROVED">Đã ghi nhận</SelectItem>
+          <SelectItem value="UNAPPROVED">Nháp (chưa duyệt)</SelectItem>
           <SelectItem value="CANCELLED">Đã huỷ</SelectItem>
         </SelectContent>
       </Select>

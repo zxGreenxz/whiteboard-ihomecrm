@@ -17,7 +17,7 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
-import { Eye, Ban, Receipt } from 'lucide-react';
+import { Eye, Ban, Receipt, Pencil, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -26,6 +26,8 @@ interface IncomeExpenseListProps {
   isLoading: boolean;
   onView: (voucher: IncomeExpenseWithRelations) => void;
   onCancel: (id: string) => void;
+  onEdit?: (voucher: IncomeExpenseWithRelations) => void;
+  onApprove?: (id: string) => void;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -39,6 +41,8 @@ const IncomeExpenseList = ({
   isLoading,
   onView,
   onCancel,
+  onEdit,
+  onApprove,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -85,6 +89,7 @@ const IncomeExpenseList = ({
         <TableBody>
           {vouchers.map((voucher) => {
             const isCancelled = voucher.approval_status === 'CANCELLED';
+            const isUnapproved = voucher.approval_status === 'UNAPPROVED';
 
             return (
               <TableRow
@@ -104,6 +109,32 @@ const IncomeExpenseList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+
+                    {/* Sửa (chỉ khi nháp) */}
+                    {isUnapproved && onEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => onEdit(voucher)}
+                        title="Sửa phiếu nháp"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Duyệt (chỉ khi nháp) */}
+                    {isUnapproved && onApprove && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => onApprove(voucher.id)}
+                        title="Duyệt phiếu (đã thanh toán)"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                    )}
 
                     {/* Huỷ phiếu (chỉ khi chưa huỷ) */}
                     {!isCancelled && (
@@ -134,6 +165,13 @@ const IncomeExpenseList = ({
                         className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100"
                       >
                         Đã huỷ
+                      </Badge>
+                    ) : isUnapproved ? (
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100"
+                      >
+                        Nháp
                       </Badge>
                     ) : (
                       <Badge

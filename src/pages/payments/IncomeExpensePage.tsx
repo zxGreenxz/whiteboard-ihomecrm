@@ -39,6 +39,7 @@ import {
   useIncomeExpenses,
   useIncomeExpenseStats,
   useCancelIncomeExpense,
+  useApproveVoucher,
   useGenerateRecurringVouchers,
   useIncomeExpenseBatches,
   useCancelIncomeExpenseBatch,
@@ -92,9 +93,12 @@ const IncomeExpensePage = () => {
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [detailVoucher, setDetailVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  const [editingVoucher, setEditingVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(isMobile ? 50 : 20);
@@ -127,6 +131,7 @@ const IncomeExpensePage = () => {
 
   const cancelMutation = useCancelIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
+  const approveMutation = useApproveVoucher();
   const generateRecurringMutation = useGenerateRecurringVouchers();
 
   const handleFiltersChange = useCallback(
@@ -176,6 +181,25 @@ const IncomeExpensePage = () => {
   const handleFormClose = useCallback((open: boolean) => {
     setIsFormOpen(open);
   }, []);
+
+  const handleEditVoucher = useCallback((voucher: IncomeExpenseWithRelations) => {
+    setEditingVoucher(voucher);
+  }, []);
+
+  const handleEditFormClose = useCallback((open: boolean) => {
+    if (!open) setEditingVoucher(null);
+  }, []);
+
+  const handleApproveVoucher = useCallback((id: string) => {
+    setApproveTarget(id);
+  }, []);
+
+  const confirmApprove = useCallback(() => {
+    if (approveTarget) {
+      approveMutation.mutate(approveTarget);
+    }
+    setApproveTarget(null);
+  }, [approveTarget, approveMutation]);
 
   const handleCancelVoucher = useCallback((id: string) => {
     setCancelTarget(id);
@@ -318,6 +342,11 @@ const IncomeExpensePage = () => {
           onOpenChange={setIsBatchFormOpen}
           defaultType={formType}
         />
+        <IncomeExpenseForm
+          open={!!editingVoucher}
+          onOpenChange={handleEditFormClose}
+          voucher={editingVoucher}
+        />
         <IncomeExpenseDetailDialog
           open={!!detailVoucher}
           onOpenChange={(o) => {
@@ -325,6 +354,8 @@ const IncomeExpensePage = () => {
           }}
           voucher={detailVoucher}
           onCancel={handleCancelVoucher}
+          onEdit={handleEditVoucher}
+          onApprove={handleApproveVoucher}
         />
         <IncomeExpenseBatchDetailDialog
           open={!!detailBatch}
@@ -365,6 +396,29 @@ const IncomeExpensePage = () => {
                 className="bg-red-600 hover:bg-red-700"
               >
                 Huỷ phiếu
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <AlertDialog
+          open={!!approveTarget}
+          onOpenChange={() => setApproveTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
+              <AlertDialogDescription>
+                Sau khi duyệt, phiếu sẽ được tính vào <b>tồn quỹ</b> và không
+                còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Đóng</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmApprove}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Duyệt phiếu
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -485,6 +539,8 @@ const IncomeExpensePage = () => {
             isLoading={isLoading}
             onView={handleView}
             onCancel={handleCancelVoucher}
+            onEdit={handleEditVoucher}
+            onApprove={handleApproveVoucher}
             pagination={pagination}
             totalCount={totalCount}
           />
@@ -506,6 +562,11 @@ const IncomeExpensePage = () => {
         voucher={null}
         defaultType={formType}
       />
+      <IncomeExpenseForm
+        open={!!editingVoucher}
+        onOpenChange={handleEditFormClose}
+        voucher={editingVoucher}
+      />
       <IncomeExpenseBatchForm
         open={isBatchFormOpen}
         onOpenChange={setIsBatchFormOpen}
@@ -518,6 +579,8 @@ const IncomeExpensePage = () => {
         }}
         voucher={detailVoucher}
         onCancel={handleCancelVoucher}
+        onEdit={handleEditVoucher}
+        onApprove={handleApproveVoucher}
       />
       <IncomeExpenseBatchDetailDialog
         open={!!detailBatch}
@@ -559,6 +622,30 @@ const IncomeExpensePage = () => {
               className="bg-red-600 hover:bg-red-700"
             >
               Huỷ phiếu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!approveTarget}
+        onOpenChange={() => setApproveTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sau khi duyệt, phiếu sẽ được tính vào <b>tồn quỹ</b> và không
+              còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmApprove}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Duyệt phiếu
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

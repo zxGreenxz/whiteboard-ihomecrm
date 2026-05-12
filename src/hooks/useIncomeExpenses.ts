@@ -567,6 +567,32 @@ export const useUpdateIncomeExpense = () => {
   });
 };
 
+// Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
+// phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
+export const useApproveVoucher = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).rpc("approve_voucher", {
+        voucher_id: id,
+      });
+      if (error) {
+        toast.error(error.message || "Không thể duyệt phiếu");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.success("Phiếu đã được duyệt");
+    },
+    onError: (error) => {
+      console.error("Error approving voucher:", error);
+    },
+  });
+};
+
 // Huỷ phiếu thu/chi: đổi trạng thái sang CANCELLED. Nếu là phiếu INCOME mirror
 // từ thanh toán hoá đơn (có payment_id), cũng xoá payment row tương ứng để
 // trigger recompute invoice paid_amount/status (qua trigger DB).

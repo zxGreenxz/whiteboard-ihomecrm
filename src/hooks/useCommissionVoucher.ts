@@ -181,8 +181,8 @@ export const useCreateCommissionVoucher = () => {
           ? `Hoa hồng môi giới HĐ ${input.contract_number ?? ""}`.trim()
           : `Thưởng nóng Sale HĐ ${input.contract_number ?? ""}`.trim();
 
-      // Tạo voucher (mặc định APPROVED — workflow approval đã loại bỏ ở migration
-      // 20260426000002. User có thể CANCEL nếu sai/không cần.)
+      // Tạo voucher dưới dạng UNAPPROVED (nháp) — user sẽ duyệt khi thanh toán
+      // thực tế cho đơn vị MG / Sale. Trước đó có thể sửa thông tin người nhận.
       // tenant_id KHÔNG truyền từ customer.id vì income_expenses.tenant_id FK →
       // bảng `tenants` (legacy), khác với `customers` đang dùng cho HĐ. Customer
       // info được link gián tiếp qua contract_id.
@@ -192,6 +192,7 @@ export const useCreateCommissionVoucher = () => {
           user_id: user.id,
           creator_name: creatorName,
           type: "EXPENSE",
+          approval_status: "UNAPPROVED",
           name: baseName,
           building_id: input.building_id,
           room_id: input.room_id,

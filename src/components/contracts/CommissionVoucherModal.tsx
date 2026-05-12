@@ -99,14 +99,30 @@ export function CommissionVoucherModal({
     return `${t.rate_percent}% tiền phòng (mốc ${t.min_months}-${t.max_months} tháng)`;
   }, [prefill]);
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleSubmit = async () => {
     if (!prefill) return;
+    if (submitting) return; // chặn double-click trong khi chạy
 
-    const tasks: Promise<any>[] = [];
+    const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
+    const willCreateBroker = brokerAmount > 0;
+    const willCreateSale = saleAmt > 0;
 
-    if (brokerAmount > 0) {
-      tasks.push(
-        createVoucher.mutateAsync({
+    if (!willCreateBroker && !willCreateSale) {
+      toast.info("Không có khoản chi nào — bỏ qua tạo phiếu.");
+      onOpenChange(false);
+      return;
+    }
+
+    setSubmitting(true);
+    let created = 0;
+    try {
+      // Tạo tuần tự để tránh race condition trên trigger
+      // auto_generate_voucher_code (đọc MAX(seq) — 2 insert song song có thể
+      // sinh trùng code → vi phạm idx_income_expenses_unique_code_per_user).
+      if (willCreateBroker) {
+        await createVoucher.mutateAsync({
           contract_id: prefill.contract_id,
           contract_number: prefill.contract_number,
           building_id: prefill.building_id,
@@ -123,14 +139,12 @@ export function CommissionVoucherModal({
           item_description: prefill.matched_tier
             ? `Hoa hồng MG (${prefill.matched_tier.rate_percent}% tiền phòng × ${prefill.months} tháng HĐ)`
             : `Hoa hồng MG (HĐ ${prefill.months} tháng — không khớp mốc cấu hình)`,
-        })
-      );
-    }
+        });
+        created++;
+      }
 
-    const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
-    if (saleAmt > 0) {
-      tasks.push(
-        createVoucher.mutateAsync({
+      if (willCreateSale) {
+        await createVoucher.mutateAsync({
           contract_id: prefill.contract_id,
           contract_number: prefill.contract_number,
           building_id: prefill.building_id,
@@ -145,30 +159,24 @@ export function CommissionVoucherModal({
           recipient_bank: saleBank || null,
           recipient_account_number: saleAccountNumber || null,
           item_description: `Thưởng nóng Sale HĐ ${prefill.months} tháng`,
-        })
-      );
-    }
+        });
+        created++;
+      }
 
-    if (tasks.length === 0) {
-      toast.info("Không có khoản chi nào — bỏ qua tạo phiếu.");
-      onOpenChange(false);
-      return;
-    }
-
-    try {
-      const results = await Promise.all(tasks);
       toast.success(
-        `Đã tạo ${results.length} phiếu chi hoa hồng cho HĐ ${
+        `Đã tạo ${created} phiếu chi hoa hồng (nháp) cho HĐ ${
           prefill.contract_number ?? ""
         }`
       );
       onOpenChange(false);
     } catch {
       // toast.error đã hiển thị bởi mutation onError
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const isPending = createVoucher.isPending;
+  const isPending = submitting || createVoucher.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

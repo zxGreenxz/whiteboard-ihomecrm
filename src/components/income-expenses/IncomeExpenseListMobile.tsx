@@ -51,6 +51,7 @@ export function IncomeExpenseListMobile({
     <ul role="list" className="px-3 py-3 space-y-2.5 pb-24">
       {vouchers.map((v) => {
         const isCancelled = v.approval_status === "CANCELLED";
+        const isUnapproved = v.approval_status === "UNAPPROVED";
         const isIncome = v.type === "INCOME";
         const accentColor = isIncome ? "#10b981" : "#ef4444";
         const firstAttachment = v.attachments?.[0];
@@ -89,6 +90,11 @@ export function IncomeExpenseListMobile({
                   {isCancelled && (
                     <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-zinc-100 text-zinc-600">
                       Đã huỷ
+                    </span>
+                  )}
+                  {isUnapproved && (
+                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-amber-100 text-amber-700">
+                      Nháp
                     </span>
                   )}
                 </div>

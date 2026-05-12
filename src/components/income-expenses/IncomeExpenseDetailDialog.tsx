@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Ban, Printer, FileText, X } from "lucide-react";
+import { Ban, Printer, FileText, X, Pencil, CheckCircle2 } from "lucide-react";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -16,6 +16,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   voucher: IncomeExpenseWithRelations | null;
   onCancel?: (id: string) => void;
+  onEdit?: (voucher: IncomeExpenseWithRelations) => void;
+  onApprove?: (id: string) => void;
 }
 
 const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -42,6 +44,8 @@ export function IncomeExpenseDetailDialog({
   onOpenChange,
   voucher,
   onCancel,
+  onEdit,
+  onApprove,
 }: Props) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const isMobile = useIsMobile();
@@ -49,6 +53,7 @@ export function IncomeExpenseDetailDialog({
   if (!voucher) return null;
 
   const isCancelled = voucher.approval_status === "CANCELLED";
+  const isUnapproved = voucher.approval_status === "UNAPPROVED";
   const isExpense = voucher.type === "EXPENSE";
 
   return (
@@ -74,10 +79,38 @@ export function IncomeExpenseDetailDialog({
             </DialogTitle>
           </DialogHeader>
 
-          {/* Section header với 2 action button bên phải */}
+          {/* Section header với action buttons bên phải */}
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
+              {isUnapproved && onEdit && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
+                  title="Sửa phiếu nháp"
+                  onClick={() => {
+                    onEdit(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {isUnapproved && onApprove && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-green-600 hover:bg-green-700"
+                  title="Duyệt phiếu (đã thanh toán)"
+                  onClick={() => {
+                    onApprove(voucher.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  <CheckCircle2 className="h-4 w-4 text-white" />
+                </Button>
+              )}
               {!isCancelled && onCancel && (
                 <Button
                   size="icon"
@@ -120,6 +153,11 @@ export function IncomeExpenseDetailDialog({
                   {isCancelled && (
                     <span className="px-2 py-0.5 text-xs rounded bg-red-100 text-red-700">
                       Đã huỷ
+                    </span>
+                  )}
+                  {isUnapproved && (
+                    <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">
+                      Nháp
                     </span>
                   )}
                 </div>

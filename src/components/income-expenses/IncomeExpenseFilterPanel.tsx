@@ -35,6 +35,7 @@ interface IncomeExpenseFilterPanelProps {
 
 const STATUS_OPTIONS = [
   { value: "APPROVED", label: "Đã ghi nhận" },
+  { value: "UNAPPROVED", label: "Nháp" },
   { value: "CANCELLED", label: "Đã huỷ" },
 ] as const;
 
@@ -139,6 +140,7 @@ export function IncomeExpenseFilterPanel({
                       patch({
                         approval_status: opt.value as
                           | "APPROVED"
+                          | "UNAPPROVED"
                           | "CANCELLED",
                       })
                     }
