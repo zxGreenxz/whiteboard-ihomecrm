@@ -72,7 +72,14 @@ const CONTRACT_SELECT = `
   contract_customers!contract_customers_contract_id_fkey (
     id, contract_id, customer_id, is_representative, notes, created_at, updated_at,
     customer:customers!contract_customers_customer_id_fkey (
-      id, full_name, phone, email, id_number
+      id, full_name, phone, email, id_number,
+      date_of_birth, gender, id_issue_date, id_issue_place,
+      province, district, ward, detailed_address,
+      current_residence, permanent_address,
+      occupation, workplace,
+      contact_person, contact_person_phone,
+      bank_account_number, bank_name,
+      fingerprint_code, is_foreign
     )
   ),
   contract_services (

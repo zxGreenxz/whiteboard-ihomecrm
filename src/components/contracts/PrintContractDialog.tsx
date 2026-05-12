@@ -22,6 +22,15 @@ import {
   renderContractDocx,
   downloadDocxBlob,
 } from "@/lib/contractTemplateEngine";
+import { supabase } from "@/integrations/supabase/client";
+
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  MOTORBIKE: "Xe máy",
+  CAR: "Ô tô",
+  BICYCLE: "Xe đạp",
+  ELECTRIC_BIKE: "Xe điện",
+  OTHER: "Khác",
+};
 
 interface PrintContractDialogProps {
   open: boolean;
@@ -60,7 +69,56 @@ export function PrintContractDialog({
     if (!contract || !selected) return;
     setIsRendering(true);
     try {
-      const data = buildContractTemplateData({ contract });
+      // Fetch vehicles linked to this contract's customers so VEHICLES_TABLE
+      // in the template (Danh sách xe Bên B đăng ký) gets populated.
+      const customerIds = (contract.contract_customers ?? [])
+        .map((cc) => cc.customer_id)
+        .filter(Boolean);
+
+      let vehicles: Array<{
+        name?: string;
+        license_plate?: string;
+        type?: string;
+        color?: string;
+        brand?: string;
+        model?: string;
+        owner_name?: string;
+      }> = [];
+
+      if (customerIds.length > 0) {
+        const { data: rows, error } = await (supabase as any)
+          .from("vehicles")
+          .select(
+            "vehicle_type, vehicle_name, brand, model, license_plate, color, customer_id"
+          )
+          .in("customer_id", customerIds)
+          .is("deleted_at", null);
+        if (error) throw error;
+
+        const customerNameById = new Map<string, string>();
+        (contract.contract_customers ?? []).forEach((cc) => {
+          const fullName = (cc.customer as { full_name?: string } | undefined)
+            ?.full_name;
+          if (cc.customer_id && fullName) {
+            customerNameById.set(cc.customer_id, fullName);
+          }
+        });
+
+        vehicles = (rows ?? []).map((r: Record<string, unknown>) => ({
+          name: (r.vehicle_name as string) ?? "",
+          license_plate: (r.license_plate as string) ?? "",
+          type:
+            VEHICLE_TYPE_LABELS[(r.vehicle_type as string) ?? ""] ??
+            ((r.vehicle_type as string) ?? ""),
+          color: (r.color as string) ?? "",
+          brand: (r.brand as string) ?? "",
+          model: (r.model as string) ?? "",
+          owner_name:
+            customerNameById.get((r.customer_id as string) ?? "") ?? "",
+        }));
+      }
+
+      const data = buildContractTemplateData({ contract, vehicles });
       const blob = await renderContractDocx(selected.file_url, data);
       const safeName = `${selected.name}_${
         contract.contract_number ?? contract.id.slice(0, 8)

@@ -153,7 +153,15 @@ export interface BuildContractDataInput {
   /** Owner profile fed in by the page (typically derived from auth + profile). */
   owner?: OwnerInfo;
   /** Vehicles linked to the contract's tenants (optional, defaults to []). */
-  vehicles?: Array<{ name?: string; license_plate?: string; type?: string }>;
+  vehicles?: Array<{
+    name?: string;
+    license_plate?: string;
+    type?: string;
+    color?: string;
+    brand?: string;
+    model?: string;
+    owner_name?: string;
+  }>;
   /** Assets in the room (optional, defaults to []). */
   assets?: Array<{ name?: string; quantity?: number; unit?: string; condition?: string }>;
 }
@@ -200,19 +208,41 @@ export function buildContractTemplateData({
         const v = c[k];
         return typeof v === "string" ? v : v == null ? "" : String(v);
       };
+      const birthday = fmtDate(get("date_of_birth") || null);
+      const idNumber = get("id_number");
+      const issueDate = fmtDate(get("id_issue_date") || null);
+      const issuePlace = get("id_issue_place");
+      const currentAddress = joinAddress([
+        get("detailed_address"),
+        get("ward"),
+        get("district"),
+        get("province"),
+      ]);
+      const permanentAddress =
+        get("permanent_address") ||
+        currentAddress;
       return {
         index: idx + 1,
         name: get("full_name"),
+        tenantName: get("full_name"),
         phone: get("phone"),
-        id_number: get("id_number"),
-        birthday: fmtDate(get("date_of_birth") || null),
+        email: get("email"),
+        id_number: idNumber,
+        idNumber,
+        birthday,
+        BIRTHDAY: birthday,
+        date_of_birth: birthday,
         gender: genderLabel(get("gender") || null),
-        address: joinAddress([
-          get("detailed_address"),
-          get("ward"),
-          get("district"),
-          get("province"),
-        ]),
+        issueDate,
+        id_issue_date: issueDate,
+        issuePlace,
+        id_issue_place: issuePlace,
+        address: currentAddress,
+        currentAddress,
+        current_address: currentAddress,
+        permanent_address: permanentAddress,
+        permanentAddress,
+        fullAddress: permanentAddress,
         is_representative: cc.is_representative ? "x" : "",
       };
     });
@@ -348,12 +378,14 @@ export function buildContractTemplateData({
     REPRESENT_ID_NUMBER: repStr("id_number"),
     REPRESENT_PLACE_OF_ISSUE: repStr("id_issue_place"),
     REPRESENT_ID_NUMBER_DATE: fmtDate(repStr("id_issue_date") || null),
-    REPRESENT_ADDRESS: joinAddress([
-      repStr("permanent_address"),
-      repStr("ward"),
-      repStr("district"),
-      repStr("province"),
-    ]),
+    REPRESENT_ADDRESS:
+      repStr("permanent_address") ||
+      joinAddress([
+        repStr("detailed_address"),
+        repStr("ward"),
+        repStr("district"),
+        repStr("province"),
+      ]),
     REPRESENT_CURRENT_ADDRESS:
       repStr("current_residence") ||
       joinAddress([
@@ -419,7 +451,15 @@ export function buildContractTemplateData({
       index: idx + 1,
       name: v.name ?? "",
       license_plate: v.license_plate ?? "",
+      licensePlate: v.license_plate ?? "",
       type: v.type ?? "",
+      vehicleType: v.type ?? "",
+      color: v.color ?? "",
+      brand: v.brand ?? "",
+      model: v.model ?? "",
+      owner_name: v.owner_name ?? "",
+      ownerName: v.owner_name ?? "",
+      tenantName: v.owner_name ?? "",
     })),
     fees,
   };
