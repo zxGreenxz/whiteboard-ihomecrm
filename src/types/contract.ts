@@ -36,6 +36,7 @@ export interface Contract {
   deposit_remaining: number | null;
   payment_cycle: PaymentCycle | null;
   start_billing_date: string | null;
+  end_billing_date: string | null;
   contract_template_id: string | null;
   invoice_template_id: string | null;
   contract_file_url: string | null;
@@ -144,6 +145,7 @@ export interface ContractFormData {
   deposit_paid?: number;
   payment_cycle: PaymentCycle;
   start_billing_date?: string;
+  end_billing_date?: string;
   contract_template_id?: string | null;
   invoice_template_id?: string | null;
   notes?: string;

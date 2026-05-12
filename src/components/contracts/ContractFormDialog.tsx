@@ -135,6 +135,7 @@ export function ContractFormDialog({
       deposit_paid: 0,
       payment_cycle: "MONTHLY" as PaymentCycle,
       start_billing_date: "",
+      end_billing_date: "",
       contract_template_id: null,
       invoice_template_id: null,
       notes: "",
@@ -168,6 +169,7 @@ export function ContractFormDialog({
         deposit_paid: contract.deposit_paid ?? 0,
         payment_cycle: contract.payment_cycle ?? "MONTHLY",
         start_billing_date: contract.start_billing_date?.split("T")[0] ?? "",
+        end_billing_date: contract.end_billing_date?.split("T")[0] ?? "",
         contract_template_id: contract.contract_template_id ?? null,
         invoice_template_id: contract.invoice_template_id ?? null,
         notes: contract.notes ?? "",
@@ -217,6 +219,7 @@ export function ContractFormDialog({
         deposit_paid: 0,
         payment_cycle: "MONTHLY",
         start_billing_date: "",
+        end_billing_date: "",
         contract_template_id: null,
         invoice_template_id: null,
         notes: "",
@@ -225,6 +228,22 @@ export function ContractFormDialog({
       });
     }
   }, [open, contract, form]);
+
+  // Auto-điền "Đến ngày" = ngày 5 tháng kế tiếp khi user chọn "Ngày BĐ tính tiền"
+  // và chưa nhập "Đến ngày". User vẫn có thể chỉnh tay sau đó.
+  const startBilling = form.watch("start_billing_date");
+  const endBilling = form.watch("end_billing_date");
+  useEffect(() => {
+    if (!startBilling) return;
+    if (endBilling) return;
+    const d = new Date(startBilling);
+    if (Number.isNaN(d.getTime())) return;
+    const next = new Date(d.getFullYear(), d.getMonth() + 1, 5);
+    const yyyy = next.getFullYear();
+    const mm = String(next.getMonth() + 1).padStart(2, "0");
+    const dd = String(next.getDate()).padStart(2, "0");
+    form.setValue("end_billing_date", `${yyyy}-${mm}-${dd}`);
+  }, [startBilling, endBilling, form]);
 
   // ---- Cascading handlers ----
   const handleBuildingChange = (buildingId: string) => {
@@ -359,6 +378,7 @@ export function ContractFormDialog({
         deposit_paid: data.deposit_paid ?? 0,
         payment_cycle: data.payment_cycle,
         start_billing_date: data.start_billing_date || null,
+        end_billing_date: data.end_billing_date || null,
         contract_template_id: data.contract_template_id || null,
         invoice_template_id: data.invoice_template_id || null,
         notes: data.notes || null,
@@ -407,6 +427,7 @@ export function ContractFormDialog({
             deposit_paid: data.deposit_paid,
             payment_cycle: data.payment_cycle,
             start_billing_date: data.start_billing_date || undefined,
+            end_billing_date: data.end_billing_date || undefined,
             contract_template_id: data.contract_template_id || undefined,
             invoice_template_id: data.invoice_template_id || undefined,
             notes: data.notes || undefined,
@@ -717,7 +738,7 @@ export function ContractFormDialog({
                 <h3 className="text-sm font-semibold text-foreground border-b pb-2">
                   Tiền thuê & Tiền cọc
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Tiền thuê */}
                   <FormField
                     control={form.control}
@@ -782,6 +803,26 @@ export function ContractFormDialog({
                         <FormControl>
                           <DateInput
                             value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Đến ngày (mặc định ngày 5 tháng kế tiếp) */}
+                  <FormField
+                    control={form.control}
+                    name="end_billing_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Đến ngày</FormLabel>
+                        <FormControl>
+                          <DateInput
+                            value={field.value ?? ""}
                             onChange={field.onChange}
                             onBlur={field.onBlur}
                             name={field.name}

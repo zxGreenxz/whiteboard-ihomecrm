@@ -11,6 +11,7 @@ export const contractFormSchema = z.object({
   deposit_paid: z.number().min(0).optional(),
   payment_cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
   start_billing_date: z.string().optional(),
+  end_billing_date: z.string().optional(),
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),
   notes: z.string().optional(),
