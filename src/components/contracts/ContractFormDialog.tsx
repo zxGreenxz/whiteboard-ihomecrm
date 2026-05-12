@@ -269,6 +269,40 @@ export function ContractFormDialog({
     form.setValue("end_billing_date", `${yyyy}-${mm}-${dd}`);
   }, [startBilling, endBilling, form]);
 
+  // Khi số khách thay đổi → tự cập nhật "Số lượng" của các dịch vụ tính
+  // theo người (pricing_type = DON_GIA_THEO_NGUOI). Vd Nước 100k/người,
+  // 2 khách → Số lượng = 2. User vẫn có thể chỉnh tay sau (lần update
+  // tay sẽ stick vì điều kiện `quantity !== customerCount` chỉ overwrite
+  // khi giá trị chưa khớp). Cũng chạy khi user thêm dịch vụ mới sau
+  // khi đã có khách → service mới (qty default 1) sẽ được bump lên N.
+  const customerCount = selectedCustomers.length;
+  const perPersonServiceIdsKey = useMemo(
+    () =>
+      selectedServices
+        .filter((s) => s.pricing_type === "DON_GIA_THEO_NGUOI")
+        .map((s) => s.id)
+        .join("|"),
+    [selectedServices],
+  );
+  useEffect(() => {
+    if (customerCount <= 0) return;
+    setSelectedServices((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        if (
+          s.pricing_type === "DON_GIA_THEO_NGUOI" &&
+          (s.quantity ?? 1) === 1 &&
+          customerCount !== 1
+        ) {
+          changed = true;
+          return { ...s, quantity: customerCount };
+        }
+        return s;
+      });
+      return changed ? next : prev;
+    });
+  }, [customerCount, perPersonServiceIdsKey]);
+
   // Tự sinh items hoá đơn cọc + tháng đầu khi inputs đổi. User chỉnh trực
   // tiếp trên bảng preview vẫn được — nhưng nếu họ đổi rent/dates/services
   // sau khi chỉnh thì preview bị tính lại đè lên (UX rõ ràng hơn là cố
@@ -300,6 +334,7 @@ export function ContractFormDialog({
         service_id: s.id,
         name: s.name,
         unit_price: s.unit_price,
+        quantity: s.quantity,
         pricing_type: s.pricing_type ?? null,
       })),
     });

@@ -35,6 +35,8 @@ export interface FirstInvoiceBuilderInput {
     service_id: string;
     name: string;
     unit_price: number;
+    /** Số lượng (vd theo người: 2 khách → 2). User chỉnh trên bảng dịch vụ. */
+    quantity?: number;
     pricing_type?: string | null;
   }>;
 }
@@ -148,12 +150,13 @@ export function buildFirstInvoiceItems(
     const description = shouldProrate
       ? `${s.name} (${proratedDays} ngày)`
       : s.name;
+    const qty = s.quantity && s.quantity > 0 ? s.quantity : 1;
     items.push({
       id: nextId("svc"),
       type: "SERVICE",
       description,
       unit_price: proratedPrice,
-      quantity: 1,
+      quantity: qty,
       service_id: s.service_id,
     });
   }
