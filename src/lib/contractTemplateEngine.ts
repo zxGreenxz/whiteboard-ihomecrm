@@ -311,9 +311,19 @@ export function buildContractTemplateData({
 
     // ===== Tòa nhà & Phòng =====
     APARTMENT_NAME: building?.name ?? "",
-    APARTMENT_ADDRESS:
-      ((building as Record<string, unknown> | undefined)?.address as string) ??
-      "",
+    APARTMENT_ADDRESS: (() => {
+      const b = (building ?? {}) as Record<string, unknown>;
+      const direct =
+        (b.address as string | undefined) ||
+        (b.full_address as string | undefined);
+      if (direct && String(direct).trim()) return String(direct);
+      return joinAddress([
+        b.street_address as string | undefined,
+        b.ward as string | undefined,
+        b.district as string | undefined,
+        b.province as string | undefined,
+      ]);
+    })(),
     LOCATION_NAME:
       ((building as Record<string, unknown> | undefined)?.location_name as string) ??
       "",

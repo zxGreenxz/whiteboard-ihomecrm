@@ -63,7 +63,8 @@ const CONTRACT_SELECT = `
   room:rooms!contracts_room_id_fkey (
     id, name, building_id,
     building:buildings!rooms_building_id_fkey (
-      id, name, type, area_id
+      id, name, type, area_id,
+      street_address, ward, district, province
     )
   ),
   bed:beds!contracts_bed_id_fkey (

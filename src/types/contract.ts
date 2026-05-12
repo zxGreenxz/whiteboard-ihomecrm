@@ -62,6 +62,10 @@ export interface ContractWithRelations extends Contract {
       name: string;
       type: string;
       area_id: string | null;
+      street_address?: string | null;
+      ward?: string | null;
+      district?: string | null;
+      province?: string | null;
     } | null;
   } | null;
   bed?: {
