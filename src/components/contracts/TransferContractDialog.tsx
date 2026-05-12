@@ -16,7 +16,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Loader2, UserPlus, X } from "lucide-react";
@@ -192,19 +193,12 @@ export function TransferContractDialog({
                 <FormItem>
                   <FormLabel>Giá thuê mới</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       placeholder="Giữ nguyên nếu không thay đổi"
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(
-                          e.target.value === ""
-                            ? undefined
-                            : Number(e.target.value)
-                        )
-                      }
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -220,19 +214,12 @@ export function TransferContractDialog({
                 <FormItem>
                   <FormLabel>Tiền cọc mới</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       placeholder="Giữ nguyên nếu không thay đổi"
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(
-                          e.target.value === ""
-                            ? undefined
-                            : Number(e.target.value)
-                        )
-                      }
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -250,7 +237,12 @@ export function TransferContractDialog({
                     Ngày nhượng <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <DateInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

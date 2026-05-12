@@ -6,7 +6,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -106,20 +106,14 @@ export function IncomeExpenseFilterPanel({
           <div className="space-y-2">
             <Label className="text-sm font-medium">Thời gian</Label>
             <div className="grid grid-cols-2 gap-2">
-              <Input
-                type="date"
+              <DateInput
                 value={draft.start_date ?? ""}
-                onChange={(e) =>
-                  patch({ start_date: e.target.value || null })
-                }
+                onChange={(v) => patch({ start_date: v || null })}
                 placeholder="Từ ngày"
               />
-              <Input
-                type="date"
+              <DateInput
                 value={draft.end_date ?? ""}
-                onChange={(e) =>
-                  patch({ end_date: e.target.value || null })
-                }
+                onChange={(v) => patch({ end_date: v || null })}
                 placeholder="Đến ngày"
               />
             </div>

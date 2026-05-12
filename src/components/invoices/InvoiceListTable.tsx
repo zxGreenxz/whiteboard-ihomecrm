@@ -337,7 +337,7 @@ function DueCell({ dueDate, status }: { dueDate: string | null; status: string }
   today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
   const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
-  const dateStr = due.toLocaleDateString('vi-VN');
+  const dateStr = due.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   let sub: React.ReactNode = null;
   if (status === 'PAID') {

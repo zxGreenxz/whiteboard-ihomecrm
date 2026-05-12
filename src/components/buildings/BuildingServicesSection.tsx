@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -34,12 +35,11 @@ export default function BuildingServicesSection({
     onChange(updated);
   };
 
-  const handlePriceChange = (index: number, value: string) => {
+  const handlePriceChange = (index: number, value: number) => {
     const updated = [...services];
-    const numValue = value === '' ? null : Number(value);
     updated[index] = {
       ...updated[index],
-      unit_price_override: numValue !== null && !isNaN(numValue) ? numValue : null,
+      unit_price_override: value || null,
     };
     onChange(updated);
   };
@@ -85,12 +85,10 @@ export default function BuildingServicesSection({
                   </TableCell>
                   <TableCell className="font-medium">{service.service_name}</TableCell>
                   <TableCell>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       placeholder={formatPrice(service.default_unit_price)}
-                      value={service.unit_price_override ?? ''}
-                      onChange={(e) => handlePriceChange(index, e.target.value)}
+                      value={service.unit_price_override}
+                      onChange={(v) => handlePriceChange(index, v)}
                       className="h-8"
                     />
                   </TableCell>

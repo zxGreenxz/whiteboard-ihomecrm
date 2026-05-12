@@ -1,5 +1,6 @@
 import { useFormContext } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -98,7 +99,12 @@ export default function CustomerIndividualFields() {
             <FormItem>
               <FormLabel>Ngày cấp</FormLabel>
               <FormControl>
-                <Input type="date" {...field} value={field.value ?? ''} />
+                <DateInput
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -128,7 +134,12 @@ export default function CustomerIndividualFields() {
             <FormItem>
               <FormLabel>Ngày sinh</FormLabel>
               <FormControl>
-                <Input type="date" {...field} value={field.value ?? ''} />
+                <DateInput
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -211,7 +222,12 @@ export default function CustomerIndividualFields() {
               <FormItem>
                 <FormLabel>Ngày hết hạn visa</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} value={field.value ?? ''} />
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

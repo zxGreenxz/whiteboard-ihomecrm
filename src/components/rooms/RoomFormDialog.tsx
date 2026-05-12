@@ -17,6 +17,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
 import {
   Select,
   SelectContent,
@@ -323,11 +325,11 @@ export default function RoomFormDialog({
                       <FormItem>
                         <FormLabel>Tiền thuê *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                             placeholder="Nhập tiền thuê"
                           />
                         </FormControl>
@@ -344,11 +346,11 @@ export default function RoomFormDialog({
                       <FormItem>
                         <FormLabel>Tiền cọc *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                             placeholder="Nhập tiền cọc"
                           />
                         </FormControl>
@@ -367,12 +369,13 @@ export default function RoomFormDialog({
                       <FormItem>
                         <FormLabel>Diện tích (m²)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
+                          <NumberInput
+                            allowDecimal
                             min={0}
-                            step="0.1"
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value === '' ? null : Number(e.target.value))}
+                            value={field.value}
+                            onChange={(v) => field.onChange(v || null)}
+                            onBlur={field.onBlur}
+                            name={field.name}
                             placeholder="Nhập diện tích"
                           />
                         </FormControl>
@@ -389,11 +392,12 @@ export default function RoomFormDialog({
                       <FormItem>
                         <FormLabel>Số khách tối đa</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
+                          <NumberInput
                             min={1}
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value === '' ? null : Number(e.target.value))}
+                            value={field.value}
+                            onChange={(v) => field.onChange(v || null)}
+                            onBlur={field.onBlur}
+                            name={field.name}
                             placeholder="Nhập số khách tối đa"
                           />
                         </FormControl>

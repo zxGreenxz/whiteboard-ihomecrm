@@ -16,6 +16,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -149,13 +151,9 @@ const ItemRow = ({
           <label className="text-[11px] text-muted-foreground font-medium">
             Số tiền *
           </label>
-          <Input
-            type="number"
-            min={0}
+          <CurrencyInput
             value={item.unit_price}
-            onChange={(e) =>
-              onChange(index, { unit_price: parseFloat(e.target.value) || 0 })
-            }
+            onChange={(v) => onChange(index, { unit_price: v })}
             className="h-8 text-sm"
             placeholder="0"
           />
@@ -166,10 +164,9 @@ const ItemRow = ({
             <label className="text-[11px] text-muted-foreground font-medium">
               Từ ngày
             </label>
-            <Input
-              type="date"
+            <DateInput
               value={item.start_date}
-              onChange={(e) => onChange(index, { start_date: e.target.value })}
+              onChange={(v) => onChange(index, { start_date: v })}
               className="h-8 text-sm"
             />
           </div>
@@ -177,10 +174,9 @@ const ItemRow = ({
             <label className="text-[11px] text-muted-foreground font-medium">
               Đến
             </label>
-            <Input
-              type="date"
+            <DateInput
               value={item.end_date}
-              onChange={(e) => onChange(index, { end_date: e.target.value })}
+              onChange={(v) => onChange(index, { end_date: v })}
               className="h-8 text-sm"
             />
           </div>
@@ -408,7 +404,12 @@ const IncomeExpenseBatchForm = ({
                         *
                       </FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <DateInput
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

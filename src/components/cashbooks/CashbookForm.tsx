@@ -18,6 +18,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Banknote, Wallet, Smartphone } from "lucide-react";
@@ -351,11 +353,11 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   <FormItem>
                     <FormLabel>Số dư đầu kỳ</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="1000"
-                        {...field}
+                      <CurrencyInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
                       />
                     </FormControl>
                     <FormMessage />
@@ -369,7 +371,12 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                   <FormItem>
                     <FormLabel>Ngày chốt số dư đầu kỳ</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

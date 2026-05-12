@@ -4,6 +4,8 @@ import * as z from "zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -166,10 +168,12 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
                   <FormItem>
                     <FormLabel>Số lượng *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                      <NumberInput
+                        min={1}
+                        value={field.value}
+                        onChange={(v) => field.onChange(v || 1)}
+                        onBlur={field.onBlur}
+                        name={field.name}
                       />
                     </FormControl>
                     <FormMessage />
@@ -184,7 +188,12 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
                   <FormItem>
                     <FormLabel>Ngày di chuyển *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

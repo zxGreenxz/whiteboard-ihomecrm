@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -60,6 +61,29 @@ function GenderSelect({
   );
 }
 
+/** Controlled date input for a single family member row */
+function DobInput({
+  control,
+  index,
+}: {
+  control: Control<CT01FormData>;
+  index: number;
+}) {
+  const { field } = useController({
+    control,
+    name: `family_members.${index}.date_of_birth`,
+  });
+  return (
+    <DateInput
+      value={field.value || ''}
+      onChange={field.onChange}
+      onBlur={field.onBlur}
+      name={field.name}
+      className="text-sm"
+    />
+  );
+}
+
 export function CT01FamilyMembersTable({ control }: CT01FamilyMembersTableProps) {
   const { fields, append, remove } = useFieldArray({
     control,
@@ -102,11 +126,7 @@ export function CT01FamilyMembersTable({ control }: CT01FamilyMembersTableProps)
                   />
                 </TableCell>
                 <TableCell>
-                  <Input
-                    {...control.register(`family_members.${index}.date_of_birth`)}
-                    type="date"
-                    className="h-8 text-sm"
-                  />
+                  <DobInput control={control} index={index} />
                 </TableCell>
                 <TableCell>
                   <GenderSelect control={control} index={index} />

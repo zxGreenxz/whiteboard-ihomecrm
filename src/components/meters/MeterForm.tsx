@@ -17,6 +17,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -256,12 +258,12 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                       <FormItem>
                         <FormLabel>Chỉ số ban đầu</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : 0)}
+                          <NumberInput
+                            allowDecimal
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -277,7 +279,12 @@ const MeterForm = ({ open, onOpenChange, meter }: MeterFormProps) => {
                       <FormItem>
                         <FormLabel>Ngày lắp đặt</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

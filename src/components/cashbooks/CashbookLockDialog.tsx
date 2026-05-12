@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
 import { useLockAccount, type AccountWithBalance } from "@/hooks/useAccounts";
 
@@ -53,11 +53,7 @@ const CashbookLockDialog = ({
         </DialogHeader>
         <div className="space-y-2">
           <label className="text-sm font-medium">Ngày khoá sổ</label>
-          <Input
-            type="date"
-            value={lockDate}
-            onChange={(e) => setLockDate(e.target.value)}
-          />
+          <DateInput value={lockDate} onChange={setLockDate} />
         </div>
         <DialogFooter>
           <Button

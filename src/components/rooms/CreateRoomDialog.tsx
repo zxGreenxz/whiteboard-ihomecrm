@@ -19,6 +19,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -215,7 +217,14 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                           </Select>
                         ) : (
                           <FormControl>
-                            <Input type="number" placeholder="1" {...field} />
+                            <NumberInput
+                              min={0}
+                              value={field.value ? parseInt(field.value, 10) : null}
+                              onChange={(v) => field.onChange(v ? String(v) : "0")}
+                              onBlur={field.onBlur}
+                              name={field.name}
+                              placeholder="1"
+                            />
                           </FormControl>
                         )}
                         <FormMessage />
@@ -230,7 +239,15 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                       <FormItem>
                         <FormLabel>Diện tích (m²)</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" placeholder="25" {...field} />
+                          <NumberInput
+                            allowDecimal
+                            min={0}
+                            value={field.value ? parseFloat(field.value) : null}
+                            onChange={(v) => field.onChange(v ? String(v) : "")}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            placeholder="25"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -244,7 +261,14 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                       <FormItem>
                         <FormLabel>Số người tối đa</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="2" {...field} />
+                          <NumberInput
+                            min={1}
+                            value={field.value ? parseInt(field.value, 10) : null}
+                            onChange={(v) => field.onChange(v ? String(v) : "")}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            placeholder="2"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -265,7 +289,13 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                       <FormItem>
                         <FormLabel>Giá thuê (VNĐ/tháng) *</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="3000000" {...field} />
+                          <CurrencyInput
+                            value={field.value ? parseFloat(field.value) : null}
+                            onChange={(v) => field.onChange(v ? String(v) : "")}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            placeholder="3000000"
+                          />
                         </FormControl>
                         <FormDescription>
                           Giá thuê hàng tháng
@@ -282,7 +312,13 @@ export function CreateRoomDialog({ open, onOpenChange }: CreateRoomDialogProps) 
                       <FormItem>
                         <FormLabel>Tiền cọc (VNĐ) *</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="6000000" {...field} />
+                          <CurrencyInput
+                            value={field.value ? parseFloat(field.value) : null}
+                            onChange={(v) => field.onChange(v ? String(v) : "")}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            placeholder="6000000"
+                          />
                         </FormControl>
                         <FormDescription>
                           Tiền đặt cọc khi thuê

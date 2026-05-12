@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useExtendContract } from '@/hooks/useContracts';
@@ -42,6 +44,7 @@ const ExtendContractDialog = ({ open, onOpenChange, contract }: ExtendContractDi
     handleSubmit,
     formState: { errors },
     watch,
+    setValue,
     reset,
   } = useForm<ExtendFormData>({
     resolver: zodResolver(extendSchema),
@@ -126,10 +129,10 @@ const ExtendContractDialog = ({ open, onOpenChange, contract }: ExtendContractDi
           {/* Extension Months */}
           <div className="space-y-2">
             <Label htmlFor="extension_months">Số tháng gia hạn *</Label>
-            <Input
+            <NumberInput
               id="extension_months"
-              type="number"
-              {...register('extension_months', { valueAsNumber: true })}
+              value={watch('extension_months')}
+              onChange={(v) => setValue('extension_months', v, { shouldValidate: true, shouldDirty: true })}
               min={1}
               max={60}
             />
@@ -151,10 +154,10 @@ const ExtendContractDialog = ({ open, onOpenChange, contract }: ExtendContractDi
           {/* New Rent Price (Optional) */}
           <div className="space-y-2">
             <Label htmlFor="new_rent_price">Giá thuê mới (VND/tháng)</Label>
-            <Input
+            <CurrencyInput
               id="new_rent_price"
-              type="number"
-              {...register('new_rent_price', { valueAsNumber: true })}
+              value={watch('new_rent_price')}
+              onChange={(v) => setValue('new_rent_price', v, { shouldValidate: true, shouldDirty: true })}
               placeholder={contract.rent_price.toString()}
             />
             <p className="text-xs text-gray-500">

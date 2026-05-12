@@ -143,7 +143,7 @@ export function exportTenants(tenants: Array<{
     { header: 'Số điện thoại', key: 'phone', width: 15 },
     { header: 'Email', key: 'email', width: 25 },
     { header: 'CCCD/CMND', key: 'id_number', width: 15 },
-    { header: 'Ngày sinh', key: item => item.date_of_birth ? new Date(item.date_of_birth).toLocaleDateString('vi-VN') : '', width: 15 },
+    { header: 'Ngày sinh', key: item => item.date_of_birth ? new Date(item.date_of_birth).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '', width: 15 },
     { header: 'Giới tính', key: item => item.gender === 'MALE' ? 'Nam' : item.gender === 'FEMALE' ? 'Nữ' : '', width: 10 },
     { header: 'Địa chỉ thường trú', key: 'permanent_address', width: 40 },
   ];
@@ -171,8 +171,8 @@ export function exportContracts(contracts: Array<{
     { header: 'SĐT', key: item => item.tenant?.phone || '', width: 15 },
     { header: 'Tòa nhà', key: item => item.room?.building?.name || '', width: 20 },
     { header: 'Căn hộ', key: item => item.room?.name || '', width: 15 },
-    { header: 'Ngày bắt đầu', key: item => new Date(item.start_date).toLocaleDateString('vi-VN'), width: 15 },
-    { header: 'Ngày kết thúc', key: item => new Date(item.end_date).toLocaleDateString('vi-VN'), width: 15 },
+    { header: 'Ngày bắt đầu', key: item => new Date(item.start_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
+    { header: 'Ngày kết thúc', key: item => new Date(item.end_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
     { header: 'Giá thuê', key: item => item.rent_price.toLocaleString('vi-VN'), width: 15 },
     { header: 'Tiền cọc', key: item => item.total_deposit.toLocaleString('vi-VN'), width: 15 },
     { header: 'Trạng thái', key: item => {
@@ -211,13 +211,13 @@ export function exportInvoices(invoices: Array<{
     { header: 'Số hóa đơn', key: 'invoice_number', width: 20 },
     { header: 'Khách hàng', key: item => item.tenant?.full_name || '', width: 25 },
     { header: 'Căn hộ', key: item => item.room?.name || '', width: 15 },
-    { header: 'Kỳ từ', key: item => new Date(item.billing_period_from).toLocaleDateString('vi-VN'), width: 15 },
-    { header: 'Kỳ đến', key: item => new Date(item.billing_period_to).toLocaleDateString('vi-VN'), width: 15 },
+    { header: 'Kỳ từ', key: item => new Date(item.billing_period_from).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
+    { header: 'Kỳ đến', key: item => new Date(item.billing_period_to).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
     { header: 'Tiền dịch vụ', key: item => item.subtotal.toLocaleString('vi-VN'), width: 15 },
     { header: 'Tổng tiền', key: item => item.total_amount.toLocaleString('vi-VN'), width: 15 },
     { header: 'Đã thanh toán', key: item => item.paid_amount.toLocaleString('vi-VN'), width: 15 },
     { header: 'Còn lại', key: item => (item.total_amount - item.paid_amount).toLocaleString('vi-VN'), width: 15 },
-    { header: 'Hạn thanh toán', key: item => new Date(item.due_date).toLocaleDateString('vi-VN'), width: 15 },
+    { header: 'Hạn thanh toán', key: item => new Date(item.due_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
     { header: 'Trạng thái', key: item => {
       const statusMap: Record<string, string> = {
         DRAFT: 'Nháp',
@@ -275,10 +275,10 @@ export function exportLeads(leads: Array<{
     { header: 'Nguồn', key: item => sourceMap[item.source || ''] || item.source || '', width: 15 },
     { header: 'Tòa nhà', key: item => item.room?.building?.name || '', width: 20 },
     { header: 'Căn hộ', key: item => item.room?.name || '', width: 15 },
-    { header: 'Ngày hẹn', key: item => item.appointment_date ? new Date(item.appointment_date).toLocaleDateString('vi-VN') : '', width: 15 },
+    { header: 'Ngày hẹn', key: item => item.appointment_date ? new Date(item.appointment_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '', width: 15 },
     { header: 'Trạng thái', key: item => statusMap[item.status] || item.status, width: 15 },
     { header: 'Ghi chú', key: 'notes', width: 30 },
-    { header: 'Ngày tạo', key: item => new Date(item.created_at).toLocaleDateString('vi-VN'), width: 15 },
+    { header: 'Ngày tạo', key: item => new Date(item.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
   ];
 
   exportToExcel(leads, columns, 'danh-sach-khach-hen', 'Khách hẹn');
@@ -316,7 +316,7 @@ export function exportPayments(payments: Array<{
     { header: 'Khách hàng', key: item => item.invoice?.contract?.tenant?.full_name || '', width: 25 },
     { header: 'SĐT', key: item => item.invoice?.contract?.tenant?.phone || '', width: 15 },
     { header: 'Số tiền', key: item => item.amount.toLocaleString('vi-VN'), width: 15 },
-    { header: 'Ngày thanh toán', key: item => new Date(item.payment_date).toLocaleDateString('vi-VN'), width: 15 },
+    { header: 'Ngày thanh toán', key: item => new Date(item.payment_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
     { header: 'Phương thức', key: item => methodMap[item.payment_method || ''] || item.payment_method || '', width: 15 },
     { header: 'Mã giao dịch', key: 'reference_number', width: 20 },
     { header: 'Ghi chú', key: 'notes', width: 30 },

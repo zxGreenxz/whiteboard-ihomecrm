@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -229,10 +231,9 @@ export function CommissionVoucherModal({
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Ngày phiếu</Label>
-                    <Input
-                      type="date"
+                    <DateInput
                       value={voucherDate}
-                      onChange={(e) => setVoucherDate(e.target.value)}
+                      onChange={setVoucherDate}
                     />
                   </div>
                   <div className="space-y-1 md:col-span-2">
@@ -269,11 +270,9 @@ export function CommissionVoucherModal({
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền hoa hồng *</Label>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       value={brokerAmount}
-                      onChange={(e) => setBrokerAmount(Number(e.target.value) || 0)}
+                      onChange={(v) => setBrokerAmount(v || 0)}
                     />
                     {brokerAmount > 0 && (
                       <p className="text-xs text-muted-foreground">
@@ -326,15 +325,9 @@ export function CommissionVoucherModal({
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền thưởng</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={saleAmount}
-                      onChange={(e) =>
-                        setSaleAmount(
-                          e.target.value === "" ? "" : Number(e.target.value) || 0
-                        )
-                      }
+                    <CurrencyInput
+                      value={typeof saleAmount === "number" ? saleAmount : null}
+                      onChange={(v) => setSaleAmount(v === 0 ? "" : v)}
                       placeholder="Để trống nếu không có"
                     />
                     {typeof saleAmount === "number" && saleAmount > 0 && (

@@ -7,7 +7,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Select,
   SelectContent,
@@ -175,11 +175,11 @@ const RefundLogPage = () => {
             <>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Từ ngày</label>
-                <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
+                <DateInput value={customStart} onChange={setCustomStart} />
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Đến ngày</label>
-                <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
+                <DateInput value={customEnd} onChange={setCustomEnd} />
               </div>
             </>
           )}

@@ -27,7 +27,7 @@ export default function BuildingListTable({
   onViewRooms,
 }: BuildingListTableProps) {
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('vi-VN');
+    return new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const formatAddress = (building: BuildingWithRelations) => {

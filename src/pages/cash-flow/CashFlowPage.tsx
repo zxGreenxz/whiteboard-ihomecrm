@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { useCashFlowByDay, useCashBookSummary } from "@/hooks/useCashBook";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -71,19 +71,17 @@ const CashFlowPage = () => {
       <div className="flex gap-4">
         <div className="space-y-2">
           <label className="text-sm text-muted-foreground">Từ ngày</label>
-          <Input
-            type="date"
+          <DateInput
             value={dateRange.start}
-            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+            onChange={(v) => setDateRange({ ...dateRange, start: v })}
             className="w-40"
           />
         </div>
         <div className="space-y-2">
           <label className="text-sm text-muted-foreground">Đến ngày</label>
-          <Input
-            type="date"
+          <DateInput
             value={dateRange.end}
-            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+            onChange={(v) => setDateRange({ ...dateRange, end: v })}
             className="w-40"
           />
         </div>

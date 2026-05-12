@@ -34,7 +34,8 @@ interface CashbookListProps {
   onUnlock: (acc: AccountWithBalance) => void;
 }
 
-const formatVND = (n: number) => n.toLocaleString("vi-VN");
+const formatVND = (n: number) =>
+  new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ";
 
 const CashbookList = ({
   rows,

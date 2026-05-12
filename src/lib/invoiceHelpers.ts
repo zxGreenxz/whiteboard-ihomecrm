@@ -84,7 +84,7 @@ export async function createInvoiceNotification(
     type: 'NEW_INVOICE',
     channel: 'IN_APP',
     subject: 'Hóa đơn mới',
-    content: `Hóa đơn ${invoiceNumber} đã được tạo cho ${tenantName}. Số tiền: ${amount.toLocaleString('vi-VN')}đ. Hạn thanh toán: ${new Date(dueDate).toLocaleDateString('vi-VN')}.`,
+    content: `Hóa đơn ${invoiceNumber} đã được tạo cho ${tenantName}. Số tiền: ${amount.toLocaleString('vi-VN')}đ. Hạn thanh toán: ${new Date(dueDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`,
     invoice_id: invoiceId,
     status: 'PENDING',
   });
@@ -114,7 +114,7 @@ export async function createPaymentReminderNotification(
     type: 'PAYMENT_REMINDER',
     channel: 'IN_APP',
     subject: 'Nhắc nhở thanh toán',
-    content: `Hóa đơn ${invoiceNumber} sẽ đến hạn vào ${new Date(dueDate).toLocaleDateString('vi-VN')}. Vui lòng thanh toán ${amount.toLocaleString('vi-VN')}đ.`,
+    content: `Hóa đơn ${invoiceNumber} sẽ đến hạn vào ${new Date(dueDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}. Vui lòng thanh toán ${amount.toLocaleString('vi-VN')}đ.`,
     invoice_id: invoiceId,
     status: 'PENDING',
   });

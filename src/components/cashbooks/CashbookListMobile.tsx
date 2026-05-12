@@ -30,7 +30,8 @@ const TYPE_TONE: Record<AccountType, string> = {
   ewallet: "bg-violet-100 text-violet-700",
 };
 
-const formatVND = (n: number) => n.toLocaleString("vi-VN");
+const formatVND = (n: number) =>
+  new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ";
 
 export function CashbookListMobile({
   rows,

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -114,20 +115,18 @@ export default function PaymentScheduleReport() {
 
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Chọn ngày</span>
-            <Input
-              type="date"
+            <DateInput
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={setStartDate}
               className="w-[180px]"
             />
           </div>
 
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Ngày kết thúc</span>
-            <Input
-              type="date"
+            <DateInput
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={setEndDate}
               className="w-[180px]"
             />
           </div>

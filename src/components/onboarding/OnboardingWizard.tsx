@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent } from '@/components/ui/card';
@@ -430,12 +431,9 @@ function ApartmentStep({
         </div>
         <div className="space-y-2">
           <Label htmlFor="apartment-price">Giá thuê (VNĐ/tháng)</Label>
-          <Input
-            id="apartment-price"
-            type="number"
-            placeholder="VD: 5000000"
-            value={price}
-            onChange={(e) => onPriceChange(e.target.value)}
+          <CurrencyInput
+            value={price ? Number(price) : 0}
+            onChange={(v) => onPriceChange(v ? String(v) : '')}
           />
         </div>
       </div>
@@ -477,12 +475,9 @@ function ServiceStep({
         </div>
         <div className="space-y-2">
           <Label htmlFor="service-price">Đơn giá</Label>
-          <Input
-            id="service-price"
-            type="number"
-            placeholder="VD: 3500"
-            value={price}
-            onChange={(e) => onPriceChange(e.target.value)}
+          <CurrencyInput
+            value={price ? Number(price) : 0}
+            onChange={(v) => onPriceChange(v ? String(v) : '')}
           />
         </div>
         <div className="space-y-2">

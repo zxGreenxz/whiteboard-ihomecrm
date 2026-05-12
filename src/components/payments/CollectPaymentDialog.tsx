@@ -18,6 +18,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -323,11 +325,12 @@ export function CollectPaymentDialog({
                   <FormItem>
                     <FormLabel>Số tiền *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
+                      <CurrencyInput
                         placeholder="Nhập số tiền"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
                       />
                     </FormControl>
                     <FormMessage />
@@ -342,7 +345,12 @@ export function CollectPaymentDialog({
                   <FormItem>
                     <FormLabel>Ngày *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

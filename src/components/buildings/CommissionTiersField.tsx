@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import type { CommissionTier } from "@/types/building";
 
@@ -58,40 +59,29 @@ export function CommissionTiersField({ value, onChange }: CommissionTiersFieldPr
               className="grid grid-cols-12 gap-2 p-2 items-center border-t"
             >
               <div className="col-span-3">
-                <Input
-                  type="number"
+                <NumberInput
                   min={0}
                   className="h-8"
                   value={tier.min_months}
-                  onChange={(e) =>
-                    updateTier(idx, { min_months: Number(e.target.value) || 0 })
-                  }
+                  onChange={(v) => updateTier(idx, { min_months: v || 0 })}
                 />
               </div>
               <div className="col-span-3">
-                <Input
-                  type="number"
+                <NumberInput
                   min={0}
                   className="h-8"
                   value={tier.max_months}
-                  onChange={(e) =>
-                    updateTier(idx, { max_months: Number(e.target.value) || 0 })
-                  }
+                  onChange={(v) => updateTier(idx, { max_months: v || 0 })}
                 />
               </div>
               <div className="col-span-4">
-                <Input
-                  type="number"
+                <NumberInput
+                  allowDecimal
                   min={0}
                   max={100}
-                  step="0.01"
                   className="h-8"
                   value={tier.rate_percent}
-                  onChange={(e) =>
-                    updateTier(idx, {
-                      rate_percent: Number(e.target.value) || 0,
-                    })
-                  }
+                  onChange={(v) => updateTier(idx, { rate_percent: v || 0 })}
                 />
               </div>
               <div className="col-span-2 flex justify-end">

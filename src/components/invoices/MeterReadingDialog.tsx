@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -226,10 +228,9 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
           {/* Reading Date */}
           <div className="space-y-2">
             <Label htmlFor="reading_date">Ngày ghi chỉ số *</Label>
-            <Input
-              id="reading_date"
-              type="date"
-              {...register('reading_date')}
+            <DateInput
+              value={watch('reading_date') || ''}
+              onChange={(v) => setValue('reading_date', v, { shouldValidate: true, shouldDirty: true })}
             />
             {errors.reading_date && (
               <p className="text-sm text-red-500">{errors.reading_date.message}</p>
@@ -240,11 +241,10 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="previous_reading">Chỉ số cũ *</Label>
-              <Input
-                id="previous_reading"
-                type="number"
-                step="0.01"
-                {...register('previous_reading', { valueAsNumber: true })}
+              <NumberInput
+                value={watch('previous_reading')}
+                onChange={(v) => setValue('previous_reading', v, { shouldValidate: true, shouldDirty: true })}
+                allowDecimal
                 placeholder="0"
               />
               {errors.previous_reading && (
@@ -257,11 +257,10 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
 
             <div className="space-y-2">
               <Label htmlFor="current_reading">Chỉ số mới *</Label>
-              <Input
-                id="current_reading"
-                type="number"
-                step="0.01"
-                {...register('current_reading', { valueAsNumber: true })}
+              <NumberInput
+                value={watch('current_reading')}
+                onChange={(v) => setValue('current_reading', v, { shouldValidate: true, shouldDirty: true })}
+                allowDecimal
                 placeholder="0"
               />
               {errors.current_reading && (

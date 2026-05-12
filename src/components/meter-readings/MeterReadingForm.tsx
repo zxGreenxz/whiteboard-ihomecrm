@@ -24,6 +24,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Select,
   SelectContent,
@@ -462,7 +464,12 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                     <FormItem>
                       <FormLabel>Ngày chốt *</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <DateInput
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -536,18 +543,15 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                   render={({ field: inputField }) => (
                                     <FormItem className="w-32">
                                       <FormControl>
-                                        <Input
-                                          type="number"
-                                          step="0.01"
-                                          min="0"
+                                        <NumberInput
+                                          allowDecimal
+                                          min={0}
                                           className={`text-right ${error ? 'border-red-500' : ''}`}
-                                          {...inputField}
-                                          onChange={(e) => {
-                                            const val = e.target.value
-                                              ? Number(e.target.value)
-                                              : 0;
+                                          value={inputField.value}
+                                          onBlur={inputField.onBlur}
+                                          name={inputField.name}
+                                          onChange={(val) => {
                                             inputField.onChange(val);
-                                            // Clear validation error on change
                                             if (validationErrors[index]) {
                                               setValidationErrors((prev) => {
                                                 const next = { ...prev };

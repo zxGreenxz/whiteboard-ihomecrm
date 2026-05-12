@@ -85,7 +85,7 @@ export default function ChangelogPage() {
                   </Badge>
                 </CardTitle>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(entry.date).toLocaleDateString("vi-VN")}
+                  {new Date(entry.date).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                 </span>
               </div>
             </CardHeader>

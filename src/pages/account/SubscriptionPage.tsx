@@ -15,7 +15,7 @@ function formatPrice(price: number) {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("vi-VN");
+  return new Date(dateStr).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export default function SubscriptionPage() {

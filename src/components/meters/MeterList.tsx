@@ -137,7 +137,7 @@ const MeterList = ({ meters, onEdit, isLoading }: MeterListProps) => {
                       </span>
                       {meter.latest_reading_date && (
                         <span className="text-xs text-muted-foreground">
-                          {new Date(meter.latest_reading_date).toLocaleDateString('vi-VN')}
+                          {new Date(meter.latest_reading_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         </span>
                       )}
                     </div>

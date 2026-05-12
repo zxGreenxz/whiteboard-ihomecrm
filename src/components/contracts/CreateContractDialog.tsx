@@ -11,6 +11,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -429,19 +432,28 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
               <div className="space-y-2">
                 <Label>Ngày ký *</Label>
-                <Input type="date" {...register('signed_date')} />
+                <DateInput
+                  value={watch('signed_date') || ''}
+                  onChange={(v) => setValue('signed_date', v, { shouldValidate: true, shouldDirty: true })}
+                />
                 {errors.signed_date && <p className="text-xs text-red-500">{errors.signed_date.message}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label>Ngày bắt đầu *</Label>
-                <Input type="date" {...register('start_date')} />
+                <DateInput
+                  value={watch('start_date') || ''}
+                  onChange={(v) => setValue('start_date', v, { shouldValidate: true, shouldDirty: true })}
+                />
                 {errors.start_date && <p className="text-xs text-red-500">{errors.start_date.message}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label>Hạn hợp đồng *</Label>
-                <Input type="date" {...register('end_date')} />
+                <DateInput
+                  value={watch('end_date') || ''}
+                  onChange={(v) => setValue('end_date', v, { shouldValidate: true, shouldDirty: true })}
+                />
                 {errors.end_date && <p className="text-xs text-red-500">{errors.end_date.message}</p>}
               </div>
 
@@ -606,7 +618,10 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Tiền thuê *</Label>
-                <Input type="number" {...register('rent_price', { valueAsNumber: true })} />
+                <CurrencyInput
+                  value={watch('rent_price')}
+                  onChange={(v) => setValue('rent_price', v, { shouldValidate: true, shouldDirty: true })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Chu kỳ thanh toán *</Label>
@@ -627,24 +642,34 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
               </div>
               <div className="space-y-2">
                 <Label>Ngày bắt đầu tính tiền *</Label>
-                <Input type="date" {...register('start_billing_date')} />
+                <DateInput
+                  value={watch('start_billing_date') || ''}
+                  onChange={(v) => setValue('start_billing_date', v, { shouldValidate: true, shouldDirty: true })}
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Tiền cọc *</Label>
-                <Input type="number" {...register('total_deposit', { valueAsNumber: true })} />
+                <CurrencyInput
+                  value={watch('total_deposit')}
+                  onChange={(v) => setValue('total_deposit', v, { shouldValidate: true, shouldDirty: true })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Đã đặt cọc</Label>
-                <Input type="number" {...register('deposit_paid', { valueAsNumber: true })} disabled />
+                <CurrencyInput
+                  value={watch('deposit_paid')}
+                  onChange={(v) => setValue('deposit_paid', v, { shouldValidate: true, shouldDirty: true })}
+                  disabled
+                />
               </div>
               <div className="space-y-2">
                 <Label>Tiền cọc phải đóng</Label>
-                <Input
+                <CurrencyInput
                   value={(watchedValues.total_deposit || 0) - (watchedValues.deposit_paid || 0)}
-                  disabled
+                  readOnly
                   className="bg-gray-100"
                 />
               </div>
@@ -653,11 +678,17 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Số tháng giảm</Label>
-                <Input type="number" {...register('discount_months', { valueAsNumber: true })} />
+                <NumberInput
+                  value={watch('discount_months')}
+                  onChange={(v) => setValue('discount_months', v, { shouldValidate: true, shouldDirty: true })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Số tiền giảm mỗi tháng</Label>
-                <Input type="number" {...register('discount_amount_per_month', { valueAsNumber: true })} />
+                <CurrencyInput
+                  value={watch('discount_amount_per_month')}
+                  onChange={(v) => setValue('discount_amount_per_month', v, { shouldValidate: true, shouldDirty: true })}
+                />
               </div>
             </div>
           </div>
@@ -702,19 +733,29 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     <div className="col-span-2 text-xs text-gray-500">{service.type === 'METER_READING' ? 'Có' : 'Không'}</div>
                     <div className="col-span-2">
                       {service.type === 'METER_READING' && selectedServices.has(service.id) && (
-                        <Input
-                          type="number"
+                        <NumberInput
+                          allowDecimal
                           className="h-8 text-xs"
                           placeholder="0"
-                          {...register(
-                            service.name.toLowerCase().includes('điện') ? 'initial_electricity_reading' : 'initial_water_reading',
-                            { valueAsNumber: true }
-                          )}
+                          value={
+                            service.name.toLowerCase().includes('điện')
+                              ? watch('initial_electricity_reading')
+                              : watch('initial_water_reading')
+                          }
+                          onChange={(v) =>
+                            setValue(
+                              service.name.toLowerCase().includes('điện')
+                                ? 'initial_electricity_reading'
+                                : 'initial_water_reading',
+                              v,
+                              { shouldValidate: true, shouldDirty: true }
+                            )
+                          }
                         />
                       )}
                     </div>
                     <div className="col-span-2">
-                      <Input type="number" className="h-8 text-xs" defaultValue={1} disabled={service.type === 'METER_READING'} />
+                      <NumberInput className="h-8 text-xs" value={1} disabled={service.type === 'METER_READING'} />
                     </div>
                     <div className="col-span-2 text-xs">
                       {watchedValues.start_billing_date}
@@ -839,14 +880,13 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                         </Select>
                       </div>
                       <div className="col-span-2">
-                        <Input
-                          type="number"
+                        <NumberInput
                           className="h-8"
-                          min="1"
+                          min={1}
                           value={asset.quantity}
-                          onChange={(e) => {
+                          onChange={(v) => {
                             const updated = [...selectedAssets];
-                            updated[index].quantity = parseInt(e.target.value) || 1;
+                            updated[index].quantity = v || 1;
                             setSelectedAssets(updated);
                           }}
                         />

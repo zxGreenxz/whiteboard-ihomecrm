@@ -16,6 +16,9 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -490,7 +493,13 @@ const IncomeExpenseForm = ({
                         {voucherType === 'EXPENSE' ? 'Ngày thực chi' : 'Ngày thực thu'} *
                       </FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} disabled={!canEdit} />
+                        <DateInput
+                          value={field.value || ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          disabled={!canEdit}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -590,35 +599,22 @@ const IncomeExpenseForm = ({
                         <p className="text-sm font-medium truncate">
                           {item.type_name}
                         </p>
-                        <Input
-                          type="number"
-                          min={0}
+                        <CurrencyInput
                           value={item.unit_price}
-                          onChange={(e) =>
-                            handleItemPriceChange(
-                              index,
-                              parseFloat(e.target.value) || 0
-                            )
-                          }
+                          onChange={(v) => handleItemPriceChange(index, v)}
                           disabled={!canEdit}
                           className="h-8"
                           placeholder="Số tiền"
                         />
-                        <Input
-                          type="date"
+                        <DateInput
                           value={item.start_date}
-                          onChange={(e) =>
-                            handleItemStartDateChange(index, e.target.value)
-                          }
+                          onChange={(v) => handleItemStartDateChange(index, v)}
                           disabled={!canEdit}
                           className="h-8"
                         />
-                        <Input
-                          type="date"
+                        <DateInput
                           value={item.end_date}
-                          onChange={(e) =>
-                            handleItemEndDateChange(index, e.target.value)
-                          }
+                          onChange={(v) => handleItemEndDateChange(index, v)}
                           disabled={!canEdit}
                           className="h-8"
                         />
@@ -697,11 +693,12 @@ const IncomeExpenseForm = ({
                         <FormItem>
                           <FormLabel>Số lần lặp</FormLabel>
                           <FormControl>
-                            <Input
-                              type="number"
+                            <NumberInput
+                              value={field.value}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              name={field.name}
                               min={0}
-                              {...field}
-                              value={field.value ?? 0}
                               disabled={disabled}
                             />
                           </FormControl>

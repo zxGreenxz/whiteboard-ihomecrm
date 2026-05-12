@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -224,7 +225,12 @@ export function EditTenantDialog({
                       <FormItem className="col-span-2">
                         <FormLabel>Ngày sinh</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

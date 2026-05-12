@@ -17,6 +17,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
@@ -238,7 +240,12 @@ function StepForfeit({
                 Ngày bỏ cọc <span className="text-red-500">*</span>
               </FormLabel>
               <FormControl>
-                <Input type="date" {...field} />
+                <DateInput
+                  value={field.value || ""}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -343,7 +350,7 @@ function StepMoveOut({
   };
 
   const formatDate = (dateStr: string | null) =>
-    dateStr ? new Date(dateStr).toLocaleDateString("vi-VN") : "—";
+    dateStr ? new Date(dateStr).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
   return (
     <Form {...form}>
@@ -410,7 +417,13 @@ function StepMoveOut({
                     Ngày chuyển đi <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input type="date" className="h-8 text-sm" {...field} />
+                    <DateInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      className="h-8 text-sm"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -490,19 +503,12 @@ function StepMoveOut({
                 <FormItem>
                   <FormLabel className="text-xs">Tiền cọc hoàn trả</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       className="h-8 text-sm"
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(
-                          e.target.value === ""
-                            ? 0
-                            : Number(e.target.value)
-                        )
-                      }
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -516,19 +522,12 @@ function StepMoveOut({
                 <FormItem>
                   <FormLabel className="text-xs">Phí phạt</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       className="h-8 text-sm"
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(
-                          e.target.value === ""
-                            ? 0
-                            : Number(e.target.value)
-                        )
-                      }
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -542,19 +541,12 @@ function StepMoveOut({
                 <FormItem>
                   <FormLabel className="text-xs">Tiền phòng thừa</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       className="h-8 text-sm"
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(
-                          e.target.value === ""
-                            ? 0
-                            : Number(e.target.value)
-                        )
-                      }
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />

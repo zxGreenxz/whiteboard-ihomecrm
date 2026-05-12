@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format, addDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -328,10 +329,9 @@ const InvoiceForm = ({
           {/* Ngày lập */}
           <div className="space-y-1.5">
             <Label htmlFor="issue_date">Ngày lập *</Label>
-            <Input
-              id="issue_date"
-              type="date"
-              {...register('issue_date')}
+            <DateInput
+              value={watch('issue_date') || ''}
+              onChange={(v) => setValue('issue_date', v, { shouldValidate: true, shouldDirty: true })}
             />
             {errors.issue_date && (
               <p className="text-xs text-red-500">{errors.issue_date.message}</p>
@@ -341,10 +341,9 @@ const InvoiceForm = ({
           {/* Hạn thanh toán */}
           <div className="space-y-1.5">
             <Label htmlFor="due_date">Hạn thanh toán *</Label>
-            <Input
-              id="due_date"
-              type="date"
-              {...register('due_date')}
+            <DateInput
+              value={watch('due_date') || ''}
+              onChange={(v) => setValue('due_date', v, { shouldValidate: true, shouldDirty: true })}
             />
             {errors.due_date && (
               <p className="text-xs text-red-500">{errors.due_date.message}</p>

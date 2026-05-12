@@ -17,6 +17,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -171,10 +173,12 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
                           <FormItem>
                             <FormLabel className="text-xs">Từ</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                {...field}
+                              <NumberInput
+                                allowDecimal
+                                value={field.value ? Number(field.value) : 0}
+                                onChange={(v) => field.onChange(v ? String(v) : "")}
+                                onBlur={field.onBlur}
+                                name={field.name}
                               />
                             </FormControl>
                             <FormMessage />
@@ -188,10 +192,13 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
                           <FormItem>
                             <FormLabel className="text-xs">Đến</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
+                              <NumberInput
+                                allowDecimal
                                 placeholder="∞"
-                                {...field}
+                                value={field.value ? Number(field.value) : 0}
+                                onChange={(v) => field.onChange(v ? String(v) : "")}
+                                onBlur={field.onBlur}
+                                name={field.name}
                               />
                             </FormControl>
                             <FormMessage />
@@ -205,10 +212,11 @@ export function EditQuotaDialog({ open, onOpenChange, quota }: EditQuotaDialogPr
                           <FormItem>
                             <FormLabel className="text-xs">Đơn giá</FormLabel>
                             <FormControl>
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                {...field}
+                              <CurrencyInput
+                                value={field.value ? Number(field.value) : 0}
+                                onChange={(v) => field.onChange(v ? String(v) : "")}
+                                onBlur={field.onBlur}
+                                name={field.name}
                               />
                             </FormControl>
                             <FormMessage />

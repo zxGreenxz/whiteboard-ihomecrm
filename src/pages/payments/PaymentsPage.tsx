@@ -4,6 +4,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Table,
   TableBody,
@@ -212,16 +213,14 @@ const PaymentsPage = () => {
           />
         </div>
 
-        <Input
-          type="date"
+        <DateInput
           value={dateRange.start}
-          onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+          onChange={(v) => setDateRange({ ...dateRange, start: v })}
           className="w-40"
         />
-        <Input
-          type="date"
+        <DateInput
           value={dateRange.end}
-          onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+          onChange={(v) => setDateRange({ ...dateRange, end: v })}
           className="w-40"
         />
 

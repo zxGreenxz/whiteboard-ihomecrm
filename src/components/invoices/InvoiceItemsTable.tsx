@@ -2,6 +2,9 @@ import { useFieldArray, Control, UseFormRegister, UseFormWatch, UseFormSetValue,
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import {
   Select,
   SelectContent,
@@ -161,22 +164,22 @@ const InvoiceItemsTable = ({ control, register, watch, setValue, errors }: Invoi
 
                   {/* Đơn giá */}
                   <TableCell className="p-2">
-                    <Input
+                    <CurrencyInput
                       className="h-8 text-xs"
-                      type="number"
-                      min={0}
-                      {...register(`items.${index}.unit_price`, { valueAsNumber: true })}
+                      value={watchedItems[index]?.unit_price}
+                      onChange={(v) => setValue(`items.${index}.unit_price`, v)}
                     />
                   </TableCell>
 
                   {/* Chỉ số cũ */}
                   <TableCell className="p-2">
                     {showReadings ? (
-                      <Input
+                      <NumberInput
                         className="h-8 text-xs"
-                        type="number"
-                        {...register(`items.${index}.previous_reading`, { valueAsNumber: true })}
+                        value={watchedItems[index]?.previous_reading ?? null}
+                        onChange={(v) => setValue(`items.${index}.previous_reading`, v)}
                         onBlur={() => handleReadingChange(index)}
+                        allowDecimal
                       />
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -186,11 +189,12 @@ const InvoiceItemsTable = ({ control, register, watch, setValue, errors }: Invoi
                   {/* Chỉ số mới */}
                   <TableCell className="p-2">
                     {showReadings ? (
-                      <Input
+                      <NumberInput
                         className="h-8 text-xs"
-                        type="number"
-                        {...register(`items.${index}.current_reading`, { valueAsNumber: true })}
+                        value={watchedItems[index]?.current_reading ?? null}
+                        onChange={(v) => setValue(`items.${index}.current_reading`, v)}
                         onBlur={() => handleReadingChange(index)}
+                        allowDecimal
                       />
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -199,42 +203,42 @@ const InvoiceItemsTable = ({ control, register, watch, setValue, errors }: Invoi
 
                   {/* Số lượng */}
                   <TableCell className="p-2">
-                    <Input
+                    <NumberInput
                       className="h-8 text-xs"
-                      type="number"
+                      value={watchedItems[index]?.quantity}
+                      onChange={(v) => setValue(`items.${index}.quantity`, v)}
+                      allowDecimal
                       min={0}
-                      step="0.01"
-                      {...register(`items.${index}.quantity`, { valueAsNumber: true })}
                       readOnly={showReadings}
                     />
                   </TableCell>
 
                   {/* Hệ số */}
                   <TableCell className="p-2">
-                    <Input
+                    <NumberInput
                       className="h-8 text-xs"
-                      type="number"
+                      value={watchedItems[index]?.coefficient}
+                      onChange={(v) => setValue(`items.${index}.coefficient`, v)}
+                      allowDecimal
                       min={0}
-                      step="0.01"
-                      {...register(`items.${index}.coefficient`, { valueAsNumber: true })}
                     />
                   </TableCell>
 
                   {/* Từ ngày */}
                   <TableCell className="p-2">
-                    <Input
+                    <DateInput
                       className="h-8 text-xs"
-                      type="date"
-                      {...register(`items.${index}.from_date`)}
+                      value={(watchedItems[index]?.from_date as string) || ''}
+                      onChange={(v) => setValue(`items.${index}.from_date`, v || null)}
                     />
                   </TableCell>
 
                   {/* Đến ngày */}
                   <TableCell className="p-2">
-                    <Input
+                    <DateInput
                       className="h-8 text-xs"
-                      type="date"
-                      {...register(`items.${index}.to_date`)}
+                      value={(watchedItems[index]?.to_date as string) || ''}
+                      onChange={(v) => setValue(`items.${index}.to_date`, v || null)}
                     />
                   </TableCell>
 

@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -207,7 +208,13 @@ export function EditBedDialog({
                     <FormItem>
                       <FormLabel>Giá thuê (VNĐ/tháng) *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="1500000" {...field} />
+                        <CurrencyInput
+                          value={field.value ? parseFloat(field.value) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="1500000"
+                        />
                       </FormControl>
                       <FormDescription>
                         Giá thuê hàng tháng
@@ -224,7 +231,13 @@ export function EditBedDialog({
                     <FormItem>
                       <FormLabel>Tiền cọc (VNĐ) *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="3000000" {...field} />
+                        <CurrencyInput
+                          value={field.value ? parseFloat(field.value) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="3000000"
+                        />
                       </FormControl>
                       <FormDescription>
                         Tiền đặt cọc khi thuê

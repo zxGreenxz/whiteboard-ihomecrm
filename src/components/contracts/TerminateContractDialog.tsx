@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -249,10 +251,9 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
               {/* Ngày khách bỏ cọc */}
               <div className="space-y-2">
                 <Label htmlFor="forfeit_date">Ngày khách bỏ cọc *</Label>
-                <Input
-                  id="forfeit_date"
-                  type="date"
-                  {...register('actual_move_out_date')}
+                <DateInput
+                  value={watch('actual_move_out_date') || ''}
+                  onChange={(v) => setValue('actual_move_out_date', v, { shouldValidate: true, shouldDirty: true })}
                 />
                 {errors.actual_move_out_date && (
                   <p className="text-sm text-red-500">{errors.actual_move_out_date.message}</p>
@@ -304,10 +305,9 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="move_out_date">Ngày chuyển đi *</Label>
-                  <Input
-                    id="move_out_date"
-                    type="date"
-                    {...register('actual_move_out_date')}
+                  <DateInput
+                    value={watch('actual_move_out_date') || ''}
+                    onChange={(v) => setValue('actual_move_out_date', v, { shouldValidate: true, shouldDirty: true })}
                   />
                   {errors.actual_move_out_date && (
                     <p className="text-sm text-red-500">{errors.actual_move_out_date.message}</p>
@@ -384,9 +384,9 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Tiền cọc hoàn trả</Label>
-                    <Input
-                      type="number"
-                      {...register('deposit_refund', { valueAsNumber: true })}
+                    <CurrencyInput
+                      value={watch('deposit_refund')}
+                      onChange={(v) => setValue('deposit_refund', v, { shouldValidate: true, shouldDirty: true })}
                     />
                     <p className="text-xs text-gray-500">
                       Không bao gồm các khoản phí cấn trừ
@@ -394,18 +394,17 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                   </div>
                   <div className="space-y-2">
                     <Label>Phí phạt chấm dứt sớm</Label>
-                    <Input
-                      type="number"
-                      {...register('early_termination_fee', { valueAsNumber: true })}
+                    <CurrencyInput
+                      value={watch('early_termination_fee')}
+                      onChange={(v) => setValue('early_termination_fee', v, { shouldValidate: true, shouldDirty: true })}
                       placeholder="0"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Tiền căn hộ thừa</Label>
-                    <Input
-                      type="number"
+                    <CurrencyInput
                       value={proratedRent}
-                      disabled
+                      readOnly
                       className="bg-gray-100"
                     />
                     <p className="text-xs text-gray-500">
@@ -414,18 +413,18 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                   </div>
                   <div className="space-y-2">
                     <Label>Phí hư hỏng / vệ sinh</Label>
-                    <Input
-                      type="number"
-                      {...register('damage_fee', { valueAsNumber: true })}
+                    <CurrencyInput
+                      value={watch('damage_fee')}
+                      onChange={(v) => setValue('damage_fee', v, { shouldValidate: true, shouldDirty: true })}
                       placeholder="0"
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Phí vệ sinh</Label>
-                  <Input
-                    type="number"
-                    {...register('cleaning_fee', { valueAsNumber: true })}
+                  <CurrencyInput
+                    value={watch('cleaning_fee')}
+                    onChange={(v) => setValue('cleaning_fee', v, { shouldValidate: true, shouldDirty: true })}
                     placeholder="0"
                   />
                 </div>

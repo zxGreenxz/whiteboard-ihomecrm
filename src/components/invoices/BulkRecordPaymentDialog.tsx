@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -541,11 +542,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           </div>
           <div className="space-y-1">
             <Label>Ngày thanh toán</Label>
-            <Input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-            />
+            <DateInput value={paymentDate} onChange={setPaymentDate} />
           </div>
           <div className="space-y-1">
             <Label>&nbsp;</Label>

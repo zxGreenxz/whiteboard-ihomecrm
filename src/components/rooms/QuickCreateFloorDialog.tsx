@@ -8,6 +8,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useCreateFloor } from '@/hooks/useFloors';
@@ -74,13 +75,12 @@ export default function QuickCreateFloorDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="quick-floor-number">Số tầng *</Label>
-            <Input
+            <NumberInput
               id="quick-floor-number"
-              type="number"
               min={1}
-              value={floorNumber}
-              onChange={(e) => {
-                setFloorNumber(e.target.value);
+              value={floorNumber ? parseInt(floorNumber, 10) : null}
+              onChange={(v) => {
+                setFloorNumber(v ? String(v) : '');
                 if (floorNumberError) setFloorNumberError('');
               }}
               placeholder="Nhập số tầng"

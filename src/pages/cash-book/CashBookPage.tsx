@@ -3,6 +3,7 @@ import MainLayout from "@/components/layout/MainLayout";
 import { Search, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Table,
   TableBody,
@@ -186,16 +187,14 @@ const CashBookPage = () => {
           />
         </div>
 
-        <Input
-          type="date"
+        <DateInput
           value={dateRange.start}
-          onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+          onChange={(v) => setDateRange({ ...dateRange, start: v })}
           className="w-40"
         />
-        <Input
-          type="date"
+        <DateInput
           value={dateRange.end}
-          onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+          onChange={(v) => setDateRange({ ...dateRange, end: v })}
           className="w-40"
         />
       </div>

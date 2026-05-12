@@ -4,6 +4,7 @@ import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt } from 'luc
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -255,13 +256,12 @@ function SettingRow({ item, value, onChange }: SettingRowProps) {
 
         {item.type === 'number' && (
           <div className="flex items-center gap-2">
-            <Input
-              type="number"
+            <NumberInput
               className="w-[100px]"
               min={item.min}
               max={item.max}
               value={Number(value)}
-              onChange={(e) => onChange(item.key, Number(e.target.value))}
+              onChange={(v) => onChange(item.key, v)}
             />
             {item.suffix && (
               <span className="text-sm text-muted-foreground">{item.suffix}</span>

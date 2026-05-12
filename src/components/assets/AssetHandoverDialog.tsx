@@ -6,6 +6,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { useCreateAssetHandover } from "@/hooks/useAssets";
 import { useContracts } from "@/hooks/useContracts";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,7 +73,7 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
                 <FormItem><FormLabel>Loại *</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="CHECK_IN">Nhận căn hộ</SelectItem><SelectItem value="CHECK_OUT">Trả căn hộ</SelectItem></SelectContent></Select><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="handover_date" render={({ field }) => (
-                <FormItem><FormLabel>Ngày *</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Ngày *</FormLabel><FormControl><DateInput value={field.value || ''} onChange={field.onChange} onBlur={field.onBlur} name={field.name} /></FormControl><FormMessage /></FormItem>
               )} />
             </div>
             <FormField control={form.control} name="items" render={({ field }) => (

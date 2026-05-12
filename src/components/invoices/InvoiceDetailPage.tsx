@@ -46,7 +46,7 @@ import InvoiceSendActions from './InvoiceSendActions';
 // ---------------------------------------------------------------------------
 
 const formatVND = (amount: number) =>
-  new Intl.NumberFormat('vi-VN').format(Math.round(amount));
+  new Intl.NumberFormat('vi-VN').format(Math.round(amount)) + ' đ';
 
 const formatDate = (dateStr: string | null | undefined) => {
   if (!dateStr) return '—';

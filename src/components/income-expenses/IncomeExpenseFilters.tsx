@@ -5,7 +5,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
@@ -81,19 +81,17 @@ export function IncomeExpenseFiltersBar({
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {/* Từ ngày */}
-      <Input
-        type="date"
+      <DateInput
         value={filters.start_date ?? ""}
-        onChange={(e) => handleChange({ start_date: e.target.value || null })}
+        onChange={(v) => handleChange({ start_date: v || null })}
         className="w-[140px] h-9 text-sm"
         placeholder="Từ ngày"
       />
 
       {/* Đến ngày */}
-      <Input
-        type="date"
+      <DateInput
         value={filters.end_date ?? ""}
-        onChange={(e) => handleChange({ end_date: e.target.value || null })}
+        onChange={(v) => handleChange({ end_date: v || null })}
         className="w-[140px] h-9 text-sm"
         placeholder="Đến ngày"
       />

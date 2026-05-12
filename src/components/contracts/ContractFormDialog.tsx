@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,
   SelectContent,
@@ -40,6 +42,7 @@ import {
   useSyncContractCustomers,
   useUpdateContract,
 } from "@/hooks/useContracts";
+import { formatCurrency } from "@/lib/utils";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useBeds } from "@/hooks/useBeds";
@@ -71,9 +74,7 @@ interface SelectedService extends ServiceBasic {
   quantity: number;
 }
 
-function formatVND(amount: number): string {
-  return new Intl.NumberFormat("vi-VN").format(amount) + " đ";
-}
+const formatVND = (amount: number) => formatCurrency(amount);
 
 export function ContractFormDialog({
   open,
@@ -725,13 +726,11 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Tiền thuê</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            {...field}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value))
-                            }
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -803,13 +802,11 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Tiền cọc</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            {...field}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value))
-                            }
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -825,15 +822,13 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Đã đặt cọc</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
+                          <CurrencyInput
                             readOnly
                             className="bg-muted"
-                            {...field}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value))
-                            }
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -862,14 +857,12 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Số tháng giảm</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
+                          <NumberInput
                             min={0}
-                            {...field}
-                            value={field.value ?? 0}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value))
-                            }
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -885,14 +878,11 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Số tiền giảm/tháng</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            {...field}
-                            value={field.value ?? 0}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value))
-                            }
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -954,46 +944,44 @@ export function ContractFormDialog({
                               {service.pricing_type === "METERED" ? "Có" : "—"}
                             </td>
                             <td className="px-3 py-2">
-                              <Input
-                                type="number"
+                              <NumberInput
+                                allowDecimal
                                 min={0}
                                 className="w-24 h-8 text-right ml-auto"
                                 value={service.initial_reading}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                   handleServiceFieldChange(
                                     service.id,
                                     "initial_reading",
-                                    Number(e.target.value)
+                                    v
                                   )
                                 }
                               />
                             </td>
                             <td className="px-3 py-2">
-                              <Input
-                                type="number"
+                              <NumberInput
                                 min={1}
                                 className="w-20 h-8 text-right ml-auto"
                                 value={service.quantity}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                   handleServiceFieldChange(
                                     service.id,
                                     "quantity",
-                                    Number(e.target.value)
+                                    v
                                   )
                                 }
                               />
                             </td>
                             <td className="px-3 py-2">
-                              <Input
-                                type="number"
-                                min={0}
-                                className="w-28 h-8 text-right ml-auto"
+                              <CurrencyInput
+                                suffix={false}
+                                className="w-32 h-8 text-right ml-auto"
                                 value={service.unit_price}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                   handleServiceFieldChange(
                                     service.id,
                                     "unit_price",
-                                    Number(e.target.value)
+                                    v
                                   )
                                 }
                               />

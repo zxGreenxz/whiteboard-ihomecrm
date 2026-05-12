@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -338,7 +339,14 @@ export function EditBuildingDialog({
                     <FormItem>
                       <FormLabel>Số tầng</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="10" {...field} />
+                        <NumberInput
+                          min={0}
+                          value={field.value ? parseInt(field.value, 10) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="10"
+                        />
                       </FormControl>
                       <FormDescription>
                         Tổng số tầng của tòa nhà

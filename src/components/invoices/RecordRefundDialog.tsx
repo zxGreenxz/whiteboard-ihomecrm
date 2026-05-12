@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -165,7 +166,10 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
 
           <div className="space-y-2">
             <Label htmlFor="payment_date">Ngày hoàn trả *</Label>
-            <Input id="payment_date" type="date" {...register('payment_date')} />
+            <DateInput
+              value={watch('payment_date') || ''}
+              onChange={(v) => setValue('payment_date', v, { shouldValidate: true, shouldDirty: true })}
+            />
             {errors.payment_date && (
               <p className="text-sm text-red-500">{errors.payment_date.message}</p>
             )}

@@ -19,6 +19,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,
   SelectContent,
@@ -193,7 +195,14 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Tầng bắt đầu *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="1" {...field} />
+                        <NumberInput
+                          min={0}
+                          value={field.value ? parseInt(field.value, 10) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="1"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -207,7 +216,14 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Tầng kết thúc *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="5" {...field} />
+                        <NumberInput
+                          min={0}
+                          value={field.value ? parseInt(field.value, 10) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="5"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -221,7 +237,14 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Số căn hộ/tầng *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="10" {...field} />
+                        <NumberInput
+                          min={1}
+                          value={field.value ? parseInt(field.value, 10) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="10"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -257,7 +280,13 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Giá thuê mặc định (VNĐ/tháng) *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="3000000" {...field} />
+                        <CurrencyInput
+                          value={field.value ? parseFloat(field.value) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="3000000"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -271,7 +300,13 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Tiền cọc mặc định (VNĐ) *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="6000000" {...field} />
+                        <CurrencyInput
+                          value={field.value ? parseFloat(field.value) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="6000000"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -288,7 +323,15 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Diện tích mặc định (m²)</FormLabel>
                       <FormControl>
-                        <Input type="number" step="0.01" placeholder="25" {...field} />
+                        <NumberInput
+                          allowDecimal
+                          min={0}
+                          value={field.value ? parseFloat(field.value) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="25"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -302,7 +345,14 @@ export function BulkCreateRoomsDialog({ open, onOpenChange }: BulkCreateRoomsDia
                     <FormItem>
                       <FormLabel>Số người tối đa</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="2" {...field} />
+                        <NumberInput
+                          min={1}
+                          value={field.value ? parseInt(field.value, 10) : null}
+                          onChange={(v) => field.onChange(v ? String(v) : "")}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          placeholder="2"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

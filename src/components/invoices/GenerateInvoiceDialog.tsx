@@ -12,6 +12,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -420,10 +423,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="billing_period_start">Kỳ thanh toán từ *</Label>
-              <Input
-                id="billing_period_start"
-                type="date"
-                {...register('billing_period_start')}
+              <DateInput
+                value={watch('billing_period_start') || ''}
+                onChange={(v) => setValue('billing_period_start', v, { shouldValidate: true, shouldDirty: true })}
               />
               {errors.billing_period_start && (
                 <p className="text-sm text-red-500">{errors.billing_period_start.message}</p>
@@ -432,10 +434,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
             <div className="space-y-2">
               <Label htmlFor="billing_period_end">Đến *</Label>
-              <Input
-                id="billing_period_end"
-                type="date"
-                {...register('billing_period_end')}
+              <DateInput
+                value={watch('billing_period_end') || ''}
+                onChange={(v) => setValue('billing_period_end', v, { shouldValidate: true, shouldDirty: true })}
               />
               {errors.billing_period_end && (
                 <p className="text-sm text-red-500">{errors.billing_period_end.message}</p>
@@ -444,10 +445,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
             <div className="space-y-2">
               <Label htmlFor="issue_date">Ngày phát hành *</Label>
-              <Input
-                id="issue_date"
-                type="date"
-                {...register('issue_date')}
+              <DateInput
+                value={watch('issue_date') || ''}
+                onChange={(v) => setValue('issue_date', v, { shouldValidate: true, shouldDirty: true })}
               />
               {errors.issue_date && (
                 <p className="text-sm text-red-500">{errors.issue_date.message}</p>
@@ -456,10 +456,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
             <div className="space-y-2">
               <Label htmlFor="due_date">Hạn thanh toán *</Label>
-              <Input
-                id="due_date"
-                type="date"
-                {...register('due_date')}
+              <DateInput
+                value={watch('due_date') || ''}
+                onChange={(v) => setValue('due_date', v, { shouldValidate: true, shouldDirty: true })}
               />
               {errors.due_date && (
                 <p className="text-sm text-red-500">{errors.due_date.message}</p>
@@ -569,18 +568,18 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                         />
                       </td>
                       <td className="px-4 py-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          {...register(`items.${index}.quantity`, { valueAsNumber: true })}
+                        <NumberInput
+                          value={watchedItems[index]?.quantity}
+                          onChange={(v) => setValue(`items.${index}.quantity`, v)}
                           onBlur={() => updateItemAmount(index)}
+                          allowDecimal
                           className="w-20"
                         />
                       </td>
                       <td className="px-4 py-2">
-                        <Input
-                          type="number"
-                          {...register(`items.${index}.unit_price`, { valueAsNumber: true })}
+                        <CurrencyInput
+                          value={watchedItems[index]?.unit_price}
+                          onChange={(v) => setValue(`items.${index}.unit_price`, v)}
                           onBlur={() => updateItemAmount(index)}
                           className="w-32"
                         />

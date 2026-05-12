@@ -37,3 +37,6 @@ CLAUDE.local.md
 # Excel data dumps
 data excel/
 dataexcel/
+
+# Playwright MCP outputs
+.playwright-mcp/

@@ -4,6 +4,9 @@ import * as z from "zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumberInput } from "@/components/ui/number-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -133,17 +136,17 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <FormField control={form.control} name="quantity" render={({ field }) => (
-                  <FormItem><FormLabel>Số lượng *</FormLabel><FormControl><Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value) || 1)} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>Số lượng *</FormLabel><FormControl><NumberInput min={1} value={field.value} onChange={(v) => field.onChange(v || 1)} onBlur={field.onBlur} name={field.name} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="condition" render={({ field }) => (
                   <FormItem><FormLabel>Tình trạng *</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="NEW">Mới</SelectItem><SelectItem value="GOOD">Tốt</SelectItem><SelectItem value="FAIR">Khá</SelectItem><SelectItem value="POOR">Kém</SelectItem><SelectItem value="BROKEN">Hỏng</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="purchase_price" render={({ field }) => (
-                  <FormItem><FormLabel>Giá mua *</FormLabel><FormControl><Input type="number" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>Giá mua *</FormLabel><FormControl><CurrencyInput value={field.value} onChange={field.onChange} onBlur={field.onBlur} name={field.name} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
               <FormField control={form.control} name="purchase_date" render={({ field }) => (
-                <FormItem><FormLabel>Ngày mua</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Ngày mua</FormLabel><FormControl><DateInput value={field.value || ''} onChange={field.onChange} onBlur={field.onBlur} name={field.name} /></FormControl><FormMessage /></FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="building_id" render={({ field }) => (

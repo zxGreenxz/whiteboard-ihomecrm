@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -89,21 +90,17 @@ export default function RenewalsTransfersReport() {
       </div>
       <div className="space-y-1">
         <Label htmlFor="startDate">Từ ngày</Label>
-        <Input
-          id="startDate"
-          type="date"
+        <DateInput
           value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
+          onChange={setStartDate}
           className="w-[180px]"
         />
       </div>
       <div className="space-y-1">
         <Label htmlFor="endDate">Đến ngày</Label>
-        <Input
-          id="endDate"
-          type="date"
+        <DateInput
           value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
+          onChange={setEndDate}
           className="w-[180px]"
         />
       </div>

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useUpdateContract } from '@/hooks/useContracts';
@@ -37,6 +38,8 @@ const RegisterMoveOutDialog = ({ open, onOpenChange, contract }: RegisterMoveOut
         register,
         handleSubmit,
         formState: { errors },
+        watch,
+        setValue,
         reset,
     } = useForm<FormData>({
         resolver: zodResolver(schema),
@@ -79,7 +82,10 @@ const RegisterMoveOutDialog = ({ open, onOpenChange, contract }: RegisterMoveOut
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                     <div className="space-y-2">
                         <Label>Ngày sẽ chuyển đi *</Label>
-                        <Input type="date" {...register('expected_move_out_date')} />
+                        <DateInput
+                            value={watch('expected_move_out_date') || ''}
+                            onChange={(v) => setValue('expected_move_out_date', v, { shouldValidate: true, shouldDirty: true })}
+                        />
                         {errors.expected_move_out_date && (
                             <p className="text-sm text-red-500">{errors.expected_move_out_date.message}</p>
                         )}

@@ -18,6 +18,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -227,10 +229,11 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                       <FormItem>
                         <FormLabel>Số tiền cọc *</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
                           />
                         </FormControl>
                         <FormMessage />
@@ -245,7 +248,12 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                       <FormItem>
                         <FormLabel>Ngày đặt cọc *</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -259,7 +267,12 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                       <FormItem>
                         <FormLabel>Giữ căn hộ đến *</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

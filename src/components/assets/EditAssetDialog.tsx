@@ -5,6 +5,9 @@ import * as z from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { NumberInput } from "@/components/ui/number-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -196,7 +199,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
                     <FormItem>
                       <FormLabel>Số lượng *</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value) || 1)} />
+                        <NumberInput min={1} value={field.value} onChange={(v) => field.onChange(v || 1)} onBlur={field.onBlur} name={field.name} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -221,7 +224,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
                     <FormItem>
                       <FormLabel>Giá trị (VNĐ) *</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+                        <CurrencyInput value={field.value} onChange={field.onChange} onBlur={field.onBlur} name={field.name} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -231,7 +234,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
                 <FormField control={form.control} name="purchase_date" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Ngày mua</FormLabel>
-                    <FormControl><Input type="date" {...field} /></FormControl>
+                    <FormControl><DateInput value={field.value || ''} onChange={field.onChange} onBlur={field.onBlur} name={field.name} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

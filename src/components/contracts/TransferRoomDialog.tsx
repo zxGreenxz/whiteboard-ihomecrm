@@ -23,7 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
@@ -286,17 +287,12 @@ export function TransferRoomDialog({
                 <FormItem>
                   <FormLabel>Giá thuê mới</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
+                    <CurrencyInput
                       placeholder="Giữ nguyên nếu không thay đổi"
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(
-                          e.target.value === "" ? undefined : Number(e.target.value)
-                        )
-                      }
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -314,7 +310,12 @@ export function TransferRoomDialog({
                     Ngày chuyển <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <DateInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

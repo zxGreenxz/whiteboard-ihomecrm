@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
 import {
   Form,
@@ -275,11 +276,12 @@ export default function TaskTypeFormDialog({
                 <FormItem>
                   <FormLabel>Deadline liên hệ KH (tính theo phút, để 0 nếu không áp dụng)</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min={0}
-                      {...field}
-                      onChange={(e) => field.onChange(Number(e.target.value))}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -295,11 +297,12 @@ export default function TaskTypeFormDialog({
                 <FormItem>
                   <FormLabel>Deadline tiếp nhận công việc (tính theo phút, để 0 nếu không áp dụng)</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min={0}
-                      {...field}
-                      onChange={(e) => field.onChange(Number(e.target.value))}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />
@@ -315,11 +318,12 @@ export default function TaskTypeFormDialog({
                 <FormItem>
                   <FormLabel>Deadline hoàn thành công việc (tính theo phút, để 0 nếu không áp dụng)</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min={0}
-                      {...field}
-                      onChange={(e) => field.onChange(Number(e.target.value))}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
                     />
                   </FormControl>
                   <FormMessage />

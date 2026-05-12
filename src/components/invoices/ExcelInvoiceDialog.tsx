@@ -13,6 +13,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { NumberInput } from '@/components/ui/number-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -404,19 +407,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </div>
           <div className="space-y-1">
             <Label>Ngày phát hành</Label>
-            <Input
-              type="date"
-              value={issueDate}
-              onChange={(e) => setIssueDate(e.target.value)}
-            />
+            <DateInput value={issueDate} onChange={setIssueDate} />
           </div>
           <div className="space-y-1">
             <Label>Hạn thanh toán</Label>
-            <Input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+            <DateInput value={dueDate} onChange={setDueDate} />
           </div>
         </div>
 
@@ -473,85 +468,76 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                     </td>
                     <td className="p-1 border font-medium">{r.room_name}</td>
                     <td className="p-1 border">
-                      <Input
+                      <CurrencyInput
                         className="h-7 text-right"
-                        type="number"
+                        suffix={false}
                         value={r.rent_price}
-                        onChange={(e) =>
-                          updateRow(i, { rent_price: Number(e.target.value) || 0 })
-                        }
+                        onChange={(v) => updateRow(i, { rent_price: v })}
                       />
                     </td>
                     <td className="p-1 border">
-                      <Input
+                      <NumberInput
                         className="h-7 text-right"
-                        type="number"
                         value={r.occupants}
-                        onChange={(e) =>
-                          updateRow(i, { occupants: Number(e.target.value) || 0 })
-                        }
+                        onChange={(v) => updateRow(i, { occupants: v })}
                       />
                     </td>
                     <td className="p-1 border text-right text-slate-600">
                       {r.meter_id ? fmt(r.prev_reading) : '—'}
                     </td>
                     <td className="p-1 border">
-                      <Input
+                      <NumberInput
                         className="h-7 text-right"
-                        type="number"
                         disabled={!r.meter_id}
-                        value={r.current_reading}
-                        onChange={(e) =>
+                        allowDecimal
+                        value={r.current_reading === '' ? null : r.current_reading}
+                        onChange={(v) =>
                           updateRow(i, {
-                            current_reading: e.target.value === '' ? '' : Number(e.target.value),
+                            current_reading: v === 0 ? '' : v,
                           })
                         }
                       />
                     </td>
                     <td className="p-1 border">
-                      <Input
+                      <CurrencyInput
                         className="h-7 text-right"
-                        type="number"
+                        suffix={false}
                         value={Math.round(r.electric_amount)}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           updateRow(i, {
-                            electric_amount: Number(e.target.value) || 0,
+                            electric_amount: v,
                             electric_overridden: true,
                           })
                         }
                       />
                     </td>
                     <td className="p-1 border">
-                      <Input
+                      <CurrencyInput
                         className="h-7 text-right"
-                        type="number"
+                        suffix={false}
                         value={Math.round(r.water_amount)}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           updateRow(i, {
-                            water_amount: Number(e.target.value) || 0,
+                            water_amount: v,
                             water_overridden: true,
                           })
                         }
                       />
                     </td>
                     <td className="p-1 border">
-                      <Input
+                      <CurrencyInput
                         className="h-7 text-right"
-                        type="number"
+                        suffix={false}
                         value={r.pdv_amount}
-                        onChange={(e) =>
-                          updateRow(i, { pdv_amount: Number(e.target.value) || 0 })
-                        }
+                        onChange={(v) => updateRow(i, { pdv_amount: v })}
                       />
                     </td>
                     <td className="p-1 border">
-                      <Input
+                      <CurrencyInput
                         className="h-7 text-right"
-                        type="number"
+                        suffix={false}
                         value={r.discount}
-                        onChange={(e) =>
-                          updateRow(i, { discount: Number(e.target.value) || 0 })
-                        }
+                        onChange={(v) => updateRow(i, { discount: v })}
                       />
                     </td>
                     <td className="p-1 border text-right font-semibold bg-amber-50">

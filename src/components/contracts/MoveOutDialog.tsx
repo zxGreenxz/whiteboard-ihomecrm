@@ -16,7 +16,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
@@ -87,7 +87,12 @@ export function MoveOutDialog({ open, onOpenChange, contract }: MoveOutDialogPro
                     Ngày dự kiến chuyển đi <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <DateInput
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
