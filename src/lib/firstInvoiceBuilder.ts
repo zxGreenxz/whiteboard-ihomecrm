@@ -128,15 +128,31 @@ export function buildFirstInvoiceItems(
     });
   }
 
-  // SERVICE — dịch vụ cố định, bỏ qua dịch vụ đồng hồ.
+  // SERVICE — dịch vụ cố định: prorate theo cùng tỉ lệ ngày như tiền thuê
+  // (dịch vụ đồng hồ bỏ qua, sẽ chốt khi ghi chỉ số).
+  const proratedDays = getProratedDays(
+    input.start_billing_date,
+    input.end_billing_date,
+  );
+  const startDaysInMonth = input.start_billing_date
+    ? daysInMonthOf(input.start_billing_date)
+    : 0;
+  const shouldProrate =
+    proratedDays > 0 && startDaysInMonth > 0 && proratedDays !== startDaysInMonth;
   for (const s of input.services) {
     if (METERED_PRICING.has(s.pricing_type ?? "")) continue;
     if (!s.unit_price || s.unit_price <= 0) continue;
+    const proratedPrice = shouldProrate
+      ? Math.round((s.unit_price / startDaysInMonth) * proratedDays)
+      : s.unit_price;
+    const description = shouldProrate
+      ? `${s.name} (${proratedDays} ngày)`
+      : s.name;
     items.push({
       id: nextId("svc"),
       type: "SERVICE",
-      description: s.name,
-      unit_price: s.unit_price,
+      description,
+      unit_price: proratedPrice,
       quantity: 1,
       service_id: s.service_id,
     });
