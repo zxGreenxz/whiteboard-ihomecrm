@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { contractFormSchema } from "@/lib/contractValidation";
 import type { ContractFormData } from "@/lib/contractValidation";
@@ -327,19 +328,52 @@ export function ContractFormDialog({
     );
   };
 
+  // Hiển thị toast cho mọi điều kiện chặn không lưu được (zod + business
+  // rule). Người dùng cần thấy ngay vì sao bấm Lưu mà không lưu được.
+  const FIELD_LABELS: Record<string, string> = {
+    room_id: "Phòng",
+    bed_id: "Giường",
+    signed_date: "Ngày ký",
+    start_date: "Ngày bắt đầu",
+    end_date: "Hạn hợp đồng",
+    rent_price: "Tiền thuê",
+    total_deposit: "Tiền cọc",
+    deposit_paid: "Đã đặt cọc",
+    payment_cycle: "Chu kỳ thanh toán",
+    start_billing_date: "Ngày BĐ tính tiền",
+    end_billing_date: "Đến ngày",
+    discount_months: "Số tháng giảm",
+    discount_amount_per_month: "Số tiền giảm/tháng",
+  };
+  const onInvalid = (errors: Record<string, any>) => {
+    const entries = Object.entries(errors).filter(([k]) => k !== "root");
+    if (entries.length === 0) return;
+    const lines = entries.slice(0, 4).map(([key, err]) => {
+      const label = FIELD_LABELS[key] || key;
+      const msg = (err as any)?.message || "không hợp lệ";
+      return `• ${label}: ${msg}`;
+    });
+    const extra = entries.length > 4 ? `\n(+${entries.length - 4} lỗi khác)` : "";
+    toast.error("Không thể lưu hợp đồng", {
+      description: lines.join("\n") + extra,
+    });
+    // Cuộn về đầu để user thấy chỗ lỗi đầu tiên.
+    try {
+      const el = document.querySelector('[data-slot="dialog-content"]');
+      if (el) el.scrollTop = 0;
+    } catch {}
+  };
+
   // ---- Submit handler ----
   const onSubmit = (data: ContractFormData) => {
     // Resident requires at least one customer (representative tenant) on a
     // contract — fail fast in the UI rather than letting Postgres throw a
     // confusing NOT NULL violation on tenant_id.
     if (selectedCustomers.length === 0) {
-      form.setError("root" as any, {
-        type: "manual",
-        message: "Vui lòng chọn ít nhất một khách hàng cho hợp đồng.",
+      toast.error("Không thể lưu hợp đồng", {
+        description: "Vui lòng chọn ít nhất một khách hàng cho hợp đồng.",
       });
-      // also surface as toast via window.alert fallback
       try {
-        // best-effort UX nudge
         const el = document.querySelector('[data-slot="dialog-content"]');
         if (el) el.scrollTop = 0;
       } catch {}
@@ -466,7 +500,7 @@ export function ContractFormDialog({
 
         <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-6">
               {/* ===== Section 1: Thông tin chung ===== */}
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-foreground border-b pb-2">
