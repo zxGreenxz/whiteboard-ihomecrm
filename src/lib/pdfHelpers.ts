@@ -156,7 +156,7 @@ export function generateInvoiceHTML(invoice: {
 </head>
 <body>
   <div class="header">
-    <div class="company-name">${invoice.company?.name || 'iHomeCRM'}</div>
+    <div class="company-name">${invoice.company?.name || 'CRM'}</div>
     <div>${invoice.company?.address || ''}</div>
     <div>ĐT: ${invoice.company?.phone || ''} | Email: ${invoice.company?.email || ''}</div>
     <div class="invoice-title">HÓA ĐƠN DỊCH VỤ</div>

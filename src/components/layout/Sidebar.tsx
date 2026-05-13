@@ -297,7 +297,7 @@ const Sidebar = ({ className }: SidebarProps) => {
           </Link>
         </div>
         <div className="text-xs text-sidebar-foreground/70">
-          <p className="font-medium text-sidebar-foreground">iHomeCRM v1.0.0</p>
+          <p className="font-medium text-sidebar-foreground">CRM v1.0.0</p>
           <p>Quản lý bất động sản</p>
         </div>
       </div>

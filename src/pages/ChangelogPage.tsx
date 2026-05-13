@@ -16,7 +16,7 @@ const changelog: ChangelogEntry[] = [
     date: "2025-01-15",
     type: "major",
     changes: [
-      "Ra mắt phiên bản chính thức iHomeCRM Resident",
+      "Ra mắt phiên bản chính thức CRM Resident",
       "Đồng bộ toàn bộ giao diện với tài liệu hướng dẫn",
       "Đổi thuật ngữ: Phòng → Căn hộ, Sự cố → Công việc, Leads → Khách hẹn",
       "Tái cấu trúc Sidebar theo SUMMARY.md",

@@ -82,7 +82,7 @@ export interface CodeGenerationConfig {
 
 // Default values
 const DEFAULT_COMPANY_INFO: CompanyInfo = {
-  company_name: 'iHomeCRM',
+  company_name: 'CRM',
   company_address: '',
   company_phone: '',
   company_email: '',

@@ -335,7 +335,7 @@ function WelcomeStep() {
       <div className="mx-auto h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
         <Sparkles className="h-8 w-8 text-primary" />
       </div>
-      <h3 className="text-lg font-semibold">Chào mừng bạn đến với iHomeCRM!</h3>
+      <h3 className="text-lg font-semibold">Chào mừng bạn đến với CRM!</h3>
       <p className="text-muted-foreground text-sm leading-relaxed">
         Hãy cùng thiết lập hệ thống quản lý bất động sản của bạn. Chúng tôi sẽ hướng dẫn bạn qua
         các bước cơ bản để bắt đầu sử dụng.

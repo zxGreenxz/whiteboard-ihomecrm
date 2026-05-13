@@ -1,5 +1,5 @@
 // Contract template variable codes — 99 placeholders auto-substituted at print time.
-// Grouped exactly as the iHomeCRM template-print spec lists them.
+// Grouped exactly as the CRM template-print spec lists them.
 
 export interface TemplateCodeEntry {
   code: string;

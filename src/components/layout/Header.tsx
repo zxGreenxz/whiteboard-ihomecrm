@@ -57,7 +57,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             <Building2 className="h-5 w-5 text-white" />
           </div>
           <div className="hidden sm:flex sm:flex-col">
-            <span className="text-lg font-bold text-primary">iHomeCRM</span>
+            <span className="text-lg font-bold text-primary">CRM</span>
             <span className="text-[10px] text-muted-foreground -mt-1">Quản lý bất động sản</span>
           </div>
         </div>

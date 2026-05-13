@@ -251,7 +251,7 @@ function generateA4Content(invoice: InvoiceWithRelations): string {
 </head>
 <body>
   <div class="invoice-header">
-    <div class="company-name">iHomeCRM</div>
+    <div class="company-name">CRM</div>
     <div class="company-info">Hệ thống quản lý bất động sản</div>
   </div>
 
@@ -415,7 +415,7 @@ function generateThermalContent(invoice: InvoiceWithRelations): string {
 </head>
 <body>
   <div class="header">
-    <div class="store-name">iHomeCRM</div>
+    <div class="store-name">CRM</div>
     <div class="store-info">Hệ thống quản lý BĐS</div>
   </div>
 

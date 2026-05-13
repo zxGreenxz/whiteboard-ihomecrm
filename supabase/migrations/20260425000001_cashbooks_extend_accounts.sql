@@ -1,6 +1,6 @@
 -- =============================================
 -- Migration: Cashbooks (Tài khoản) — extend accounts table
--- Goal: align ihomecrm `accounts` table with Resident `cashbook` model
+-- Goal: align CRM `accounts` table with Resident `cashbook` model
 -- Adds: code, description, bank_account_holder, initial_amount, initial_date,
 --       lock_date, supports type='ewallet'.
 -- Adds: helper view `accounts_with_balance` for "Tồn quỹ".

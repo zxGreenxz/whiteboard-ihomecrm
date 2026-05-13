@@ -2,7 +2,7 @@
 // 99 contract placeholders. Uses docxtemplater + pizzip for client-side
 // .docx generation (no server). The placeholder syntax in templates is
 // `{NAME}` (scalar) and `{#NAME}...{/NAME}` (loop), matching the spec
-// shipped with iHomeCRM contract code reference.
+// shipped with CRM contract code reference.
 
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";

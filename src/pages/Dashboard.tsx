@@ -41,7 +41,7 @@ const Dashboard = () => {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Bảng tin</h1>
             <p className="text-muted-foreground mt-1">
-              Chào mừng bạn đến với iHomeCRM - Hệ thống quản lý bất động sản
+              Chào mừng bạn đến với CRM - Hệ thống quản lý bất động sản
             </p>
           </div>
           <div className="flex gap-2 items-center">

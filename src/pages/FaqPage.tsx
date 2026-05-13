@@ -65,7 +65,7 @@ export default function FaqPage() {
   return (
     <MainLayout
       title="Câu hỏi thường gặp"
-      subtitle="Giải đáp các thắc mắc phổ biến về hệ thống iHomeCRM"
+      subtitle="Giải đáp các thắc mắc phổ biến về hệ thống CRM"
       icon={HelpCircle}
     >
       <div className="max-w-3xl">

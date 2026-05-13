@@ -127,7 +127,7 @@ serve(async (req) => {
     }
 
     // Build system message with context
-    let systemMessage = `Bạn là trợ lý AI cá nhân thông minh của người dùng trong hệ thống quản lý bất động sản iHomeCRM.
+    let systemMessage = `Bạn là trợ lý AI cá nhân thông minh của người dùng trong hệ thống quản lý bất động sản CRM.
 
 Nhiệm vụ của bạn:
 1. Trả lời các câu hỏi về dữ liệu: hợp đồng, khách thuê, tòa nhà, phòng, hóa đơn, thanh toán
