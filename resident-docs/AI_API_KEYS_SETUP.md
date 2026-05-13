@@ -54,7 +54,7 @@ Migration này tạo:
 
 ## 🎨 Bước 3: Thêm API Keys vào UI
 
-1. Mở app: `https://ihomecrm.vercel.app/settings/ai-assistant`
+1. Mở app: `https://ptcrm.vercel.app/settings/ai-assistant`
 2. Chuyển sang tab **"Cài đặt API"**
 3. Click **"Thêm API Key"**
 4. Chọn provider

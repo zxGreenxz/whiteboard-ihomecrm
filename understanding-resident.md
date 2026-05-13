@@ -4,7 +4,7 @@
 > - Crawl thực tế (HTML/text/screenshot/API JSON) trong [crawl-resident/data/](crawl-resident/data/) và [crawl-resident/data-deep/](crawl-resident/data-deep/)
 > - Tài liệu chính thức: [thu-chi-va-tai-khoan.md](thu-chi-va-tai-khoan.md)
 >
-> Mục đích: làm chuẩn để build/tinh chỉnh 2 trang tương ứng tại `ihomecrm`:
+> Mục đích: làm chuẩn để build/tinh chỉnh 2 trang tương ứng tại `crm`:
 > - `/income-expense` (Thu chi) — đã có, cần bổ sung
 > - `/setting/finance/cashbooks` (Tài khoản) — chưa có, cần dựng mới
 
@@ -326,11 +326,11 @@ Toast khi thành công: `"Thông tin đã được cập nhật lưu trữ thàn
 
 ---
 
-## 3. So sánh với code hiện tại của ihomecrm
+## 3. So sánh với code hiện tại của crm
 
 ### 3.1. Trang `/income-expense` — đã có `IncomeExpensePage.tsx`
 
-| Yếu tố Resident | ihomecrm hiện tại | Ghi chú |
+| Yếu tố Resident | crm hiện tại | Ghi chú |
 |---|---|---|
 | 3 thẻ stats Thu/Chi/Thu-Chi | ✅ `IncomeExpenseStats` | OK |
 | Inline filter bar | ✅ `IncomeExpenseFiltersBar` | OK (có khu vực, tòa, phòng, giường, tài khoản…) |
@@ -355,7 +355,7 @@ Hiện có:
 
 **Thiếu so với Resident:**
 
-| Field Resident | ihomecrm `accounts` | Cần làm |
+| Field Resident | crm `accounts` | Cần làm |
 |---|---|---|
 | `code` (TKxxxxxx) | ❌ | Thêm cột + auto-generate trigger |
 | `type = 'ewallet'` | ❌ chỉ `bank/cash` | Mở rộng CHECK constraint |
@@ -400,13 +400,13 @@ Trên trang Thu chi, validation cũng cần cập nhật: nếu cashbook đã kh
 4. **Bổ sung trang Thu chi**:
    - Soi lại `IncomeExpenseFiltersBar` có expose toggle "Phiếu thu/Phiếu chi" + "Trạng thái duyệt" chưa, thêm nếu thiếu.
    - Validation client-side khi `account.lock_date && voucher_date <= lock_date`.
-5. **QA**: chạy `vercel dev` / `npm run dev`, mở 2 tab so sánh side-by-side ihomecrm vs Resident.
+5. **QA**: chạy `vercel dev` / `npm run dev`, mở 2 tab so sánh side-by-side crm vs Resident.
 
 ---
 
 ## 5. Mapping hiển thị → DB (cheat-sheet)
 
-| Resident UI | API field | ihomecrm DB |
+| Resident UI | API field | crm DB |
 |---|---|---|
 | Mã `TC962620` | `code` | `income_expenses.code` |
 | Mã `TK025170` | `code` | `accounts.code` (cần thêm) |

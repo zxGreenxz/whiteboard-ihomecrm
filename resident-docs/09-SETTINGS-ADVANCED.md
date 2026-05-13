@@ -2,7 +2,7 @@
 
 ## Tổng Quan
 
-Settings & Advanced Features là hệ thống quản lý cấu hình toàn cầu cho hệ thống iHome CRM. Cho phép:
+Settings & Advanced Features là hệ thống quản lý cấu hình toàn cầu cho hệ thống CRM. Cho phép:
 
 - **Cấu hình doanh nghiệp**: Thông tin công ty, logo, địa chỉ, MST
 - **Tùy chỉnh nghiệp vụ**: Hợp đồng, hóa đơn, mẫu biểu
@@ -1002,7 +1002,7 @@ async function createInvoiceWithAutoCode() {
 │                                                         │
 │  PUSH NOTIFICATION:                                     │
 │  ☑ Bật push notification                               │
-│  Firebase Project: ihomecrm                            │
+│  Firebase Project: crm                            │
 │  Server Key: ________________                          │
 │  [Kiểm tra kết nối]                                    │
 │                                                         │
@@ -2015,4 +2015,4 @@ Hệ thống được thiết kế:
 
 **Phiên bản**: 1.0
 **Ngày cập nhật**: 2024-11-18
-**Tác giả**: iHome CRM Team
+**Tác giả**: CRM Team

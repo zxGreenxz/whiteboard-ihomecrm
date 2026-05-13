@@ -1,4 +1,4 @@
-# iHomeCRM - Implementation Plan & Optimization
+# CRM - Implementation Plan & Optimization
 
 ---
 

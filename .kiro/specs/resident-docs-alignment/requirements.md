@@ -2,11 +2,11 @@
 
 ## Giới thiệu
 
-Tài liệu này xác định các yêu cầu để kiểm tra và cập nhật toàn bộ ứng dụng web iHomeCRM (Resident) nhằm đạt 100% đồng bộ với tài liệu hướng dẫn mới được định nghĩa trong `resident-docs/SUMMARY.md`. Phạm vi bao gồm: flow nghiệp vụ, logic xử lý, database schema, giao diện UI, hình ảnh minh họa và giải thích tính năng.
+Tài liệu này xác định các yêu cầu để kiểm tra và cập nhật toàn bộ ứng dụng web CRM (Resident) nhằm đạt 100% đồng bộ với tài liệu hướng dẫn mới được định nghĩa trong `resident-docs/SUMMARY.md`. Phạm vi bao gồm: flow nghiệp vụ, logic xử lý, database schema, giao diện UI, hình ảnh minh họa và giải thích tính năng.
 
 ## Bảng thuật ngữ
 
-- **Hệ_Thống**: Ứng dụng web iHomeCRM/Resident
+- **Hệ_Thống**: Ứng dụng web CRM/Resident
 - **Sidebar**: Thanh điều hướng bên trái của ứng dụng
 - **SUMMARY.md**: File mục lục tổng thể của tài liệu hướng dẫn Resident
 - **Trang_Cài_Đặt**: Module cài đặt hệ thống trong ứng dụng

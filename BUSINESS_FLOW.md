@@ -1,4 +1,4 @@
-# iHomeCRM - Hướng Dẫn Nghiệp Vụ Toàn Diện
+# CRM - Hướng Dẫn Nghiệp Vụ Toàn Diện
 
 ## Mục Lục
 
@@ -13,7 +13,7 @@
 ## 1. Tổng Quan Hệ Thống
 
 ### 1.1. Giới Thiệu
-**iHomeCRM** là hệ thống quản lý bất động sản cho thuê toàn diện, hỗ trợ quản lý:
+**CRM** là hệ thống quản lý bất động sản cho thuê toàn diện, hỗ trợ quản lý:
 - Cơ sở vật chất (Tòa nhà, Phòng, Giường)
 - Khách hàng (Leads, Khách thuê)
 - Hợp đồng cho thuê

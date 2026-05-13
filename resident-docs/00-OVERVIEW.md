@@ -1,4 +1,4 @@
-# TỔNG QUAN HỆ THỐNG IHOMECRM
+# TỔNG QUAN HỆ THỐNG CRM
 ## Quản Lý Bất Động Sản - Phòng Trọ
 
 ---

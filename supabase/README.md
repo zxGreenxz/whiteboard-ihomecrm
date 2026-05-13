@@ -1,8 +1,8 @@
-# Supabase Migrations - iHomeCRM
+# Supabase Migrations - CRM
 
 ## 📋 Overview
 
-This directory contains all database migrations for the iHomeCRM property management system.
+This directory contains all database migrations for the CRM property management system.
 
 **Total Migrations**: 9
 **Total Tables**: 30

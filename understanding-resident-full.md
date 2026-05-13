@@ -4,9 +4,9 @@
 > - Crawl `app.resident.vn` đã đăng nhập (sidebar + 44 route đã thử) → [crawl-resident/data-sitemap/](crawl-resident/data-sitemap/)
 > - Crawl `docs.resident.vn` (23 module guide) → [crawl-resident/data-docs/](crawl-resident/data-docs/)
 > - Crawl chi tiết Thu chi & Cashbooks (đã làm trước) → [crawl-resident/data/](crawl-resident/data/), [crawl-resident/data-deep/](crawl-resident/data-deep/), [crawl-resident/data-full/](crawl-resident/data-full/)
-> - Sitemap routes hiện có ở ihomecrm: 89 route (xem [src/App.tsx](src/App.tsx))
+> - Sitemap routes hiện có ở crm: 89 route (xem [src/App.tsx](src/App.tsx))
 >
-> **Mục đích**: làm bản đồ tổng quát — mỗi module có 1 mục, mỗi mục ghi rõ Resident có gì, ihomecrm hiện có gì, gap, mức độ ưu tiên.
+> **Mục đích**: làm bản đồ tổng quát — mỗi module có 1 mục, mỗi mục ghi rõ Resident có gì, crm hiện có gì, gap, mức độ ưu tiên.
 
 ---
 
@@ -59,7 +59,7 @@ Sidebar Resident chia làm 4 nhóm cố định + 2 mục đỉnh:
 
 ## 2. Bảng module-by-module
 
-Format: `Tên module · URL Resident · cột chính/feature · ihomecrm tương đương · gap · ưu tiên`.
+Format: `Tên module · URL Resident · cột chính/feature · crm tương đương · gap · ưu tiên`.
 
 Quy ước **Mức độ ưu tiên**:
 - 🟢 **DONE** — đã có tương đương đủ tốt
@@ -70,7 +70,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Resident**: dashboard tổng hợp số căn hộ trống/đầy, khách hẹn mới, hợp đồng sắp hết hạn, doanh thu/chi 12 tháng, danh sách công việc cần làm. API count rất cao (17 calls). Crawl không capture được nội dung text vì page heavy-JS.
 
-**ihomecrm hiện có**: [src/pages/Dashboard.tsx](src/pages/Dashboard.tsx) — đã có placeholder.
+**crm hiện có**: [src/pages/Dashboard.tsx](src/pages/Dashboard.tsx) — đã có placeholder.
 
 **Gap**: chưa biết widget nào còn thiếu — cần crawl sâu hơn.
 
@@ -80,7 +80,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Resident**: render tòa nhà → tầng → căn hộ với heat-map trạng thái (đang ở / trống / đặt cọc / hết hợp đồng…). H1 trong crawl: "Tòa nhà: 102/30 LÊ VĂN THỌ", "TẦNG 1..N".
 
-**ihomecrm**: [src/pages/building-map/BuildingMapPage.tsx](src/pages/building-map/BuildingMapPage.tsx) — đã có.
+**crm**: [src/pages/building-map/BuildingMapPage.tsx](src/pages/building-map/BuildingMapPage.tsx) — đã có.
 
 **Gap**: cần đối chiếu UX (filter theo tòa, color legend).
 
@@ -90,7 +90,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Cột Resident**: Mã · Thao tác · **Tên tòa nhà · Địa chỉ · Số căn hộ · Ngày TT · Hoạt động** · (legacy thêm) Sử dụng/Tên dịch vụ/Đơn giá.
 
-**ihomecrm**: [BuildingsPage](src/pages/buildings/BuildingsPage.tsx) — đã có.
+**crm**: [BuildingsPage](src/pages/buildings/BuildingsPage.tsx) — đã có.
 
 **Gap nhỏ**: cần check cột "Ngày TT" (ngày thanh toán?) và "Sử dụng" có hiển thị chưa.
 
@@ -100,7 +100,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Cột Resident**: Mã · Thao tác · Tên căn hộ · Loại căn hộ · Giá thuê · Đặt cọc · Diện tích · Trạng thái · Hoạt động.
 
-**ihomecrm**: [RoomsPage](src/pages/rooms/RoomsPage.tsx).
+**crm**: [RoomsPage](src/pages/rooms/RoomsPage.tsx).
 
 ---
 
@@ -108,7 +108,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Cột**: Mã · Thao tác · Tên giường · Giá thuê · Đặt cọc · Trạng thái · Hoạt động.
 
-**ihomecrm**: [BedsPage](src/pages/beds/BedsPage.tsx).
+**crm**: [BedsPage](src/pages/beds/BedsPage.tsx).
 
 ---
 
@@ -118,7 +118,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Filter URL params**: `?leadStatus=new` / `success`.
 
-**ihomecrm**: [LeadsPage](src/pages/leads/LeadsPage.tsx).
+**crm**: [LeadsPage](src/pages/leads/LeadsPage.tsx).
 
 **Gap**: kiểm cột "Người giới thiệu", "CTV", "Người tìm khách" — cộng tác viên đặc trưng môi giới BĐS.
 
@@ -130,7 +130,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Filter**: `?reservationStatus=2` (Khách vào thuê).
 
-**ihomecrm**: [DepositsPage](src/pages/deposits/DepositsPage.tsx).
+**crm**: [DepositsPage](src/pages/deposits/DepositsPage.tsx).
 
 **Gap**: tên route khác (`/deposits` vs `/reservations`) — cần đối chiếu.
 
@@ -140,7 +140,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Cột**: Mã hợp đồng · Trạng thái · Thao tác · Vị trí · Khách hàng · Giá thuê · Tiền cọc · Ngày bắt đầu · Ngày kết thúc · Người tạo.
 
-**ihomecrm**: [ContractsPage](src/pages/contracts/ContractsPage.tsx) + ContractDetail.
+**crm**: [ContractsPage](src/pages/contracts/ContractsPage.tsx) + ContractDetail.
 
 ---
 
@@ -150,7 +150,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Filter**: `?month=04-2026`.
 
-**ihomecrm**: [InvoicesPage](src/pages/invoices/InvoicesPage.tsx).
+**crm**: [InvoicesPage](src/pages/invoices/InvoicesPage.tsx).
 
 **Gap quan trọng**:
 - Cột **"Nợ cộng dồn"** (cumulative debt) — kiểm xem có chưa.
@@ -195,7 +195,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Cột**: Mã · Thao tác · Loại thu/chi · Phân loại · Mô tả · Mặc định?
 
-**ihomecrm**: [IncomeExpenseTypesPage](src/pages/settings/IncomeExpenseTypesPage.tsx) + [categories/IncomeExpenseTypesPage](src/pages/settings/categories/IncomeExpenseTypesPage.tsx).
+**crm**: [IncomeExpenseTypesPage](src/pages/settings/IncomeExpenseTypesPage.tsx) + [categories/IncomeExpenseTypesPage](src/pages/settings/categories/IncomeExpenseTypesPage.tsx).
 
 **Gap**: hai trang trùng nhau — cần dọn về 1.
 
@@ -205,7 +205,7 @@ Quy ước **Mức độ ưu tiên**:
 
 **Cột Resident**: Mã · Thao tác · Tòa nhà · Căn hộ · Tên đồng hồ · **Chỉ số đầu · Chỉ số chốt gần nhất · Phân loại · Hoạt động · Mặc định**.
 
-**ihomecrm**: [MetersPage](src/pages/settings/MetersPage.tsx).
+**crm**: [MetersPage](src/pages/settings/MetersPage.tsx).
 
 **Gap**: cột "Chỉ số chốt gần nhất" — cần tính & hiển thị.
 
@@ -215,47 +215,47 @@ Quy ước **Mức độ ưu tiên**:
 
 Resident có module riêng để **ghi chỉ số định kỳ** (điện/nước theo tháng).
 
-**ihomecrm**: [MeterReadingsPage](src/pages/meter-readings/MeterReadingsPage.tsx) — đã có.
+**crm**: [MeterReadingsPage](src/pages/meter-readings/MeterReadingsPage.tsx) — đã có.
 
 **Gap**: cần đối chiếu UX (mass-input theo tòa, copy chỉ số tháng trước).
 
 ---
 
 ### 2.15. Định mức dịch vụ 🟡
-Resident có cấu hình ngưỡng tiêu thụ → giá bậc thang. ihomecrm: [ServiceQuotasPage](src/pages/settings/categories/ServiceQuotasPage.tsx). **Cần đối chiếu** tính năng.
+Resident có cấu hình ngưỡng tiêu thụ → giá bậc thang. crm: [ServiceQuotasPage](src/pages/settings/categories/ServiceQuotasPage.tsx). **Cần đối chiếu** tính năng.
 
 ---
 
 ### 2.16. Hóa đơn điện tử 🔴
 
-Resident: tích hợp phát hành HĐ điện tử. ihomecrm chưa có.
+Resident: tích hợp phát hành HĐ điện tử. crm chưa có.
 
 ---
 
 ### 2.17. Gạch nợ tự động 🟡
 
-Resident: tự động đối soát biên lai chuyển khoản → gạch nợ hoá đơn. ihomecrm: [AutoDebtPage](src/pages/settings/categories/AutoDebtPage.tsx) (placeholder?).
+Resident: tự động đối soát biên lai chuyển khoản → gạch nợ hoá đơn. crm: [AutoDebtPage](src/pages/settings/categories/AutoDebtPage.tsx) (placeholder?).
 
 ---
 
 ### 2.18. Tài sản 🟡
 
-Resident: nhập kho/xuất kho/bảo trì tài sản. ihomecrm: [AssetsPage](src/pages/assets/AssetsPage.tsx) + [AssetTypesPage](src/pages/settings/categories/AssetTypesPage.tsx) + [AssetMovementsPage](src/pages/settings/categories/AssetMovementsPage.tsx) + [AssetMaintenancePage](src/pages/settings/categories/AssetMaintenancePage.tsx). **Đã có**, cần đối chiếu UX.
+Resident: nhập kho/xuất kho/bảo trì tài sản. crm: [AssetsPage](src/pages/assets/AssetsPage.tsx) + [AssetTypesPage](src/pages/settings/categories/AssetTypesPage.tsx) + [AssetMovementsPage](src/pages/settings/categories/AssetMovementsPage.tsx) + [AssetMaintenancePage](src/pages/settings/categories/AssetMaintenancePage.tsx). **Đã có**, cần đối chiếu UX.
 
 ---
 
 ### 2.19. Hotline 🟡
-ihomecrm: [HotlinesPage](src/pages/settings/categories/HotlinesPage.tsx).
+crm: [HotlinesPage](src/pages/settings/categories/HotlinesPage.tsx).
 
 ---
 
 ### 2.20. Mẫu biểu 🟡
-Template in hợp đồng/hoá đơn. ihomecrm: [TemplatesPage](src/pages/settings/TemplatesPage.tsx).
+Template in hợp đồng/hoá đơn. crm: [TemplatesPage](src/pages/settings/TemplatesPage.tsx).
 
 ---
 
 ### 2.21. Nhân viên 🟢
-ihomecrm: [StaffPage](src/pages/settings/StaffPage.tsx).
+crm: [StaffPage](src/pages/settings/StaffPage.tsx).
 
 ---
 
@@ -263,7 +263,7 @@ ihomecrm: [StaffPage](src/pages/settings/StaffPage.tsx).
 
 **Cột**: Mã · Thao tác · Nội dung thông báo · Số khách hàng nhận · Hình thức gửi · Thời gian · Trạng thái.
 
-**ihomecrm**: [NotificationsPage](src/pages/NotificationsPage.tsx).
+**crm**: [NotificationsPage](src/pages/NotificationsPage.tsx).
 
 ---
 
@@ -271,24 +271,24 @@ ihomecrm: [StaffPage](src/pages/settings/StaffPage.tsx).
 
 **Cột**: Mã · Thao tác · Công việc · Vị trí · Loại công việc · Hạn hoàn thành · Người thực hiện · Trạng thái.
 
-**ihomecrm**: [TaskManagementPage](src/pages/TaskManagementPage.tsx) + [TaskTypesPage](src/pages/settings/categories/TaskTypesPage.tsx). Vừa được làm lại theo commit 3c3692a.
+**crm**: [TaskManagementPage](src/pages/TaskManagementPage.tsx) + [TaskTypesPage](src/pages/settings/categories/TaskTypesPage.tsx). Vừa được làm lại theo commit 3c3692a.
 
 ---
 
 ### 2.24. Báo cáo bất động sản 🟢
-ihomecrm có 9 sub-page trong [src/pages/reports/real-estate/](src/pages/reports/real-estate/).
+crm có 9 sub-page trong [src/pages/reports/real-estate/](src/pages/reports/real-estate/).
 **Resident URL chính xác chưa map** — sidebar group dynamic.
 
 ---
 
 ### 2.25. Báo cáo tài chính 🟢
-ihomecrm có 9 sub-page trong [src/pages/reports/finance/](src/pages/reports/finance/).
+crm có 9 sub-page trong [src/pages/reports/finance/](src/pages/reports/finance/).
 
 ---
 
 ### 2.26. Cài đặt chung — `/general-setting` 🟡
 
-ihomecrm: [GeneralSettingsPage](src/pages/settings/GeneralSettingsPage.tsx) (URL khác: `/settings/general`).
+crm: [GeneralSettingsPage](src/pages/settings/GeneralSettingsPage.tsx) (URL khác: `/settings/general`).
 
 **Gap**: thống nhất URL `/general-setting` ↔ `/settings/general`.
 
@@ -296,17 +296,17 @@ ihomecrm: [GeneralSettingsPage](src/pages/settings/GeneralSettingsPage.tsx) (URL
 
 ### 2.27. Tài khoản cá nhân + Gói cước 🟡
 Resident: `/account/profile` & `/account/subscription` (chưa public — redirect 404 trong crawl).
-ihomecrm: đã có route + page.
+crm: đã có route + page.
 
 ---
 
 ### 2.28. Changelog — `/changelog` 🟢
-ihomecrm: [ChangelogPage](src/pages/ChangelogPage.tsx).
+crm: [ChangelogPage](src/pages/ChangelogPage.tsx).
 
 ---
 
 ### 2.29. FAQ 🟢
-ihomecrm: [FaqPage](src/pages/FaqPage.tsx).
+crm: [FaqPage](src/pages/FaqPage.tsx).
 
 ---
 
@@ -386,7 +386,7 @@ ihomecrm: [FaqPage](src/pages/FaqPage.tsx).
      · Bố cục trang + screenshot tham chiếu
      · Cột bảng / API endpoints / schema
      · Form fields + validation
-     · So sánh với ihomecrm hiện tại (gap table)
+     · So sánh với crm hiện tại (gap table)
 3. Migration DB (nếu cần field mới)
 4. Hooks (TanStack Query) — list/detail/create/update/delete
 5. UI desktop trước, mobile sau (useIsMobile switch)

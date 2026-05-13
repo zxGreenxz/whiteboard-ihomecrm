@@ -2,7 +2,7 @@
 
 ## 📚 Giới thiệu
 
-AI Assistant là trợ lý AI cá nhân thông minh được tích hợp vào hệ thống iHomeCRM với các tính năng:
+AI Assistant là trợ lý AI cá nhân thông minh được tích hợp vào hệ thống CRM với các tính năng:
 
 - ✅ **Chat thông minh**: Trò chuyện với AI về dữ liệu hợp đồng, khách thuê, tòa nhà, hóa đơn
 - ✅ **Bộ nhớ dài hạn**: AI ghi nhớ các cuộc trò chuyện trước đó
@@ -159,7 +159,7 @@ supabase functions deploy ai-embeddings
 
 ### Bước 4: Test
 
-1. Mở app tại: `https://ihomecrm.vercel.app/settings/ai-assistant`
+1. Mở app tại: `https://ptcrm.vercel.app/settings/ai-assistant`
 2. Tạo cuộc trò chuyện mới
 3. Gửi tin nhắn test
 4. Thêm kiến thức vào Knowledge Base

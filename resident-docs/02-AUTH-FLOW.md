@@ -66,7 +66,7 @@ Vào trang đăng ký
       │   └─ Redirect → Dashboard
       │
       └─→ Hiển thị thông báo chào mừng
-          └─ "Chào mừng bạn đến với ihomecrm!"
+          └─ "Chào mừng bạn đến với crm!"
 ```
 
 ### Validation Rules

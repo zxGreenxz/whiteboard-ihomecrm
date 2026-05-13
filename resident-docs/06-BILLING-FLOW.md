@@ -432,7 +432,7 @@ CREATE INDEX idx_cash_book_type ON cash_book(transaction_type);
 
 ```html
 ┌─────────────────────────────────────────┐
-│         IHOME RESIDENTIAL CRM            │
+│         CRM            │
 │             HÓA ĐƠN DỊCH VỤ             │
 ├─────────────────────────────────────────┤
 │ Invoice #: INV-2025-11-0001              │
@@ -464,7 +464,7 @@ CREATE INDEX idx_cash_book_type ON cash_book(transaction_type);
 │ Account: 1020123456                     │
 │ Swift: BFTVVNVX                         │
 │                                         │
-│ Contact: support@ihomecrm.com           │
+│ Contact: support@example.com           │
 └─────────────────────────────────────────┘
 ```
 

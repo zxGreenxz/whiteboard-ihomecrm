@@ -1,5 +1,5 @@
 # DATABASE SCHEMA - SUPABASE
-## ihomecrm - Hệ thống quản lý bất động sản
+## crm - Hệ thống quản lý bất động sản
 
 ---
 

@@ -1,5 +1,5 @@
 # IMPLEMENTATION PLAN - CHI TIẾT TỪNG PHASE
-## iHomeCRM - Hệ thống quản lý bất động sản
+## CRM - Hệ thống quản lý bất động sản
 
 ---
 

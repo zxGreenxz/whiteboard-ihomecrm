@@ -2,7 +2,7 @@
 
 ## Tổng quan
 
-Tài liệu thiết kế này mô tả kiến trúc và các thay đổi cần thiết để đồng bộ ứng dụng web iHomeCRM (Resident) với cấu trúc SUMMARY.md. Phạm vi bao gồm:
+Tài liệu thiết kế này mô tả kiến trúc và các thay đổi cần thiết để đồng bộ ứng dụng web CRM (Resident) với cấu trúc SUMMARY.md. Phạm vi bao gồm:
 
 1. **Tái cấu trúc Sidebar** - Khớp 100% với SUMMARY.md, loại bỏ Khu vực, Trợ lý AI, Duyệt thanh lý
 2. **Đổi thuật ngữ** - Phòng → Căn hộ, Sự cố → Công việc, Leads → Khách hẹn, Tổng quan → Bảng tin

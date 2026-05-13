@@ -19,7 +19,7 @@ Dashboard & Reporting System là hệ thống trung tâm cung cấp thông tin t
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                    IHOMECRM - DASHBOARD                                  [🔔 5] [⚙️] [👤]  │
+│                                    CRM - DASHBOARD                                  [🔔 5] [⚙️] [👤]  │
 ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ ◄ Dashboard  |  Reports  |  Analytics  |  Settings                                                         │
 ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -911,7 +911,7 @@ setInterval(() => {
 </head>
 <body>
   <div class="header">
-    <h1>iHome CRM - Báo Cáo Tháng 11/2024</h1>
+    <h1>CRM - Báo Cáo Tháng 11/2024</h1>
   </div>
   <div class="content">
     <h2>Tóm tắt tài chính</h2>
@@ -948,10 +948,10 @@ setInterval(() => {
       </tr>
     </table>
 
-    <p><a href="https://ihomecrm.com/dashboard">Xem báo cáo đầy đủ</a></p>
+    <p><a href="https://example.com/dashboard">Xem báo cáo đầy đủ</a></p>
   </div>
   <div class="footer">
-    <p>iHome CRM - Hệ thống quản lý bất động sản cho thuê</p>
+    <p>CRM - Hệ thống quản lý bất động sản cho thuê</p>
     <p>© 2024. All rights reserved.</p>
   </div>
 </body>
@@ -1257,4 +1257,4 @@ Hệ thống được thiết kế:
 
 **Phiên bản**: 1.0
 **Ngày cập nhật**: 2024-11-18
-**Tác giả**: iHome CRM Team
+**Tác giả**: CRM Team

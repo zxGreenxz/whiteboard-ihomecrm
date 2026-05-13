@@ -1,6 +1,6 @@
-# UI References - iHomeCRM
+# UI References - CRM
 
-Tài liệu này chứa các ảnh tham khảo về giao diện người dùng (UI) của hệ thống iHomeCRM.
+Tài liệu này chứa các ảnh tham khảo về giao diện người dùng (UI) của hệ thống CRM.
 
 ## Mục đích
 
@@ -108,7 +108,7 @@ Mẫu biên bản bàn giao căn hộ (Word documents):
 ## Cấu trúc Menu Tổng Quan
 
 ```
-iHomeCRM
+CRM
 ├── 🏠 Trang chủ (Dashboard)
 ├── 👥 Khách hàng
 │   ├── Khách hàng tiềm năng

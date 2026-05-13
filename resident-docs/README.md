@@ -1,4 +1,4 @@
-# IHOMECRM - HỆ THỐNG QUẢN LÝ BẤT ĐỘNG SẢN
+# CRM - HỆ THỐNG QUẢN LÝ BẤT ĐỘNG SẢN
 ## Tài liệu thiết kế chi tiết 100% theo docs.resident.vn
 
 ---
@@ -699,13 +699,13 @@ Làm theo từng checklist để ensure quality
 
 **Tác giả**: AI Agent
 **Ngày tạo**: 2025-11-18
-**Mục đích**: Tài liệu thiết kế chi tiết để implement hệ thống quản lý bất động sản ihomecrm
+**Mục đích**: Tài liệu thiết kế chi tiết để implement hệ thống quản lý bất động sản crm
 **Tham khảo**: https://docs.resident.vn/
 
 ---
 
 **🎯 READY FOR IMPLEMENTATION!**
 
-Tài liệu này cung cấp đầy đủ thông tin cần thiết để bắt đầu phát triển hệ thống ihomecrm với 100% tính năng theo docs.resident.vn. Mỗi file docs đều có flow diagrams chi tiết, database schema, component structure, API integration và testing checklist.
+Tài liệu này cung cấp đầy đủ thông tin cần thiết để bắt đầu phát triển hệ thống crm với 100% tính năng theo docs.resident.vn. Mỗi file docs đều có flow diagrams chi tiết, database schema, component structure, API integration và testing checklist.
 
 **Happy Coding! 🚀**
