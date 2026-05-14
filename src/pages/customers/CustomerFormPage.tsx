@@ -70,7 +70,12 @@ export default function CustomerFormPage() {
         customer_group: customer.customer_group ?? undefined,
         notes: customer.notes ?? undefined,
         avatar_url: customer.avatar_url ?? undefined,
-        id_images: customer.id_images ?? undefined,
+        // DB default cho id_images là '[]'::jsonb, nhưng schema form chờ Record<string,string>.
+        // Mọi mảng (kể cả [] rỗng) coi như chưa có ảnh để Zod không reject silently.
+        id_images:
+          customer.id_images && !Array.isArray(customer.id_images)
+            ? (customer.id_images as Record<string, string>)
+            : undefined,
         company_name: customer.company_name ?? undefined,
         tax_code: customer.tax_code ?? undefined,
         representative: customer.representative ?? undefined,
