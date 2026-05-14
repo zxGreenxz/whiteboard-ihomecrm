@@ -49,14 +49,43 @@ const sumByType = (items: InvoiceWithRelations['invoice_items'], types: string[]
     .reduce((sum, item) => sum + (item.amount || 0), 0);
 };
 
-/** Build invoice title from type and billing_month */
+/**
+ * Build invoice title from items + notes.
+ *
+ * - Notes có "thanh lý" → "Hóa đơn thanh lý - <month>" (ưu tiên cao nhất,
+ *   ghi đè cả RENT+SERVICE/PENALTY).
+ * - RENT + SERVICE → "Tiền phòng - <toà>/<phòng> - MM/YYYY"
+ *   (mặc định gọi là tiền phòng hàng tháng).
+ * - Chỉ RENT → "Hóa đơn tiền nhà - <month>"
+ * - Chỉ SERVICE/PENALTY → "Hóa đơn dịch vụ - <month>"
+ * - Còn lại → "Hóa đơn - <month>"
+ */
 const getInvoiceTitle = (invoice: InvoiceWithRelations): string => {
   const month = invoice.billing_month ?? '';
-  // Check if it's a liquidation invoice by looking at notes or items
-  const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
-  const hasService = invoice.invoice_items?.some((i) => i.type === 'SERVICE' || i.type === 'PENALTY');
+  const monthDisplay = (() => {
+    if (!month) return '';
+    // billing_month dạng "2026-05" → "05/2026"
+    const m = /^(\d{4})-(\d{2})$/.exec(month);
+    return m ? `${m[2]}/${m[1]}` : month;
+  })();
 
-  if (hasRent && hasService) return `Hóa đơn hàng tháng - ${month}`;
+  const notes = invoice.notes ?? '';
+  const isLiquidation = /thanh\s*lý/i.test(notes);
+  if (isLiquidation) return `Hóa đơn thanh lý - ${month}`;
+
+  const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
+  const hasService = invoice.invoice_items?.some(
+    (i) => i.type === 'SERVICE' || i.type === 'PENALTY',
+  );
+
+  if (hasRent && hasService) {
+    const loc = [invoice.building?.name, invoice.room?.name]
+      .filter(Boolean)
+      .join(' / ');
+    return loc
+      ? `Tiền phòng - ${loc} - ${monthDisplay || month}`
+      : `Tiền phòng - ${month}`;
+  }
   if (hasRent) return `Hóa đơn tiền nhà - ${month}`;
   if (hasService) return `Hóa đơn dịch vụ - ${month}`;
   return `Hóa đơn - ${month}`;
