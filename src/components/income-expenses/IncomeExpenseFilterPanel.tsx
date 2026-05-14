@@ -27,13 +27,14 @@ interface IncomeExpenseFilterPanelProps {
   onOpenChange: (open: boolean) => void;
   filters: IncomeExpenseFilters;
   onApply: (next: IncomeExpenseFilters) => void;
-  /** Filters trống — dùng khi Reset (giữ approval_status mặc định "APPROVED"). */
+  /** Filters trống — dùng khi Reset (giữ approval_status mặc định "ALL_ACTIVE"). */
   emptyFilters: IncomeExpenseFilters;
   /** Vị trí drawer: desktop "right", mobile "bottom" */
   side?: "right" | "bottom";
 }
 
 const STATUS_OPTIONS = [
+  { value: "ALL_ACTIVE", label: "Tất cả" },
   { value: "APPROVED", label: "Đã ghi nhận" },
   { value: "UNAPPROVED", label: "Nháp" },
   { value: "CANCELLED", label: "Đã huỷ" },
@@ -124,7 +125,8 @@ export function IncomeExpenseFilterPanel({
             <Label className="text-sm font-medium">Trạng thái</Label>
             <div className="flex gap-2">
               {STATUS_OPTIONS.map((opt) => {
-                const active = (draft.approval_status ?? "APPROVED") === opt.value;
+                const active =
+                  (draft.approval_status ?? "ALL_ACTIVE") === opt.value;
                 return (
                   <button
                     key={opt.value}
@@ -133,6 +135,7 @@ export function IncomeExpenseFilterPanel({
                     onClick={() =>
                       patch({
                         approval_status: opt.value as
+                          | "ALL_ACTIVE"
                           | "APPROVED"
                           | "UNAPPROVED"
                           | "CANCELLED",

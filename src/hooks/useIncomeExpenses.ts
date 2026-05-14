@@ -18,7 +18,8 @@ export interface IncomeExpenseFilters {
   type?: "INCOME" | "EXPENSE" | null;
   start_date?: string | null;
   end_date?: string | null;
-  approval_status?: "UNAPPROVED" | "APPROVED" | "CANCELLED" | null;
+  // "ALL_ACTIVE" = Đã ghi nhận + Nháp (loại trừ Đã huỷ) — đây là mặc định.
+  approval_status?: "UNAPPROVED" | "APPROVED" | "CANCELLED" | "ALL_ACTIVE" | null;
 }
 
 
@@ -158,7 +159,9 @@ export const useIncomeExpenses = (
       if (filters.end_date) {
         query = query.lte("voucher_date", filters.end_date);
       }
-      if (filters.approval_status) {
+      if (filters.approval_status === "ALL_ACTIVE") {
+        query = query.in("approval_status", ["APPROVED", "UNAPPROVED"]);
+      } else if (filters.approval_status) {
         query = query.eq("approval_status", filters.approval_status);
       }
 
@@ -355,7 +358,9 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       if (filters.end_date) {
         query = query.lte("voucher_date", filters.end_date);
       }
-      if (filters.approval_status) {
+      if (filters.approval_status === "ALL_ACTIVE") {
+        query = query.in("approval_status", ["APPROVED", "UNAPPROVED"]);
+      } else if (filters.approval_status) {
         query = query.eq("approval_status", filters.approval_status);
       }
 
@@ -1099,6 +1104,8 @@ export const useIncomeExpenseBatches = (
         // Apply approval_status filter ở mức batch
         if (filters.approval_status === "APPROVED" && !hasApproved) continue;
         if (filters.approval_status === "CANCELLED" && !allCancelled) continue;
+        // ALL_ACTIVE = Đã ghi nhận + Nháp: ẩn batch đã huỷ hoàn toàn
+        if (filters.approval_status === "ALL_ACTIVE" && allCancelled) continue;
 
         summaries.push({
           id: b.id,

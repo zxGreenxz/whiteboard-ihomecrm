@@ -28,18 +28,24 @@ export function IncomeExpenseFilterChips({
 
   const chips: Chip[] = [];
 
-  // Trạng thái — chỉ hiển thị nếu khác mặc định "APPROVED"
+  // Trạng thái — chỉ hiển thị nếu khác mặc định "ALL_ACTIVE"
   if (filters.approval_status === "CANCELLED") {
     chips.push({
       key: "approval_status",
       label: "Đã huỷ",
-      patch: { approval_status: "APPROVED" },
+      patch: { approval_status: "ALL_ACTIVE" },
     });
   } else if (filters.approval_status === "UNAPPROVED") {
     chips.push({
       key: "approval_status",
       label: "Nháp",
-      patch: { approval_status: "APPROVED" },
+      patch: { approval_status: "ALL_ACTIVE" },
+    });
+  } else if (filters.approval_status === "APPROVED") {
+    chips.push({
+      key: "approval_status",
+      label: "Đã ghi nhận",
+      patch: { approval_status: "ALL_ACTIVE" },
     });
   }
 
