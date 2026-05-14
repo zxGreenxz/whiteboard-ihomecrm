@@ -14,14 +14,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import type { InvoiceWithRelations } from '@/types/invoice';
-import {
-  Image as ImageIcon,
-  Banknote,
-  CreditCard,
-  Wallet,
-  Calendar,
-  Clock,
-} from 'lucide-react';
+import { Image as ImageIcon, Calendar, Clock } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -41,25 +34,10 @@ interface PaymentRow {
 const fmtVND = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 
-const METHOD_META: Record<
-  string,
-  { label: string; icon: typeof Banknote; className: string }
-> = {
-  TM: {
-    label: 'Tiền mặt',
-    icon: Banknote,
-    className: 'bg-amber-50 text-amber-700 border-amber-200',
-  },
-  TK: {
-    label: 'Chuyển khoản',
-    icon: CreditCard,
-    className: 'bg-blue-50 text-blue-700 border-blue-200',
-  },
-  TT: {
-    label: 'Thanh toán',
-    icon: Wallet,
-    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  },
+const METHOD_BADGE: Record<string, string> = {
+  TM: 'bg-amber-50 text-amber-700 border-amber-200',
+  TK: 'bg-blue-50 text-blue-700 border-blue-200',
+  TT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
 const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
@@ -113,13 +91,9 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           <>
             <ul className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
               {payments.map((p, idx) => {
-                const meta =
-                  METHOD_META[p.payment_method] ?? {
-                    label: p.payment_method,
-                    icon: Wallet,
-                    className: 'bg-zinc-100 text-zinc-700 border-zinc-200',
-                  };
-                const Icon = meta.icon;
+                const badgeCls =
+                  METHOD_BADGE[p.payment_method] ??
+                  'bg-zinc-100 text-zinc-700 border-zinc-200';
                 const dateStr = p.payment_date
                   ? format(new Date(p.payment_date), 'dd/MM/yyyy')
                   : '—';
@@ -144,10 +118,9 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                           +{fmtVND(Number(p.amount) || 0)}
                         </div>
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${meta.className}`}
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeCls}`}
                         >
-                          <Icon className="h-3 w-3" />
-                          {meta.label}
+                          {p.payment_method}
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">

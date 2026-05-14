@@ -75,12 +75,6 @@ const ITEM_TYPE_LABEL: Record<string, string> = {
   OTHER: 'Khác',
 };
 
-const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  TM: 'Tiền mặt',
-  TK: 'Chuyển khoản',
-  TT: 'Thanh toán',
-};
-
 const FIELD_LABELS: Record<string, string> = {
   // invoice
   status: 'Trạng thái',
@@ -127,9 +121,6 @@ const formatValue = (field: string, value: unknown): string => {
   }
   if (field === 'type' && typeof value === 'string') {
     return ITEM_TYPE_LABEL[value] ?? value;
-  }
-  if (field === 'payment_method' && typeof value === 'string') {
-    return PAYMENT_METHOD_LABEL[value] ?? value;
   }
   if (MONEY_FIELDS.has(field)) {
     const n = Number(value);
@@ -197,10 +188,7 @@ const summarizeEntity = (entry: InvoiceAuditEntry): string => {
   }
   if (entry.entity === 'payment') {
     const amt = Number(data.amount ?? 0);
-    const method =
-      PAYMENT_METHOD_LABEL[(data.payment_method as string) ?? ''] ??
-      data.payment_method ??
-      '';
+    const method = (data.payment_method as string) ?? '';
     return [fmtVND(amt), method].filter(Boolean).join(' · ');
   }
   return 'Hoá đơn';

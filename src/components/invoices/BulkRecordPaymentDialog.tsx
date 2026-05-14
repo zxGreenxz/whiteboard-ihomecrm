@@ -711,7 +711,6 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                 const willBePaid = newPaid >= r.total_amount && net > 0;
                 const willBePartial = newPaid > 0 && newPaid < r.total_amount;
                 const noChange = net === 0;
-                // Mutual exclusion: TM/TT (cash group) vs TK (transfer).
                 // Khoá nếu nhóm kia đã có input HOẶC đã có phiếu thanh toán trước.
                 const hasCashInput = r.amount_tm > 0 || r.amount_tt > 0;
                 const hasTkInput = r.amount_tk > 0;

@@ -104,9 +104,6 @@ const allowedMethodsForRow = (
   return METHOD_ORDER;
 };
 
-// Mặc định cho dòng mới: đảo chiều khỏi dòng 1 (TM↔TT) nếu dòng 1 là tiền mặt
-// hoặc TT, còn TK thì giữ TK. Tôn trọng lịch sử: nếu HĐ đã có TK → ép TK,
-// nếu đã có TM/TT → đảm bảo trong nhóm tiền mặt.
 const defaultMethodForNewRow = (
   lines: Array<{ payment_method?: PaymentMethod } | undefined>,
   existing: PaymentMethod[] = [],
@@ -171,9 +168,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     return (accounts as any[]).find((a) => a.name?.trim() === buildingName)?.id ?? '';
   }, [invoice, accounts]);
 
-  // Sổ TM của user đang đăng nhập: sổ thuộc user, tên kết thúc "Thu"
-  // (vd Joey → "Hiển Thu", Nathan → "Hiệp Thu"). Dùng cho line phương thức TM
-  // và ẩn dropdown để khỏi phải chọn tay.
   const myCashAccountId = useMemo(() => {
     if (!currentUser?.id || !accounts.length) return '';
     return (accounts as any[]).find(
@@ -196,9 +190,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }
   }, [invoice, outstandingAmount, setValue]);
 
-  // Auto-default sổ quỹ nhận của DÒNG ĐẦU theo method:
-  //  - TM → sổ Thu của user (myCashAccountId)
-  //  - khác → sổ trùng tên tòa nhà (defaultAccountId)
   useEffect(() => {
     if (!defaultAccountId && !myCashAccountId) return;
     const firstMethod = (watchedLines?.[0]?.payment_method ?? 'TM') as PaymentMethod;
@@ -207,7 +198,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultAccountId, myCashAccountId, setValue]);
 
-  // Tổng tiền TM (tiền thối chỉ áp dụng cho phương thức TM)
   const tmTotal = (watchedLines ?? [])
     .filter((l: any) => l?.payment_method === 'TM')
     .reduce((s, l: any) => s + (Number(l?.amount) || 0), 0);
