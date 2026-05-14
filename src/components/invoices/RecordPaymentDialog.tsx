@@ -49,6 +49,14 @@ const paymentSchema = z.object({
   change_account_id: z.string().optional(),
   notes: z.string().optional(),
 }).refine(
+  (data) => {
+    const methods = new Set(data.payment_lines.map((l) => l.payment_method));
+    // TK không trộn được với TM/TT
+    if (methods.has('TK') && (methods.has('TM') || methods.has('TT'))) return false;
+    return true;
+  },
+  { message: 'TK không được dùng chung với TM/TT trong cùng một phiếu thanh toán', path: ['payment_lines'] },
+).refine(
   (data) => data.change_amount === 0 || !!data.change_account_id,
   { message: 'Vui lòng chọn sổ ghi nhận tiền thối', path: ['change_account_id'] },
 ).refine(
@@ -68,6 +76,38 @@ const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
 const parseVN = (s: string): number => {
   const digits = s.replace(/\D/g, '');
   return digits ? parseInt(digits, 10) : 0;
+};
+
+type PaymentMethod = 'TM' | 'TT' | 'TK';
+const METHOD_ORDER: PaymentMethod[] = ['TM', 'TT', 'TK'];
+
+// TK độc lập với TM/TT: trong cùng một phiếu, các dòng phải cùng nhóm
+// {TM, TT} hoặc {TK}. Hàm này trả về list phương thức được phép cho dòng `idx`
+// dựa trên lựa chọn hiện tại của các dòng khác.
+const allowedMethodsForRow = (
+  idx: number,
+  lines: Array<{ payment_method?: PaymentMethod } | undefined>,
+): PaymentMethod[] => {
+  const others = lines.filter((_, i) => i !== idx);
+  const hasTK = others.some((l) => l?.payment_method === 'TK');
+  const hasCashOrTransfer = others.some(
+    (l) => l?.payment_method === 'TM' || l?.payment_method === 'TT',
+  );
+  if (hasTK) return ['TK'];
+  if (hasCashOrTransfer) return ['TM', 'TT'];
+  return METHOD_ORDER;
+};
+
+// Mặc định cho dòng mới: đảo chiều khỏi dòng 1 (TM↔TT) nếu dòng 1 là tiền mặt
+// hoặc TT, còn TK thì giữ TK. Nếu chưa có dòng nào → TM.
+const defaultMethodForNewRow = (
+  lines: Array<{ payment_method?: PaymentMethod } | undefined>,
+): PaymentMethod => {
+  if (lines.length === 0) return 'TM';
+  const first = lines[0]?.payment_method;
+  if (first === 'TK') return 'TK';
+  if (first === 'TT') return 'TM';
+  return 'TT';
 };
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
@@ -404,7 +444,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     variant="outline"
                     title="Thêm dòng thanh toán"
                     onClick={() =>
-                      append({ amount: 0, payment_method: 'TM', account_id: defaultAccountId })
+                      append({
+                        amount: 0,
+                        payment_method: defaultMethodForNewRow(watchedLines as any),
+                        account_id: defaultAccountId,
+                      })
                     }
                   >
                     <Plus className="h-4 w-4" />
@@ -427,9 +471,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TM">TM</SelectItem>
-                    <SelectItem value="TK">TK</SelectItem>
-                    <SelectItem value="TT">TT</SelectItem>
+                    {METHOD_ORDER.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -538,9 +584,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="TM">TM</SelectItem>
-                          <SelectItem value="TK">TK</SelectItem>
-                          <SelectItem value="TT">TT</SelectItem>
+                          {allowedMethodsForRow(idx, watchedLines as any).map((m) => (
+                            <SelectItem key={m} value={m}>
+                              {m}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -584,7 +632,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 size="sm"
                 className="w-full"
                 onClick={() =>
-                  append({ amount: 0, payment_method: 'TM', account_id: defaultAccountId })
+                  append({
+                    amount: 0,
+                    payment_method: defaultMethodForNewRow(watchedLines as any),
+                    account_id: defaultAccountId,
+                  })
                 }
               >
                 <Plus className="h-4 w-4 mr-2" />
