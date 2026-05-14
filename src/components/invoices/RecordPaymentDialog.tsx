@@ -28,6 +28,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -162,25 +163,29 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     onOpenChange(false);
   };
 
+  const acceptReceiptFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn file ảnh (jpg, png, gif...)');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Kích thước file không được vượt quá 5MB');
+      return;
+    }
+    setReceiptImage(file);
+    if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+    setReceiptPreview(URL.createObjectURL(file));
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Vui lòng chọn file ảnh (jpg, png, gif...)');
-        return;
-      }
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Kích thước file không được vượt quá 5MB');
-        return;
-      }
-      setReceiptImage(file);
-      // Create preview URL
-      const previewUrl = URL.createObjectURL(file);
-      setReceiptPreview(previewUrl);
-    }
+    if (file) acceptReceiptFile(file);
   };
+
+  const receiptPasteHandlers = useClipboardImagePaste({
+    onFiles: (files) => acceptReceiptFile(files[0]),
+    enabled: !receiptPreview,
+  });
 
   const handleRemoveImage = () => {
     setReceiptImage(null);
@@ -665,6 +670,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               <div
                 className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary hover:bg-gray-50 transition-colors"
                 onClick={() => fileInputRef.current?.click()}
+                {...receiptPasteHandlers}
               >
                 <input
                   ref={fileInputRef}
@@ -675,7 +681,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 />
                 <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
                 <p className="text-sm text-gray-600">
-                  Click để chọn ảnh hoặc kéo thả vào đây
+                  Click để chọn ảnh, kéo thả hoặc Ctrl+V để dán
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
                   Hỗ trợ: JPG, PNG, GIF (tối đa 5MB)

@@ -3,6 +3,7 @@ import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
 import { toast } from 'sonner';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 const DEFAULT_BUCKET = 'income-expense-attachments';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -142,6 +143,12 @@ export default function AttachmentUpload({
     [handleUpload]
   );
 
+  const pasteHandlers = useClipboardImagePaste({
+    onFiles: (files) => handleUpload(files),
+    enabled: !disabled && !isUploading,
+    multiple: true,
+  });
+
   const isPdf = (url: string) =>
     url.toLowerCase().endsWith('.pdf') || url.includes('.pdf');
 
@@ -154,6 +161,7 @@ export default function AttachmentUpload({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => inputRef.current?.click()}
+          {...pasteHandlers}
           className={cn(
             'flex flex-col items-center justify-center w-full h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
             isDragOver
@@ -170,7 +178,7 @@ export default function AttachmentUpload({
           ) : (
             <div className="flex flex-col items-center gap-1 text-muted-foreground">
               <Upload className="h-6 w-6" />
-              <span className="text-xs">Kéo thả hoặc click để chọn file</span>
+              <span className="text-xs">Kéo thả, click hoặc Ctrl+V để chọn file</span>
               <span className="text-[10px]">JPG, PNG, PDF — tối đa 5MB</span>
             </div>
           )}

@@ -5,6 +5,7 @@ import { imageValidation } from '@/lib/vehicleValidation';
 import { uploadFile } from '@/lib/storage';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 interface ImageUploadZoneProps {
   label: string;
@@ -102,6 +103,11 @@ export default function ImageUploadZone({
     setError(null);
   }, [onChange]);
 
+  const pasteHandlers = useClipboardImagePaste({
+    onFiles: (files) => handleUpload(files[0]),
+    enabled: !value && !isUploading,
+  });
+
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-gray-700">{label}</label>
@@ -126,6 +132,7 @@ export default function ImageUploadZone({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => inputRef.current?.click()}
+          {...pasteHandlers}
           className={cn(
             'flex flex-col items-center justify-center w-full h-32 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
             isDragOver
@@ -142,7 +149,7 @@ export default function ImageUploadZone({
           ) : (
             <div className="flex flex-col items-center gap-1 text-muted-foreground">
               <ImageIcon className="h-6 w-6" />
-              <span className="text-xs text-center px-2">Kéo thả hoặc click để tải ảnh</span>
+              <span className="text-xs text-center px-2">Kéo thả, click hoặc Ctrl+V để tải ảnh</span>
             </div>
           )}
         </div>

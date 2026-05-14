@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { User, Camera, Lock, Loader2 } from "lucide-react";
 import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from "@/hooks/useProfile";
 import { toast } from "sonner";
+import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
 
 export default function ProfilePage() {
   const { data: profile, isLoading } = useProfile();
@@ -42,15 +43,23 @@ export default function ProfilePage() {
     fileInputRef.current?.click();
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const acceptAvatarFile = (file: File) => {
     if (file.size > 2 * 1024 * 1024) {
       toast.error("Ảnh không được vượt quá 2MB");
       return;
     }
     uploadAvatar.mutate(file);
   };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) acceptAvatarFile(file);
+  };
+
+  const avatarPasteHandlers = useClipboardImagePaste({
+    onFiles: (files) => acceptAvatarFile(files[0]),
+    enabled: !uploadAvatar.isPending,
+  });
 
   const handleChangePassword = () => {
     if (!newPassword || !confirmPassword) {
@@ -100,7 +109,7 @@ export default function ProfilePage() {
             <CardTitle>Ảnh đại diện</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-6">
-            <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
+            <div className="relative group cursor-pointer" onClick={handleAvatarClick} {...avatarPasteHandlers}>
               <Avatar className="h-20 w-20">
                 <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || "Avatar"} />
                 <AvatarFallback className="text-lg">{initials}</AvatarFallback>
@@ -118,7 +127,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">
-                Nhấn vào ảnh để thay đổi. Định dạng JPG, PNG. Tối đa 2MB.
+                Nhấn vào ảnh hoặc hover + Ctrl+V để thay đổi. JPG, PNG. Tối đa 2MB.
               </p>
               {uploadAvatar.isPending && (
                 <p className="text-sm text-primary flex items-center gap-1 mt-1">
