@@ -6,7 +6,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Ban, Printer, FileText, X, Pencil, CheckCircle2 } from "lucide-react";
+import {
+  Ban,
+  Printer,
+  FileText,
+  X,
+  Pencil,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -47,25 +56,49 @@ export function IncomeExpenseDetailDialog({
   onEdit,
   onApprove,
 }: Props) {
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const isMobile = useIsMobile();
 
+  const attachments = voucher?.attachments ?? [];
+  const lightboxUrl =
+    lightboxIdx !== null ? attachments[lightboxIdx] ?? null : null;
+  const hasMultiple = attachments.length > 1;
+  const isLightboxOpen = lightboxIdx !== null;
+
+  const closeLightbox = () => setLightboxIdx(null);
+  const goPrev = () =>
+    setLightboxIdx((i) =>
+      i === null || attachments.length === 0
+        ? i
+        : (i - 1 + attachments.length) % attachments.length
+    );
+  const goNext = () =>
+    setLightboxIdx((i) =>
+      i === null || attachments.length === 0 ? i : (i + 1) % attachments.length
+    );
+
   useEffect(() => {
-    if (!open) setLightboxUrl(null);
+    if (!open) setLightboxIdx(null);
   }, [open]);
 
   useEffect(() => {
-    if (!lightboxUrl) return;
+    if (!isLightboxOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopImmediatePropagation();
         e.preventDefault();
-        setLightboxUrl(null);
+        closeLightbox();
+      } else if (e.key === "ArrowLeft" && hasMultiple) {
+        e.preventDefault();
+        goPrev();
+      } else if (e.key === "ArrowRight" && hasMultiple) {
+        e.preventDefault();
+        goNext();
       }
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [lightboxUrl]);
+  }, [isLightboxOpen, hasMultiple]);
 
   if (!voucher) return null;
 
@@ -82,6 +115,15 @@ export function IncomeExpenseDetailDialog({
               ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
               : "sm:max-w-[680px] max-h-[90vh] overflow-y-auto"
           }
+          onPointerDownOutside={(e) => {
+            if (isLightboxOpen) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (isLightboxOpen) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isLightboxOpen) e.preventDefault();
+          }}
         >
           {isMobile && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
@@ -315,11 +357,11 @@ export function IncomeExpenseDetailDialog({
             <>
               <SectionTitle>Đính kèm</SectionTitle>
               <div className="flex flex-wrap gap-3">
-                {voucher.attachments.map((url) => (
+                {voucher.attachments.map((url, idx) => (
                   <button
                     type="button"
                     key={url}
-                    onClick={() => setLightboxUrl(url)}
+                    onClick={() => setLightboxIdx(idx)}
                     className="group relative w-24 h-24 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 hover:border-primary hover:shadow-md transition-all cursor-zoom-in"
                     title="Click để xem lớn"
                   >
@@ -345,19 +387,49 @@ export function IncomeExpenseDetailDialog({
       {/* Lightbox */}
       {lightboxUrl && (
         <div
-          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-6"
-          onClick={() => setLightboxUrl(null)}
+          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
+          onClick={closeLightbox}
         >
           <button
             type="button"
             className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
             onClick={(e) => {
               e.stopPropagation();
-              setLightboxUrl(null);
+              closeLightbox();
             }}
+            title="Đóng (Esc)"
           >
             <X className="h-5 w-5" />
           </button>
+          {hasMultiple && (
+            <>
+              <button
+                type="button"
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goPrev();
+                }}
+                title="Ảnh trước (←)"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goNext();
+                }}
+                title="Ảnh sau (→)"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/90 text-sm bg-black/40 rounded-full px-3 py-1">
+                {(lightboxIdx ?? 0) + 1} / {attachments.length}
+              </div>
+            </>
+          )}
           {isPdf(lightboxUrl) ? (
             <iframe
               src={lightboxUrl}
