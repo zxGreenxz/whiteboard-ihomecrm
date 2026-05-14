@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useCreateCustomer } from "@/hooks/useCustomers";
+import ImageUploadZone from "@/components/customers/ImageUploadZone";
 
 const customerSchema = z.object({
   customer_type: z.enum(["INDIVIDUAL", "ORGANIZATION"]),
@@ -66,6 +67,8 @@ const customerSchema = z.object({
   is_foreign: z.boolean().optional(),
   status: z.enum(["PROSPECT", "ACTIVE", "INACTIVE", "BLACKLIST"]),
   notes: z.string().optional(),
+  avatar_url: z.string().optional(),
+  id_images: z.record(z.string()).optional(),
 });
 
 type CustomerFormValues = z.infer<typeof customerSchema>;
@@ -114,6 +117,8 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
       is_foreign: false,
       status: "PROSPECT",
       notes: "",
+      avatar_url: "",
+      id_images: {},
     },
   });
 
@@ -152,6 +157,11 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
         is_foreign: data.is_foreign || false,
         status: data.status,
         notes: data.notes || null,
+        avatar_url: data.avatar_url || null,
+        id_images:
+          data.id_images && Object.keys(data.id_images).length > 0
+            ? data.id_images
+            : null,
       });
       form.reset();
       onOpenChange(false);
@@ -188,19 +198,46 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
               </Tabs>
 
               {/* Image Upload Section */}
-              <div className="grid grid-cols-4 gap-4">
-                <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                  <div className="text-sm text-muted-foreground">Ảnh đại diện</div>
-                </div>
-                <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                  <div className="text-sm text-muted-foreground">CCCD mặt trước</div>
-                </div>
-                <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                  <div className="text-sm text-muted-foreground">CCCD mặt sau</div>
-                </div>
-                <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                  <div className="text-sm text-muted-foreground">Hộ chiếu</div>
-                </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <FormField
+                  control={form.control}
+                  name="avatar_url"
+                  render={({ field }) => (
+                    <ImageUploadZone
+                      label="Ảnh đại diện"
+                      value={field.value}
+                      onChange={field.onChange}
+                      bucket="customer-images"
+                    />
+                  )}
+                />
+                <ImageUploadZone
+                  label="CCCD mặt trước"
+                  value={form.watch("id_images")?.front}
+                  onChange={(url) => {
+                    const current = form.getValues("id_images") || {};
+                    form.setValue("id_images", { ...current, front: url });
+                  }}
+                  bucket="customer-images"
+                />
+                <ImageUploadZone
+                  label="CCCD mặt sau"
+                  value={form.watch("id_images")?.back}
+                  onChange={(url) => {
+                    const current = form.getValues("id_images") || {};
+                    form.setValue("id_images", { ...current, back: url });
+                  }}
+                  bucket="customer-images"
+                />
+                <ImageUploadZone
+                  label="Hộ chiếu"
+                  value={form.watch("id_images")?.passport}
+                  onChange={(url) => {
+                    const current = form.getValues("id_images") || {};
+                    form.setValue("id_images", { ...current, passport: url });
+                  }}
+                  bucket="customer-images"
+                />
               </div>
 
               {/* 1. THÔNG TIN CHUNG */}
