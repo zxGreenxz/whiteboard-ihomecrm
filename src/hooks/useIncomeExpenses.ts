@@ -88,21 +88,57 @@ export interface IncomeExpenseWithRelations {
 // Trả về null nếu không có filter hạng mục nào (caller bỏ qua bước này).
 // Trả về [] (rỗng) nếu có filter nhưng không có voucher nào match → caller nên
 // trả kết quả rỗng ngay.
+//
+// LƯU Ý: bảng income_expense_types có nhiều row trùng (name, type) do mỗi user
+// được seed riêng. Dropdown đã dedup client-side và chỉ chuyển một id đại diện.
+// Nhưng items của voucher có thể tham chiếu tới bất kỳ id "sibling" nào cùng
+// (name, type). Vì vậy ta expand selected id → tất cả id cùng (name, type)
+// trước khi query items, nếu không sẽ bỏ sót voucher của user khác.
 async function getVoucherIdsByItemTypes(
   filters: Pick<IncomeExpenseFilters, "income_type_id" | "expense_type_id">
 ): Promise<string[] | null> {
-  const typeIds: string[] = [];
-  if (filters.income_type_id) typeIds.push(filters.income_type_id);
-  if (filters.expense_type_id) typeIds.push(filters.expense_type_id);
-  if (typeIds.length === 0) return null;
+  const selectedIds: string[] = [];
+  if (filters.income_type_id) selectedIds.push(filters.income_type_id);
+  if (filters.expense_type_id) selectedIds.push(filters.expense_type_id);
+  if (selectedIds.length === 0) return null;
 
+  // Bước 1: resolve selected ids → (name, type)
+  const { data: selectedRows, error: selErr } = await supabase
+    .from("income_expense_types" as any)
+    .select("id, name, type")
+    .in("id", selectedIds);
+  if (selErr) {
+    console.error("getVoucherIdsByItemTypes selectedRows error:", selErr);
+    return [];
+  }
+  const selRows = (selectedRows ?? []) as Array<{
+    id: string;
+    name: string;
+    type: "income" | "expense";
+  }>;
+  if (selRows.length === 0) return [];
+
+  // Bước 2: expand sang tất cả type_id cùng (name, type)
+  const expandedIds = new Set<string>(selectedIds);
+  for (const row of selRows) {
+    const { data: siblings } = await supabase
+      .from("income_expense_types" as any)
+      .select("id")
+      .eq("type", row.type)
+      .eq("name", row.name);
+    for (const s of (siblings ?? []) as Array<{ id: string }>) {
+      expandedIds.add(s.id);
+    }
+  }
+
+  // Bước 3: lấy voucher_id từ items
   const { data, error } = await supabase
     .from("income_expense_items" as any)
     .select("income_expense_id")
-    .in("income_expense_type_id", typeIds);
+    .in("income_expense_type_id", Array.from(expandedIds));
 
   if (error) {
-    console.error("getVoucherIdsByItemTypes error:", error);
+    console.error("getVoucherIdsByItemTypes items error:", error);
     return [];
   }
   const ids = Array.from(
