@@ -42,6 +42,7 @@ import {
   type BulkPaymentItem,
   type BulkPaymentFailure,
 } from '@/hooks/useBulkRecordPayment';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 interface Props {
   open: boolean;
@@ -863,49 +864,14 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                         </td>
                       </>
                     )}
-                    <td className="p-1 border text-center">
-                      {r.receipt_preview_url ? (
-                        <div className="relative inline-block">
-                          <img
-                            src={r.receipt_preview_url}
-                            alt="receipt"
-                            className="h-8 w-8 object-cover rounded border"
-                          />
-                          <button
-                            type="button"
-                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full h-4 w-4 flex items-center justify-center"
-                            onClick={() => handleRemoveImage(i)}
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <input
-                            ref={(el) => {
-                              fileInputRefs.current[r.invoice_id] = el;
-                            }}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) =>
-                              handleFileSelect(i, e.target.files?.[0] ?? null)
-                            }
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() =>
-                              fileInputRefs.current[r.invoice_id]?.click()
-                            }
-                          >
-                            <ImageIcon className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </td>
+                    <BulkPaymentImageCell
+                      previewUrl={r.receipt_preview_url}
+                      onFile={(file) => handleFileSelect(i, file)}
+                      onRemove={() => handleRemoveImage(i)}
+                      registerInputRef={(el) => {
+                        fileInputRefs.current[r.invoice_id] = el;
+                      }}
+                    />
                     <td className="p-1 border">
                       <Input
                         className="h-7 text-xs"
@@ -997,5 +963,72 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface BulkPaymentImageCellProps {
+  previewUrl: string | null;
+  onFile: (file: File | null) => void;
+  onRemove: () => void;
+  registerInputRef: (el: HTMLInputElement | null) => void;
+}
+
+function BulkPaymentImageCell({
+  previewUrl,
+  onFile,
+  onRemove,
+  registerInputRef,
+}: BulkPaymentImageCellProps) {
+  const localRef = useRef<HTMLInputElement | null>(null);
+  const pasteHandlers = useClipboardImagePaste({
+    onFiles: (files) => onFile(files[0] ?? null),
+    enabled: !previewUrl,
+  });
+
+  return (
+    <td
+      className="p-1 border text-center"
+      title={previewUrl ? undefined : 'Hover rồi Ctrl+V để dán ảnh'}
+      {...pasteHandlers}
+    >
+      {previewUrl ? (
+        <div className="relative inline-block">
+          <img
+            src={previewUrl}
+            alt="receipt"
+            className="h-8 w-8 object-cover rounded border"
+          />
+          <button
+            type="button"
+            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full h-4 w-4 flex items-center justify-center"
+            onClick={onRemove}
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </div>
+      ) : (
+        <>
+          <input
+            ref={(el) => {
+              localRef.current = el;
+              registerInputRef(el);
+            }}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => localRef.current?.click()}
+          >
+            <ImageIcon className="h-4 w-4" />
+          </Button>
+        </>
+      )}
+    </td>
   );
 }

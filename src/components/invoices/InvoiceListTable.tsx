@@ -21,6 +21,7 @@ import {
   History,
   Trash2,
   Printer,
+  Eye,
 } from 'lucide-react';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
@@ -34,6 +35,7 @@ interface InvoiceListTableProps {
   onDelete: (invoice: InvoiceWithRelations) => void;
   onRecordPayment: (invoice: InvoiceWithRelations) => void;
   onViewDetail: (invoice: InvoiceWithRelations) => void;
+  onViewPayments?: (invoice: InvoiceWithRelations) => void;
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
 }
 
@@ -70,6 +72,7 @@ const InvoiceListTable = ({
   onDelete,
   onRecordPayment,
   onViewDetail,
+  onViewPayments,
   onViewHistory,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
@@ -95,10 +98,8 @@ const InvoiceListTable = ({
                 aria-label="Chọn tất cả hoá đơn chưa thu tiền"
               />
             </TableHead>
-            <TableHead className="w-[100px]">Mã</TableHead>
-            <TableHead className="w-[180px]">Thao tác</TableHead>
+            <TableHead className="w-[200px]">Thao tác</TableHead>
             <TableHead>Hoá đơn</TableHead>
-            <TableHead>Khách hàng</TableHead>
             <TableHead className="text-right">Tiền thuê</TableHead>
             <TableHead className="text-right">Tiền dịch vụ</TableHead>
             <TableHead className="text-right">Tổng tiền</TableHead>
@@ -112,7 +113,7 @@ const InvoiceListTable = ({
         <TableBody>
           {invoices.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={13} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
                 Không có hoá đơn nào
               </TableCell>
             </TableRow>
@@ -120,9 +121,11 @@ const InvoiceListTable = ({
             invoices.map((invoice) => {
               const remaining = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
               const isSelectable = (invoice.paid_amount ?? 0) === 0;
+              const isFullyPaid =
+                (invoice.total_amount || 0) > 0 &&
+                (invoice.paid_amount || 0) >= (invoice.total_amount || 0);
               const rentAmount = sumByType(invoice.invoice_items, ['RENT']);
               const serviceAmount = sumByType(invoice.invoice_items, ['SERVICE', 'PENALTY']);
-              const customerName = invoice.tenant?.full_name ?? '—';
               const locationCode = [invoice.building?.name, invoice.room?.name]
                 .filter(Boolean)
                 .join(' / ');
@@ -139,19 +142,24 @@ const InvoiceListTable = ({
                     />
                   </TableCell>
 
-                  {/* Mã */}
-                  <TableCell>
-                    <button
-                      className="font-medium text-blue-600 hover:underline cursor-pointer text-sm"
-                      onClick={() => onViewDetail(invoice)}
-                    >
-                      {invoice.invoice_number || invoice.id.slice(0, 8)}
-                    </button>
-                  </TableCell>
-
                   {/* Thao tác - inline icon buttons */}
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {/* Xem chi tiết */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200"
+                            onClick={() => onViewDetail(invoice)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Xem chi tiết</TooltipContent>
+                      </Tooltip>
+
                       {/* Cập nhật */}
                       {canEditInvoice(invoice) && (
                         <Tooltip>
@@ -169,20 +177,22 @@ const InvoiceListTable = ({
                         </Tooltip>
                       )}
 
-                      {/* Thu tiền */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 rounded-full bg-green-100 text-green-600 hover:bg-green-200"
-                            onClick={() => onRecordPayment(invoice)}
-                          >
-                            <DollarSign className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Thu tiền</TooltipContent>
-                      </Tooltip>
+                      {/* Thu tiền — ẩn khi đã thu đủ */}
+                      {!isFullyPaid && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-full bg-green-100 text-green-600 hover:bg-green-200"
+                              onClick={() => onRecordPayment(invoice)}
+                            >
+                              <DollarSign className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Thu tiền</TooltipContent>
+                        </Tooltip>
+                      )}
 
                       {/* In hoá đơn */}
                       <Tooltip>
@@ -248,16 +258,10 @@ const InvoiceListTable = ({
                   {/* Hoá đơn */}
                   <TableCell>
                     <div className="text-sm font-medium">{getInvoiceTitle(invoice)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      Kỳ: {invoice.billing_month ?? '—'}
-                    </div>
-                  </TableCell>
-
-                  {/* Khách hàng */}
-                  <TableCell>
-                    <div className="text-sm font-medium">{customerName}</div>
                     {locationCode && (
-                      <div className="text-xs text-muted-foreground">{locationCode}</div>
+                      <div className="text-xs font-semibold text-zinc-700">
+                        {locationCode}
+                      </div>
                     )}
                   </TableCell>
 
@@ -282,7 +286,9 @@ const InvoiceListTable = ({
                     {(invoice.paid_amount || 0) > 0 && (
                       <button
                         className="ml-1 text-blue-500 hover:underline text-xs"
-                        onClick={() => onViewDetail(invoice)}
+                        onClick={() =>
+                          onViewPayments ? onViewPayments(invoice) : onViewDetail(invoice)
+                        }
                       >
                         (Xem)
                       </button>

@@ -29,6 +29,7 @@ import ImportExcelDialog from '@/components/invoices/ImportExcelDialog';
 import ExcelInvoiceDialog from '@/components/invoices/ExcelInvoiceDialog';
 import BulkRecordPaymentDialog from '@/components/invoices/BulkRecordPaymentDialog';
 import InvoiceImageDialog from '@/components/invoices/InvoiceImageDialog';
+import PaymentsSummaryDialog from '@/components/invoices/PaymentsSummaryDialog';
 
 const InvoicesPage = () => {
   const navigate = useNavigate();
@@ -56,6 +57,7 @@ const InvoicesPage = () => {
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [paymentsSummaryOpen, setPaymentsSummaryOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(null);
 
   // Merge search into filters
@@ -167,6 +169,14 @@ const InvoicesPage = () => {
     [toast],
   );
 
+  const handleViewPayments = useCallback(
+    (invoice: InvoiceWithRelations) => {
+      setSelectedInvoice(invoice);
+      setPaymentsSummaryOpen(true);
+    },
+    [],
+  );
+
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.length === 0) return;
     if (confirm(`Bạn có chắc chắn muốn xoá ${selectedIds.length} hoá đơn đã chọn?`)) {
@@ -266,6 +276,7 @@ const InvoicesPage = () => {
                   onDelete={handleDelete}
                   onRecordPayment={handleRecordPayment}
                   onViewDetail={handleViewDetail}
+                  onViewPayments={handleViewPayments}
                   onViewHistory={handleViewHistory}
                 />
                 <DataTablePagination
@@ -338,6 +349,12 @@ const InvoicesPage = () => {
         open={imageDialogOpen}
         onOpenChange={setImageDialogOpen}
         invoices={invoices}
+      />
+
+      <PaymentsSummaryDialog
+        open={paymentsSummaryOpen}
+        onOpenChange={setPaymentsSummaryOpen}
+        invoice={selectedInvoice}
       />
     </MainLayout>
   );
