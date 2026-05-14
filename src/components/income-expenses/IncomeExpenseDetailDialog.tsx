@@ -58,7 +58,8 @@ export function IncomeExpenseDetailDialog({
     if (!lightboxUrl) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        e.stopPropagation();
+        e.stopImmediatePropagation();
+        e.preventDefault();
         setLightboxUrl(null);
       }
     };
