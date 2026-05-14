@@ -366,9 +366,12 @@ const IncomeExpenseForm = ({
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
-  // Phiếu đã tạo: chỉ xem (read-only). Tạo mới: edit được.
-  const isViewing = !!voucher;
-  const canEdit = !isViewing;
+  // Phiếu Nháp (UNAPPROVED): cho phép sửa.
+  // Phiếu đã ghi nhận/đã huỷ: chỉ xem (read-only).
+  // Tạo mới: edit được.
+  const isUnapprovedDraft = voucher?.approval_status === 'UNAPPROVED';
+  const isViewing = !!voucher && !isUnapprovedDraft;
+  const canEdit = !voucher || isUnapprovedDraft;
 
   const totalAmount = itemRows.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
@@ -387,10 +390,21 @@ const IncomeExpenseForm = ({
         >
           <DialogHeader>
             <DialogTitle>
-              {isViewing ? 'CHI TIẾT PHIẾU' : 'THÊM PHIẾU THU/CHI'}
+              {isUnapprovedDraft
+                ? 'SỬA PHIẾU NHÁP'
+                : isViewing
+                ? 'CHI TIẾT PHIẾU'
+                : 'THÊM PHIẾU THU/CHI'}
             </DialogTitle>
           </DialogHeader>
 
+          {isUnapprovedDraft && (
+            <p className="text-sm text-muted-foreground">
+              Phiếu đang ở trạng thái <b>Nháp</b>. Bạn có thể chỉnh sửa nội
+              dung, sau đó ấn <b>Lưu</b> để cập nhật. Phiếu chỉ tính vào tồn
+              quỹ khi đã được duyệt.
+            </p>
+          )}
           {isViewing && (
             <p className="text-sm text-muted-foreground">
               Phiếu đã được ghi nhận. Để bỏ ghi nhận, hãy đóng dialog này và
