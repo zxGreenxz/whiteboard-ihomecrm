@@ -52,10 +52,9 @@ const sumByType = (items: InvoiceWithRelations['invoice_items'], types: string[]
 /**
  * Build invoice title from items + notes.
  *
- * - Notes có "thanh lý" → "Hóa đơn thanh lý - <month>" (ưu tiên cao nhất,
- *   ghi đè cả RENT+SERVICE/PENALTY).
- * - RENT + SERVICE → "Tiền phòng - <toà>/<phòng> - MM/YYYY"
- *   (mặc định gọi là tiền phòng hàng tháng).
+ * - Notes có "thanh lý" → "Hóa đơn thanh lý - <month>"
+ * - RENT + SERVICE → "TIỀN PHÒNG - <phòng>/<toà> - MM/YYYY"
+ *   (title đã chứa location → dòng phụ tòa/phòng bị ẩn đi)
  * - Chỉ RENT → "Hóa đơn tiền nhà - <month>"
  * - Chỉ SERVICE/PENALTY → "Hóa đơn dịch vụ - <month>"
  * - Còn lại → "Hóa đơn - <month>"
@@ -79,16 +78,27 @@ const getInvoiceTitle = (invoice: InvoiceWithRelations): string => {
   );
 
   if (hasRent && hasService) {
-    const loc = [invoice.building?.name, invoice.room?.name]
+    const loc = [invoice.room?.name, invoice.building?.name]
       .filter(Boolean)
-      .join(' / ');
+      .join('/');
     return loc
-      ? `Tiền phòng - ${loc} - ${monthDisplay || month}`
-      : `Tiền phòng - ${month}`;
+      ? `TIỀN PHÒNG - ${loc} - ${monthDisplay || month}`
+      : `TIỀN PHÒNG - ${monthDisplay || month}`;
   }
   if (hasRent) return `Hóa đơn tiền nhà - ${month}`;
   if (hasService) return `Hóa đơn dịch vụ - ${month}`;
   return `Hóa đơn - ${month}`;
+};
+
+/** Title đã chứa location chưa? Dùng để quyết định có hiển thị dòng phụ
+ *  tòa/phòng bên dưới hay không. */
+const titleIncludesLocation = (invoice: InvoiceWithRelations): boolean => {
+  const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
+  const hasService = invoice.invoice_items?.some(
+    (i) => i.type === 'SERVICE' || i.type === 'PENALTY',
+  );
+  const isLiquidation = /thanh\s*lý/i.test(invoice.notes ?? '');
+  return !isLiquidation && !!hasRent && !!hasService;
 };
 
 const InvoiceListTable = ({
@@ -265,7 +275,7 @@ const InvoiceListTable = ({
                   {/* Hoá đơn */}
                   <TableCell>
                     <div className="text-sm font-medium">{getInvoiceTitle(invoice)}</div>
-                    {locationCode && (
+                    {locationCode && !titleIncludesLocation(invoice) && (
                       <div className="text-xs font-semibold text-zinc-700">
                         {locationCode}
                       </div>
