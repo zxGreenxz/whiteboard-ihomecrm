@@ -230,7 +230,9 @@ const InvoiceDetailPage = () => {
 
         <div className="flex-1" />
 
-        {(invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID') &&
+        {(invoice.status === 'APPROVED' ||
+          invoice.status === 'PARTIAL_PAID' ||
+          invoice.status === 'OVERDUE') &&
           (() => {
             const total = invoice.total_amount || 0;
             const paid = invoice.paid_amount || 0;
