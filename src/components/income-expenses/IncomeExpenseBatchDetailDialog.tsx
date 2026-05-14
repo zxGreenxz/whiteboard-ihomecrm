@@ -72,8 +72,8 @@ export function IncomeExpenseBatchDetailDialog({
         setLightboxUrl(null);
       }
     };
-    document.addEventListener('keydown', handler, true);
-    return () => document.removeEventListener('keydown', handler, true);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [lightboxUrl]);
 
   if (!batch) return null;
