@@ -48,6 +48,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+type PaymentMethod = 'TM' | 'TK' | 'TT';
+
 interface RowData {
   invoice_id: string;
   invoice_number: string;
@@ -64,6 +66,10 @@ interface RowData {
   amount_tt: number;
   change_amount: number;
   change_user_edited: boolean;
+
+  // Methods đã có phiếu thanh toán trên hoá đơn này — dùng để khoá nhóm
+  // còn lại (TM/TT vs TK) ngay khi load.
+  existing_methods: PaymentMethod[];
 
   receipt_image: File | null;
   receipt_preview_url: string | null;
@@ -184,6 +190,21 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         .is('deleted_at', null);
       if (error) throw error;
 
+      const invoiceIds = (data || []).map((inv: any) => inv.id);
+      const methodsMap = new Map<string, PaymentMethod[]>();
+      if (invoiceIds.length > 0) {
+        const { data: paymentsData, error: paymentsErr } = await (supabase as any)
+          .from('payments')
+          .select('invoice_id, payment_method')
+          .in('invoice_id', invoiceIds);
+        if (paymentsErr) throw paymentsErr;
+        for (const p of paymentsData || []) {
+          const arr = methodsMap.get(p.invoice_id) ?? [];
+          if (!arr.includes(p.payment_method)) arr.push(p.payment_method);
+          methodsMap.set(p.invoice_id, arr);
+        }
+      }
+
       const next: RowData[] = (data || [])
         .map((inv: any) => {
           const total = Number(inv.total_amount) || 0;
@@ -205,11 +226,12 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             paid_amount: paid,
             remaining,
             selected: remaining > 0,
-            amount_tm: remaining,
+            amount_tm: 0,
             amount_tk: 0,
             amount_tt: 0,
             change_amount: 0,
             change_user_edited: false,
+            existing_methods: methodsMap.get(inv.id) ?? [],
             receipt_image: null,
             receipt_preview_url: null,
             notes: '',
@@ -512,7 +534,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             Thanh toán hàng loạt — Mode Excel
           </DialogTitle>
           <DialogDescription>
-            Chọn toà & kỳ → Tải dữ liệu → Nhập số tiền TM/TK/TT/Thối cho từng phòng → Bấm "Ghi nhận".
+            Chọn toà & kỳ → Tải dữ liệu → Nhập số tiền TM/TT/TK/Thối cho từng phòng → Bấm "Ghi nhận".
           </DialogDescription>
         </DialogHeader>
 
@@ -652,8 +674,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                 <th className="p-2 border text-right">Đã trả</th>
                 <th className="p-2 border text-right bg-orange-50">Còn lại</th>
                 <th className="p-2 border text-right w-[120px]">TM</th>
-                <th className="p-2 border text-right w-[120px]">TK</th>
                 <th className="p-2 border text-right w-[120px]">TT</th>
+                <th className="p-2 border text-right w-[120px]">TK</th>
                 <th className="p-2 border text-right w-[120px] bg-amber-50">
                   Tiền thối
                 </th>
@@ -688,6 +710,16 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                 const willBePaid = newPaid >= r.total_amount && net > 0;
                 const willBePartial = newPaid > 0 && newPaid < r.total_amount;
                 const noChange = net === 0;
+                // Mutual exclusion: TM/TT (cash group) vs TK (transfer).
+                // Khoá nếu nhóm kia đã có input HOẶC đã có phiếu thanh toán trước.
+                const hasCashInput = r.amount_tm > 0 || r.amount_tt > 0;
+                const hasTkInput = r.amount_tk > 0;
+                const hasPriorCash =
+                  r.existing_methods.includes('TM') ||
+                  r.existing_methods.includes('TT');
+                const hasPriorTk = r.existing_methods.includes('TK');
+                const disabledCash = hasTkInput || hasPriorTk;
+                const disabledTk = hasCashInput || hasPriorCash;
                 return (
                   <tr
                     key={r.invoice_id}
@@ -716,36 +748,60 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                     <td className="p-1 border text-right font-semibold text-orange-600 bg-orange-50">
                       {fmt(r.remaining)}
                     </td>
-                    <td className="p-1 border">
+                    <td
+                      className={`p-1 border ${disabledCash ? 'bg-slate-100' : ''}`}
+                    >
                       <Input
-                        className="h-7 text-right"
+                        className="h-7 text-right disabled:bg-slate-100 disabled:text-slate-400"
                         type="text"
                         inputMode="numeric"
                         value={formatVN(r.amount_tm)}
+                        disabled={disabledCash}
+                        title={
+                          disabledCash
+                            ? 'Hoá đơn đã có TK — không được nhập chung với TM/TT'
+                            : undefined
+                        }
                         onChange={(e) =>
                           updateRow(i, { amount_tm: parseVN(e.target.value) })
                         }
                       />
                     </td>
-                    <td className="p-1 border">
+                    <td
+                      className={`p-1 border ${disabledCash ? 'bg-slate-100' : ''}`}
+                    >
                       <Input
-                        className="h-7 text-right"
-                        type="text"
-                        inputMode="numeric"
-                        value={formatVN(r.amount_tk)}
-                        onChange={(e) =>
-                          updateRow(i, { amount_tk: parseVN(e.target.value) })
-                        }
-                      />
-                    </td>
-                    <td className="p-1 border">
-                      <Input
-                        className="h-7 text-right"
+                        className="h-7 text-right disabled:bg-slate-100 disabled:text-slate-400"
                         type="text"
                         inputMode="numeric"
                         value={formatVN(r.amount_tt)}
+                        disabled={disabledCash}
+                        title={
+                          disabledCash
+                            ? 'Hoá đơn đã có TK — không được nhập chung với TM/TT'
+                            : undefined
+                        }
                         onChange={(e) =>
                           updateRow(i, { amount_tt: parseVN(e.target.value) })
+                        }
+                      />
+                    </td>
+                    <td
+                      className={`p-1 border ${disabledTk ? 'bg-slate-100' : ''}`}
+                    >
+                      <Input
+                        className="h-7 text-right disabled:bg-slate-100 disabled:text-slate-400"
+                        type="text"
+                        inputMode="numeric"
+                        value={formatVN(r.amount_tk)}
+                        disabled={disabledTk}
+                        title={
+                          disabledTk
+                            ? 'Hoá đơn đã có TM/TT — không được nhập chung với TK'
+                            : undefined
+                        }
+                        onChange={(e) =>
+                          updateRow(i, { amount_tk: parseVN(e.target.value) })
                         }
                       />
                     </td>
@@ -892,8 +948,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                     {totals.count} hoá đơn —
                   </td>
                   <td className="p-2 border text-right">{fmt(totals.tm)}</td>
-                  <td className="p-2 border text-right">{fmt(totals.tk)}</td>
                   <td className="p-2 border text-right">{fmt(totals.tt)}</td>
+                  <td className="p-2 border text-right">{fmt(totals.tk)}</td>
                   <td className="p-2 border text-right bg-amber-50">
                     {fmt(totals.change)}
                   </td>
