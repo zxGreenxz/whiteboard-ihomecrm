@@ -3,6 +3,7 @@ import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { format } from "date-fns";
 
 interface Props {
@@ -25,6 +26,8 @@ export function IncomeExpenseFilterChips({
   const { data: areas } = useAreas();
   const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: accounts } = useAccounts();
+  const { data: incomeTypes } = useIncomeExpenseTypes("income");
+  const { data: expenseTypes } = useIncomeExpenseTypes("expense");
 
   const chips: Chip[] = [];
 
@@ -88,6 +91,26 @@ export function IncomeExpenseFilterChips({
         key: "building_id",
         label: b.name,
         patch: { building_id: null, room_id: null },
+      });
+  }
+
+  if (filters.income_type_id && incomeTypes) {
+    const t = incomeTypes.find((x) => x.id === filters.income_type_id);
+    if (t)
+      chips.push({
+        key: "income_type_id",
+        label: `Thu: ${t.name}`,
+        patch: { income_type_id: null },
+      });
+  }
+
+  if (filters.expense_type_id && expenseTypes) {
+    const t = expenseTypes.find((x) => x.id === filters.expense_type_id);
+    if (t)
+      chips.push({
+        key: "expense_type_id",
+        label: `Chi: ${t.name}`,
+        patch: { expense_type_id: null },
       });
   }
 

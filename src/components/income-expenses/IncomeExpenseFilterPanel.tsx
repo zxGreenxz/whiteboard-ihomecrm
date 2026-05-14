@@ -70,7 +70,8 @@ export function IncomeExpenseFilterPanel({
   const { data: allBuildings } = useBuildings({ includeVirtual: true });
   const { data: rooms } = useRooms(draft.building_id ?? undefined);
   const { data: accounts } = useAccounts();
-  const { data: types } = useIncomeExpenseTypes();
+  const { data: incomeTypes } = useIncomeExpenseTypes("income");
+  const { data: expenseTypes } = useIncomeExpenseTypes("expense");
 
   const filteredBuildings = draft.area_id
     ? (allBuildings || []).filter((b) => b.area_id === draft.area_id)
@@ -279,22 +280,49 @@ export function IncomeExpenseFilterPanel({
             </Select>
           </div>
 
-          {/* Loại thu chi (placeholder — chưa map filter, để tham khảo Resident) */}
+          {/* Hạng mục thu */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              Loại thu chi
-            </Label>
-            <Select disabled>
+            <Label className="text-sm font-medium">Hạng mục thu</Label>
+            <Select
+              value={draft.income_type_id ?? "ALL"}
+              onValueChange={(v) =>
+                patch({ income_type_id: v === "ALL" ? null : v })
+              }
+            >
               <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    types && types.length
-                      ? `Có ${types.length} loại — sắp hỗ trợ lọc`
-                      : "Loại thu chi"
-                  }
-                />
+                <SelectValue placeholder="Tất cả hạng mục thu" />
               </SelectTrigger>
-              <SelectContent />
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả hạng mục thu</SelectItem>
+                {(incomeTypes || []).map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Hạng mục chi */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Hạng mục chi</Label>
+            <Select
+              value={draft.expense_type_id ?? "ALL"}
+              onValueChange={(v) =>
+                patch({ expense_type_id: v === "ALL" ? null : v })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Tất cả hạng mục chi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tất cả hạng mục chi</SelectItem>
+                {(expenseTypes || []).map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
         </div>

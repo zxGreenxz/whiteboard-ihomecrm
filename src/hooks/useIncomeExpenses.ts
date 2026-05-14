@@ -20,6 +20,11 @@ export interface IncomeExpenseFilters {
   end_date?: string | null;
   // "ALL_ACTIVE" = Đã ghi nhận + Nháp (loại trừ Đã huỷ) — đây là mặc định.
   approval_status?: "UNAPPROVED" | "APPROVED" | "CANCELLED" | "ALL_ACTIVE" | null;
+  // Lọc theo hạng mục (income_expense_type) trong items của phiếu.
+  // income_type_id: chỉ áp dụng cho phiếu thu, expense_type_id: cho phiếu chi.
+  // Nếu cả 2 cùng có → union (phiếu thu khớp HOẶC phiếu chi khớp).
+  income_type_id?: string | null;
+  expense_type_id?: string | null;
 }
 
 
@@ -77,6 +82,35 @@ export interface IncomeExpenseWithRelations {
   updated_at: string;
 }
 
+// --- Helpers ---
+
+// Trả về danh sách voucher_id thoả 2 filter hạng mục (union nếu cả 2 cùng có).
+// Trả về null nếu không có filter hạng mục nào (caller bỏ qua bước này).
+// Trả về [] (rỗng) nếu có filter nhưng không có voucher nào match → caller nên
+// trả kết quả rỗng ngay.
+async function getVoucherIdsByItemTypes(
+  filters: Pick<IncomeExpenseFilters, "income_type_id" | "expense_type_id">
+): Promise<string[] | null> {
+  const typeIds: string[] = [];
+  if (filters.income_type_id) typeIds.push(filters.income_type_id);
+  if (filters.expense_type_id) typeIds.push(filters.expense_type_id);
+  if (typeIds.length === 0) return null;
+
+  const { data, error } = await supabase
+    .from("income_expense_items" as any)
+    .select("income_expense_id")
+    .in("income_expense_type_id", typeIds);
+
+  if (error) {
+    console.error("getVoucherIdsByItemTypes error:", error);
+    return [];
+  }
+  const ids = Array.from(
+    new Set(((data ?? []) as any[]).map((r) => r.income_expense_id))
+  );
+  return ids;
+}
+
 // --- Query Hooks ---
 
 export const useIncomeExpenses = (
@@ -96,6 +130,8 @@ export const useIncomeExpenses = (
       filters.start_date,
       filters.end_date,
       filters.approval_status,
+      filters.income_type_id,
+      filters.expense_type_id,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -105,6 +141,12 @@ export const useIncomeExpenses = (
       totalCount: number;
     }> => {
       const hasSearch = searchQuery && searchQuery.trim().length > 0;
+
+      // Lọc theo hạng mục item (nếu có) — lấy danh sách voucher_id trước
+      const itemFilterIds = await getVoucherIdsByItemTypes(filters);
+      if (itemFilterIds !== null && itemFilterIds.length === 0) {
+        return { data: [], totalCount: 0 };
+      }
 
       // Build the main query with joins
       let query = supabase
@@ -121,6 +163,10 @@ export const useIncomeExpenses = (
           { count: "exact" }
         )
         .is("deleted_at", null);
+
+      if (itemFilterIds !== null) {
+        query = query.in("id", itemFilterIds);
+      }
 
       // Apply filters
       // For area_id, we need to get building IDs belonging to the area first
@@ -312,16 +358,27 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       filters.start_date,
       filters.end_date,
       filters.approval_status,
+      filters.income_type_id,
+      filters.expense_type_id,
     ],
     queryFn: async (): Promise<{
       totalIncome: number;
       totalExpense: number;
       difference: number;
     }> => {
+      const itemFilterIds = await getVoucherIdsByItemTypes(filters);
+      if (itemFilterIds !== null && itemFilterIds.length === 0) {
+        return { totalIncome: 0, totalExpense: 0, difference: 0 };
+      }
+
       let query = supabase
         .from("income_expenses" as any)
         .select("type, total_amount")
         .is("deleted_at", null);
+
+      if (itemFilterIds !== null) {
+        query = query.in("id", itemFilterIds);
+      }
 
       // Apply same filters as useIncomeExpenses
       // For area_id, get building IDs belonging to the area first
@@ -906,6 +963,8 @@ export const useIncomeExpenseBatches = (
       filters.start_date,
       filters.end_date,
       filters.approval_status,
+      filters.income_type_id,
+      filters.expense_type_id,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -914,6 +973,11 @@ export const useIncomeExpenseBatches = (
       data: IncomeExpenseBatchSummary[];
       totalCount: number;
     }> => {
+      const itemFilterIds = await getVoucherIdsByItemTypes(filters);
+      if (itemFilterIds !== null && itemFilterIds.length === 0) {
+        return { data: [], totalCount: 0 };
+      }
+
       // Lấy area → buildings nếu cần (dùng cho filter)
       let areaBuildingIds: string[] | null = null;
       if (filters.area_id) {
@@ -978,6 +1042,7 @@ export const useIncomeExpenseBatches = (
         .is("deleted_at", null)
         .in("id", voucherIds);
 
+      if (itemFilterIds !== null) voucherQuery = voucherQuery.in("id", itemFilterIds);
       if (areaBuildingIds) voucherQuery = voucherQuery.in("building_id", areaBuildingIds);
       if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
       if (filters.account_id) voucherQuery = voucherQuery.or(
@@ -994,18 +1059,23 @@ export const useIncomeExpenseBatches = (
 
       // 4. Lấy items của tất cả phiếu con
       const fetchedVoucherIds = ((vouchers ?? []) as any[]).map((v) => v.id);
-      const { data: allItems } = await supabase
-        .from("income_expense_items" as any)
-        .select(
-          `
+      const allItems =
+        fetchedVoucherIds.length === 0
+          ? []
+          : (
+              await supabase
+                .from("income_expense_items" as any)
+                .select(
+                  `
           *,
           income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name )
         `
-        )
-        .in("income_expense_id", fetchedVoucherIds.length > 0 ? fetchedVoucherIds : ["__empty__"]);
+                )
+                .in("income_expense_id", fetchedVoucherIds)
+            ).data ?? [];
 
       const itemsByVoucherId = new Map<string, IncomeExpenseItem[]>();
-      for (const item of (allItems ?? []) as any[]) {
+      for (const item of allItems as any[]) {
         const vId = item.income_expense_id;
         if (!itemsByVoucherId.has(vId)) itemsByVoucherId.set(vId, []);
         itemsByVoucherId.get(vId)!.push({

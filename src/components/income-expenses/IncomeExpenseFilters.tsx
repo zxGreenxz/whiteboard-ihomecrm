@@ -10,6 +10,7 @@ import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
 interface IncomeExpenseFiltersProps {
@@ -25,6 +26,8 @@ export function IncomeExpenseFiltersBar({
   const { data: allBuildings } = useBuildings({ includeVirtual: true });
   const { data: rooms } = useRooms(filters.building_id ?? undefined);
   const { data: accounts } = useAccounts();
+  const { data: incomeTypes } = useIncomeExpenseTypes("income");
+  const { data: expenseTypes } = useIncomeExpenseTypes("expense");
 
   // Filter buildings by selected area
   const filteredBuildings = filters.area_id
@@ -70,6 +73,14 @@ export function IncomeExpenseFiltersBar({
           ? null
           : (value as "INCOME" | "EXPENSE"),
     });
+  };
+
+  const handleIncomeTypeChange = (value: string) => {
+    handleChange({ income_type_id: value === "ALL" ? null : value });
+  };
+
+  const handleExpenseTypeChange = (value: string) => {
+    handleChange({ expense_type_id: value === "ALL" ? null : value });
   };
 
   const handleApprovalChange = (value: string) => {
@@ -167,6 +178,42 @@ export function IncomeExpenseFiltersBar({
           {(accounts || []).map((acc) => (
             <SelectItem key={acc.id} value={acc.id}>
               {acc.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Hạng mục thu */}
+      <Select
+        value={filters.income_type_id ?? "ALL"}
+        onValueChange={handleIncomeTypeChange}
+      >
+        <SelectTrigger className="w-[160px] h-9 text-sm">
+          <SelectValue placeholder="Hạng mục thu" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Hạng mục thu</SelectItem>
+          {(incomeTypes || []).map((t) => (
+            <SelectItem key={t.id} value={t.id}>
+              {t.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Hạng mục chi */}
+      <Select
+        value={filters.expense_type_id ?? "ALL"}
+        onValueChange={handleExpenseTypeChange}
+      >
+        <SelectTrigger className="w-[160px] h-9 text-sm">
+          <SelectValue placeholder="Hạng mục chi" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Hạng mục chi</SelectItem>
+          {(expenseTypes || []).map((t) => (
+            <SelectItem key={t.id} value={t.id}>
+              {t.name}
             </SelectItem>
           ))}
         </SelectContent>
