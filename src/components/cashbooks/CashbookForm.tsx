@@ -119,7 +119,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                     Tên sổ quỹ <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input placeholder="VD: Quỹ tiền mặt 102" {...field} />
+                    <Input {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
