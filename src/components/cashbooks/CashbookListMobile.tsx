@@ -1,12 +1,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import EmptyState from "@/components/ui/EmptyState";
-import { Wallet, Banknote, Smartphone, Lock, Pencil, Trash2 } from "lucide-react";
+import { Wallet, Lock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  accountTypeLabel,
-  type AccountWithBalance,
-  type AccountType,
-} from "@/hooks/useAccounts";
+import { type AccountWithBalance } from "@/hooks/useAccounts";
 
 interface Props {
   rows: AccountWithBalance[];
@@ -17,18 +13,6 @@ interface Props {
   onLock: (acc: AccountWithBalance) => void;
   onUnlock: (acc: AccountWithBalance) => void;
 }
-
-const ICON: Record<AccountType, typeof Wallet> = {
-  cash: Wallet,
-  bank: Banknote,
-  ewallet: Smartphone,
-};
-
-const TYPE_TONE: Record<AccountType, string> = {
-  cash: "bg-amber-100 text-amber-700",
-  bank: "bg-blue-100 text-blue-700",
-  ewallet: "bg-violet-100 text-violet-700",
-};
 
 const formatVND = (n: number) =>
   new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ";
@@ -67,7 +51,6 @@ export function CashbookListMobile({
   return (
     <ul role="list" className="px-3 py-3 space-y-2.5 pb-24">
       {rows.map((acc) => {
-        const Icon = ICON[acc.type] || Wallet;
         const isLocked = !!acc.lock_date;
         const balanceNeg = Number(acc.current_amount) < 0;
 
@@ -86,10 +69,8 @@ export function CashbookListMobile({
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <span
-                    className={`shrink-0 w-9 h-9 rounded-lg grid place-items-center ${TYPE_TONE[acc.type]}`}
-                  >
-                    <Icon className="h-4 w-4" />
+                  <span className="shrink-0 w-9 h-9 rounded-lg grid place-items-center bg-amber-100 text-amber-700">
+                    <Wallet className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -103,7 +84,7 @@ export function CashbookListMobile({
                       )}
                     </div>
                     <div className="text-[11px] text-muted-foreground">
-                      {acc.code} · {accountTypeLabel(acc.type)}
+                      {acc.code}
                     </div>
                   </div>
                 </div>

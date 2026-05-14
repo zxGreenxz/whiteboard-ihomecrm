@@ -4,14 +4,11 @@ import { toast } from "sonner";
 
 // --- Types ---
 
-export type AccountType = "cash" | "bank" | "ewallet";
-
 export interface Account {
   id: string;
   user_id: string;
   code: string;
   name: string;
-  type: AccountType;
   bank_name: string | null;
   account_number: string | null;
   bank_account_holder: string | null;
@@ -31,24 +28,11 @@ export interface AccountWithBalance extends Account {
 
 export interface AccountFormValues {
   name: string;
-  type: AccountType;
-  bank_name?: string | null;
-  account_number?: string | null;
-  bank_account_holder?: string | null;
-  branch?: string | null;
   description?: string | null;
   initial_amount: number;
   initial_date: string;
   is_default?: boolean;
 }
-
-const TYPE_LABEL: Record<AccountType, string> = {
-  cash: "Tiền mặt",
-  bank: "Ngân hàng",
-  ewallet: "Ví điện tử",
-};
-
-export const accountTypeLabel = (t: AccountType) => TYPE_LABEL[t];
 
 // --- Query: select-list (dùng trong filter & form thu chi) ---
 export const useAccounts = () => {
@@ -135,11 +119,6 @@ export const useCreateAccount = () => {
       const payload: any = {
         user_id: authData.user.id,
         name: values.name,
-        type: values.type,
-        bank_name: values.bank_name ?? null,
-        account_number: values.account_number ?? null,
-        bank_account_holder: values.bank_account_holder ?? null,
-        branch: values.branch ?? null,
         description: values.description ?? null,
         initial_amount: values.initial_amount,
         initial_date: values.initial_date,
@@ -174,11 +153,6 @@ export const useUpdateAccount = () => {
         .from("accounts" as any)
         .update({
           name: input.values.name,
-          type: input.values.type,
-          bank_name: input.values.bank_name ?? null,
-          account_number: input.values.account_number ?? null,
-          bank_account_holder: input.values.bank_account_holder ?? null,
-          branch: input.values.branch ?? null,
           description: input.values.description ?? null,
           initial_amount: input.values.initial_amount,
           initial_date: input.values.initial_date,

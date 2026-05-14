@@ -75,14 +75,9 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const onSubmit = async (values: FormValues) => {
     const payload: AccountFormValues = {
       name: values.name,
-      type: account?.type ?? "cash",
       initial_amount: values.initial_amount,
       initial_date: values.initial_date,
       description: values.description || null,
-      bank_name: account?.bank_name ?? null,
-      account_number: account?.account_number ?? null,
-      bank_account_holder: account?.bank_account_holder ?? null,
-      branch: account?.branch ?? null,
     };
 
     if (isEditing && account) {

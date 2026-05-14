@@ -5,10 +5,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { X, Pencil, Trash2, Wallet } from "lucide-react";
-import {
-  accountTypeLabel,
-  type AccountWithBalance,
-} from "@/hooks/useAccounts";
+import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -89,22 +86,6 @@ export function CashbookDetailDialog({
         <div className="flex-1 overflow-y-auto px-3 py-4">
           <div className="bg-zinc-100/70 rounded-2xl p-4">
             <Row label="Tên sổ quỹ:" value={account.name} />
-            <Row
-              label="Loại sổ quỹ:"
-              value={accountTypeLabel(account.type)}
-            />
-            {account.type === "bank" || account.type === "ewallet" ? (
-              <>
-                <Row label="Số tài khoản:" value={account.account_number} />
-                <Row label="Chủ TK:" value={account.bank_account_holder} />
-              </>
-            ) : null}
-            {account.type === "bank" && account.bank_name && (
-              <Row label="Ngân hàng:" value={account.bank_name} />
-            )}
-            {account.type === "bank" && account.branch && (
-              <Row label="Chi nhánh:" value={account.branch} />
-            )}
             <Row
               label="Ngày chốt số dư đầu kỳ:"
               value={

@@ -16,10 +16,7 @@ import {
   calculatePaginationInfo,
   type PaginationState,
 } from "@/hooks/usePagination";
-import {
-  accountTypeLabel,
-  type AccountWithBalance,
-} from "@/hooks/useAccounts";
+import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { Lock, LockOpen, Pencil, Trash2, Wallet, Eye } from "lucide-react";
 
 interface CashbookListProps {
@@ -86,7 +83,6 @@ const CashbookList = ({
             <TableHead className="w-[120px]">Mã</TableHead>
             <TableHead className="w-[140px]">Thao tác</TableHead>
             <TableHead>Tên sổ quỹ</TableHead>
-            <TableHead>Loại sổ quỹ</TableHead>
             <TableHead className="text-right">Số dư đầu kỳ</TableHead>
             <TableHead className="text-right">Tồn quỹ</TableHead>
             <TableHead>Ghi chú</TableHead>
@@ -163,7 +159,6 @@ const CashbookList = ({
                   </div>
                 </TableCell>
                 <TableCell className="font-medium">{acc.name}</TableCell>
-                <TableCell>{accountTypeLabel(acc.type)}</TableCell>
                 <TableCell className="text-right">
                   {formatVND(Number(acc.initial_amount))}
                 </TableCell>
