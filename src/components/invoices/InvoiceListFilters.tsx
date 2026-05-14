@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useAreas } from '@/hooks/useAreas';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useBeds } from '@/hooks/useBeds';
-import { useContracts } from '@/hooks/useContracts';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -27,13 +26,15 @@ const ALL_VALUE = '__all__';
 const MONTHS = ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'];
 
 const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: InvoiceListFiltersProps) => {
-  const { data: buildings = [] } = useBuildings();
+  const { data: areas = [] } = useAreas();
+  const { data: allBuildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(filters.building_id);
-  const { data: beds = [] } = useBeds(compact ? undefined : filters.room_id);
-  const { data: contractsData } = useContracts();
-  const contracts = (!compact && filters.room_id
-    ? (contractsData ?? []).filter((c: any) => c.room_id === filters.room_id)
-    : (contractsData ?? []));
+
+  // Cascade khu vực → toà nhà: chỉ list các toà thuộc khu vực đang chọn
+  const buildings = useMemo(() => {
+    if (!filters.area_id) return allBuildings;
+    return (allBuildings as any[]).filter((b) => b.area_id === filters.area_id);
+  }, [allBuildings, filters.area_id]);
 
   // Month Picker state
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
@@ -53,22 +54,28 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     onFiltersChange({ ...filters, ...patch });
   };
 
+  const handleAreaChange = (value: string) => {
+    const areaId = value === ALL_VALUE ? undefined : value;
+    update({ area_id: areaId, building_id: undefined, room_id: undefined });
+  };
+
   const handleBuildingChange = (value: string) => {
     const buildingId = value === ALL_VALUE ? undefined : value;
-    update({ building_id: buildingId, room_id: undefined, bed_id: undefined, contract_id: undefined });
+    update({ building_id: buildingId, room_id: undefined });
   };
 
   const handleRoomChange = (value: string) => {
     const roomId = value === ALL_VALUE ? undefined : value;
-    update({ room_id: roomId, bed_id: undefined });
+    update({ room_id: roomId });
   };
 
-  const handleBedChange = (value: string) => {
-    update({ bed_id: value === ALL_VALUE ? undefined : value });
-  };
-
-  const handleContractChange = (value: string) => {
-    update({ contract_id: value === ALL_VALUE ? undefined : value });
+  const handlePaymentStatusChange = (value: string) => {
+    update({
+      payment_status:
+        value === ALL_VALUE
+          ? undefined
+          : (value as 'paid' | 'unpaid'),
+    });
   };
 
   const handleMonthSelect = (month: number) => {
@@ -79,14 +86,17 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
 
   return (
     <div className={compact ? 'flex flex-wrap items-center gap-2 px-3 pt-3' : 'flex flex-wrap items-center gap-2 mb-4'}>
-      {/* Chọn khu vực - TODO: not implemented yet */}
+      {/* Chọn khu vực */}
       {!compact && (
-        <Select disabled>
+        <Select value={filters.area_id ?? ALL_VALUE} onValueChange={handleAreaChange}>
           <SelectTrigger className="h-9 text-sm w-[150px]">
             <SelectValue placeholder="Chọn khu vực" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__placeholder__">Chọn khu vực</SelectItem>
+            <SelectItem value={ALL_VALUE}>Tất cả khu vực</SelectItem>
+            {(areas as any[]).map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       )}
@@ -117,34 +127,19 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
         </SelectContent>
       </Select>
 
-      {/* Chọn giường */}
+      {/* Trạng thái thanh toán */}
       {!compact && (
-        <Select value={filters.bed_id ?? ALL_VALUE} onValueChange={handleBedChange}>
-          <SelectTrigger className="h-9 text-sm w-[140px]">
-            <SelectValue placeholder="Chọn giường" />
+        <Select
+          value={filters.payment_status ?? ALL_VALUE}
+          onValueChange={handlePaymentStatusChange}
+        >
+          <SelectTrigger className="h-9 text-sm w-[170px]">
+            <SelectValue placeholder="Trạng thái TT" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL_VALUE}>Tất cả giường</SelectItem>
-            {beds.map((b: any) => (
-              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {/* Hợp đồng */}
-      {!compact && (
-        <Select value={filters.contract_id ?? ALL_VALUE} onValueChange={handleContractChange}>
-          <SelectTrigger className="h-9 text-sm w-[150px]">
-            <SelectValue placeholder="Hợp đồng" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VALUE}>Tất cả HĐ</SelectItem>
-            {contracts.map((c: any) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.contract_number ?? c.tenant?.full_name ?? c.id.slice(0, 8)}
-              </SelectItem>
-            ))}
+            <SelectItem value={ALL_VALUE}>Tất cả</SelectItem>
+            <SelectItem value="paid">Đã thanh toán</SelectItem>
+            <SelectItem value="unpaid">Chưa thanh toán</SelectItem>
           </SelectContent>
         </Select>
       )}

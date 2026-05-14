@@ -82,6 +82,22 @@ export const useInvoices = (
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Filter theo khu vực: fetch trước các building_id thuộc area để lọc
+      // bằng .in() (giữ select hiện tại không cần đổi sang inner-join).
+      let buildingIdsByArea: string[] | null = null;
+      if (filters?.area_id && !filters?.building_id) {
+        const { data: bldgs } = await (supabase as any)
+          .from('buildings')
+          .select('id')
+          .eq('area_id', filters.area_id)
+          .is('deleted_at', null);
+        buildingIdsByArea = (bldgs || []).map((b: any) => b.id);
+        // Khu vực không có toà nào → trả về rỗng luôn.
+        if (buildingIdsByArea.length === 0) {
+          return { data: [], count: 0 };
+        }
+      }
+
       let query = (supabase
         .from('invoices')
         .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
@@ -91,6 +107,8 @@ export const useInvoices = (
       // Apply filters
       if (filters?.building_id) {
         query = query.eq('building_id', filters.building_id);
+      } else if (buildingIdsByArea) {
+        query = query.in('building_id', buildingIdsByArea);
       }
       if (filters?.room_id) {
         query = query.eq('room_id', filters.room_id);
@@ -103,6 +121,11 @@ export const useInvoices = (
       }
       if (filters?.status) {
         query = query.eq('status', filters.status);
+      }
+      if (filters?.payment_status === 'paid') {
+        query = query.eq('status', 'PAID');
+      } else if (filters?.payment_status === 'unpaid') {
+        query = query.neq('status', 'PAID');
       }
       if (filters?.billing_month) {
         query = query.eq('billing_month', filters.billing_month);

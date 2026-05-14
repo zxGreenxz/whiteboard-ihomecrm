@@ -114,11 +114,14 @@ export interface ExcessAmount {
 
 /** Filter parameters for querying invoices */
 export interface InvoiceFilters {
+  area_id?: string;
   building_id?: string;
   room_id?: string;
   bed_id?: string;
   contract_id?: string;
   status?: InvoiceStatus;
+  /** UI filter: đã thanh toán đủ ('paid') vs còn nợ ('unpaid'). */
+  payment_status?: 'paid' | 'unpaid';
   billing_month?: string; // YYYY-MM
   date_range?: {
     start: string; // DATE
