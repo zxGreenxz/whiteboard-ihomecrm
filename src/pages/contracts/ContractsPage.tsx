@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { FileText, Plus, Upload, Download, Filter, Search } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -21,11 +21,12 @@ import { exportContracts } from '@/lib/contractExcelHelpers';
 import { useContracts } from '@/hooks/useContracts';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useBeds } from '@/hooks/useBeds';
+import { useProfile } from '@/hooks/useProfile';
 import { getContractDisplayStatus } from '@/types/contract';
 import type {
   ContractWithRelations,
   ContractStatFilter,
+  ContractLifecycleFilter,
   ContractStats,
   ContractDisplayStatus,
 } from '@/types/contract';
@@ -45,10 +46,10 @@ export default function ContractsPage() {
   const [areaFilter, setAreaFilter] = useState('all');
   const [buildingFilter, setBuildingFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState('all');
-  const [bedFilter, setBedFilter] = useState('all');
-  const [rentalTypeFilter, setRentalTypeFilter] = useState('all');
+  const [lifecycleFilter, setLifecycleFilter] = useState<ContractLifecycleFilter>('ACTIVE');
   const [monthFilter, setMonthFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const areaDefaultAppliedRef = useRef(false);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -91,11 +92,7 @@ export default function ContractsPage() {
     [roomsData]
   );
 
-  const { data: bedsData } = useBeds();
-  const allBeds = useMemo(
-    () => (Array.isArray(bedsData) ? bedsData : []) as any[],
-    [bedsData]
-  );
+  const { data: profile } = useProfile();
 
   // =============================================
   // Compute areas from buildings
@@ -111,6 +108,18 @@ export default function ContractsPage() {
     return Array.from(areaMap.values());
   }, [allBuildings]);
 
+  // Mặc định khu vực theo user: Joey → JOEY, Nathan → NATHAN, còn lại → Tất cả
+  useEffect(() => {
+    if (areaDefaultAppliedRef.current) return;
+    if (!profile || areas.length === 0) return;
+    const name = (profile.full_name || '').trim().toLowerCase();
+    if (name === 'joey' || name === 'nathan') {
+      const matched = areas.find((a) => a.name.trim().toLowerCase() === name);
+      if (matched) setAreaFilter(matched.id);
+    }
+    areaDefaultAppliedRef.current = true;
+  }, [profile, areas]);
+
   // =============================================
   // Cascading filter data
   // =============================================
@@ -124,11 +133,6 @@ export default function ContractsPage() {
     if (buildingFilter === 'all') return allRooms;
     return allRooms.filter((r) => r.building_id === buildingFilter);
   }, [allRooms, buildingFilter]);
-
-  const filteredBeds = useMemo(() => {
-    if (roomFilter === 'all') return allBeds;
-    return allBeds.filter((b: any) => b.room_id === roomFilter);
-  }, [allBeds, roomFilter]);
 
   // =============================================
   // Compute stats from full contract list
@@ -152,6 +156,10 @@ export default function ContractsPage() {
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => {
+      // Lifecycle filter (Đang ở = tất cả trừ thanh lý, Thanh lý = chỉ thanh lý)
+      if (lifecycleFilter === 'ACTIVE' && contract.status === 'TERMINATED') return false;
+      if (lifecycleFilter === 'TERMINATED' && contract.status !== 'TERMINATED') return false;
+
       // Stat filter
       if (activeStatFilter !== 'ALL') {
         const displayStatus = getContractDisplayStatus(contract);
@@ -200,16 +208,6 @@ export default function ContractsPage() {
         if (contract.room_id !== roomFilter) return false;
       }
 
-      // Bed filter
-      if (bedFilter !== 'all') {
-        if (contract.bed_id !== bedFilter) return false;
-      }
-
-      // Rental type filter
-      if (rentalTypeFilter !== 'all') {
-        if (contract.room?.building?.type !== rentalTypeFilter) return false;
-      }
-
       // Month filter: contract's active period overlaps with selected month
       if (monthFilter) {
         const [year, month] = monthFilter.split('-').map(Number);
@@ -226,12 +224,11 @@ export default function ContractsPage() {
   }, [
     contracts,
     activeStatFilter,
+    lifecycleFilter,
     searchTerm,
     areaFilter,
     buildingFilter,
     roomFilter,
-    bedFilter,
-    rentalTypeFilter,
     monthFilter,
   ]);
 
@@ -251,6 +248,15 @@ export default function ContractsPage() {
 
   const handleStatFilterChange = useCallback((filter: ContractStatFilter) => {
     setActiveStatFilter(filter);
+    // Đồng bộ lifecycle filter để không bị mâu thuẫn với stats card
+    if (filter === 'TERMINATED') setLifecycleFilter('TERMINATED');
+    else if (filter === 'ALL') setLifecycleFilter('ALL');
+    else setLifecycleFilter('ACTIVE');
+    setPage(1);
+  }, []);
+
+  const handleLifecycleChange = useCallback((value: ContractLifecycleFilter) => {
+    setLifecycleFilter(value);
     setPage(1);
   }, []);
 
@@ -271,16 +277,6 @@ export default function ContractsPage() {
 
   const handleRoomChange = useCallback((value: string) => {
     setRoomFilter(value);
-    setPage(1);
-  }, []);
-
-  const handleBedChange = useCallback((value: string) => {
-    setBedFilter(value);
-    setPage(1);
-  }, []);
-
-  const handleRentalTypeChange = useCallback((value: string) => {
-    setRentalTypeFilter(value);
     setPage(1);
   }, []);
 
@@ -344,8 +340,7 @@ export default function ContractsPage() {
     areaFilter !== 'all' ||
     buildingFilter !== 'all' ||
     roomFilter !== 'all' ||
-    bedFilter !== 'all' ||
-    rentalTypeFilter !== 'all' ||
+    lifecycleFilter !== 'ALL' ||
     monthFilter ||
     activeStatFilter !== 'ALL';
 
@@ -374,16 +369,13 @@ export default function ContractsPage() {
             onBuildingChange={handleBuildingChange}
             roomFilter={roomFilter}
             onRoomChange={handleRoomChange}
-            bedFilter={bedFilter}
-            onBedChange={handleBedChange}
-            rentalTypeFilter={rentalTypeFilter}
-            onRentalTypeChange={handleRentalTypeChange}
+            lifecycleFilter={lifecycleFilter}
+            onLifecycleChange={handleLifecycleChange}
             monthFilter={monthFilter}
             onMonthChange={handleMonthChange}
             areas={areas}
             buildings={filteredBuildings}
             rooms={filteredRooms}
-            beds={filteredBeds}
           />
         )}
 

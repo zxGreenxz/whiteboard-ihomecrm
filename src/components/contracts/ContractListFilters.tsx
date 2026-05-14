@@ -8,18 +8,12 @@ import {
 } from '@/components/ui/select';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
+import type { ContractLifecycleFilter } from '@/types/contract';
 
 interface Area {
   id: string;
   name: string;
   code: string | null;
-  status: string;
-}
-
-interface Bed {
-  id: string;
-  name: string;
-  room_id: string;
   status: string;
 }
 
@@ -32,48 +26,44 @@ interface ContractListFiltersProps {
   onBuildingChange: (value: string) => void;
   roomFilter: string;
   onRoomChange: (value: string) => void;
-  bedFilter: string;
-  onBedChange: (value: string) => void;
-  rentalTypeFilter: string;
-  onRentalTypeChange: (value: string) => void;
+  lifecycleFilter: ContractLifecycleFilter;
+  onLifecycleChange: (value: ContractLifecycleFilter) => void;
   monthFilter: string;
   onMonthChange: (value: string) => void;
   areas: Area[];
   buildings: BuildingWithRelations[];
   rooms: RoomWithRelations[];
-  beds: Bed[];
 }
 
-const RENTAL_TYPE_OPTIONS = [
-  'Chung cư mini',
-  'Nhà trọ',
-  'Căn hộ dịch vụ',
-  'Ký túc xá',
-  'Homestay',
-];
-
 export default function ContractListFilters({
-  searchTerm,
-  onSearchChange,
   areaFilter,
   onAreaChange,
   buildingFilter,
   onBuildingChange,
   roomFilter,
   onRoomChange,
-  bedFilter,
-  onBedChange,
-  rentalTypeFilter,
-  onRentalTypeChange,
+  lifecycleFilter,
+  onLifecycleChange,
   monthFilter,
   onMonthChange,
   areas,
   buildings,
   rooms,
-  beds,
 }: ContractListFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
+      {/* Trạng thái hợp đồng */}
+      <Select value={lifecycleFilter} onValueChange={(val) => onLifecycleChange(val as ContractLifecycleFilter)}>
+        <SelectTrigger className="w-[160px]">
+          <SelectValue placeholder="Trạng thái" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
+          <SelectItem value="ACTIVE">Đang ở</SelectItem>
+          <SelectItem value="TERMINATED">Thanh lý</SelectItem>
+        </SelectContent>
+      </Select>
+
       {/* Khu vực */}
       <Select
         value={areaFilter}
@@ -81,7 +71,6 @@ export default function ContractListFilters({
           onAreaChange(val);
           onBuildingChange('all');
           onRoomChange('all');
-          onBedChange('all');
         }}
       >
         <SelectTrigger className="w-[160px]">
@@ -103,7 +92,6 @@ export default function ContractListFilters({
         onValueChange={(val) => {
           onBuildingChange(val);
           onRoomChange('all');
-          onBedChange('all');
         }}
       >
         <SelectTrigger className="w-[160px]">
@@ -120,13 +108,7 @@ export default function ContractListFilters({
       </Select>
 
       {/* Phòng */}
-      <Select
-        value={roomFilter}
-        onValueChange={(val) => {
-          onRoomChange(val);
-          onBedChange('all');
-        }}
-      >
+      <Select value={roomFilter} onValueChange={onRoomChange}>
         <SelectTrigger className="w-[160px]">
           <SelectValue placeholder="Chọn phòng" />
         </SelectTrigger>
@@ -135,36 +117,6 @@ export default function ContractListFilters({
           {rooms.map((room) => (
             <SelectItem key={room.id} value={room.id}>
               {room.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Giường */}
-      <Select value={bedFilter} onValueChange={onBedChange}>
-        <SelectTrigger className="w-[160px]">
-          <SelectValue placeholder="Chọn giường" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả giường</SelectItem>
-          {beds.map((bed) => (
-            <SelectItem key={bed.id} value={bed.id}>
-              {bed.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Dạng thuê */}
-      <Select value={rentalTypeFilter} onValueChange={onRentalTypeChange}>
-        <SelectTrigger className="w-[160px]">
-          <SelectValue placeholder="Dạng thuê" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả dạng thuê</SelectItem>
-          {RENTAL_TYPE_OPTIONS.map((type) => (
-            <SelectItem key={type} value={type}>
-              {type}
             </SelectItem>
           ))}
         </SelectContent>

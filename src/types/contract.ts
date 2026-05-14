@@ -6,6 +6,8 @@
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'EXTENDED' | 'TRANSFERRED' | 'TERMINATED' | 'EXPIRED';
 export type PaymentCycle = 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL';
 export type ContractStatFilter = 'ALL' | 'EXPIRING' | 'EXPIRED' | 'TERMINATED';
+// Trạng thái vòng đời hợp đồng: ALL = tất cả, ACTIVE = đang ở (tất cả trừ thanh lý), TERMINATED = đã thanh lý
+export type ContractLifecycleFilter = 'ALL' | 'ACTIVE' | 'TERMINATED';
 
 // Computed display status (includes derived statuses)
 export type ContractDisplayStatus =
