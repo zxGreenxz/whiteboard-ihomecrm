@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -27,7 +27,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { useUpdateArea } from "@/hooks/useAreas";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { useAssignBuildingsToArea, useUpdateArea } from "@/hooks/useAreas";
+import { useBuildings } from "@/hooks/useBuildings";
 import type { Database } from "@/integrations/supabase/types";
 
 type Area = Database["public"]["Tables"]["areas"]["Row"];
@@ -49,6 +52,8 @@ interface EditAreaDialogProps {
 
 export function EditAreaDialog({ open, onOpenChange, area }: EditAreaDialogProps) {
   const updateArea = useUpdateArea();
+  const assignBuildings = useAssignBuildingsToArea();
+  const { data: buildings = [] } = useBuildings();
 
   const form = useForm<AreaFormValues>({
     resolver: zodResolver(areaSchema),
@@ -60,17 +65,39 @@ export function EditAreaDialog({ open, onOpenChange, area }: EditAreaDialogProps
     },
   });
 
+  const [selectedBuildingIds, setSelectedBuildingIds] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const initialBuildingIds = useMemo(
+    () =>
+      new Set(
+        buildings.filter((b) => b.area_id === area.id).map((b) => b.id),
+      ),
+    [buildings, area.id],
+  );
+
   useEffect(() => {
-    if (area) {
+    if (open && area) {
       form.reset({
         name: area.name,
         code: area.code || "",
         description: area.description || "",
         status: area.status as "ACTIVE" | "INACTIVE",
       });
+      setSelectedBuildingIds(new Set(initialBuildingIds));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [area]);
+  }, [open, area, initialBuildingIds]);
+
+  const toggleBuilding = (id: string, checked: boolean) => {
+    setSelectedBuildingIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   const onSubmit = async (data: AreaFormValues) => {
     try {
@@ -83,15 +110,32 @@ export function EditAreaDialog({ open, onOpenChange, area }: EditAreaDialogProps
           status: data.status,
         },
       });
+
+      const toAddIds = Array.from(selectedBuildingIds).filter(
+        (id) => !initialBuildingIds.has(id),
+      );
+      const toRemoveIds = Array.from(initialBuildingIds).filter(
+        (id) => !selectedBuildingIds.has(id),
+      );
+      if (toAddIds.length > 0 || toRemoveIds.length > 0) {
+        await assignBuildings.mutateAsync({
+          areaId: area.id,
+          toAddIds,
+          toRemoveIds,
+        });
+      }
+
       onOpenChange(false);
     } catch (error) {
       // Error is handled by the mutation
     }
   };
 
+  const isPending = updateArea.isPending || assignBuildings.isPending;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Chỉnh sửa Khu vực</DialogTitle>
           <DialogDescription>
@@ -153,6 +197,42 @@ export function EditAreaDialog({ open, onOpenChange, area }: EditAreaDialogProps
               />
             </div>
 
+            <div className="space-y-2">
+              <Label>Tòa nhà sử dụng *</Label>
+              <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
+                {buildings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2 text-center">
+                    Chưa có tòa nhà nào
+                  </p>
+                ) : (
+                  buildings.map((b) => {
+                    const checked = selectedBuildingIds.has(b.id);
+                    const inOtherArea =
+                      !!b.area_id && b.area_id !== area.id;
+                    return (
+                      <label
+                        key={b.id}
+                        className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/50 cursor-pointer text-sm"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) =>
+                            toggleBuilding(b.id, v === true)
+                          }
+                        />
+                        <span className="flex-1">{b.name}</span>
+                        {inOtherArea && b.area && (
+                          <span className="text-xs text-muted-foreground">
+                            (đang thuộc {b.area.name})
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
             <FormField
               control={form.control}
               name="description"
@@ -178,8 +258,8 @@ export function EditAreaDialog({ open, onOpenChange, area }: EditAreaDialogProps
               >
                 Hủy
               </Button>
-              <Button type="submit" disabled={updateArea.isPending}>
-                {updateArea.isPending ? "Đang cập nhật..." : "Cập nhật"}
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Đang cập nhật..." : "Cập nhật"}
               </Button>
             </div>
           </form>

@@ -141,6 +141,51 @@ export const useUpdateArea = () => {
   });
 };
 
+// Assign/unassign buildings to an area
+export const useAssignBuildingsToArea = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      areaId,
+      toAddIds,
+      toRemoveIds,
+    }: {
+      areaId: string;
+      toAddIds: string[];
+      toRemoveIds: string[];
+    }) => {
+      if (toRemoveIds.length > 0) {
+        const { error } = await supabase
+          .from("buildings")
+          .update({ area_id: null })
+          .in("id", toRemoveIds);
+        if (error) {
+          toast.error("Không thể bỏ tòa nhà khỏi khu vực");
+          throw error;
+        }
+      }
+      if (toAddIds.length > 0) {
+        const { error } = await supabase
+          .from("buildings")
+          .update({ area_id: areaId })
+          .in("id", toAddIds);
+        if (error) {
+          toast.error("Không thể gán tòa nhà vào khu vực");
+          throw error;
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["buildings"] });
+      queryClient.invalidateQueries({ queryKey: ["areas"] });
+    },
+    onError: (error) => {
+      console.error("Error assigning buildings to area:", error);
+    },
+  });
+};
+
 // Soft delete area
 export const useDeleteArea = () => {
   const queryClient = useQueryClient();
