@@ -25,6 +25,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -113,6 +114,7 @@ const defaultMethodForNewRow = (
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPaymentRPC();
   const { data: accounts = [] } = useAccounts();
+  const { data: currentUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -149,13 +151,31 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
 
-  // ID sổ quỹ trùng tên tòa nhà của hoá đơn — dùng làm default cho mọi dòng mới.
+  // ID sổ quỹ trùng tên tòa nhà của hoá đơn — dùng làm default cho TT/TK.
   const defaultAccountId = useMemo(() => {
     if (!invoice || !accounts.length) return '';
     const buildingName = invoice.building?.name?.trim();
     if (!buildingName) return '';
     return (accounts as any[]).find((a) => a.name?.trim() === buildingName)?.id ?? '';
   }, [invoice, accounts]);
+
+  // Sổ TM của user đang đăng nhập: sổ thuộc user, tên kết thúc "Thu"
+  // (vd Joey → "Hiển Thu", Nathan → "Hiệp Thu"). Dùng cho line phương thức TM
+  // và ẩn dropdown để khỏi phải chọn tay.
+  const myCashAccountId = useMemo(() => {
+    if (!currentUser?.id || !accounts.length) return '';
+    return (accounts as any[]).find(
+      (a) =>
+        a.user_id === currentUser.id &&
+        typeof a.name === 'string' &&
+        a.name.trim().endsWith('Thu'),
+    )?.id ?? '';
+  }, [currentUser, accounts]);
+
+  const accountIdForMethod = (method: PaymentMethod): string => {
+    if (method === 'TM' && myCashAccountId) return myCashAccountId;
+    return defaultAccountId;
+  };
 
   // Auto-fill số tiền của dòng đầu = outstanding khi mở dialog
   useEffect(() => {
@@ -164,11 +184,16 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }
   }, [invoice, outstandingAmount, setValue]);
 
-  // Auto-default sổ quỹ nhận của DÒNG ĐẦU theo tên tòa nhà (account.name === building.name)
+  // Auto-default sổ quỹ nhận của DÒNG ĐẦU theo method:
+  //  - TM → sổ Thu của user (myCashAccountId)
+  //  - khác → sổ trùng tên tòa nhà (defaultAccountId)
   useEffect(() => {
-    if (!defaultAccountId) return;
-    setValue('payment_lines.0.account_id', defaultAccountId);
-  }, [defaultAccountId, setValue]);
+    if (!defaultAccountId && !myCashAccountId) return;
+    const firstMethod = (watchedLines?.[0]?.payment_method ?? 'TM') as PaymentMethod;
+    const target = accountIdForMethod(firstMethod);
+    if (target) setValue('payment_lines.0.account_id', target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultAccountId, myCashAccountId, setValue]);
 
   // Tổng tiền TM (tiền thối chỉ áp dụng cho phương thức TM)
   const tmTotal = (watchedLines ?? [])
@@ -443,13 +468,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     size="icon"
                     variant="outline"
                     title="Thêm dòng thanh toán"
-                    onClick={() =>
+                    onClick={() => {
+                      const newMethod = defaultMethodForNewRow(watchedLines as any);
                       append({
                         amount: 0,
-                        payment_method: defaultMethodForNewRow(watchedLines as any),
-                        account_id: defaultAccountId,
-                      })
-                    }
+                        payment_method: newMethod,
+                        account_id: accountIdForMethod(newMethod),
+                      });
+                    }}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -461,11 +487,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <Label>Phương thức thanh toán *</Label>
                 <Select
                   value={watchedLines?.[0]?.payment_method ?? 'TM'}
-                  onValueChange={(value) =>
-                    setValue('payment_lines.0.payment_method', value as any, {
+                  onValueChange={(value) => {
+                    const method = value as PaymentMethod;
+                    setValue('payment_lines.0.payment_method', method, {
                       shouldValidate: true,
-                    })
-                  }
+                    });
+                    const next = accountIdForMethod(method);
+                    if (next) {
+                      setValue('payment_lines.0.account_id', next, {
+                        shouldValidate: true,
+                      });
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -492,36 +525,38 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 )}
               </div>
 
-              {/* Sổ quỹ nhận */}
-              <div className="space-y-2">
-                <Label>Sổ quỹ nhận *</Label>
-                <Select
-                  value={watchedLines?.[0]?.account_id ?? ''}
-                  onValueChange={(v) =>
-                    setValue('payment_lines.0.account_id', v, { shouldValidate: true })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((a: any) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                        {a.bank_name ? ` — ${a.bank_name}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.payment_lines?.[0]?.account_id && (
-                  <p className="text-sm text-red-500">
-                    {errors.payment_lines[0]?.account_id?.message}
+              {/* Sổ quỹ nhận — ẩn khi method=TM và user có sổ Thu riêng */}
+              {!(watchedLines?.[0]?.payment_method === 'TM' && myCashAccountId) && (
+                <div className="space-y-2">
+                  <Label>Sổ quỹ nhận *</Label>
+                  <Select
+                    value={watchedLines?.[0]?.account_id ?? ''}
+                    onValueChange={(v) =>
+                      setValue('payment_lines.0.account_id', v, { shouldValidate: true })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a: any) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                          {a.bank_name ? ` — ${a.bank_name}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.payment_lines?.[0]?.account_id && (
+                    <p className="text-sm text-red-500">
+                      {errors.payment_lines[0]?.account_id?.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Hệ thống sẽ tự tạo phiếu thu trong mục Thu chi của sổ quỹ này.
-                </p>
-              </div>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -572,13 +607,22 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       <Label>Phương thức *</Label>
                       <Select
                         value={watchedLines?.[idx]?.payment_method ?? 'TM'}
-                        onValueChange={(v) =>
+                        onValueChange={(v) => {
+                          const method = v as PaymentMethod;
                           setValue(
                             `payment_lines.${idx}.payment_method` as const,
-                            v as any,
+                            method,
                             { shouldValidate: true },
-                          )
-                        }
+                          );
+                          const next = accountIdForMethod(method);
+                          if (next) {
+                            setValue(
+                              `payment_lines.${idx}.account_id` as const,
+                              next,
+                              { shouldValidate: true },
+                            );
+                          }
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -593,36 +637,39 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       </Select>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Sổ quỹ nhận *</Label>
-                    <Select
-                      value={watchedLines?.[idx]?.account_id ?? ''}
-                      onValueChange={(v) =>
-                        setValue(
-                          `payment_lines.${idx}.account_id` as const,
-                          v,
-                          { shouldValidate: true },
-                        )
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {accounts.map((a: any) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name}
-                            {a.bank_name ? ` — ${a.bank_name}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.payment_lines?.[idx]?.account_id && (
-                      <p className="text-sm text-red-500">
-                        {errors.payment_lines[idx]?.account_id?.message}
-                      </p>
-                    )}
-                  </div>
+                  {/* Sổ quỹ nhận — ẩn khi method=TM và user có sổ Thu riêng */}
+                  {!(watchedLines?.[idx]?.payment_method === 'TM' && myCashAccountId) && (
+                    <div className="space-y-2">
+                      <Label>Sổ quỹ nhận *</Label>
+                      <Select
+                        value={watchedLines?.[idx]?.account_id ?? ''}
+                        onValueChange={(v) =>
+                          setValue(
+                            `payment_lines.${idx}.account_id` as const,
+                            v,
+                            { shouldValidate: true },
+                          )
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.map((a: any) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name}
+                              {a.bank_name ? ` — ${a.bank_name}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.payment_lines?.[idx]?.account_id && (
+                        <p className="text-sm text-red-500">
+                          {errors.payment_lines[idx]?.account_id?.message}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
