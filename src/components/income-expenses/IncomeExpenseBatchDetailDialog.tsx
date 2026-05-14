@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -58,6 +58,22 @@ export function IncomeExpenseBatchDetailDialog({
   const [childVoucher, setChildVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (!open) setLightboxUrl(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setLightboxUrl(null);
+      }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [lightboxUrl]);
 
   if (!batch) return null;
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +49,22 @@ export function IncomeExpenseDetailDialog({
 }: Props) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (!open) setLightboxUrl(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setLightboxUrl(null);
+      }
+    };
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, [lightboxUrl]);
 
   if (!voucher) return null;
 
