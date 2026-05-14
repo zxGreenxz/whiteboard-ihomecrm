@@ -20,7 +20,6 @@ import {
   DollarSign,
   History,
   Trash2,
-  Printer,
   Eye,
 } from 'lucide-react';
 import type { InvoiceWithRelations } from '@/types/invoice';
@@ -193,27 +192,6 @@ const InvoiceListTable = ({
                           <TooltipContent>Thu tiền</TooltipContent>
                         </Tooltip>
                       )}
-
-                      {/* In hoá đơn */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 rounded-full bg-sky-100 text-sky-600 hover:bg-sky-200"
-                            onClick={() =>
-                              window.open(
-                                `/invoices/print/${invoice.id}`,
-                                '_blank',
-                                'noopener,width=900,height=1100',
-                              )
-                            }
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>In hoá đơn</TooltipContent>
-                      </Tooltip>
 
                       {/* Lịch sử chỉnh sửa - TODO */}
                       <Tooltip>

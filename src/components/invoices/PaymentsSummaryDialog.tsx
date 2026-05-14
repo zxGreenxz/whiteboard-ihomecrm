@@ -6,10 +6,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import type { InvoiceWithRelations } from '@/types/invoice';
-import { Image as ImageIcon } from 'lucide-react';
+import {
+  Image as ImageIcon,
+  Banknote,
+  CreditCard,
+  Wallet,
+  Calendar,
+  Clock,
+} from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -29,10 +41,25 @@ interface PaymentRow {
 const fmtVND = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 
-const METHOD_LABEL: Record<string, string> = {
-  TM: 'Tiền mặt',
-  TT: 'Thanh toán',
-  TK: 'Chuyển khoản',
+const METHOD_META: Record<
+  string,
+  { label: string; icon: typeof Banknote; className: string }
+> = {
+  TM: {
+    label: 'Tiền mặt',
+    icon: Banknote,
+    className: 'bg-amber-50 text-amber-700 border-amber-200',
+  },
+  TK: {
+    label: 'Chuyển khoản',
+    icon: CreditCard,
+    className: 'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  TT: {
+    label: 'Thanh toán',
+    icon: Wallet,
+    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  },
 };
 
 const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
@@ -53,21 +80,29 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
 
   if (!invoice) return null;
 
+  const total = (payments ?? []).reduce(
+    (sum, p) => sum + (Number(p.amount) || 0),
+    0,
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Các lần thanh toán</DialogTitle>
         </DialogHeader>
 
         <div className="text-sm text-muted-foreground -mt-2">
-          Hoá đơn: <span className="font-medium text-foreground">{invoice.invoice_number}</span>
+          Hoá đơn:{' '}
+          <span className="font-medium text-foreground">
+            {invoice.invoice_number}
+          </span>
         </div>
 
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2].map((i) => (
-              <Skeleton key={i} className="h-14 w-full" />
+              <Skeleton key={i} className="h-20 w-full" />
             ))}
           </div>
         ) : !payments || payments.length === 0 ? (
@@ -75,52 +110,110 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
             Chưa có phiếu thanh toán nào.
           </p>
         ) : (
-          <ul className="divide-y divide-zinc-200">
-            {payments.map((p) => {
-              const method = METHOD_LABEL[p.payment_method] ?? p.payment_method;
-              const dateStr = p.payment_date
-                ? format(new Date(p.payment_date), 'dd/MM/yyyy')
-                : '—';
-              const timeStr = p.created_at
-                ? format(new Date(p.created_at), 'HH:mm')
-                : '';
-              return (
-                <li
-                  key={p.id}
-                  className="flex items-center gap-3 py-2.5"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-emerald-600">
-                      +{fmtVND(Number(p.amount) || 0)}
+          <>
+            <ul className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              {payments.map((p, idx) => {
+                const meta =
+                  METHOD_META[p.payment_method] ?? {
+                    label: p.payment_method,
+                    icon: Wallet,
+                    className: 'bg-zinc-100 text-zinc-700 border-zinc-200',
+                  };
+                const Icon = meta.icon;
+                const dateStr = p.payment_date
+                  ? format(new Date(p.payment_date), 'dd/MM/yyyy')
+                  : '—';
+                const timeStr = p.created_at
+                  ? format(new Date(p.created_at), 'HH:mm')
+                  : '';
+
+                return (
+                  <li
+                    key={p.id}
+                    className="flex items-center gap-4 rounded-lg border border-zinc-200 bg-white p-3 hover:border-emerald-200 hover:shadow-sm transition"
+                  >
+                    {/* Số lần */}
+                    <div className="shrink-0 h-9 w-9 grid place-items-center rounded-full bg-emerald-50 text-emerald-700 text-sm font-bold">
+                      #{idx + 1}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {method} · {dateStr}
-                      {timeStr ? ` · ${timeStr}` : ''}
+
+                    {/* Thông tin */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-base font-semibold text-emerald-600">
+                          +{fmtVND(Number(p.amount) || 0)}
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${meta.className}`}
+                        >
+                          <Icon className="h-3 w-3" />
+                          {meta.label}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {dateStr}
+                        </span>
+                        {timeStr && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {timeStr}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  {p.receipt_image_url ? (
-                    <a
-                      href={p.receipt_image_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 group relative block"
-                      title="Click mở ảnh lớn"
-                    >
-                      <img
-                        src={p.receipt_image_url}
-                        alt="Chứng từ"
-                        className="h-10 w-10 object-cover rounded border border-zinc-200 transition-transform duration-200 group-hover:scale-[6] group-hover:z-50 group-hover:shadow-2xl group-hover:relative"
-                      />
-                    </a>
-                  ) : (
-                    <div className="shrink-0 h-10 w-10 grid place-items-center rounded border border-dashed border-zinc-200 text-zinc-300">
-                      <ImageIcon className="h-4 w-4" />
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+
+                    {/* Chứng từ */}
+                    {p.receipt_image_url ? (
+                      <HoverCard openDelay={120} closeDelay={80}>
+                        <HoverCardTrigger asChild>
+                          <a
+                            href={p.receipt_image_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 block"
+                            title="Click mở ảnh lớn"
+                          >
+                            <img
+                              src={p.receipt_image_url}
+                              alt="Chứng từ"
+                              className="h-14 w-14 object-cover rounded-md border border-zinc-200 hover:border-emerald-400 transition-colors"
+                            />
+                          </a>
+                        </HoverCardTrigger>
+                        <HoverCardContent
+                          side="left"
+                          align="center"
+                          sideOffset={12}
+                          className="p-1 w-auto border-zinc-200 shadow-2xl"
+                        >
+                          <img
+                            src={p.receipt_image_url}
+                            alt="Chứng từ"
+                            className="max-w-[min(80vw,720px)] max-h-[80vh] object-contain rounded"
+                          />
+                        </HoverCardContent>
+                      </HoverCard>
+                    ) : (
+                      <div className="shrink-0 h-14 w-14 grid place-items-center rounded-md border border-dashed border-zinc-200 text-zinc-300">
+                        <ImageIcon className="h-5 w-5" />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2">
+              <span className="text-sm font-medium text-emerald-900">
+                Tổng đã thanh toán ({payments.length} lần)
+              </span>
+              <span className="text-base font-bold text-emerald-700">
+                {fmtVND(total)}
+              </span>
+            </div>
+          </>
         )}
       </DialogContent>
     </Dialog>
