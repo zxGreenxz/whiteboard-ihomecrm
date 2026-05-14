@@ -30,6 +30,7 @@ import ExcelInvoiceDialog from '@/components/invoices/ExcelInvoiceDialog';
 import BulkRecordPaymentDialog from '@/components/invoices/BulkRecordPaymentDialog';
 import InvoiceImageDialog from '@/components/invoices/InvoiceImageDialog';
 import PaymentsSummaryDialog from '@/components/invoices/PaymentsSummaryDialog';
+import InvoiceHistoryDialog from '@/components/invoices/InvoiceHistoryDialog';
 
 const InvoicesPage = () => {
   const navigate = useNavigate();
@@ -58,6 +59,7 @@ const InvoicesPage = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [paymentsSummaryOpen, setPaymentsSummaryOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(null);
 
   // Merge search into filters
@@ -162,11 +164,11 @@ const InvoicesPage = () => {
 
 
   const handleViewHistory = useCallback(
-    (_invoice: InvoiceWithRelations) => {
-      console.log('TODO: Lịch sử chỉnh sửa');
-      toast({ title: 'Tính năng đang phát triển', description: 'Lịch sử chỉnh sửa' });
+    (invoice: InvoiceWithRelations) => {
+      setSelectedInvoice(invoice);
+      setHistoryDialogOpen(true);
     },
-    [toast],
+    [],
   );
 
   const handleViewPayments = useCallback(
@@ -354,6 +356,12 @@ const InvoicesPage = () => {
       <PaymentsSummaryDialog
         open={paymentsSummaryOpen}
         onOpenChange={setPaymentsSummaryOpen}
+        invoice={selectedInvoice}
+      />
+
+      <InvoiceHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
         invoice={selectedInvoice}
       />
     </MainLayout>
