@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, QrCode } from 'lucide-react';
 import type { RoomWithRelations } from '@/types/room';
 
 interface RoomListTableProps {
@@ -16,6 +16,7 @@ interface RoomListTableProps {
   onEdit: (room: RoomWithRelations) => void;
   onDelete: (room: RoomWithRelations) => void;
   onToggleStatus: (id: string, isActive: boolean) => void;
+  onShowQR?: (room: RoomWithRelations) => void;
 }
 
 const formatCurrency = (amount: number) => {
@@ -30,6 +31,7 @@ export default function RoomListTable({
   onEdit,
   onDelete,
   onToggleStatus,
+  onShowQR,
 }: RoomListTableProps) {
   return (
     <div className="rounded-md border">
@@ -44,7 +46,7 @@ export default function RoomListTable({
             <TableHead className="text-right">Tiền cọc</TableHead>
             <TableHead className="text-center">Số khách tối đa</TableHead>
             <TableHead className="text-center">Hoạt động</TableHead>
-            <TableHead className="w-[100px]">Thao tác</TableHead>
+            <TableHead className="w-[140px]">Thao tác</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -86,6 +88,17 @@ export default function RoomListTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">
+                  {onShowQR && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      onClick={() => onShowQR(room)}
+                      title="QR phòng (khách quét xem hoá đơn)"
+                    >
+                      <QrCode className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
