@@ -77,18 +77,23 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
           queryClient.setQueryData(['address', 'wards', res.districtCode], res.wards);
         }
         if (res.detailedAddress) form.setValue('detailed_address', res.detailedAddress, { shouldDirty: true });
-        // Set tỉnh trước, đợi React mount SelectItems cho district trước khi set district,
-        // tương tự cho ward. Radix Select reset value về '' khi value prop không khớp
-        // SelectItem nào đang mount — phải set theo từng cấp.
+        // Set tỉnh trước, chờ Radix Select mount SelectItem cho cấp dưới rồi mới set
+        // (Radix reset value về '' nếu không khớp SelectItem nào đang mount).
+        // setTimeout(0) không đủ trên iOS Safari thật — chờ 2 animation frame để chắc
+        // React đã commit + paint xong trước khi set cấp tiếp theo.
+        const waitFrame = () =>
+          new Promise<void>((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => r()))
+          );
         if (res.provinceCode) {
           form.setValue('province', res.provinceCode, { shouldDirty: true });
         }
         if (res.districtCode) {
-          await new Promise((r) => setTimeout(r, 0));
+          await waitFrame();
           form.setValue('district', res.districtCode, { shouldDirty: true });
         }
         if (res.wardCode) {
-          await new Promise((r) => setTimeout(r, 0));
+          await waitFrame();
           form.setValue('ward', res.wardCode, { shouldDirty: true });
         }
       } catch (e) {
