@@ -211,23 +211,6 @@ export default function PublicContractInvoicePage() {
                 <div className="text-blue-600 text-xs">Kỳ thanh toán</div>
                 <div className="font-medium">{billingLabel || 'N/A'}</div>
               </div>
-              <div>
-                <div className="text-pink-600 text-xs">Ngày phát hành</div>
-                <div className="font-medium">
-                  {formatDate(invoice.issue_date)}
-                </div>
-              </div>
-              <div>
-                <div className="text-blue-600 text-xs">Hạn thanh toán</div>
-                <div
-                  className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}
-                >
-                  {formatDate(invoice.due_date)}
-                  {isOverdue && (
-                    <span className="ml-2 text-xs">(Quá hạn)</span>
-                  )}
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
