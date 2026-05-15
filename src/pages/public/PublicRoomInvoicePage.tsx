@@ -169,12 +169,6 @@ export default function PublicRoomInvoicePage() {
             {apartmentLabel} - {billingLabel}
           </h1>
         </div>
-        {invoice.invoice_number && (
-          <div className="text-sm text-gray-600 -mt-2">
-            Hoá đơn {invoice.invoice_number}
-          </div>
-        )}
-
         {/* Invoice info */}
         <Card>
           <CardHeader className="pb-3">
@@ -335,9 +329,6 @@ export default function PublicRoomInvoicePage() {
           </CardContent>
         </Card>
 
-        <div className="text-center text-xs text-gray-400 py-2">
-          Trang hoá đơn công khai · iHomeCRM
-        </div>
       </div>
     </div>
   );

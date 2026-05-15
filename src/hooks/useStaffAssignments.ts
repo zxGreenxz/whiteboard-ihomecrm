@@ -191,8 +191,8 @@ const slugifyUsername = (raw: string): string => {
 };
 
 /** Turn the user-typed username into a stable auth email.
- *  We always go through the slug → @username.ihomecrm.local channel so
- *  the same input maps to the same account no matter the casing/diacritics. */
+ *  Always slugify first so the same input maps to the same account no
+ *  matter the casing/diacritics. */
 const buildAuthEmail = (input: ProvisionStaffInput): string => {
   const slug = slugifyUsername(input.username);
   return `${slug}@username.ihomecrm.local`;

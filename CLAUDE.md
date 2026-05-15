@@ -1,6 +1,6 @@
 # CLAUDE.md — Workflow mặc định cho dự án
 
-File này áp dụng cho mọi session Claude Code làm việc trên repo `whiteboard-ihomecrm`.
+File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 
 ## Stack ngắn gọn
 

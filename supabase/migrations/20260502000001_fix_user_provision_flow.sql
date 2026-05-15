@@ -4,8 +4,8 @@
 -- Problems addressed
 -- ─────────────────
 --   1. Trigger handle_new_user copied auth.users.email (synthetic
---      "<slug>@username.ihomecrm.local") into profiles.email,
---      which then leaked into the UI as if it were a real email.
+--      placeholder for username sign-ups) into profiles.email, which
+--      then leaked into the UI as if it were a real email.
 --   2. Admin couldn't write profile/extended fields when creating
 --      or editing staff because profiles RLS only allowed
 --      auth.uid() = id; the client-side upsert in useProvisionStaff
@@ -22,7 +22,7 @@
 --   • Rewrite handle_new_user to:
 --       - read full_name/phone/email/department/job_title/employee_code/is_active
 --         from raw_user_meta_data
---       - drop synthetic emails (anything ending in @*.ihomecrm.local)
+--       - drop synthetic placeholder emails
 --       - validate phone format → NULL if it doesn't match
 --       - safe ON CONFLICT (id) DO NOTHING (re-runs from re-signup harmless)
 --   • Add admin UPDATE/INSERT policies on profiles so the user who
@@ -67,7 +67,7 @@ BEGIN
   END IF;
 
   -- Prefer real email from metadata; otherwise use auth email IFF
-  -- it isn't a synthetic placeholder (@*.ihomecrm.local).
+  -- it isn't a synthetic placeholder.
   v_email := NULLIF(NEW.raw_user_meta_data->>'email', '');
   IF v_email IS NULL
      AND NEW.email IS NOT NULL

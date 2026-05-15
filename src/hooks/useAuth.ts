@@ -42,8 +42,7 @@ const isPhoneNumber = (input: string): boolean => {
 const isEmail = (input: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.trim());
 
 /**
- * Converts phone number to email format for Supabase Auth
- * Example: 0901234567 → 0901234567@phone.ihomecrm.local
+ * Converts phone number to synthetic email for Supabase Auth.
  */
 const phoneToEmail = (phone: string): string => {
   return `${phone.trim()}@phone.ihomecrm.local`;
@@ -52,7 +51,6 @@ const phoneToEmail = (phone: string): string => {
 /**
  * Converts a free-form username to a synthetic email for Supabase Auth.
  * Lowercased, accents stripped, anything not [a-z0-9._-] becomes "-".
- * Example: "Nguyễn Tâm" → "nguyen-tam@username.ihomecrm.local"
  */
 const usernameToEmail = (raw: string): string => {
   const slug = raw

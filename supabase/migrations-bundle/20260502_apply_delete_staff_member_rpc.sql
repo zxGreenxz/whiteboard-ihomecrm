@@ -38,10 +38,9 @@ GRANT EXECUTE ON FUNCTION public.delete_staff_member(uuid) TO authenticated;
 
 -- ── One-shot cleanup: drop synthetic-email auth users that have
 --    NO staff_assignments row (i.e. orphans created by old flow
---    where the trash icon only deleted assignments). Skip if
---    they still have data ownership elsewhere — only @*.ihomecrm.local
---    accounts are safe to nuke since real human users have a
---    real email.
+--    where the trash icon only deleted assignments). Only synthetic
+--    placeholder accounts are safe to nuke since real human users
+--    have a real email.
 DELETE FROM auth.users u
 WHERE u.email LIKE '%@%.ihomecrm.local'
   AND NOT EXISTS (SELECT 1 FROM public.staff_assignments sa WHERE sa.staff_id = u.id)
