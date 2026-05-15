@@ -47,6 +47,7 @@ import type { IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 interface IncomeExpenseFormProps {
@@ -100,6 +101,7 @@ const IncomeExpenseForm = ({
   const createMutation = useCreateIncomeExpense();
   const updateMutation = useUpdateIncomeExpense();
   const { data: authUser } = useAuth();
+  const { data: isAdmin = false } = useIsAdmin();
   const isMobile = useIsMobile();
 
   // Cascade dropdown state
@@ -367,11 +369,14 @@ const IncomeExpenseForm = ({
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   // Phiếu Nháp (UNAPPROVED): cho phép sửa.
-  // Phiếu đã ghi nhận/đã huỷ: chỉ xem (read-only).
+  // Phiếu đã ghi nhận/đã huỷ: chỉ xem (read-only) — TRỪ Super Admin.
+  // Super Admin: edit được mọi phiếu (lẻ hoặc trong đợt) ở mọi trạng thái,
+  // của bất kỳ ai. Khớp với RLS bypass ở DB (xem 20260506000002).
   // Tạo mới: edit được.
   const isUnapprovedDraft = voucher?.approval_status === 'UNAPPROVED';
-  const isViewing = !!voucher && !isUnapprovedDraft;
-  const canEdit = !voucher || isUnapprovedDraft;
+  const canEdit = !voucher || isUnapprovedDraft || isAdmin;
+  const isViewing = !!voucher && !canEdit;
+  const isAdminOverride = !!voucher && !isUnapprovedDraft && isAdmin;
 
   const totalAmount = itemRows.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
@@ -390,7 +395,9 @@ const IncomeExpenseForm = ({
         >
           <DialogHeader>
             <DialogTitle>
-              {isUnapprovedDraft
+              {isAdminOverride
+                ? 'SỬA PHIẾU (SUPER ADMIN)'
+                : isUnapprovedDraft
                 ? 'SỬA PHIẾU NHÁP'
                 : isViewing
                 ? 'CHI TIẾT PHIẾU'
@@ -398,7 +405,14 @@ const IncomeExpenseForm = ({
             </DialogTitle>
           </DialogHeader>
 
-          {isUnapprovedDraft && (
+          {isAdminOverride && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              Bạn đang chỉnh sửa phiếu <b>đã ghi nhận/đã huỷ</b> với quyền{' '}
+              <b>Super Admin</b>. Thay đổi sẽ ảnh hưởng trực tiếp đến tồn quỹ
+              và lịch sử kế toán — hãy cân nhắc kỹ trước khi lưu.
+            </p>
+          )}
+          {!isAdminOverride && isUnapprovedDraft && (
             <p className="text-sm text-muted-foreground">
               Phiếu đang ở trạng thái <b>Nháp</b>. Bạn có thể chỉnh sửa nội
               dung, sau đó ấn <b>Lưu</b> để cập nhật. Phiếu chỉ tính vào tồn

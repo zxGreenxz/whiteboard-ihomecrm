@@ -17,6 +17,7 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { Eye, Ban, Receipt, Pencil, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -50,6 +51,7 @@ const IncomeExpenseList = ({
     () => calculatePaginationInfo(pagination.page, pagination.pageSize, totalCount),
     [pagination.page, pagination.pageSize, totalCount],
   );
+  const { data: isAdmin = false } = useIsAdmin();
 
   if (isLoading) {
     return (
@@ -110,14 +112,14 @@ const IncomeExpenseList = ({
                       <Eye className="h-4 w-4" />
                     </Button>
 
-                    {/* Sửa (chỉ khi nháp) */}
-                    {isUnapproved && onEdit && (
+                    {/* Sửa: nháp -> mọi nhân viên; đã ghi nhận/đã huỷ -> chỉ super admin */}
+                    {onEdit && (isUnapproved || isAdmin) && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onEdit(voucher)}
-                        title="Sửa phiếu nháp"
+                        title={isUnapproved ? 'Sửa phiếu nháp' : 'Sửa phiếu (Super Admin)'}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>

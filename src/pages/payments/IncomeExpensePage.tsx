@@ -366,6 +366,9 @@ const IncomeExpensePage = () => {
           }}
           batch={detailBatch}
           onCancel={handleCancelBatch}
+          onEditVoucher={handleEditVoucher}
+          onCancelVoucher={handleCancelVoucher}
+          onApproveVoucher={handleApproveVoucher}
         />
         <IncomeExpenseImportDialog
           open={isImportOpen}
@@ -591,6 +594,9 @@ const IncomeExpensePage = () => {
         }}
         batch={detailBatch}
         onCancel={handleCancelBatch}
+        onEditVoucher={handleEditVoucher}
+        onCancelVoucher={handleCancelVoucher}
+        onApproveVoucher={handleApproveVoucher}
       />
       <IncomeExpenseImportDialog
         open={isImportOpen}

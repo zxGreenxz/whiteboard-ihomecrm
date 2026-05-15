@@ -29,6 +29,12 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   batch: IncomeExpenseBatchSummary | null;
   onCancel?: (batchId: string) => void;
+  /** Mở form sửa cho 1 phiếu con trong đợt (Super Admin). */
+  onEditVoucher?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Huỷ 1 phiếu con riêng lẻ (khác với huỷ cả đợt). */
+  onCancelVoucher?: (voucherId: string) => void;
+  /** Duyệt 1 phiếu con (nếu còn nháp). */
+  onApproveVoucher?: (voucherId: string) => void;
 }
 
 const formatVND = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
@@ -61,6 +67,9 @@ export function IncomeExpenseBatchDetailDialog({
   onOpenChange,
   batch,
   onCancel,
+  onEditVoucher,
+  onCancelVoucher,
+  onApproveVoucher,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [childVoucher, setChildVoucher] =
@@ -360,6 +369,31 @@ export function IncomeExpenseBatchDetailDialog({
           if (!o) setChildVoucher(null);
         }}
         voucher={childVoucher}
+        onEdit={
+          onEditVoucher
+            ? (v) => {
+                setChildVoucher(null);
+                onOpenChange(false);
+                onEditVoucher(v);
+              }
+            : undefined
+        }
+        onCancel={
+          onCancelVoucher
+            ? (id) => {
+                setChildVoucher(null);
+                onCancelVoucher(id);
+              }
+            : undefined
+        }
+        onApprove={
+          onApproveVoucher
+            ? (id) => {
+                setChildVoucher(null);
+                onApproveVoucher(id);
+              }
+            : undefined
+        }
       />
 
       {/* Lightbox */}

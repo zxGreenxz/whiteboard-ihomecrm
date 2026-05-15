@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -58,6 +59,7 @@ export function IncomeExpenseDetailDialog({
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const isMobile = useIsMobile();
+  const { data: isAdmin = false } = useIsAdmin();
 
   const attachments = voucher?.attachments ?? [];
   const lightboxUrl =
@@ -142,12 +144,12 @@ export function IncomeExpenseDetailDialog({
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
-              {isUnapproved && onEdit && (
+              {onEdit && (isUnapproved || isAdmin) && (
                 <Button
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title="Sửa phiếu nháp"
+                  title={isUnapproved ? 'Sửa phiếu nháp' : 'Sửa phiếu (Super Admin)'}
                   onClick={() => {
                     onEdit(voucher);
                     onOpenChange(false);
