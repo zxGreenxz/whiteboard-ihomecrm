@@ -1324,6 +1324,51 @@ export const useCancelIncomeExpenseBatch = () => {
   });
 };
 
+// Đổi sổ quỹ (account_id) đồng loạt cho tất cả phiếu con của 1 batch.
+// Dùng cho UI "Sửa sổ quỹ ở phiếu tổng" — chỉ apply khi mọi phiếu con
+// đang cùng 1 sổ quỹ (frontend kiểm tra trước khi gọi).
+export const useUpdateBatchAccount = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { batchId: string; accountId: string }) => {
+      const { batchId, accountId } = input;
+
+      const { data: links, error: linkError } = await supabase
+        .from("income_expense_batch_items" as any)
+        .select("income_expense_id")
+        .eq("batch_id", batchId);
+      if (linkError) {
+        toast.error(linkError.message || "Không đọc được danh sách phiếu");
+        throw linkError;
+      }
+      const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
+      if (ids.length === 0) return { count: 0 };
+
+      const { data, error } = await supabase
+        .from("income_expenses" as any)
+        .update({ account_id: accountId })
+        .in("id", ids)
+        .select("id");
+      if (error) {
+        toast.error(error.message || "Không cập nhật được sổ quỹ");
+        throw error;
+      }
+
+      return { count: (data ?? []).length };
+    },
+    onSuccess: ({ count }) => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.success(`Đã đổi sổ quỹ cho ${count} phiếu trong đợt`);
+    },
+    onError: (error) => {
+      console.error("Error updating batch account:", error);
+    },
+  });
+};
+
 // (Workflow Duyệt/Bỏ duyệt đã bị loại bỏ — phiếu mặc định APPROVED khi tạo,
 //  Huỷ thì set CANCELLED qua useCancelIncomeExpense.)
 

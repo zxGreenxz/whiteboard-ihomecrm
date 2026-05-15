@@ -22,9 +22,18 @@ import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
 } from '@/hooks/useIncomeExpenses';
+import { useUpdateBatchAccount } from '@/hooks/useIncomeExpenses';
+import { useAccounts } from '@/hooks/useAccounts';
 import { format } from 'date-fns';
 import { useIsMobile } from '@/hooks/use-mobile';
 import IncomeExpenseDetailDialog from './IncomeExpenseDetailDialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Props {
   open: boolean;
@@ -78,6 +87,16 @@ export function IncomeExpenseBatchDetailDialog({
     useState<IncomeExpenseWithRelations | null>(null);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: accounts = [] } = useAccounts();
+  const updateBatchAccount = useUpdateBatchAccount();
+
+  // Tất cả phiếu con cùng sổ quỹ? Nếu có, admin được đổi sổ quỹ cả đợt.
+  const allSameAccount =
+    !!batch &&
+    batch.vouchers.length > 0 &&
+    batch.vouchers.every((v) => v.account_id === batch.vouchers[0].account_id);
+  const sharedAccountId = allSameAccount ? batch?.vouchers[0]?.account_id ?? null : null;
+  const canEditAccount = isAdmin && allSameAccount && !!batch && !batch.all_cancelled;
 
   const attachments = batch?.attachments ?? [];
   const lightboxUrl =
@@ -212,7 +231,39 @@ export function IncomeExpenseBatchDetailDialog({
               label="Số phiếu trong đợt"
               value={`${batch.voucher_count} phiếu (${batch.building_names.length} tòa nhà)`}
             />
-            <Row label="Sổ quỹ" value={batch.account_name} />
+            <Row
+              label="Sổ quỹ"
+              value={
+                canEditAccount && sharedAccountId ? (
+                  <Select
+                    value={sharedAccountId}
+                    onValueChange={(value) => {
+                      if (value && value !== sharedAccountId) {
+                        updateBatchAccount.mutate({
+                          batchId: batch.id,
+                          accountId: value,
+                        });
+                      }
+                    }}
+                    disabled={updateBatchAccount.isPending}
+                  >
+                    <SelectTrigger className="h-8 w-[280px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                          {a.bank_name ? ` (${a.bank_name})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  batch.account_name
+                )
+              }
+            />
             <Row
               label={isExpense ? 'Người nhận' : 'Người nộp'}
               value={batch.payer_name}
