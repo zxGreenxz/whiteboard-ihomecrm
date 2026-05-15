@@ -31,6 +31,7 @@ import {
   MoveRight,
   XCircle,
   Printer,
+  QrCode,
   AlertCircle,
   CheckCircle,
   Building2,
@@ -57,6 +58,7 @@ import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
+import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 
 // Types for contract services and history
 interface ContractService {
@@ -89,6 +91,7 @@ const ContractDetailPage = () => {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [moveOutDialogOpen, setMoveOutDialogOpen] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
 
   // Fetch contract with relations
   const { data: contract, isLoading: contractLoading } = useContract(id || '');
@@ -423,6 +426,17 @@ const ContractDetailPage = () => {
         </Button>
 
         <div className="flex-1" />
+
+        {contract.status !== 'TERMINATED' && contract.status !== 'DRAFT' && (
+          <Button
+            variant="outline"
+            onClick={() => setQrDialogOpen(true)}
+            title="QR hợp đồng (khách quét xem hoá đơn mới nhất)"
+          >
+            <QrCode className="h-4 w-4 mr-2" />
+            QR hợp đồng
+          </Button>
+        )}
 
         {isActive && (
           <>
@@ -1220,6 +1234,13 @@ const ContractDetailPage = () => {
         open={moveOutDialogOpen}
         onOpenChange={setMoveOutDialogOpen}
         contract={contract}
+      />
+
+      <ContractQRDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        contractId={contract.id}
+        contractLabel={contract.contract_number || contract.id.slice(0, 8)}
       />
     </MainLayout>
   );

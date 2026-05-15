@@ -42,7 +42,7 @@ import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
-import RoomQRDialog from '@/components/rooms/RoomQRDialog';
+import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 
 const InvoiceDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -257,16 +257,17 @@ const InvoiceDetailPage = () => {
           In hóa đơn
         </Button>
 
-        {invoice.room_id && (
-          <Button
-            variant="outline"
-            onClick={() => setQrDialogOpen(true)}
-            title="QR code phòng (khách quét để xem hoá đơn mới nhất)"
-          >
-            <QrCode className="h-4 w-4 mr-2" />
-            QR phòng
-          </Button>
-        )}
+        {invoice.contract_id &&
+          invoice.contract?.status !== 'TERMINATED' && (
+            <Button
+              variant="outline"
+              onClick={() => setQrDialogOpen(true)}
+              title="QR hợp đồng (khách quét để xem hoá đơn mới nhất)"
+            >
+              <QrCode className="h-4 w-4 mr-2" />
+              QR hợp đồng
+            </Button>
+          )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -598,13 +599,15 @@ const InvoiceDetailPage = () => {
         invoice={invoice}
       />
 
-      {/* QR Phòng Dialog */}
-      {invoice.room_id && (
-        <RoomQRDialog
+      {/* QR Hợp đồng Dialog */}
+      {invoice.contract_id && (
+        <ContractQRDialog
           open={qrDialogOpen}
           onOpenChange={setQrDialogOpen}
-          roomId={invoice.room_id}
-          roomLabel={apartmentLabel || roomName || invoice.room_id.slice(0, 8)}
+          contractId={invoice.contract_id}
+          contractLabel={
+            invoice.contract?.contract_number || apartmentLabel || invoice.contract_id.slice(0, 8)
+          }
         />
       )}
     </MainLayout>

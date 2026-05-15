@@ -82,16 +82,16 @@ const statusLabel = (s: string) => {
   }
 };
 
-export default function PublicRoomInvoicePage() {
-  const { roomId } = useParams<{ roomId: string }>();
+export default function PublicContractInvoicePage() {
+  const { contractId } = useParams<{ contractId: string }>();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['public-room-invoice', roomId],
-    enabled: !!roomId,
+    queryKey: ['public-contract-invoice', contractId],
+    enabled: !!contractId,
     queryFn: async (): Promise<PublicPayload | null> => {
       const { data, error } = await (supabase as any).rpc(
-        'get_public_latest_invoice_by_room',
-        { p_room_id: roomId },
+        'get_public_latest_invoice_by_contract',
+        { p_contract_id: contractId },
       );
       if (error) throw error;
       return data as PublicPayload | null;
@@ -106,15 +106,16 @@ export default function PublicRoomInvoicePage() {
     );
   }
 
+  // RPC trả NULL khi hợp đồng không tồn tại / bị xoá / đã thanh lý.
   if (error || !data) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center space-y-2">
             <AlertCircle className="h-10 w-10 text-red-500 mx-auto" />
-            <div className="font-medium">Không tìm thấy phòng</div>
+            <div className="font-medium">Mã QR không khả dụng</div>
             <p className="text-sm text-gray-600">
-              Mã QR không hợp lệ hoặc phòng đã bị xoá.
+              Hợp đồng đã thanh lý hoặc không còn tồn tại.
             </p>
           </CardContent>
         </Card>

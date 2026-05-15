@@ -11,25 +11,25 @@ import { Button } from '@/components/ui/button';
 import { Copy, Download, Check, ExternalLink } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
-interface RoomQRDialogProps {
+interface ContractQRDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  roomId: string;
-  roomLabel: string;
+  contractId: string;
+  contractLabel: string;
 }
 
 const QR_SIZE = 480;
 
-export default function RoomQRDialog({
+export default function ContractQRDialog({
   open,
   onOpenChange,
-  roomId,
-  roomLabel,
-}: RoomQRDialogProps) {
+  contractId,
+  contractLabel,
+}: ContractQRDialogProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const publicUrl = `${window.location.origin}/public/room/${roomId}`;
+  const publicUrl = `${window.location.origin}/public/contract/${contractId}`;
 
   useEffect(() => {
     if (!open) return;
@@ -89,7 +89,7 @@ export default function RoomQRDialog({
   const handleDownload = () => {
     if (!dataUrl) return;
     const link = document.createElement('a');
-    link.download = `QR-${roomLabel.replace(/\s+/g, '_')}.png`;
+    link.download = `QR-${contractLabel.replace(/\s+/g, '_')}.png`;
     link.href = dataUrl;
     link.click();
   };
@@ -107,10 +107,10 @@ export default function RoomQRDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>QR Code phòng {roomLabel}</DialogTitle>
+          <DialogTitle>QR Code hợp đồng {contractLabel}</DialogTitle>
           <DialogDescription>
-            Khách quét QR sẽ xem được hoá đơn mới nhất của phòng này (không cần
-            đăng nhập).
+            Khách quét QR sẽ xem được hoá đơn mới nhất của hợp đồng này
+            (không cần đăng nhập). QR sẽ vô hiệu sau khi thanh lý hợp đồng.
           </DialogDescription>
         </DialogHeader>
 
@@ -119,7 +119,7 @@ export default function RoomQRDialog({
             {dataUrl ? (
               <img
                 src={dataUrl}
-                alt={`QR phòng ${roomLabel}`}
+                alt={`QR hợp đồng ${contractLabel}`}
                 width={280}
                 height={280}
                 className="block"

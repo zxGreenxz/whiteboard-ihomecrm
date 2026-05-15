@@ -33,6 +33,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  QrCode,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { ContractWithRelations } from '@/types/contract';
@@ -53,6 +54,7 @@ interface ContractListTableProps {
   onTerminate: (contract: ContractWithRelations) => void;
   onDelete: (contract: ContractWithRelations) => void;
   onPrint: (contract: ContractWithRelations) => void;
+  onShowQR: (contract: ContractWithRelations) => void;
   page: number;
   pageSize: number;
   totalCount: number;
@@ -98,6 +100,7 @@ export function getActionButtonStates(contract: ContractWithRelations) {
     transferContractDisabled: dbStatus !== 'ACTIVE',
     terminateDisabled: !(dbStatus === 'ACTIVE' || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
     deleteDisabled: !(dbStatus === 'DRAFT'),
+    qrDisabled: dbStatus === 'TERMINATED' || dbStatus === 'DRAFT',
   };
 }
 
@@ -115,6 +118,7 @@ export default function ContractListTable({
   onTerminate,
   onDelete,
   onPrint,
+  onShowQR,
   page,
   pageSize,
   totalCount,
@@ -228,6 +232,7 @@ export default function ContractListTable({
                         onTerminate={onTerminate}
                         onDelete={onDelete}
                         onPrint={onPrint}
+                        onShowQR={onShowQR}
                       />
                     </TableCell>
                     <TableCell className="text-sm">
@@ -325,6 +330,7 @@ interface ActionButtonsProps {
   onTerminate: (contract: ContractWithRelations) => void;
   onDelete: (contract: ContractWithRelations) => void;
   onPrint: (contract: ContractWithRelations) => void;
+  onShowQR: (contract: ContractWithRelations) => void;
 }
 
 function ActionButtons({
@@ -338,6 +344,7 @@ function ActionButtons({
   onTerminate,
   onDelete,
   onPrint,
+  onShowQR,
 }: ActionButtonsProps) {
   const navigate = useNavigate();
   const buttons = [
@@ -403,6 +410,13 @@ function ActionButtons({
       onClick: () => onDelete(contract),
       disabled: actions.deleteDisabled,
       bg: 'bg-red-700 hover:bg-red-800',
+    },
+    {
+      label: 'QR hợp đồng',
+      icon: QrCode,
+      onClick: () => onShowQR(contract),
+      disabled: actions.qrDisabled,
+      bg: 'bg-purple-500 hover:bg-purple-600',
     },
   ];
 

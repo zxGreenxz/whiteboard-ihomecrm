@@ -114,8 +114,8 @@ import TaskManagementPage from "./pages/TaskManagementPage";
 import ProfilePage from "./pages/account/ProfilePage";
 import SubscriptionPage from "./pages/account/SubscriptionPage";
 
-// Public Pages (không cần đăng nhập, dùng cho QR phòng)
-import PublicRoomInvoicePage from "./pages/public/PublicRoomInvoicePage";
+// Public Pages (không cần đăng nhập, dùng cho QR hợp đồng)
+import PublicContractInvoicePage from "./pages/public/PublicContractInvoicePage";
 
 // Info Pages
 import FaqPage from "./pages/FaqPage";
@@ -170,9 +170,9 @@ const App = () => (
 
           {/* ========================================
               PUBLIC PAGES - Không cần đăng nhập
-              (Dùng cho QR phòng → hoá đơn mới nhất)
+              (Dùng cho QR hợp đồng → hoá đơn mới nhất)
               ======================================== */}
-          <Route path="/public/room/:roomId" element={<PublicRoomInvoicePage />} />
+          <Route path="/public/contract/:contractId" element={<PublicContractInvoicePage />} />
 
           {/* ========================================
               PROTECTED ROUTES - Require authentication

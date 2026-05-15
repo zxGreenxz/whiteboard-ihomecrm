@@ -8,7 +8,6 @@ import RoomListFilters from '@/components/rooms/RoomListFilters';
 import RoomListTable from '@/components/rooms/RoomListTable';
 import { DeleteRoomDialog } from '@/components/rooms/DeleteRoomDialog';
 import RoomFormDialog from '@/components/rooms/RoomFormDialog';
-import RoomQRDialog from '@/components/rooms/RoomQRDialog';
 
 import { useRooms, useUpdateRoomStatus } from '@/hooks/useRooms';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -32,7 +31,6 @@ export default function RoomsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithRelations | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
@@ -103,11 +101,6 @@ export default function RoomsPage() {
   const handleDelete = (room: RoomWithRelations) => {
     setSelectedRoom(room);
     setDeleteDialogOpen(true);
-  };
-
-  const handleShowQR = (room: RoomWithRelations) => {
-    setSelectedRoom(room);
-    setQrDialogOpen(true);
   };
 
   const handleToggleStatus = (id: string, isActive: boolean) => {
@@ -206,7 +199,6 @@ export default function RoomsPage() {
               onEdit={handleEdit}
               onDelete={handleDelete}
               onToggleStatus={handleToggleStatus}
-              onShowQR={handleShowQR}
             />
           )}
         </div>
@@ -229,12 +221,6 @@ export default function RoomsPage() {
               open={deleteDialogOpen}
               onOpenChange={setDeleteDialogOpen}
               room={selectedRoom}
-            />
-            <RoomQRDialog
-              open={qrDialogOpen}
-              onOpenChange={setQrDialogOpen}
-              roomId={selectedRoom.id}
-              roomLabel={selectedRoom.code || selectedRoom.name}
             />
           </>
         )}

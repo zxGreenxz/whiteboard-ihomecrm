@@ -16,6 +16,7 @@ import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 import { ContractImportExportDialog } from '@/components/contracts/ContractImportExportDialog';
 import { PrintContractDialog } from '@/components/contracts/PrintContractDialog';
+import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import { exportContracts } from '@/lib/contractExcelHelpers';
 
 import { useContracts } from '@/hooks/useContracts';
@@ -65,6 +66,7 @@ export default function ContractsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
 
   // Selection
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
@@ -330,6 +332,11 @@ export default function ContractsPage() {
     setDeleteDialogOpen(true);
   }, []);
 
+  const handleShowQR = useCallback((contract: ContractWithRelations) => {
+    setSelectedContract(contract);
+    setQrDialogOpen(true);
+  }, []);
+
   const handlePrint = useCallback((contract: ContractWithRelations) => {
     setSelectedContract(contract);
     setPrintDialogOpen(true);
@@ -443,6 +450,7 @@ export default function ContractsPage() {
               onTerminate={handleTerminate}
               onDelete={handleDelete}
               onPrint={handlePrint}
+              onShowQR={handleShowQR}
               page={page}
               pageSize={pageSize}
               totalCount={totalCount}
@@ -534,6 +542,20 @@ export default function ContractsPage() {
           }}
           contract={selectedContract}
         />
+        {selectedContract && (
+          <ContractQRDialog
+            open={qrDialogOpen}
+            onOpenChange={(open) => {
+              setQrDialogOpen(open);
+              if (!open) setSelectedContract(null);
+            }}
+            contractId={selectedContract.id}
+            contractLabel={
+              selectedContract.contract_number ||
+              selectedContract.id.slice(0, 8)
+            }
+          />
+        )}
       </div>
     </MainLayout>
   );

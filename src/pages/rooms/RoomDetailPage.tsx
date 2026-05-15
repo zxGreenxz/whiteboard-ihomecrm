@@ -23,14 +23,12 @@ import {
   Eye,
   Users,
   Package,
-  QrCode,
 } from 'lucide-react';
 import { useRoom } from '@/hooks/useRooms';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { EditRoomDialog } from '@/components/rooms/EditRoomDialog';
-import RoomQRDialog from '@/components/rooms/RoomQRDialog';
 
 type Contract = {
   id: string;
@@ -75,7 +73,6 @@ const RoomDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [currentTenants, setCurrentTenants] = useState<Tenant[]>([]);
@@ -346,14 +343,6 @@ const RoomDetailPage = () => {
           Quay lại
         </Button>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setQrDialogOpen(true)}
-            title="QR phòng (khách quét xem hoá đơn mới nhất)"
-          >
-            <QrCode className="h-4 w-4 mr-2" />
-            QR phòng
-          </Button>
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             <Pencil className="h-4 w-4 mr-2" />
             Chỉnh sửa
@@ -759,14 +748,6 @@ const RoomDetailPage = () => {
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         room={room as any}
-      />
-
-      {/* QR Phòng Dialog */}
-      <RoomQRDialog
-        open={qrDialogOpen}
-        onOpenChange={setQrDialogOpen}
-        roomId={room.id}
-        roomLabel={room.code || room.name}
       />
     </MainLayout>
   );
