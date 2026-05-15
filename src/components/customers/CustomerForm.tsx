@@ -3,23 +3,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Form,
   FormField,
   FormItem,
   FormLabel,
   FormControl,
-  FormMessage,
 } from '@/components/ui/form';
-import { Separator } from '@/components/ui/separator';
 import { customerSchema } from '@/lib/customerValidation';
 import type { CustomerFormData, CustomerType } from '@/types/customer';
 import type { CCCDQrData } from '@/lib/cccdQrParser';
@@ -39,11 +29,8 @@ interface CustomerFormProps {
 
 /**
  * CustomerForm
- * Main form with React Hook Form + Zod resolver
- * Toggle Cá nhân/Tổ chức, conditional rendering
- * Sections: Image upload, Thông tin chung, Địa chỉ, Tài chính & Liên lạc,
- *           Nhóm KH + Ghi chú, Thông tin xe
- * Requirements: 2.1, 2.2, 2.3, 2.5, 2.6, 2.7, 2.8, 2.9
+ * Main form with React Hook Form + Zod resolver.
+ * Sections: Hình ảnh, Thông tin chung, Địa chỉ, Thông tin khác, Thông tin xe.
  */
 export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: CustomerFormProps) {
   const queryClient = useQueryClient();
@@ -146,18 +133,6 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
         <div className="bg-white rounded-lg border p-4 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">Hình ảnh</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <FormField
-              control={form.control}
-              name="avatar_url"
-              render={({ field }) => (
-                <ImageUploadZone
-                  label="Ảnh đại diện"
-                  value={field.value}
-                  onChange={field.onChange}
-                  bucket="customer-images"
-                />
-              )}
-            />
             <ImageUploadZone
               label={isOrganization ? 'Đăng ký kinh doanh' : 'CCCD mặt trước'}
               value={form.watch('id_images')?.front}
@@ -249,110 +224,24 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
           </div>
         </div>
 
-        {/* Tài chính & Liên lạc */}
+        {/* Thông tin khác */}
         <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">Tài chính & Liên lạc</h3>
+          <h3 className="text-sm font-semibold text-gray-700">Thông tin khác</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FormField
-              control={form.control}
-              name="bank_account_number"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Số tài khoản</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập số tài khoản" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="bank_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Ngân hàng</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập tên ngân hàng" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
             {!isOrganization && (
-              <>
-                <FormField
-                  control={form.control}
-                  name="occupation"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nghề nghiệp</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Nhập nghề nghiệp" {...field} value={field.value ?? ''} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="workplace"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nơi làm việc</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Nhập nơi làm việc" {...field} value={field.value ?? ''} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </>
+              <FormField
+                control={form.control}
+                name="occupation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nghề nghiệp</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Nhập nghề nghiệp" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
             )}
-            <FormField
-              control={form.control}
-              name="advisor"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Người tư vấn</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập tên người tư vấn" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="advisor_phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>SĐT người tư vấn</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập SĐT" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="contact_person"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Người liên lạc</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập tên người liên lạc" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="contact_person_phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>SĐT người liên lạc</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập SĐT" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
             <FormField
               control={form.control}
               name="fingerprint_code"
@@ -361,46 +250,6 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
                   <FormLabel>Mã vân tay cửa ra vào</FormLabel>
                   <FormControl>
                     <Input placeholder="Nhập mã vân tay" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-          </div>
-        </div>
-
-        {/* Nhóm KH + Ghi chú */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">Nhóm khách hàng & Ghi chú</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField
-              control={form.control}
-              name="customer_group"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nhóm khách hàng</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn nhóm" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="VIP">VIP</SelectItem>
-                      <SelectItem value="Thường">Thường</SelectItem>
-                      <SelectItem value="Tiềm năng">Tiềm năng</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Ghi chú</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Nhập ghi chú" rows={3} {...field} value={field.value ?? ''} />
                   </FormControl>
                 </FormItem>
               )}
