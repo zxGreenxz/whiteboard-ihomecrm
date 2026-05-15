@@ -67,6 +67,15 @@ const formatBillingMonth = (bm: string | null | undefined) => {
 const formatDate = (d: string | null | undefined) =>
   d ? format(new Date(d), 'dd/MM/yyyy', { locale: vi }) : '';
 
+/** Tách phần "(...)" cuối description thành note để hiển thị xuống dòng dưới
+ *  (vd "Tiền điện (8794 → 9200)" → title "Tiền điện", note "8794 → 9200"). */
+const splitDescription = (desc: string | null | undefined): { title: string; note: string } => {
+  if (!desc) return { title: '', note: '' };
+  const m = desc.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (m) return { title: m[1].trim(), note: m[2].trim() };
+  return { title: desc, note: '' };
+};
+
 const statusLabel = (s: string) => {
   switch (s) {
     case 'PAID':
@@ -245,18 +254,25 @@ export default function PublicContractInvoicePage() {
               {invoice.items.map((it) => {
                 const qty = Number(it.quantity || 0);
                 const unitPrice = Number(it.unit_price || 0);
+                const parsed = splitDescription(it.description);
+                // Item type=RENT luôn hiển thị "Tiền phòng" — số phòng đã có ở
+                // header, "(MM/YYYY)" đã trở thành note.
+                const title = it.type === 'RENT' ? 'Tiền phòng' : parsed.title;
+                const note = parsed.note;
                 return (
                   <div key={it.id} className="px-4 py-3 text-sm">
-                    {/* Mobile: tiêu đề + tổng cùng dòng, công thức ở dòng dưới */}
+                    {/* Mobile: tiêu đề + tổng cùng dòng, ghi chú ở dòng dưới */}
                     <div className="sm:hidden">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="font-medium leading-snug break-words">
-                            {it.description}
+                            {title}
                           </div>
-                          <div className="text-xs text-gray-500 capitalize">
-                            {it.type?.toLowerCase()}
-                          </div>
+                          {note && (
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {note}
+                            </div>
+                          )}
                         </div>
                         <div className="text-right font-semibold tabular-nums shrink-0">
                           {formatCurrency(it.amount)}
@@ -270,12 +286,12 @@ export default function PublicContractInvoicePage() {
                     {/* Desktop: 4 cột grid */}
                     <div className="hidden sm:grid grid-cols-12 gap-2 items-start">
                       <div className="col-span-5">
-                        <div className="font-medium leading-snug">
-                          {it.description}
-                        </div>
-                        <div className="text-xs text-gray-500 capitalize">
-                          {it.type?.toLowerCase()}
-                        </div>
+                        <div className="font-medium leading-snug">{title}</div>
+                        {note && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {note}
+                          </div>
+                        )}
                       </div>
                       <div className="col-span-2 text-right tabular-nums">
                         {qty}
