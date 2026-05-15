@@ -1,19 +1,23 @@
 // =============================================
 // QR decoder dùng chung cho upload ảnh và camera realtime.
 //
-// Chiến lược (xếp theo thứ tự thử):
-//   1) Native BarcodeDetector — chính xác và chịu ảnh thực tế (tilt, ánh sáng,
-//      perspective, nền nhiễu) tốt hơn jsQR. Có sẵn trên Chrome/Edge desktop và
-//      Chrome Android. Trên Safari/iOS sẽ rơi xuống jsQR.
-//   2) jsQR multi-scale trên ảnh đầy đủ (1600/1200/800).
-//   3) jsQR multi-scale trên center-crop nhiều mức (90/75/60/45%) — focus vào
-//      vùng QR khi nền có hoạ tiết nhiễu (vd. CCCD chụp trên vải hoa văn).
-//   4) jsQR sau khi binarize Otsu — tăng tương phản, giảm ảnh hưởng nền màu.
+// 3 engine xếp theo thứ tự thử (mỗi engine có điểm mạnh riêng):
+//   1) Native BarcodeDetector — nhanh nhất, robust với ảnh thực tế. Chỉ có
+//      trên Chrome/Edge desktop + Chrome Android.
+//   2) jsQR multi-scale — nhanh, nhẹ; tốt với QR sạch, kém với pixel-grid
+//      noise (ảnh chụp màn hình) hoặc QR dense (version cao).
+//   3) ZXing (lazy-loaded) — chậm hơn nhưng robust nhất: chịu được
+//      screen-photo noise, blur, perspective, dense QR. Bật TRY_HARDER.
+//
+// Pipeline mở rộng:
+//   - Multi-scale (800/1200/1600/2000) cho mỗi engine.
+//   - Otsu binarize → jsQR cứu QR nền màu / tương phản kém.
+//   - Center-crop 90/75/60/45% để focus vùng QR khi nền nhiễu.
 //
 // API:
-//   - decodeQr(source)              : decode toàn bộ source (image/video/canvas)
+//   - decodeQr(source)              : full pipeline (upload ảnh)
 //   - decodeQrFromFile(file)        : decode File → string | null
-//   - decodeQrFromRoi(source, roi)  : decode đúng 1 ROI (camera viewfinder)
+//   - decodeQrFromRoi(source, roi)  : core pipeline trong 1 ROI (camera frame)
 // =============================================
 
 import jsQR from 'jsqr';
@@ -25,13 +29,9 @@ type DecodeSource =
   | ImageBitmap;
 
 export interface Roi {
-  /** Toạ độ x của ROI tính theo pixel của source. */
   x: number;
-  /** Toạ độ y của ROI tính theo pixel của source. */
   y: number;
-  /** Chiều rộng ROI. */
   width: number;
-  /** Chiều cao ROI. */
   height: number;
 }
 
@@ -76,14 +76,14 @@ function sourceSize(source: DecodeSource): { w: number; h: number } {
 }
 
 /**
- * Vẽ source (hoặc 1 ROI của source) xuống canvas. `targetMax` = cạnh dài nhất
- * sau resize; 0 = giữ nguyên kích thước.
+ * Vẽ source (hoặc 1 ROI) xuống canvas mới. Trả cả canvas (cho ZXing) lẫn
+ * ImageData (cho jsQR) để tránh re-rasterize.
  */
 function rasterize(
   source: DecodeSource,
   targetMax: number,
   roi?: Roi,
-): ImageData | null {
+): { canvas: HTMLCanvasElement; imageData: ImageData } | null {
   const { w: srcW, h: srcH } = sourceSize(source);
   if (!srcW || !srcH) return null;
 
@@ -103,10 +103,10 @@ function rasterize(
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(source as CanvasImageSource, sx, sy, sw, sh, 0, 0, w, h);
-  return ctx.getImageData(0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  return { canvas, imageData };
 }
 
-/** jsQR cơ bản trên 1 ImageData. */
 function tryJsQr(data: ImageData): string | null {
   const r = jsQR(data.data, data.width, data.height, {
     inversionAttempts: 'attemptBoth',
@@ -114,14 +114,10 @@ function tryJsQr(data: ImageData): string | null {
   return r?.data || null;
 }
 
-/**
- * Binarize ảnh bằng Otsu threshold rồi chạy jsQR. Giúp với QR trên nền màu/nhiễu
- * (vd. CCCD trên vải hoa văn) nơi mà jsQR raw thất bại vì local contrast yếu.
- */
+/** Otsu binarize + jsQR — cứu QR nền màu/contrast yếu. */
 function tryJsQrOtsu(data: ImageData): string | null {
   const px = data.data;
   const n = data.width * data.height;
-  // Histogram grayscale
   const hist = new Uint32Array(256);
   const gray = new Uint8ClampedArray(n);
   for (let i = 0, j = 0; i < px.length; i += 4, j++) {
@@ -130,7 +126,6 @@ function tryJsQrOtsu(data: ImageData): string | null {
     gray[j] = v;
     hist[v]++;
   }
-  // Otsu
   let sum = 0;
   for (let i = 0; i < 256; i++) sum += i * hist[i];
   let sumB = 0;
@@ -151,7 +146,6 @@ function tryJsQrOtsu(data: ImageData): string | null {
       threshold = t;
     }
   }
-  // Apply threshold
   const out = new Uint8ClampedArray(px.length);
   for (let j = 0, i = 0; j < n; j++, i += 4) {
     const v = gray[j] >= threshold ? 255 : 0;
@@ -160,76 +154,110 @@ function tryJsQrOtsu(data: ImageData): string | null {
     out[i + 2] = v;
     out[i + 3] = 255;
   }
-  const binarized = new ImageData(out, data.width, data.height);
-  return tryJsQr(binarized);
+  return tryJsQr(new ImageData(out, data.width, data.height));
 }
 
-/**
- * Thử decode trên source. Chạy:
- *  1) BarcodeDetector (nếu có)
- *  2) jsQR multi-scale trên toàn ảnh (raw + Otsu)
- *
- * Không tự crop — caller có thể gọi {@link decodeQrFromRoi} hoặc
- * {@link decodeQr} (full pipeline với center-crop attempts).
- */
-async function decodeQrCore(source: DecodeSource, roi?: Roi): Promise<string | null> {
+// Lazy-load @zxing/library — bundle ~250KB, không cần ở khởi động.
+let zxingPromise: Promise<typeof import('@zxing/library')> | null = null;
+function getZxing() {
+  if (!zxingPromise) zxingPromise = import('@zxing/library');
+  return zxingPromise;
+}
+
+async function tryZxing(canvas: HTMLCanvasElement): Promise<string | null> {
+  try {
+    const zx = await getZxing();
+    const source = new zx.HTMLCanvasElementLuminanceSource(canvas);
+    const bitmap = new zx.BinaryBitmap(new zx.HybridBinarizer(source));
+    const reader = new zx.MultiFormatReader();
+    const hints = new Map<number, unknown>();
+    hints.set(zx.DecodeHintType.POSSIBLE_FORMATS, [zx.BarcodeFormat.QR_CODE]);
+    hints.set(zx.DecodeHintType.TRY_HARDER, true);
+    reader.setHints(hints);
+    const result = reader.decode(bitmap);
+    return result?.getText() || null;
+  } catch {
+    // ZXing ném NotFoundException khi không thấy QR — coi như không decode được.
+    return null;
+  }
+}
+
+interface CoreOpts {
+  /** Có chạy tier ZXing không. Camera realtime nên tắt vì chậm/frame. */
+  zxing: boolean;
+}
+
+async function decodeQrCore(
+  source: DecodeSource,
+  roi: Roi | undefined,
+  opts: CoreOpts,
+): Promise<string | null> {
   const detector = await getDetector();
+
+  // ---- BarcodeDetector ----
   if (detector && !roi) {
     try {
       const results = await detector.detect(source as CanvasImageSource);
       if (results.length > 0 && results[0].rawValue) return results[0].rawValue;
     } catch {
-      // detector throws khi source chưa sẵn sàng — bỏ qua và rơi xuống jsQR
+      /* detector chưa sẵn sàng → fallback */
     }
   }
-  // Nếu có ROI, BarcodeDetector cũng nên thử trên ROI đã crop để hưởng lợi.
   if (detector && roi) {
-    const rasterFull = rasterize(source, 0, roi);
-    if (rasterFull) {
-      const canvas = document.createElement('canvas');
-      canvas.width = rasterFull.width;
-      canvas.height = rasterFull.height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (ctx) {
-        ctx.putImageData(rasterFull, 0, 0);
-        try {
-          const results = await detector.detect(canvas);
-          if (results.length > 0 && results[0].rawValue) return results[0].rawValue;
-        } catch {
-          /* ignore */
-        }
+    const r = rasterize(source, 0, roi);
+    if (r) {
+      try {
+        const results = await detector.detect(r.canvas);
+        if (results.length > 0 && results[0].rawValue) return results[0].rawValue;
+      } catch {
+        /* ignore */
       }
     }
   }
 
-  const scales = [800, 1200, 1600];
-  for (const target of scales) {
-    const data = rasterize(source, target, roi);
-    if (!data) continue;
-    const raw = tryJsQr(data);
-    if (raw) return raw;
+  // ---- jsQR multi-scale ----
+  const jsqrScales = [800, 1200, 1600, 2000];
+  // Cache rasterize ở các scale để ZXing dùng lại
+  const cache = new Map<number, { canvas: HTMLCanvasElement; imageData: ImageData }>();
+  for (const target of jsqrScales) {
+    const r = rasterize(source, target, roi);
+    if (!r) continue;
+    cache.set(target, r);
+    const hit = tryJsQr(r.imageData);
+    if (hit) return hit;
   }
-  // Lần thử cuối: full size + Otsu — đắt nhưng cứu được ảnh nền nhiễu
-  const full = rasterize(source, 1600, roi);
-  if (full) {
-    const otsu = tryJsQrOtsu(full);
-    if (otsu) return otsu;
+
+  // ---- jsQR + Otsu trên scale 1600 ----
+  const otsuRaster = cache.get(1600) || rasterize(source, 1600, roi);
+  if (otsuRaster) {
+    const hit = tryJsQrOtsu(otsuRaster.imageData);
+    if (hit) return hit;
   }
+
+  // ---- ZXing TRY_HARDER ở vài scale ----
+  if (opts.zxing) {
+    const zxScales = [1600, 2000, 1200];
+    for (const target of zxScales) {
+      const r = cache.get(target) || rasterize(source, target, roi);
+      if (!r) continue;
+      cache.set(target, r);
+      const hit = await tryZxing(r.canvas);
+      if (hit) return hit;
+    }
+  }
+
   return null;
 }
 
 /**
- * Decode QR từ source. Thử full image trước, sau đó center-crop nhiều mức để
- * focus vào vùng QR khi nền có hoạ tiết nhiễu (vd. CCCD chụp trên vải hoa văn).
- *
- * Multi-region crop chỉ chạy ở phase fallback (sau khi pipeline full thất bại).
+ * Decode QR từ source (upload ảnh). Full pipeline: BarcodeDetector → jsQR
+ * multi-scale → jsQR+Otsu → ZXing. Sau khi pipeline full thất bại, thử
+ * center-crop nhiều mức (90/75/60/45%) để bỏ nền nhiễu.
  */
 export async function decodeQr(source: DecodeSource): Promise<string | null> {
-  // Phase 1: full image
-  const raw = await decodeQrCore(source);
+  const raw = await decodeQrCore(source, undefined, { zxing: true });
   if (raw) return raw;
 
-  // Phase 2: center-crop attempts (focus QR, bỏ nền nhiễu)
   const { w, h } = sourceSize(source);
   if (!w || !h) return null;
   const ratios = [0.9, 0.75, 0.6, 0.45];
@@ -238,21 +266,25 @@ export async function decodeQr(source: DecodeSource): Promise<string | null> {
     const ch = Math.round(h * r);
     const cx = Math.round((w - cw) / 2);
     const cy = Math.round((h - ch) / 2);
-    const cropped = await decodeQrCore(source, { x: cx, y: cy, width: cw, height: ch });
+    const cropped = await decodeQrCore(
+      source,
+      { x: cx, y: cy, width: cw, height: ch },
+      { zxing: true },
+    );
     if (cropped) return cropped;
   }
   return null;
 }
 
 /**
- * Decode QR chỉ trong một ROI (camera viewfinder). Nhanh hơn full pipeline
- * vì bỏ qua center-crop fallback và chỉ rasterize phần ROI.
+ * Decode QR chỉ trong 1 ROI (camera viewfinder). Tắt ZXing để giữ frame rate
+ * — viewfinder vốn đã focus được vùng QR rồi.
  */
 export async function decodeQrFromRoi(
   source: DecodeSource,
   roi: Roi,
 ): Promise<string | null> {
-  return decodeQrCore(source, roi);
+  return decodeQrCore(source, roi, { zxing: false });
 }
 
 /** Decode QR từ File (PNG/JPG/WEBP). Trả raw string hoặc null. */
