@@ -261,25 +261,23 @@ export default function PublicContractInvoicePage() {
                 const note = parsed.note;
                 return (
                   <div key={it.id} className="px-4 py-3 text-sm">
-                    {/* Mobile: tiêu đề + tổng cùng dòng, ghi chú ở dòng dưới */}
-                    <div className="sm:hidden">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium leading-snug break-words">
-                            {title}
+                    {/* Mobile: 3 cột — [Mô tả+ghi chú] [SL×Đơn giá] [Thành tiền] */}
+                    <div className="sm:hidden flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium leading-snug break-words">
+                          {title}
+                        </div>
+                        {note && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {note}
                           </div>
-                          {note && (
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              {note}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-right font-semibold tabular-nums shrink-0">
-                          {formatCurrency(it.amount)}
-                        </div>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-500 mt-1 tabular-nums">
+                      <div className="text-xs text-gray-500 text-right tabular-nums shrink-0 whitespace-nowrap pt-0.5">
                         {qty} × {formatCurrency(unitPrice)}
+                      </div>
+                      <div className="text-right font-semibold tabular-nums shrink-0 whitespace-nowrap">
+                        {formatCurrency(it.amount)}
                       </div>
                     </div>
 
