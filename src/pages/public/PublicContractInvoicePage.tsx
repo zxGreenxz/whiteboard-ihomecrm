@@ -261,22 +261,22 @@ export default function PublicContractInvoicePage() {
                 const note = parsed.note;
                 return (
                   <div key={it.id} className="px-4 py-3 text-sm">
-                    {/* Mobile: 3 cột — [Mô tả+ghi chú] [SL×Đơn giá] [Thành tiền] */}
-                    <div className="sm:hidden flex items-start gap-3">
-                      <div className="min-w-0 flex-1">
+                    {/* Mobile: 3 cột canh đều — [Mô tả] [SL×Đơn giá] [Thành tiền] */}
+                    <div className="sm:hidden grid grid-cols-3 items-start gap-2">
+                      <div className="min-w-0">
                         <div className="font-medium leading-snug break-words">
                           {title}
                         </div>
                         {note && (
-                          <div className="text-xs text-gray-500 mt-0.5">
+                          <div className="text-xs text-gray-500 mt-0.5 break-words">
                             {note}
                           </div>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500 text-right tabular-nums shrink-0 whitespace-nowrap pt-0.5">
+                      <div className="text-xs text-gray-500 text-center tabular-nums whitespace-nowrap pt-0.5">
                         {qty} × {formatCurrency(unitPrice)}
                       </div>
-                      <div className="text-right font-semibold tabular-nums shrink-0 whitespace-nowrap">
+                      <div className="text-right font-semibold tabular-nums whitespace-nowrap">
                         {formatCurrency(it.amount)}
                       </div>
                     </div>
@@ -305,12 +305,12 @@ export default function PublicContractInvoicePage() {
                 );
               })}
               <div className="px-4 py-3 bg-gray-50 font-bold text-sm">
-                {/* Mobile: 2 cột flex */}
-                <div className="sm:hidden flex items-center justify-between">
-                  <span>Tổng cộng</span>
-                  <span className="tabular-nums">
+                {/* Mobile: cùng grid 3 cột, label canh phải sát amount */}
+                <div className="sm:hidden grid grid-cols-3 items-center gap-2">
+                  <div className="col-span-2 text-right">Tổng cộng</div>
+                  <div className="text-right tabular-nums">
                     {formatCurrency(invoice.total_amount)}
-                  </span>
+                  </div>
                 </div>
                 {/* Desktop: grid */}
                 <div className="hidden sm:grid grid-cols-12 gap-2">
