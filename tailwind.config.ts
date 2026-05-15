@@ -88,11 +88,16 @@ export default {
             transform: "rotate(360deg)",
           },
         },
+        "scan-line": {
+          "0%, 100%": { top: "0%" },
+          "50%": { top: "calc(100% - 2px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "spin-slow": "spin-slow 3s linear infinite",
+        "scan-line": "scan-line 1.8s ease-in-out infinite",
       },
       scale: {
         '102': '1.02',

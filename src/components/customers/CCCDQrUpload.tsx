@@ -1,51 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
-import jsQR from 'jsqr';
-import { QrCode, Loader2, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { QrCode, Loader2, X, CheckCircle2, AlertCircle, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { parseCccdQr, type CCCDQrData } from '@/lib/cccdQrParser';
+import { decodeQrFromFile } from '@/lib/qrDecoder';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import CCCDQrCameraScanner from './CCCDQrCameraScanner';
 
 interface CCCDQrUploadProps {
   onParsed: (data: CCCDQrData) => void;
-}
-
-/**
- * Decode QR từ một File (PNG/JPG). Trả chuỗi đã decode hoặc null.
- * Dùng canvas + jsQR. Resize ảnh lớn xuống tối đa 1600px để tăng tốc.
- */
-async function decodeQrFromFile(file: File): Promise<string | null> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = () => reject(new Error('Không thể đọc ảnh'));
-    el.src = dataUrl;
-  });
-
-  const MAX = 1600;
-  const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, w, h);
-  const imageData = ctx.getImageData(0, 0, w, h);
-
-  const result = jsQR(imageData.data, imageData.width, imageData.height, {
-    inversionAttempts: 'attemptBoth',
-  });
-  return result ? result.data : null;
 }
 
 export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
@@ -54,6 +18,7 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -72,7 +37,7 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
         const qrText = await decodeQrFromFile(file);
         if (!qrText) {
           setError('Không phát hiện được mã QR trong ảnh');
-          toast.error('Không phát hiện được mã QR. Thử ảnh rõ nét hơn.');
+          toast.error('Không phát hiện được mã QR. Thử ảnh rõ nét hơn hoặc dùng camera.');
           return;
         }
         const parsed = parseCccdQr(qrText);
@@ -127,6 +92,16 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
     setError(null);
   }, [preview]);
 
+  const handleCameraParsed = useCallback(
+    (data: CCCDQrData) => {
+      onParsed(data);
+      setSuccess(true);
+      setError(null);
+      setPreview(null);
+    },
+    [onParsed]
+  );
+
   const pasteHandlers = useClipboardImagePaste({
     onFiles: (files) => void handleFile(files[0]),
     enabled: !isDecoding,
@@ -134,12 +109,22 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <QrCode className="h-4 w-4 text-green-600" />
         <h3 className="text-sm font-semibold text-gray-700">Quét QR CCCD</h3>
-        <span className="text-xs text-muted-foreground">
-          Chụp/upload/Ctrl+V ảnh có mã QR để tự động điền thông tin
+        <span className="text-xs text-muted-foreground flex-1 min-w-[120px]">
+          Camera/upload/Ctrl+V để tự động điền thông tin
         </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 gap-1.5 text-xs"
+          onClick={() => setCameraOpen(true)}
+        >
+          <Camera className="h-3.5 w-3.5" />
+          Quét bằng camera
+        </Button>
       </div>
 
       {preview ? (
@@ -194,6 +179,11 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
           <span className="text-xs text-muted-foreground mt-1">
             Kéo thả, click hoặc Ctrl+V ảnh chứa mã QR CCCD
           </span>
+          {success && (
+            <span className="mt-1 text-xs text-green-600 flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" /> Đã đọc QR từ camera
+            </span>
+          )}
         </div>
       )}
 
@@ -201,9 +191,14 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
         ref={inputRef}
         type="file"
         accept="image/png,image/jpeg,image/jpg,image/webp"
-        capture="environment"
         onChange={handleFileChange}
         className="hidden"
+      />
+
+      <CCCDQrCameraScanner
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onParsed={handleCameraParsed}
       />
     </div>
   );
