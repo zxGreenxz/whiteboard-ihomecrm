@@ -10,7 +10,6 @@ import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useJobGroups } from "@/hooks/useJobGroups";
 import { useJobTypes } from "@/hooks/useJobTypes";
 import { useProfiles } from "@/hooks/useJobs";
 import {
@@ -36,7 +35,6 @@ export function TaskFiltersPanel({
 }: TaskFiltersPanelProps) {
   const { data: buildings } = useBuildings();
   const { data: rooms } = useRooms(filters.building_id ?? undefined);
-  const { data: jobGroups } = useJobGroups();
   const { data: jobTypes } = useJobTypes();
   const { data: profiles } = useProfiles();
 
@@ -90,26 +88,6 @@ export function TaskFiltersPanel({
             {(rooms || []).map((r) => (
               <SelectItem key={r.id} value={r.id}>
                 {r.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Nhóm công việc */}
-        <Select
-          value={filters.job_group_id ?? "ALL"}
-          onValueChange={(v) =>
-            handleChange({ job_group_id: v === "ALL" ? null : v })
-          }
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Nhóm công việc" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Nhóm công việc</SelectItem>
-            {(jobGroups || []).map((g) => (
-              <SelectItem key={g.id} value={g.id}>
-                {g.name}
               </SelectItem>
             ))}
           </SelectContent>

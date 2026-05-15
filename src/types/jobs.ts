@@ -43,7 +43,6 @@ export interface Job {
   building_id: string | null;
   room_id: string | null;
   bed_id: string | null;
-  job_group_id: string | null;
   job_type_id: string | null;
   priority: JobPriority;
   assignee_id: string | null;
@@ -68,7 +67,6 @@ export interface JobWithRelations extends Job {
   buildings: { id: string; name: string } | null;
   rooms: { id: string; name: string } | null;
   beds: { id: string; name: string } | null;
-  job_groups: { id: string; name: string } | null;
   job_types: { id: string; name: string } | null;
   profiles: { id: string; full_name: string } | null;
 }
@@ -77,7 +75,6 @@ export interface JobWithRelations extends Job {
 export interface TaskFilters {
   building_id: string | null;
   room_id: string | null;
-  job_group_id: string | null;
   job_type_id: string | null;
   priority: JobPriority | null;
   assignee_id: string | null;
@@ -89,7 +86,6 @@ export interface TaskFilters {
 export const defaultTaskFilters: TaskFilters = {
   building_id: null,
   room_id: null,
-  job_group_id: null,
   job_type_id: null,
   priority: null,
   assignee_id: null,

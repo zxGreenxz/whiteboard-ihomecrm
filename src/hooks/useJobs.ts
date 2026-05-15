@@ -14,7 +14,6 @@ export const useJobs = (filters?: TaskFilters) => {
           buildings(id, name),
           rooms(id, name),
           beds(id, name),
-          job_groups(id, name),
           job_types(id, name),
           profiles!jobs_assignee_id_fkey(id, full_name)
         `)
@@ -25,9 +24,6 @@ export const useJobs = (filters?: TaskFilters) => {
       }
       if (filters?.room_id) {
         query = query.eq("room_id", filters.room_id);
-      }
-      if (filters?.job_group_id) {
-        query = query.eq("job_group_id", filters.job_group_id);
       }
       if (filters?.job_type_id) {
         query = query.eq("job_type_id", filters.job_type_id);

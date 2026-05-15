@@ -119,7 +119,6 @@ export default function TaskDetailDialog({
             <DetailRow label="Căn hộ">{job.buildings?.name || "—"}</DetailRow>
             <DetailRow label="Phòng">{job.rooms?.name || "—"}</DetailRow>
             <DetailRow label="Giường">{job.beds?.name || "—"}</DetailRow>
-            <DetailRow label="Nhóm công việc">{job.job_groups?.name || "—"}</DetailRow>
             <DetailRow label="Loại công việc">{job.job_types?.name || "—"}</DetailRow>
             <DetailRow label="Mức độ ưu tiên">
               <Badge className={getPriorityColor(job.priority)}>

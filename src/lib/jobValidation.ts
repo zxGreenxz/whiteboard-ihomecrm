@@ -18,7 +18,6 @@ export const jobCreateSchema = z.object({
   building_id: z.string().uuid().optional().nullable(),
   room_id: z.string().uuid().optional().nullable(),
   bed_id: z.string().uuid().optional().nullable(),
-  job_group_id: z.string().uuid().optional().nullable(),
   job_type_id: z.string().uuid().optional().nullable(),
   priority: z.enum(['NORMAL', 'LOW', 'URGENT']).default('NORMAL'),
   assignee_id: z.string().uuid().optional().nullable(),
@@ -85,7 +84,6 @@ export function filterJobs(jobs: JobWithRelations[], filters: TaskFilters): JobW
   return jobs.filter((job) => {
     if (filters.building_id && job.building_id !== filters.building_id) return false;
     if (filters.room_id && job.room_id !== filters.room_id) return false;
-    if (filters.job_group_id && job.job_group_id !== filters.job_group_id) return false;
     if (filters.job_type_id && job.job_type_id !== filters.job_type_id) return false;
     if (filters.priority && job.priority !== filters.priority) return false;
     if (filters.assignee_id && job.assignee_id !== filters.assignee_id) return false;
