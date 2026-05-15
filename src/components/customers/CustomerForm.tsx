@@ -1,5 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,11 +22,14 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { customerSchema } from '@/lib/customerValidation';
 import type { CustomerFormData, CustomerType } from '@/types/customer';
+import type { CCCDQrData } from '@/lib/cccdQrParser';
+import { lookupAddressFromText } from '@/lib/cccdAddressLookup';
 import ImageUploadZone from './ImageUploadZone';
 import AddressCascadingDropdowns from './AddressCascadingDropdowns';
 import CustomerIndividualFields from './CustomerIndividualFields';
 import CustomerOrganizationFields from './CustomerOrganizationFields';
 import CustomerVehiclesSection from './CustomerVehiclesSection';
+import CCCDQrUpload from './CCCDQrUpload';
 
 interface CustomerFormProps {
   defaultValues?: Partial<CustomerFormData>;
@@ -42,6 +46,7 @@ interface CustomerFormProps {
  * Requirements: 2.1, 2.2, 2.3, 2.5, 2.6, 2.7, 2.8, 2.9
  */
 export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: CustomerFormProps) {
+  const queryClient = useQueryClient();
   const form = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
@@ -63,6 +68,45 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
     // Reset type-specific fields
     if (type === 'ORGANIZATION') {
       form.setValue('full_name', form.getValues('full_name') || '');
+    }
+  };
+
+  const handleCccdParsed = async (data: CCCDQrData) => {
+    if (data.fullName) form.setValue('full_name', data.fullName, { shouldDirty: true });
+    if (data.idNumber) form.setValue('id_number', data.idNumber, { shouldDirty: true });
+    if (data.dateOfBirth) form.setValue('date_of_birth', data.dateOfBirth, { shouldDirty: true });
+    if (data.gender) form.setValue('gender', data.gender, { shouldDirty: true });
+    if (data.idIssueDate) form.setValue('id_issue_date', data.idIssueDate, { shouldDirty: true });
+    if (data.idIssuePlace) form.setValue('id_issue_place', data.idIssuePlace, { shouldDirty: true });
+    if (data.permanentAddress) {
+      form.setValue('permanent_address', data.permanentAddress, { shouldDirty: true });
+      try {
+        const res = await lookupAddressFromText(data.permanentAddress);
+        // Seed React Query cache trước để useDistricts/useWards có data ngay sau re-render.
+        if (res.provinceCode && res.districts) {
+          queryClient.setQueryData(['address', 'districts', res.provinceCode], res.districts);
+        }
+        if (res.districtCode && res.wards) {
+          queryClient.setQueryData(['address', 'wards', res.districtCode], res.wards);
+        }
+        if (res.detailedAddress) form.setValue('detailed_address', res.detailedAddress, { shouldDirty: true });
+        // Set tỉnh trước, đợi React mount SelectItems cho district trước khi set district,
+        // tương tự cho ward. Radix Select reset value về '' khi value prop không khớp
+        // SelectItem nào đang mount — phải set theo từng cấp.
+        if (res.provinceCode) {
+          form.setValue('province', res.provinceCode, { shouldDirty: true });
+        }
+        if (res.districtCode) {
+          await new Promise((r) => setTimeout(r, 0));
+          form.setValue('district', res.districtCode, { shouldDirty: true });
+        }
+        if (res.wardCode) {
+          await new Promise((r) => setTimeout(r, 0));
+          form.setValue('ward', res.wardCode, { shouldDirty: true });
+        }
+      } catch (e) {
+        console.error('Address lookup failed:', e);
+      }
     }
   };
 
@@ -90,6 +134,13 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
             </Button>
           </div>
         </div>
+
+        {/* QR CCCD scan — chỉ áp dụng cho khách cá nhân */}
+        {!isOrganization && (
+          <div className="bg-white rounded-lg border p-4">
+            <CCCDQrUpload onParsed={handleCccdParsed} />
+          </div>
+        )}
 
         {/* Image Upload Section */}
         <div className="bg-white rounded-lg border p-4 space-y-3">
