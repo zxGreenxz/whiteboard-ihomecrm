@@ -28,6 +28,7 @@ import {
   Image,
   ExternalLink,
   Pencil,
+  QrCode,
   XCircle,
 } from 'lucide-react';
 import { useInvoice, useCancelInvoice } from '@/hooks/useInvoices';
@@ -41,6 +42,7 @@ import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
+import RoomQRDialog from '@/components/rooms/RoomQRDialog';
 
 const InvoiceDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -48,6 +50,7 @@ const InvoiceDetailPage = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const cancelMutation = useCancelInvoice();
@@ -253,6 +256,17 @@ const InvoiceDetailPage = () => {
           <Printer className="h-4 w-4 mr-2" />
           In hóa đơn
         </Button>
+
+        {invoice.room_id && (
+          <Button
+            variant="outline"
+            onClick={() => setQrDialogOpen(true)}
+            title="QR code phòng (khách quét để xem hoá đơn mới nhất)"
+          >
+            <QrCode className="h-4 w-4 mr-2" />
+            QR phòng
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -583,6 +597,16 @@ const InvoiceDetailPage = () => {
         onOpenChange={setEditDialogOpen}
         invoice={invoice}
       />
+
+      {/* QR Phòng Dialog */}
+      {invoice.room_id && (
+        <RoomQRDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          roomId={invoice.room_id}
+          roomLabel={apartmentLabel || roomName || invoice.room_id.slice(0, 8)}
+        />
+      )}
     </MainLayout>
   );
 };

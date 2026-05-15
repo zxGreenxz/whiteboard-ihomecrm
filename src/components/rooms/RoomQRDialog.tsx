@@ -1,0 +1,175 @@
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Copy, Download, Check, ExternalLink } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
+
+interface RoomQRDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  roomId: string;
+  roomLabel: string;
+}
+
+const QR_SIZE = 480;
+
+export default function RoomQRDialog({
+  open,
+  onOpenChange,
+  roomId,
+  roomLabel,
+}: RoomQRDialogProps) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const publicUrl = `${window.location.origin}/public/room/${roomId}`;
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    QRCode.toDataURL(publicUrl, {
+      width: QR_SIZE,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' },
+    })
+      .then((url) => {
+        if (!cancelled) setDataUrl(url);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          toast({
+            title: 'Lỗi tạo QR',
+            description: err?.message || String(err),
+            variant: 'destructive',
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, publicUrl]);
+
+  const dataUrlToBlob = async (url: string): Promise<Blob> => {
+    const res = await fetch(url);
+    return res.blob();
+  };
+
+  const handleCopyImage = async () => {
+    if (!dataUrl) return;
+    try {
+      if (!navigator.clipboard || !window.ClipboardItem) {
+        throw new Error(
+          'Trình duyệt không hỗ trợ copy ảnh. Vui lòng dùng nút Tải xuống.',
+        );
+      }
+      const blob = await dataUrlToBlob(dataUrl);
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob }),
+      ]);
+      setCopied(true);
+      toast({ title: 'Đã copy ảnh QR vào clipboard' });
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e: any) {
+      toast({
+        title: 'Không copy được',
+        description: e?.message || 'Lỗi không xác định',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDownload = () => {
+    if (!dataUrl) return;
+    const link = document.createElement('a');
+    link.download = `QR-${roomLabel.replace(/\s+/g, '_')}.png`;
+    link.href = dataUrl;
+    link.click();
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      toast({ title: 'Đã copy link' });
+    } catch {
+      toast({ title: 'Không copy được link', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>QR Code phòng {roomLabel}</DialogTitle>
+          <DialogDescription>
+            Khách quét QR sẽ xem được hoá đơn mới nhất của phòng này (không cần
+            đăng nhập).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center gap-4 py-2">
+          <div className="rounded-lg border bg-white p-3 inline-block">
+            {dataUrl ? (
+              <img
+                src={dataUrl}
+                alt={`QR phòng ${roomLabel}`}
+                width={280}
+                height={280}
+                className="block"
+              />
+            ) : (
+              <div className="w-[280px] h-[280px] flex items-center justify-center text-sm text-gray-400">
+                Đang tạo QR...
+              </div>
+            )}
+          </div>
+
+          <div className="w-full">
+            <div className="text-xs text-gray-500 mb-1">Link công khai</div>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="w-full text-left text-xs font-mono text-blue-600 hover:text-blue-800 truncate flex items-center gap-1"
+              title="Bấm để copy"
+            >
+              <ExternalLink className="h-3 w-3 shrink-0" />
+              <span className="truncate">{publicUrl}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            onClick={handleCopyImage}
+            className="flex-1"
+            variant="default"
+            disabled={!dataUrl}
+          >
+            {copied ? (
+              <Check className="h-4 w-4 mr-2" />
+            ) : (
+              <Copy className="h-4 w-4 mr-2" />
+            )}
+            {copied ? 'Đã copy' : 'Copy ảnh QR'}
+          </Button>
+          <Button
+            onClick={handleDownload}
+            variant="outline"
+            className="flex-1"
+            disabled={!dataUrl}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Tải xuống
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

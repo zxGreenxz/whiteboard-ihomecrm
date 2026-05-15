@@ -114,6 +114,9 @@ import TaskManagementPage from "./pages/TaskManagementPage";
 import ProfilePage from "./pages/account/ProfilePage";
 import SubscriptionPage from "./pages/account/SubscriptionPage";
 
+// Public Pages (không cần đăng nhập, dùng cho QR phòng)
+import PublicRoomInvoicePage from "./pages/public/PublicRoomInvoicePage";
+
 // Info Pages
 import FaqPage from "./pages/FaqPage";
 import ChangelogPage from "./pages/ChangelogPage";
@@ -164,6 +167,12 @@ const App = () => (
             path="/reset-password"
             element={<ResetPassword />}
           />
+
+          {/* ========================================
+              PUBLIC PAGES - Không cần đăng nhập
+              (Dùng cho QR phòng → hoá đơn mới nhất)
+              ======================================== */}
+          <Route path="/public/room/:roomId" element={<PublicRoomInvoicePage />} />
 
           {/* ========================================
               PROTECTED ROUTES - Require authentication
