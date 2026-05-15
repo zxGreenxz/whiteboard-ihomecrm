@@ -229,6 +229,7 @@ export default function PublicContractInvoicePage() {
             <CardTitle className="text-base">Chi tiết các khoản thu</CardTitle>
           </CardHeader>
           <CardContent className="px-0 sm:px-6">
+            {/* Desktop header */}
             <div className="hidden sm:grid grid-cols-12 text-xs font-medium text-gray-500 px-4 pb-2 border-b">
               <div className="col-span-5">Mô tả</div>
               <div className="col-span-2 text-right">Số lượng</div>
@@ -241,40 +242,68 @@ export default function PublicContractInvoicePage() {
                   Không có khoản thu nào
                 </div>
               )}
-              {invoice.items.map((it) => (
-                <div
-                  key={it.id}
-                  className="grid grid-cols-12 gap-2 px-4 py-3 text-sm items-start"
-                >
-                  <div className="col-span-12 sm:col-span-5">
-                    <div className="font-medium leading-snug">
-                      {it.description}
+              {invoice.items.map((it) => {
+                const qty = Number(it.quantity || 0);
+                const unitPrice = Number(it.unit_price || 0);
+                return (
+                  <div key={it.id} className="px-4 py-3 text-sm">
+                    {/* Mobile: tiêu đề + tổng cùng dòng, công thức ở dòng dưới */}
+                    <div className="sm:hidden">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium leading-snug break-words">
+                            {it.description}
+                          </div>
+                          <div className="text-xs text-gray-500 capitalize">
+                            {it.type?.toLowerCase()}
+                          </div>
+                        </div>
+                        <div className="text-right font-semibold tabular-nums shrink-0">
+                          {formatCurrency(it.amount)}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 tabular-nums">
+                        {qty} × {formatCurrency(unitPrice)}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 capitalize">
-                      {it.type?.toLowerCase()}
+
+                    {/* Desktop: 4 cột grid */}
+                    <div className="hidden sm:grid grid-cols-12 gap-2 items-start">
+                      <div className="col-span-5">
+                        <div className="font-medium leading-snug">
+                          {it.description}
+                        </div>
+                        <div className="text-xs text-gray-500 capitalize">
+                          {it.type?.toLowerCase()}
+                        </div>
+                      </div>
+                      <div className="col-span-2 text-right tabular-nums">
+                        {qty}
+                      </div>
+                      <div className="col-span-2 text-right tabular-nums">
+                        {formatCurrency(unitPrice)}
+                      </div>
+                      <div className="col-span-3 text-right font-medium tabular-nums">
+                        {formatCurrency(it.amount)}
+                      </div>
                     </div>
                   </div>
-                  <div className="col-span-4 sm:col-span-2 text-right tabular-nums">
-                    <span className="sm:hidden text-xs text-gray-500 mr-1">
-                      SL:
-                    </span>
-                    {Number(it.quantity || 0)}
-                  </div>
-                  <div className="col-span-4 sm:col-span-2 text-right tabular-nums">
-                    <span className="sm:hidden text-xs text-gray-500 mr-1">
-                      Đơn giá:
-                    </span>
-                    {formatCurrency(it.unit_price)}
-                  </div>
-                  <div className="col-span-4 sm:col-span-3 text-right font-medium tabular-nums">
-                    {formatCurrency(it.amount)}
-                  </div>
+                );
+              })}
+              <div className="px-4 py-3 bg-gray-50 font-bold text-sm">
+                {/* Mobile: 2 cột flex */}
+                <div className="sm:hidden flex items-center justify-between">
+                  <span>Tổng cộng</span>
+                  <span className="tabular-nums">
+                    {formatCurrency(invoice.total_amount)}
+                  </span>
                 </div>
-              ))}
-              <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-gray-50 font-bold text-sm">
-                <div className="col-span-9 text-right">Tổng cộng</div>
-                <div className="col-span-3 text-right tabular-nums">
-                  {formatCurrency(invoice.total_amount)}
+                {/* Desktop: grid */}
+                <div className="hidden sm:grid grid-cols-12 gap-2">
+                  <div className="col-span-9 text-right">Tổng cộng</div>
+                  <div className="col-span-3 text-right tabular-nums">
+                    {formatCurrency(invoice.total_amount)}
+                  </div>
                 </div>
               </div>
             </div>
