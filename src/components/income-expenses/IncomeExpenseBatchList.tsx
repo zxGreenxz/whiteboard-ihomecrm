@@ -17,7 +17,8 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { IncomeExpenseBatchSummary } from '@/hooks/useIncomeExpenses';
-import { Eye, Ban, Layers } from 'lucide-react';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { Eye, Ban, Layers, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -26,6 +27,9 @@ interface IncomeExpenseBatchListProps {
   isLoading: boolean;
   onView: (batchId: string) => void;
   onCancel: (batchId: string) => void;
+  /** Mở dialog chi tiết đợt ở chế độ "sửa nhanh" — Super Admin (cho phép
+   *  chỉnh sửa từng phiếu con bên trong đợt). */
+  onEdit?: (batchId: string) => void;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -38,9 +42,11 @@ const IncomeExpenseBatchList = ({
   isLoading,
   onView,
   onCancel,
+  onEdit,
   pagination,
   totalCount,
 }: IncomeExpenseBatchListProps) => {
+  const { data: isAdmin = false } = useIsAdmin();
   const paginationInfo = useMemo(
     () =>
       calculatePaginationInfo(
@@ -143,6 +149,17 @@ const IncomeExpenseBatchList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+                    {isAdmin && onEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => onEdit(batch.id)}
+                        title="Sửa phiếu trong đợt (Super Admin)"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                     {batch.has_approved && (
                       <Button
                         variant="ghost"

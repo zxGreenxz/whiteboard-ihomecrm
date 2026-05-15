@@ -15,7 +15,9 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  Pencil,
 } from 'lucide-react';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
@@ -75,6 +77,7 @@ export function IncomeExpenseBatchDetailDialog({
   const [childVoucher, setChildVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const isMobile = useIsMobile();
+  const { data: isAdmin = false } = useIsAdmin();
 
   const attachments = batch?.attachments ?? [];
   const lightboxUrl =
@@ -274,7 +277,7 @@ export function IncomeExpenseBatchDetailDialog({
           {/* Danh sách phiếu con */}
           <SectionTitle>Các phiếu trong đợt ({batch.voucher_count})</SectionTitle>
           <div className="rounded-md border border-zinc-200 overflow-hidden">
-            <div className="grid grid-cols-[110px_1fr_120px_140px_60px] bg-zinc-50 text-xs font-medium text-muted-foreground">
+            <div className="grid grid-cols-[110px_1fr_120px_140px_100px] bg-zinc-50 text-xs font-medium text-muted-foreground">
               <div className="px-3 py-2 border-r border-zinc-200">Mã</div>
               <div className="px-3 py-2 border-r border-zinc-200">
                 Tòa / Phòng / Loại
@@ -285,15 +288,17 @@ export function IncomeExpenseBatchDetailDialog({
               <div className="px-3 py-2 border-r border-zinc-200">
                 Trạng thái
               </div>
-              <div className="px-3 py-2 text-center">Xem</div>
+              <div className="px-3 py-2 text-center">Thao tác</div>
             </div>
             {batch.vouchers.map((v) => {
               const isCancelled = v.approval_status === 'CANCELLED';
+              const isUnapproved = v.approval_status === 'UNAPPROVED';
+              const canEditInline = (isUnapproved || isAdmin) && !!onEditVoucher;
               const itemName = v.items[0]?.type_name ?? '';
               return (
                 <div
                   key={v.id}
-                  className={`grid grid-cols-[110px_1fr_120px_140px_60px] border-t border-zinc-200 text-sm ${
+                  className={`grid grid-cols-[110px_1fr_120px_140px_100px] border-t border-zinc-200 text-sm ${
                     isCancelled ? 'opacity-60' : ''
                   }`}
                 >
@@ -344,16 +349,34 @@ export function IncomeExpenseBatchDetailDialog({
                       </Badge>
                     )}
                   </div>
-                  <div className="px-3 py-2 text-center">
+                  <div className="px-3 py-2 flex items-center justify-center gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-7 w-7 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
                       onClick={() => setChildVoucher(v)}
                       title="Xem chi tiết phiếu"
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+                    {canEditInline && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => {
+                          onOpenChange(false);
+                          onEditVoucher?.(v);
+                        }}
+                        title={
+                          isUnapproved
+                            ? 'Sửa phiếu nháp'
+                            : 'Sửa phiếu (Super Admin)'
+                        }
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

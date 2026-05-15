@@ -303,6 +303,7 @@ const IncomeExpensePage = () => {
                 isLoading={isBatchLoading}
                 onView={handleViewBatch}
                 onCancel={handleCancelBatch}
+                onEdit={handleViewBatch}
                 pagination={pagination}
                 totalCount={batchTotalCount}
               />
@@ -555,6 +556,7 @@ const IncomeExpensePage = () => {
             isLoading={isBatchLoading}
             onView={handleViewBatch}
             onCancel={handleCancelBatch}
+            onEdit={handleViewBatch}
             pagination={pagination}
             totalCount={batchTotalCount}
           />
