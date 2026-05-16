@@ -49,13 +49,29 @@ export const useVehicles = (
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
-      // Search by license_plate, vehicle_name, or customer name
+      // Search by license_plate, vehicle_name, owner_name, or related customer's full_name
       if (filters?.search) {
         const search = filters.search.trim();
         if (search) {
-          query = query.or(
-            `license_plate.ilike.%${search}%,vehicle_name.ilike.%${search}%,owner_name.ilike.%${search}%`
-          );
+          // PostgREST .or() can't OR across the parent table and an embedded table directly,
+          // so look up matching customer IDs first then include them in the OR clause.
+          const { data: matchedCustomers } = await supabase
+            .from("customers")
+            .select("id")
+            .ilike("full_name", `%${search}%`)
+            .is("deleted_at", null);
+
+          const orParts = [
+            `license_plate.ilike.%${search}%`,
+            `vehicle_name.ilike.%${search}%`,
+            `owner_name.ilike.%${search}%`,
+          ];
+          const customerIds = (matchedCustomers || []).map((c: any) => c.id);
+          if (customerIds.length > 0) {
+            orParts.push(`customer_id.in.(${customerIds.join(",")})`);
+          }
+
+          query = query.or(orParts.join(","));
         }
       }
 

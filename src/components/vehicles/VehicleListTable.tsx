@@ -54,11 +54,10 @@ export default function VehicleListTable({
             <TableHead className="w-10">
               <Checkbox disabled />
             </TableHead>
-            <TableHead className="w-24">Mã PT</TableHead>
-            <TableHead className="w-24">Thao tác</TableHead>
             <TableHead>Thông tin xe</TableHead>
             <TableHead>Khách hàng</TableHead>
             <TableHead>Vị trí</TableHead>
+            <TableHead className="w-24">Thao tác</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -66,29 +65,6 @@ export default function VehicleListTable({
             <TableRow key={vehicle.id}>
               <TableCell>
                 <Checkbox />
-              </TableCell>
-              <TableCell className="text-xs text-muted-foreground font-mono">
-                {vehicle.id.slice(0, 8).toUpperCase()}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                    onClick={() => onEdit(vehicle)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => onDelete(vehicle)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
               </TableCell>
               <TableCell>
                 <div>
@@ -123,6 +99,26 @@ export default function VehicleListTable({
                 ) : (
                   <span className="text-sm text-muted-foreground">—</span>
                 )}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                    onClick={() => onEdit(vehicle)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => onDelete(vehicle)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}
