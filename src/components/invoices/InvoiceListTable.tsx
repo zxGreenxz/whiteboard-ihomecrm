@@ -22,8 +22,9 @@ import {
   Trash2,
   Eye,
 } from 'lucide-react';
-import type { InvoiceWithRelations } from '@/types/invoice';
+import type { InvoiceWithRelations, InvoiceItem } from '@/types/invoice';
 import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
+import type { InvoiceColumnVisibility } from './invoiceListColumns';
 
 interface InvoiceListTableProps {
   invoices: InvoiceWithRelations[];
@@ -36,6 +37,7 @@ interface InvoiceListTableProps {
   onViewDetail: (invoice: InvoiceWithRelations) => void;
   onViewPayments?: (invoice: InvoiceWithRelations) => void;
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
+  columnVisibility: InvoiceColumnVisibility;
 }
 
 const formatCurrency = (amount: number) =>
@@ -47,6 +49,30 @@ const sumByType = (items: InvoiceWithRelations['invoice_items'], types: string[]
   return items
     .filter((item) => types.includes(item.type))
     .reduce((sum, item) => sum + (item.amount || 0), 0);
+};
+
+/**
+ * Phân loại các invoice_items không phải RENT/DISCOUNT thành 3 nhóm:
+ * Điện (desc chứa "điện"), Nước (desc chứa "nước"), PDV (còn lại).
+ * Khớp logic phân loại đang dùng ở InvoiceImageDialog để hiển thị nhất quán.
+ */
+const splitServiceAmounts = (items: InvoiceItem[] | undefined) => {
+  let electric = 0;
+  let water = 0;
+  let pdv = 0;
+  if (!items) return { electric, water, pdv };
+  for (const item of items) {
+    if (item.type === 'RENT' || item.type === 'DISCOUNT') continue;
+    const desc = (item.description || '').toLowerCase();
+    if (desc.includes('điện')) {
+      electric += item.amount || 0;
+    } else if (desc.includes('nước')) {
+      water += item.amount || 0;
+    } else {
+      pdv += item.amount || 0;
+    }
+  }
+  return { electric, water, pdv };
 };
 
 /**
@@ -112,6 +138,7 @@ const InvoiceListTable = ({
   onViewDetail,
   onViewPayments,
   onViewHistory,
+  columnVisibility,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
   const selectableInvoices = invoices.filter((inv) => (inv.paid_amount ?? 0) === 0);
@@ -122,6 +149,21 @@ const InvoiceListTable = ({
     console.log(`TODO: ${feature}`);
     toast({ title: 'Tính năng đang phát triển', description: feature });
   };
+
+  const v = columnVisibility;
+  const visibleColCount =
+    3 /* checkbox + thao tác + hoá đơn */ +
+    Number(v.tien_thue) +
+    Number(v.dien) +
+    Number(v.nuoc) +
+    Number(v.pdv) +
+    Number(v.giam_tru) +
+    Number(v.tong_tien) +
+    Number(v.da_thanh_toan) +
+    Number(v.con_no) +
+    Number(v.no_cong_don) +
+    Number(v.han_tt) +
+    Number(v.nguoi_tao);
 
   return (
     <TooltipProvider>
@@ -138,21 +180,23 @@ const InvoiceListTable = ({
             </TableHead>
             <TableHead className="w-[200px]">Thao tác</TableHead>
             <TableHead>Hoá đơn</TableHead>
-            <TableHead className="text-right">Tiền thuê</TableHead>
-            <TableHead className="text-right">Tiền dịch vụ</TableHead>
-            <TableHead className="text-right">Giảm trừ</TableHead>
-            <TableHead className="text-right">Tổng tiền</TableHead>
-            <TableHead className="text-right">Đã thanh toán</TableHead>
-            <TableHead className="text-right">Còn nợ</TableHead>
-            <TableHead className="text-right">Nợ cộng dồn</TableHead>
-            <TableHead>Hạn TT</TableHead>
-            <TableHead>Người tạo</TableHead>
+            {v.tien_thue && <TableHead className="text-right">Tiền thuê</TableHead>}
+            {v.dien && <TableHead className="text-right">Điện</TableHead>}
+            {v.nuoc && <TableHead className="text-right">Nước</TableHead>}
+            {v.pdv && <TableHead className="text-right">PDV</TableHead>}
+            {v.giam_tru && <TableHead className="text-right">Giảm trừ</TableHead>}
+            {v.tong_tien && <TableHead className="text-right">Tổng tiền</TableHead>}
+            {v.da_thanh_toan && <TableHead className="text-right">Đã thanh toán</TableHead>}
+            {v.con_no && <TableHead className="text-right">Còn nợ</TableHead>}
+            {v.no_cong_don && <TableHead className="text-right">Nợ cộng dồn</TableHead>}
+            {v.han_tt && <TableHead>Hạn TT</TableHead>}
+            {v.nguoi_tao && <TableHead>Người tạo</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {invoices.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={visibleColCount} className="h-24 text-center text-muted-foreground">
                 Không có hoá đơn nào
               </TableCell>
             </TableRow>
@@ -164,7 +208,7 @@ const InvoiceListTable = ({
                 (invoice.total_amount || 0) > 0 &&
                 (invoice.paid_amount || 0) >= (invoice.total_amount || 0);
               const rentAmount = sumByType(invoice.invoice_items, ['RENT']);
-              const serviceAmount = sumByType(invoice.invoice_items, ['SERVICE', 'PENALTY']);
+              const { electric, water, pdv } = splitServiceAmounts(invoice.invoice_items);
               const locationCode = [invoice.building?.name, invoice.room?.name]
                 .filter(Boolean)
                 .join(' / ');
@@ -284,87 +328,119 @@ const InvoiceListTable = ({
                   </TableCell>
 
                   {/* Tiền thuê */}
-                  <TableCell className="text-right text-sm">
-                    {formatCurrency(rentAmount)}
-                  </TableCell>
+                  {v.tien_thue && (
+                    <TableCell className="text-right text-sm">
+                      {formatCurrency(rentAmount)}
+                    </TableCell>
+                  )}
 
-                  {/* Tiền dịch vụ */}
-                  <TableCell className="text-right text-sm">
-                    {formatCurrency(serviceAmount)}
-                  </TableCell>
+                  {/* Điện */}
+                  {v.dien && (
+                    <TableCell className="text-right text-sm">
+                      {electric > 0 ? formatCurrency(electric) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  )}
+
+                  {/* Nước */}
+                  {v.nuoc && (
+                    <TableCell className="text-right text-sm">
+                      {water > 0 ? formatCurrency(water) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  )}
+
+                  {/* PDV (phí dịch vụ khác) */}
+                  {v.pdv && (
+                    <TableCell className="text-right text-sm">
+                      {pdv > 0 ? formatCurrency(pdv) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  )}
 
                   {/* Giảm trừ — discount_amount: dương = giảm, âm = bổ sung; notes hiển thị tooltip */}
-                  <TableCell className="text-right text-sm relative">
-                    <div className="relative inline-block pr-3">
-                      {(() => {
-                        const d = Number(invoice.discount_amount || 0);
-                        if (d > 0) return <span className="text-rose-600">{`(${formatCurrency(d)})`}</span>;
-                        if (d < 0) return <span className="text-emerald-600">{`+${formatCurrency(Math.abs(d))}`}</span>;
-                        return <span className="text-muted-foreground">{formatCurrency(0)}</span>;
-                      })()}
-                      {invoice.notes && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              aria-label="Ghi chú"
-                              className="absolute top-0 right-0 h-0 w-0 border-t-[6px] border-l-[6px] border-t-red-500 border-l-transparent cursor-help"
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-xs whitespace-pre-line text-left">
-                            {invoice.notes}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </TableCell>
+                  {v.giam_tru && (
+                    <TableCell className="text-right text-sm relative">
+                      <div className="relative inline-block pr-3">
+                        {(() => {
+                          const d = Number(invoice.discount_amount || 0);
+                          if (d > 0) return <span className="text-rose-600">{`(${formatCurrency(d)})`}</span>;
+                          if (d < 0) return <span className="text-emerald-600">{`+${formatCurrency(Math.abs(d))}`}</span>;
+                          return <span className="text-muted-foreground">{formatCurrency(0)}</span>;
+                        })()}
+                        {invoice.notes && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                aria-label="Ghi chú"
+                                className="absolute top-0 right-0 h-0 w-0 border-t-[6px] border-l-[6px] border-t-red-500 border-l-transparent cursor-help"
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-xs whitespace-pre-line text-left">
+                              {invoice.notes}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
 
                   {/* Tổng tiền */}
-                  <TableCell className="text-right text-sm font-medium">
-                    {formatCurrency(invoice.total_amount || 0)}
-                  </TableCell>
+                  {v.tong_tien && (
+                    <TableCell className="text-right text-sm font-medium">
+                      {formatCurrency(invoice.total_amount || 0)}
+                    </TableCell>
+                  )}
 
                   {/* Đã thanh toán */}
-                  <TableCell className="text-right text-sm text-green-600">
-                    <span>{formatCurrency(invoice.paid_amount || 0)}</span>
-                    {(invoice.paid_amount || 0) > 0 && (
-                      <button
-                        className="ml-1 text-blue-500 hover:underline text-xs"
-                        onClick={() =>
-                          onViewPayments ? onViewPayments(invoice) : onViewDetail(invoice)
-                        }
-                      >
-                        (Xem)
-                      </button>
-                    )}
-                  </TableCell>
+                  {v.da_thanh_toan && (
+                    <TableCell className="text-right text-sm text-green-600">
+                      <span>{formatCurrency(invoice.paid_amount || 0)}</span>
+                      {(invoice.paid_amount || 0) > 0 && (
+                        <button
+                          className="ml-1 text-blue-500 hover:underline text-xs"
+                          onClick={() =>
+                            onViewPayments ? onViewPayments(invoice) : onViewDetail(invoice)
+                          }
+                        >
+                          (Xem)
+                        </button>
+                      )}
+                    </TableCell>
+                  )}
 
                   {/* Còn nợ */}
-                  <TableCell
-                    className={`text-right text-sm ${remaining > 0 ? 'text-orange-600 font-medium' : 'text-muted-foreground'}`}
-                  >
-                    {formatCurrency(remaining)}
-                  </TableCell>
+                  {v.con_no && (
+                    <TableCell
+                      className={`text-right text-sm ${remaining > 0 ? 'text-orange-600 font-medium' : 'text-muted-foreground'}`}
+                    >
+                      {formatCurrency(remaining)}
+                    </TableCell>
+                  )}
 
                   {/* Nợ cộng dồn = previous_debt + remaining */}
-                  <TableCell
-                    className={`text-right text-sm ${
-                      ((invoice.previous_debt || 0) + remaining) > 0
-                        ? 'text-red-600 font-medium'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {formatCurrency((invoice.previous_debt || 0) + remaining)}
-                  </TableCell>
+                  {v.no_cong_don && (
+                    <TableCell
+                      className={`text-right text-sm ${
+                        ((invoice.previous_debt || 0) + remaining) > 0
+                          ? 'text-red-600 font-medium'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      {formatCurrency((invoice.previous_debt || 0) + remaining)}
+                    </TableCell>
+                  )}
 
                   {/* Hạn TT + sub-line "Còn N ngày" / "Quá hạn N ngày" */}
-                  <TableCell className="text-sm">
-                    <DueCell dueDate={invoice.due_date} status={invoice.status} />
-                  </TableCell>
+                  {v.han_tt && (
+                    <TableCell className="text-sm">
+                      <DueCell dueDate={invoice.due_date} status={invoice.status} />
+                    </TableCell>
+                  )}
 
                   {/* Người tạo */}
-                  <TableCell className="text-sm text-muted-foreground">
-                    {invoice.creator_name || '—'}
-                  </TableCell>
+                  {v.nguoi_tao && (
+                    <TableCell className="text-sm text-muted-foreground">
+                      {invoice.creator_name || '—'}
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })

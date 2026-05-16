@@ -1,39 +1,43 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useToast } from '@/hooks/use-toast';
 import {
   Plus,
-  Send,
-  Sparkles,
-  FileDown,
-  ImageDown,
-  Upload,
-  Download,
   LayoutGrid,
-  Filter,
   Search,
   Trash2,
   Table as TableIcon,
   Wallet,
 } from 'lucide-react';
+import {
+  INVOICE_COLUMNS,
+  type InvoiceColumnKey,
+  type InvoiceColumnVisibility,
+} from './invoiceListColumns';
 
 interface InvoiceListToolbarProps {
   selectedCount: number;
   searchQuery: string;
   onSearch: (query: string) => void;
   onAdd: () => void;
-  onImport: () => void;
-  onAutoGenerate: () => void;
   onExcelMode: () => void;
   onBulkRecordPayment: () => void;
-  onDownloadImage: () => void;
   onBulkDelete: () => void;
+  columnVisibility: InvoiceColumnVisibility;
+  onToggleColumn: (key: InvoiceColumnKey) => void;
+  onResetColumns: () => void;
 }
 
 interface ToolbarButton {
@@ -50,41 +54,18 @@ const InvoiceListToolbar = ({
   searchQuery,
   onSearch,
   onAdd,
-  onImport,
-  onAutoGenerate,
   onExcelMode,
   onBulkRecordPayment,
-  onDownloadImage,
   onBulkDelete,
+  columnVisibility,
+  onToggleColumn,
+  onResetColumns,
 }: InvoiceListToolbarProps) => {
-  const { toast } = useToast();
-
-  const showTodo = (feature: string) => {
-    console.log(`TODO: ${feature}`);
-    toast({ title: 'Tính năng đang phát triển', description: feature });
-  };
-
   const buttons: ToolbarButton[] = [
     {
       icon: Plus,
       label: 'Thêm',
       onClick: onAdd,
-      bg: 'bg-green-500',
-      hoverBg: 'hover:bg-green-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: Send,
-      label: 'Gửi hoá đơn',
-      onClick: () => showTodo('Gửi hoá đơn'),
-      bg: 'bg-blue-500',
-      hoverBg: 'hover:bg-blue-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: Sparkles,
-      label: 'Sinh hoá đơn',
-      onClick: onAutoGenerate,
       bg: 'bg-green-500',
       hoverBg: 'hover:bg-green-600',
       textColor: 'text-white',
@@ -105,55 +86,9 @@ const InvoiceListToolbar = ({
       hoverBg: 'hover:bg-green-600',
       textColor: 'text-white',
     },
-    {
-      icon: FileDown,
-      label: 'Tải hoá đơn PDF',
-      onClick: () => showTodo('Tải hoá đơn PDF'),
-      bg: 'bg-blue-500',
-      hoverBg: 'hover:bg-blue-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: ImageDown,
-      label: 'Tải ảnh hoá đơn',
-      onClick: onDownloadImage,
-      bg: 'bg-purple-500',
-      hoverBg: 'hover:bg-purple-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: Upload,
-      label: 'Nhập dữ liệu',
-      onClick: onImport,
-      bg: 'bg-orange-500',
-      hoverBg: 'hover:bg-orange-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: Download,
-      label: 'Xuất dữ liệu',
-      onClick: () => showTodo('Xuất dữ liệu'),
-      bg: 'bg-teal-500',
-      hoverBg: 'hover:bg-teal-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: LayoutGrid,
-      label: 'Hiển thị cột',
-      onClick: () => showTodo('Hiển thị cột'),
-      bg: 'bg-gray-500',
-      hoverBg: 'hover:bg-gray-600',
-      textColor: 'text-white',
-    },
-    {
-      icon: Filter,
-      label: 'Lọc dữ liệu',
-      onClick: () => showTodo('Lọc dữ liệu'),
-      bg: 'bg-gray-500',
-      hoverBg: 'hover:bg-gray-600',
-      textColor: 'text-white',
-    },
   ];
+
+  const visibleCount = INVOICE_COLUMNS.filter((c) => columnVisibility[c.key]).length;
 
   return (
     <TooltipProvider>
@@ -188,6 +123,59 @@ const InvoiceListToolbar = ({
               <TooltipContent>{btn.label}</TooltipContent>
             </Tooltip>
           ))}
+
+          {/* Hiển thị cột — Popover */}
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full bg-gray-500 hover:bg-gray-600 text-white"
+                    aria-label="Hiển thị cột"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Hiển thị cột</TooltipContent>
+            </Tooltip>
+            <PopoverContent align="end" className="w-64 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium">Hiển thị cột</div>
+                <div className="text-xs text-muted-foreground">
+                  {visibleCount}/{INVOICE_COLUMNS.length}
+                </div>
+              </div>
+              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                {INVOICE_COLUMNS.map((col) => (
+                  <Label
+                    key={col.key}
+                    htmlFor={`col-${col.key}`}
+                    className="flex items-center gap-2 py-1 px-1 rounded hover:bg-accent cursor-pointer text-sm font-normal"
+                  >
+                    <Checkbox
+                      id={`col-${col.key}`}
+                      checked={columnVisibility[col.key]}
+                      onCheckedChange={() => onToggleColumn(col.key)}
+                    />
+                    <span>{col.label}</span>
+                  </Label>
+                ))}
+              </div>
+              <div className="mt-3 pt-2 border-t flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={onResetColumns}
+                >
+                  Đặt lại mặc định
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
