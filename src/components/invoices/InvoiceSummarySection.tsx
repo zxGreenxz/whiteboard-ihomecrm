@@ -47,8 +47,8 @@ const InvoiceSummarySection = ({
         <Label className="text-muted-foreground self-center">Tạm tính</Label>
         <div className="text-right font-medium">{formatCurrency(totals.subtotal)}</div>
 
-        {/* Giảm giá - editable */}
-        <Label htmlFor="discount_amount" className="self-center">Giảm giá</Label>
+        {/* Giảm trừ - editable */}
+        <Label htmlFor="discount_amount" className="self-center">Giảm trừ</Label>
         <CurrencyInput
           value={watch('discount_amount')}
           onChange={(v) => setValue('discount_amount', v, { shouldValidate: true, shouldDirty: true })}

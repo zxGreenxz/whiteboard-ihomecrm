@@ -140,6 +140,7 @@ const InvoiceListTable = ({
             <TableHead>Hoá đơn</TableHead>
             <TableHead className="text-right">Tiền thuê</TableHead>
             <TableHead className="text-right">Tiền dịch vụ</TableHead>
+            <TableHead className="text-right">Giảm trừ</TableHead>
             <TableHead className="text-right">Tổng tiền</TableHead>
             <TableHead className="text-right">Đã thanh toán</TableHead>
             <TableHead className="text-right">Còn nợ</TableHead>
@@ -151,7 +152,7 @@ const InvoiceListTable = ({
         <TableBody>
           {invoices.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={12} className="h-24 text-center text-muted-foreground">
                 Không có hoá đơn nào
               </TableCell>
             </TableRow>
@@ -290,6 +291,13 @@ const InvoiceListTable = ({
                   {/* Tiền dịch vụ */}
                   <TableCell className="text-right text-sm">
                     {formatCurrency(serviceAmount)}
+                  </TableCell>
+
+                  {/* Giảm trừ */}
+                  <TableCell className="text-right text-sm text-rose-600">
+                    {(invoice.discount_amount || 0) > 0
+                      ? `-${formatCurrency(invoice.discount_amount || 0)}`
+                      : formatCurrency(0)}
                   </TableCell>
 
                   {/* Tổng tiền */}
