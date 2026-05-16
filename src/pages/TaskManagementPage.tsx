@@ -328,7 +328,7 @@ export default function TaskManagementPage() {
           {/* Stats compact */}
           <div className="px-3 pt-2">
             <TaskStatusStats
-              jobs={allJobs as JobWithRelations[]}
+              jobs={tabFiltered}
               activeFilter={statusFilter}
               onFilterChange={handleStatusCardClick}
             />
@@ -441,7 +441,7 @@ export default function TaskManagementPage() {
 
       {/* Stats */}
       <TaskStatusStats
-              jobs={allJobs as JobWithRelations[]}
+              jobs={tabFiltered}
               activeFilter={statusFilter}
               onFilterChange={handleStatusCardClick}
             />
