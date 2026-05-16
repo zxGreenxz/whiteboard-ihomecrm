@@ -160,14 +160,19 @@ export const useCompleteJob = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (input: {
+      id: string;
+      completion_time: string;
+      completion_attachments: string[] | null;
+    }) => {
       const { data, error } = await supabase
         .from("jobs")
         .update({
           status: "COMPLETED",
-          completion_time: new Date().toISOString(),
+          completion_time: input.completion_time,
+          attachments: input.completion_attachments,
         })
-        .eq("id", id)
+        .eq("id", input.id)
         .select()
         .single();
 

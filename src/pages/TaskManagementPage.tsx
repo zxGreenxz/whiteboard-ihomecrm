@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useJobs, useCompleteJob, useDeleteJob } from "@/hooks/useJobs";
+import { useJobs, useDeleteJob } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePagination } from "@/hooks/usePagination";
@@ -26,6 +26,7 @@ import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
 import TaskDetailDialog from "@/components/tasks/TaskDetailDialog";
 import TaskEditDialog from "@/components/tasks/TaskEditDialog";
 import TaskNotesDialog from "@/components/tasks/TaskNotesDialog";
+import TaskCompleteDialog from "@/components/tasks/TaskCompleteDialog";
 import type { TaskFilters, JobWithRelations } from "@/types/jobs";
 import { defaultTaskFilters } from "@/types/jobs";
 
@@ -51,7 +52,6 @@ export default function TaskManagementPage() {
 
   // Data hooks
   const { data: allJobs = [], isLoading } = useJobs(appliedFilters);
-  const completeJob = useCompleteJob();
   const deleteJob = useDeleteJob();
 
   // Tab filter — Resident pattern
@@ -104,17 +104,6 @@ export default function TaskManagementPage() {
 
   const handleRequestComplete = (job: JobWithRelations) => {
     setCompleteTarget(job);
-  };
-
-  const handleConfirmComplete = () => {
-    if (!completeTarget) return;
-    completeJob.mutate(completeTarget.id, {
-      onSuccess: () => {
-        setCompleteTarget(null);
-        setIsDetailOpen(false);
-        setSelectedJob(null);
-      },
-    });
   };
 
   const handleEdit = (job: JobWithRelations) => {
@@ -205,29 +194,18 @@ export default function TaskManagementPage() {
           setSelectedJob(null);
         }}
       />
-      <AlertDialog
+      <TaskCompleteDialog
         open={!!completeTarget}
-        onOpenChange={(open) => !open && setCompleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận hoàn thành</AlertDialogTitle>
-            <AlertDialogDescription>
-              Đánh dấu công việc {completeTarget?.code} là đã hoàn thành?
-              Thời gian hoàn thành sẽ được ghi nhận ngay bây giờ.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmComplete}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              Hoàn thành
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onOpenChange={(open) => {
+          if (!open) setCompleteTarget(null);
+        }}
+        job={completeTarget}
+        onSuccess={() => {
+          setCompleteTarget(null);
+          setIsDetailOpen(false);
+          setSelectedJob(null);
+        }}
+      />
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -259,73 +237,75 @@ export default function TaskManagementPage() {
         icon={ClipboardList}
       >
         <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
-          {/* Search + filter */}
-          <div className="flex items-center gap-2 px-3 pt-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Tìm theo tiêu đề..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9 h-10 bg-white"
-              />
+          {/* Search + filter + Stats trên 1 dải */}
+          <div className="px-3 pt-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Tìm theo tiêu đề..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9 h-9 bg-white"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowFilters(!showFilters)}
+                className="h-9 w-9 shrink-0 bg-white"
+                title="Lọc dữ liệu"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setShowFilters(!showFilters)}
-              className="h-10 w-10 shrink-0 bg-white"
-              title="Lọc dữ liệu"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
 
-          {/* Tabs */}
-          <div className="px-3 pt-3 flex items-center gap-1 overflow-x-auto">
-            {([
-              ["ALL", "Tất cả"],
-              ["MINE", "Việc của tôi"],
-              ["WATCHING", "Đang theo dõi"],
-            ] as const).map(([key, label]) => {
-              const active = activeTab === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(key as TaskTab);
-                    pagination.setPage(1);
-                  }}
-                  className={`shrink-0 px-3 py-1.5 text-[13px] font-medium rounded-full flex items-center gap-1.5 transition-colors ${
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-white text-zinc-600 border border-zinc-200"
-                  }`}
-                >
-                  {label}
-                  <span
-                    className={`inline-flex items-center rounded-full px-1.5 text-[11px] ${
+            {/* Tabs + Stats: gộp 1 dải compact */}
+            <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1">
+              {([
+                ["ALL", "Tất cả"],
+                ["MINE", "Của tôi"],
+                ["WATCHING", "Theo dõi"],
+              ] as const).map(([key, label]) => {
+                const active = activeTab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(key as TaskTab);
+                      pagination.setPage(1);
+                    }}
+                    className={`shrink-0 px-2.5 py-1 text-[12px] font-medium rounded-full flex items-center gap-1 transition-colors ${
                       active
-                        ? "bg-white/25 text-white"
-                        : "bg-zinc-100 text-zinc-600"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-white text-zinc-600 border border-zinc-200"
                     }`}
                   >
-                    {tabCounts[key]}
-                  </span>
-                </button>
-              );
-            })}
+                    {label}
+                    <span
+                      className={`inline-flex items-center rounded-full px-1 text-[10px] ${
+                        active
+                          ? "bg-white/25 text-white"
+                          : "bg-zinc-100 text-zinc-600"
+                      }`}
+                    >
+                      {tabCounts[key]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Stats */}
-          <div className="px-3 pt-3">
+          {/* Stats compact */}
+          <div className="px-3 pt-2">
             <TaskStatusStats jobs={allJobs as JobWithRelations[]} />
           </div>
 
           {/* Filters Panel */}
           {showFilters && (
-            <div className="px-3 pt-3">
+            <div className="px-3 pt-2">
               <TaskFiltersPanel
                 filters={filters}
                 onChange={setFilters}
