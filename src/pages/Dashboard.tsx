@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Building2, Home, DollarSign, AlertTriangle, BarChart3, Wallet, CheckSquare, ArrowRight, DoorOpen } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { useBuildings } from '@/hooks/useBuildings';
+import { useVacantRoomsReport } from '@/hooks/useReports';
 import { OperationsSummary } from '@/components/dashboard/OperationsSummary';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
@@ -14,16 +15,21 @@ import { RecentActivities } from '@/components/dashboard/RecentActivities';
 import { formatCurrency } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useScheduledNotifications } from '@/hooks/useScheduledNotifications';
 import OnboardingWizard, { useOnboardingState } from '@/components/onboarding/OnboardingWizard';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const Dashboard = () => {
   const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
+  const [vacantOpen, setVacantOpen] = useState(false);
   const buildingId = selectedBuilding === 'all' ? null : selectedBuilding;
+  const navigate = useNavigate();
 
   const { data: stats, isLoading } = useDashboardStats(buildingId);
   const { data: buildings = [] } = useBuildings();
+  const { data: vacantRooms, isLoading: vacantLoading } = useVacantRoomsReport(buildingId || undefined);
 
   // Run scheduled notification checks
   useScheduledNotifications();
@@ -113,7 +119,18 @@ const Dashboard = () => {
           </Card>
 
           {/* Vacant Rooms */}
-          <Card className="border-l-4 border-l-red-500 hover:shadow-md transition-shadow">
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => setVacantOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setVacantOpen(true);
+              }
+            }}
+            className="border-l-4 border-l-red-500 hover:shadow-md transition-shadow cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/40"
+          >
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium text-muted-foreground">Trống</CardTitle>
               <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
@@ -124,7 +141,10 @@ const Dashboard = () => {
               {isLoading ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
-                <div className="text-3xl font-bold text-red-600">{stats?.availableRooms || 0}</div>
+                <>
+                  <div className="text-3xl font-bold text-red-600">{stats?.availableRooms || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Bấm để xem chi tiết</p>
+                </>
               )}
             </CardContent>
           </Card>
@@ -284,6 +304,98 @@ const Dashboard = () => {
           <RecentActivities buildingId={buildingId} />
         </div>
       </div>
+
+      <Dialog open={vacantOpen} onOpenChange={setVacantOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DoorOpen className="h-5 w-5 text-red-600" />
+              Danh sách phòng trống
+              {!vacantLoading && vacantRooms && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({vacantRooms.length})
+                </span>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              Các căn hộ chưa có hợp đồng đang hoạt động. Bấm vào dòng để xem chi tiết phòng.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[60vh] overflow-y-auto rounded-md border">
+            {vacantLoading ? (
+              <div className="space-y-2 p-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : vacantRooms && vacantRooms.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tòa nhà</TableHead>
+                    <TableHead>Căn hộ</TableHead>
+                    <TableHead>Tầng</TableHead>
+                    <TableHead className="text-right">Giá thuê</TableHead>
+                    <TableHead className="text-right">Số ngày trống</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vacantRooms.map((room) => (
+                    <TableRow
+                      key={room.id}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setVacantOpen(false);
+                        navigate(`/apartments/${room.id}`);
+                      }}
+                    >
+                      <TableCell className="font-medium">
+                        {room.buildings?.name || '—'}
+                      </TableCell>
+                      <TableCell>{room.name}</TableCell>
+                      <TableCell>{room.floor ?? '—'}</TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(room.rent_price || 0)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {room.days_vacant != null ? (
+                          <span
+                            className={
+                              room.days_vacant <= 7
+                                ? 'text-green-600'
+                                : room.days_vacant <= 30
+                                ? 'text-yellow-600'
+                                : 'text-red-600'
+                            }
+                          >
+                            {room.days_vacant} ngày
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Chưa xác định</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                Không có căn hộ trống nào
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/reports/real-estate/vacant-rooms" onClick={() => setVacantOpen(false)}>
+                Xem báo cáo đầy đủ
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Link>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };
