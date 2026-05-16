@@ -60,8 +60,11 @@ import {
   buildFirstInvoiceItems,
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
-import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
+import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/hooks/useAuth";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 
 interface ContractFormDialogProps {
   open: boolean;
@@ -130,9 +133,8 @@ export function ContractFormDialog({
   // được dùng làm nội dung hoá đơn. Reset khi inputs đổi (xem useEffect).
   const [invoiceItems, setInvoiceItems] = useState<FirstInvoiceItem[]>([]);
 
-  // Phiếu thu cọc — mở từ nút "+" cạnh "Đã đặt cọc" để user tạo phiếu thu
-  // ngay tại form HĐ. Lookup id của type "Tiền cọc" trong income types.
-  const [depositVoucherOpen, setDepositVoucherOpen] = useState(false);
+  // Phiếu thu cọc — auto-tạo sau khi lưu HĐ thành công nếu user đã nhập
+  // "Đã đặt cọc". Lookup id của type "Tiền cọc" và default account.
   const { data: incomeTypes = [] } = useIncomeExpenseTypes("income");
   const depositIncomeType = useMemo(
     () =>
@@ -141,6 +143,13 @@ export function ContractFormDialog({
       ),
     [incomeTypes],
   );
+  const { data: accounts = [] } = useAccounts();
+  const createDepositVoucher = useCreateIncomeExpense();
+  const { data: authUser } = useAuth();
+
+  // Ảnh đính kèm cho phiếu thu cọc — upload trực tiếp tại form HĐ, sẽ được
+  // gửi kèm khi auto-tạo phiếu thu sau lúc lưu HĐ.
+  const [depositAttachments, setDepositAttachments] = useState<string[]>([]);
 
   // Commission voucher modal — open after successful create (not edit)
   const [commissionContractId, setCommissionContractId] = useState<string | null>(null);
@@ -232,6 +241,7 @@ export function ContractFormDialog({
       setSelectedRoomId("");
       setSelectedCustomers([]);
       setSelectedServices([]);
+      setDepositAttachments([]);
       form.reset({
         room_id: "",
         bed_id: null,
@@ -622,6 +632,77 @@ export function ContractFormDialog({
         },
         {
           onSuccess: (contract) => {
+            // Auto-tạo phiếu thu cọc với prefill toà/phòng/loại "Tiền cọc"
+            // + ảnh đính kèm user đã upload. Chỉ tạo khi có đặt cọc > 0,
+            // có loại "Tiền cọc" trong danh mục và có default account.
+            const depositAmount = data.deposit_paid ?? 0;
+            const building = (buildings as any[])?.find(
+              (b) => b.id === selectedBuildingId,
+            );
+            const buildingName: string = building?.name ?? "";
+            // Convention: mỗi toà nhà có 1 sổ quỹ cùng tên (vd 80ĐS3 →
+            // account 80ĐS3). Ưu tiên match theo tên, fallback is_default,
+            // sau cùng là account đầu tiên.
+            const matchedAccount =
+              accounts.find(
+                (a) =>
+                  a.name.trim().toLowerCase() ===
+                  buildingName.trim().toLowerCase(),
+              ) ??
+              accounts.find((a) => a.is_default) ??
+              accounts[0];
+            if (
+              depositAmount > 0 &&
+              depositIncomeType &&
+              matchedAccount &&
+              selectedBuildingId
+            ) {
+              const room = (rooms as any[])?.find(
+                (r) => r.id === selectedRoomId,
+              );
+              const roomName = room?.name ?? "";
+              const voucherName =
+                roomName && buildingName
+                  ? `Cọc giữ phòng ${roomName} Toà nhà ${buildingName}`
+                  : roomName
+                    ? `Cọc giữ phòng ${roomName}`
+                    : "Cọc giữ phòng";
+              const today = new Date().toISOString().split("T")[0];
+              createDepositVoucher.mutate({
+                type: "INCOME",
+                name: voucherName,
+                building_id: selectedBuildingId,
+                room_id: selectedRoomId || null,
+                tenant_id: null,
+                payer_name: null,
+                account_id: matchedAccount.id,
+                voucher_date: data.signed_date || today,
+                business_result_accounting: false,
+                repeat_cycle: "NONE",
+                repeat_infinity: false,
+                repeat_count: 0,
+                attachments: depositAttachments,
+                items: [
+                  {
+                    income_expense_type_id: depositIncomeType.id,
+                    description: null,
+                    quantity: 1,
+                    unit_price: depositAmount,
+                    start_date: data.signed_date || today,
+                    end_date: data.signed_date || today,
+                  },
+                ],
+              });
+            } else if (depositAmount > 0 && !matchedAccount) {
+              toast.warning(
+                "Đã lưu HĐ nhưng chưa tạo phiếu thu cọc: chưa có sổ quỹ.",
+              );
+            } else if (depositAmount > 0 && !depositIncomeType) {
+              toast.warning(
+                'Đã lưu HĐ nhưng chưa tạo phiếu thu cọc: thiếu loại thu "Tiền cọc".',
+              );
+            }
+
             // Đóng dialog HĐ trước rồi mở modal tạo phiếu chi hoa hồng
             onOpenChange(false);
             if (contract?.id) {
@@ -1039,9 +1120,8 @@ export function ContractFormDialog({
                     )}
                   />
 
-                  {/* Đã đặt cọc — readonly, có nút "+" để tạo phiếu thu
-                      cọc ngay tại form HĐ, sau khi lưu phiếu thì cộng dồn
-                      vào ô này. */}
+                  {/* Đã đặt cọc — user nhập tay; khi lưu HĐ sẽ auto-tạo
+                      phiếu thu cọc với số tiền + ảnh đính kèm bên dưới. */}
                   <FormField
                     control={form.control}
                     name="deposit_paid"
@@ -1049,26 +1129,12 @@ export function ContractFormDialog({
                       <FormItem>
                         <FormLabel>Đã đặt cọc</FormLabel>
                         <FormControl>
-                          <div className="flex gap-2">
-                            <CurrencyInput
-                              readOnly
-                              className="bg-muted flex-1"
-                              value={field.value}
-                              onChange={field.onChange}
-                              onBlur={field.onBlur}
-                              name={field.name}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              title="Tạo phiếu thu cọc"
-                              disabled={!selectedRoomId}
-                              onClick={() => setDepositVoucherOpen(true)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          <CurrencyInput
+                            value={field.value}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1086,6 +1152,20 @@ export function ContractFormDialog({
                     />
                   </div>
                 </div>
+
+                {/* Ảnh đã cọc — đính kèm cho phiếu thu cọc auto-tạo khi
+                    lưu HĐ. Chỉ hiển thị khi tạo mới (edit không auto-tạo
+                    lại phiếu, tránh trùng). */}
+                {!isEditMode && authUser?.id && (
+                  <div className="space-y-2">
+                    <Label>Ảnh đã cọc</Label>
+                    <AttachmentUpload
+                      attachments={depositAttachments}
+                      onChange={setDepositAttachments}
+                      userId={authUser.id}
+                    />
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Số tháng giảm */}
@@ -1391,59 +1471,6 @@ export function ContractFormDialog({
       }}
     />
 
-    {/* Phiếu thu cọc nhanh — mở từ nút + cạnh "Đã đặt cọc". Prefill toà
-        nhà / phòng / hạng mục "Tiền cọc" + tên "Cọc giữ phòng X Toà nhà Y"
-        để user nhập nhanh số tiền. Sau khi lưu, cộng dồn vào field "Đã đặt cọc". */}
-    {depositVoucherOpen && (() => {
-      const room = (rooms as any[])?.find((r) => r.id === selectedRoomId);
-      const building = (buildings as any[])?.find(
-        (b) => b.id === selectedBuildingId,
-      );
-      const roomName = room?.name ?? "";
-      const buildingName = building?.name ?? "";
-      const voucherName =
-        roomName && buildingName
-          ? `Cọc giữ phòng ${roomName} Toà nhà ${buildingName}`
-          : roomName
-            ? `Cọc giữ phòng ${roomName}`
-            : "Cọc giữ phòng";
-      const remaining = Math.max(
-        0,
-        (form.getValues("total_deposit") ?? 0) -
-          (form.getValues("deposit_paid") ?? 0),
-      );
-      const prefillItems = depositIncomeType
-        ? [
-            {
-              income_expense_type_id: depositIncomeType.id,
-              type_name: depositIncomeType.name,
-              quantity: 1,
-              unit_price: remaining,
-            },
-          ]
-        : [];
-      return (
-        <IncomeExpenseForm
-          open={depositVoucherOpen}
-          onOpenChange={setDepositVoucherOpen}
-          defaultType="INCOME"
-          defaultPrefill={{
-            building_id: selectedBuildingId || undefined,
-            room_id: selectedRoomId || null,
-            name: voucherName,
-            items: prefillItems,
-          }}
-          onSaved={(total) => {
-            // Cộng dồn vào "Đã đặt cọc" để user lưu HĐ thấy đúng số.
-            const cur = form.getValues("deposit_paid") ?? 0;
-            form.setValue("deposit_paid", cur + total, {
-              shouldDirty: true,
-              shouldValidate: true,
-            });
-          }}
-        />
-      );
-    })()}
     </>
   );
 }
