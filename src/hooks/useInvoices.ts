@@ -689,17 +689,32 @@ export const useBulkApproveInvoices = () => {
 // =============================================
 
 export interface InvoiceStatisticsFilters {
+  area_id?: string;
   building_id?: string;
   room_id?: string;
+  bed_id?: string;
   status?: InvoiceStatus;
   start_date?: string;
   end_date?: string;
+  billing_month?: string;
+  payment_status?: 'paid' | 'unpaid';
 }
 
 export interface InvoiceStatistics {
+  total_amount: number;
   total_paid: number;
   total_remaining: number;
+  total_refunded: number;
   total_count: number;
+  rent_amount: number;
+  electric_amount: number;
+  water_amount: number;
+  pdv_amount: number;
+  total_collected: number;
+  payment_tm: number;
+  payment_tk: number;
+  payment_tt: number;
+  change_amount: number;
 }
 
 export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
@@ -716,16 +731,30 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
         p_status: filters?.status ?? null,
         p_start_date: filters?.start_date ?? null,
         p_end_date: filters?.end_date ?? null,
+        p_billing_month: filters?.billing_month ?? null,
+        p_payment_status: filters?.payment_status ?? null,
+        p_bed_id: filters?.bed_id ?? null,
+        p_area_id: filters?.area_id ?? null,
       });
 
       if (error) throw error;
 
-      // RPC returns a single row or array with one element
       const result = Array.isArray(data) ? data[0] : data;
       return {
-        total_paid: result?.total_paid ?? 0,
-        total_remaining: result?.total_remaining ?? 0,
-        total_count: result?.total_count ?? 0,
+        total_amount: Number(result?.total_amount ?? 0),
+        total_paid: Number(result?.total_paid ?? 0),
+        total_remaining: Number(result?.total_remaining ?? 0),
+        total_refunded: Number(result?.total_refunded ?? 0),
+        total_count: Number(result?.total_count ?? 0),
+        rent_amount: Number(result?.rent_amount ?? 0),
+        electric_amount: Number(result?.electric_amount ?? 0),
+        water_amount: Number(result?.water_amount ?? 0),
+        pdv_amount: Number(result?.pdv_amount ?? 0),
+        total_collected: Number(result?.total_collected ?? 0),
+        payment_tm: Number(result?.payment_tm ?? 0),
+        payment_tk: Number(result?.payment_tk ?? 0),
+        payment_tt: Number(result?.payment_tt ?? 0),
+        change_amount: Number(result?.change_amount ?? 0),
       };
     },
   });

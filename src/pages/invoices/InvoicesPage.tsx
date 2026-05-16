@@ -90,14 +90,19 @@ const InvoicesPage = () => {
     [page, pageSize, totalCount],
   );
 
-  // Statistics filters (derived from invoice filters)
+  // Statistics filters (derived from invoice filters) — phải truyền đủ
+  // để stats cập nhật cùng với bảng khi user đổi bộ lọc.
   const statsFilters = useMemo(
     () => ({
+      area_id: filters.area_id,
       building_id: filters.building_id,
       room_id: filters.room_id,
+      bed_id: filters.bed_id,
       status: filters.status,
       start_date: filters.date_range?.start,
       end_date: filters.date_range?.end,
+      billing_month: filters.billing_month,
+      payment_status: filters.payment_status,
     }),
     [filters],
   );

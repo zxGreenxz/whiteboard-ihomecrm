@@ -5,7 +5,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import {
   DollarSign,
   Home,
-  Receipt,
+  Zap,
+  Droplet,
+  Wrench,
   CreditCard,
   RefreshCcw,
   Banknote,
@@ -16,20 +18,12 @@ interface InvoiceStatsSummaryProps {
   filters?: InvoiceStatisticsFilters;
 }
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
-
-const formatCompact = (n: number) => {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'tỷ';
-  if (abs >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'tr';
-  if (abs >= 1_000) return (n / 1_000).toFixed(0) + 'k';
-  return n.toLocaleString('vi-VN');
-};
+// Toàn bộ số tiền hiển thị theo đơn vị K (1.000đ = 1K).
+const formatK = (n: number) => `${Math.round((n || 0) / 1000).toLocaleString('vi-VN')}K`;
 
 interface StatCard {
   label: string;
-  value: string;
+  value: number;
   icon: React.ElementType;
   iconColor: string;
   iconBg: string;
@@ -38,39 +32,61 @@ interface StatCard {
 
 interface PlainCard {
   label: string;
-  value: string;
+  value: number;
 }
 
 const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
   const isMobile = useIsMobile();
   const { data: stats, isLoading } = useInvoiceStatistics(filters);
 
-  // TODO: API only returns total_paid, total_remaining, total_count
-  // The following values need backend support: total_amount, rent_amount, service_amount, total_collected, total_refunded
-  const totalPaid = stats?.total_paid ?? 0;
-  const totalRemaining = stats?.total_remaining ?? 0;
+  const s = {
+    total_amount: stats?.total_amount ?? 0,
+    rent_amount: stats?.rent_amount ?? 0,
+    electric_amount: stats?.electric_amount ?? 0,
+    water_amount: stats?.water_amount ?? 0,
+    pdv_amount: stats?.pdv_amount ?? 0,
+    total_collected: stats?.total_collected ?? 0,
+    total_refunded: stats?.total_refunded ?? 0,
+    total_paid: stats?.total_paid ?? 0,
+    total_remaining: stats?.total_remaining ?? 0,
+    payment_tm: stats?.payment_tm ?? 0,
+    payment_tk: stats?.payment_tk ?? 0,
+    payment_tt: stats?.payment_tt ?? 0,
+    change_amount: stats?.change_amount ?? 0,
+  };
 
   if (isMobile) {
-    return <MobileStats totalPaid={totalPaid} isLoading={isLoading} />;
+    return <MobileStats s={s} isLoading={isLoading} />;
   }
 
-  return <DesktopStats totalPaid={totalPaid} totalRemaining={totalRemaining} isLoading={isLoading} />;
+  return <DesktopStats s={s} isLoading={isLoading} />;
+};
+
+type StatValues = {
+  total_amount: number;
+  rent_amount: number;
+  electric_amount: number;
+  water_amount: number;
+  pdv_amount: number;
+  total_collected: number;
+  total_refunded: number;
+  total_paid: number;
+  total_remaining: number;
+  payment_tm: number;
+  payment_tk: number;
+  payment_tt: number;
+  change_amount: number;
 };
 
 // =============================================
-// Mobile layout — 6 cards (2 cột × 3 hàng)
+// Mobile layout — 2 cột
 // =============================================
 
-interface MobileStatsProps {
-  totalPaid: number;
-  isLoading: boolean;
-}
-
-const MobileStats = ({ totalPaid, isLoading }: MobileStatsProps) => {
+const MobileStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) => {
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 gap-2 px-3 pt-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+        {Array.from({ length: 12 }).map((_, i) => (
           <Skeleton key={i} className="h-[78px] rounded-xl" />
         ))}
       </div>
@@ -79,29 +95,18 @@ const MobileStats = ({ totalPaid, isLoading }: MobileStatsProps) => {
 
   return (
     <section className="grid grid-cols-2 gap-2 px-3 pt-3">
-      {/* Tổng (xanh lá) — TODO: cần total_amount từ API */}
-      <ColoredMobileCard
-        label="Tổng"
-        value={0}
-        Icon={DollarSign}
-        iconColor="text-green-500"
-        valueColor="text-green-600"
-      />
-
-      {/* Đã Thu (xanh dương) — data thật */}
-      <ColoredMobileCard
-        label="Đã Thu"
-        value={totalPaid}
-        Icon={Banknote}
-        iconColor="text-blue-500"
-        valueColor="text-blue-600"
-      />
-
-      {/* 4 placeholder: trắng-đen, không icon — chờ user định nghĩa */}
-      <PlainMobileCard label="TM" value={0} />
-      <PlainMobileCard label="TK" value={0} />
-      <PlainMobileCard label="TT" value={0} />
-      <PlainMobileCard label="Tiền Thối" value={0} />
+      <ColoredMobileCard label="Tổng" value={s.total_amount} Icon={DollarSign} iconColor="text-green-500" valueColor="text-green-600" />
+      <ColoredMobileCard label="Đã Thu" value={s.total_paid} Icon={Banknote} iconColor="text-blue-500" valueColor="text-blue-600" />
+      <ColoredMobileCard label="Tiền nhà" value={s.rent_amount} Icon={Home} iconColor="text-blue-500" valueColor="text-blue-600" />
+      <ColoredMobileCard label="PDV" value={s.pdv_amount} Icon={Wrench} iconColor="text-purple-500" valueColor="text-purple-600" />
+      <ColoredMobileCard label="Điện" value={s.electric_amount} Icon={Zap} iconColor="text-amber-500" valueColor="text-amber-600" />
+      <ColoredMobileCard label="Nước" value={s.water_amount} Icon={Droplet} iconColor="text-sky-500" valueColor="text-sky-600" />
+      <ColoredMobileCard label="Hoàn" value={s.total_refunded} Icon={RefreshCcw} iconColor="text-red-500" valueColor="text-red-600" />
+      <ColoredMobileCard label="Phải thu" value={s.total_remaining} Icon={TrendingDown} iconColor="text-orange-500" valueColor="text-orange-600" />
+      <PlainMobileCard label="TM" value={s.payment_tm} />
+      <PlainMobileCard label="TK" value={s.payment_tk} />
+      <PlainMobileCard label="TT" value={s.payment_tt} />
+      <PlainMobileCard label="Tiền Thối" value={s.change_amount} />
     </section>
   );
 };
@@ -120,32 +125,27 @@ const ColoredMobileCard = ({ label, value, Icon, iconColor, valueColor }: Colore
       <Icon className={`h-3 w-3 ${iconColor}`} />
       {label}
     </div>
-    <span className={`text-xl font-bold tabular-nums ${valueColor}`}>{formatCompact(value)}</span>
+    <span className={`text-xl font-bold tabular-nums ${valueColor}`}>{formatK(value)}</span>
   </div>
 );
 
 const PlainMobileCard = ({ label, value }: { label: string; value: number }) => (
   <div className="bg-white border border-zinc-200 rounded-xl p-3 min-h-[78px] flex flex-col gap-1">
     <div className="text-[11px] font-medium tracking-wide text-zinc-900 uppercase">{label}</div>
-    <span className="text-xl font-bold text-zinc-900 tabular-nums">{formatCompact(value)}</span>
+    <span className="text-xl font-bold text-zinc-900 tabular-nums">{formatK(value)}</span>
   </div>
 );
 
 // =============================================
-// Desktop layout — 7 card cũ + 4 card placeholder mới (4-3-4)
+// Desktop layout
 // =============================================
 
-interface DesktopStatsProps {
-  totalPaid: number;
-  totalRemaining: number;
-  isLoading: boolean;
-}
-
-const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProps) => {
+const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) => {
+  // Hàng 1 (5 cột): Tổng tiền | Tiền nhà | Điện | Nước | PDV
   const row1: StatCard[] = [
     {
       label: 'Tổng tiền',
-      value: formatCurrency(0), // TODO: needs total_amount from API
+      value: s.total_amount,
       icon: DollarSign,
       iconColor: 'text-green-600',
       iconBg: 'bg-green-100',
@@ -153,34 +153,51 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
     },
     {
       label: 'Tiền nhà',
-      value: formatCurrency(0), // TODO: needs rent_amount from API
+      value: s.rent_amount,
       icon: Home,
       iconColor: 'text-blue-600',
       iconBg: 'bg-blue-100',
       valueColor: 'text-blue-600',
     },
     {
-      label: 'Tiền dịch vụ',
-      value: formatCurrency(0), // TODO: needs service_amount from API
-      icon: Receipt,
+      label: 'Tiền điện',
+      value: s.electric_amount,
+      icon: Zap,
+      iconColor: 'text-amber-600',
+      iconBg: 'bg-amber-100',
+      valueColor: 'text-amber-600',
+    },
+    {
+      label: 'Tiền nước',
+      value: s.water_amount,
+      icon: Droplet,
+      iconColor: 'text-sky-600',
+      iconBg: 'bg-sky-100',
+      valueColor: 'text-sky-600',
+    },
+    {
+      label: 'PDV',
+      value: s.pdv_amount,
+      icon: Wrench,
       iconColor: 'text-purple-600',
       iconBg: 'bg-purple-100',
       valueColor: 'text-purple-600',
     },
+  ];
+
+  // Hàng 2 (4 cột): Tổng tiền thu | Tổng tiền hoàn | Đã thu | Phải thu
+  const row2: StatCard[] = [
     {
       label: 'Tổng tiền thu',
-      value: formatCurrency(0), // TODO: needs total_collected from API
+      value: s.total_collected,
       icon: CreditCard,
       iconColor: 'text-green-600',
       iconBg: 'bg-green-100',
       valueColor: 'text-green-600',
     },
-  ];
-
-  const row2: StatCard[] = [
     {
       label: 'Tổng tiền hoàn',
-      value: formatCurrency(0), // TODO: needs total_refunded from API
+      value: s.total_refunded,
       icon: RefreshCcw,
       iconColor: 'text-red-600',
       iconBg: 'bg-red-100',
@@ -188,7 +205,7 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
     },
     {
       label: 'Đã thu',
-      value: formatCurrency(totalPaid),
+      value: s.total_paid,
       icon: Banknote,
       iconColor: 'text-blue-600',
       iconBg: 'bg-blue-100',
@@ -196,7 +213,7 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
     },
     {
       label: 'Phải thu',
-      value: formatCurrency(totalRemaining),
+      value: s.total_remaining,
       icon: TrendingDown,
       iconColor: 'text-orange-600',
       iconBg: 'bg-orange-100',
@@ -204,12 +221,12 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
     },
   ];
 
-  // 4 placeholder mới — TBD: data source sẽ định nghĩa sau
+  // Hàng 3 (4 cột): TM | TK | TT | Tiền Thối
   const row3: PlainCard[] = [
-    { label: 'TM', value: formatCurrency(0) },
-    { label: 'TK', value: formatCurrency(0) },
-    { label: 'TT', value: formatCurrency(0) },
-    { label: 'Tiền Thối', value: formatCurrency(0) },
+    { label: 'TM', value: s.payment_tm },
+    { label: 'TK', value: s.payment_tk },
+    { label: 'TT', value: s.payment_tt },
+    { label: 'Tiền Thối', value: s.change_amount },
   ];
 
   const renderCard = (card: StatCard) => (
@@ -222,7 +239,7 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
           {isLoading ? (
             <Skeleton className="h-6 w-24 mb-1" />
           ) : (
-            <p className={`text-lg font-bold ${card.valueColor} truncate`}>{card.value}</p>
+            <p className={`text-lg font-bold ${card.valueColor} truncate`}>{formatK(card.value)}</p>
           )}
           <p className="text-xs text-muted-foreground">{card.label}</p>
         </div>
@@ -238,7 +255,7 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
           {isLoading ? (
             <Skeleton className="h-6 w-24 mb-1" />
           ) : (
-            <p className="text-lg font-bold text-zinc-900 truncate">{card.value}</p>
+            <p className="text-lg font-bold text-zinc-900 truncate">{formatK(card.value)}</p>
           )}
           <p className="text-xs text-zinc-900">{card.label}</p>
         </div>
@@ -248,8 +265,8 @@ const DesktopStats = ({ totalPaid, totalRemaining, isLoading }: DesktopStatsProp
 
   return (
     <div className="space-y-3 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row1.map(renderCard)}</div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">{row2.map(renderCard)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row2.map(renderCard)}</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row3.map(renderPlainCard)}</div>
     </div>
   );
