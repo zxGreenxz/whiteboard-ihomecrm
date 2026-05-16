@@ -265,7 +265,7 @@ const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =
 
   return (
     <div className="space-y-3 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row2.map(renderCard)}</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row3.map(renderPlainCard)}</div>
     </div>
