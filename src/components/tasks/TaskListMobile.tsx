@@ -3,7 +3,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { ClipboardList, Image as ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import type { JobWithRelations } from "@/types/jobs";
-import { getStatusLabel, getStatusColor } from "@/lib/jobValidation";
+import { getStatusLabel, getStatusColor, isOverdue } from "@/lib/jobValidation";
 
 interface Props {
   jobs: JobWithRelations[];
@@ -38,7 +38,17 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
     <ul role="list" className="px-3 py-2 space-y-1.5 pb-24">
       {jobs.map((job) => {
         const isCompleted = job.status === "COMPLETED";
-        const accentColor = isCompleted ? "#10b981" : "#3b82f6";
+        const overdue = isOverdue(job);
+        const accentColor = isCompleted
+          ? "#10b981"
+          : overdue
+            ? "#ef4444"
+            : "#3b82f6";
+        const tintClass = isCompleted
+          ? "bg-green-50/50"
+          : overdue
+            ? "bg-red-50/60"
+            : "bg-blue-50/30";
         const firstAttachment = job.attachments?.[0];
         const location = [job.rooms?.name, job.buildings?.name]
           .filter(Boolean)
@@ -54,7 +64,7 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") onView(job);
               }}
-              className="relative bg-white border border-zinc-200 rounded-lg p-2.5 shadow-sm active:scale-[0.985] active:shadow-none transition-transform cursor-pointer"
+              className={`relative border border-zinc-200 rounded-lg p-2.5 shadow-sm active:scale-[0.985] active:shadow-none transition-transform cursor-pointer ${tintClass}`}
               style={{
                 borderLeft: `3px solid ${accentColor}`,
               }}
@@ -64,13 +74,19 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
                 <span className="font-medium text-[14px] text-zinc-900 line-clamp-2 min-w-0 leading-snug">
                   {job.title}
                 </span>
-                <span
-                  className={`shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full ${getStatusColor(
-                    job.status,
-                  )}`}
-                >
-                  {getStatusLabel(job.status)}
-                </span>
+                {overdue ? (
+                  <span className="shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700">
+                    Trễ hẹn
+                  </span>
+                ) : (
+                  <span
+                    className={`shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full ${getStatusColor(
+                      job.status,
+                    )}`}
+                  >
+                    {getStatusLabel(job.status)}
+                  </span>
+                )}
               </div>
 
               {/* Row 2: location + job type */}

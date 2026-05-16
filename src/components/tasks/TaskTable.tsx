@@ -5,7 +5,13 @@ import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { calculatePaginationInfo } from "@/hooks/usePagination";
 import { format } from "date-fns";
 import type { JobWithRelations } from "@/types/jobs";
-import { getStatusColor, getStatusLabel } from "@/lib/jobValidation";
+import { getStatusColor, getStatusLabel, isOverdue } from "@/lib/jobValidation";
+
+function getRowTint(job: JobWithRelations): string {
+  if (job.status === "COMPLETED") return "bg-green-50/50 hover:bg-green-50";
+  if (isOverdue(job)) return "bg-red-50/60 hover:bg-red-50";
+  return "bg-blue-50/40 hover:bg-blue-50/70";
+}
 
 interface TaskTableProps {
   data: JobWithRelations[];
@@ -79,7 +85,7 @@ export default function TaskTable({
               </TableRow>
             ) : (
               data.map((job) => (
-                <TableRow key={job.id} className="hover:bg-zinc-50/60">
+                <TableRow key={job.id} className={getRowTint(job)}>
                   <TableCell className="py-3">
                     <div className="flex items-center gap-1">
                       <Button
@@ -176,13 +182,19 @@ export default function TaskTable({
                     )}
                   </TableCell>
                   <TableCell className="py-3">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(
-                        job.status
-                      )}`}
-                    >
-                      {getStatusLabel(job.status)}
-                    </span>
+                    {isOverdue(job) ? (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-700">
+                        Trễ hẹn
+                      </span>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(
+                          job.status
+                        )}`}
+                      >
+                        {getStatusLabel(job.status)}
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
