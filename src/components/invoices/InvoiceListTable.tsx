@@ -293,11 +293,29 @@ const InvoiceListTable = ({
                     {formatCurrency(serviceAmount)}
                   </TableCell>
 
-                  {/* Giảm trừ */}
-                  <TableCell className="text-right text-sm text-rose-600">
-                    {(invoice.discount_amount || 0) > 0
-                      ? `-${formatCurrency(invoice.discount_amount || 0)}`
-                      : formatCurrency(0)}
+                  {/* Giảm trừ — discount_amount: dương = giảm, âm = bổ sung; notes hiển thị tooltip */}
+                  <TableCell className="text-right text-sm relative">
+                    <div className="relative inline-block pr-3">
+                      {(() => {
+                        const d = Number(invoice.discount_amount || 0);
+                        if (d > 0) return <span className="text-rose-600">{`(${formatCurrency(d)})`}</span>;
+                        if (d < 0) return <span className="text-emerald-600">{`+${formatCurrency(Math.abs(d))}`}</span>;
+                        return <span className="text-muted-foreground">{formatCurrency(0)}</span>;
+                      })()}
+                      {invoice.notes && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              aria-label="Ghi chú"
+                              className="absolute top-0 right-0 h-0 w-0 border-t-[6px] border-l-[6px] border-t-red-500 border-l-transparent cursor-help"
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-xs whitespace-pre-line text-left">
+                            {invoice.notes}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Tổng tiền */}
