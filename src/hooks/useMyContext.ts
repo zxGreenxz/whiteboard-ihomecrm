@@ -23,24 +23,18 @@ export const useMyContext = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { isSuper: false, isStaff: false, ownerId: null };
 
-      const { data: superFlag } = await (supabase.rpc as any)('is_super_admin');
-      const isSuper = !!superFlag;
-
-      if (isSuper) {
-        return { isSuper: true, isStaff: false, ownerId: user.id };
+      // RLS của staff_assignments chỉ cho owner đọc — dùng RPC SECURITY DEFINER
+      // để staff thấy được context của chính mình.
+      const { data, error } = await (supabase.rpc as any)('get_my_context');
+      if (error || !data) {
+        return { isSuper: false, isStaff: false, ownerId: user.id };
       }
-
-      const { data: rows } = await supabase
-        .from('staff_assignments')
-        .select('user_id')
-        .eq('staff_id', user.id);
-
-      const otherOwner = (rows ?? []).find((r) => r.user_id !== user.id);
-      if (otherOwner) {
-        return { isSuper: false, isStaff: true, ownerId: otherOwner.user_id };
-      }
-
-      return { isSuper: false, isStaff: false, ownerId: user.id };
+      const result = Array.isArray(data) ? data[0] : data;
+      return {
+        isSuper: !!result?.is_super,
+        isStaff: !!result?.is_staff,
+        ownerId: result?.owner_id ?? user.id,
+      };
     },
     staleTime: 5 * 60 * 1000,
   });
