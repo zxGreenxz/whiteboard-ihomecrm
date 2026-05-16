@@ -92,7 +92,7 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
   const triggerClass = compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[150px]';
   const roomTriggerClass = compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[140px]';
   const monthTriggerClass = compact
-    ? 'h-9 text-sm flex-1 min-w-0 justify-start font-normal px-3'
+    ? 'h-9 text-sm flex-1 min-w-0 justify-start font-normal px-2'
     : 'h-9 text-sm w-[160px] justify-start font-normal';
 
   return (
@@ -159,7 +159,7 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
       <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
         <PopoverTrigger asChild>
           <Button variant="outline" className={monthTriggerClass}>
-            <Calendar className="h-4 w-4 mr-2 shrink-0 text-muted-foreground" />
+            {!compact && <Calendar className="h-4 w-4 mr-2 shrink-0 text-muted-foreground" />}
             <span className="truncate">
               {filters.billing_month
                 ? `Th${selectedMonth}/${selectedYear}`
