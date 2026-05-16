@@ -8,7 +8,6 @@ import {
   Shield,
   Users,
   Search,
-  KeyRound,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -68,8 +67,6 @@ import {
 } from "@/hooks/useStaffAssignments";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAreas } from "@/hooks/useAreas";
-import { useIsSuperAdmin } from "@/hooks/useIsSuperAdmin";
-import { UserPermissionDialog } from "@/components/permissions/UserPermissionDialog";
 import type { Json } from "@/integrations/supabase/types";
 
 // Permission modules — full Resident parity (35 nhóm)
@@ -587,7 +584,6 @@ function StaffTab() {
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const { data: buildings, isLoading: loadingBuildings } = useBuildings();
   const { data: areas } = useAreas();
-  const { data: isSuperAdmin } = useIsSuperAdmin();
   const provisionStaff = useProvisionStaff();
   const updateStaff = useUpdateStaffMember();
   const removeStaff = useRemoveStaffMember();
@@ -597,7 +593,6 @@ function StaffTab() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [form, setForm] = useState<StaffFormState | null>(null);
   const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
-  const [permissionTarget, setPermissionTarget] = useState<StaffMember | null>(null);
 
   const isLoading = loadingAssignments || loadingRoles || loadingBuildings;
   const isEdit = !!form?.staff_id;
@@ -857,17 +852,6 @@ function StaffTab() {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          {isSuperAdmin && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                              title="Phân quyền chi tiết"
-                              onClick={() => setPermissionTarget(m)}
-                            >
-                              <KeyRound className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1221,18 +1205,6 @@ function StaffTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Per-user permission overrides — chỉ super admin thấy nút mở. */}
-      {permissionTarget && (
-        <UserPermissionDialog
-          open={!!permissionTarget}
-          onOpenChange={(open) => !open && setPermissionTarget(null)}
-          userId={permissionTarget.staff_id}
-          userName={permissionTarget.profile?.full_name || permissionTarget.staff_id.substring(0, 8)}
-          roleName={permissionTarget.role?.name ?? null}
-          rolePermissions={parsePermissions(permissionTarget.role?.permissions ?? null)}
-        />
-      )}
     </div>
   );
 }

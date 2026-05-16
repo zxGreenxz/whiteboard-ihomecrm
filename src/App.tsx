@@ -125,7 +125,6 @@ import AppGuidePage from "./pages/AppGuidePage";
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PublicRoute from "./components/auth/PublicRoute";
-import GuardedRoute from "./components/auth/GuardedRoute";
 
 const queryClient = new QueryClient();
 
@@ -180,136 +179,143 @@ const App = () => (
               ======================================== */}
 
           {/* === THEO DÕI NHANH === */}
-          <Route path="/" element={<GuardedRoute resource="dashboard"><Dashboard /></GuardedRoute>} />
-          <Route path="/building-map" element={<GuardedRoute resource="building_layout"><BuildingMapPage /></GuardedRoute>} />
-          <Route path="/notifications" element={<GuardedRoute resource="notifications"><NotificationsPage /></GuardedRoute>} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/building-map" element={<ProtectedRoute><BuildingMapPage /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
           {/* === DANH MỤC DỮ LIỆU === */}
-          <Route path="/areas" element={<GuardedRoute resource="areas"><AreasPage /></GuardedRoute>} />
-          <Route path="/buildings" element={<GuardedRoute resource="buildings"><BuildingsPage /></GuardedRoute>} />
-          <Route path="/buildings/:id" element={<GuardedRoute resource="buildings"><BuildingDetailPage /></GuardedRoute>} />
+          <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
+          <Route path="/buildings" element={<ProtectedRoute><BuildingsPage /></ProtectedRoute>} />
+          <Route path="/buildings/:id" element={<ProtectedRoute><BuildingDetailPage /></ProtectedRoute>} />
           {/* Primary route: /apartments, redirect /rooms → /apartments */}
-          <Route path="/apartments" element={<GuardedRoute resource="rooms"><RoomsPage /></GuardedRoute>} />
-          <Route path="/apartments/:id" element={<GuardedRoute resource="rooms"><RoomDetailPage /></GuardedRoute>} />
+          <Route path="/apartments" element={<ProtectedRoute><RoomsPage /></ProtectedRoute>} />
+          <Route path="/apartments/:id" element={<ProtectedRoute><RoomDetailPage /></ProtectedRoute>} />
           <Route path="/rooms" element={<Navigate to="/apartments" replace />} />
           <Route path="/rooms/:id" element={<Navigate to="/apartments" replace />} />
-          <Route path="/beds" element={<GuardedRoute resource="beds"><BedsPage /></GuardedRoute>} />
-          <Route path="/services" element={<GuardedRoute resource="services"><ServicesPage /></GuardedRoute>} />
-          <Route path="/assets" element={<GuardedRoute resource="assets"><AssetsPage /></GuardedRoute>} />
+          <Route path="/beds" element={<ProtectedRoute><BedsPage /></ProtectedRoute>} />
+          <Route path="/services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
+          <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
 
           {/* === KHÁCH HÀNG === */}
-          <Route path="/leads" element={<GuardedRoute resource="leads"><LeadsPage /></GuardedRoute>} />
-          <Route path="/deposits" element={<GuardedRoute resource="deposits"><DepositsPage /></GuardedRoute>} />
+          <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
+          <Route path="/deposits" element={<ProtectedRoute><DepositsPage /></ProtectedRoute>} />
           <Route path="/reservations" element={<Navigate to="/deposits" replace />} />
           <Route path="/reservations/all" element={<Navigate to="/deposits" replace />} />
-          <Route path="/contracts" element={<GuardedRoute resource="contracts"><ContractsPage /></GuardedRoute>} />
-          <Route path="/contracts/:id" element={<GuardedRoute resource="contracts"><ContractDetailPage /></GuardedRoute>} />
+          <Route path="/contracts" element={<ProtectedRoute><ContractsPage /></ProtectedRoute>} />
+          <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetailPage /></ProtectedRoute>} />
           {/* Primary route: /customers (new CustomersPage), redirect /tenants → /customers */}
-          <Route path="/customers" element={<GuardedRoute resource="customers"><CustomersPage /></GuardedRoute>} />
-          <Route path="/customers/new" element={<GuardedRoute resource="customers" action="create"><CustomerFormPage /></GuardedRoute>} />
-          <Route path="/customers/:id/edit" element={<GuardedRoute resource="customers" action="edit"><CustomerFormPage /></GuardedRoute>} />
-          <Route path="/customers/:id/ct01" element={<GuardedRoute resource="customers" action="print_ct01"><CT01FormPage /></GuardedRoute>} />
-          <Route path="/customers/:id" element={<GuardedRoute resource="customers"><CustomerDetailPage /></GuardedRoute>} />
+          <Route path="/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
+          <Route path="/customers/new" element={<ProtectedRoute><CustomerFormPage /></ProtectedRoute>} />
+          <Route path="/customers/:id/edit" element={<ProtectedRoute><CustomerFormPage /></ProtectedRoute>} />
+          <Route path="/customers/:id/ct01" element={<ProtectedRoute><CT01FormPage /></ProtectedRoute>} />
+          <Route path="/customers/:id" element={<ProtectedRoute><CustomerDetailPage /></ProtectedRoute>} />
           <Route path="/tenants" element={<Navigate to="/customers" replace />} />
           <Route path="/tenants/:id" element={<TenantToCustomerRedirect />} />
-          <Route path="/vehicles" element={<GuardedRoute resource="vehicles"><VehiclesPage /></GuardedRoute>} />
+          <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
 
           {/* === TÀI CHÍNH === */}
-          <Route path="/meter-readings" element={<GuardedRoute resource="meter_readings"><MeterReadingsPage /></GuardedRoute>} />
-          <Route path="/invoices" element={<GuardedRoute resource="invoices"><InvoicesPage /></GuardedRoute>} />
-          <Route path="/invoices/print/:id" element={<GuardedRoute resource="invoices"><InvoicePrintPage /></GuardedRoute>} />
-          <Route path="/invoices/:id" element={<GuardedRoute resource="invoices"><InvoiceDetailPage /></GuardedRoute>} />
+          <Route path="/meter-readings" element={<ProtectedRoute><MeterReadingsPage /></ProtectedRoute>} />
+          <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
+          <Route path="/invoices/print/:id" element={<ProtectedRoute><InvoicePrintPage /></ProtectedRoute>} />
+          <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
           {/* Primary route: /income-expense, redirect /payments → /income-expense */}
-          <Route path="/income-expense" element={<GuardedRoute resource="income_expenses"><IncomeExpensePage /></GuardedRoute>} />
-          <Route path="/income-expense/print/:id" element={<GuardedRoute resource="income_expenses"><IncomeExpensePrintPage /></GuardedRoute>} />
-          <Route path="/finance/refund-log" element={<GuardedRoute resource="refund_log"><RefundLogPage /></GuardedRoute>} />
+          <Route path="/income-expense" element={<ProtectedRoute><IncomeExpensePage /></ProtectedRoute>} />
+          <Route path="/income-expense/print/:id" element={<ProtectedRoute><IncomeExpensePrintPage /></ProtectedRoute>} />
+          <Route path="/finance/refund-log" element={<ProtectedRoute><RefundLogPage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expense" element={<Navigate to="/income-expense" replace />} />
 
           {/* === CÔNG VIỆC === */}
-          <Route path="/tasks" element={<GuardedRoute resource="tasks"><TaskManagementPage /></GuardedRoute>} />
+          <Route path="/tasks" element={<ProtectedRoute><TaskManagementPage /></ProtectedRoute>} />
 
           {/* === BÁO CÁO BĐS === */}
-          <Route path="/reports/real-estate" element={<GuardedRoute resource="reports_real_estate"><RealEstateReportsPage /></GuardedRoute>} />
-          <Route path="/reports/real-estate/vacant-rooms" element={<GuardedRoute resource="reports_real_estate"><VacantRoomsReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/vacant" element={<GuardedRoute resource="reports_real_estate"><VacantRoomsReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/expiring-contracts" element={<GuardedRoute resource="reports_real_estate"><ExpiringContractsReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/expiring" element={<GuardedRoute resource="reports_real_estate"><ExpiringContractsReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/renewals-transfers" element={<GuardedRoute resource="reports_real_estate"><RenewalsTransfersReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/occupancy" element={<GuardedRoute resource="reports_real_estate"><OccupancyReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/occupancy-new" element={<GuardedRoute resource="reports_real_estate"><OccupancyNewReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/promotions" element={<GuardedRoute resource="reports_real_estate"><PromotionsReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/new-leases" element={<GuardedRoute resource="reports_real_estate"><NewLeasesReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/terminations" element={<GuardedRoute resource="reports_real_estate"><TerminationsReport /></GuardedRoute>} />
-          <Route path="/reports/real-estate/expense-ratio" element={<GuardedRoute resource="reports_real_estate"><ExpenseRatioReport /></GuardedRoute>} />
+          <Route path="/reports/real-estate" element={<ProtectedRoute><RealEstateReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/vacant-rooms" element={<ProtectedRoute><VacantRoomsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/vacant" element={<ProtectedRoute><VacantRoomsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/expiring-contracts" element={<ProtectedRoute><ExpiringContractsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/expiring" element={<ProtectedRoute><ExpiringContractsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/renewals-transfers" element={<ProtectedRoute><RenewalsTransfersReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/occupancy" element={<ProtectedRoute><OccupancyReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/occupancy-new" element={<ProtectedRoute><OccupancyNewReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/promotions" element={<ProtectedRoute><PromotionsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/new-leases" element={<ProtectedRoute><NewLeasesReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><TerminationsReport /></ProtectedRoute>} />
+          <Route path="/reports/real-estate/expense-ratio" element={<ProtectedRoute><ExpenseRatioReport /></ProtectedRoute>} />
 
           {/* === BÁO CÁO TÀI CHÍNH === */}
           {/* Resident-style URLs (canonical) */}
-          <Route path="/report/finance/cashbook" element={<GuardedRoute resource="reports_finance"><DailyCashbookReport /></GuardedRoute>} />
-          <Route path="/report/finance/cash-flow" element={<GuardedRoute resource="reports_finance"><CashFlowReport /></GuardedRoute>} />
-          <Route path="/report/finance-by-month" element={<GuardedRoute resource="reports_finance"><ProfitDistributionReport /></GuardedRoute>} />
-          <Route path="/report/finance/debt" element={<GuardedRoute resource="reports_finance"><CustomerDebtReport /></GuardedRoute>} />
-          <Route path="/report/finance/billing-calendar" element={<GuardedRoute resource="reports_finance"><PaymentScheduleReport /></GuardedRoute>} />
-          <Route path="/report/finance/prepaid" element={<GuardedRoute resource="reports_finance"><OverpaymentReport /></GuardedRoute>} />
-          <Route path="/report/finance/deposit" element={<GuardedRoute resource="reports_finance"><DepositsReport /></GuardedRoute>} />
+          <Route path="/report/finance/cashbook" element={<ProtectedRoute><DailyCashbookReport /></ProtectedRoute>} />
+          <Route path="/report/finance/cash-flow" element={<ProtectedRoute><CashFlowReport /></ProtectedRoute>} />
+          <Route path="/report/finance-by-month" element={<ProtectedRoute><ProfitDistributionReport /></ProtectedRoute>} />
+          <Route path="/report/finance/debt" element={<ProtectedRoute><CustomerDebtReport /></ProtectedRoute>} />
+          <Route path="/report/finance/billing-calendar" element={<ProtectedRoute><PaymentScheduleReport /></ProtectedRoute>} />
+          <Route path="/report/finance/prepaid" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
+          <Route path="/report/finance/deposit" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
           {/* Legacy URLs (kept for backward compatibility, also serve as hub) */}
-          <Route path="/reports/finance" element={<GuardedRoute resource="reports_finance"><FinanceReportsPage /></GuardedRoute>} />
-          <Route path="/reports/finance/daily-cashbook" element={<GuardedRoute resource="reports_finance"><DailyCashbookReport /></GuardedRoute>} />
-          <Route path="/reports/finance/cash-book" element={<GuardedRoute resource="reports_finance"><DailyCashbookReport /></GuardedRoute>} />
-          <Route path="/reports/finance/cash-flow" element={<GuardedRoute resource="reports_finance"><CashFlowReport /></GuardedRoute>} />
-          <Route path="/reports/finance/profit-distribution" element={<GuardedRoute resource="reports_finance"><ProfitDistributionReport /></GuardedRoute>} />
-          <Route path="/reports/finance/new-contract-debt" element={<GuardedRoute resource="reports_finance"><DebtReport /></GuardedRoute>} />
-          <Route path="/reports/finance/debt" element={<GuardedRoute resource="reports_finance"><DebtReport /></GuardedRoute>} />
-          <Route path="/reports/finance/customer-debt" element={<GuardedRoute resource="reports_finance"><CustomerDebtReport /></GuardedRoute>} />
-          <Route path="/reports/finance/payment-schedule" element={<GuardedRoute resource="reports_finance"><PaymentScheduleReport /></GuardedRoute>} />
-          <Route path="/reports/finance/overpayment" element={<GuardedRoute resource="reports_finance"><OverpaymentReport /></GuardedRoute>} />
-          <Route path="/reports/finance/deposits" element={<GuardedRoute resource="reports_finance"><DepositsReport /></GuardedRoute>} />
+          <Route path="/reports/finance" element={<ProtectedRoute><FinanceReportsPage /></ProtectedRoute>} />
+          <Route path="/reports/finance/daily-cashbook" element={<ProtectedRoute><DailyCashbookReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/cash-book" element={<ProtectedRoute><DailyCashbookReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><CashFlowReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitDistributionReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/new-contract-debt" element={<ProtectedRoute><DebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/debt" element={<ProtectedRoute><DebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/customer-debt" element={<ProtectedRoute><CustomerDebtReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><PaymentScheduleReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/overpayment" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
+          <Route path="/reports/finance/deposits" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
 
           {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
 
           {/* === CÀI ĐẶT HỆ THỐNG === */}
-          <Route path="/settings/general" element={<GuardedRoute resource="settings"><GeneralSettingsPage /></GuardedRoute>} />
+          <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />
           <Route path="/general-setting" element={<Navigate to="/settings/general" replace />} />
-          <Route path="/settings/categories" element={<GuardedRoute resource="categories"><CategoriesPage /></GuardedRoute>} />
+          <Route path="/settings/categories" element={<ProtectedRoute><CategoriesPage /></ProtectedRoute>} />
           {/* Categories Sub-Pages - Tài chính */}
-          <Route path="/settings/categories/bank-accounts" element={<GuardedRoute resource="categories"><BankAccountsPage /></GuardedRoute>} />
-          <Route path="/settings/categories/auto-debt" element={<GuardedRoute resource="auto_debt"><AutoDebtPage /></GuardedRoute>} />
+          <Route path="/settings/categories/bank-accounts" element={<ProtectedRoute><BankAccountsPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/auto-debt" element={<ProtectedRoute><AutoDebtPage /></ProtectedRoute>} />
           {/* Loại thu chi: page chính ở /settings/income-expense-types.
               Hai URL còn lại (legacy + Resident-style) redirect về để tránh trùng. */}
           <Route path="/settings/categories/income-expense-types" element={<Navigate to="/settings/income-expense-types" replace />} />
           <Route path="/setting/finance/income-expense-types" element={<Navigate to="/settings/income-expense-types" replace />} />
-          <Route path="/settings/categories/service-quotas" element={<GuardedRoute resource="service_quotas"><ServiceQuotasPage /></GuardedRoute>} />
+          <Route path="/settings/categories/service-quotas" element={<ProtectedRoute><ServiceQuotasPage /></ProtectedRoute>} />
           <Route path="/settings/categories/meters" element={<Navigate to="/settings/meters" replace />} />
-          <Route path="/settings/meters" element={<GuardedRoute resource="meters"><MetersPage /></GuardedRoute>} />
-          <Route path="/settings/income-expense-types" element={<GuardedRoute resource="categories"><IncomeExpenseTypesNewPage /></GuardedRoute>} />
-          <Route path="/settings/income-expense-templates" element={<GuardedRoute resource="categories"><IncomeExpenseTemplatesPage /></GuardedRoute>} />
+          <Route path="/settings/meters" element={<ProtectedRoute><MetersPage /></ProtectedRoute>} />
+          <Route path="/settings/income-expense-types" element={<ProtectedRoute><IncomeExpenseTypesNewPage /></ProtectedRoute>} />
+          <Route path="/settings/income-expense-templates" element={<ProtectedRoute><IncomeExpenseTemplatesPage /></ProtectedRoute>} />
           {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
               VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
-          <Route path="/finance/cashbooks" element={<GuardedRoute resource="cashbooks"><CashbooksPage /></GuardedRoute>} />
+          <Route path="/finance/cashbooks" element={<ProtectedRoute><CashbooksPage /></ProtectedRoute>} />
           <Route path="/setting/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/settings/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           {/* Categories Sub-Pages - Tài sản */}
-          <Route path="/settings/categories/suppliers" element={<GuardedRoute resource="suppliers"><SuppliersPage /></GuardedRoute>} />
-          <Route path="/settings/categories/warehouses" element={<GuardedRoute resource="warehouses"><WarehousesPage /></GuardedRoute>} />
-          <Route path="/settings/categories/asset-types" element={<GuardedRoute resource="asset_types"><AssetTypesPage /></GuardedRoute>} />
-          <Route path="/settings/categories/asset-movements" element={<GuardedRoute resource="assets" action="movement"><AssetMovementsPage /></GuardedRoute>} />
-          <Route path="/settings/categories/asset-maintenance" element={<GuardedRoute resource="assets" action="maintenance"><AssetMaintenancePage /></GuardedRoute>} />
+          <Route path="/settings/categories/suppliers" element={<ProtectedRoute><SuppliersPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/warehouses" element={<ProtectedRoute><WarehousesPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/asset-types" element={<ProtectedRoute><AssetTypesPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/asset-movements" element={<ProtectedRoute><AssetMovementsPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/asset-maintenance" element={<ProtectedRoute><AssetMaintenancePage /></ProtectedRoute>} />
           {/* Categories Sub-Pages - Khác */}
-          <Route path="/settings/categories/hotlines" element={<GuardedRoute resource="hotline"><HotlinesPage /></GuardedRoute>} />
-          <Route path="/settings/categories/general" element={<GuardedRoute resource="categories"><GeneralCategoriesPage /></GuardedRoute>} />
-          <Route path="/settings/categories/floors" element={<GuardedRoute resource="floors"><FloorsPage /></GuardedRoute>} />
-          <Route path="/settings/categories/task-types" element={<GuardedRoute resource="task_types"><TaskTypesPage /></GuardedRoute>} />
-          <Route path="/settings/templates" element={<GuardedRoute resource="templates"><TemplatesPage /></GuardedRoute>} />
-          <Route path="/settings/signatures" element={<GuardedRoute resource="signatures"><SignaturesPage /></GuardedRoute>} />
-          <Route path="/settings/staff" element={<GuardedRoute resource="users"><StaffPage /></GuardedRoute>} />
+          <Route path="/settings/categories/hotlines" element={<ProtectedRoute><HotlinesPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/general" element={<ProtectedRoute><GeneralCategoriesPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/floors" element={<ProtectedRoute><FloorsPage /></ProtectedRoute>} />
+          <Route path="/settings/categories/task-types" element={<ProtectedRoute><TaskTypesPage /></ProtectedRoute>} />
+          <Route path="/settings/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
+          <Route path="/settings/signatures" element={<ProtectedRoute><SignaturesPage /></ProtectedRoute>} />
+          <Route path="/settings/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
 
-          {/* === TÀI KHOẢN === (mọi user đăng nhập đều có) */}
+          {/* === TÀI KHOẢN === */}
           <Route path="/account/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/account/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
 
-          {/* === THÔNG TIN KHÁC === (mọi user đăng nhập đều có) */}
+          {/* === THÔNG TIN KHÁC === */}
           <Route path="/faq" element={<ProtectedRoute><FaqPage /></ProtectedRoute>} />
           <Route path="/changelog" element={<ProtectedRoute><ChangelogPage /></ProtectedRoute>} />
           <Route path="/app-guide" element={<ProtectedRoute><AppGuidePage /></ProtectedRoute>} />

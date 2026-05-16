@@ -8,7 +8,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { useEffectivePermissions, can } from '@/hooks/usePermissions';
 import {
   LayoutDashboard,
   Building2,
@@ -50,9 +49,6 @@ interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  // Optional: nếu set, item bị ẩn khi user không có quyền. Bỏ qua = mọi user
-  // đã đăng nhập đều thấy (vd Tài khoản, FAQ).
-  permission?: { resource: string; action?: string };
 }
 
 interface NavSection {
@@ -71,8 +67,8 @@ const navigationGroups: NavGroup[] = [
   {
     label: 'THEO DÕI NHANH',
     items: [
-      { title: 'Bảng tin', href: '/', icon: LayoutDashboard, permission: { resource: 'dashboard' } },
-      { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, permission: { resource: 'building_layout' } },
+      { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
+      { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map },
     ],
   },
   {
@@ -82,55 +78,55 @@ const navigationGroups: NavGroup[] = [
         title: 'Danh mục dữ liệu',
         icon: Building2,
         items: [
-          { title: 'Khu vực', href: '/areas', icon: MapPin, permission: { resource: 'areas' } },
-          { title: 'Toà nhà', href: '/buildings', icon: Building2, permission: { resource: 'buildings' } },
-          { title: 'Căn hộ', href: '/apartments', icon: Home, permission: { resource: 'rooms' } },
-          { title: 'Giường', href: '/beds', icon: Bed, permission: { resource: 'beds' } },
-          { title: 'Dịch vụ', href: '/services', icon: Wrench, permission: { resource: 'services' } },
-          { title: 'Tài sản', href: '/assets', icon: Package, permission: { resource: 'assets' } },
+          { title: 'Khu vực', href: '/areas', icon: MapPin },
+          { title: 'Toà nhà', href: '/buildings', icon: Building2 },
+          { title: 'Căn hộ', href: '/apartments', icon: Home },
+          { title: 'Giường', href: '/beds', icon: Bed },
+          { title: 'Dịch vụ', href: '/services', icon: Wrench },
+          { title: 'Tài sản', href: '/assets', icon: Package },
         ],
       },
       {
         title: 'Khách hàng',
         icon: Users,
         items: [
-          { title: 'Khách hẹn', href: '/leads', icon: UserPlus, permission: { resource: 'leads' } },
-          { title: 'Đặt cọc', href: '/deposits', icon: DollarSign, permission: { resource: 'deposits' } },
-          { title: 'Hợp đồng', href: '/contracts', icon: FileText, permission: { resource: 'contracts' } },
-          { title: 'Khách hàng', href: '/customers', icon: User, permission: { resource: 'customers' } },
-          { title: 'Phương tiện', href: '/vehicles', icon: Car, permission: { resource: 'vehicles' } },
+          { title: 'Khách hẹn', href: '/leads', icon: UserPlus },
+          { title: 'Đặt cọc', href: '/deposits', icon: DollarSign },
+          { title: 'Hợp đồng', href: '/contracts', icon: FileText },
+          { title: 'Khách hàng', href: '/customers', icon: User },
+          { title: 'Phương tiện', href: '/vehicles', icon: Car },
         ],
       },
       {
         title: 'Tài chính',
         icon: CreditCard,
         items: [
-          { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, permission: { resource: 'meter_readings' } },
-          { title: 'Hoá đơn', href: '/invoices', icon: Receipt, permission: { resource: 'invoices' } },
-          { title: 'Thu chi', href: '/income-expense', icon: CreditCard, permission: { resource: 'income_expenses' } },
-          { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, permission: { resource: 'cashbooks' } },
+          { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge },
+          { title: 'Hoá đơn', href: '/invoices', icon: Receipt },
+          { title: 'Thu chi', href: '/income-expense', icon: CreditCard },
+          { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet },
         ],
       },
-      { title: 'Công việc', href: '/tasks', icon: ClipboardList, permission: { resource: 'tasks' } },
-      { title: 'Thông báo', href: '/notifications', icon: Bell, permission: { resource: 'notifications' } },
+      { title: 'Công việc', href: '/tasks', icon: ClipboardList },
+      { title: 'Thông báo', href: '/notifications', icon: Bell },
     ],
   },
   {
     label: 'BÁO CÁO',
     items: [
-      { title: 'Báo cáo bất động sản', href: '/reports/real-estate', icon: BarChart3, permission: { resource: 'reports_real_estate' } },
+      { title: 'Báo cáo bất động sản', href: '/reports/real-estate', icon: BarChart3 },
       {
         title: 'Báo cáo tài chính',
         icon: CreditCard,
         items: [
-          { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book, permission: { resource: 'reports_finance' } },
-          { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp, permission: { resource: 'reports_finance' } },
-          { title: 'Phân bổ lợi nhuận', href: '/report/finance-by-month', icon: PieChart, permission: { resource: 'reports_finance' } },
-          { title: 'Công nợ hợp đồng mới', href: '/reports/finance/new-contract-debt', icon: FileText, permission: { resource: 'reports_finance' } },
-          { title: 'Khách nợ tiền', href: '/report/finance/debt', icon: Users, permission: { resource: 'reports_finance' } },
-          { title: 'Lịch thanh toán', href: '/report/finance/billing-calendar', icon: Calendar, permission: { resource: 'reports_finance' } },
-          { title: 'Tiền thừa', href: '/report/finance/prepaid', icon: Coins, permission: { resource: 'reports_finance' } },
-          { title: 'Danh sách tiền cọc', href: '/report/finance/deposit', icon: Wallet, permission: { resource: 'reports_finance' } },
+          { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book },
+          { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp },
+          { title: 'Phân bổ lợi nhuận', href: '/report/finance-by-month', icon: PieChart },
+          { title: 'Công nợ hợp đồng mới', href: '/reports/finance/new-contract-debt', icon: FileText },
+          { title: 'Khách nợ tiền', href: '/report/finance/debt', icon: Users },
+          { title: 'Lịch thanh toán', href: '/report/finance/billing-calendar', icon: Calendar },
+          { title: 'Tiền thừa', href: '/report/finance/prepaid', icon: Coins },
+          { title: 'Danh sách tiền cọc', href: '/report/finance/deposit', icon: Wallet },
         ],
       },
     ],
@@ -142,10 +138,10 @@ const navigationGroups: NavGroup[] = [
         title: 'Cài đặt hệ thống',
         icon: Settings,
         items: [
-          { title: 'Cài đặt chung', href: '/settings/general', icon: Settings, permission: { resource: 'settings' } },
-          { title: 'Danh mục khác', href: '/settings/categories', icon: List, permission: { resource: 'categories' } },
-          { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText, permission: { resource: 'templates' } },
-          { title: 'Nhân viên', href: '/settings/staff', icon: UserCog, permission: { resource: 'users' } },
+          { title: 'Cài đặt chung', href: '/settings/general', icon: Settings },
+          { title: 'Danh mục khác', href: '/settings/categories', icon: List },
+          { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText },
+          { title: 'Nhân viên', href: '/settings/staff', icon: UserCog },
         ],
       },
     ],
@@ -157,7 +153,6 @@ const navigationGroups: NavGroup[] = [
         title: 'Tài khoản',
         icon: UserCircle,
         items: [
-          // Không gắn permission — mọi user đã login đều thấy.
           { title: 'Thông tin cá nhân', href: '/account/profile', icon: User },
           { title: 'Gói cước', href: '/account/subscription', icon: CreditCard },
         ],
@@ -172,30 +167,6 @@ interface SidebarProps {
 
 const Sidebar = ({ className }: SidebarProps) => {
   const location = useLocation();
-  const { data: perms } = useEffectivePermissions();
-
-  // Item không có `permission` luôn pass. Có permission thì check via can().
-  const allowedItem = (item: NavItem): boolean => {
-    if (!item.permission) return true;
-    return can(perms, item.permission.resource, item.permission.action ?? 'view');
-  };
-
-  // Lọc cấu hình theo quyền. Section trống → bỏ. Group trống → bỏ.
-  const filteredGroups = navigationGroups
-    .map((group) => {
-      const items = group.items
-        .map((entry) => {
-          if ('items' in entry) {
-            const subItems = entry.items.filter(allowedItem);
-            return subItems.length > 0 ? { ...entry, items: subItems } : null;
-          }
-          return allowedItem(entry) ? entry : null;
-        })
-        .filter((x): x is NavItem | NavSection => x !== null);
-      return items.length > 0 ? { ...group, items } : null;
-    })
-    .filter((g): g is NavGroup => g !== null);
-
   const [openSections, setOpenSections] = useState<string[]>(() => {
     // Auto-open sections that contain the current active route
     const active: string[] = [];
@@ -294,7 +265,7 @@ const Sidebar = ({ className }: SidebarProps) => {
     >
       <ScrollArea className="flex-1 px-3 py-4">
         <nav className="space-y-4">
-          {filteredGroups.map((group) => (
+          {navigationGroups.map((group) => (
             <div key={group.label}>
               <p className="px-3 mb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
                 {group.label}
