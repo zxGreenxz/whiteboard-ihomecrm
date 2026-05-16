@@ -2,6 +2,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvoiceStatistics, type InvoiceStatisticsFilters } from '@/hooks/useInvoices';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useMyContext } from '@/hooks/useMyContext';
 import {
   DollarSign,
   Home,
@@ -37,6 +38,9 @@ interface PlainCard {
 const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
   const isMobile = useIsMobile();
   const { data: stats, isLoading } = useInvoiceStatistics(filters);
+  const { data: ctx } = useMyContext();
+  // Staff (không phải owner/super admin) chỉ thấy row 2 + row 3.
+  const hideAggregateRow = ctx?.isStaff === true;
 
   const s = {
     total_amount: stats?.total_amount ?? 0,
@@ -55,10 +59,10 @@ const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
   };
 
   if (isMobile) {
-    return <MobileStats s={s} isLoading={isLoading} />;
+    return <MobileStats s={s} isLoading={isLoading} hideAggregateRow={hideAggregateRow} />;
   }
 
-  return <DesktopStats s={s} isLoading={isLoading} />;
+  return <DesktopStats s={s} isLoading={isLoading} hideAggregateRow={hideAggregateRow} />;
 };
 
 type StatValues = {
@@ -81,11 +85,20 @@ type StatValues = {
 // Mobile layout — 2 cột
 // =============================================
 
-const MobileStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) => {
+const MobileStats = ({
+  s,
+  isLoading,
+  hideAggregateRow,
+}: {
+  s: StatValues;
+  isLoading: boolean;
+  hideAggregateRow: boolean;
+}) => {
   if (isLoading) {
+    const skeletonCount = hideAggregateRow ? 7 : 12;
     return (
       <div className="grid grid-cols-2 gap-2 px-3 pt-3">
-        {Array.from({ length: 12 }).map((_, i) => (
+        {Array.from({ length: skeletonCount }).map((_, i) => (
           <Skeleton key={i} className="h-[78px] rounded-xl" />
         ))}
       </div>
@@ -94,11 +107,15 @@ const MobileStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =>
 
   return (
     <section className="grid grid-cols-2 gap-2 px-3 pt-3">
-      <ColoredMobileCard label="Tổng" value={s.total_amount} Icon={DollarSign} iconColor="text-green-500" valueColor="text-green-600" />
-      <ColoredMobileCard label="Tiền nhà" value={s.rent_amount} Icon={Home} iconColor="text-blue-500" valueColor="text-blue-600" />
-      <ColoredMobileCard label="Điện" value={s.electric_amount} Icon={Zap} iconColor="text-amber-500" valueColor="text-amber-600" />
-      <ColoredMobileCard label="Nước" value={s.water_amount} Icon={Droplet} iconColor="text-sky-500" valueColor="text-sky-600" />
-      <ColoredMobileCard label="PDV" value={s.pdv_amount} Icon={Wrench} iconColor="text-purple-500" valueColor="text-purple-600" />
+      {!hideAggregateRow && (
+        <>
+          <ColoredMobileCard label="Tổng" value={s.total_amount} Icon={DollarSign} iconColor="text-green-500" valueColor="text-green-600" />
+          <ColoredMobileCard label="Tiền nhà" value={s.rent_amount} Icon={Home} iconColor="text-blue-500" valueColor="text-blue-600" />
+          <ColoredMobileCard label="Điện" value={s.electric_amount} Icon={Zap} iconColor="text-amber-500" valueColor="text-amber-600" />
+          <ColoredMobileCard label="Nước" value={s.water_amount} Icon={Droplet} iconColor="text-sky-500" valueColor="text-sky-600" />
+          <ColoredMobileCard label="PDV" value={s.pdv_amount} Icon={Wrench} iconColor="text-purple-500" valueColor="text-purple-600" />
+        </>
+      )}
       <ColoredMobileCard label="Đã Thu" value={s.total_paid} Icon={Banknote} iconColor="text-blue-500" valueColor="text-blue-600" />
       <ColoredMobileCard label="Phải thu" value={s.total_remaining} Icon={TrendingDown} iconColor="text-orange-500" valueColor="text-orange-600" />
       <ColoredMobileCard label="Tiền Hoàn" value={s.total_refunded} Icon={RefreshCcw} iconColor="text-red-500" valueColor="text-red-600" />
@@ -139,7 +156,15 @@ const PlainMobileCard = ({ label, value }: { label: string; value: number }) => 
 // Desktop layout
 // =============================================
 
-const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) => {
+const DesktopStats = ({
+  s,
+  isLoading,
+  hideAggregateRow,
+}: {
+  s: StatValues;
+  isLoading: boolean;
+  hideAggregateRow: boolean;
+}) => {
   // Hàng 1 (5 cột): Tổng tiền | Tiền nhà | Điện | Nước | PDV
   const row1: StatCard[] = [
     {
@@ -257,7 +282,9 @@ const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =
 
   return (
     <div className="space-y-3 mb-6">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
+      {!hideAggregateRow && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">{row2.map(renderCard)}</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row3.map(renderPlainCard)}</div>
     </div>

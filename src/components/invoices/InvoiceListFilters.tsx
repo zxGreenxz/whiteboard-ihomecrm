@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAreas } from '@/hooks/useAreas';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
+import { useMyContext } from '@/hooks/useMyContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -29,6 +30,10 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
   const { data: areas = [] } = useAreas();
   const { data: allBuildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(filters.building_id);
+  const { data: ctx } = useMyContext();
+  // Staff không được chọn khu vực — scope đã được RPC/RLS giới hạn theo
+  // building được gán. Ẩn ô lọc để tránh hiểu nhầm.
+  const showAreaFilter = ctx?.isStaff !== true;
 
   // Cascade khu vực → toà nhà: chỉ list các toà thuộc khu vực đang chọn
   const buildings = useMemo(() => {
@@ -86,8 +91,8 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
 
   return (
     <div className={compact ? 'flex flex-wrap items-center gap-2 px-3 pt-3' : 'flex flex-wrap items-center gap-2 mb-4'}>
-      {/* Chọn khu vực */}
-      {!compact && (
+      {/* Chọn khu vực — ẩn cho staff */}
+      {!compact && showAreaFilter && (
         <Select value={filters.area_id ?? ALL_VALUE} onValueChange={handleAreaChange}>
           <SelectTrigger className="h-9 text-sm w-[150px]">
             <SelectValue placeholder="Chọn khu vực" />
