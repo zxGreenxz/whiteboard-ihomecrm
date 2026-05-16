@@ -116,7 +116,7 @@ export function parseJobQuickInput(
   }
 
   const jobTypeMatch = jobTypes.find((t) =>
-    eqInsensitive(t.name, jobTypeToken),
+    eqLoose(t.name, jobTypeToken),
   );
 
   const errors: ParsedJobInput["errors"] = {};
@@ -152,6 +152,24 @@ function eqInsensitive(
 ): boolean {
   if (!a || !b) return false;
   return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function normalizeLoose(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d");
+}
+
+function eqLoose(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (!a || !b) return false;
+  return normalizeLoose(a) === normalizeLoose(b);
 }
 
 export function splitAliases(raw: string | null | undefined): string[] {
