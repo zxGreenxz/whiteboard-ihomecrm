@@ -54,7 +54,6 @@ const sumByType = (items: InvoiceWithRelations['invoice_items'], types: string[]
 /**
  * Phân loại các invoice_items không phải RENT/DISCOUNT thành 3 nhóm:
  * Điện (desc chứa "điện"), Nước (desc chứa "nước"), PDV (còn lại).
- * Khớp logic phân loại đang dùng ở InvoiceImageDialog để hiển thị nhất quán.
  */
 const splitServiceAmounts = (items: InvoiceItem[] | undefined) => {
   let electric = 0;

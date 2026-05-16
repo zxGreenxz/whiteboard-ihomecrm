@@ -20,19 +20,6 @@ import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
 // Re-export types for backward compatibility
 export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
-// Legacy types kept for backward compatibility with existing components
-export type InvoiceGenerationType = 'RENT_ONLY' | 'SERVICE_ONLY' | 'RENT_AND_SERVICE';
-
-export interface AutoGenerateInvoicesData {
-  billing_period_start: string;
-  billing_period_end: string;
-  issue_date: string;
-  due_date: string;
-  contract_ids?: string[];
-  building_id?: string;
-  invoice_type: InvoiceGenerationType;
-}
-
 export interface UpdateInvoiceData {
   id: string;
   formData: InvoiceFormData;
@@ -1071,60 +1058,6 @@ export const useBulkCreateMeterReadings = () => {
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi ghi nhận chỉ số',
-        description: error.message,
-      });
-    },
-  });
-};
-
-// =============================================
-// Legacy: useAutoGenerateInvoices (kept for backward compatibility)
-// Will be moved to useInvoicePayments.ts in task 9.3
-// =============================================
-
-export const useAutoGenerateInvoices = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (data: AutoGenerateInvoicesData) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Map legacy invoice_type to new RPC param
-      const typeMap: Record<InvoiceGenerationType, string> = {
-        RENT_ONLY: 'rent_only',
-        SERVICE_ONLY: 'service_only',
-        RENT_AND_SERVICE: 'both',
-      };
-
-      // Extract billing_month from billing_period_start (YYYY-MM-DD → YYYY-MM)
-      const billingMonth = data.billing_period_start.substring(0, 7);
-
-      const { data: result, error } = await (supabase.rpc as any)('generate_invoices_for_building', {
-        p_user_id: user.id,
-        p_building_id: data.building_id ?? '',
-        p_billing_month: billingMonth,
-        p_invoice_type: typeMap[data.invoice_type] ?? 'both',
-      });
-
-      if (error) throw error;
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
-
-      toast({
-        title: 'Dữ liệu đã được TẠO thành công',
-        description: 'Hoá đơn đã được sinh tự động.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi sinh hoá đơn',
         description: error.message,
       });
     },
