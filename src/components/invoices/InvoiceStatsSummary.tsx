@@ -8,7 +8,6 @@ import {
   Zap,
   Droplet,
   Wrench,
-  CreditCard,
   RefreshCcw,
   Banknote,
   TrendingDown,
@@ -96,13 +95,13 @@ const MobileStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =>
   return (
     <section className="grid grid-cols-2 gap-2 px-3 pt-3">
       <ColoredMobileCard label="Tổng" value={s.total_amount} Icon={DollarSign} iconColor="text-green-500" valueColor="text-green-600" />
-      <ColoredMobileCard label="Đã Thu" value={s.total_paid} Icon={Banknote} iconColor="text-blue-500" valueColor="text-blue-600" />
       <ColoredMobileCard label="Tiền nhà" value={s.rent_amount} Icon={Home} iconColor="text-blue-500" valueColor="text-blue-600" />
-      <ColoredMobileCard label="PDV" value={s.pdv_amount} Icon={Wrench} iconColor="text-purple-500" valueColor="text-purple-600" />
       <ColoredMobileCard label="Điện" value={s.electric_amount} Icon={Zap} iconColor="text-amber-500" valueColor="text-amber-600" />
       <ColoredMobileCard label="Nước" value={s.water_amount} Icon={Droplet} iconColor="text-sky-500" valueColor="text-sky-600" />
-      <ColoredMobileCard label="Hoàn" value={s.total_refunded} Icon={RefreshCcw} iconColor="text-red-500" valueColor="text-red-600" />
+      <ColoredMobileCard label="PDV" value={s.pdv_amount} Icon={Wrench} iconColor="text-purple-500" valueColor="text-purple-600" />
+      <ColoredMobileCard label="Đã Thu" value={s.total_paid} Icon={Banknote} iconColor="text-blue-500" valueColor="text-blue-600" />
       <ColoredMobileCard label="Phải thu" value={s.total_remaining} Icon={TrendingDown} iconColor="text-orange-500" valueColor="text-orange-600" />
+      <ColoredMobileCard label="Tiền Hoàn" value={s.total_refunded} Icon={RefreshCcw} iconColor="text-red-500" valueColor="text-red-600" />
       <PlainMobileCard label="TM" value={s.payment_tm} />
       <PlainMobileCard label="TK" value={s.payment_tk} />
       <PlainMobileCard label="TT" value={s.payment_tt} />
@@ -185,24 +184,9 @@ const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =
     },
   ];
 
-  // Hàng 2 (4 cột): Tổng tiền thu | Tổng tiền hoàn | Đã thu | Phải thu
+  // Hàng 2 (3 cột): Đã thu | Phải thu | Tiền Hoàn
+  // (Bỏ "Tổng tiền thu" vì = "Đã thu" khi không có overpayment.)
   const row2: StatCard[] = [
-    {
-      label: 'Tổng tiền thu',
-      value: s.total_collected,
-      icon: CreditCard,
-      iconColor: 'text-green-600',
-      iconBg: 'bg-green-100',
-      valueColor: 'text-green-600',
-    },
-    {
-      label: 'Tổng tiền hoàn',
-      value: s.total_refunded,
-      icon: RefreshCcw,
-      iconColor: 'text-red-600',
-      iconBg: 'bg-red-100',
-      valueColor: 'text-red-600',
-    },
     {
       label: 'Đã thu',
       value: s.total_paid,
@@ -218,6 +202,14 @@ const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =
       iconColor: 'text-orange-600',
       iconBg: 'bg-orange-100',
       valueColor: 'text-orange-600',
+    },
+    {
+      label: 'Tiền Hoàn',
+      value: s.total_refunded,
+      icon: RefreshCcw,
+      iconColor: 'text-red-600',
+      iconBg: 'bg-red-100',
+      valueColor: 'text-red-600',
     },
   ];
 
@@ -266,7 +258,7 @@ const DesktopStats = ({ s, isLoading }: { s: StatValues; isLoading: boolean }) =
   return (
     <div className="space-y-3 mb-6">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row2.map(renderCard)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">{row2.map(renderCard)}</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{row3.map(renderPlainCard)}</div>
     </div>
   );
