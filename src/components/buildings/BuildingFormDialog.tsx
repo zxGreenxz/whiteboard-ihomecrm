@@ -265,11 +265,14 @@ export default function BuildingFormDialog({
                           <FormLabel>Tên viết tắt/Mã toà</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="Nhập mã toà nhà"
+                              placeholder="VD: 1392qt, QT, 1392"
                               {...field}
                               value={field.value ?? ''}
                             />
                           </FormControl>
+                          <p className="text-xs text-muted-foreground">
+                            Có thể nhập nhiều mã/viết tắt cách nhau bởi dấu phẩy. Khi tạo công việc nhanh, gõ bất kỳ mã nào trong danh sách đều khớp toà nhà này.
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}

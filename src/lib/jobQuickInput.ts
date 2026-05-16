@@ -98,7 +98,7 @@ export function parseJobQuickInput(
   const buildingMatch = buildings.find(
     (b) =>
       eqInsensitive(b.name, buildingToken) ||
-      eqInsensitive(b.code, buildingToken),
+      splitAliases(b.code).some((a) => eqInsensitive(a, buildingToken)),
   );
 
   let roomMatch: RoomRef | undefined;
@@ -107,7 +107,8 @@ export function parseJobQuickInput(
     roomMatch = rooms.find(
       (r) =>
         r.building_id === buildingMatch.id &&
-        (eqInsensitive(r.name, roomToken) || eqInsensitive(r.code, roomToken)),
+        (eqInsensitive(r.name, roomToken) ||
+          splitAliases(r.code).some((a) => eqInsensitive(a, roomToken))),
     );
     if (!roomMatch) {
       roomNotFoundMsg = `Không tìm thấy phòng "${roomToken}" trong tòa "${buildingToken}". Kiểm tra danh sách phòng của tòa này.`;
@@ -151,6 +152,14 @@ function eqInsensitive(
 ): boolean {
   if (!a || !b) return false;
   return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+export function splitAliases(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 function addDays(d: Date, days: number): Date {

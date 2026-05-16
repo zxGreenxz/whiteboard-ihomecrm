@@ -9,7 +9,7 @@ import {
 const today = new Date(2026, 4, 15); // 2026-05-15 (month is 0-indexed)
 
 const buildings: BuildingRef[] = [
-  { id: "b-1", name: "1392QT", code: "1392qt" },
+  { id: "b-1", name: "1392QT", code: "1392qt, QT, 1392" },
   { id: "b-2", name: "Tòa A", code: "TA" },
 ];
 
@@ -171,6 +171,50 @@ describe("parseJobQuickInput", () => {
     expect(r.buildingId).toBe("b-1");
     expect(r.roomId).toBe("r-1");
     expect(r.jobTypeId).toBe("t-1");
+  });
+
+  it("matches building by an alias inside comma-separated code", () => {
+    const r1 = parseJobQuickInput(
+      "201 QT sửa vòi",
+      today,
+      buildings,
+      rooms,
+      jobTypes,
+    );
+    expect(r1.buildingId).toBe("b-1");
+    expect(r1.roomId).toBe("r-1");
+
+    const r2 = parseJobQuickInput(
+      "201 1392 sửa vòi",
+      today,
+      buildings,
+      rooms,
+      jobTypes,
+    );
+    expect(r2.buildingId).toBe("b-1");
+
+    const r3 = parseJobQuickInput(
+      "201 qt sửa vòi",
+      today,
+      buildings,
+      rooms,
+      jobTypes,
+    );
+    expect(r3.buildingId).toBe("b-1");
+  });
+
+  it("ignores extra whitespace around aliases", () => {
+    const buildingsExtra: BuildingRef[] = [
+      { id: "b-x", name: "X", code: "  alpha  ,  bravo   ,charlie" },
+    ];
+    const r = parseJobQuickInput(
+      "201 bravo sửa cửa",
+      today,
+      buildingsExtra,
+      [{ id: "rx", name: "201", code: null, building_id: "b-x" }],
+      jobTypes,
+    );
+    expect(r.buildingId).toBe("b-x");
   });
 
   it("collapses multiple spaces between tokens", () => {
