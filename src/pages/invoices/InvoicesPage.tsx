@@ -216,6 +216,7 @@ const InvoicesPage = () => {
             columnVisibility={columnVisibility}
             onToggleColumn={toggleColumn}
             onResetColumns={resetColumns}
+            compact
           />
 
           {/* Mobile list */}

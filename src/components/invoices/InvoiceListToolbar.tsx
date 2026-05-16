@@ -38,6 +38,8 @@ interface InvoiceListToolbarProps {
   columnVisibility: InvoiceColumnVisibility;
   onToggleColumn: (key: InvoiceColumnKey) => void;
   onResetColumns: () => void;
+  /** Khi true: render gọn cho mobile (ẩn "Hiển thị cột", thêm padding ngang) */
+  compact?: boolean;
 }
 
 interface ToolbarButton {
@@ -60,6 +62,7 @@ const InvoiceListToolbar = ({
   columnVisibility,
   onToggleColumn,
   onResetColumns,
+  compact = false,
 }: InvoiceListToolbarProps) => {
   const buttons: ToolbarButton[] = [
     {
@@ -92,9 +95,9 @@ const InvoiceListToolbar = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className={`flex flex-wrap items-center gap-2 mb-4 ${compact ? 'px-3 pt-3' : ''}`}>
         {/* Search */}
-        <div className="relative w-[240px]">
+        <div className={`relative ${compact ? 'flex-1 min-w-0' : 'w-[240px]'}`}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Tìm kiếm"
@@ -104,7 +107,7 @@ const InvoiceListToolbar = ({
           />
         </div>
 
-        <div className="flex-1" />
+        {!compact && <div className="flex-1" />}
 
         {/* Icon buttons */}
         <div className="flex items-center gap-1.5">
@@ -124,8 +127,8 @@ const InvoiceListToolbar = ({
             </Tooltip>
           ))}
 
-          {/* Hiển thị cột — Popover */}
-          <Popover>
+          {/* Hiển thị cột — Popover (ẩn ở mobile) */}
+          {!compact && <Popover>
             <Tooltip>
               <TooltipTrigger asChild>
                 <PopoverTrigger asChild>
@@ -175,13 +178,13 @@ const InvoiceListToolbar = ({
                 </Button>
               </div>
             </PopoverContent>
-          </Popover>
+          </Popover>}
         </div>
       </div>
 
       {/* Bulk actions */}
       {selectedCount > 0 && (
-        <div className="flex items-center gap-2 mb-4">
+        <div className={`flex items-center gap-2 mb-4 ${compact ? 'px-3' : ''}`}>
           <span className="text-sm text-muted-foreground">
             Đã chọn {selectedCount} hoá đơn
           </span>
