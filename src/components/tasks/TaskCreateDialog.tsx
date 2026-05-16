@@ -189,164 +189,188 @@ export default function TaskCreateDialog({
     return label;
   }, [parsed.deadline, parsed.deadlineSource]);
 
+  const formBody = (
+    <>
+      {/* Mô tả nhanh */}
+      <div className="space-y-1">
+        <label className="text-[13px] font-medium block">
+          Mô tả nhanh <span className="text-red-500">*</span>
+        </label>
+        <Textarea
+          autoFocus
+          rows={3}
+          placeholder={PLACEHOLDER}
+          value={rawInput}
+          onChange={(e) => setRawInput(e.target.value)}
+          className="font-mono"
+        />
+        <p className="text-[11px] text-muted-foreground leading-tight">
+          Cú pháp: <code>(phòng) (tòa) (loại) (mô tả) [ngày]</code>. Ngày: số
+          (0=hôm nay, 1=mai…) hoặc <code>17/5</code>. Bỏ trống → mai.
+        </p>
+      </div>
+
+      {/* Preview parse */}
+      {hasInput && (
+        <div className="rounded-md border bg-muted/30 p-2.5 space-y-1.5 text-[13px]">
+          {parsed.errors.structure ? (
+            <div className="flex items-start gap-2 text-red-600">
+              <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{parsed.errors.structure}</span>
+            </div>
+          ) : (
+            <>
+              <PreviewRow
+                label="Phòng"
+                ok={!!parsed.roomId}
+                valueOk={parsed.roomToken}
+                error={parsed.errors.roomNotFound}
+              />
+              <PreviewRow
+                label="Tòa nhà"
+                ok={!!parsed.buildingId}
+                valueOk={parsed.buildingToken}
+                error={parsed.errors.buildingNotFound}
+              />
+              <PreviewRow
+                label="Loại công việc"
+                ok={!!parsed.jobTypeId}
+                valueOk={parsed.jobTypeToken}
+                error={parsed.errors.jobTypeNotFound}
+                action={
+                  !parsed.jobTypeId && parsed.jobTypeToken ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 ml-2"
+                      disabled={creatingType || createJobType.isPending}
+                      onClick={handleCreateMissingType}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Tạo "{parsed.jobTypeToken}"
+                    </Button>
+                  ) : null
+                }
+              />
+              <PreviewRow
+                label="Mô tả"
+                ok={parsed.descriptionText.trim().length > 0}
+                valueOk={parsed.descriptionText || "(chưa có)"}
+                error={
+                  parsed.descriptionText.trim().length === 0
+                    ? "Thiếu phần mô tả công việc."
+                    : undefined
+                }
+              />
+              <PreviewRow label="Hạn hoàn thành" ok valueOk={deadlineLabel} />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Người thực hiện */}
+      <div className="space-y-1">
+        <label className="text-[13px] font-medium block" htmlFor="assignee-input">
+          Người thực hiện
+        </label>
+        <Input
+          id="assignee-input"
+          list="assignee-suggestions"
+          placeholder="Chọn từ danh sách hoặc gõ tên tự do"
+          value={assigneeText}
+          onChange={(e) => setAssigneeText(e.target.value)}
+          onFocus={handleAssigneeFocus}
+          autoComplete="off"
+        />
+        <datalist id="assignee-suggestions">
+          {(profiles as any[]).map((p) => (
+            <option key={p.id} value={p.full_name} />
+          ))}
+        </datalist>
+      </div>
+
+      {/* Đính kèm */}
+      <div className="space-y-1">
+        <label className="text-[13px] font-medium block">Đính kèm</label>
+        <AttachmentUpload
+          attachments={attachments}
+          onChange={setAttachments}
+          userId={authUser?.id ?? ""}
+          bucket="job-attachments"
+        />
+      </div>
+    </>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={
           isMobile
-            ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+            ? "max-w-full w-full h-[100dvh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none flex flex-col p-0 gap-0 data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
             : "sm:max-w-[640px] max-h-[90vh] overflow-y-auto"
         }
       >
-        {isMobile && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
-        )}
-        <DialogHeader className={isMobile ? "pt-3" : ""}>
-          <DialogTitle className="text-green-600 uppercase font-semibold">
-            THÊM CÔNG VIỆC
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Mô tả nhanh */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              Mô tả nhanh <span className="text-red-500">*</span>
-            </label>
-            <Textarea
-              autoFocus
-              rows={3}
-              placeholder={PLACEHOLDER}
-              value={rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
-              className="font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              Cú pháp: <code>(phòng) (tòa nhà) (loại) (mô tả) [ngày]</code>.
-              Ngày: số (0=hôm nay, 1=mai, 2=sau 2 ngày…) hoặc <code>17/5</code> /{" "}
-              <code>17/05</code>. Bỏ trống → mặc định ngày mai.
-            </p>
-          </div>
-
-          {/* Preview parse */}
-          {hasInput && (
-            <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
-              {parsed.errors.structure ? (
-                <div className="flex items-start gap-2 text-red-600">
-                  <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>{parsed.errors.structure}</span>
-                </div>
-              ) : (
-                <>
-                  <PreviewRow
-                    label="Phòng"
-                    ok={!!parsed.roomId}
-                    valueOk={parsed.roomToken}
-                    error={parsed.errors.roomNotFound}
-                  />
-                  <PreviewRow
-                    label="Tòa nhà"
-                    ok={!!parsed.buildingId}
-                    valueOk={parsed.buildingToken}
-                    error={parsed.errors.buildingNotFound}
-                  />
-                  <PreviewRow
-                    label="Loại công việc"
-                    ok={!!parsed.jobTypeId}
-                    valueOk={parsed.jobTypeToken}
-                    error={parsed.errors.jobTypeNotFound}
-                    action={
-                      !parsed.jobTypeId && parsed.jobTypeToken ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7 ml-2"
-                          disabled={creatingType || createJobType.isPending}
-                          onClick={handleCreateMissingType}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Tạo nhanh "{parsed.jobTypeToken}"
-                        </Button>
-                      ) : null
-                    }
-                  />
-                  <PreviewRow
-                    label="Mô tả"
-                    ok={parsed.descriptionText.trim().length > 0}
-                    valueOk={parsed.descriptionText || "(chưa có)"}
-                    error={
-                      parsed.descriptionText.trim().length === 0
-                        ? "Thiếu phần mô tả công việc."
-                        : undefined
-                    }
-                  />
-                  <PreviewRow
-                    label="Hạn hoàn thành"
-                    ok
-                    valueOk={deadlineLabel}
-                  />
-                </>
-              )}
+        {isMobile ? (
+          <>
+            <div className="shrink-0 pt-2 pb-1 flex justify-center">
+              <div className="w-10 h-1 bg-zinc-300 rounded-full" />
             </div>
-          )}
-
-          {/* Người thực hiện */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor="assignee-input">
-              Người thực hiện
-            </label>
-            <Input
-              id="assignee-input"
-              list="assignee-suggestions"
-              placeholder="Chọn từ danh sách hoặc gõ tên tự do"
-              value={assigneeText}
-              onChange={(e) => setAssigneeText(e.target.value)}
-              onFocus={handleAssigneeFocus}
-              autoComplete="off"
-            />
-            <datalist id="assignee-suggestions">
-              {(profiles as any[]).map((p) => (
-                <option key={p.id} value={p.full_name} />
-              ))}
-            </datalist>
-            <p className="text-xs text-muted-foreground">
-              Có thể gõ tên tự do nếu người thực hiện không có trong danh sách.
-            </p>
-          </div>
-
-          {/* Đính kèm */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Đính kèm</label>
-            <AttachmentUpload
-              attachments={attachments}
-              onChange={setAttachments}
-              userId={authUser?.id ?? ""}
-              bucket="job-attachments"
-            />
-          </div>
-        </div>
-
-        <DialogFooter className={isMobile ? "flex flex-col gap-2 mt-2" : ""}>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className={isMobile ? "w-full h-11" : ""}
-          >
-            Huỷ
-          </Button>
-          <Button
-            type="button"
-            className={`bg-green-600 hover:bg-green-700 text-white ${
-              isMobile ? "w-full h-11" : ""
-            }`}
-            disabled={!canSubmit}
-            onClick={handleSubmit}
-          >
-            {createJob.isPending ? "Đang lưu..." : "Lưu"}
-          </Button>
-        </DialogFooter>
+            <DialogHeader className="shrink-0 px-4 pb-2.5 border-b">
+              <DialogTitle className="text-green-600 uppercase font-semibold text-base">
+                Thêm công việc
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {formBody}
+            </div>
+            <DialogFooter className="shrink-0 px-4 py-3 border-t flex flex-col gap-2 bg-background">
+              <Button
+                type="button"
+                className="bg-green-600 hover:bg-green-700 text-white w-full h-11"
+                disabled={!canSubmit}
+                onClick={handleSubmit}
+              >
+                {createJob.isPending ? "Đang lưu..." : "Lưu"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="w-full h-11"
+              >
+                Huỷ
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-green-600 uppercase font-semibold">
+                THÊM CÔNG VIỆC
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">{formBody}</div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Huỷ
+              </Button>
+              <Button
+                type="button"
+                className="bg-green-600 hover:bg-green-700 text-white"
+                disabled={!canSubmit}
+                onClick={handleSubmit}
+              >
+                {createJob.isPending ? "Đang lưu..." : "Lưu"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

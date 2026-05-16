@@ -105,175 +105,203 @@ export default function TaskEditDialog({
     }
   };
 
+  const formBody = (
+    <>
+      <div className="space-y-1">
+        <label className="text-[13px] font-medium block">
+          Tiêu đề <span className="text-red-500">*</span>
+        </label>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[13px] font-medium block">Mô tả</label>
+        <Textarea
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className="text-[13px] font-medium block">Tòa nhà</label>
+          <Select
+            value={buildingId ?? "__none__"}
+            onValueChange={handleBuildingChange}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="-- Chọn --" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">-- Chọn --</SelectItem>
+              {buildings.map((b: any) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[13px] font-medium block">Phòng</label>
+          <Select
+            value={roomId ?? "__none__"}
+            onValueChange={(v) => setRoomId(v === "__none__" ? null : v)}
+            disabled={!buildingId}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="-- Chọn --" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">-- Chọn --</SelectItem>
+              {roomsForBuilding.map((r: any) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className="text-[13px] font-medium block">Loại công việc</label>
+          <Select
+            value={jobTypeId ?? "__none__"}
+            onValueChange={(v) => setJobTypeId(v === "__none__" ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="-- Chọn --" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">-- Chọn --</SelectItem>
+              {jobTypes.map((t: any) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[13px] font-medium block">Mức độ ưu tiên</label>
+          <Select
+            value={priority}
+            onValueChange={(v) => setPriority(v as JobPriority)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {JOB_PRIORITIES.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {PRIORITY_LABELS[p]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className="text-[13px] font-medium block">Người thực hiện</label>
+          <Select
+            value={assigneeId ?? "__none__"}
+            onValueChange={(v) => setAssigneeId(v === "__none__" ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="-- Chọn --" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">-- Chọn --</SelectItem>
+              {profiles.map((p: any) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[13px] font-medium block">Hạn hoàn thành</label>
+          <Input
+            type="datetime-local"
+            value={deadlineLocal}
+            onChange={(e) => setDeadlineLocal(e.target.value)}
+          />
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={
           isMobile
-            ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+            ? "max-w-full w-full h-[100dvh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none flex flex-col p-0 gap-0 data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
             : "sm:max-w-[640px] max-h-[90vh] overflow-y-auto"
         }
       >
-        {isMobile && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
+        {isMobile ? (
+          <>
+            <div className="shrink-0 pt-2 pb-1 flex justify-center">
+              <div className="w-10 h-1 bg-zinc-300 rounded-full" />
+            </div>
+            <DialogHeader className="shrink-0 px-4 pb-2.5 border-b">
+              <DialogTitle className="text-blue-600 uppercase font-semibold text-base">
+                Sửa công việc
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground">{job.code}</p>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {formBody}
+            </div>
+            <DialogFooter className="shrink-0 px-4 py-3 border-t flex flex-col gap-2 bg-background">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white w-full h-11"
+                disabled={!title.trim() || updateJob.isPending}
+                onClick={handleSubmit}
+              >
+                {updateJob.isPending ? "Đang lưu..." : "Lưu"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="w-full h-11"
+              >
+                Huỷ
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-blue-600 uppercase font-semibold">
+                SỬA CÔNG VIỆC - {job.code}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">{formBody}</div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Huỷ
+              </Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={!title.trim() || updateJob.isPending}
+                onClick={handleSubmit}
+              >
+                {updateJob.isPending ? "Đang lưu..." : "Lưu"}
+              </Button>
+            </DialogFooter>
+          </>
         )}
-        <DialogHeader className={isMobile ? "pt-3" : ""}>
-          <DialogTitle className="text-blue-600 uppercase font-semibold">
-            SỬA CÔNG VIỆC - {job.code}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              Tiêu đề <span className="text-red-500">*</span>
-            </label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Mô tả</label>
-            <Textarea
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Tòa nhà</label>
-              <Select
-                value={buildingId ?? "__none__"}
-                onValueChange={handleBuildingChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="-- Chọn --" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">-- Chọn --</SelectItem>
-                  {buildings.map((b: any) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Phòng</label>
-              <Select
-                value={roomId ?? "__none__"}
-                onValueChange={(v) => setRoomId(v === "__none__" ? null : v)}
-                disabled={!buildingId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="-- Chọn --" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">-- Chọn --</SelectItem>
-                  {roomsForBuilding.map((r: any) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Loại công việc</label>
-              <Select
-                value={jobTypeId ?? "__none__"}
-                onValueChange={(v) => setJobTypeId(v === "__none__" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="-- Chọn --" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">-- Chọn --</SelectItem>
-                  {jobTypes.map((t: any) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Mức độ ưu tiên</label>
-              <Select
-                value={priority}
-                onValueChange={(v) => setPriority(v as JobPriority)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {JOB_PRIORITIES.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PRIORITY_LABELS[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Người thực hiện</label>
-              <Select
-                value={assigneeId ?? "__none__"}
-                onValueChange={(v) => setAssigneeId(v === "__none__" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="-- Chọn --" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">-- Chọn --</SelectItem>
-                  {profiles.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Hạn hoàn thành</label>
-              <Input
-                type="datetime-local"
-                value={deadlineLocal}
-                onChange={(e) => setDeadlineLocal(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter className={isMobile ? "flex flex-col gap-2 mt-2" : ""}>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className={isMobile ? "w-full h-11" : ""}
-          >
-            Huỷ
-          </Button>
-          <Button
-            className={`bg-blue-600 hover:bg-blue-700 text-white ${
-              isMobile ? "w-full h-11" : ""
-            }`}
-            disabled={!title.trim() || updateJob.isPending}
-            onClick={handleSubmit}
-          >
-            {updateJob.isPending ? "Đang lưu..." : "Lưu"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

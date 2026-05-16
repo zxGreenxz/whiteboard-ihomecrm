@@ -38,11 +38,11 @@ function formatDateTime(dateStr: string | null): string {
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[140px_1fr] border-b border-zinc-200 last:border-b-0">
-      <div className="px-4 py-2.5 bg-zinc-50 text-sm text-muted-foreground border-r border-zinc-200">
+    <div className="grid grid-cols-[110px_1fr] border-b border-zinc-200 last:border-b-0">
+      <div className="px-3 py-2 bg-zinc-50 text-[13px] text-muted-foreground border-r border-zinc-200">
         {label}
       </div>
-      <div className="px-4 py-2.5 text-sm">{value || "—"}</div>
+      <div className="px-3 py-2 text-[14px]">{value || "—"}</div>
     </div>
   );
 }
@@ -114,7 +114,7 @@ export default function TaskDetailDialog({
         <DialogContent
           className={
             isMobile
-              ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+              ? "max-w-full w-full h-[100dvh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none flex flex-col p-0 gap-0 data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
               : "sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
           }
           onPointerDownOutside={(e) => {
@@ -127,99 +127,201 @@ export default function TaskDetailDialog({
             if (isLightboxOpen) e.preventDefault();
           }}
         >
-          {isMobile && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
-          )}
-          <DialogHeader className={isMobile ? "pt-3" : ""}>
-            <DialogTitle className="text-primary uppercase tracking-wide">
-              Chi tiết công việc
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Thông tin chi tiết công việc {job.code}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="rounded-md border border-zinc-200 overflow-hidden mt-2">
-            <Row label="Phòng - Căn hộ" value={location || "—"} />
-            <Row label="Tiêu đề" value={job.title} />
-            <Row
-              label="Trạng thái"
-              value={
-                <Badge className={getStatusColor(job.status)}>
-                  {getStatusLabel(job.status)}
-                </Badge>
-              }
-            />
-            <Row label="Ngày tạo" value={formatDateTime(job.created_at)} />
-            <Row
-              label="Ngày hoàn thành"
-              value={formatDateTime(job.completion_time)}
-            />
-            {assignee && <Row label="Người thực hiện" value={assignee} />}
-            {isCompleted && job.completion_description && (
-              <Row
-                label="Ghi chú đánh giá"
-                value={
-                  <span className="whitespace-pre-wrap">
-                    {job.completion_description}
-                  </span>
-                }
-              />
-            )}
-          </div>
-
-          {attachments.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold mb-2">Ảnh đính kèm</h3>
-              <div className="flex flex-wrap gap-3">
-                {attachments.map((url, idx) => (
-                  <button
-                    type="button"
-                    key={url}
-                    onClick={() => setLightboxIdx(idx)}
-                    className="group relative w-24 h-24 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 hover:border-primary hover:shadow-md transition-all cursor-zoom-in"
-                    title="Click để xem lớn"
-                  >
-                    {isPdf(url) ? (
-                      <div className="flex items-center justify-center w-full h-full">
-                        <FileText className="h-10 w-10 text-muted-foreground" />
-                      </div>
-                    ) : (
-                      <img
-                        src={url}
-                        alt="Đính kèm"
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
-                      />
-                    )}
-                  </button>
-                ))}
+          {isMobile ? (
+            <>
+              <div className="shrink-0 pt-2 pb-1 flex justify-center">
+                <div className="w-10 h-1 bg-zinc-300 rounded-full" />
               </div>
-            </div>
-          )}
+              <DialogHeader className="shrink-0 px-4 pb-2.5 border-b">
+                <DialogTitle className="text-primary uppercase tracking-wide text-base">
+                  Chi tiết công việc
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Thông tin chi tiết công việc {job.code}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                <div className="rounded-md border border-zinc-200 overflow-hidden">
+                  <Row label="Phòng - Căn hộ" value={location || "—"} />
+                  <Row label="Tiêu đề" value={job.title} />
+                  <Row
+                    label="Trạng thái"
+                    value={
+                      <Badge className={getStatusColor(job.status)}>
+                        {getStatusLabel(job.status)}
+                      </Badge>
+                    }
+                  />
+                  <Row label="Ngày tạo" value={formatDateTime(job.created_at)} />
+                  <Row
+                    label="Ngày hoàn thành"
+                    value={formatDateTime(job.completion_time)}
+                  />
+                  {assignee && <Row label="Người thực hiện" value={assignee} />}
+                  {isCompleted && job.completion_description && (
+                    <Row
+                      label="Ghi chú đánh giá"
+                      value={
+                        <span className="whitespace-pre-wrap">
+                          {job.completion_description}
+                        </span>
+                      }
+                    />
+                  )}
+                </div>
 
-          <DialogFooter className="mt-4">
-            {isInProgress && (
-              <>
-                <Button variant="outline" onClick={onEdit}>
-                  Sửa phiếu
-                </Button>
-                <Button
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  onClick={onComplete}
-                >
-                  Hoàn thành
-                </Button>
-              </>
-            )}
-            {isCompleted && (
-              <Button
-                className="bg-green-600 hover:bg-green-700 text-white"
-                onClick={onAddNotes}
-              >
-                Ghi chú đánh giá
-              </Button>
-            )}
-          </DialogFooter>
+                {attachments.length > 0 && (
+                  <div>
+                    <h3 className="text-[13px] font-semibold mb-1.5 text-muted-foreground">
+                      Ảnh đính kèm
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {attachments.map((url, idx) => (
+                        <button
+                          type="button"
+                          key={url}
+                          onClick={() => setLightboxIdx(idx)}
+                          className="group relative w-20 h-20 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 active:scale-95 transition-transform"
+                        >
+                          {isPdf(url) ? (
+                            <div className="flex items-center justify-center w-full h-full">
+                              <FileText className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                          ) : (
+                            <img
+                              src={url}
+                              alt="Đính kèm"
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter className="shrink-0 px-4 py-3 border-t flex flex-col gap-2 bg-background">
+                {isInProgress && (
+                  <>
+                    <Button
+                      className="bg-green-600 hover:bg-green-700 text-white w-full h-11"
+                      onClick={onComplete}
+                    >
+                      Hoàn thành
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onEdit}
+                      className="w-full h-11"
+                    >
+                      Sửa phiếu
+                    </Button>
+                  </>
+                )}
+                {isCompleted && (
+                  <Button
+                    className="bg-green-600 hover:bg-green-700 text-white w-full h-11"
+                    onClick={onAddNotes}
+                  >
+                    Ghi chú đánh giá
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-primary uppercase tracking-wide">
+                  Chi tiết công việc
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Thông tin chi tiết công việc {job.code}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="rounded-md border border-zinc-200 overflow-hidden mt-2">
+                <Row label="Phòng - Căn hộ" value={location || "—"} />
+                <Row label="Tiêu đề" value={job.title} />
+                <Row
+                  label="Trạng thái"
+                  value={
+                    <Badge className={getStatusColor(job.status)}>
+                      {getStatusLabel(job.status)}
+                    </Badge>
+                  }
+                />
+                <Row label="Ngày tạo" value={formatDateTime(job.created_at)} />
+                <Row
+                  label="Ngày hoàn thành"
+                  value={formatDateTime(job.completion_time)}
+                />
+                {assignee && <Row label="Người thực hiện" value={assignee} />}
+                {isCompleted && job.completion_description && (
+                  <Row
+                    label="Ghi chú đánh giá"
+                    value={
+                      <span className="whitespace-pre-wrap">
+                        {job.completion_description}
+                      </span>
+                    }
+                  />
+                )}
+              </div>
+
+              {attachments.length > 0 && (
+                <div className="mt-3">
+                  <h3 className="text-sm font-semibold mb-2">Ảnh đính kèm</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {attachments.map((url, idx) => (
+                      <button
+                        type="button"
+                        key={url}
+                        onClick={() => setLightboxIdx(idx)}
+                        className="group relative w-24 h-24 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 hover:border-primary hover:shadow-md transition-all cursor-zoom-in"
+                        title="Click để xem lớn"
+                      >
+                        {isPdf(url) ? (
+                          <div className="flex items-center justify-center w-full h-full">
+                            <FileText className="h-10 w-10 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt="Đính kèm"
+                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="mt-4">
+                {isInProgress && (
+                  <>
+                    <Button variant="outline" onClick={onEdit}>
+                      Sửa phiếu
+                    </Button>
+                    <Button
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={onComplete}
+                    >
+                      Hoàn thành
+                    </Button>
+                  </>
+                )}
+                {isCompleted && (
+                  <Button
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    onClick={onAddNotes}
+                  >
+                    Ghi chú đánh giá
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -14,9 +14,9 @@ interface Props {
 export function TaskListMobile({ jobs, isLoading, onView }: Props) {
   if (isLoading) {
     return (
-      <div className="px-3 py-3 space-y-2.5">
+      <div className="px-3 py-2 space-y-2">
         {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-24 rounded-xl" />
+          <Skeleton key={i} className="h-20 rounded-lg" />
         ))}
       </div>
     );
@@ -24,18 +24,18 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
 
   if (jobs.length === 0) {
     return (
-      <div className="py-8">
+      <div className="py-6">
         <EmptyState
           icon={ClipboardList}
           title="Chưa có công việc nào"
-          description="Hãy tạo công việc mới qua nút (+) bên dưới hoặc nới bộ lọc."
+          description="Tạo qua nút (+) bên dưới hoặc nới bộ lọc."
         />
       </div>
     );
   }
 
   return (
-    <ul role="list" className="px-3 py-3 space-y-2.5 pb-24">
+    <ul role="list" className="px-3 py-2 space-y-1.5 pb-24">
       {jobs.map((job) => {
         const isCompleted = job.status === "COMPLETED";
         const accentColor = isCompleted ? "#10b981" : "#3b82f6";
@@ -54,18 +54,18 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") onView(job);
               }}
-              className="relative bg-white border border-zinc-200 rounded-xl p-3.5 shadow-sm active:scale-[0.985] active:shadow-none transition-transform cursor-pointer"
+              className="relative bg-white border border-zinc-200 rounded-lg p-2.5 shadow-sm active:scale-[0.985] active:shadow-none transition-transform cursor-pointer"
               style={{
                 borderLeft: `3px solid ${accentColor}`,
               }}
             >
               {/* Row 1: title + status chip */}
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <span className="font-medium text-[15px] text-zinc-900 line-clamp-2 min-w-0">
+              <div className="flex items-start justify-between gap-2 mb-0.5">
+                <span className="font-medium text-[14px] text-zinc-900 line-clamp-2 min-w-0 leading-snug">
                   {job.title}
                 </span>
                 <span
-                  className={`shrink-0 px-2 py-0.5 text-[11px] font-medium rounded-full ${getStatusColor(
+                  className={`shrink-0 px-2 py-0.5 text-[10px] font-medium rounded-full ${getStatusColor(
                     job.status,
                   )}`}
                 >
@@ -74,20 +74,20 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
               </div>
 
               {/* Row 2: location + job type */}
-              <div className="text-[13px] text-zinc-600 mb-1 line-clamp-1">
+              <div className="text-[12px] text-zinc-600 line-clamp-1">
                 {location && <span className="font-medium">{location}</span>}
                 {location && job.job_types?.name && (
-                  <span className="mx-1.5 text-zinc-300">·</span>
+                  <span className="mx-1 text-zinc-300">·</span>
                 )}
                 {job.job_types?.name && <span>{job.job_types.name}</span>}
               </div>
 
               {/* Row 3: deadline + assignee + thumb */}
-              <div className="flex items-center justify-between gap-2 mt-1">
-                <div className="flex items-center gap-1.5 text-[12px] text-zinc-400 min-w-0">
+              <div className="flex items-center justify-between gap-2 mt-0.5">
+                <div className="flex items-center gap-1 text-[11px] text-zinc-400 min-w-0">
                   {job.deadline && (
                     <span className="truncate">
-                      {format(new Date(job.deadline), "dd/MM/yyyy HH:mm")}
+                      {format(new Date(job.deadline), "dd/MM HH:mm")}
                     </span>
                   )}
                   {assignee && (
@@ -98,9 +98,9 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
                   )}
                 </div>
                 {firstAttachment && (
-                  <div className="shrink-0 w-8 h-8 rounded-md border border-zinc-200 bg-zinc-50 overflow-hidden flex items-center justify-center">
+                  <div className="shrink-0 w-7 h-7 rounded-md border border-zinc-200 bg-zinc-50 overflow-hidden flex items-center justify-center">
                     {/\.pdf(\?|$)/i.test(firstAttachment) ? (
-                      <ImageIcon className="h-4 w-4 text-zinc-400" />
+                      <ImageIcon className="h-3.5 w-3.5 text-zinc-400" />
                     ) : (
                       <img
                         src={firstAttachment}
