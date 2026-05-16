@@ -13,6 +13,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useJobs, useDeleteJob } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -31,6 +37,7 @@ import type { TaskFilters, JobWithRelations } from "@/types/jobs";
 import { defaultTaskFilters } from "@/types/jobs";
 
 type TaskTab = "ALL" | "MINE" | "WATCHING";
+type StatusFilter = "IN_PROGRESS" | "COMPLETED" | null;
 
 export default function TaskManagementPage() {
   const { data: authUser } = useAuth();
@@ -41,6 +48,9 @@ export default function TaskManagementPage() {
   const [filters, setFilters] = useState<TaskFilters>(defaultTaskFilters);
   const [appliedFilters, setAppliedFilters] = useState<TaskFilters>(defaultTaskFilters);
   const [activeTab, setActiveTab] = useState<TaskTab>("ALL");
+  // Mặc định chỉ hiển thị phiếu chưa hoàn thành (đang làm + trễ hẹn).
+  // Click vào stat card sẽ chuyển sang IN_PROGRESS hoặc COMPLETED.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("IN_PROGRESS");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobWithRelations | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -78,12 +88,28 @@ export default function TaskManagementPage() {
     ).length,
   };
 
-  // Client-side search filter
-  const searchFiltered = tabFiltered.filter(
-    (job) =>
-      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Status filter (từ stat card click)
+  const statusFiltered = tabFiltered.filter((job) => {
+    if (statusFilter === null) return true;
+    return job.status === statusFilter;
+  });
+
+  // Search filter: title + code + assignee (cả tên có profile và tên text)
+  const q = searchQuery.trim().toLowerCase();
+  const searchFiltered = q
+    ? statusFiltered.filter((job) => {
+        const assigneeName = (
+          job.profiles?.full_name ||
+          job.assignee_name ||
+          ""
+        ).toLowerCase();
+        return (
+          job.title.toLowerCase().includes(q) ||
+          job.code.toLowerCase().includes(q) ||
+          assigneeName.includes(q)
+        );
+      })
+    : statusFiltered;
 
   // Client-side pagination
   const { data: paginatedData, total: totalCount } = paginateJobs(
@@ -138,6 +164,11 @@ export default function TaskManagementPage() {
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
+    pagination.setPage(1);
+  };
+
+  const handleStatusCardClick = (status: "IN_PROGRESS" | "COMPLETED") => {
+    setStatusFilter((prev) => (prev === status ? null : status));
     pagination.setPage(1);
   };
 
@@ -239,7 +270,7 @@ export default function TaskManagementPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Tìm theo tiêu đề..."
+                  placeholder="Tìm công việc, người thực hiện..."
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="pl-9 h-9 bg-white"
@@ -296,20 +327,35 @@ export default function TaskManagementPage() {
 
           {/* Stats compact */}
           <div className="px-3 pt-2">
-            <TaskStatusStats jobs={allJobs as JobWithRelations[]} />
+            <TaskStatusStats
+              jobs={allJobs as JobWithRelations[]}
+              activeFilter={statusFilter}
+              onFilterChange={handleStatusCardClick}
+            />
           </div>
 
-          {/* Filters Panel */}
-          {showFilters && (
-            <div className="px-3 pt-2">
-              <TaskFiltersPanel
-                filters={filters}
-                onChange={setFilters}
-                onApply={handleApplyFilters}
-                onClear={handleClearFilters}
-              />
-            </div>
-          )}
+          {/* Filters Panel — bottom sheet trên mobile (giống thu chi) */}
+          <Sheet open={showFilters} onOpenChange={setShowFilters}>
+            <SheetContent side="bottom" className="h-[85vh] overflow-y-auto p-0">
+              <SheetHeader className="px-4 py-3 border-b">
+                <SheetTitle>Bộ lọc</SheetTitle>
+              </SheetHeader>
+              <div className="p-4">
+                <TaskFiltersPanel
+                  filters={filters}
+                  onChange={setFilters}
+                  onApply={() => {
+                    handleApplyFilters();
+                    setShowFilters(false);
+                  }}
+                  onClear={() => {
+                    handleClearFilters();
+                    setShowFilters(false);
+                  }}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
 
           {/* List */}
           <TaskListMobile
@@ -394,14 +440,18 @@ export default function TaskManagementPage() {
       </div>
 
       {/* Stats */}
-      <TaskStatusStats jobs={allJobs as JobWithRelations[]} />
+      <TaskStatusStats
+              jobs={allJobs as JobWithRelations[]}
+              activeFilter={statusFilter}
+              onFilterChange={handleStatusCardClick}
+            />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mt-4 mb-4">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Tìm kiếm theo mã hoặc tiêu đề..."
+            placeholder="Tìm theo mã, công việc, người thực hiện..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 h-9"

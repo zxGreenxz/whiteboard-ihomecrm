@@ -8,11 +8,22 @@ const STATUS_ICONS: Record<JobStatus, LucideIcon> = {
   COMPLETED: CheckCircle,
 };
 
+const ACTIVE_RING: Record<JobStatus, string> = {
+  IN_PROGRESS: 'ring-2 ring-blue-400',
+  COMPLETED: 'ring-2 ring-green-500',
+};
+
 interface TaskStatusStatsProps {
   jobs: JobWithRelations[];
+  activeFilter?: JobStatus | null;
+  onFilterChange?: (status: JobStatus) => void;
 }
 
-export function TaskStatusStats({ jobs }: TaskStatusStatsProps) {
+export function TaskStatusStats({
+  jobs,
+  activeFilter = null,
+  onFilterChange,
+}: TaskStatusStatsProps) {
   const stats = computeTaskStats(jobs);
   const isMobile = useIsMobile();
 
@@ -21,11 +32,18 @@ export function TaskStatusStats({ jobs }: TaskStatusStatsProps) {
       {JOB_STATUSES.map((status) => {
         const Icon = STATUS_ICONS[status];
         const colorClass = getStatusColor(status);
+        const isActive = activeFilter === status;
+        const clickable = !!onFilterChange;
 
         return (
-          <div
+          <button
             key={status}
-            className={`rounded-lg border ${colorClass} ${
+            type="button"
+            disabled={!clickable}
+            onClick={() => onFilterChange?.(status)}
+            className={`text-left rounded-lg border ${colorClass} transition-all ${
+              clickable ? "hover:shadow-md active:scale-[0.98] cursor-pointer" : "cursor-default"
+            } ${isActive ? ACTIVE_RING[status] : ""} ${
               isMobile ? "px-3 py-2" : "p-4"
             }`}
           >
@@ -34,11 +52,16 @@ export function TaskStatusStats({ jobs }: TaskStatusStatsProps) {
               <span className={`font-medium ${isMobile ? "text-[12px]" : "text-sm"}`}>
                 {STATUS_LABELS[status]}
               </span>
+              {isActive && (
+                <span className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/60 ${isMobile ? "" : "text-[11px]"}`}>
+                  Đang lọc
+                </span>
+              )}
             </div>
             <div className={`font-bold ${isMobile ? "text-lg" : "text-2xl"}`}>
               {stats[status]}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
