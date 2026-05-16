@@ -20,6 +20,7 @@ export const jobCreateSchema = z.object({
   job_type_id: z.string().uuid().optional().nullable(),
   priority: z.enum(['NORMAL', 'LOW', 'URGENT']).default('NORMAL'),
   assignee_id: z.string().uuid().optional().nullable(),
+  assignee_name: z.string().optional().nullable(),
   deadline: z.string().datetime().optional().nullable(),
   visible_to_customer: z.boolean().default(false),
   attachments: z.array(z.string().url()).optional().nullable(),

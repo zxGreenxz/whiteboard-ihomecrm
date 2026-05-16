@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Paperclip } from "lucide-react";
+import { FileText, X, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,13 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { JobWithRelations } from "@/types/jobs";
-import {
-  getStatusColor,
-  getStatusLabel,
-  getPriorityColor,
-  getPriorityLabel,
-} from "@/lib/jobValidation";
+import { getStatusColor, getStatusLabel } from "@/lib/jobValidation";
 
 interface TaskDetailDialogProps {
   open: boolean;
@@ -27,7 +24,10 @@ interface TaskDetailDialogProps {
   onAddNotes: () => void;
 }
 
-function formatDate(dateStr: string | null): string {
+const isPdf = (url: string) =>
+  url.toLowerCase().endsWith(".pdf") || url.includes(".pdf");
+
+function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return "—";
   try {
     return format(new Date(dateStr), "dd/MM/yyyy HH:mm");
@@ -36,34 +36,13 @@ function formatDate(dateStr: string | null): string {
   }
 }
 
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-3 gap-2 py-2 border-b border-gray-100">
-      <span className="text-sm text-muted-foreground font-medium">{label}</span>
-      <div className="col-span-2 text-sm">{children}</div>
-    </div>
-  );
-}
-
-function AttachmentList({ attachments, label }: { attachments: string[] | null; label: string }) {
-  if (!attachments || attachments.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-semibold text-muted-foreground">{label}</h4>
-      <div className="flex flex-wrap gap-2">
-        {attachments.map((url, idx) => (
-          <a
-            key={idx}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-          >
-            <Paperclip className="h-3 w-3" />
-            Tệp {idx + 1}
-          </a>
-        ))}
+    <div className="grid grid-cols-[140px_1fr] border-b border-zinc-200 last:border-b-0">
+      <div className="px-4 py-2.5 bg-zinc-50 text-sm text-muted-foreground border-r border-zinc-200">
+        {label}
       </div>
+      <div className="px-4 py-2.5 text-sm">{value || "—"}</div>
     </div>
   );
 }
@@ -76,100 +55,235 @@ export default function TaskDetailDialog({
   onEdit,
   onAddNotes,
 }: TaskDetailDialogProps) {
+  const isMobile = useIsMobile();
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  const attachments = job?.attachments ?? [];
+  const isLightboxOpen = lightboxIdx !== null;
+  const lightboxUrl =
+    lightboxIdx !== null ? attachments[lightboxIdx] ?? null : null;
+  const hasMultiple = attachments.length > 1;
+
+  const closeLightbox = () => setLightboxIdx(null);
+  const goPrev = () =>
+    setLightboxIdx((i) =>
+      i === null || attachments.length === 0
+        ? i
+        : (i - 1 + attachments.length) % attachments.length,
+    );
+  const goNext = () =>
+    setLightboxIdx((i) =>
+      i === null || attachments.length === 0 ? i : (i + 1) % attachments.length,
+    );
+
+  useEffect(() => {
+    if (!open) setLightboxIdx(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!isLightboxOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        closeLightbox();
+      } else if (e.key === "ArrowLeft" && hasMultiple) {
+        e.preventDefault();
+        goPrev();
+      } else if (e.key === "ArrowRight" && hasMultiple) {
+        e.preventDefault();
+        goNext();
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [isLightboxOpen, hasMultiple]);
+
   if (!job) return null;
 
   const isInProgress = job.status === "IN_PROGRESS";
   const isCompleted = job.status === "COMPLETED";
+  const location = [job.rooms?.name, job.buildings?.name]
+    .filter(Boolean)
+    .join(" - ");
+  const assignee = job.profiles?.full_name || job.assignee_name || null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-blue-600">
-            Chi tiết công việc - {job.code}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Thông tin chi tiết công việc {job.code}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          className={
+            isMobile
+              ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+              : "sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+          }
+          onPointerDownOutside={(e) => {
+            if (isLightboxOpen) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (isLightboxOpen) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isLightboxOpen) e.preventDefault();
+          }}
+        >
+          {isMobile && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
+          )}
+          <DialogHeader className={isMobile ? "pt-3" : ""}>
+            <DialogTitle className="text-primary uppercase tracking-wide">
+              Chi tiết công việc
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Thông tin chi tiết công việc {job.code}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-1">
-          <DetailRow label="Mã công việc">{job.code}</DetailRow>
-          <DetailRow label="Tiêu đề">{job.title}</DetailRow>
-          <DetailRow label="Mô tả">{job.description || "—"}</DetailRow>
-          <DetailRow label="Căn hộ">{job.buildings?.name || "—"}</DetailRow>
-          <DetailRow label="Phòng">{job.rooms?.name || "—"}</DetailRow>
-          <DetailRow label="Giường">{job.beds?.name || "—"}</DetailRow>
-          <DetailRow label="Loại công việc">{job.job_types?.name || "—"}</DetailRow>
-          <DetailRow label="Mức độ ưu tiên">
-            <Badge className={getPriorityColor(job.priority)}>
-              {getPriorityLabel(job.priority)}
-            </Badge>
-          </DetailRow>
-          <DetailRow label="Trạng thái">
-            <Badge className={getStatusColor(job.status)}>
-              {getStatusLabel(job.status)}
-            </Badge>
-          </DetailRow>
-          <DetailRow label="Người thực hiện">
-            {job.profiles?.full_name || "—"}
-          </DetailRow>
-          <DetailRow label="Hạn hoàn thành">
-            {formatDate(job.deadline)}
-          </DetailRow>
-          <DetailRow label="Hiển thị với khách hàng">
-            {job.visible_to_customer ? "Có" : "Không"}
-          </DetailRow>
-          <DetailRow label="Ngày tạo">{formatDate(job.created_at)}</DetailRow>
-          <DetailRow label="Ngày cập nhật">{formatDate(job.updated_at)}</DetailRow>
-        </div>
-
-        <AttachmentList attachments={job.attachments} label="Đính kèm" />
-
-        {isCompleted && (
-          <div className="space-y-2 rounded-md border p-4 bg-green-50/50">
-            <h3 className="text-sm font-semibold">Thông tin hoàn thành</h3>
-            <div className="space-y-1">
-              <DetailRow label="Thời gian hoàn thành">
-                {formatDate(job.completion_time)}
-              </DetailRow>
-              {job.completion_description && (
-                <DetailRow label="Ghi chú đánh giá">
-                  {job.completion_description}
-                </DetailRow>
-              )}
-            </div>
-            <AttachmentList
-              attachments={job.completion_attachments}
-              label="Đính kèm hoàn thành"
+          <div className="rounded-md border border-zinc-200 overflow-hidden mt-2">
+            <Row label="Phòng - Căn hộ" value={location || "—"} />
+            <Row label="Tiêu đề" value={job.title} />
+            <Row
+              label="Trạng thái"
+              value={
+                <Badge className={getStatusColor(job.status)}>
+                  {getStatusLabel(job.status)}
+                </Badge>
+              }
             />
+            <Row label="Ngày tạo" value={formatDateTime(job.created_at)} />
+            <Row
+              label="Ngày hoàn thành"
+              value={formatDateTime(job.completion_time)}
+            />
+            {assignee && <Row label="Người thực hiện" value={assignee} />}
+            {isCompleted && job.completion_description && (
+              <Row
+                label="Ghi chú đánh giá"
+                value={
+                  <span className="whitespace-pre-wrap">
+                    {job.completion_description}
+                  </span>
+                }
+              />
+            )}
           </div>
-        )}
 
-        <DialogFooter>
-          {isInProgress && (
-            <>
-              <Button variant="outline" onClick={onEdit}>
-                Sửa phiếu
-              </Button>
+          {attachments.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold mb-2">Ảnh đính kèm</h3>
+              <div className="flex flex-wrap gap-3">
+                {attachments.map((url, idx) => (
+                  <button
+                    type="button"
+                    key={url}
+                    onClick={() => setLightboxIdx(idx)}
+                    className="group relative w-24 h-24 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 hover:border-primary hover:shadow-md transition-all cursor-zoom-in"
+                    title="Click để xem lớn"
+                  >
+                    {isPdf(url) ? (
+                      <div className="flex items-center justify-center w-full h-full">
+                        <FileText className="h-10 w-10 text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <img
+                        src={url}
+                        alt="Đính kèm"
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4">
+            {isInProgress && (
+              <>
+                <Button variant="outline" onClick={onEdit}>
+                  Sửa phiếu
+                </Button>
+                <Button
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={onComplete}
+                >
+                  Hoàn thành
+                </Button>
+              </>
+            )}
+            {isCompleted && (
               <Button
                 className="bg-green-600 hover:bg-green-700 text-white"
-                onClick={onComplete}
+                onClick={onAddNotes}
               >
-                Hoàn thành
+                Ghi chú đánh giá
               </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
+          onClick={closeLightbox}
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeLightbox();
+            }}
+            title="Đóng (Esc)"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {hasMultiple && (
+            <>
+              <button
+                type="button"
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goPrev();
+                }}
+                title="Ảnh trước (←)"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goNext();
+                }}
+                title="Ảnh sau (→)"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/90 text-sm bg-black/40 rounded-full px-3 py-1">
+                {(lightboxIdx ?? 0) + 1} / {attachments.length}
+              </div>
             </>
           )}
-          {isCompleted && (
-            <Button
-              className="bg-green-600 hover:bg-green-700 text-white"
-              onClick={onAddNotes}
-            >
-              Ghi chú đánh giá
-            </Button>
+          {isPdf(lightboxUrl) ? (
+            <iframe
+              src={lightboxUrl}
+              className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={lightboxUrl}
+              alt="Đính kèm phóng lớn"
+              className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+    </>
   );
 }

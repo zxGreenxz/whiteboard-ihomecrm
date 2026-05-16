@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, XCircle, Plus } from "lucide-react";
 import {
   Dialog,
@@ -8,14 +8,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useJobTypes, useCreateJobType } from "@/hooks/useJobTypes";
@@ -55,17 +49,27 @@ export default function TaskCreateDialog({
 
   const [rawInput, setRawInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
-  const [assigneeId, setAssigneeId] = useState<string | null>(null);
+  const [assigneeText, setAssigneeText] = useState("");
   const [creatingType, setCreatingType] = useState(false);
+  const assigneeInitedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
       setRawInput("");
       setAttachments([]);
-      setAssigneeId(authUser?.id ?? null);
       setCreatingType(false);
+      assigneeInitedRef.current = false;
+      setAssigneeText("");
     }
-  }, [open, authUser?.id]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || assigneeInitedRef.current) return;
+    if (!authUser?.id || profiles.length === 0) return;
+    const current = (profiles as any[]).find((p) => p.id === authUser.id);
+    setAssigneeText(current?.full_name ?? "");
+    assigneeInitedRef.current = true;
+  }, [open, authUser?.id, profiles]);
 
   const buildingRefs = useMemo<BuildingRef[]>(
     () =>
@@ -125,11 +129,25 @@ export default function TaskCreateDialog({
     }
   };
 
+  const resolveAssignee = (): {
+    assignee_id: string | null;
+    assignee_name: string | null;
+  } => {
+    const text = assigneeText.trim();
+    if (!text) return { assignee_id: null, assignee_name: null };
+    const match = (profiles as any[]).find(
+      (p) => p.full_name?.trim().toLowerCase() === text.toLowerCase(),
+    );
+    if (match) return { assignee_id: match.id, assignee_name: null };
+    return { assignee_id: null, assignee_name: text };
+  };
+
   const handleSubmit = async () => {
     if (!canSubmit) return;
     const matchedType = jobTypeRefs.find((t) => t.id === parsed.jobTypeId);
     const titleType = matchedType?.name ?? parsed.jobTypeToken;
     const title = `${titleType} ${parsed.descriptionText}`.trim();
+    const { assignee_id, assignee_name } = resolveAssignee();
     try {
       await createJob.mutateAsync({
         title,
@@ -138,7 +156,8 @@ export default function TaskCreateDialog({
         room_id: parsed.roomId,
         job_type_id: parsed.jobTypeId,
         priority: "NORMAL",
-        assignee_id: assigneeId,
+        assignee_id,
+        assignee_name,
         deadline: parsed.deadline.toISOString(),
         visible_to_customer: false,
         attachments: attachments.length ? attachments : null,
@@ -255,23 +274,25 @@ export default function TaskCreateDialog({
 
           {/* Người thực hiện */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Người thực hiện</label>
-            <Select
-              value={assigneeId ?? "__none__"}
-              onValueChange={(v) => setAssigneeId(v === "__none__" ? null : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="-- Chọn người --" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">-- Chọn người --</SelectItem>
-                {profiles.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <label className="text-sm font-medium" htmlFor="assignee-input">
+              Người thực hiện
+            </label>
+            <Input
+              id="assignee-input"
+              list="assignee-suggestions"
+              placeholder="Chọn từ danh sách hoặc gõ tên tự do"
+              value={assigneeText}
+              onChange={(e) => setAssigneeText(e.target.value)}
+              autoComplete="off"
+            />
+            <datalist id="assignee-suggestions">
+              {(profiles as any[]).map((p) => (
+                <option key={p.id} value={p.full_name} />
+              ))}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              Có thể gõ tên tự do nếu người thực hiện không có trong danh sách.
+            </p>
           </div>
 
           {/* Đính kèm */}

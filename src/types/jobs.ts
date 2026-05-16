@@ -38,6 +38,7 @@ export interface Job {
   job_type_id: string | null;
   priority: JobPriority;
   assignee_id: string | null;
+  assignee_name: string | null;
   deadline: string | null;
   status: JobStatus;
   visible_to_customer: boolean;
