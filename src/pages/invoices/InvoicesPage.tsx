@@ -12,6 +12,7 @@ import {
   useBulkDeleteInvoices,
   useCheckOverdueInvoices,
 } from '@/hooks/useInvoices';
+import { useMyContext } from '@/hooks/useMyContext';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
 import InvoiceStatsSummary from '@/components/invoices/InvoiceStatsSummary';
@@ -35,6 +36,16 @@ const InvoicesPage = () => {
 
   // Filters
   const [filters, setFilters] = useState<InvoiceFilters>({});
+
+  // Lock filters.area_id vào khu vực phụ trách cho staff (manager).
+  // Owner/super admin: defaultAreaId = NULL → không tác động.
+  const { data: ctx } = useMyContext();
+  const lockedAreaId = ctx?.isStaff && ctx?.defaultAreaId ? ctx.defaultAreaId : null;
+  useEffect(() => {
+    if (lockedAreaId && filters.area_id !== lockedAreaId) {
+      setFilters((f) => ({ ...f, area_id: lockedAreaId, building_id: undefined, room_id: undefined }));
+    }
+  }, [lockedAreaId, filters.area_id]);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');

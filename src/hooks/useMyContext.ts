@@ -14,6 +14,8 @@ export interface MyContext {
   isSuper: boolean;
   isStaff: boolean;
   ownerId: string | null;
+  /** Với staff: id khu vực mặc định (area.name khớp username). FE sẽ lock filter.area_id vào giá trị này. */
+  defaultAreaId: string | null;
 }
 
 export const useMyContext = () => {
@@ -21,19 +23,20 @@ export const useMyContext = () => {
     queryKey: ['my-context'],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { isSuper: false, isStaff: false, ownerId: null };
+      if (!user) return { isSuper: false, isStaff: false, ownerId: null, defaultAreaId: null };
 
       // RLS của staff_assignments chỉ cho owner đọc — dùng RPC SECURITY DEFINER
       // để staff thấy được context của chính mình.
       const { data, error } = await (supabase.rpc as any)('get_my_context');
       if (error || !data) {
-        return { isSuper: false, isStaff: false, ownerId: user.id };
+        return { isSuper: false, isStaff: false, ownerId: user.id, defaultAreaId: null };
       }
       const result = Array.isArray(data) ? data[0] : data;
       return {
         isSuper: !!result?.is_super,
         isStaff: !!result?.is_staff,
         ownerId: result?.owner_id ?? user.id,
+        defaultAreaId: result?.default_area_id ?? null,
       };
     },
     staleTime: 5 * 60 * 1000,
