@@ -4,7 +4,6 @@ import {
   JobPriority,
   JobWithRelations,
   TaskFilters,
-  JOB_STATUSES,
   VALID_TRANSITIONS,
   STATUS_LABELS,
   PRIORITY_LABELS,
@@ -28,21 +27,14 @@ export const jobCreateSchema = z.object({
 
 export type JobCreateFormValues = z.infer<typeof jobCreateSchema>;
 
-export const jobCompleteSchema = z.object({
-  completion_time: z.string().min(1, 'Thời gian hoàn thành không được để trống'),
+export const jobEditSchema = jobCreateSchema;
+export type JobEditFormValues = z.infer<typeof jobEditSchema>;
+
+export const jobNotesSchema = z.object({
   completion_description: z.string().optional().nullable(),
-  completion_attachments: z.array(z.string().url()).optional().nullable(),
 });
 
-export type JobCompleteFormValues = z.infer<typeof jobCompleteSchema>;
-
-export const jobAcceptanceSchema = z.object({
-  acceptance_result: z.string().optional().nullable(),
-  customer_evaluation: z.string().optional().nullable(),
-  customer_comments: z.string().optional().nullable(),
-});
-
-export type JobAcceptanceFormValues = z.infer<typeof jobAcceptanceSchema>;
+export type JobNotesFormValues = z.infer<typeof jobNotesSchema>;
 
 // ─── Pure Helper Functions ─────────────────────────────────────
 
@@ -52,12 +44,10 @@ export function isValidTransition(from: JobStatus, to: JobStatus): boolean {
 
 export function getAvailableActions(status: JobStatus): string[] {
   switch (status) {
-    case 'NOT_STARTED':
-      return ['accept'];
     case 'IN_PROGRESS':
-      return ['complete'];
-    case 'PENDING_ACCEPTANCE':
-      return ['review'];
+      return ['complete', 'edit'];
+    case 'COMPLETED':
+      return ['notes'];
     default:
       return [];
   }
@@ -65,12 +55,8 @@ export function getAvailableActions(status: JobStatus): string[] {
 
 export function computeTaskStats(jobs: JobWithRelations[]): Record<JobStatus, number> {
   const stats: Record<JobStatus, number> = {
-    NOT_STARTED: 0,
     IN_PROGRESS: 0,
-    PENDING_ACCEPTANCE: 0,
-    ACCEPTED: 0,
-    FAILED: 0,
-    OVERDUE: 0,
+    COMPLETED: 0,
   };
   for (const job of jobs) {
     if (job.status in stats) {
@@ -108,7 +94,7 @@ export function paginateJobs(
 
 export function isOverdue(job: { deadline: string | null; status: string }): boolean {
   if (!job.deadline) return false;
-  if (job.status === 'ACCEPTED') return false;
+  if (job.status === 'COMPLETED') return false;
   return new Date(job.deadline) < new Date();
 }
 
@@ -118,12 +104,8 @@ export function getStatusLabel(status: JobStatus): string {
 
 export function getStatusColor(status: JobStatus): string {
   const colors: Record<JobStatus, string> = {
-    NOT_STARTED: 'bg-gray-100 text-gray-700',
     IN_PROGRESS: 'bg-blue-100 text-blue-700',
-    PENDING_ACCEPTANCE: 'bg-yellow-100 text-yellow-700',
-    ACCEPTED: 'bg-green-100 text-green-700',
-    FAILED: 'bg-red-100 text-red-700',
-    OVERDUE: 'bg-orange-100 text-orange-700',
+    COMPLETED: 'bg-green-100 text-green-700',
   };
   return colors[status];
 }

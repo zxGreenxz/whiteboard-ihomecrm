@@ -13,17 +13,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useJobs, useUpdateJobStatus, useDeleteJob } from "@/hooks/useJobs";
+import { useJobs, useCompleteJob, useDeleteJob } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { usePagination } from "@/hooks/usePagination";
-import { filterJobs, paginateJobs } from "@/lib/jobValidation";
+import { paginateJobs } from "@/lib/jobValidation";
 import { TaskStatusStats } from "@/components/tasks/TaskStatusStats";
 import { TaskFiltersPanel } from "@/components/tasks/TaskFiltersPanel";
 import TaskTable from "@/components/tasks/TaskTable";
 import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
 import TaskDetailDialog from "@/components/tasks/TaskDetailDialog";
-import TaskCompleteDialog from "@/components/tasks/TaskCompleteDialog";
-import TaskAcceptanceDialog from "@/components/tasks/TaskAcceptanceDialog";
+import TaskEditDialog from "@/components/tasks/TaskEditDialog";
+import TaskNotesDialog from "@/components/tasks/TaskNotesDialog";
 import type { TaskFilters, JobWithRelations } from "@/types/jobs";
 import { defaultTaskFilters } from "@/types/jobs";
 
@@ -40,14 +40,15 @@ export default function TaskManagementPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobWithRelations | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isCompleteOpen, setIsCompleteOpen] = useState(false);
-  const [isAcceptanceOpen, setIsAcceptanceOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [completeTarget, setCompleteTarget] = useState<JobWithRelations | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const pagination = usePagination(20);
 
   // Data hooks
   const { data: allJobs = [], isLoading } = useJobs(appliedFilters);
-  const updateJobStatus = useUpdateJobStatus();
+  const completeJob = useCompleteJob();
   const deleteJob = useDeleteJob();
 
   // Tab filter — Resident pattern
@@ -98,31 +99,31 @@ export default function TaskManagementPage() {
     setIsDetailOpen(true);
   };
 
-  const handleAcceptTask = () => {
-    if (!selectedJob) return;
-    updateJobStatus.mutate(
-      {
-        id: selectedJob.id,
-        status: "IN_PROGRESS",
-        extraData: { started_at: new Date().toISOString() },
+  const handleRequestComplete = (job: JobWithRelations) => {
+    setCompleteTarget(job);
+  };
+
+  const handleConfirmComplete = () => {
+    if (!completeTarget) return;
+    completeJob.mutate(completeTarget.id, {
+      onSuccess: () => {
+        setCompleteTarget(null);
+        setIsDetailOpen(false);
+        setSelectedJob(null);
       },
-      {
-        onSuccess: () => {
-          setIsDetailOpen(false);
-          setSelectedJob(null);
-        },
-      }
-    );
+    });
   };
 
-  const handleCompleteTask = () => {
+  const handleEdit = (job: JobWithRelations) => {
+    setSelectedJob(job);
     setIsDetailOpen(false);
-    setIsCompleteOpen(true);
+    setIsEditOpen(true);
   };
 
-  const handleReviewTask = () => {
+  const handleAddNotes = (job: JobWithRelations) => {
+    setSelectedJob(job);
     setIsDetailOpen(false);
-    setIsAcceptanceOpen(true);
+    setIsNotesOpen(true);
   };
 
   const handleDelete = (id: string) => {
@@ -245,6 +246,9 @@ export default function TaskManagementPage() {
         data={paginatedData}
         isLoading={isLoading}
         onViewDetail={handleViewDetail}
+        onComplete={handleRequestComplete}
+        onEdit={handleEdit}
+        onAddNotes={handleAddNotes}
         onDelete={handleDelete}
         pagination={{
           page: pagination.page,
@@ -270,32 +274,69 @@ export default function TaskManagementPage() {
           if (!open) setSelectedJob(null);
         }}
         job={selectedJob}
-        onAcceptTask={handleAcceptTask}
-        onCompleteTask={handleCompleteTask}
-        onReviewTask={handleReviewTask}
+        onComplete={() => {
+          if (selectedJob) handleRequestComplete(selectedJob);
+        }}
+        onEdit={() => {
+          if (selectedJob) handleEdit(selectedJob);
+        }}
+        onAddNotes={() => {
+          if (selectedJob) handleAddNotes(selectedJob);
+        }}
       />
 
-      {/* Complete Dialog */}
-      <TaskCompleteDialog
-        open={isCompleteOpen}
-        onOpenChange={setIsCompleteOpen}
-        jobId={selectedJob?.id ?? ""}
+      {/* Edit Dialog */}
+      <TaskEditDialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open);
+          if (!open) setSelectedJob(null);
+        }}
+        job={selectedJob}
         onSuccess={() => {
-          setIsCompleteOpen(false);
+          setIsEditOpen(false);
           setSelectedJob(null);
         }}
       />
 
-      {/* Acceptance Dialog */}
-      <TaskAcceptanceDialog
-        open={isAcceptanceOpen}
-        onOpenChange={setIsAcceptanceOpen}
-        jobId={selectedJob?.id ?? ""}
+      {/* Notes Dialog */}
+      <TaskNotesDialog
+        open={isNotesOpen}
+        onOpenChange={(open) => {
+          setIsNotesOpen(open);
+          if (!open) setSelectedJob(null);
+        }}
+        job={selectedJob}
         onSuccess={() => {
-          setIsAcceptanceOpen(false);
+          setIsNotesOpen(false);
           setSelectedJob(null);
         }}
       />
+
+      {/* Complete Confirmation Dialog */}
+      <AlertDialog
+        open={!!completeTarget}
+        onOpenChange={(open) => !open && setCompleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận hoàn thành</AlertDialogTitle>
+            <AlertDialogDescription>
+              Đánh dấu công việc {completeTarget?.code} là đã hoàn thành?
+              Thời gian hoàn thành sẽ được ghi nhận ngay bây giờ.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmComplete}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              Hoàn thành
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

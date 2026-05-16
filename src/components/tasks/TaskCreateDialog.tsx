@@ -142,6 +142,8 @@ export default function TaskCreateDialog({
         deadline: parsed.deadline.toISOString(),
         visible_to_customer: false,
         attachments: attachments.length ? attachments : null,
+        status: "IN_PROGRESS",
+        started_at: new Date().toISOString(),
       });
       onOpenChange(false);
       onSuccess();

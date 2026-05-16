@@ -1,5 +1,5 @@
 // Job status enum
-export const JOB_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'PENDING_ACCEPTANCE', 'ACCEPTED', 'FAILED', 'OVERDUE'] as const;
+export const JOB_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const;
 export type JobStatus = typeof JOB_STATUSES[number];
 
 // Job priority enum
@@ -8,12 +8,8 @@ export type JobPriority = typeof JOB_PRIORITIES[number];
 
 // Status labels (Vietnamese)
 export const STATUS_LABELS: Record<JobStatus, string> = {
-  NOT_STARTED: 'Chưa làm',
   IN_PROGRESS: 'Đang làm',
-  PENDING_ACCEPTANCE: 'Chờ nghiệm thu',
-  ACCEPTED: 'Đã nghiệm thu',
-  FAILED: 'Không đạt',
-  OVERDUE: 'Quá hạn',
+  COMPLETED: 'Hoàn thành',
 };
 
 // Priority labels (Vietnamese)
@@ -25,12 +21,8 @@ export const PRIORITY_LABELS: Record<JobPriority, string> = {
 
 // Valid status transitions
 export const VALID_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
-  NOT_STARTED: ['IN_PROGRESS'],
-  IN_PROGRESS: ['PENDING_ACCEPTANCE'],
-  PENDING_ACCEPTANCE: ['ACCEPTED', 'FAILED'],
-  ACCEPTED: [],
-  FAILED: [],
-  OVERDUE: [],
+  IN_PROGRESS: ['COMPLETED'],
+  COMPLETED: [],
 };
 
 // Job row from database
@@ -53,10 +45,6 @@ export interface Job {
   completion_time: string | null;
   completion_description: string | null;
   completion_attachments: string[] | null;
-  acceptance_result: string | null;
-  customer_evaluation: string | null;
-  customer_comments: string | null;
-  accepted_at: string | null;
   started_at: string | null;
   created_at: string;
   updated_at: string;

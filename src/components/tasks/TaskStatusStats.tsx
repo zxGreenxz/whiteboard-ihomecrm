@@ -1,22 +1,10 @@
-import {
-  Circle,
-  Clock,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  type LucideIcon,
-} from 'lucide-react';
+import { Clock, CheckCircle, type LucideIcon } from 'lucide-react';
 import { JobWithRelations, JOB_STATUSES, STATUS_LABELS, type JobStatus } from '@/types/jobs';
 import { computeTaskStats, getStatusColor } from '@/lib/jobValidation';
 
 const STATUS_ICONS: Record<JobStatus, LucideIcon> = {
-  NOT_STARTED: Circle,
   IN_PROGRESS: Clock,
-  PENDING_ACCEPTANCE: AlertCircle,
-  ACCEPTED: CheckCircle,
-  FAILED: XCircle,
-  OVERDUE: AlertTriangle,
+  COMPLETED: CheckCircle,
 };
 
 interface TaskStatusStatsProps {
@@ -27,7 +15,7 @@ export function TaskStatusStats({ jobs }: TaskStatusStatsProps) {
   const stats = computeTaskStats(jobs);
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 gap-4">
       {JOB_STATUSES.map((status) => {
         const Icon = STATUS_ICONS[status];
         const colorClass = getStatusColor(status);

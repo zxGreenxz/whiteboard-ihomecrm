@@ -127,6 +127,67 @@ export const useUpdateJobStatus = () => {
   });
 };
 
+export const useUpdateJob = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, any> }) => {
+      const { data, error } = await supabase
+        .from("jobs")
+        .update(patch)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) {
+        toast.error("Không thể cập nhật công việc");
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+    },
+    onError: (error) => {
+      console.error("Error updating job:", error);
+    },
+  });
+};
+
+export const useCompleteJob = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase
+        .from("jobs")
+        .update({
+          status: "COMPLETED",
+          completion_time: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) {
+        toast.error("Không thể hoàn thành công việc");
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      toast.success("Công việc đã hoàn thành");
+    },
+    onError: (error) => {
+      console.error("Error completing job:", error);
+    },
+  });
+};
+
 export const useDeleteJob = () => {
   const queryClient = useQueryClient();
 

@@ -1,6 +1,6 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Eye, Trash2, ClipboardList } from "lucide-react";
+import { Eye, Trash2, ClipboardList, CheckCircle2, Pencil, MessageSquarePlus } from "lucide-react";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { calculatePaginationInfo } from "@/hooks/usePagination";
 import { format } from "date-fns";
@@ -11,6 +11,9 @@ interface TaskTableProps {
   data: JobWithRelations[];
   isLoading: boolean;
   onViewDetail: (job: JobWithRelations) => void;
+  onComplete: (job: JobWithRelations) => void;
+  onEdit: (job: JobWithRelations) => void;
+  onAddNotes: (job: JobWithRelations) => void;
   onDelete: (id: string) => void;
   pagination: {
     page: number;
@@ -34,6 +37,9 @@ export default function TaskTable({
   data,
   isLoading,
   onViewDetail,
+  onComplete,
+  onEdit,
+  onAddNotes,
   onDelete,
   pagination,
   totalCount,
@@ -47,7 +53,7 @@ export default function TaskTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-[120px]">Mã</TableHead>
-              <TableHead className="w-[110px]">Thao tác</TableHead>
+              <TableHead className="w-[180px]">Thao tác</TableHead>
               <TableHead>Công việc</TableHead>
               <TableHead className="w-[140px]">Vị trí</TableHead>
               <TableHead className="w-[160px]">Loại công việc</TableHead>
@@ -94,6 +100,39 @@ export default function TaskTable({
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
+                      {job.status === "IN_PROGRESS" && (
+                        <>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => onComplete(job)}
+                            title="Hoàn thành"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                            onClick={() => onEdit(job)}
+                            title="Sửa phiếu"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      {job.status === "COMPLETED" && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => onAddNotes(job)}
+                          title="Ghi chú đánh giá"
+                        >
+                          <MessageSquarePlus className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         size="icon"
                         variant="ghost"
