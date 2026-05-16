@@ -23,18 +23,29 @@ import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   useCreateAccount,
   useUpdateAccount,
   type AccountFormValues,
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useStaffUsers } from "@/hooks/useStaffUsers";
+import { useAuth } from "@/hooks/useAuth";
 
 const schema = z.object({
   name: z.string().min(1, "Tên sổ quỹ bắt buộc").max(120),
   initial_amount: z.coerce.number().min(0, "Số dư đầu kỳ không âm"),
   initial_date: z.string().min(1, "Ngày chốt đầu kỳ bắt buộc"),
   description: z.string().nullable().optional(),
+  user_id: z.string().min(1, "Người phụ trách bắt buộc"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -52,6 +63,9 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const createMut = useCreateAccount();
   const updateMut = useUpdateAccount();
   const isMobile = useIsMobile();
+  const { data: isAdmin } = useIsAdmin();
+  const { data: currentUser } = useAuth();
+  const { data: staffUsers } = useStaffUsers();
 
   const defaults = useMemo<FormValues>(
     () => ({
@@ -59,8 +73,9 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       initial_amount: Number(account?.initial_amount ?? 0),
       initial_date: account?.initial_date?.slice(0, 10) ?? todayISO(),
       description: account?.description ?? "",
+      user_id: account?.user_id ?? currentUser?.id ?? "",
     }),
-    [account]
+    [account, currentUser?.id]
   );
 
   const form = useForm<FormValues>({
@@ -78,6 +93,9 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       initial_amount: values.initial_amount,
       initial_date: values.initial_date,
       description: values.description || null,
+      // Chỉ admin mới được set/đổi người phụ trách. Non-admin gửi cũng vô hại
+      // vì RLS chặn đổi user_id sang user khác (admin_all bypass cho admin).
+      user_id: isAdmin ? values.user_id : undefined,
     };
 
     if (isEditing && account) {
@@ -125,6 +143,38 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                 </FormItem>
               )}
             />
+
+            {isAdmin && (
+              <FormField
+                control={form.control}
+                name="user_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Người phụ trách <span className="text-red-500">*</span>
+                    </FormLabel>
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn người phụ trách" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {(staffUsers ?? []).map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.full_name || u.email || u.id.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <FormField

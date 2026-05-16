@@ -83,6 +83,7 @@ const CashbookList = ({
             <TableHead className="w-[120px]">Mã</TableHead>
             <TableHead className="w-[140px]">Thao tác</TableHead>
             <TableHead>Tên sổ quỹ</TableHead>
+            <TableHead className="w-[160px]">Phụ trách</TableHead>
             <TableHead className="text-right">Số dư đầu kỳ</TableHead>
             <TableHead className="text-right">Tồn quỹ</TableHead>
             <TableHead>Ghi chú</TableHead>
@@ -159,6 +160,9 @@ const CashbookList = ({
                   </div>
                 </TableCell>
                 <TableCell className="font-medium">{acc.name}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {acc.owner_name || "—"}
+                </TableCell>
                 <TableCell className="text-right">
                   {formatVND(Number(acc.initial_amount))}
                 </TableCell>

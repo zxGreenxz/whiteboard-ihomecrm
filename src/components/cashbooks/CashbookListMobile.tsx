@@ -83,8 +83,9 @@ export function CashbookListMobile({
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-[11px] text-muted-foreground truncate">
                       {acc.code}
+                      {acc.owner_name ? ` · ${acc.owner_name}` : ""}
                     </div>
                   </div>
                 </div>

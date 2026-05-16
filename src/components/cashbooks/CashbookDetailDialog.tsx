@@ -86,6 +86,7 @@ export function CashbookDetailDialog({
         <div className="flex-1 overflow-y-auto px-3 py-4">
           <div className="bg-zinc-100/70 rounded-2xl p-4">
             <Row label="Tên sổ quỹ:" value={account.name} />
+            <Row label="Phụ trách:" value={account.owner_name || "—"} />
             <Row
               label="Ngày chốt số dư đầu kỳ:"
               value={

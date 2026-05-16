@@ -24,6 +24,7 @@ export interface Account {
 
 export interface AccountWithBalance extends Account {
   current_amount: number;      // tồn quỹ
+  owner_name?: string | null;  // full_name của user phụ trách (JS-merged từ profiles)
 }
 
 export interface AccountFormValues {
@@ -32,6 +33,9 @@ export interface AccountFormValues {
   initial_amount: number;
   initial_date: string;
   is_default?: boolean;
+  /** ID của user phụ trách (= accounts.user_id). Chỉ admin mới được đổi.
+   *  Khi undefined → giữ nguyên (update) hoặc auto = auth.uid() (create). */
+  user_id?: string;
 }
 
 // --- Query: select-list (dùng trong filter & form thu chi) ---
@@ -96,10 +100,27 @@ export const useAccountsWithBalance = (params?: {
       }
 
       const rows = (data || []) as any[];
+
+      // JS-merge owner profile (full_name) cho cột "Phụ trách".
+      const userIds = Array.from(
+        new Set(rows.map((r) => r.user_id).filter(Boolean))
+      ) as string[];
+      const ownerById = new Map<string, { full_name: string | null }>();
+      if (userIds.length > 0) {
+        const { data: profiles } = await (supabase
+          .from("profiles")
+          .select("id, full_name" as any) as any)
+          .in("id", userIds);
+        for (const p of ((profiles as any[]) || [])) {
+          ownerById.set(p.id, { full_name: p.full_name ?? null });
+        }
+      }
+
       const mapped: AccountWithBalance[] = rows.map((r) => ({
         ...r,
         initial_amount: Number(r.initial_amount) || 0,
         current_amount: Number(r.current_amount) || 0,
+        owner_name: ownerById.get(r.user_id)?.full_name ?? null,
       }));
 
       return { data: mapped, totalCount: count ?? 0 };
@@ -117,7 +138,7 @@ export const useCreateAccount = () => {
       if (!authData.user) throw new Error("User not authenticated");
 
       const payload: any = {
-        user_id: authData.user.id,
+        user_id: values.user_id || authData.user.id,
         name: values.name,
         description: values.description ?? null,
         initial_amount: values.initial_amount,
@@ -149,15 +170,20 @@ export const useUpdateAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; values: AccountFormValues }) => {
+      const patch: any = {
+        name: input.values.name,
+        description: input.values.description ?? null,
+        initial_amount: input.values.initial_amount,
+        initial_date: input.values.initial_date,
+        is_default: input.values.is_default ?? false,
+      };
+      // Chỉ gán user_id khi form thực sự đẩy lên (admin đổi người phụ trách).
+      // Non-admin không gửi field này → giữ nguyên user_id cũ.
+      if (input.values.user_id) patch.user_id = input.values.user_id;
+
       const { data, error } = await supabase
         .from("accounts" as any)
-        .update({
-          name: input.values.name,
-          description: input.values.description ?? null,
-          initial_amount: input.values.initial_amount,
-          initial_date: input.values.initial_date,
-          is_default: input.values.is_default ?? false,
-        })
+        .update(patch)
         .eq("id", input.id)
         .select("id");
 
