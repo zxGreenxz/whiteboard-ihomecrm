@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Pencil, Trash2, FileText } from 'lucide-react';
+import { Copy, Pencil, Trash2, FileText, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -141,9 +141,18 @@ export default function CustomerDetailModal({
                     <span className="text-muted-foreground">Họ tên:</span>{' '}
                     <span className="font-medium">{customer.full_name}</span>
                   </div>
-                  <div>
+                  <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">SĐT:</span>{' '}
                     <span className="font-medium">{customer.phone}</span>
+                    {customer.phone && (
+                      <a
+                        href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-50 text-green-600 hover:bg-green-100"
+                        aria-label="Gọi khách hàng"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                      </a>
+                    )}
                   </div>
                   <div>
                     <span className="text-muted-foreground">Email:</span>{' '}

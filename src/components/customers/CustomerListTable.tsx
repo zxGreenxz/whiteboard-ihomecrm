@@ -1,4 +1,4 @@
-import { Eye, Pencil, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Trash2, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -43,6 +43,10 @@ function AvatarInitial({ name }: { name: string }) {
   );
 }
 
+function normalizePhoneForTel(phone: string): string {
+  return phone.replace(/[^\d+]/g, '');
+}
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '';
   try {
@@ -81,13 +85,12 @@ export default function CustomerListTable({
             <TableHead className="w-10">
               <Checkbox disabled />
             </TableHead>
-            <TableHead className="w-24">Mã KH</TableHead>
-            <TableHead className="w-28">Thao tác</TableHead>
             <TableHead>Khách hàng</TableHead>
             <TableHead>Căn hộ đang ở</TableHead>
             <TableHead>CMND/CCCD/Hộ chiếu</TableHead>
             <TableHead>Ngày sinh</TableHead>
             <TableHead>Địa chỉ</TableHead>
+            <TableHead className="w-28">Thao tác</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -96,8 +99,60 @@ export default function CustomerListTable({
               <TableCell>
                 <Checkbox />
               </TableCell>
-              <TableCell className="text-xs text-muted-foreground font-mono">
-                {customer.id.slice(0, 8).toUpperCase()}
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onView(customer)}
+                    className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Xem chi tiết ${customer.full_name}`}
+                  >
+                    {customer.avatar_url ? (
+                      <img
+                        src={customer.avatar_url}
+                        alt={customer.full_name}
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <AvatarInitial name={customer.full_name} />
+                    )}
+                  </button>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{customer.full_name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                      {customer.phone && (
+                        <a
+                          href={`tel:${normalizePhoneForTel(customer.phone)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="md:hidden inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-50 text-green-600 active:bg-green-100"
+                          aria-label={`Gọi ${customer.full_name}`}
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell className="text-sm">
+                {(customer as any).current_building_name ? (
+                  <div className="flex flex-col leading-tight">
+                    <span>{(customer as any).current_building_name}</span>
+                    {(customer as any).current_room_name && (
+                      <span className="text-xs text-muted-foreground">
+                        Phòng {(customer as any).current_room_name}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  '—'
+                )}
+              </TableCell>
+              <TableCell className="text-sm">{customer.id_number || '—'}</TableCell>
+              <TableCell className="text-sm">{formatDate(customer.date_of_birth) || '—'}</TableCell>
+              <TableCell className="text-sm max-w-[200px] truncate">
+                {customer.detailed_address || customer.permanent_address || '—'}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">
@@ -126,42 +181,6 @@ export default function CustomerListTable({
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  {customer.avatar_url ? (
-                    <img
-                      src={customer.avatar_url}
-                      alt={customer.full_name}
-                      className="h-8 w-8 rounded-full object-cover"
-                    />
-                  ) : (
-                    <AvatarInitial name={customer.full_name} />
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">{customer.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell className="text-sm">
-                {(customer as any).current_building_name ? (
-                  <div className="flex flex-col leading-tight">
-                    <span>{(customer as any).current_building_name}</span>
-                    {(customer as any).current_room_name && (
-                      <span className="text-xs text-muted-foreground">
-                        Phòng {(customer as any).current_room_name}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  '—'
-                )}
-              </TableCell>
-              <TableCell className="text-sm">{customer.id_number || '—'}</TableCell>
-              <TableCell className="text-sm">{formatDate(customer.date_of_birth) || '—'}</TableCell>
-              <TableCell className="text-sm max-w-[200px] truncate">
-                {customer.detailed_address || customer.permanent_address || '—'}
               </TableCell>
             </TableRow>
           ))}

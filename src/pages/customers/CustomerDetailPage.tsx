@@ -211,7 +211,7 @@ export default function CustomerDetailPage() {
             <CardContent>
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <Field icon={User} label="Họ tên" value={customer.full_name} />
-                <Field icon={Phone} label="SĐT" value={customer.phone} />
+                <PhoneField label="SĐT" value={customer.phone} />
                 <Field icon={Mail} label="Email" value={customer.email} />
                 <Field
                   icon={CreditCard}
@@ -476,6 +476,30 @@ function Field({ icon: Icon, label, value }: FieldProps) {
         {label}
       </div>
       <div className="font-medium">{value || '—'}</div>
+    </div>
+  );
+}
+
+function PhoneField({ label, value }: { label: string; value: string | null | undefined }) {
+  const tel = value ? value.replace(/[^\d+]/g, '') : '';
+  return (
+    <div>
+      <div className="text-gray-600 flex items-center gap-1 text-xs">
+        <Phone className="h-3 w-3" />
+        {label}
+      </div>
+      <div className="font-medium flex items-center gap-1.5">
+        <span>{value || '—'}</span>
+        {value && (
+          <a
+            href={`tel:${tel}`}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-50 text-green-600 hover:bg-green-100"
+            aria-label="Gọi khách hàng"
+          >
+            <Phone className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
     </div>
   );
 }

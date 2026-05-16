@@ -1,4 +1,4 @@
-import { Users, User, Building2, Globe } from 'lucide-react';
+import { Users, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CustomerStats, StatFilterType } from '@/types/customer';
 
@@ -25,22 +25,6 @@ const STAT_CARDS: {
     statKey: 'total',
   },
   {
-    key: 'INDIVIDUAL',
-    label: 'Cá nhân',
-    icon: User,
-    iconColor: 'text-green-600',
-    bgColor: 'bg-green-50',
-    statKey: 'individual',
-  },
-  {
-    key: 'ORGANIZATION',
-    label: 'Doanh nghiệp',
-    icon: Building2,
-    iconColor: 'text-orange-500',
-    bgColor: 'bg-orange-50',
-    statKey: 'organization',
-  },
-  {
     key: 'FOREIGN',
     label: 'Khách nước ngoài',
     icon: Globe,
@@ -56,7 +40,7 @@ export default function CustomerStatsCards({
   onFilterChange,
 }: CustomerStatsCardsProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-4">
       {STAT_CARDS.map((card) => {
         const Icon = card.icon;
         const isActive = activeFilter === card.key;

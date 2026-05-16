@@ -7,7 +7,6 @@ import {
 } from '@/components/ui/select';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useBeds } from '@/hooks/useBeds';
 import type { CustomerFilters } from '@/types/customer';
 
 interface CustomerListFiltersProps {
@@ -21,7 +20,6 @@ export default function CustomerListFilters({
 }: CustomerListFiltersProps) {
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(filters.building_id);
-  const { data: beds = [] } = useBeds(filters.room_id);
 
   // Extract unique areas from buildings
   const areas = Array.from(
@@ -64,28 +62,23 @@ export default function CustomerListFilters({
     });
   };
 
-  const handleBedChange = (value: string) => {
-    onFiltersChange({
-      ...filters,
-      bed_id: value || undefined,
-    });
-  };
-
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {/* Area */}
-      <Select value={filters.area_id || ''} onValueChange={handleAreaChange}>
-        <SelectTrigger>
-          <SelectValue placeholder="Chọn khu vực" />
-        </SelectTrigger>
-        <SelectContent>
-          {areas.map((a: any) => (
-            <SelectItem key={a.id} value={a.id}>
-              {a.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {/* Area — desktop only */}
+      <div className="hidden md:block">
+        <Select value={filters.area_id || ''} onValueChange={handleAreaChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Chọn khu vực" />
+          </SelectTrigger>
+          <SelectContent>
+            {areas.map((a: any) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Building */}
       <Select value={filters.building_id || ''} onValueChange={handleBuildingChange}>
@@ -114,24 +107,6 @@ export default function CustomerListFilters({
           {rooms.map((r: any) => (
             <SelectItem key={r.id} value={r.id}>
               {r.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Bed */}
-      <Select
-        value={filters.bed_id || ''}
-        onValueChange={handleBedChange}
-        disabled={!filters.room_id}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Chọn giường" />
-        </SelectTrigger>
-        <SelectContent>
-          {beds.map((bed: any) => (
-            <SelectItem key={bed.id} value={bed.id}>
-              {bed.name}
             </SelectItem>
           ))}
         </SelectContent>
