@@ -51,10 +51,10 @@ export default function ContractListFilters({
   rooms,
 }: ContractListFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-3">
       {/* Trạng thái hợp đồng */}
       <Select value={lifecycleFilter} onValueChange={(val) => onLifecycleChange(val as ContractLifecycleFilter)}>
-        <SelectTrigger className="w-[160px]">
+        <SelectTrigger className="md:w-[160px]">
           <SelectValue placeholder="Trạng thái" />
         </SelectTrigger>
         <SelectContent>
@@ -64,27 +64,29 @@ export default function ContractListFilters({
         </SelectContent>
       </Select>
 
-      {/* Khu vực */}
-      <Select
-        value={areaFilter}
-        onValueChange={(val) => {
-          onAreaChange(val);
-          onBuildingChange('all');
-          onRoomChange('all');
-        }}
-      >
-        <SelectTrigger className="w-[160px]">
-          <SelectValue placeholder="Chọn khu vực" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả khu vực</SelectItem>
-          {areas.map((area) => (
-            <SelectItem key={area.id} value={area.id}>
-              {area.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {/* Khu vực — desktop only */}
+      <div className="hidden md:block">
+        <Select
+          value={areaFilter}
+          onValueChange={(val) => {
+            onAreaChange(val);
+            onBuildingChange('all');
+            onRoomChange('all');
+          }}
+        >
+          <SelectTrigger className="md:w-[160px]">
+            <SelectValue placeholder="Chọn khu vực" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tất cả khu vực</SelectItem>
+            {areas.map((area) => (
+              <SelectItem key={area.id} value={area.id}>
+                {area.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Toà nhà */}
       <Select
@@ -94,7 +96,7 @@ export default function ContractListFilters({
           onRoomChange('all');
         }}
       >
-        <SelectTrigger className="w-[160px]">
+        <SelectTrigger className="md:w-[160px]">
           <SelectValue placeholder="Chọn toà nhà" />
         </SelectTrigger>
         <SelectContent>
@@ -109,7 +111,7 @@ export default function ContractListFilters({
 
       {/* Phòng */}
       <Select value={roomFilter} onValueChange={onRoomChange}>
-        <SelectTrigger className="w-[160px]">
+        <SelectTrigger className="md:w-[160px]">
           <SelectValue placeholder="Chọn phòng" />
         </SelectTrigger>
         <SelectContent>
@@ -122,12 +124,12 @@ export default function ContractListFilters({
         </SelectContent>
       </Select>
 
-      {/* Chọn tháng */}
+      {/* Chọn tháng — desktop only */}
       <Input
         type="month"
         value={monthFilter}
         onChange={(e) => onMonthChange(e.target.value)}
-        className="w-[160px]"
+        className="hidden md:flex md:w-[160px]"
         placeholder="Chọn tháng"
       />
     </div>

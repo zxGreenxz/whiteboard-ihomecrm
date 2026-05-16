@@ -34,6 +34,7 @@ import {
   ChevronRight,
   Eye,
   QrCode,
+  Phone,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { ContractWithRelations } from '@/types/contract';
@@ -79,6 +80,13 @@ function getRepresentativeCustomerName(contract: ContractWithRelations): string 
   if (rep?.customer?.full_name) return rep.customer.full_name;
   const first = contract.contract_customers?.[0];
   return first?.customer?.full_name || '-';
+}
+
+function getRepresentativeCustomerPhone(contract: ContractWithRelations): string {
+  const rep = contract.contract_customers?.find((cc) => cc.is_representative);
+  if (rep?.customer?.phone) return rep.customer.phone;
+  const first = contract.contract_customers?.[0];
+  return first?.customer?.phone || '';
 }
 
 function getLocationText(contract: ContractWithRelations): { buildingCode: string; roomName: string } {
@@ -169,9 +177,7 @@ export default function ContractListTable({
                   aria-label="Chọn tất cả"
                 />
               </TableHead>
-              <TableHead>Mã HĐ</TableHead>
-              <TableHead>Trạng thái</TableHead>
-              <TableHead className="w-[140px]">Thao tác</TableHead>
+              <TableHead className="hidden md:table-cell">Trạng thái</TableHead>
               <TableHead>Vị trí</TableHead>
               <TableHead>Khách hàng</TableHead>
               <TableHead className="text-right">Giá thuê</TableHead>
@@ -179,12 +185,13 @@ export default function ContractListTable({
               <TableHead>Ngày BĐ</TableHead>
               <TableHead>Ngày KT</TableHead>
               <TableHead>Người tạo</TableHead>
+              <TableHead className="hidden md:table-cell w-[140px]">Thao tác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {contracts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   Không có hợp đồng nào
                 </TableCell>
               </TableRow>
@@ -193,6 +200,8 @@ export default function ContractListTable({
                 const displayStatus = getContractDisplayStatus(contract);
                 const statusConfig = CONTRACT_STATUS_CONFIG[displayStatus];
                 const actions = getActionButtonStates(contract);
+                const customerName = getRepresentativeCustomerName(contract);
+                const customerPhone = getRepresentativeCustomerPhone(contract);
 
                 return (
                   <TableRow key={contract.id}>
@@ -205,44 +214,42 @@ export default function ContractListTable({
                         aria-label={`Chọn hợp đồng ${contract.contract_number || contract.id}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">
-                      <Link
-                        to={`/contracts/${contract.id}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                      >
-                        {contract.contract_number || contract.id.slice(0, 8)}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <span
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusConfig.color}`}
                       >
                         {statusConfig.label}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <ActionButtons
-                        contract={contract}
-                        actions={actions}
-                        onEdit={onEdit}
-                        onRenew={onRenew}
-                        onTransferRoom={onTransferRoom}
-                        onMoveOut={onMoveOut}
-                        onTransferContract={onTransferContract}
-                        onTerminate={onTerminate}
-                        onDelete={onDelete}
-                        onPrint={onPrint}
-                        onShowQR={onShowQR}
-                      />
-                    </TableCell>
                     <TableCell className="text-sm">
-                      <div>
+                      <Link
+                        to={`/contracts/${contract.id}`}
+                        className="block hover:underline"
+                      >
                         <div className="font-medium">{getLocationText(contract).buildingCode}</div>
                         <div className="text-muted-foreground text-xs">{getLocationText(contract).roomName}</div>
-                      </div>
+                      </Link>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {getRepresentativeCustomerName(contract)}
+                      <Link
+                        to={`/contracts/${contract.id}`}
+                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {customerName}
+                      </Link>
+                      {customerPhone && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">{customerPhone}</span>
+                          <a
+                            href={`tel:${customerPhone.replace(/[^\d+]/g, '')}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="md:hidden inline-flex h-6 w-6 items-center justify-center rounded-full bg-green-50 text-green-600 active:bg-green-100"
+                            aria-label={`Gọi ${customerName}`}
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatVND(contract.rent_price)}
@@ -258,6 +265,21 @@ export default function ContractListTable({
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       -
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <ActionButtons
+                        contract={contract}
+                        actions={actions}
+                        onEdit={onEdit}
+                        onRenew={onRenew}
+                        onTransferRoom={onTransferRoom}
+                        onMoveOut={onMoveOut}
+                        onTransferContract={onTransferContract}
+                        onTerminate={onTerminate}
+                        onDelete={onDelete}
+                        onPrint={onPrint}
+                        onShowQR={onShowQR}
+                      />
                     </TableCell>
                   </TableRow>
                 );

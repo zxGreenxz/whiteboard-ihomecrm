@@ -44,6 +44,9 @@ import {
   History,
   Settings,
   ExternalLink,
+  Pencil,
+  ArrowRightLeft,
+  Trash2,
 } from 'lucide-react';
 import { useContract, ContractWithRelations } from '@/hooks/useContracts';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
@@ -56,9 +59,13 @@ import { supabase } from '@/integrations/supabase/client';
 // Import contract action dialogs
 import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
+import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
+import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
+import { PrintContractDialog } from '@/components/contracts/PrintContractDialog';
+import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 
 // Types for contract services and history
 interface ContractService {
@@ -89,9 +96,13 @@ const ContractDetailPage = () => {
   // Dialog states
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferRoomDialogOpen, setTransferRoomDialogOpen] = useState(false);
   const [terminateDialogOpen, setTerminateDialogOpen] = useState(false);
   const [moveOutDialogOpen, setMoveOutDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch contract with relations
   const { data: contract, isLoading: contractLoading } = useContract(id || '');
@@ -427,6 +438,24 @@ const ContractDetailPage = () => {
 
         <div className="flex-1" />
 
+        {contract.status !== 'TERMINATED' && (
+          <Button
+            variant="outline"
+            onClick={() => setEditDialogOpen(true)}
+          >
+            <Pencil className="h-4 w-4 mr-2" />
+            Cập nhật
+          </Button>
+        )}
+
+        <Button
+          variant="outline"
+          onClick={() => setPrintDialogOpen(true)}
+        >
+          <Printer className="h-4 w-4 mr-2" />
+          In hợp đồng
+        </Button>
+
         {contract.status !== 'TERMINATED' && contract.status !== 'DRAFT' && (
           <Button
             variant="outline"
@@ -450,10 +479,18 @@ const ContractDetailPage = () => {
 
             <Button
               variant="outline"
+              onClick={() => setTransferRoomDialogOpen(true)}
+            >
+              <ArrowRightLeft className="h-4 w-4 mr-2" />
+              Chuyển phòng
+            </Button>
+
+            <Button
+              variant="outline"
               onClick={() => setTransferDialogOpen(true)}
             >
               <MoveRight className="h-4 w-4 mr-2" />
-              Chuyển đổi
+              Nhượng HĐ
             </Button>
 
             <Button
@@ -472,6 +509,16 @@ const ContractDetailPage = () => {
               Thanh lý
             </Button>
           </>
+        )}
+
+        {contract.status === 'DRAFT' && (
+          <Button
+            variant="destructive"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Xoá
+          </Button>
         )}
       </div>
 
@@ -1241,6 +1288,30 @@ const ContractDetailPage = () => {
         onOpenChange={setQrDialogOpen}
         contractId={contract.id}
         contractLabel={contract.contract_number || contract.id.slice(0, 8)}
+      />
+
+      <ContractFormDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        contract={contract}
+      />
+
+      <PrintContractDialog
+        open={printDialogOpen}
+        onOpenChange={setPrintDialogOpen}
+        contract={contract}
+      />
+
+      <TransferRoomDialog
+        open={transferRoomDialogOpen}
+        onOpenChange={setTransferRoomDialogOpen}
+        contract={contract}
+      />
+
+      <DeleteContractDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        contract={contract}
       />
     </MainLayout>
   );
