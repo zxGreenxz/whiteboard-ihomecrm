@@ -15,11 +15,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useJobs, useCompleteJob, useDeleteJob } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { usePagination } from "@/hooks/usePagination";
 import { paginateJobs } from "@/lib/jobValidation";
 import { TaskStatusStats } from "@/components/tasks/TaskStatusStats";
 import { TaskFiltersPanel } from "@/components/tasks/TaskFiltersPanel";
 import TaskTable from "@/components/tasks/TaskTable";
+import TaskListMobile from "@/components/tasks/TaskListMobile";
 import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
 import TaskDetailDialog from "@/components/tasks/TaskDetailDialog";
 import TaskEditDialog from "@/components/tasks/TaskEditDialog";
@@ -31,6 +33,7 @@ type TaskTab = "ALL" | "MINE" | "WATCHING";
 
 export default function TaskManagementPage() {
   const { data: authUser } = useAuth();
+  const isMobile = useIsMobile();
   // State management
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -44,7 +47,7 @@ export default function TaskManagementPage() {
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [completeTarget, setCompleteTarget] = useState<JobWithRelations | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const pagination = usePagination(20);
+  const pagination = usePagination(isMobile ? 50 : 20);
 
   // Data hooks
   const { data: allJobs = [], isLoading } = useJobs(appliedFilters);
@@ -153,6 +156,224 @@ export default function TaskManagementPage() {
     pagination.setPage(1);
   };
 
+  // Shared dialogs (desktop + mobile)
+  const dialogs = (
+    <>
+      <TaskCreateDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        onSuccess={() => setIsCreateOpen(false)}
+      />
+      <TaskDetailDialog
+        open={isDetailOpen}
+        onOpenChange={(open) => {
+          setIsDetailOpen(open);
+          if (!open) setSelectedJob(null);
+        }}
+        job={selectedJob}
+        onComplete={() => {
+          if (selectedJob) handleRequestComplete(selectedJob);
+        }}
+        onEdit={() => {
+          if (selectedJob) handleEdit(selectedJob);
+        }}
+        onAddNotes={() => {
+          if (selectedJob) handleAddNotes(selectedJob);
+        }}
+      />
+      <TaskEditDialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open);
+          if (!open) setSelectedJob(null);
+        }}
+        job={selectedJob}
+        onSuccess={() => {
+          setIsEditOpen(false);
+          setSelectedJob(null);
+        }}
+      />
+      <TaskNotesDialog
+        open={isNotesOpen}
+        onOpenChange={(open) => {
+          setIsNotesOpen(open);
+          if (!open) setSelectedJob(null);
+        }}
+        job={selectedJob}
+        onSuccess={() => {
+          setIsNotesOpen(false);
+          setSelectedJob(null);
+        }}
+      />
+      <AlertDialog
+        open={!!completeTarget}
+        onOpenChange={(open) => !open && setCompleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận hoàn thành</AlertDialogTitle>
+            <AlertDialogDescription>
+              Đánh dấu công việc {completeTarget?.code} là đã hoàn thành?
+              Thời gian hoàn thành sẽ được ghi nhận ngay bây giờ.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmComplete}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              Hoàn thành
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xoá</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xoá công việc này không?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Xoá
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+
+  // ============== MOBILE LAYOUT ==============
+  if (isMobile) {
+    return (
+      <MainLayout
+        title="Công việc"
+        subtitle="Quản lý công việc vận hành"
+        icon={ClipboardList}
+      >
+        <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
+          {/* Search + filter */}
+          <div className="flex items-center gap-2 px-3 pt-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Tìm theo tiêu đề..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-9 h-10 bg-white"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-10 w-10 shrink-0 bg-white"
+              title="Lọc dữ liệu"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Tabs */}
+          <div className="px-3 pt-3 flex items-center gap-1 overflow-x-auto">
+            {([
+              ["ALL", "Tất cả"],
+              ["MINE", "Việc của tôi"],
+              ["WATCHING", "Đang theo dõi"],
+            ] as const).map(([key, label]) => {
+              const active = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(key as TaskTab);
+                    pagination.setPage(1);
+                  }}
+                  className={`shrink-0 px-3 py-1.5 text-[13px] font-medium rounded-full flex items-center gap-1.5 transition-colors ${
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-white text-zinc-600 border border-zinc-200"
+                  }`}
+                >
+                  {label}
+                  <span
+                    className={`inline-flex items-center rounded-full px-1.5 text-[11px] ${
+                      active
+                        ? "bg-white/25 text-white"
+                        : "bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {tabCounts[key]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Stats */}
+          <div className="px-3 pt-3">
+            <TaskStatusStats jobs={allJobs as JobWithRelations[]} />
+          </div>
+
+          {/* Filters Panel */}
+          {showFilters && (
+            <div className="px-3 pt-3">
+              <TaskFiltersPanel
+                filters={filters}
+                onChange={setFilters}
+                onApply={handleApplyFilters}
+                onClear={handleClearFilters}
+              />
+            </div>
+          )}
+
+          {/* List */}
+          <TaskListMobile
+            jobs={paginatedData}
+            isLoading={isLoading}
+            onView={handleViewDetail}
+          />
+
+          {/* Pagination summary */}
+          {totalCount > pagination.pageSize && (
+            <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
+              Hiển thị {paginatedData.length} / {totalCount} công việc
+              {pagination.page * pagination.pageSize < totalCount && (
+                <button
+                  className="ml-2 text-blue-600 font-medium"
+                  onClick={() => pagination.setPage(pagination.page + 1)}
+                >
+                  Xem thêm →
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* FAB */}
+        <button
+          type="button"
+          onClick={() => setIsCreateOpen(true)}
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg flex items-center justify-center z-40"
+          aria-label="Thêm công việc"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+
+        {dialogs}
+      </MainLayout>
+    );
+  }
+
+  // ============== DESKTOP LAYOUT ==============
   return (
     <MainLayout
       title="Công việc"
@@ -259,105 +480,7 @@ export default function TaskManagementPage() {
         totalCount={totalCount}
       />
 
-      {/* Create Dialog */}
-      <TaskCreateDialog
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        onSuccess={() => setIsCreateOpen(false)}
-      />
-
-      {/* Detail Dialog */}
-      <TaskDetailDialog
-        open={isDetailOpen}
-        onOpenChange={(open) => {
-          setIsDetailOpen(open);
-          if (!open) setSelectedJob(null);
-        }}
-        job={selectedJob}
-        onComplete={() => {
-          if (selectedJob) handleRequestComplete(selectedJob);
-        }}
-        onEdit={() => {
-          if (selectedJob) handleEdit(selectedJob);
-        }}
-        onAddNotes={() => {
-          if (selectedJob) handleAddNotes(selectedJob);
-        }}
-      />
-
-      {/* Edit Dialog */}
-      <TaskEditDialog
-        open={isEditOpen}
-        onOpenChange={(open) => {
-          setIsEditOpen(open);
-          if (!open) setSelectedJob(null);
-        }}
-        job={selectedJob}
-        onSuccess={() => {
-          setIsEditOpen(false);
-          setSelectedJob(null);
-        }}
-      />
-
-      {/* Notes Dialog */}
-      <TaskNotesDialog
-        open={isNotesOpen}
-        onOpenChange={(open) => {
-          setIsNotesOpen(open);
-          if (!open) setSelectedJob(null);
-        }}
-        job={selectedJob}
-        onSuccess={() => {
-          setIsNotesOpen(false);
-          setSelectedJob(null);
-        }}
-      />
-
-      {/* Complete Confirmation Dialog */}
-      <AlertDialog
-        open={!!completeTarget}
-        onOpenChange={(open) => !open && setCompleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận hoàn thành</AlertDialogTitle>
-            <AlertDialogDescription>
-              Đánh dấu công việc {completeTarget?.code} là đã hoàn thành?
-              Thời gian hoàn thành sẽ được ghi nhận ngay bây giờ.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmComplete}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              Hoàn thành
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xoá</AlertDialogTitle>
-            <AlertDialogDescription>
-              Bạn có chắc chắn muốn xoá công việc này không?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              className="bg-red-500 hover:bg-red-600 text-white"
-            >
-              Xoá
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialogs}
     </MainLayout>
   );
 }

@@ -52,13 +52,13 @@ export default function TaskTable({
         <Table className="text-[15px] [&_th]:border-r [&_th]:border-b [&_th]:border-zinc-200 [&_td]:border-r [&_td]:border-b [&_td]:border-zinc-200 [&_tr>*:last-child]:border-r-0 [&_tbody_tr:last-child>td]:border-b-0">
           <TableHeader>
             <TableRow className="bg-zinc-50">
-              <TableHead className="w-[200px] py-3 text-sm font-semibold text-zinc-700">Thao tác</TableHead>
-              <TableHead className="py-3 text-sm font-semibold text-zinc-700">Công việc</TableHead>
-              <TableHead className="w-[160px] py-3 text-sm font-semibold text-zinc-700">Vị trí</TableHead>
-              <TableHead className="w-[180px] py-3 text-sm font-semibold text-zinc-700">Loại công việc</TableHead>
-              <TableHead className="w-[180px] py-3 text-sm font-semibold text-zinc-700">Hạn hoàn thành</TableHead>
-              <TableHead className="w-[200px] py-3 text-sm font-semibold text-zinc-700">Người thực hiện</TableHead>
-              <TableHead className="w-[140px] py-3 text-sm font-semibold text-zinc-700">Trạng thái</TableHead>
+              <TableHead className="w-[160px] py-3 text-sm font-semibold text-zinc-700">Thao tác</TableHead>
+              <TableHead className="min-w-[260px] py-3 text-sm font-semibold text-zinc-700">Công việc</TableHead>
+              <TableHead className="w-[140px] py-3 text-sm font-semibold text-zinc-700">Vị trí</TableHead>
+              <TableHead className="w-[140px] py-3 text-sm font-semibold text-zinc-700">Loại công việc</TableHead>
+              <TableHead className="w-[150px] py-3 text-sm font-semibold text-zinc-700">Hạn hoàn thành</TableHead>
+              <TableHead className="w-[160px] py-3 text-sm font-semibold text-zinc-700">Người thực hiện</TableHead>
+              <TableHead className="w-[130px] py-3 text-sm font-semibold text-zinc-700">Trạng thái</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
