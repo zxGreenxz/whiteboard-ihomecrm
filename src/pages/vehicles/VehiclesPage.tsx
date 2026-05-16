@@ -16,7 +16,7 @@ import VehicleFilterPanel from '@/components/vehicles/VehicleFilterPanel';
 
 import type { VehicleWithRelations, VehicleFilters } from '@/types/vehicle';
 
-const EMPTY_FILTERS: VehicleFilters = {};
+const EMPTY_FILTERS: VehicleFilters = { vehicle_type: 'MOTORBIKE' };
 
 export default function VehiclesPage() {
   // State
@@ -89,7 +89,8 @@ export default function VehiclesPage() {
   const handleFiltersChange = useCallback(
     (next: VehicleFilters) => {
       const { search: _ignored, ...rest } = next;
-      setExtraFilters(rest);
+      // vehicle_type bị ẩn khỏi UI và luôn cố định là MOTORBIKE
+      setExtraFilters({ ...rest, vehicle_type: 'MOTORBIKE' });
       setPage(1);
     },
     [setPage]

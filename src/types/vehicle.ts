@@ -62,7 +62,10 @@ export interface VehicleFilters {
   search?: string;
   vehicle_type?: VehicleType;
   building_id?: string;
+  room_id?: string;
   customer_id?: string;
+  vehicle_name?: string;
+  color?: string;
 }
 
 // =============================================

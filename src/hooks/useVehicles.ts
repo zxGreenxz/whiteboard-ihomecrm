@@ -85,9 +85,24 @@ export const useVehicles = (
         query = query.eq("building_id", filters.building_id);
       }
 
+      // Filter by room
+      if (filters?.room_id) {
+        query = query.eq("room_id", filters.room_id);
+      }
+
       // Filter by customer
       if (filters?.customer_id) {
         query = query.eq("customer_id", filters.customer_id);
+      }
+
+      // Filter by vehicle_name (dòng xe)
+      if (filters?.vehicle_name) {
+        query = query.eq("vehicle_name", filters.vehicle_name);
+      }
+
+      // Filter by color
+      if (filters?.color) {
+        query = query.eq("color", filters.color);
       }
 
       // Apply pagination
@@ -105,6 +120,39 @@ export const useVehicles = (
       return {
         data: (data || []) as VehicleWithRelations[],
         count: count || 0,
+      };
+    },
+  });
+};
+
+// =============================================
+// useDistinctVehicleValues - distinct vehicle_name & color for filter dropdowns
+// =============================================
+
+export const useDistinctVehicleValues = (vehicleType?: VehicleFilters["vehicle_type"]) => {
+  return useQuery({
+    queryKey: ["vehicles", "distinct", vehicleType ?? "ALL"],
+    queryFn: async (): Promise<{ vehicleNames: string[]; colors: string[] }> => {
+      let q = (supabase
+        .from("vehicles")
+        .select("vehicle_name, color") as any).is("deleted_at", null);
+      if (vehicleType) q = q.eq("vehicle_type", vehicleType);
+
+      const { data, error } = await q;
+      if (error) {
+        console.error("useDistinctVehicleValues error:", error);
+        return { vehicleNames: [], colors: [] };
+      }
+
+      const names = new Set<string>();
+      const colors = new Set<string>();
+      for (const row of (data || []) as Array<{ vehicle_name: string | null; color: string | null }>) {
+        if (row.vehicle_name && row.vehicle_name.trim()) names.add(row.vehicle_name.trim());
+        if (row.color && row.color.trim()) colors.add(row.color.trim());
+      }
+      return {
+        vehicleNames: Array.from(names).sort((a, b) => a.localeCompare(b, "vi")),
+        colors: Array.from(colors).sort((a, b) => a.localeCompare(b, "vi")),
       };
     },
   });
