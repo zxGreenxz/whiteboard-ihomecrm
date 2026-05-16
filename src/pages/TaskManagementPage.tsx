@@ -54,31 +54,27 @@ export default function TaskManagementPage() {
   const { data: allJobs = [], isLoading } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
 
-  // Tab filter — Resident pattern
+  // Tab filter
+  // - MINE: phiếu mà mình là người thực hiện (assignee_id = me)
+  // - WATCHING: phiếu mình tạo cho người khác (user_id = me, nhưng không phải tự gán)
   const myUserId = authUser?.id ?? null;
+  const isCreatedByMe = (job: any) => myUserId && job.user_id === myUserId;
+  const isAssignedToMe = (job: any) =>
+    myUserId &&
+    (job.assignee_id === myUserId || job.profiles?.id === myUserId);
+
   const tabFiltered = (allJobs as JobWithRelations[]).filter((job) => {
-    if (activeTab === "MINE") {
-      return myUserId
-        ? (job as any).assignee_id === myUserId ||
-            (job as any).profiles?.id === myUserId
-        : false;
-    }
-    if (activeTab === "WATCHING") {
-      // No "watcher" model yet → fallback to created_by_id
-      return myUserId ? (job as any).created_by_id === myUserId : false;
-    }
+    if (activeTab === "MINE") return isAssignedToMe(job);
+    if (activeTab === "WATCHING")
+      return isCreatedByMe(job) && !isAssignedToMe(job);
     return true;
   });
 
   const tabCounts = {
     ALL: (allJobs as JobWithRelations[]).length,
-    MINE: (allJobs as JobWithRelations[]).filter((j: any) =>
-      myUserId
-        ? j.assignee_id === myUserId || j.profiles?.id === myUserId
-        : false
-    ).length,
-    WATCHING: (allJobs as JobWithRelations[]).filter((j: any) =>
-      myUserId ? j.created_by_id === myUserId : false
+    MINE: (allJobs as JobWithRelations[]).filter(isAssignedToMe).length,
+    WATCHING: (allJobs as JobWithRelations[]).filter(
+      (j) => isCreatedByMe(j) && !isAssignedToMe(j),
     ).length,
   };
 
