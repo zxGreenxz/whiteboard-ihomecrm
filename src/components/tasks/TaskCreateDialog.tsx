@@ -52,6 +52,7 @@ export default function TaskCreateDialog({
   const [assigneeText, setAssigneeText] = useState("");
   const [creatingType, setCreatingType] = useState(false);
   const assigneeInitedRef = useRef(false);
+  const assigneeClearedOnFocusRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -59,6 +60,7 @@ export default function TaskCreateDialog({
       setAttachments([]);
       setCreatingType(false);
       assigneeInitedRef.current = false;
+      assigneeClearedOnFocusRef.current = false;
       setAssigneeText("");
     }
   }, [open]);
@@ -70,6 +72,12 @@ export default function TaskCreateDialog({
     setAssigneeText(current?.full_name ?? "");
     assigneeInitedRef.current = true;
   }, [open, authUser?.id, profiles]);
+
+  const handleAssigneeFocus = () => {
+    if (assigneeClearedOnFocusRef.current) return;
+    setAssigneeText("");
+    assigneeClearedOnFocusRef.current = true;
+  };
 
   const buildingRefs = useMemo<BuildingRef[]>(
     () =>
@@ -283,6 +291,7 @@ export default function TaskCreateDialog({
               placeholder="Chọn từ danh sách hoặc gõ tên tự do"
               value={assigneeText}
               onChange={(e) => setAssigneeText(e.target.value)}
+              onFocus={handleAssigneeFocus}
               autoComplete="off"
             />
             <datalist id="assignee-suggestions">
