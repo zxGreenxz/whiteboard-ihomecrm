@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -35,10 +35,15 @@ import {
   type AccountFormValues,
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  useAccountSharedUsers,
+  useSyncAccountSharedUsers,
+} from "@/hooks/useAccountSharedUsers";
 
 const schema = z.object({
   name: z.string().min(1, "Tên sổ quỹ bắt buộc").max(120),
@@ -62,10 +67,21 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const isEditing = !!account;
   const createMut = useCreateAccount();
   const updateMut = useUpdateAccount();
+  const syncSharedMut = useSyncAccountSharedUsers();
   const isMobile = useIsMobile();
   const { data: isAdmin } = useIsAdmin();
   const { data: currentUser } = useAuth();
   const { data: staffUsers } = useStaffUsers();
+  const { data: existingShared } = useAccountSharedUsers(account?.id);
+
+  // Người phụ trách hiện tại của form (theo dõi để loại trừ khỏi list shared).
+  const ownerId = account?.user_id ?? currentUser?.id ?? "";
+
+  // Chỉ owner của sổ hoặc admin được sửa danh sách shared.
+  const canEditShared = !!isAdmin || (!!currentUser?.id && ownerId === currentUser.id);
+
+  // Local state cho list shared users (multi-select).
+  const [sharedIds, setSharedIds] = useState<string[]>([]);
 
   const defaults = useMemo<FormValues>(
     () => ({
@@ -83,9 +99,15 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
     defaultValues: defaults,
   });
 
+  // Người phụ trách user_id đang chọn (sync với form để loại khỏi list shared).
+  const selectedOwnerId = form.watch("user_id") || ownerId;
+
   useEffect(() => {
-    if (open) form.reset(defaults);
-  }, [open, defaults, form]);
+    if (open) {
+      form.reset(defaults);
+      setSharedIds((existingShared ?? []).map((s) => s.user_id));
+    }
+  }, [open, defaults, form, existingShared]);
 
   const onSubmit = async (values: FormValues) => {
     const payload: AccountFormValues = {
@@ -98,15 +120,26 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       user_id: isAdmin ? values.user_id : undefined,
     };
 
+    let accountId: string;
     if (isEditing && account) {
       await updateMut.mutateAsync({ id: account.id, values: payload });
+      accountId = account.id;
     } else {
-      await createMut.mutateAsync(payload);
+      const created = (await createMut.mutateAsync(payload)) as any;
+      accountId = created?.id;
     }
+
+    // Sync shared users (loại owner ra cho chắc — không share với chính mình).
+    if (canEditShared && accountId) {
+      const cleaned = sharedIds.filter((id) => id && id !== values.user_id);
+      await syncSharedMut.mutateAsync({ accountId, userIds: cleaned });
+    }
+
     onOpenChange(false);
   };
 
-  const isPending = createMut.isPending || updateMut.isPending;
+  const isPending =
+    createMut.isPending || updateMut.isPending || syncSharedMut.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,6 +266,58 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                 </FormItem>
               )}
             />
+
+            {canEditShared && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">
+                  Người được phép sử dụng
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Chọn các user khác cùng được xem &amp; tạo phiếu thu/chi
+                  cho sổ quỹ này. Không bao gồm người phụ trách.
+                </p>
+                {(() => {
+                  const candidates = (staffUsers ?? []).filter(
+                    (u) => u.id !== selectedOwnerId
+                  );
+                  if (candidates.length === 0) {
+                    return (
+                      <p className="text-xs text-muted-foreground italic px-1">
+                        Không có user khác để chọn.
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto border rounded-md p-2">
+                      {candidates.map((u) => {
+                        const checked = sharedIds.includes(u.id);
+                        return (
+                          <label
+                            key={u.id}
+                            className="flex items-start gap-2 text-sm cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => {
+                                setSharedIds((prev) =>
+                                  v
+                                    ? [...prev, u.id]
+                                    : prev.filter((x) => x !== u.id)
+                                );
+                              }}
+                              className="mt-0.5"
+                            />
+                            <span className="leading-tight">
+                              {u.full_name || u.email || u.id.slice(0, 8)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             <DialogFooter>
               <Button

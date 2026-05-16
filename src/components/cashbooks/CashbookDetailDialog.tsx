@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { X, Pencil, Trash2, Wallet } from "lucide-react";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
+import { useAccountSharedUsers } from "@/hooks/useAccountSharedUsers";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -43,8 +44,13 @@ export function CashbookDetailDialog({
 }: Props) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { data: sharedUsers } = useAccountSharedUsers(account?.id);
 
   if (!account) return null;
+
+  const sharedLabels = (sharedUsers ?? [])
+    .map((s) => s.full_name || s.email || s.user_id.slice(0, 8))
+    .join(", ");
 
   const isRefundLogAccount =
     typeof account.name === "string" && account.name.trim().endsWith("Thối");
@@ -87,6 +93,10 @@ export function CashbookDetailDialog({
           <div className="bg-zinc-100/70 rounded-2xl p-4">
             <Row label="Tên sổ quỹ:" value={account.name} />
             <Row label="Phụ trách:" value={account.owner_name || "—"} />
+            <Row
+              label="Người được phép sử dụng:"
+              value={sharedLabels || "—"}
+            />
             <Row
               label="Ngày chốt số dư đầu kỳ:"
               value={
