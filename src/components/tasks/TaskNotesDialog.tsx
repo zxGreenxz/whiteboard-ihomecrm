@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateJob } from "@/hooks/useJobs";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { JobWithRelations } from "@/types/jobs";
 
 interface TaskNotesDialogProps {
@@ -25,6 +26,7 @@ export default function TaskNotesDialog({
   onSuccess,
 }: TaskNotesDialogProps) {
   const updateJob = useUpdateJob();
+  const isMobile = useIsMobile();
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -50,8 +52,17 @@ export default function TaskNotesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
+      <DialogContent
+        className={
+          isMobile
+            ? "max-w-full w-full h-auto max-h-[90vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+            : "sm:max-w-[520px]"
+        }
+      >
+        {isMobile && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
+        )}
+        <DialogHeader className={isMobile ? "pt-3" : ""}>
           <DialogTitle className="text-green-600 uppercase font-semibold">
             GHI CHÚ ĐÁNH GIÁ - {job.code}
           </DialogTitle>
@@ -71,12 +82,18 @@ export default function TaskNotesDialog({
           </p>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className={isMobile ? "flex flex-col gap-2 mt-2" : ""}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className={isMobile ? "w-full h-11" : ""}
+          >
             Huỷ
           </Button>
           <Button
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className={`bg-green-600 hover:bg-green-700 text-white ${
+              isMobile ? "w-full h-11" : ""
+            }`}
             disabled={updateJob.isPending}
             onClick={handleSave}
           >

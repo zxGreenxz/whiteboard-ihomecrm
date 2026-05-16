@@ -20,6 +20,7 @@ import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useJobTypes } from "@/hooks/useJobTypes";
 import { useProfiles, useUpdateJob } from "@/hooks/useJobs";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { JOB_PRIORITIES, PRIORITY_LABELS, type JobWithRelations, type JobPriority } from "@/types/jobs";
 
 interface TaskEditDialogProps {
@@ -47,6 +48,7 @@ export default function TaskEditDialog({
   const { data: jobTypes = [] } = useJobTypes();
   const { data: profiles = [] } = useProfiles();
   const updateJob = useUpdateJob();
+  const isMobile = useIsMobile();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -105,8 +107,17 @@ export default function TaskEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className={
+          isMobile
+            ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+            : "sm:max-w-[640px] max-h-[90vh] overflow-y-auto"
+        }
+      >
+        {isMobile && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
+        )}
+        <DialogHeader className={isMobile ? "pt-3" : ""}>
           <DialogTitle className="text-blue-600 uppercase font-semibold">
             SỬA CÔNG VIỆC - {job.code}
           </DialogTitle>
@@ -245,12 +256,18 @@ export default function TaskEditDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className={isMobile ? "flex flex-col gap-2 mt-2" : ""}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className={isMobile ? "w-full h-11" : ""}
+          >
             Huỷ
           </Button>
           <Button
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className={`bg-blue-600 hover:bg-blue-700 text-white ${
+              isMobile ? "w-full h-11" : ""
+            }`}
             disabled={!title.trim() || updateJob.isPending}
             onClick={handleSubmit}
           >

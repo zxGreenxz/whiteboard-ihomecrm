@@ -15,6 +15,7 @@ import { useRooms } from "@/hooks/useRooms";
 import { useJobTypes, useCreateJobType } from "@/hooks/useJobTypes";
 import { useCreateJob, useProfiles } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import {
   parseJobQuickInput,
@@ -46,6 +47,7 @@ export default function TaskCreateDialog({
   const { data: profiles = [] } = useProfiles();
   const createJob = useCreateJob();
   const createJobType = useCreateJobType();
+  const isMobile = useIsMobile();
 
   const [rawInput, setRawInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -189,8 +191,17 @@ export default function TaskCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className={
+          isMobile
+            ? "max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom"
+            : "sm:max-w-[640px] max-h-[90vh] overflow-y-auto"
+        }
+      >
+        {isMobile && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-zinc-300 rounded-full" />
+        )}
+        <DialogHeader className={isMobile ? "pt-3" : ""}>
           <DialogTitle className="text-green-600 uppercase font-semibold">
             THÊM CÔNG VIỆC
           </DialogTitle>
@@ -316,17 +327,20 @@ export default function TaskCreateDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className={isMobile ? "flex flex-col gap-2 mt-2" : ""}>
           <Button
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
+            className={isMobile ? "w-full h-11" : ""}
           >
             Huỷ
           </Button>
           <Button
             type="button"
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className={`bg-green-600 hover:bg-green-700 text-white ${
+              isMobile ? "w-full h-11" : ""
+            }`}
             disabled={!canSubmit}
             onClick={handleSubmit}
           >
