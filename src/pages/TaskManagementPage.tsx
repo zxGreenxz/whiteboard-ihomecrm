@@ -66,26 +66,25 @@ export default function TaskManagementPage() {
 
   // Tab filter
   // - MINE: phiếu mà mình là người thực hiện (assignee_id = me)
-  // - WATCHING: phiếu mình tạo cho người khác (user_id = me, nhưng không phải tự gán)
+  // - WATCHING: phiếu KHÔNG giao cho mình (mình đang theo dõi/giám sát).
+  //   Super admin thấy hết qua RLS bypass nên tab này bao gồm cả phiếu do user khác tạo.
+  //   Staff thường chỉ thấy phiếu mình tạo/được giao → tab này tự thu hẹp về "mình tạo cho người khác".
   const myUserId = authUser?.id ?? null;
-  const isCreatedByMe = (job: any) => myUserId && job.user_id === myUserId;
   const isAssignedToMe = (job: any) =>
     myUserId &&
     (job.assignee_id === myUserId || job.profiles?.id === myUserId);
+  const isWatching = (job: any) => !!myUserId && !isAssignedToMe(job);
 
   const tabFiltered = (allJobs as JobWithRelations[]).filter((job) => {
     if (activeTab === "MINE") return isAssignedToMe(job);
-    if (activeTab === "WATCHING")
-      return isCreatedByMe(job) && !isAssignedToMe(job);
+    if (activeTab === "WATCHING") return isWatching(job);
     return true;
   });
 
   const tabCounts = {
     ALL: (allJobs as JobWithRelations[]).length,
     MINE: (allJobs as JobWithRelations[]).filter(isAssignedToMe).length,
-    WATCHING: (allJobs as JobWithRelations[]).filter(
-      (j) => isCreatedByMe(j) && !isAssignedToMe(j),
-    ).length,
+    WATCHING: (allJobs as JobWithRelations[]).filter(isWatching).length,
   };
 
   // Status filter (từ stat card click)
