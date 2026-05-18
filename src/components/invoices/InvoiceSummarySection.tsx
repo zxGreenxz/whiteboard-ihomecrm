@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Control, UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-form';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { useExcessAmount } from '@/hooks/useInvoices';
 import { formatCurrency } from '@/lib/utils';
+import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import type { InvoiceFormData } from '@/types/invoice';
 
 interface InvoiceSummarySectionProps {
@@ -22,10 +23,35 @@ const InvoiceSummarySection = ({
 }: InvoiceSummarySectionProps) => {
   const items = watch('items') || [];
   const discountAmount = watch('discount_amount') || 0;
+  const discountNotes = watch('discount_notes') || '';
   const taxPercent = watch('tax_percent') || 0;
   const prepaidAmount = watch('prepaid_amount') || 0;
 
   const { data: excessBalance = 0 } = useExcessAmount(contractId);
+
+  // Auto-fill discount + note + applied_credit khi contract thay đổi và có
+  // credit. Chỉ fill nếu user chưa chỉnh discount manually (discount đang = 0).
+  const autoFilledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!contractId) {
+      autoFilledRef.current = null;
+      return;
+    }
+    if (autoFilledRef.current === contractId) return;
+    if (excessBalance <= 0) return;
+    if (discountAmount > 0) {
+      // User đã có discount khác → không ghi đè.
+      autoFilledRef.current = contractId;
+      return;
+    }
+    setValue('discount_amount', excessBalance, { shouldDirty: true });
+    setValue('discount_notes', `Nợ ${excessBalance.toLocaleString('vi-VN')} Tiền Thối`, {
+      shouldDirty: true,
+    });
+    setValue('applied_credit', excessBalance, { shouldDirty: true });
+    autoFilledRef.current = contractId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractId, excessBalance]);
 
   const totals = useMemo(() => {
     const subtotal = items.reduce(
@@ -47,13 +73,20 @@ const InvoiceSummarySection = ({
         <Label className="text-muted-foreground self-center">Tạm tính</Label>
         <div className="text-right font-medium">{formatCurrency(totals.subtotal)}</div>
 
-        {/* Giảm trừ - editable */}
+        {/* Giảm trừ - editable + ghi chú tooltip */}
         <Label htmlFor="discount_amount" className="self-center">Giảm trừ</Label>
-        <CurrencyInput
-          value={watch('discount_amount')}
-          onChange={(v) => setValue('discount_amount', v, { shouldValidate: true, shouldDirty: true })}
-          className="h-8 text-sm text-right"
-        />
+        <div className="relative">
+          <CurrencyInput
+            value={watch('discount_amount')}
+            onChange={(v) => setValue('discount_amount', v, { shouldValidate: true, shouldDirty: true })}
+            className="h-8 text-sm text-right pr-3"
+          />
+          <DiscountNoteTrigger
+            value={discountNotes}
+            onChange={(v) => setValue('discount_notes', v, { shouldDirty: true })}
+            disabled={discountAmount <= 0}
+          />
+        </div>
 
         {/* Thuế % - editable */}
         <Label htmlFor="tax_percent" className="self-center">Thuế %</Label>

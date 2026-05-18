@@ -153,6 +153,11 @@ export interface InvoiceFormData {
   template_id?: string | null;
   notes?: string | null;
   discount_amount: number;
+  /** Ghi chú gắn ô Giảm trừ — auto fill "Nợ X Tiền Thối" khi áp credit. */
+  discount_notes?: string | null;
+  /** Số tiền credit (excess_amounts) đã áp vào discount_amount → sau khi tạo
+   *  HĐ sẽ INSERT excess_amounts row âm để tiêu credit. */
+  applied_credit?: number;
   tax_percent: number;
   prepaid_amount: number;
   previous_debt: number;

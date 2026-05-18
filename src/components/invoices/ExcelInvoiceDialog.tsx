@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
 import { Table as TableIcon, Download, Loader2 } from 'lucide-react';
+import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 
 import {
   Dialog,
@@ -52,6 +53,11 @@ interface RowData {
   water_overridden: boolean;
   pdv_amount: number; // overrideable
   discount: number;
+  discount_notes: string;
+  /** Credit (excess_amounts) đã áp vào discount — INSERT excess row âm khi tạo HĐ. */
+  applied_credit: number;
+  /** Tiền nợ khách hiện có của contract (audit hint, không bao giờ ghi vào DB). */
+  credit_balance: number;
   selected: boolean;
 }
 
@@ -151,11 +157,27 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         }
       }
 
+      // 4) Credit (excess_amounts) per contract — auto fill vào "Giảm trừ".
+      const contractIds = buildingContracts.map((c: any) => c.id);
+      const creditByContract = new Map<string, number>();
+      if (contractIds.length > 0) {
+        const { data: credits } = await (supabase as any)
+          .from('excess_amounts')
+          .select('contract_id, amount, source_invoice:invoices!source_invoice_id(deleted_at)')
+          .in('contract_id', contractIds);
+        for (const row of credits || []) {
+          if (row.source_invoice?.deleted_at) continue;
+          const prev = creditByContract.get(row.contract_id) || 0;
+          creditByContract.set(row.contract_id, prev + (Number(row.amount) || 0));
+        }
+      }
+
       const next: RowData[] = buildingContracts
         .map((c: any) => {
           const occupants = c.contract_customers?.length ?? 1;
           const meterId = meterByRoom.get(c.room_id) ?? null;
           const prev = meterId ? lastReading.get(meterId) ?? 0 : 0;
+          const credit = Math.max(0, creditByContract.get(c.id) || 0);
           return {
             contract_id: c.id,
             room_id: c.room_id,
@@ -170,7 +192,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             water_amount: occupants * defaults.water,
             water_overridden: false,
             pdv_amount: defaults.pdv,
-            discount: 0,
+            discount: credit,
+            discount_notes: credit > 0 ? `Nợ ${credit.toLocaleString('vi-VN')} Tiền Thối` : '',
+            applied_credit: credit,
+            credit_balance: credit,
             selected: true,
           };
         })
@@ -338,6 +363,10 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           });
         }
 
+        const appliedCredit = Math.min(
+          Math.max(0, row.applied_credit || 0),
+          Math.max(0, row.discount || 0),
+        );
         const formData: InvoiceFormData = {
           building_id: buildingId,
           room_id: row.room_id,
@@ -347,6 +376,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           issue_date: issueDate,
           due_date: dueDate,
           discount_amount: row.discount,
+          discount_notes: row.discount_notes?.trim() || null,
+          applied_credit: appliedCredit,
           tax_percent: 0,
           prepaid_amount: 0,
           previous_debt: 0,
@@ -533,12 +564,19 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                       />
                     </td>
                     <td className="p-1 border">
-                      <CurrencyInput
-                        className="h-7 text-right"
-                        suffix={false}
-                        value={r.discount}
-                        onChange={(v) => updateRow(i, { discount: v })}
-                      />
+                      <div className="relative">
+                        <CurrencyInput
+                          className="h-7 text-right pr-3"
+                          suffix={false}
+                          value={r.discount}
+                          onChange={(v) => updateRow(i, { discount: v })}
+                        />
+                        <DiscountNoteTrigger
+                          value={r.discount_notes}
+                          onChange={(v) => updateRow(i, { discount_notes: v })}
+                          disabled={r.discount <= 0}
+                        />
+                      </div>
                     </td>
                     <td className="p-1 border text-right font-semibold bg-amber-50">
                       {fmt(total)}

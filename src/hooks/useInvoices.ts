@@ -255,6 +255,7 @@ export const useCreateInvoice = () => {
           approved_by: user.id,
           subtotal,
           discount_amount: invoiceFields.discount_amount || 0,
+          discount_notes: invoiceFields.discount_notes || null,
           tax_percent: invoiceFields.tax_percent || 0,
           tax_amount,
           total_amount,
@@ -269,6 +270,22 @@ export const useCreateInvoice = () => {
         .single();
 
       if (invoiceError) throw invoiceError;
+
+      // Tiêu credit khi áp credit vào discount của HĐ này.
+      const appliedCredit = invoiceFields.applied_credit ?? 0;
+      if (appliedCredit > 0 && invoiceFields.contract_id) {
+        const { error: creditErr } = await supabase
+          .from('excess_amounts' as any)
+          .insert({
+            user_id: user.id,
+            contract_id: invoiceFields.contract_id,
+            amount: -appliedCredit,
+            description: `Áp credit vào Giảm trừ HĐ ${invoice_number}`,
+            source_invoice_id: invoice.id,
+            source_payment_id: null,
+          } as any);
+        if (creditErr) throw creditErr;
+      }
 
       // Insert invoice items
       if (items.length > 0) {
@@ -301,6 +318,7 @@ export const useCreateInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Dữ liệu đã được TẠO thành công',
