@@ -50,14 +50,6 @@ const paymentSchema = z.object({
   change_account_id: z.string().optional(),
   notes: z.string().optional(),
 }).refine(
-  (data) => {
-    const methods = new Set(data.payment_lines.map((l) => l.payment_method));
-    // TK không trộn được với TM/TT
-    if (methods.has('TK') && (methods.has('TM') || methods.has('TT'))) return false;
-    return true;
-  },
-  { message: 'TK không được dùng chung với TM/TT trong cùng một phiếu thanh toán', path: ['payment_lines'] },
-).refine(
   (data) => data.change_amount === 0 || !!data.change_account_id,
   { message: 'Vui lòng chọn sổ ghi nhận tiền thối', path: ['change_account_id'] },
 ).refine(
@@ -82,40 +74,12 @@ const parseVN = (s: string): number => {
 type PaymentMethod = 'TM' | 'TT' | 'TK';
 const METHOD_ORDER: PaymentMethod[] = ['TM', 'TT', 'TK'];
 
-// TK độc lập với TM/TT: trong cùng một phiếu (và toàn bộ lịch sử của
-// hoá đơn), các phương thức phải cùng nhóm {TM, TT} hoặc {TK}.
-// `existing` = payment_method đã có sẵn trên hoá đơn (lấy từ DB).
-const allowedMethodsForRow = (
-  idx: number,
-  lines: Array<{ payment_method?: PaymentMethod } | undefined>,
-  existing: PaymentMethod[] = [],
-): PaymentMethod[] => {
-  const others = lines.filter((_, i) => i !== idx);
-  const hasTK =
-    others.some((l) => l?.payment_method === 'TK') || existing.includes('TK');
-  const hasCashOrTransfer =
-    others.some(
-      (l) => l?.payment_method === 'TM' || l?.payment_method === 'TT',
-    ) ||
-    existing.includes('TM') ||
-    existing.includes('TT');
-  if (hasTK) return ['TK'];
-  if (hasCashOrTransfer) return ['TM', 'TT'];
-  return METHOD_ORDER;
-};
-
 const defaultMethodForNewRow = (
   lines: Array<{ payment_method?: PaymentMethod } | undefined>,
-  existing: PaymentMethod[] = [],
 ): PaymentMethod => {
-  if (existing.includes('TK')) return 'TK';
-  const cashLocked =
-    existing.includes('TM') || existing.includes('TT');
-  if (lines.length === 0) return cashLocked ? 'TM' : 'TM';
   const first = lines[0]?.payment_method;
-  if (cashLocked) return first === 'TT' ? 'TM' : 'TT';
-  if (first === 'TK') return 'TK';
   if (first === 'TT') return 'TM';
+  if (first === 'TK') return 'TM';
   return 'TT';
 };
 
@@ -128,7 +92,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [changeUserEdited, setChangeUserEdited] = useState(false);
-  const [existingMethods, setExistingMethods] = useState<PaymentMethod[]>([]);
 
   const {
     handleSubmit,
@@ -222,42 +185,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     if (target) setValue('change_account_id', target.id);
   }, [watchedChangeAmount, watchedChangeAccountId, accounts, setValue]);
 
-  // Fetch payment methods đã có trên hoá đơn — để khoá nhóm còn lại
-  // (TK vs TM/TT) trong dropdown phương thức.
-  useEffect(() => {
-    if (!invoice) {
-      setExistingMethods([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await (supabase as any)
-        .from('payments')
-        .select('payment_method')
-        .eq('invoice_id', invoice.id);
-      if (cancelled || error) return;
-      const methods = Array.from(
-        new Set((data || []).map((p: any) => p.payment_method as PaymentMethod)),
-      ) as PaymentMethod[];
-      setExistingMethods(methods);
-      // Nếu HĐ đã có TK, dòng đầu mặc định là TK (thay vì TM).
-      if (methods.includes('TK')) {
-        setValue('payment_lines.0.payment_method', 'TK', {
-          shouldValidate: true,
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [invoice, setValue]);
-
   const handleClose = () => {
     reset();
     setReceiptImage(null);
     setReceiptPreview(null);
     setChangeUserEdited(false);
-    setExistingMethods([]);
     onOpenChange(false);
   };
 
@@ -502,10 +434,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     variant="outline"
                     title="Thêm dòng thanh toán"
                     onClick={() => {
-                      const newMethod = defaultMethodForNewRow(
-                        watchedLines as any,
-                        existingMethods,
-                      );
+                      const newMethod = defaultMethodForNewRow(watchedLines as any);
                       append({
                         amount: 0,
                         payment_method: newMethod,
@@ -540,7 +469,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {allowedMethodsForRow(0, watchedLines as any, existingMethods).map((m) => (
+                    {METHOD_ORDER.map((m) => (
                       <SelectItem key={m} value={m}>
                         {m}
                       </SelectItem>
@@ -664,7 +593,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {allowedMethodsForRow(idx, watchedLines as any, existingMethods).map((m) => (
+                          {METHOD_ORDER.map((m) => (
                             <SelectItem key={m} value={m}>
                               {m}
                             </SelectItem>
