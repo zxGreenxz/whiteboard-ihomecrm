@@ -53,6 +53,7 @@ export interface Invoice {
   remaining_amount: number; // GENERATED: total_amount - paid_amount
   previous_debt: number;
   notes: string | null;
+  discount_notes: string | null;
   template_id: string | null;
   approved_at: string | null; // TIMESTAMPTZ
   approved_by: string | null;

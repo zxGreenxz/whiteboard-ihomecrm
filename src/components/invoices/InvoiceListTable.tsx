@@ -364,19 +364,24 @@ const InvoiceListTable = ({
                           if (d < 0) return <span className="text-emerald-600">{`+${formatCurrency(Math.abs(d))}`}</span>;
                           return <span className="text-muted-foreground">{formatCurrency(0)}</span>;
                         })()}
-                        {invoice.notes && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span
-                                aria-label="Ghi chú"
-                                className="absolute top-0 right-0 h-0 w-0 border-t-[6px] border-l-[6px] border-t-red-500 border-l-transparent cursor-help"
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-xs whitespace-pre-line text-left">
-                              {invoice.notes}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
+                        {(() => {
+                          const dn = invoice.discount_notes?.trim();
+                          const note = dn || invoice.notes;
+                          if (!note) return null;
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  aria-label="Ghi chú giảm trừ"
+                                  className="absolute top-0 right-0 h-0 w-0 border-t-[6px] border-l-[6px] border-t-red-500 border-l-transparent cursor-help"
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-xs whitespace-pre-line text-left">
+                                {note}
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                   )}
