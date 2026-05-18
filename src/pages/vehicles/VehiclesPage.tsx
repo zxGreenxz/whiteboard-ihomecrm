@@ -8,6 +8,7 @@ import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useVehicles } from '@/hooks/useVehicles';
+import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import VehicleListToolbar, { type ViewMode } from '@/components/vehicles/VehicleListToolbar';
 import VehicleListTable from '@/components/vehicles/VehicleListTable';
 import VehicleFormDialog from '@/components/vehicles/VehicleFormDialog';
@@ -32,6 +33,7 @@ export default function VehiclesPage() {
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
+  const { hasAnyScope } = useMyBuildingScope();
 
   // Build filters
   const filters = useMemo<VehicleFilters>(
@@ -142,8 +144,8 @@ export default function VehiclesPage() {
               icon={Car}
               title="Chưa có phương tiện nào"
               description="Hãy thêm phương tiện đầu tiên để bắt đầu quản lý"
-              actionLabel="Thêm phương tiện"
-              onAction={handleAdd}
+              actionLabel={hasAnyScope ? 'Thêm phương tiện' : undefined}
+              onAction={hasAnyScope ? handleAdd : undefined}
             />
           ) : (
             <>

@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { VehicleWithRelations } from '@/types/vehicle';
+import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: 'Xe máy',
@@ -32,6 +33,14 @@ export default function VehicleListTable({
   onDelete,
   isLoading,
 }: VehicleListTableProps) {
+  const { canManageBuilding, canManageAll } = useMyBuildingScope();
+  // Phương tiện không gắn building (vd hộp xe chung) chỉ caller toàn quyền
+  // quản; staff theo tòa phải khớp building_id.
+  const canManageVehicle = (vehicle: VehicleWithRelations) => {
+    if (canManageAll) return true;
+    return canManageBuilding(vehicle.building_id);
+  };
+
   if (isLoading) {
     return (
       <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
@@ -102,22 +111,26 @@ export default function VehicleListTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                    onClick={() => onEdit(vehicle)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => onDelete(vehicle)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {canManageVehicle(vehicle) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                      onClick={() => onEdit(vehicle)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canManageVehicle(vehicle) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => onDelete(vehicle)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>

@@ -2,6 +2,7 @@ import { Search, Plus, Download, Upload, Printer, LayoutGrid, List } from 'lucid
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 
 export type ViewMode = 'list' | 'grid';
 
@@ -26,6 +27,7 @@ export default function CustomerListToolbar({
   viewMode,
   onViewModeChange,
 }: CustomerListToolbarProps) {
+  const { hasAnyScope } = useMyBuildingScope();
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
       {/* Search */}
@@ -41,15 +43,19 @@ export default function CustomerListToolbar({
 
       {/* Actions */}
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={onAdd} className="bg-green-600 hover:bg-green-700">
-          <Plus className="h-4 w-4" />
-        </Button>
+        {hasAnyScope && (
+          <Button size="sm" onClick={onAdd} className="bg-green-600 hover:bg-green-700">
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
         <Button size="sm" variant="outline" onClick={onExport}>
           <Download className="h-4 w-4" />
         </Button>
-        <Button size="sm" variant="outline" onClick={onImport}>
-          <Upload className="h-4 w-4" />
-        </Button>
+        {hasAnyScope && (
+          <Button size="sm" variant="outline" onClick={onImport}>
+            <Upload className="h-4 w-4" />
+          </Button>
+        )}
         <Button size="sm" variant="outline" onClick={onPrint}>
           <Printer className="h-4 w-4" />
         </Button>

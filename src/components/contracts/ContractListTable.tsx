@@ -42,6 +42,7 @@ import {
   getContractDisplayStatus,
   CONTRACT_STATUS_CONFIG,
 } from '@/types/contract';
+import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 
 interface ContractListTableProps {
   contracts: ContractWithRelations[];
@@ -134,6 +135,7 @@ export default function ContractListTable({
   onPageSizeChange,
 }: ContractListTableProps) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const { canManageBuilding } = useMyBuildingScope();
 
   const allSelected =
     contracts.length > 0 && contracts.every((c) => selectedIds.includes(c.id));
@@ -270,6 +272,9 @@ export default function ContractListTable({
                       <ActionButtons
                         contract={contract}
                         actions={actions}
+                        canManage={canManageBuilding(
+                          contract.room?.building_id ?? contract.room?.building?.id
+                        )}
                         onEdit={onEdit}
                         onRenew={onRenew}
                         onTransferRoom={onTransferRoom}
@@ -344,6 +349,8 @@ export default function ContractListTable({
 interface ActionButtonsProps {
   contract: ContractWithRelations;
   actions: ReturnType<typeof getActionButtonStates>;
+  /** false → ẩn các nút sửa/xoá/gia hạn/chuyển/thanh lý. Vẫn giữ xem/in/QR. */
+  canManage: boolean;
   onEdit: (contract: ContractWithRelations) => void;
   onRenew: (contract: ContractWithRelations) => void;
   onTransferRoom: (contract: ContractWithRelations) => void;
@@ -358,6 +365,7 @@ interface ActionButtonsProps {
 function ActionButtons({
   contract,
   actions,
+  canManage,
   onEdit,
   onRenew,
   onTransferRoom,
@@ -375,6 +383,7 @@ function ActionButtons({
       icon: Eye,
       onClick: () => navigate(`/contracts/${contract.id}`),
       disabled: false,
+      hidden: false,
       bg: 'bg-slate-500 hover:bg-slate-600',
     },
     {
@@ -382,6 +391,7 @@ function ActionButtons({
       icon: Pencil,
       onClick: () => onEdit(contract),
       disabled: actions.editDisabled,
+      hidden: !canManage,
       bg: 'bg-green-500 hover:bg-green-600',
     },
     {
@@ -389,6 +399,7 @@ function ActionButtons({
       icon: Printer,
       onClick: () => onPrint(contract),
       disabled: false,
+      hidden: false,
       bg: 'bg-sky-500 hover:bg-sky-600',
     },
     {
@@ -396,6 +407,7 @@ function ActionButtons({
       icon: CalendarPlus,
       onClick: () => onRenew(contract),
       disabled: actions.renewDisabled,
+      hidden: !canManage,
       bg: 'bg-green-500 hover:bg-green-600',
     },
     {
@@ -403,6 +415,7 @@ function ActionButtons({
       icon: ArrowRightLeft,
       onClick: () => onTransferRoom(contract),
       disabled: actions.transferRoomDisabled,
+      hidden: !canManage,
       bg: 'bg-orange-500 hover:bg-orange-600',
     },
     {
@@ -410,6 +423,7 @@ function ActionButtons({
       icon: LogOut,
       onClick: () => onMoveOut(contract),
       disabled: actions.moveOutDisabled,
+      hidden: !canManage,
       bg: 'bg-blue-500 hover:bg-blue-600',
     },
     {
@@ -417,6 +431,7 @@ function ActionButtons({
       icon: UserPlus,
       onClick: () => onTransferContract(contract),
       disabled: actions.transferContractDisabled,
+      hidden: !canManage,
       bg: 'bg-yellow-500 hover:bg-yellow-600',
     },
     {
@@ -424,6 +439,7 @@ function ActionButtons({
       icon: FileX,
       onClick: () => onTerminate(contract),
       disabled: actions.terminateDisabled,
+      hidden: !canManage,
       bg: 'bg-red-500 hover:bg-red-600',
     },
     {
@@ -431,6 +447,7 @@ function ActionButtons({
       icon: Trash2,
       onClick: () => onDelete(contract),
       disabled: actions.deleteDisabled,
+      hidden: !canManage,
       bg: 'bg-red-700 hover:bg-red-800',
     },
     {
@@ -438,9 +455,10 @@ function ActionButtons({
       icon: QrCode,
       onClick: () => onShowQR(contract),
       disabled: actions.qrDisabled,
+      hidden: false,
       bg: 'bg-purple-500 hover:bg-purple-600',
     },
-  ];
+  ].filter((b) => !b.hidden);
 
   return (
     <TooltipProvider delayDuration={300}>

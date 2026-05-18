@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { Customer } from '@/types/customer';
+import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 
 interface CustomerListTableProps {
   customers: Customer[];
@@ -63,6 +64,16 @@ export default function CustomerListTable({
   onDelete,
   isLoading,
 }: CustomerListTableProps) {
+  const { canManageBuilding, canManageAll } = useMyBuildingScope();
+  // Customer "thuộc scope" khi: caller quản tất cả, customer chưa có hợp đồng
+  // (current_building_id null = chưa thuê), hoặc tòa hiện tại thuộc scope.
+  const canManageCustomer = (customer: Customer) => {
+    if (canManageAll) return true;
+    const bid = (customer as any).current_building_id as string | null | undefined;
+    if (!bid) return true;
+    return canManageBuilding(bid);
+  };
+
   if (isLoading) {
     return (
       <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
@@ -164,22 +175,26 @@ export default function CustomerListTable({
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                    onClick={() => onEdit(customer)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => onDelete(customer)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {canManageCustomer(customer) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                      onClick={() => onEdit(customer)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canManageCustomer(customer) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => onDelete(customer)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>

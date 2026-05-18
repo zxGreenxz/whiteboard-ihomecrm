@@ -23,6 +23,7 @@ import { useContracts } from '@/hooks/useContracts';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useProfile } from '@/hooks/useProfile';
+import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { getContractDisplayStatus } from '@/types/contract';
 import type {
   ContractWithRelations,
@@ -95,6 +96,7 @@ export default function ContractsPage() {
   );
 
   const { data: profile } = useProfile();
+  const { hasAnyScope } = useMyBuildingScope();
 
   // =============================================
   // Compute areas from buildings
@@ -398,12 +400,16 @@ export default function ContractsPage() {
             />
           </div>
           <div className="flex items-center gap-1">
-            <Button onClick={() => setFormDialogOpen(true)} size="icon" className="h-8 w-8 bg-green-500 hover:bg-green-600">
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setImportDialogOpen(true)} title="Nhập">
-              <Upload className="h-4 w-4" />
-            </Button>
+            {hasAnyScope && (
+              <Button onClick={() => setFormDialogOpen(true)} size="icon" className="h-8 w-8 bg-green-500 hover:bg-green-600">
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
+            {hasAnyScope && (
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setImportDialogOpen(true)} title="Nhập">
+                <Upload className="h-4 w-4" />
+              </Button>
+            )}
             <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => exportContracts(filteredContracts)} title="Xuất">
               <Download className="h-4 w-4" />
             </Button>
@@ -433,8 +439,8 @@ export default function ContractsPage() {
                 icon={FileText}
                 title="Chưa có hợp đồng nào"
                 description="Hãy thêm hợp đồng đầu tiên để bắt đầu quản lý"
-                actionLabel="Thêm hợp đồng"
-                onAction={() => setFormDialogOpen(true)}
+                actionLabel={hasAnyScope ? 'Thêm hợp đồng' : undefined}
+                onAction={hasAnyScope ? () => setFormDialogOpen(true) : undefined}
               />
             )
           ) : (
