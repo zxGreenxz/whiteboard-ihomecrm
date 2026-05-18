@@ -1,7 +1,13 @@
 // =============================================
 // Bulk Record Payment Hook
-// Loop qua nhiều hoá đơn, mỗi hoá đơn có thể có 3 sub-payment (TM/TK/TT)
-// + 1 phiếu thối nếu khách trả dư.
+// Loop qua nhiều hoá đơn, mỗi hoá đơn có thể có 3 sub-payment (TM/TK/TT).
+//
+// TIỀN THỐI: KHẤU TRỪ VÀO LINE TM (giống RecordPaymentDialog single):
+//   - payments.amount của line TM = amount_tm - change_amount (net thực thu)
+//   - income_expenses INCOME của line TM: gắn metadata change_amount +
+//     change_account_id + notes "Thu X – Thối Y"
+//   - KHÔNG tạo phiếu chi EXPENSE 'Tiền thối' lẻ → sổ "X Thối" giữ tồn quỹ 0,
+//     đóng vai trò "ví audit" thuần qua change_account_id metadata.
 //
 // LƯU Ý: KHÔNG dùng RPC record_invoice_payment vì RPC đó check
 // `WHERE user_id = p_user_id` (chỉ owner gọi được) — staff được RLS
@@ -74,25 +80,6 @@ export const useBulkRecordPayment = () => {
         );
       }
 
-      let refundTypeId: string | null = null;
-      const needRefund = params.items.some((i) => i.change_amount > 0);
-      if (needRefund) {
-        const { data: refundType, error: rtErr } = await (supabase
-          .from('income_expense_types' as any)
-          .select('id') as any)
-          .eq('type', 'expense')
-          .eq('name', 'Tiền thối')
-          .limit(1)
-          .maybeSingle();
-        if (rtErr) throw rtErr;
-        if (!(refundType as any)?.id) {
-          throw new Error(
-            'Chưa có loại chi "Tiền thối". Vào Cài đặt → Loại thu/chi để tạo trước.',
-          );
-        }
-        refundTypeId = (refundType as any).id;
-      }
-
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
         meta.full_name || meta.name || user.email || 'Người dùng';
@@ -144,19 +131,54 @@ export const useBulkRecordPayment = () => {
             continue;
           }
 
+          // Tiền thối khấu trừ vào line TM cuối cùng (giống single dialog).
+          const change = item.change_amount || 0;
+          let tmDeductIdx = -1;
+          if (change > 0) {
+            for (let i = subLines.length - 1; i >= 0; i--) {
+              if (subLines[i].method === 'TM') {
+                tmDeductIdx = i;
+                break;
+              }
+            }
+            if (tmDeductIdx === -1) {
+              throw new Error('Tiền thối chỉ áp dụng cho TM, nhưng không có dòng TM');
+            }
+            if (subLines[tmDeductIdx].amount < change) {
+              throw new Error('Tiền thối lớn hơn số tiền TM');
+            }
+            if (!item.change_account_id) {
+              throw new Error('Thiếu sổ quỹ tiền thối');
+            }
+          }
+
           // ── Mỗi sub-line: INSERT payment + voucher INCOME (bypass RPC) ──
           // user_id = owner của invoice (RLS staff_can dùng owner làm scope)
           const ownerId = (inv as any).user_id as string;
           for (let i = 0; i < subLines.length; i++) {
             const line = subLines[i];
             const isFirst = i === 0;
+            const isDeductLine = i === tmDeductIdx;
+            const deducted = isDeductLine ? change : 0;
+            const effectiveAmount = line.amount - deducted;
+            if (effectiveAmount <= 0) {
+              // Line bị khấu trừ hết → không tạo phiếu.
+              continue;
+            }
+
+            const grossPaid = effectiveAmount + deducted;
+            const refundNote = deducted > 0
+              ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${deducted.toLocaleString('vi-VN')}`
+              : null;
+            const composedNotes =
+              [item.notes?.trim() || null, refundNote].filter(Boolean).join(' — ') || null;
 
             const { data: paymentRow, error: payErr } = await supabase
               .from('payments' as any)
               .insert({
                 user_id: ownerId,
                 invoice_id: item.invoice_id,
-                amount: line.amount,
+                amount: effectiveAmount,
                 payment_method: line.method,
                 payment_date: params.payment_date,
                 notes: item.notes ?? null,
@@ -183,13 +205,15 @@ export const useBulkRecordPayment = () => {
                 payment_id: newPaymentId,
                 voucher_date: params.payment_date,
                 payer_name: item.notes ?? null,
-                notes: item.notes ?? null,
+                notes: composedNotes,
                 attachments:
                   isFirst && item.receipt_image_url
                     ? [item.receipt_image_url]
                     : [],
                 approval_status: 'APPROVED',
                 creator_name: creatorName,
+                change_amount: deducted,
+                change_account_id: isDeductLine ? (item.change_account_id ?? null) : null,
               } as any)
               .select()
               .single();
@@ -202,54 +226,11 @@ export const useBulkRecordPayment = () => {
                 income_expense_type_id: incomeTypeId,
                 description: `Thanh toán hoá đơn ${(inv as any).invoice_number || ''}`,
                 quantity: 1,
-                unit_price: line.amount,
+                unit_price: effectiveAmount,
                 start_date: params.payment_date,
                 end_date: params.payment_date,
               });
             if (itemErr) throw itemErr;
-          }
-
-          // ── Phiếu chi tiền thối (nếu có) ──
-          if (item.change_amount > 0) {
-            if (!item.change_account_id) {
-              throw new Error('Thiếu sổ quỹ tiền thối');
-            }
-            if (!refundTypeId) {
-              throw new Error('Thiếu loại chi "Tiền thối"');
-            }
-            const { data: refundVoucher, error: rvErr } = await supabase
-              .from('income_expenses' as any)
-              .insert({
-                user_id: ownerId,
-                type: 'EXPENSE',
-                name: `Tiền thối hoá đơn ${(inv as any).invoice_number || ''} - ${(inv as any).billing_month || ''}`,
-                building_id: (inv as any).building_id,
-                room_id: (inv as any).room_id,
-                bed_id: (inv as any).bed_id,
-                contract_id: (inv as any).contract_id,
-                account_id: item.change_account_id,
-                invoice_id: (inv as any).id,
-                voucher_date: params.payment_date,
-                attachments: [],
-                approval_status: 'APPROVED',
-                creator_name: creatorName,
-              } as any)
-              .select()
-              .single();
-            if (rvErr) throw rvErr;
-
-            const { error: rItemErr } = await supabase
-              .from('income_expense_items' as any)
-              .insert({
-                income_expense_id: (refundVoucher as any).id,
-                income_expense_type_id: refundTypeId,
-                description: `Tiền thối hoá đơn ${(inv as any).invoice_number || ''}`,
-                quantity: 1,
-                unit_price: item.change_amount,
-                start_date: params.payment_date,
-                end_date: params.payment_date,
-              });
-            if (rItemErr) throw rItemErr;
           }
 
           ok.push(item.invoice_id);
