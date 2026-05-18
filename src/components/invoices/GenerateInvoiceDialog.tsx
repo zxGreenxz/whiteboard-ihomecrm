@@ -24,10 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateInvoice } from '@/hooks/useInvoices';
+import { useCreateInvoice, useExcessAmount } from '@/hooks/useInvoices';
 import type { InvoiceFormData } from '@/types/invoice';
 import { useContracts } from '@/hooks/useContracts';
 import { useMeterReadings } from '@/hooks/useInvoices';
+import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
@@ -59,6 +60,9 @@ const generateInvoiceSchema = z.object({
   title: z.string().min(1, 'Vui lòng nhập tiêu đề'),
   items: z.array(invoiceItemSchema).min(1, 'Phải có ít nhất 1 khoản thu'),
   notes: z.string().optional(),
+  discount_amount: z.number().min(0).default(0),
+  discount_notes: z.string().nullable().optional(),
+  applied_credit: z.number().min(0).optional(),
 });
 
 type GenerateInvoiceFormData = z.infer<typeof generateInvoiceSchema>;
@@ -98,6 +102,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       billing_period_start: startOfMonth(new Date()).toISOString().split('T')[0],
       billing_period_end: endOfMonth(new Date()).toISOString().split('T')[0],
       items: [],
+      discount_amount: 0,
+      discount_notes: '',
+      applied_credit: 0,
     },
   });
 
@@ -110,6 +117,23 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const watchedItems = watch('items');
   const watchedBillingStart = watch('billing_period_start');
   const watchedBillingEnd = watch('billing_period_end');
+  const watchedDiscount = watch('discount_amount') || 0;
+  const watchedDiscountNotes = watch('discount_notes') || '';
+
+  // Auto-fill discount = credit của contract khi user chọn HĐ và chưa nhập discount.
+  const { data: creditBalance = 0 } = useExcessAmount(watchedContractId);
+  useEffect(() => {
+    if (!watchedContractId) return;
+    if (creditBalance <= 0) return;
+    if (watchedDiscount > 0) return;
+    setValue('discount_amount', creditBalance);
+    setValue(
+      'discount_notes',
+      `Nợ ${creditBalance.toLocaleString('vi-VN')} Tiền Thối`,
+    );
+    setValue('applied_credit', creditBalance);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedContractId, creditBalance]);
 
   const selectedContract = contracts?.find((c) => c.id === watchedContractId);
 
@@ -218,6 +242,11 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       sort_order: index,
     }));
 
+    const discountAmount = data.discount_amount || 0;
+    const appliedCredit = Math.min(
+      Math.max(0, data.applied_credit || 0),
+      Math.max(0, discountAmount),
+    );
     const invoiceFormData: InvoiceFormData = {
       building_id: buildingId,
       room_id: roomId,
@@ -227,7 +256,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       issue_date: data.issue_date,
       due_date: data.due_date,
       notes: data.notes || null,
-      discount_amount: 0,
+      discount_amount: discountAmount,
+      discount_notes: data.discount_notes?.trim() || null,
+      applied_credit: appliedCredit,
       tax_percent: 0,
       prepaid_amount: 0,
       previous_debt: 0,
@@ -608,11 +639,40 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             )}
           </div>
 
+          {/* Giảm trừ — auto-fill từ tiền nợ khách (credit) nếu có */}
+          <div className="bg-amber-50 border border-amber-200 p-3 rounded-md space-y-1">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="discount_amount" className="text-amber-900 shrink-0">
+                Giảm trừ:
+              </Label>
+              <div className="relative w-48">
+                <CurrencyInput
+                  className="h-9 text-right pr-3"
+                  suffix={false}
+                  value={watchedDiscount}
+                  onChange={(v) => setValue('discount_amount', v, { shouldDirty: true })}
+                />
+                <DiscountNoteTrigger
+                  value={watchedDiscountNotes}
+                  onChange={(v) => setValue('discount_notes', v, { shouldDirty: true })}
+                  disabled={watchedDiscount <= 0}
+                />
+              </div>
+            </div>
+            {watchedContractId && creditBalance > 0 && (
+              <p className="text-[11px] text-amber-700 text-right">
+                Tiền nợ khách: {formatCurrency(creditBalance)}
+              </p>
+            )}
+          </div>
+
           {/* Total */}
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-md">
             <div className="flex items-center justify-between">
               <span className="text-lg font-medium text-blue-900">Tổng cộng:</span>
-              <span className="text-2xl font-bold text-blue-900">{formatCurrency(totalAmount)}</span>
+              <span className="text-2xl font-bold text-blue-900">
+                {formatCurrency(Math.max(0, totalAmount - watchedDiscount))}
+              </span>
             </div>
           </div>
 
