@@ -52,9 +52,16 @@ export function CashbookDetailDialog({
     .map((s) => s.full_name || s.email || s.user_id.slice(0, 8))
     .join(", ");
 
+  const isRefundLogAccount =
+    typeof account.name === "string" && account.name.trim().endsWith("Thối");
+
   const handleViewIncomeExpense = () => {
     onOpenChange(false);
-    navigate(`/income-expense?account_id=${account.id}`);
+    if (isRefundLogAccount) {
+      navigate(`/finance/refund-log?account_id=${account.id}`);
+    } else {
+      navigate(`/income-expense?account_id=${account.id}`);
+    }
   };
 
   return (
