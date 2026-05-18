@@ -833,14 +833,19 @@ export const useExcessAmount = (contractId?: string) => {
 
       const { data, error } = await (supabase
         .from('excess_amounts' as any) as any)
-        .select('amount')
+        .select('amount, source_invoice:invoices!source_invoice_id(deleted_at)')
         .eq('contract_id', contractId)
         ;
 
       if (error) throw error;
 
-      // Sum all amounts (positive = credit added, negative = credit used)
-      const total = (data || []).reduce((sum: number, row: any) => sum + (row.amount || 0), 0);
+      // Sum all amounts (positive = credit added, negative = credit used).
+      // Bỏ qua row nếu source_invoice đã soft-delete (auto rollback khi huỷ HĐ).
+      const total = (data || []).reduce((sum: number, row: any) => {
+        const invDeleted = row.source_invoice?.deleted_at;
+        if (invDeleted) return sum;
+        return sum + (Number(row.amount) || 0);
+      }, 0);
       return total;
     },
     enabled: !!contractId,

@@ -35,6 +35,9 @@ export interface BulkPaymentItem {
   change_amount: number;
   account_id: string;
   change_account_id: string | null;
+  /** Nếu true: change_amount được giữ làm credit cho contract (excess_amounts),
+   *  KHÔNG khấu trừ vào TM, KHÔNG tạo phiếu chi thối. */
+  keep_as_credit?: boolean;
   receipt_image_url?: string | null;
   notes?: string;
 }
@@ -132,9 +135,12 @@ export const useBulkRecordPayment = () => {
           }
 
           // Tiền thối khấu trừ vào line TM cuối cùng (giống single dialog).
+          // Nếu keep_as_credit: KHÔNG khấu trừ — tiền thối được giữ thành credit
+          // và sẽ INSERT excess_amounts row sau loop.
           const change = item.change_amount || 0;
+          const keepAsCredit = !!item.keep_as_credit && change > 0;
           let tmDeductIdx = -1;
-          if (change > 0) {
+          if (change > 0 && !keepAsCredit) {
             for (let i = subLines.length - 1; i >= 0; i--) {
               if (subLines[i].method === 'TM') {
                 tmDeductIdx = i;
@@ -151,6 +157,15 @@ export const useBulkRecordPayment = () => {
               throw new Error('Thiếu sổ quỹ tiền thối');
             }
           }
+          // Tìm line TM cuối để gắn payment_id reference vào excess_amounts (nếu credit)
+          let tmLastIdx = -1;
+          for (let i = subLines.length - 1; i >= 0; i--) {
+            if (subLines[i].method === 'TM') {
+              tmLastIdx = i;
+              break;
+            }
+          }
+          let creditSourcePaymentId: string | null = null;
 
           // ── Mỗi sub-line: INSERT payment + voucher INCOME (bypass RPC) ──
           // user_id = owner của invoice (RLS staff_can dùng owner làm scope)
@@ -167,9 +182,12 @@ export const useBulkRecordPayment = () => {
             }
 
             const grossPaid = effectiveAmount + deducted;
+            const isCreditLine = keepAsCredit && i === tmLastIdx;
             const refundNote = deducted > 0
               ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${deducted.toLocaleString('vi-VN')}`
-              : null;
+              : isCreditLine
+                ? `Thu ${effectiveAmount.toLocaleString('vi-VN')} – Nợ khách ${change.toLocaleString('vi-VN')} (trừ kỳ sau)`
+                : null;
             const composedNotes =
               [item.notes?.trim() || null, refundNote].filter(Boolean).join(' — ') || null;
 
@@ -189,6 +207,7 @@ export const useBulkRecordPayment = () => {
               .single();
             if (payErr) throw payErr;
             const newPaymentId = (paymentRow as any)?.id ?? null;
+            if (isCreditLine) creditSourcePaymentId = newPaymentId;
 
             const { data: voucher, error: vErr } = await supabase
               .from('income_expenses' as any)
@@ -233,6 +252,21 @@ export const useBulkRecordPayment = () => {
             if (itemErr) throw itemErr;
           }
 
+          // Khi keep_as_credit: INSERT excess_amounts row cho contract
+          if (keepAsCredit && (inv as any).contract_id) {
+            const { error: creditErr } = await supabase
+              .from('excess_amounts' as any)
+              .insert({
+                user_id: ownerId,
+                contract_id: (inv as any).contract_id,
+                amount: change,
+                description: `Tiền nợ khách giữ lại từ HĐ ${(inv as any).invoice_number || ''}`.trim(),
+                source_invoice_id: (inv as any).id,
+                source_payment_id: creditSourcePaymentId,
+              } as any);
+            if (creditErr) throw creditErr;
+          }
+
           ok.push(item.invoice_id);
         } catch (e: any) {
           failures.push({
@@ -254,6 +288,7 @@ export const useBulkRecordPayment = () => {
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
       queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['accounts-with-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
     },
     onSuccess: (result) => {
       const okCount = result.ok.length;

@@ -65,6 +65,7 @@ interface RowData {
   amount_tt: number;
   change_amount: number;
   change_user_edited: boolean;
+  keep_as_credit: boolean;
 
   receipt_image: File | null;
   receipt_preview_url: string | null;
@@ -211,6 +212,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             amount_tt: 0,
             change_amount: 0,
             change_user_edited: false,
+            keep_as_credit: false,
             receipt_image: null,
             receipt_preview_url: null,
             notes: '',
@@ -379,10 +381,10 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       return false;
     }
 
-    // Cần sổ quỹ thối
+    // Cần sổ quỹ thối (chỉ khi không giữ làm credit)
     const needsChangeAccount = selected.some((r) => {
       const ca = r.change_account_id_override ?? headerChangeAccountId;
-      return r.change_amount > 0 && !ca;
+      return r.change_amount > 0 && !r.keep_as_credit && !ca;
     });
     if (needsChangeAccount) {
       toast({
@@ -464,9 +466,10 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         change_amount: r.change_amount,
         account_id: r.account_id_override ?? headerAccountId,
         change_account_id:
-          r.change_amount > 0
+          r.change_amount > 0 && !r.keep_as_credit
             ? (r.change_account_id_override ?? headerChangeAccountId)
             : null,
+        keep_as_credit: r.keep_as_credit && r.change_amount > 0,
         receipt_image_url: urlMap.get(r.invoice_id) ?? null,
         notes: r.notes || undefined,
       }));
@@ -763,6 +766,22 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                           })
                         }
                       />
+                      <label
+                        className={`flex items-center gap-1 mt-1 text-[10px] cursor-pointer leading-tight ${
+                          r.change_amount > 0 ? 'text-blue-700' : 'text-muted-foreground opacity-50'
+                        }`}
+                        title="Tick: giữ tiền thối làm credit (trừ kỳ sau), không tạo phiếu chi thối"
+                      >
+                        <Checkbox
+                          className="h-3 w-3"
+                          checked={r.keep_as_credit}
+                          disabled={r.change_amount <= 0}
+                          onCheckedChange={(v) =>
+                            updateRow(i, { keep_as_credit: !!v })
+                          }
+                        />
+                        Nợ kỳ sau
+                      </label>
                     </td>
                     {showAccountColumns && (
                       <>

@@ -45,6 +45,7 @@ import {
   useTerminateMoveOut,
 } from "@/hooks/useContractOperations";
 import { useUnpaidInvoices } from "@/hooks/useContracts";
+import { useExcessAmount } from "@/hooks/useInvoices";
 
 type TerminationType = "FORFEIT" | "MOVE_OUT";
 
@@ -74,6 +75,11 @@ export function TerminateDialog({
   // Query unpaid invoices for move-out flow
   const { data: unpaidInvoices } = useUnpaidInvoices(
     terminationType === "MOVE_OUT" ? contract.id : undefined
+  );
+  // Tiền nợ khách (credit) còn dư của contract — pre-fill vào "Tiền phòng thừa"
+  // ở move-out, hiển thị info ở forfeit.
+  const { data: creditBalance = 0 } = useExcessAmount(
+    terminationType ? contract.id : undefined
   );
 
   // Reset state when dialog opens/closes
@@ -130,6 +136,7 @@ export function TerminateDialog({
         {step === 2 && terminationType === "FORFEIT" && (
           <StepForfeit
             contract={contract}
+            creditBalance={creditBalance}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
             isPending={isPending}
@@ -143,6 +150,7 @@ export function TerminateDialog({
             customerName={customerName}
             locationDisplay={locationDisplay}
             unpaidInvoices={unpaidInvoices || []}
+            creditBalance={creditBalance}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
             isPending={isPending}
@@ -196,12 +204,14 @@ function StepSelectType({
 
 function StepForfeit({
   contract,
+  creditBalance,
   onBack,
   onClose,
   isPending,
   terminateForfeit,
 }: {
   contract: ContractWithRelations;
+  creditBalance: number;
   onBack: () => void;
   onClose: () => void;
   isPending: boolean;
@@ -228,6 +238,8 @@ function StepForfeit({
     );
   };
 
+  const forfeitInfo = creditBalance > 0;
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -251,6 +263,13 @@ function StepForfeit({
             </FormItem>
           )}
         />
+
+        {forfeitInfo && (
+          <div className="rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
+            Hợp đồng đang có {formatVND(creditBalance)} đ tiền nợ khách (credit).
+            Khi bỏ cọc, toàn bộ credit sẽ bị xoá.
+          </div>
+        )}
 
         <DialogFooter className="gap-2">
           <Button type="button" variant="ghost" onClick={onBack}>
@@ -285,6 +304,7 @@ function StepMoveOut({
   customerName,
   locationDisplay,
   unpaidInvoices,
+  creditBalance,
   onBack,
   onClose,
   isPending,
@@ -294,6 +314,7 @@ function StepMoveOut({
   customerName: string;
   locationDisplay: string;
   unpaidInvoices: any[];
+  creditBalance: number;
   onBack: () => void;
   onClose: () => void;
   isPending: boolean;
@@ -311,6 +332,17 @@ function StepMoveOut({
       notes: "",
     },
   });
+
+  // Auto fill credit (excess_amounts) vào "Tiền phòng thừa" lần đầu khi user
+  // chưa chỉnh tay. Chỉ thực hiện khi credit > 0 và excess_rent chưa được
+  // user gõ (sau khi user gõ "dirty" thì giữ nguyên).
+  const excessDirty = !!form.formState.dirtyFields.excess_rent;
+  useEffect(() => {
+    if (creditBalance > 0 && !excessDirty) {
+      form.setValue("excess_rent", creditBalance);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creditBalance]);
 
   // Watch values for real-time settlement calculation
   const depositRefund = form.watch("deposit_refund") || 0;
@@ -549,6 +581,12 @@ function StepMoveOut({
                       name={field.name}
                     />
                   </FormControl>
+                  {creditBalance > 0 && (
+                    <p className="text-[11px] text-blue-700">
+                      Đã tự fill {formatVND(creditBalance)}đ tiền nợ khách (credit).
+                      Toàn bộ credit sẽ được tiêu hết khi thanh lý.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

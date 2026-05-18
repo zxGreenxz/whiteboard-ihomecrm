@@ -29,6 +29,7 @@ import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
 interface RecordPaymentDialogProps {
@@ -48,13 +49,15 @@ const paymentSchema = z.object({
   change_amount: z.number().min(0).default(0),
   payment_date: z.string().min(1, 'Vui lòng chọn ngày thanh toán'),
   change_account_id: z.string().optional(),
+  keep_as_credit: z.boolean().default(false),
   notes: z.string().optional(),
 }).refine(
-  (data) => data.change_amount === 0 || !!data.change_account_id,
+  (data) => data.change_amount === 0 || data.keep_as_credit || !!data.change_account_id,
   { message: 'Vui lòng chọn sổ ghi nhận tiền thối', path: ['change_account_id'] },
 ).refine(
   (data) => {
     if (data.change_amount === 0) return true;
+    if (data.keep_as_credit) return true;
     const tmTotal = data.payment_lines
       .filter((l) => l.payment_method === 'TM')
       .reduce((s, l) => s + (Number(l.amount) || 0), 0);
@@ -107,6 +110,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       payment_lines: [{ amount: 0, payment_method: 'TM', account_id: '' }],
       change_amount: 0,
       payment_date: new Date().toISOString().split('T')[0],
+      keep_as_credit: false,
     },
   });
 
@@ -115,6 +119,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const watchedLines = watch('payment_lines');
   const watchedChangeAmount = watch('change_amount');
   const watchedChangeAccountId = watch('change_account_id');
+  const watchedKeepAsCredit = watch('keep_as_credit');
 
   const totalPaid = (watchedLines ?? []).reduce(
     (s, l) => s + (Number((l as any)?.amount) || 0),
@@ -286,12 +291,17 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         }
       }
 
+      const change = data.change_amount || 0;
+      const keepAsCredit = !!data.keep_as_credit && change > 0;
+
       // Tiền thối CHỈ áp dụng line TM. Khấu trừ vào line TM CUỐI CÙNG:
       //   - phiếu thu line đó: amount = line.amount - change_amount (số thực thu)
       //   - metadata change_amount / change_account_id gắn lên phiếu thu này
       // Các line khác (TM trước đó, TK, TT): giữ nguyên amount, không metadata thối.
-      const change = data.change_amount || 0;
-      const tmDeductIdx = change > 0
+      // KHI keep_as_credit: KHÔNG khấu trừ, line TM giữ nguyên amount; tiền thối
+      // sẽ được lưu thành excess_amounts row sau khi tạo phiếu thu xong (mutation
+      // useRecordPaymentRPC tự xử lý phần này dựa trên flag keep_as_credit).
+      const tmDeductIdx = change > 0 && !keepAsCredit
         ? (() => {
             for (let i = data.payment_lines.length - 1; i >= 0; i--) {
               if (data.payment_lines[i].payment_method === 'TM') return i;
@@ -299,6 +309,13 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             return -1;
           })()
         : -1;
+
+      const tmLastIdx = (() => {
+        for (let i = data.payment_lines.length - 1; i >= 0; i--) {
+          if (data.payment_lines[i].payment_method === 'TM') return i;
+        }
+        return -1;
+      })();
 
       for (let i = 0; i < data.payment_lines.length; i++) {
         const line = data.payment_lines[i];
@@ -309,6 +326,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           // Line bị khấu trừ hết → không tạo phiếu. (Hiếm — đã chặn ở zod.)
           continue;
         }
+        // Khi keep_as_credit, gắn credit metadata lên line TM cuối để hook tạo
+        // excess_amounts row link đúng payment.
+        const isCreditLine = keepAsCredit && i === tmLastIdx;
         await recordMutation.mutateAsync({
           invoice_id: invoice.id,
           amount: effectiveAmount,
@@ -319,6 +339,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           account_id: line.account_id,
           change_amount: deducted,
           change_account_id: isDeductLine ? (data.change_account_id ?? null) : null,
+          credit_amount: isCreditLine ? change : 0,
         });
       }
       handleClose();
@@ -426,6 +447,15 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     }}
                     placeholder="0"
                   />
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <Checkbox
+                      checked={watchedKeepAsCredit}
+                      onCheckedChange={(v) =>
+                        setValue('keep_as_credit', !!v, { shouldValidate: true })
+                      }
+                    />
+                    Nợ khách (trừ kỳ sau)
+                  </label>
                 </div>
                 <div className="pt-7">
                   <Button
@@ -683,6 +713,15 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   }}
                   placeholder="0"
                 />
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox
+                    checked={watchedKeepAsCredit}
+                    onCheckedChange={(v) =>
+                      setValue('keep_as_credit', !!v, { shouldValidate: true })
+                    }
+                  />
+                  Nợ khách (trừ kỳ sau)
+                </label>
                 <p className="text-xs text-muted-foreground">
                   Tổng đã nhập: {formatVN(totalPaid)} đ — Còn phải thu:{' '}
                   {formatVN(outstandingAmount)} đ
@@ -691,8 +730,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </>
           )}
 
-          {/* Sổ ghi nhận tiền thối — bắt buộc nếu Tiền thối > 0 */}
-          {(watchedChangeAmount ?? 0) > 0 && (
+          {/* Sổ ghi nhận tiền thối — bắt buộc nếu Tiền thối > 0 và KHÔNG giữ làm credit */}
+          {(watchedChangeAmount ?? 0) > 0 && !watchedKeepAsCredit && (
             <div className="space-y-2">
               <Label>Sổ ghi nhận tiền thối *</Label>
               <Select
@@ -717,10 +756,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               {errors.change_account_id && (
                 <p className="text-sm text-red-500">{errors.change_account_id.message}</p>
               )}
-              <p className="text-xs text-muted-foreground">
-                Hệ thống sẽ tạo phiếu chi hạng mục "Tiền thối" trong sổ quỹ này.
-              </p>
             </div>
+          )}
+
+          {/* Info khi tick "Nợ khách" */}
+          {(watchedChangeAmount ?? 0) > 0 && watchedKeepAsCredit && (
+            <Alert className="bg-blue-50 border-blue-200">
+              <AlertDescription className="text-blue-800 text-sm">
+                Sẽ giữ {formatVN(watchedChangeAmount ?? 0)}đ làm tiền nợ khách của hợp đồng,
+                trừ vào HĐ kỳ sau. Phiếu thu được tạo đầy đủ theo số tiền khách trả, không
+                tạo phiếu chi thối.
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Receipt Image Upload */}

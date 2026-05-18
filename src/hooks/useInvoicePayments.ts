@@ -26,6 +26,10 @@ export interface RecordPaymentRPCData {
   change_amount?: number;
   /** Sổ quỹ ghi tiền thối — bắt buộc nếu change_amount > 0. */
   change_account_id?: string | null;
+  /** Nếu > 0: giữ chỗ tiền thối làm credit cho contract (excess_amounts row).
+   *  KHÔNG khấu trừ vào amount của phiếu thu. Chỉ set trên ĐÚNG MỘT call
+   *  trong loop nhiều line (line TM cuối). */
+  credit_amount?: number;
 }
 
 // =============================================
@@ -92,10 +96,13 @@ export const useRecordPaymentRPC = () => {
           meta.full_name || meta.name || user.email || 'Người dùng';
 
         const change = data.change_amount ?? 0;
+        const credit = data.credit_amount ?? 0;
         const grossPaid = data.amount + change;
         const refundNote = change > 0
           ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${change.toLocaleString('vi-VN')}`
-          : null;
+          : credit > 0
+            ? `Thu ${data.amount.toLocaleString('vi-VN')} – Nợ khách ${credit.toLocaleString('vi-VN')} (trừ kỳ sau)`
+            : null;
         const composedNotes = [data.notes?.trim() || null, refundNote]
           .filter(Boolean)
           .join(' — ') || null;
@@ -144,6 +151,10 @@ export const useRecordPaymentRPC = () => {
 
       // Tiền thối không còn tạo phiếu chi riêng — chỉ là metadata
       // change_amount + change_account_id trên phiếu thu INCOME (đã ghi ở trên).
+      //
+      // Khi keep_as_credit: pass amount = full TM (không khấu trừ change), RPC
+      // record_invoice_payment tự INSERT excess_amounts row khi paid > total.
+      // Frontend không cần insert thủ công.
 
       return result;
     },
@@ -155,6 +166,7 @@ export const useRecordPaymentRPC = () => {
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
       queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['accounts-with-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Thanh toán đã được ghi nhận thành công',

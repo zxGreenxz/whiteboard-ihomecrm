@@ -196,11 +196,19 @@ export const useTerminateForfeit = () => {
       );
 
       if (error) throw error;
+
+      // Xoá toàn bộ credit còn dư của contract (forfeit)
+      await consumeRemainingCredit(
+        params.contractId,
+        `Forfeit credit khi bỏ cọc ngày ${params.forfeitDate}`,
+      );
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["excess-amount"] });
       toast.success("Thanh lý hợp đồng (bỏ cọc) thành công");
     },
     onError: (error: any) => {
@@ -211,6 +219,47 @@ export const useTerminateForfeit = () => {
     },
   });
 };
+
+// Consume toàn bộ credit còn dư của contract bằng cách INSERT excess_amounts
+// row âm. Dùng cho cả forfeit (xoá credit) và move-out (đã đưa credit vào
+// excess_rent của settlement invoice). Idempotent qua source_invoice rollback.
+async function consumeRemainingCredit(
+  contractId: string,
+  description: string,
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: rows, error: queryErr } = await (supabase
+    .from("excess_amounts" as any) as any)
+    .select(
+      "amount, source_invoice:invoices!source_invoice_id(deleted_at)",
+    )
+    .eq("contract_id", contractId);
+  if (queryErr) {
+    console.error("consumeRemainingCredit query error:", queryErr);
+    return;
+  }
+  const total = (rows ?? []).reduce((sum: number, row: any) => {
+    if (row.source_invoice?.deleted_at) return sum;
+    return sum + (Number(row.amount) || 0);
+  }, 0);
+  if (total === 0) return;
+
+  const { error: insertErr } = await supabase
+    .from("excess_amounts" as any)
+    .insert({
+      user_id: user.id,
+      contract_id: contractId,
+      amount: -total,
+      description,
+      source_invoice_id: null,
+      source_payment_id: null,
+    } as any);
+  if (insertErr) {
+    console.error("consumeRemainingCredit insert error:", insertErr);
+  }
+}
 
 // =============================================
 // useTerminateMoveOut — Thanh lý: Khách rời phòng
@@ -244,11 +293,20 @@ export const useTerminateMoveOut = () => {
       );
 
       if (error) throw error;
+
+      // Tiêu hết credit còn dư của contract sau khi RPC tạo settlement invoice.
+      // UI đã pre-fill credit vào excess_rent → invoice line đã carry số tiền này.
+      await consumeRemainingCredit(
+        params.contractId,
+        `Tiêu credit khi thanh lý move-out ngày ${params.moveOutDate}`,
+      );
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["excess-amount"] });
       toast.success("Thanh lý hợp đồng thành công");
     },
     onError: (error: any) => {
