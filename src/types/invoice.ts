@@ -124,6 +124,11 @@ export interface InvoiceFilters {
   status?: InvoiceStatus;
   /** UI filter: đã thanh toán đủ ('paid') vs còn nợ ('unpaid'). */
   payment_status?: 'paid' | 'unpaid';
+  /** UI filter vòng đời HĐ:
+   *  - 'active' (mặc định) → loại CANCELLED → các HĐ đang hoạt động.
+   *  - 'cancelled' → chỉ HĐ đã huỷ.
+   *  - 'all' → không lọc theo CANCELLED. */
+  view_status?: 'active' | 'cancelled' | 'all';
   billing_month?: string; // YYYY-MM
   date_range?: {
     start: string; // DATE

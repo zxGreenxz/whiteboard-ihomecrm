@@ -21,6 +21,7 @@ import {
   History,
   Trash2,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 import type { InvoiceWithRelations, InvoiceItem } from '@/types/invoice';
 import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
@@ -37,6 +38,8 @@ interface InvoiceListTableProps {
   onViewDetail: (invoice: InvoiceWithRelations) => void;
   onViewPayments?: (invoice: InvoiceWithRelations) => void;
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
+  /** Super admin: phục hồi HĐ đã huỷ. Chỉ render khi callback != undefined. */
+  onRestore?: (invoice: InvoiceWithRelations) => void;
   columnVisibility: InvoiceColumnVisibility;
 }
 
@@ -137,6 +140,7 @@ const InvoiceListTable = ({
   onViewDetail,
   onViewPayments,
   onViewHistory,
+  onRestore,
   columnVisibility,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
@@ -313,12 +317,38 @@ const InvoiceListTable = ({
                           <TooltipContent>Xoá</TooltipContent>
                         </Tooltip>
                       )}
+
+                      {/* Phục hồi — chỉ super admin, chỉ với HĐ đã huỷ */}
+                      {onRestore && invoice.status === 'CANCELLED' && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200"
+                              onClick={() => onRestore(invoice)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Phục hồi hoá đơn</TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </TableCell>
 
                   {/* Hoá đơn */}
                   <TableCell>
-                    <div className="text-sm font-medium">{getInvoiceTitle(invoice)}</div>
+                    <div className="text-sm font-medium flex items-center gap-2">
+                      <span className={invoice.status === 'CANCELLED' ? 'line-through text-zinc-500' : ''}>
+                        {getInvoiceTitle(invoice)}
+                      </span>
+                      {invoice.status === 'CANCELLED' && (
+                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          Đã huỷ
+                        </span>
+                      )}
+                    </div>
                     {locationCode && !titleIncludesLocation(invoice) && (
                       <div className="text-xs font-semibold text-zinc-700">
                         {locationCode}

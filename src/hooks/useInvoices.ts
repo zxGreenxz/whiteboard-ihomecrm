@@ -114,6 +114,14 @@ export const useInvoices = (
       } else if (filters?.payment_status === 'unpaid') {
         query = query.neq('status', 'PAID');
       }
+      // Vòng đời HĐ — mặc định 'active': ẩn các HĐ đã huỷ. Đặt SAU các filter
+      // status/payment_status để không bị override khi user chọn cụ thể.
+      const viewStatus = filters?.view_status ?? 'active';
+      if (viewStatus === 'active' && !filters?.status) {
+        query = query.neq('status', 'CANCELLED');
+      } else if (viewStatus === 'cancelled') {
+        query = query.eq('status', 'CANCELLED');
+      }
       if (filters?.billing_month) {
         query = query.eq('billing_month', filters.billing_month);
       }
@@ -1126,6 +1134,61 @@ export const useBulkCreateMeterReadings = () => {
 // =============================================
 // Legacy: useCancelInvoice (kept for backward compatibility)
 // =============================================
+
+// =============================================
+// useRestoreInvoice - CANCELLED → APPROVED (super admin)
+// Khôi phục lại HĐ đã huỷ. RLS đã có policy super_admin bypass nên client
+// chỉ cần update; FE chịu trách nhiệm chỉ render nút này cho super admin.
+// =============================================
+
+export const useRestoreInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .update({
+          status: 'APPROVED' as any,
+          approved_at: new Date().toISOString(),
+          approved_by: user.id,
+        } as any)
+        .eq('id', invoiceId)
+        .eq('status', 'CANCELLED' as any)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+
+      toast({
+        title: 'Đã phục hồi hoá đơn',
+        description: 'Hoá đơn đã chuyển về trạng thái Đã duyệt.',
+      });
+    },
+    onError: (error: Error) => {
+      const msg = error.message || '';
+      const friendly = msg.includes('idx_invoices_unique_contract_billing')
+        ? 'Đã có hoá đơn khác cho hợp đồng + kỳ thanh toán này. Hãy huỷ hoá đơn đó trước khi phục hồi.'
+        : msg;
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi phục hồi hoá đơn',
+        description: friendly,
+      });
+    },
+  });
+};
 
 export const useCancelInvoice = () => {
   const queryClient = useQueryClient();

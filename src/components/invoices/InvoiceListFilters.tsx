@@ -83,6 +83,12 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     });
   };
 
+  // Mặc định = 'active' (loại CANCELLED) khi user chưa chọn.
+  const viewStatusValue = filters.view_status ?? 'active';
+  const handleViewStatusChange = (value: string) => {
+    update({ view_status: value as 'active' | 'cancelled' | 'all' });
+  };
+
   const handleMonthSelect = (month: number) => {
     const monthStr = `${pickerYear}-${String(month).padStart(2, '0')}`;
     update({ billing_month: monthStr });
@@ -137,6 +143,20 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
           ))}
         </SelectContent>
       </Select>
+
+      {/* Trạng thái hoá đơn: Đã duyệt (mặc định, ẩn HĐ huỷ) / Đã huỷ / Tất cả */}
+      {!compact && (
+        <Select value={viewStatusValue} onValueChange={handleViewStatusChange}>
+          <SelectTrigger className="h-9 text-sm w-[140px]">
+            <SelectValue placeholder="Trạng thái" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Đã duyệt</SelectItem>
+            <SelectItem value="cancelled">Đã huỷ</SelectItem>
+            <SelectItem value="all">Tất cả</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
 
       {/* Trạng thái thanh toán */}
       {!compact && (

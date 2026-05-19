@@ -11,6 +11,7 @@ import {
   useDeleteInvoice,
   useBulkDeleteInvoices,
   useCheckOverdueInvoices,
+  useRestoreInvoice,
 } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
@@ -84,6 +85,7 @@ const InvoicesPage = () => {
   // Mutations
   const deleteMutation = useDeleteInvoice();
   const bulkDeleteMutation = useBulkDeleteInvoices();
+  const restoreMutation = useRestoreInvoice();
 
   // Check and update overdue invoices on mount
   const checkOverdueMutation = useCheckOverdueInvoices();
@@ -192,6 +194,15 @@ const InvoicesPage = () => {
     [],
   );
 
+  const handleRestore = useCallback(
+    (invoice: InvoiceWithRelations) => {
+      if (confirm(`Phục hồi hoá đơn ${invoice.invoice_number} về trạng thái Đã duyệt?`)) {
+        restoreMutation.mutate(invoice.id);
+      }
+    },
+    [restoreMutation],
+  );
+
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.length === 0) return;
     if (confirm(`Bạn có chắc chắn muốn xoá ${selectedIds.length} hoá đơn đã chọn?`)) {
@@ -294,6 +305,7 @@ const InvoicesPage = () => {
                   onViewDetail={handleViewDetail}
                   onViewPayments={handleViewPayments}
                   onViewHistory={handleViewHistory}
+                  onRestore={ctx?.isSuper ? handleRestore : undefined}
                   columnVisibility={columnVisibility}
                 />
                 <DataTablePagination

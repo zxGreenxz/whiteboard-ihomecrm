@@ -30,8 +30,10 @@ import {
   Pencil,
   QrCode,
   XCircle,
+  RotateCcw,
 } from 'lucide-react';
-import { useInvoice, useCancelInvoice } from '@/hooks/useInvoices';
+import { useInvoice, useCancelInvoice, useRestoreInvoice } from '@/hooks/useInvoices';
+import { useMyContext } from '@/hooks/useMyContext';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -54,6 +56,8 @@ const InvoiceDetailPage = () => {
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const cancelMutation = useCancelInvoice();
+  const restoreMutation = useRestoreInvoice();
+  const { data: ctx } = useMyContext();
 
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
   // returns để giữ thứ tự hooks ổn định giữa các render).
@@ -155,6 +159,12 @@ const InvoiceDetailPage = () => {
     }
   };
 
+  const handleRestore = () => {
+    if (confirm(`Phục hồi hoá đơn ${invoice.invoice_number} về trạng thái Đã duyệt?`)) {
+      restoreMutation.mutate(invoice.id);
+    }
+  };
+
   const buildingName = (invoice as any).building?.name?.trim() || '';
   const roomName = (invoice as any).room?.name?.trim() || '';
   const bedName = (invoice as any).bed?.name?.trim() || '';
@@ -228,6 +238,19 @@ const InvoiceDetailPage = () => {
             title={cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
           >
             <XCircle className="h-4 w-4" />
+          </Button>
+        )}
+
+        {invoice.status === 'CANCELLED' && ctx?.isSuper && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-300"
+            onClick={handleRestore}
+            disabled={restoreMutation.isPending}
+            title={restoreMutation.isPending ? 'Đang phục hồi...' : 'Phục hồi hoá đơn'}
+          >
+            <RotateCcw className="h-4 w-4" />
           </Button>
         )}
 
