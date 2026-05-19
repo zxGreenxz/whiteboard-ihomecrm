@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
-import { Table as TableIcon, Download, Loader2 } from 'lucide-react';
+import { Table as TableIcon, Download, Loader2, Pencil } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 
 import {
@@ -46,6 +46,7 @@ interface RowData {
   occupants: number;
   meter_id: string | null;
   prev_reading: number;
+  prev_reading_overridden: boolean;
   current_reading: number | '';
   electric_amount: number; // overrideable
   electric_overridden: boolean;
@@ -186,6 +187,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             occupants,
             meter_id: meterId,
             prev_reading: prev,
+            prev_reading_overridden: false,
             current_reading: '' as const,
             electric_amount: 0,
             electric_overridden: false,
@@ -378,6 +380,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           discount_amount: row.discount,
           discount_notes: row.discount_notes?.trim() || null,
           applied_credit: appliedCredit,
+          electricity_prev_overridden: row.prev_reading_overridden,
           tax_percent: 0,
           prepaid_amount: 0,
           previous_debt: 0,
@@ -513,8 +516,36 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                         onChange={(v) => updateRow(i, { occupants: v })}
                       />
                     </td>
-                    <td className="p-1 border text-right text-slate-600">
-                      {r.meter_id ? fmt(r.prev_reading) : '—'}
+                    <td className="p-1 border">
+                      {r.meter_id ? (
+                        r.prev_reading_overridden ? (
+                          <div className="relative">
+                            <NumberInput
+                              className="h-7 text-right pr-6"
+                              allowDecimal
+                              value={r.prev_reading}
+                              onChange={(v) => updateRow(i, { prev_reading: v ?? 0 })}
+                            />
+                            <Pencil className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-amber-600 pointer-events-none" />
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1 pr-1">
+                            <span className="text-slate-600 text-right tabular-nums">
+                              {fmt(r.prev_reading)}
+                            </span>
+                            <button
+                              type="button"
+                              title="Sửa tay chỉ số đầu"
+                              className="text-slate-400 hover:text-amber-600 p-0.5 rounded"
+                              onClick={() => updateRow(i, { prev_reading_overridden: true })}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-slate-400 text-right block">—</span>
+                      )}
                     </td>
                     <td className="p-1 border">
                       <NumberInput

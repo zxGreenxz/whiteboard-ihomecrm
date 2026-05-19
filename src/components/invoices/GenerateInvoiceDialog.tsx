@@ -33,7 +33,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
-import { Receipt, Plus, Trash2 } from 'lucide-react';
+import { Receipt, Plus, Trash2, Pencil, AlertTriangle } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth, parse } from 'date-fns';
 
 interface GenerateInvoiceDialogProps {
@@ -58,6 +58,7 @@ const generateInvoiceSchema = z.object({
   rent_price: z.number().min(0).default(0),
   occupants: z.number().min(1).default(1),
   prev_reading: z.number().min(0).default(0),
+  prev_reading_overridden: z.boolean().default(false),
   current_reading: z.number().nullable().default(null),
   electric_amount: z.number().min(0).default(0),
   electric_overridden: z.boolean().default(false),
@@ -111,6 +112,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       rent_price: 0,
       occupants: 1,
       prev_reading: 0,
+      prev_reading_overridden: false,
       current_reading: null,
       electric_amount: 0,
       electric_overridden: false,
@@ -182,6 +184,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     setValue('rent_price', Number((selectedContract as any).rent_price) || 0);
     setValue('occupants', occ);
     setValue('current_reading', null);
+    setValue('prev_reading_overridden', false);
     setValue('electric_amount', 0);
     setValue('electric_overridden', false);
     setValue('water_amount', occ * defaults.water);
@@ -257,6 +260,31 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     setValue('custom_items', next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContract?.id, vehicles?.length]);
+
+  // Auto chọn hợp đồng khi đã có toà + phòng. Nếu có nhiều HĐ ACTIVE cùng
+  // phòng → để trống và cảnh báo đỏ user phải tự chọn.
+  const matchingContracts = useMemo(() => {
+    if (!filterBuildingId || !filterRoomId) return [];
+    return (allActiveContracts as any[]).filter(
+      (c) => c.room?.building_id === filterBuildingId && c.room_id === filterRoomId,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterBuildingId, filterRoomId, allActiveContracts.length]);
+  const multipleContractsWarning = matchingContracts.length > 1;
+
+  useEffect(() => {
+    if (!filterBuildingId || !filterRoomId) return;
+    if (matchingContracts.length === 1) {
+      const id = matchingContracts[0].id;
+      if (watchedContractId !== id) setValue('contract_id', id, { shouldValidate: true });
+    } else if (matchingContracts.length > 1 && watchedContractId) {
+      // Có >1 HĐ → clear lựa chọn để user chọn thủ công
+      if (!matchingContracts.some((c) => c.id === watchedContractId)) {
+        setValue('contract_id', '', { shouldValidate: false });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterBuildingId, filterRoomId, matchingContracts.length]);
 
   // Credit auto-fill discount.
   const { data: creditBalance = 0 } = useExcessAmount(watchedContractId);
@@ -406,6 +434,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       discount_amount: discountAmount,
       discount_notes: data.discount_notes?.trim() || null,
       applied_credit: appliedCredit,
+      electricity_prev_overridden: !!data.prev_reading_overridden,
       tax_percent: 0,
       prepaid_amount: 0,
       previous_debt: 0,
@@ -507,6 +536,15 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             {errors.contract_id && (
               <p className="text-sm text-red-500">{errors.contract_id.message}</p>
             )}
+            {multipleContractsWarning && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded px-3 py-2 text-xs text-red-700">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  Phòng này đang có {matchingContracts.length} hợp đồng còn hiệu lực —
+                  vui lòng tự chọn đúng hợp đồng cần lập hoá đơn.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Dates */}
@@ -578,8 +616,38 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                           onChange={(v) => setValue('occupants', v)}
                         />
                       </td>
-                      <td className="p-1 border text-right text-slate-600 px-2">
-                        {meterId ? fmt(watchedPrev) : '—'}
+                      <td className="p-1 border">
+                        {meterId ? (
+                          watch('prev_reading_overridden') ? (
+                            <div className="relative">
+                              <NumberInput
+                                className="h-8 text-right pr-6"
+                                allowDecimal
+                                value={watchedPrev}
+                                onChange={(v) => setValue('prev_reading', v ?? 0)}
+                              />
+                              <Pencil className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-amber-600 pointer-events-none" />
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1 pr-1">
+                              <span className="text-slate-600 tabular-nums">
+                                {fmt(watchedPrev)}
+                              </span>
+                              <button
+                                type="button"
+                                title="Sửa tay chỉ số đầu"
+                                className="text-slate-400 hover:text-amber-600 p-0.5 rounded"
+                                onClick={() =>
+                                  setValue('prev_reading_overridden', true)
+                                }
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-slate-400 text-right block px-2">—</span>
+                        )}
                       </td>
                       <td className="p-1 border">
                         <NumberInput

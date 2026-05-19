@@ -54,6 +54,7 @@ export interface Invoice {
   previous_debt: number;
   notes: string | null;
   discount_notes: string | null;
+  electricity_prev_overridden: boolean;
   template_id: string | null;
   approved_at: string | null; // TIMESTAMPTZ
   approved_by: string | null;
@@ -159,6 +160,8 @@ export interface InvoiceFormData {
   /** Số tiền credit (excess_amounts) đã áp vào discount_amount → sau khi tạo
    *  HĐ sẽ INSERT excess_amounts row âm để tiêu credit. */
   applied_credit?: number;
+  /** Cờ chỉ số điện đầu (CHỈ SỐ ĐẦU) bị NV sửa tay khi tạo HĐ. */
+  electricity_prev_overridden?: boolean;
   tax_percent: number;
   prepaid_amount: number;
   previous_debt: number;

@@ -333,9 +333,20 @@ const InvoiceListTable = ({
                     </TableCell>
                   )}
 
-                  {/* Điện */}
+                  {/* Điện — tô đỏ nếu chỉ số đầu bị sửa tay */}
                   {v.dien && (
-                    <TableCell className="text-right text-sm">
+                    <TableCell
+                      className={
+                        invoice.electricity_prev_overridden
+                          ? 'text-right text-sm bg-red-100 text-red-700 font-semibold'
+                          : 'text-right text-sm'
+                      }
+                      title={
+                        invoice.electricity_prev_overridden
+                          ? 'Chỉ số điện đầu của HĐ này được NV sửa tay'
+                          : undefined
+                      }
+                    >
                       {electric > 0 ? formatCurrency(electric) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                   )}
