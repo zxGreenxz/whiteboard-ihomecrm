@@ -287,7 +287,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterBuildingId, filterRoomId, matchingContracts.length]);
 
-  // Pre-check: HĐ + kỳ đã có invoice chưa? Tránh hit unique constraint khi submit.
+  // Pre-check: HĐ + kỳ đã có invoice "đang hoạt động" (chưa huỷ, chưa xoá) chưa?
+  // Tránh hit unique constraint khi submit. HĐ đã huỷ KHÔNG block tạo lại — khớp
+  // partial unique index `deleted_at IS NULL AND status <> CANCELLED`.
   const { data: existingInvoice } = useQuery({
     queryKey: ['invoice-exists', watchedContractId, watchedBillingMonth],
     enabled: !!watchedContractId && /^\d{4}-\d{2}$/.test(watchedBillingMonth || ''),
@@ -298,6 +300,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         .eq('contract_id', watchedContractId)
         .eq('billing_month', watchedBillingMonth)
         .is('deleted_at', null)
+        .neq('status', 'CANCELLED')
         .limit(1)
         .maybeSingle();
       return data ?? null;
