@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery } from '@tanstack/react-query';
 import * as z from 'zod';
 import {
   Dialog,
@@ -285,6 +286,23 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterBuildingId, filterRoomId, matchingContracts.length]);
+
+  // Pre-check: HĐ + kỳ đã có invoice chưa? Tránh hit unique constraint khi submit.
+  const { data: existingInvoice } = useQuery({
+    queryKey: ['invoice-exists', watchedContractId, watchedBillingMonth],
+    enabled: !!watchedContractId && /^\d{4}-\d{2}$/.test(watchedBillingMonth || ''),
+    queryFn: async () => {
+      const { data } = await (supabase
+        .from('invoices')
+        .select('id, invoice_number') as any)
+        .eq('contract_id', watchedContractId)
+        .eq('billing_month', watchedBillingMonth)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle();
+      return data ?? null;
+    },
+  });
 
   // Credit auto-fill discount.
   const { data: creditBalance = 0 } = useExcessAmount(watchedContractId);
@@ -583,6 +601,19 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             {errors.title && <p className="text-xs text-red-500">{errors.title.message}</p>}
           </div>
 
+          {/* Cảnh báo: HĐ + kỳ này đã có invoice */}
+          {existingInvoice && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded px-3 py-2 text-sm text-red-700">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                Hợp đồng này đã có hoá đơn kỳ <b>{watchedBillingMonth}</b>{' '}
+                ({existingInvoice.invoice_number || existingInvoice.id?.slice(0, 8)}).
+                Hệ thống chỉ cho phép 1 hoá đơn / hợp đồng / kỳ — chọn kỳ khác hoặc
+                xoá/sửa hoá đơn cũ trước.
+              </span>
+            </div>
+          )}
+
           {selectedContract && (
             <>
               {/* Structured row — như 1 dòng của Mode Excel */}
@@ -855,7 +886,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
             </Button>
             <Button
               type="submit"
-              disabled={createMutation.isPending || !selectedContract}
+              disabled={createMutation.isPending || !selectedContract || !!existingInvoice}
             >
               {createMutation.isPending ? 'Đang tạo...' : 'Tạo hóa đơn'}
             </Button>

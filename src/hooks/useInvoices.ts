@@ -327,10 +327,14 @@ export const useCreateInvoice = () => {
       });
     },
     onError: (error: Error) => {
+      const msg = error.message || '';
+      const friendly = msg.includes('idx_invoices_unique_contract_billing')
+        ? 'Hợp đồng này đã có hoá đơn cho kỳ thanh toán đã chọn. Hệ thống chỉ cho phép 1 hoá đơn / hợp đồng / kỳ.'
+        : msg;
       toast({
         variant: 'destructive',
         title: 'Có lỗi xảy ra khi tạo hoá đơn',
-        description: error.message,
+        description: friendly,
       });
     },
   });
