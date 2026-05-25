@@ -39,6 +39,7 @@ import { useBuildingServices, useUpsertBuildingServices } from '@/hooks/useBuild
 import { useServices } from '@/hooks/useServices';
 import { useDocumentTemplatesByType } from '@/hooks/useDocumentTemplates';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useMyContext } from '@/hooks/useMyContext';
 import BuildingAddressSection from './BuildingAddressSection';
 import BuildingServicesSection from './BuildingServicesSection';
 import { CommissionTiersField } from './CommissionTiersField';
@@ -70,8 +71,11 @@ export default function BuildingFormDialog({
   const { data: invoiceTemplates = [] } = useDocumentTemplatesByType('invoice');
   const { data: leaseTemplates = [] } = useDocumentTemplatesByType('lease_contract');
 
-  // Danh sách sổ quỹ cho 2 dropdown "Sổ quỹ TT/TK mặc định"
+  // Danh sách sổ quỹ cho 2 dropdown "Sổ quỹ TT/TK mặc định" — chỉ super admin
+  // được xem & chỉnh các field này (mặc định áp dụng cho mọi user khi thanh toán).
   const { data: accounts = [] } = useAccounts();
+  const { data: ctx } = useMyContext();
+  const isSuper = !!ctx?.isSuper;
 
   // Form
   const form = useForm<BuildingFormData>({
@@ -328,78 +332,82 @@ export default function BuildingFormDialog({
                     Cấu hình
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="default_account_id_tt"
-                      render={({ field }) => (
-                        <FormItem className="space-y-2">
-                          <FormLabel className="text-sm">
-                            Sổ quỹ TT mặc định
-                          </FormLabel>
-                          <Select
-                            value={field.value ?? '__none__'}
-                            onValueChange={(v) =>
-                              field.onChange(v === '__none__' ? null : v)
-                            }
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Chọn sổ quỹ TT" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                              {(accounts || []).map((a: any) => (
-                                <SelectItem key={a.id} value={a.id}>
-                                  {a.name}
-                                  {a.bank_name ? ` — ${a.bank_name}` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            Khi khách thanh toán hoá đơn phòng bằng TT, mặc định ghi vào sổ này (mọi user).
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="default_account_id_tk"
-                      render={({ field }) => (
-                        <FormItem className="space-y-2">
-                          <FormLabel className="text-sm">
-                            Sổ quỹ TK mặc định
-                          </FormLabel>
-                          <Select
-                            value={field.value ?? '__none__'}
-                            onValueChange={(v) =>
-                              field.onChange(v === '__none__' ? null : v)
-                            }
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Chọn sổ quỹ TK" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                              {(accounts || []).map((a: any) => (
-                                <SelectItem key={a.id} value={a.id}>
-                                  {a.name}
-                                  {a.bank_name ? ` — ${a.bank_name}` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            Khi khách thanh toán hoá đơn phòng bằng TK (chuyển khoản), mặc định ghi vào sổ này (mọi user).
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    {isSuper && (
+                      <FormField
+                        control={form.control}
+                        name="default_account_id_tt"
+                        render={({ field }) => (
+                          <FormItem className="space-y-2">
+                            <FormLabel className="text-sm">
+                              Sổ quỹ TT mặc định
+                            </FormLabel>
+                            <Select
+                              value={field.value ?? '__none__'}
+                              onValueChange={(v) =>
+                                field.onChange(v === '__none__' ? null : v)
+                              }
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Chọn sổ quỹ TT" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                                {(accounts || []).map((a: any) => (
+                                  <SelectItem key={a.id} value={a.id}>
+                                    {a.name}
+                                    {a.bank_name ? ` — ${a.bank_name}` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Khi khách thanh toán hoá đơn phòng bằng TT, mặc định ghi vào sổ này (mọi user).
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                    {isSuper && (
+                      <FormField
+                        control={form.control}
+                        name="default_account_id_tk"
+                        render={({ field }) => (
+                          <FormItem className="space-y-2">
+                            <FormLabel className="text-sm">
+                              Sổ quỹ TK mặc định
+                            </FormLabel>
+                            <Select
+                              value={field.value ?? '__none__'}
+                              onValueChange={(v) =>
+                                field.onChange(v === '__none__' ? null : v)
+                              }
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Chọn sổ quỹ TK" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                                {(accounts || []).map((a: any) => (
+                                  <SelectItem key={a.id} value={a.id}>
+                                    {a.name}
+                                    {a.bank_name ? ` — ${a.bank_name}` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Khi khách thanh toán hoá đơn phòng bằng TK (chuyển khoản), mặc định ghi vào sổ này (mọi user).
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     <FormField
                       control={form.control}
                       name="invoice_template_id"

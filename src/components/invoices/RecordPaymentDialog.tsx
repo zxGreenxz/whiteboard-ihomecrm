@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useAuth } from '@/hooks/useAuth';
+import { useMyContext } from '@/hooks/useMyContext';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -90,6 +91,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const recordMutation = useRecordPaymentRPC();
   const { data: accounts = [] } = useAccounts();
   const { data: currentUser } = useAuth();
+  const { data: ctx } = useMyContext();
+  const isSuper = !!ctx?.isSuper;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -151,10 +154,24 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     )?.id ?? '';
   }, [currentUser, accounts]);
 
+  // Sổ quỹ "Chung" — fallback cho TM khi user đăng nhập không phải joey/nathan
+  // (và không sở hữu sổ "Thu" riêng).
+  const chungAccountId = useMemo(() => {
+    if (!accounts.length) return '';
+    return (accounts as any[]).find(
+      (a) => typeof a.name === 'string' && a.name.trim().toLowerCase() === 'chung',
+    )?.id ?? '';
+  }, [accounts]);
+
   const accountIdForMethod = (method: PaymentMethod): string => {
     // TM: sổ Thu của chính nhân viên đang đăng nhập (joey → Hiển Thu,
-    // nathan → Hiệp Thu, v.v. — match qua accounts.user_id).
-    if (method === 'TM' && myCashAccountId) return myCashAccountId;
+    // nathan → Hiệp Thu, v.v. — match qua accounts.user_id). User khác
+    // (không sở hữu sổ Thu) → fallback sổ "Chung".
+    if (method === 'TM') {
+      if (myCashAccountId) return myCashAccountId;
+      if (chungAccountId) return chungAccountId;
+      return defaultAccountIdByName;
+    }
     // TT/TK: ưu tiên cài đặt sổ quỹ mặc định của toà nhà, sau đó fallback
     // match theo tên (logic cũ).
     if (method === 'TT' && buildingDefaultTT) return buildingDefaultTT;
@@ -170,12 +187,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   }, [invoice, outstandingAmount, setValue]);
 
   useEffect(() => {
-    if (!defaultAccountIdByName && !myCashAccountId && !buildingDefaultTT && !buildingDefaultTK) return;
+    if (!defaultAccountIdByName && !myCashAccountId && !chungAccountId && !buildingDefaultTT && !buildingDefaultTK) return;
     const firstMethod = (watchedLines?.[0]?.payment_method ?? 'TM') as PaymentMethod;
     const target = accountIdForMethod(firstMethod);
     if (target) setValue('payment_lines.0.account_id', target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultAccountIdByName, myCashAccountId, buildingDefaultTT, buildingDefaultTK, setValue]);
+  }, [defaultAccountIdByName, myCashAccountId, chungAccountId, buildingDefaultTT, buildingDefaultTK, setValue]);
 
   const tmTotal = (watchedLines ?? [])
     .filter((l: any) => l?.payment_method === 'TM')
@@ -531,8 +548,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 )}
               </div>
 
-              {/* Sổ quỹ nhận — ẩn khi method=TM và user có sổ Thu riêng */}
-              {!(watchedLines?.[0]?.payment_method === 'TM' && myCashAccountId) && (
+              {/* Sổ quỹ nhận — chỉ super admin xem & đổi được; user thường
+                  dùng default đã được auto-pick (TM→Thu của mình hoặc Chung;
+                  TT/TK→cài đặt của toà nhà). */}
+              {isSuper && (
                 <div className="space-y-2">
                   <Label>Sổ quỹ nhận *</Label>
                   <Select
@@ -643,8 +662,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       </Select>
                     </div>
                   </div>
-                  {/* Sổ quỹ nhận — ẩn khi method=TM và user có sổ Thu riêng */}
-                  {!(watchedLines?.[idx]?.payment_method === 'TM' && myCashAccountId) && (
+                  {/* Sổ quỹ nhận — chỉ super admin xem & đổi được. */}
+                  {isSuper && (
                     <div className="space-y-2">
                       <Label>Sổ quỹ nhận *</Label>
                       <Select
