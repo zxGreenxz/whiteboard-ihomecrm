@@ -34,6 +34,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useInvoice } from '@/hooks/useInvoices';
+import { useMyPermissions, can } from '@/hooks/useMyPermissions';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import type { InvoiceItem, Payment, PaymentMethod } from '@/types/invoice';
 import RecordPaymentDialog from './RecordPaymentDialog';
@@ -85,6 +86,9 @@ const InvoiceDetailPage = () => {
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
 
   const { data: invoice, isLoading } = useInvoice(id);
+  const { data: perms } = useMyPermissions();
+  const canEditPerm = can(perms, 'invoices', 'edit');
+  const canRecordPaymentPerm = can(perms, 'invoices', 'record_payment');
 
   // ---- Loading / Error states ----
 
@@ -169,14 +173,14 @@ const InvoiceDetailPage = () => {
           In hoá đơn
         </Button>
 
-        {editable && (
+        {canEditPerm && editable && (
           <Button variant="outline" size="sm" onClick={() => setEditDialogOpen(true)}>
             <Pencil className="h-4 w-4 mr-1" />
             Sửa
           </Button>
         )}
 
-        {(invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID' || invoice.status === 'OVERDUE') && (
+        {canRecordPaymentPerm && (invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID' || invoice.status === 'OVERDUE') && (
           <Button size="sm" onClick={() => setPaymentDialogOpen(true)}>
             <DollarSign className="h-4 w-4 mr-1" />
             Thu tiền

@@ -41,6 +41,10 @@ interface InvoiceListTableProps {
   /** Super admin: phục hồi HĐ đã huỷ. Chỉ render khi callback != undefined. */
   onRestore?: (invoice: InvoiceWithRelations) => void;
   columnVisibility: InvoiceColumnVisibility;
+  /** Gate quyền — ẩn các nút action khi user không có quyền. */
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canRecordPayment?: boolean;
 }
 
 const formatCurrency = (amount: number) =>
@@ -142,6 +146,9 @@ const InvoiceListTable = ({
   onViewHistory,
   onRestore,
   columnVisibility,
+  canEdit = true,
+  canDelete = true,
+  canRecordPayment = true,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
   const selectableInvoices = invoices.filter((inv) => (inv.paid_amount ?? 0) === 0);
@@ -247,7 +254,7 @@ const InvoiceListTable = ({
                       </Tooltip>
 
                       {/* Cập nhật */}
-                      {canEditInvoice(invoice) && (
+                      {canEdit && canEditInvoice(invoice) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -263,8 +270,8 @@ const InvoiceListTable = ({
                         </Tooltip>
                       )}
 
-                      {/* Thu tiền — ẩn khi đã thu đủ */}
-                      {!isFullyPaid && (
+                      {/* Thu tiền — ẩn khi đã thu đủ hoặc không có quyền */}
+                      {canRecordPayment && !isFullyPaid && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -302,7 +309,7 @@ const InvoiceListTable = ({
                       </Tooltip>
 
                       {/* Xoá */}
-                      {canDeleteInvoice(invoice) && (
+                      {canDelete && canDeleteInvoice(invoice) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button

@@ -38,6 +38,7 @@ import { useCreateBuilding, useUpdateBuilding } from '@/hooks/useBuildings';
 import { useBuildingServices, useUpsertBuildingServices } from '@/hooks/useBuildingServices';
 import { useServices } from '@/hooks/useServices';
 import { useDocumentTemplatesByType } from '@/hooks/useDocumentTemplates';
+import { useAccounts } from '@/hooks/useAccounts';
 import BuildingAddressSection from './BuildingAddressSection';
 import BuildingServicesSection from './BuildingServicesSection';
 import { CommissionTiersField } from './CommissionTiersField';
@@ -68,6 +69,9 @@ export default function BuildingFormDialog({
   // Document templates for Cấu hình section
   const { data: invoiceTemplates = [] } = useDocumentTemplatesByType('invoice');
   const { data: leaseTemplates = [] } = useDocumentTemplatesByType('lease_contract');
+
+  // Danh sách sổ quỹ cho 2 dropdown "Sổ quỹ TT/TK mặc định"
+  const { data: accounts = [] } = useAccounts();
 
   // Form
   const form = useForm<BuildingFormData>({
@@ -104,6 +108,12 @@ export default function BuildingFormDialog({
           invoice_template_id:
             (building as { invoice_template_id?: string | null })
               .invoice_template_id ?? null,
+          default_account_id_tt:
+            (building as { default_account_id_tt?: string | null })
+              .default_account_id_tt ?? null,
+          default_account_id_tk:
+            (building as { default_account_id_tk?: string | null })
+              .default_account_id_tk ?? null,
           commission_tiers:
             ((building as { commission_tiers?: CommissionTier[] })
               .commission_tiers as CommissionTier[]) ?? DEFAULT_COMMISSION_TIERS,
@@ -120,6 +130,8 @@ export default function BuildingFormDialog({
           status: 'ACTIVE',
           contract_template_id: null,
           invoice_template_id: null,
+          default_account_id_tt: null,
+          default_account_id_tk: null,
           commission_tiers: DEFAULT_COMMISSION_TIERS,
         });
       }
@@ -168,6 +180,8 @@ export default function BuildingFormDialog({
             status: data.status,
             contract_template_id: data.contract_template_id ?? null,
             invoice_template_id: data.invoice_template_id ?? null,
+            default_account_id_tt: (data.default_account_id_tt ?? null) as any,
+            default_account_id_tk: (data.default_account_id_tk ?? null) as any,
             commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
           },
         });
@@ -188,6 +202,8 @@ export default function BuildingFormDialog({
           status: data.status,
           contract_template_id: data.contract_template_id ?? null,
           invoice_template_id: data.invoice_template_id ?? null,
+          default_account_id_tt: (data.default_account_id_tt ?? null) as any,
+          default_account_id_tk: (data.default_account_id_tk ?? null) as any,
           commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
         });
         await upsertServices.mutateAsync({
@@ -312,28 +328,78 @@ export default function BuildingFormDialog({
                     Cấu hình
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm">Tài khoản gạch nợ tự động</Label>
-                      <Select disabled>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm">Tài khoản ngân hàng</Label>
-                      <Select disabled>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <FormField
+                      control={form.control}
+                      name="default_account_id_tt"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel className="text-sm">
+                            Sổ quỹ TT mặc định
+                          </FormLabel>
+                          <Select
+                            value={field.value ?? '__none__'}
+                            onValueChange={(v) =>
+                              field.onChange(v === '__none__' ? null : v)
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn sổ quỹ TT" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                              {(accounts || []).map((a: any) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                  {a.bank_name ? ` — ${a.bank_name}` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Khi khách thanh toán hoá đơn phòng bằng TT, mặc định ghi vào sổ này (mọi user).
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="default_account_id_tk"
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel className="text-sm">
+                            Sổ quỹ TK mặc định
+                          </FormLabel>
+                          <Select
+                            value={field.value ?? '__none__'}
+                            onValueChange={(v) =>
+                              field.onChange(v === '__none__' ? null : v)
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn sổ quỹ TK" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">-- Không chọn --</SelectItem>
+                              {(accounts || []).map((a: any) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                  {a.bank_name ? ` — ${a.bank_name}` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Khi khách thanh toán hoá đơn phòng bằng TK (chuyển khoản), mặc định ghi vào sổ này (mọi user).
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       control={form.control}
                       name="invoice_template_id"

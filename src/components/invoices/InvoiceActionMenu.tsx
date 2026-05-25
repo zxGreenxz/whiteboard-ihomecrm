@@ -15,6 +15,10 @@ interface InvoiceActionMenuProps {
   onEdit?: (invoice: InvoiceWithRelations) => void;
   onDelete?: (invoice: InvoiceWithRelations) => void;
   onRecordPayment?: (invoice: InvoiceWithRelations) => void;
+  /** Gate quyền — ẩn nút khi user không có quyền tương ứng. */
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canRecordPayment?: boolean;
 }
 
 const InvoiceActionMenu = ({
@@ -22,10 +26,15 @@ const InvoiceActionMenu = ({
   onEdit,
   onDelete,
   onRecordPayment,
+  canEdit = true,
+  canDelete = true,
+  canRecordPayment = true,
 }: InvoiceActionMenuProps) => {
-  const showEdit = canEditInvoice(invoice);
-  const showDelete = canDeleteInvoice(invoice);
-  const showPayment = invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID';
+  const showEdit = canEdit && canEditInvoice(invoice);
+  const showDelete = canDelete && canDeleteInvoice(invoice);
+  const showPayment =
+    canRecordPayment &&
+    (invoice.status === 'APPROVED' || invoice.status === 'PARTIAL_PAID');
 
   const hasAnyAction = showEdit || showDelete || showPayment;
   if (!hasAnyAction) return null;

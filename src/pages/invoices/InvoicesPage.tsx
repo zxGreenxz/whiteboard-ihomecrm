@@ -14,6 +14,7 @@ import {
   useRestoreInvoice,
 } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
+import { useMyPermissions, can } from '@/hooks/useMyPermissions';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
 import InvoiceStatsSummary from '@/components/invoices/InvoiceStatsSummary';
@@ -41,6 +42,11 @@ const InvoicesPage = () => {
   // Lock filters.area_id vào khu vực phụ trách cho staff (manager).
   // Owner/super admin: defaultAreaId = NULL → không tác động.
   const { data: ctx } = useMyContext();
+  const { data: perms } = useMyPermissions();
+  const canCreate = can(perms, 'invoices', 'create');
+  const canEdit = can(perms, 'invoices', 'edit');
+  const canDelete = can(perms, 'invoices', 'delete');
+  const canRecordPayment = can(perms, 'invoices', 'record_payment');
   const lockedAreaId = ctx?.isStaff && ctx?.defaultAreaId ? ctx.defaultAreaId : null;
   useEffect(() => {
     if (lockedAreaId && filters.area_id !== lockedAreaId) {
@@ -238,6 +244,9 @@ const InvoicesPage = () => {
             columnVisibility={columnVisibility}
             onToggleColumn={toggleColumn}
             onResetColumns={resetColumns}
+            canCreate={canCreate}
+            canRecordPayment={canRecordPayment}
+            canDelete={canDelete}
             compact
           />
 
@@ -280,6 +289,9 @@ const InvoicesPage = () => {
             columnVisibility={columnVisibility}
             onToggleColumn={toggleColumn}
             onResetColumns={resetColumns}
+            canCreate={canCreate}
+            canRecordPayment={canRecordPayment}
+            canDelete={canDelete}
           />
 
           {/* Table */}
@@ -307,6 +319,9 @@ const InvoicesPage = () => {
                   onViewHistory={handleViewHistory}
                   onRestore={ctx?.isSuper ? handleRestore : undefined}
                   columnVisibility={columnVisibility}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  canRecordPayment={canRecordPayment}
                 />
                 <DataTablePagination
                   paginationInfo={paginationInfo}

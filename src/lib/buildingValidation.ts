@@ -24,6 +24,8 @@ export const buildingSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),
+  default_account_id_tt: z.string().uuid().nullable().optional(),
+  default_account_id_tk: z.string().uuid().nullable().optional(),
   commission_tiers: z.array(commissionTierSchema).default(DEFAULT_COMMISSION_TIERS_DATA),
 });
 

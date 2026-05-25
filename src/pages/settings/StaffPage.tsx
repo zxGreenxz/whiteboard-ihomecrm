@@ -114,7 +114,7 @@ const PERMISSION_MODULES = [
   { key: "e_invoices",       label: "Hoá đơn điện tử" },
 ] as const;
 
-// 2 nhóm quyền: "Xem" (view) và "Quản lý" (gộp create + edit + delete).
+// 2 nhóm quyền mặc định: "Xem" (view) và "Quản lý" (gộp create + edit + delete).
 // Vẫn lưu thành 4 trường trong roles.permissions để DB RLS dùng staff_can()
 // kiểm tra từng action — chỉ UI gộp lại cho gọn.
 const PERMISSION_BUCKETS = [
@@ -122,14 +122,28 @@ const PERMISSION_BUCKETS = [
   { key: "manage", label: "Quản lý",  writes: ["create", "edit", "delete"] as const },
 ] as const;
 
+// Module "invoices" tách quyền chi tiết hơn (5 cột): Xem / Tạo / Sửa / Xóa /
+// Thanh Toán. "record_payment" chỉ gate UI nút Thu tiền — DB RLS vẫn check
+// invoices.create/edit/delete cho các action chuẩn.
+const INVOICE_PERMISSION_BUCKETS = [
+  { key: "view",           label: "Xem",        writes: ["view"] as const },
+  { key: "create",         label: "Tạo",        writes: ["create"] as const },
+  { key: "edit",           label: "Sửa",        writes: ["edit"] as const },
+  { key: "delete",         label: "Xóa",        writes: ["delete"] as const },
+  { key: "record_payment", label: "Thanh Toán", writes: ["record_payment"] as const },
+] as const;
+
+const bucketsForModule = (moduleKey: string) =>
+  moduleKey === "invoices" ? INVOICE_PERMISSION_BUCKETS : PERMISSION_BUCKETS;
+
 type PermissionsMap = Record<string, Record<string, boolean>>;
 
 const isBucketChecked = (
   perms: PermissionsMap,
   moduleKey: string,
-  bucketKey: typeof PERMISSION_BUCKETS[number]["key"],
+  bucketKey: string,
 ): boolean => {
-  const bucket = PERMISSION_BUCKETS.find((b) => b.key === bucketKey);
+  const bucket = bucketsForModule(moduleKey).find((b) => b.key === bucketKey);
   if (!bucket) return false;
   const mp = perms[moduleKey] || {};
   return bucket.writes.every((w) => !!mp[w]);
@@ -145,7 +159,17 @@ function parsePermissions(permissions: Json): PermissionsMap {
 function buildDefaultPermissions(): PermissionsMap {
   const perms: PermissionsMap = {};
   for (const mod of PERMISSION_MODULES) {
-    perms[mod.key] = { view: false, create: false, edit: false, delete: false };
+    if (mod.key === "invoices") {
+      perms[mod.key] = {
+        view: false,
+        create: false,
+        edit: false,
+        delete: false,
+        record_payment: false,
+      };
+    } else {
+      perms[mod.key] = { view: false, create: false, edit: false, delete: false };
+    }
   }
   return perms;
 }
@@ -220,11 +244,11 @@ function RolesTab() {
 
   const toggleBucket = (
     moduleKey: string,
-    bucketKey: typeof PERMISSION_BUCKETS[number]["key"],
+    bucketKey: string,
     next: boolean,
   ) => {
     if (!editingRole) return;
-    const bucket = PERMISSION_BUCKETS.find((b) => b.key === bucketKey);
+    const bucket = bucketsForModule(moduleKey).find((b) => b.key === bucketKey);
     if (!bucket) return;
     const mp = { ...(editingRole.permissions[moduleKey] || {}) };
     for (const w of bucket.writes) mp[w] = next;
@@ -236,23 +260,25 @@ function RolesTab() {
 
   const toggleAllModule = (moduleKey: string, checked: boolean) => {
     if (!editingRole) return;
+    const base = {
+      view: checked,
+      create: checked,
+      edit: checked,
+      delete: checked,
+    } as Record<string, boolean>;
+    if (moduleKey === "invoices") base.record_payment = checked;
     setEditingRole({
       ...editingRole,
       permissions: {
         ...editingRole.permissions,
-        [moduleKey]: {
-          view: checked,
-          create: checked,
-          edit: checked,
-          delete: checked,
-        },
+        [moduleKey]: base,
       },
     });
   };
 
   const isModuleAllChecked = (moduleKey: string) => {
     if (!editingRole) return false;
-    return PERMISSION_BUCKETS.every((b) =>
+    return bucketsForModule(moduleKey).every((b) =>
       isBucketChecked(editingRole.permissions, moduleKey, b.key),
     );
   };
@@ -403,47 +429,57 @@ function RolesTab() {
 
               <div className="space-y-3">
                 <Label>Phân quyền theo module</Label>
+                <p className="text-xs text-muted-foreground">
+                  Mục Hoá đơn tách 5 quyền chi tiết: Xem / Tạo / Sửa / Xóa / Thanh Toán.
+                </p>
                 <div className="border rounded-lg overflow-hidden">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[200px]">Module</TableHead>
-                        <TableHead className="text-center w-[100px]">Tất cả</TableHead>
-                        {PERMISSION_BUCKETS.map((b) => (
-                          <TableHead key={b.key} className="text-center w-[120px]">
-                            {b.label}
-                          </TableHead>
-                        ))}
+                        <TableHead className="text-center w-[80px]">Tất cả</TableHead>
+                        <TableHead>Quyền</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {PERMISSION_MODULES.map((mod) => (
-                        <TableRow key={mod.key}>
-                          <TableCell className="font-medium">{mod.label}</TableCell>
-                          <TableCell className="text-center">
-                            <Checkbox
-                              checked={isModuleAllChecked(mod.key)}
-                              onCheckedChange={(checked) =>
-                                toggleAllModule(mod.key, !!checked)
-                              }
-                            />
-                          </TableCell>
-                          {PERMISSION_BUCKETS.map((b) => (
-                            <TableCell key={b.key} className="text-center">
+                      {PERMISSION_MODULES.map((mod) => {
+                        const buckets = bucketsForModule(mod.key);
+                        return (
+                          <TableRow key={mod.key}>
+                            <TableCell className="font-medium">{mod.label}</TableCell>
+                            <TableCell className="text-center">
                               <Checkbox
-                                checked={isBucketChecked(
-                                  editingRole.permissions,
-                                  mod.key,
-                                  b.key,
-                                )}
+                                checked={isModuleAllChecked(mod.key)}
                                 onCheckedChange={(checked) =>
-                                  toggleBucket(mod.key, b.key, !!checked)
+                                  toggleAllModule(mod.key, !!checked)
                                 }
                               />
                             </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                                {buckets.map((b) => (
+                                  <label
+                                    key={b.key}
+                                    className="flex items-center gap-1.5 text-sm cursor-pointer"
+                                  >
+                                    <Checkbox
+                                      checked={isBucketChecked(
+                                        editingRole.permissions,
+                                        mod.key,
+                                        b.key,
+                                      )}
+                                      onCheckedChange={(checked) =>
+                                        toggleBucket(mod.key, b.key, !!checked)
+                                      }
+                                    />
+                                    <span>{b.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

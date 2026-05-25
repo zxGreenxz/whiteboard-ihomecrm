@@ -128,13 +128,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
 
-  // ID sổ quỹ trùng tên tòa nhà của hoá đơn — dùng làm default cho TT/TK.
-  const defaultAccountId = useMemo(() => {
+  // ID sổ quỹ trùng tên tòa nhà của hoá đơn — fallback cho TT/TK khi
+  // toà nhà chưa cấu hình default_account_id_tt/tk trong Cài đặt toà nhà.
+  const defaultAccountIdByName = useMemo(() => {
     if (!invoice || !accounts.length) return '';
     const buildingName = invoice.building?.name?.trim();
     if (!buildingName) return '';
     return (accounts as any[]).find((a) => a.name?.trim() === buildingName)?.id ?? '';
   }, [invoice, accounts]);
+
+  // Sổ quỹ mặc định lấy từ cài đặt toà nhà (mọi user dùng chung).
+  const buildingDefaultTT = (invoice?.building as any)?.default_account_id_tt ?? '';
+  const buildingDefaultTK = (invoice?.building as any)?.default_account_id_tk ?? '';
 
   const myCashAccountId = useMemo(() => {
     if (!currentUser?.id || !accounts.length) return '';
@@ -147,8 +152,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   }, [currentUser, accounts]);
 
   const accountIdForMethod = (method: PaymentMethod): string => {
+    // TM: sổ Thu của chính nhân viên đang đăng nhập (joey → Hiển Thu,
+    // nathan → Hiệp Thu, v.v. — match qua accounts.user_id).
     if (method === 'TM' && myCashAccountId) return myCashAccountId;
-    return defaultAccountId;
+    // TT/TK: ưu tiên cài đặt sổ quỹ mặc định của toà nhà, sau đó fallback
+    // match theo tên (logic cũ).
+    if (method === 'TT' && buildingDefaultTT) return buildingDefaultTT;
+    if (method === 'TK' && buildingDefaultTK) return buildingDefaultTK;
+    return defaultAccountIdByName;
   };
 
   // Auto-fill số tiền của dòng đầu = outstanding khi mở dialog
@@ -159,12 +170,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   }, [invoice, outstandingAmount, setValue]);
 
   useEffect(() => {
-    if (!defaultAccountId && !myCashAccountId) return;
+    if (!defaultAccountIdByName && !myCashAccountId && !buildingDefaultTT && !buildingDefaultTK) return;
     const firstMethod = (watchedLines?.[0]?.payment_method ?? 'TM') as PaymentMethod;
     const target = accountIdForMethod(firstMethod);
     if (target) setValue('payment_lines.0.account_id', target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultAccountId, myCashAccountId, setValue]);
+  }, [defaultAccountIdByName, myCashAccountId, buildingDefaultTT, buildingDefaultTK, setValue]);
 
   const tmTotal = (watchedLines ?? [])
     .filter((l: any) => l?.payment_method === 'TM')
@@ -673,13 +684,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() =>
+                onClick={() => {
+                  const method = defaultMethodForNewRow(watchedLines as any);
                   append({
                     amount: 0,
-                    payment_method: defaultMethodForNewRow(watchedLines as any),
-                    account_id: defaultAccountId,
-                  })
-                }
+                    payment_method: method,
+                    account_id: accountIdForMethod(method),
+                  });
+                }}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Thêm dòng thanh toán

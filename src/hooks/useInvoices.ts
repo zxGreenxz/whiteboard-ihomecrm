@@ -38,7 +38,7 @@ const INVOICE_LIST_SELECT = `
       customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
     )
   ),
-  building:buildings!invoices_building_id_fkey (id, name),
+  building:buildings!invoices_building_id_fkey (id, name, default_account_id_tt, default_account_id_tk),
   room:rooms!invoices_room_id_fkey (id, name),
   bed:beds!invoices_bed_id_fkey (id, name),
   invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),

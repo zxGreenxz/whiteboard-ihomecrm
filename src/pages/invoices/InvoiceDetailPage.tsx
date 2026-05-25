@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useInvoice, useCancelInvoice, useRestoreInvoice } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
+import { useMyPermissions, can } from '@/hooks/useMyPermissions';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -58,6 +59,10 @@ const InvoiceDetailPage = () => {
   const cancelMutation = useCancelInvoice();
   const restoreMutation = useRestoreInvoice();
   const { data: ctx } = useMyContext();
+  const { data: perms } = useMyPermissions();
+  const canEditPerm = can(perms, 'invoices', 'edit');
+  const canDeletePerm = can(perms, 'invoices', 'delete');
+  const canRecordPaymentPerm = can(perms, 'invoices', 'record_payment');
 
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
   // returns để giữ thứ tự hooks ổn định giữa các render).
@@ -216,7 +221,7 @@ const InvoiceDetailPage = () => {
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
-        {canEditInvoice(invoice) && (
+        {canEditPerm && canEditInvoice(invoice) && (
           <Button
             variant="outline"
             size="icon"
@@ -228,7 +233,7 @@ const InvoiceDetailPage = () => {
           </Button>
         )}
 
-        {(invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
+        {canDeletePerm && (invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
           <Button
             variant="destructive"
             size="icon"
@@ -256,7 +261,7 @@ const InvoiceDetailPage = () => {
 
         <div className="flex-1" />
 
-        {(invoice.status === 'APPROVED' ||
+        {canRecordPaymentPerm && (invoice.status === 'APPROVED' ||
           invoice.status === 'PARTIAL_PAID' ||
           invoice.status === 'OVERDUE') &&
           (() => {

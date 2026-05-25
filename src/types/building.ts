@@ -49,6 +49,10 @@ export interface Building {
   images: any;
   amenities: any;
   commission_tiers: CommissionTier[];
+  /** Sổ quỹ mặc định khi thanh toán hoá đơn phòng = TT (POS) cho toà này. */
+  default_account_id_tt: string | null;
+  /** Sổ quỹ mặc định khi thanh toán hoá đơn phòng = TK (chuyển khoản) cho toà này. */
+  default_account_id_tk: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -102,6 +106,8 @@ export interface BuildingFormData {
   contract_template_id?: string | null;
   invoice_template_id?: string | null;
   commission_tiers?: CommissionTier[];
+  default_account_id_tt?: string | null;
+  default_account_id_tk?: string | null;
 }
 
 /** Form data shape for building service rows in the services table */

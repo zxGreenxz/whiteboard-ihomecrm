@@ -207,6 +207,8 @@ export interface InvoiceWithRelations extends Invoice {
   building?: {
     id: string;
     name: string;
+    default_account_id_tt?: string | null;
+    default_account_id_tk?: string | null;
   };
   room?: {
     id: string;

@@ -40,6 +40,10 @@ interface InvoiceListToolbarProps {
   onResetColumns: () => void;
   /** Khi true: render gọn cho mobile (ẩn "Hiển thị cột", thêm padding ngang) */
   compact?: boolean;
+  /** Gate quyền — ẩn nút khi user không có quyền tương ứng. */
+  canCreate?: boolean;
+  canRecordPayment?: boolean;
+  canDelete?: boolean;
 }
 
 interface ToolbarButton {
@@ -63,32 +67,35 @@ const InvoiceListToolbar = ({
   onToggleColumn,
   onResetColumns,
   compact = false,
+  canCreate = true,
+  canRecordPayment = true,
+  canDelete = true,
 }: InvoiceListToolbarProps) => {
   const buttons: ToolbarButton[] = [
-    {
+    ...(canCreate ? [{
       icon: Plus,
       label: 'Thêm',
       onClick: onAdd,
       bg: 'bg-green-500',
       hoverBg: 'hover:bg-green-600',
       textColor: 'text-white',
-    },
-    {
+    }] : []),
+    ...(canCreate ? [{
       icon: TableIcon,
       label: 'Mode Excel — Tạo nhanh',
       onClick: onExcelMode,
       bg: 'bg-indigo-500',
       hoverBg: 'hover:bg-indigo-600',
       textColor: 'text-white',
-    },
-    {
+    }] : []),
+    ...(canRecordPayment ? [{
       icon: Wallet,
       label: 'Thanh toán hàng loạt — Mode Excel',
       onClick: onBulkRecordPayment,
       bg: 'bg-green-500',
       hoverBg: 'hover:bg-green-600',
       textColor: 'text-white',
-    },
+    }] : []),
   ];
 
   const visibleCount = INVOICE_COLUMNS.filter((c) => columnVisibility[c.key]).length;
@@ -183,7 +190,7 @@ const InvoiceListToolbar = ({
       </div>
 
       {/* Bulk actions */}
-      {selectedCount > 0 && (
+      {selectedCount > 0 && canDelete && (
         <div className={`flex items-center gap-2 mb-4 ${compact ? 'px-3' : ''}`}>
           <span className="text-sm text-muted-foreground">
             Đã chọn {selectedCount} hoá đơn
