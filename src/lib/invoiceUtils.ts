@@ -87,7 +87,11 @@ export function calculateInvoiceTotals(
 // =============================================
 
 /** Shape needed for edit/delete permission checks. */
-type InvoiceLike = { status: InvoiceStatus; paid_amount?: number | null };
+type InvoiceLike = {
+  status: InvoiceStatus;
+  paid_amount?: number | null;
+  deleted_at?: string | null;
+};
 
 /**
  * Edit allowed for DRAFT and APPROVED invoices that have no payments yet.
@@ -99,8 +103,20 @@ export function canEditInvoice(invoice: InvoiceLike): boolean {
   return (invoice.paid_amount ?? 0) === 0;
 }
 
-/** Delete uses the same rule as edit — locked once payments exist. */
-export function canDeleteInvoice(invoice: InvoiceLike): boolean {
+/**
+ * Quy tắc xoá:
+ * - User thường: giống canEdit (DRAFT/APPROVED chưa thu tiền).
+ * - Super admin (opts.isSuper): xoá được HĐ ở MỌI trạng thái trừ CANCELLED
+ *   và HĐ đã bị soft-delete trước đó. Backend RPC sẽ hard-delete payments
+ *   liên quan rồi chuyển status sang CANCELLED.
+ */
+export function canDeleteInvoice(
+  invoice: InvoiceLike,
+  opts?: { isSuper?: boolean },
+): boolean {
+  if (opts?.isSuper) {
+    return invoice.status !== 'CANCELLED' && invoice.deleted_at == null;
+  }
   return canEditInvoice(invoice);
 }
 

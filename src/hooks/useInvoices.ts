@@ -1190,6 +1190,46 @@ export const useRestoreInvoice = () => {
   });
 };
 
+/**
+ * Super admin xoá hoá đơn ở mọi trạng thái:
+ *   hard-delete payments + excess_amounts liên quan, set status='CANCELLED'.
+ * HĐ sau khi xoá xuất hiện trong filter "Đã huỷ", có thể phục hồi qua
+ * `useRestoreInvoice` (CANCELLED → APPROVED), nhưng payments KHÔNG khôi phục lại.
+ */
+export const useForceCancelInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { error } = await (supabase.rpc as any)('super_admin_force_cancel_invoice', {
+        p_invoice_id: invoiceId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments-summary'] });
+
+      toast({
+        title: 'Đã xoá hoá đơn',
+        description: 'Hoá đơn và các payment liên quan đã bị xoá. Có thể phục hồi hoá đơn trong filter "Đã huỷ".',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Có lỗi xảy ra khi xoá hoá đơn',
+        description: error.message,
+      });
+    },
+  });
+};
+
 export const useCancelInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();

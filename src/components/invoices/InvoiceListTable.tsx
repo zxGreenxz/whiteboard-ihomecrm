@@ -40,11 +40,15 @@ interface InvoiceListTableProps {
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
   /** Super admin: phục hồi HĐ đã huỷ. Chỉ render khi callback != undefined. */
   onRestore?: (invoice: InvoiceWithRelations) => void;
+  /** Super admin: xoá HĐ ở mọi trạng thái (hard-delete payments + chuyển CANCELLED). */
+  onForceCancel?: (invoice: InvoiceWithRelations) => void;
   columnVisibility: InvoiceColumnVisibility;
   /** Gate quyền — ẩn các nút action khi user không có quyền. */
   canEdit?: boolean;
   canDelete?: boolean;
   canRecordPayment?: boolean;
+  /** Super admin → mở rộng nút Xoá cho mọi HĐ (gọi onForceCancel). */
+  isSuper?: boolean;
 }
 
 const formatCurrency = (amount: number) =>
@@ -145,10 +149,12 @@ const InvoiceListTable = ({
   onViewPayments,
   onViewHistory,
   onRestore,
+  onForceCancel,
   columnVisibility,
   canEdit = true,
   canDelete = true,
   canRecordPayment = true,
+  isSuper = false,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
   const selectableInvoices = invoices.filter((inv) => (inv.paid_amount ?? 0) === 0);
@@ -309,19 +315,30 @@ const InvoiceListTable = ({
                       </Tooltip>
 
                       {/* Xoá */}
-                      {canDelete && canDeleteInvoice(invoice) && (
+                      {canDelete && canDeleteInvoice(invoice, { isSuper }) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 rounded-full bg-red-100 text-red-600 hover:bg-red-200"
-                              onClick={() => onDelete(invoice)}
+                              onClick={() => {
+                                // Super admin: với HĐ vượt quy tắc thường (đã thu/quá hạn)
+                                // dùng force-cancel flow; với HĐ DRAFT/APPROVED chưa thu thì
+                                // vẫn dùng force-cancel để thống nhất ("đã xoá" = "đã huỷ").
+                                if (isSuper && onForceCancel) {
+                                  onForceCancel(invoice);
+                                } else {
+                                  onDelete(invoice);
+                                }
+                              }}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Xoá</TooltipContent>
+                          <TooltipContent>
+                            {isSuper ? 'Xoá hoá đơn (chuyển sang Đã huỷ)' : 'Xoá'}
+                          </TooltipContent>
                         </Tooltip>
                       )}
 

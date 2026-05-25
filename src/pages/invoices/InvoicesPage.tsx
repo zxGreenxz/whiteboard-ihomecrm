@@ -12,6 +12,7 @@ import {
   useBulkDeleteInvoices,
   useCheckOverdueInvoices,
   useRestoreInvoice,
+  useForceCancelInvoice,
 } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
 import { useMyPermissions, can } from '@/hooks/useMyPermissions';
@@ -31,6 +32,7 @@ import ExcelInvoiceDialog from '@/components/invoices/ExcelInvoiceDialog';
 import BulkRecordPaymentDialog from '@/components/invoices/BulkRecordPaymentDialog';
 import PaymentsSummaryDialog from '@/components/invoices/PaymentsSummaryDialog';
 import InvoiceHistoryDialog from '@/components/invoices/InvoiceHistoryDialog';
+import SuperAdminForceDeleteDialog from '@/components/invoices/SuperAdminForceDeleteDialog';
 
 const InvoicesPage = () => {
   const navigate = useNavigate();
@@ -76,6 +78,7 @@ const InvoicesPage = () => {
   const [paymentsSummaryOpen, setPaymentsSummaryOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(null);
+  const [forceDeleteTarget, setForceDeleteTarget] = useState<InvoiceWithRelations | null>(null);
 
   // Merge search into filters
   const effectiveFilters = useMemo(
@@ -92,6 +95,7 @@ const InvoicesPage = () => {
   const deleteMutation = useDeleteInvoice();
   const bulkDeleteMutation = useBulkDeleteInvoices();
   const restoreMutation = useRestoreInvoice();
+  const forceCancelMutation = useForceCancelInvoice();
 
   // Check and update overdue invoices on mount
   const checkOverdueMutation = useCheckOverdueInvoices();
@@ -209,6 +213,17 @@ const InvoicesPage = () => {
     [restoreMutation],
   );
 
+  const handleForceCancel = useCallback((invoice: InvoiceWithRelations) => {
+    setForceDeleteTarget(invoice);
+  }, []);
+
+  const handleConfirmForceCancel = useCallback(() => {
+    if (!forceDeleteTarget) return;
+    forceCancelMutation.mutate(forceDeleteTarget.id, {
+      onSuccess: () => setForceDeleteTarget(null),
+    });
+  }, [forceDeleteTarget, forceCancelMutation]);
+
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.length === 0) return;
     if (confirm(`Bạn có chắc chắn muốn xoá ${selectedIds.length} hoá đơn đã chọn?`)) {
@@ -318,6 +333,8 @@ const InvoicesPage = () => {
                   onViewPayments={handleViewPayments}
                   onViewHistory={handleViewHistory}
                   onRestore={ctx?.isSuper ? handleRestore : undefined}
+                  onForceCancel={ctx?.isSuper ? handleForceCancel : undefined}
+                  isSuper={!!ctx?.isSuper}
                   columnVisibility={columnVisibility}
                   canEdit={canEdit}
                   canDelete={canDelete}
@@ -389,6 +406,16 @@ const InvoicesPage = () => {
         open={historyDialogOpen}
         onOpenChange={setHistoryDialogOpen}
         invoice={selectedInvoice}
+      />
+
+      <SuperAdminForceDeleteDialog
+        open={!!forceDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setForceDeleteTarget(null);
+        }}
+        invoice={forceDeleteTarget}
+        onConfirm={handleConfirmForceCancel}
+        isPending={forceCancelMutation.isPending}
       />
     </MainLayout>
   );
