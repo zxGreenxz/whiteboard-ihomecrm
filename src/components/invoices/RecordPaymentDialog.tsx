@@ -78,6 +78,7 @@ const parseVN = (s: string): number => {
 
 type PaymentMethod = 'TM' | 'TT' | 'TK';
 const METHOD_ORDER: PaymentMethod[] = ['TM', 'TT', 'TK'];
+const METHOD_ORDER_NO_TK: PaymentMethod[] = ['TM', 'TT'];
 
 const defaultMethodForNewRow = (
   lines: Array<{ payment_method?: PaymentMethod } | undefined>,
@@ -198,6 +199,50 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const tmTotal = (watchedLines ?? [])
     .filter((l: any) => l?.payment_method === 'TM')
     .reduce((s, l: any) => s + (Number(l?.amount) || 0), 0);
+
+  // Có phiếu thanh toán cũ (đã lưu) nào dùng TM hoặc TT chưa?
+  const priorHasTmTt = useMemo(
+    () =>
+      (invoice?.payments ?? []).some(
+        (p) => p.payment_method === 'TM' || p.payment_method === 'TT',
+      ),
+    [invoice?.payments],
+  );
+
+  // Khoá TK trên dropdown của dòng `idx` nếu đã có TM/TT ở chỗ khác
+  // (phiếu cũ hoặc dòng hiện tại khác). Nếu dòng đang là TK thì KHÔNG
+  // khoá (option phải có để giữ giá trị hiển thị). Muốn thêm dòng TK
+  // mới phải bấm nút "+" — onClick sẽ append một dòng method='TK'.
+  const methodOptionsForRow = (idx: number): PaymentMethod[] => {
+    const current = watchedLines?.[idx]?.payment_method;
+    if (current === 'TK') return METHOD_ORDER;
+    if (priorHasTmTt) return METHOD_ORDER_NO_TK;
+    const otherHasTmTt = (watchedLines ?? []).some(
+      (l: any, i) =>
+        i !== idx && (l?.payment_method === 'TM' || l?.payment_method === 'TT'),
+    );
+    return otherHasTmTt ? METHOD_ORDER_NO_TK : METHOD_ORDER;
+  };
+
+  // Click "+" để thêm dòng thanh toán mới. Nếu state hiện tại đã có TM/TT
+  // (phiếu cũ hoặc dòng đang nhập) — default method là TK, vì TM/TT đã bị
+  // khoá khỏi dropdown của dòng mới, người dùng sẽ không có lối khác để
+  // chọn TK ngoài việc bấm "+". Ngược lại, dùng logic alternate cũ.
+  const handleAppendPaymentRow = () => {
+    const hasTmTt =
+      priorHasTmTt ||
+      (watchedLines ?? []).some(
+        (l: any) => l?.payment_method === 'TM' || l?.payment_method === 'TT',
+      );
+    const method: PaymentMethod = hasTmTt
+      ? 'TK'
+      : defaultMethodForNewRow(watchedLines as any);
+    append({
+      amount: 0,
+      payment_method: method,
+      account_id: accountIdForMethod(method),
+    });
+  };
 
   // Auto-compute tiền thối: chỉ tính khi có line TM. Cap theo tmTotal để không khấu trừ âm.
   useEffect(() => {
@@ -520,14 +565,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     size="icon"
                     variant="outline"
                     title="Thêm dòng thanh toán"
-                    onClick={() => {
-                      const newMethod = defaultMethodForNewRow(watchedLines as any);
-                      append({
-                        amount: 0,
-                        payment_method: newMethod,
-                        account_id: accountIdForMethod(newMethod),
-                      });
-                    }}
+                    onClick={handleAppendPaymentRow}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -556,7 +594,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {METHOD_ORDER.map((m) => (
+                    {methodOptionsForRow(0).map((m) => (
                       <SelectItem key={m} value={m}>
                         {m}
                       </SelectItem>
@@ -683,7 +721,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {METHOD_ORDER.map((m) => (
+                          {methodOptionsForRow(idx).map((m) => (
                             <SelectItem key={m} value={m}>
                               {m}
                             </SelectItem>
@@ -734,14 +772,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  const method = defaultMethodForNewRow(watchedLines as any);
-                  append({
-                    amount: 0,
-                    payment_method: method,
-                    account_id: accountIdForMethod(method),
-                  });
-                }}
+                onClick={handleAppendPaymentRow}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Thêm dòng thanh toán
