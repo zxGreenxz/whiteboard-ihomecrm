@@ -32,6 +32,7 @@ import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
+import { toast } from 'sonner';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -394,6 +395,34 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const isProcessing = recordMutation.isPending || isUploading;
 
+  // Hiển thị toast khi zod validation fail — trước đây handleSubmit nuốt lỗi
+  // âm thầm, người dùng bấm "Ghi nhận thanh toán" mà không thấy gì xảy ra
+  // (lúc được lúc không tuỳ account_id đã auto-fill kịp hay chưa).
+  const onInvalid = (formErrors: Record<string, any>) => {
+    const lines: string[] = [];
+    const pl = formErrors.payment_lines;
+    if (Array.isArray(pl)) {
+      pl.forEach((lineErr, idx) => {
+        if (!lineErr) return;
+        if (lineErr.amount?.message)
+          lines.push(`• Dòng ${idx + 1} — Số tiền: ${lineErr.amount.message}`);
+        if (lineErr.account_id?.message)
+          lines.push(`• Dòng ${idx + 1} — Sổ quỹ nhận: ${lineErr.account_id.message}`);
+        if (lineErr.payment_method?.message)
+          lines.push(`• Dòng ${idx + 1} — Phương thức: ${lineErr.payment_method.message}`);
+      });
+    }
+    if (formErrors.payment_date?.message)
+      lines.push(`• Ngày thanh toán: ${formErrors.payment_date.message}`);
+    if (formErrors.change_amount?.message)
+      lines.push(`• Tiền thối: ${formErrors.change_amount.message}`);
+    if (formErrors.change_account_id?.message)
+      lines.push(`• Sổ ghi nhận thối: ${formErrors.change_account_id.message}`);
+    toast.error('Không thể ghi nhận thanh toán', {
+      description: lines.length > 0 ? lines.join('\n') : 'Vui lòng kiểm tra lại thông tin.',
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -407,7 +436,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
           {/* Invoice Info */}
           <div className="bg-gray-50 p-4 rounded-md space-y-2 text-sm">
             <div className="flex justify-between">
@@ -548,10 +577,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 )}
               </div>
 
-              {/* Sổ quỹ nhận — chỉ super admin xem & đổi được; user thường
-                  dùng default đã được auto-pick (TM→Thu của mình hoặc Chung;
-                  TT/TK→cài đặt của toà nhà). */}
-              {isSuper && (
+              {/* Sổ quỹ nhận — super admin luôn thấy. User thường chỉ thấy
+                  khi auto-pick chưa ra (accounts chưa load xong hoặc tòa nhà
+                  chưa có default cho phương thức này) — để họ có chỗ chọn
+                  thay vì bấm "Ghi nhận thanh toán" không có phản hồi. */}
+              {(isSuper || !watchedLines?.[0]?.account_id) && (
                 <div className="space-y-2">
                   <Label>Sổ quỹ nhận *</Label>
                   <Select
@@ -662,8 +692,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       </Select>
                     </div>
                   </div>
-                  {/* Sổ quỹ nhận — chỉ super admin xem & đổi được. */}
-                  {isSuper && (
+                  {/* Sổ quỹ nhận — super admin luôn thấy; user thường thấy
+                      khi auto-pick chưa ra để có chỗ chọn. */}
+                  {(isSuper || !watchedLines?.[idx]?.account_id) && (
                     <div className="space-y-2">
                       <Label>Sổ quỹ nhận *</Label>
                       <Select
