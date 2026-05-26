@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +17,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Pencil,
   DollarSign,
@@ -158,6 +161,46 @@ const InvoiceListTable = ({
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
   const selectableInvoices = invoices.filter((inv) => (inv.paid_amount ?? 0) === 0);
+
+  // ID các hoá đơn đang hiển thị có phát sinh thanh toán.
+  const paidInvoiceIds = useMemo(
+    () =>
+      invoices
+        .filter((inv) => (inv.paid_amount ?? 0) > 0)
+        .map((inv) => inv.id),
+    [invoices],
+  );
+  const paidIdsKey = useMemo(() => [...paidInvoiceIds].sort().join(','), [paidInvoiceIds]);
+
+  // Set hoá đơn có TK đi kèm TM hoặc TT (cả TM+TK, TT+TK, hoặc TM+TT+TK)
+  // → tô vàng nhẹ cell "Đã thanh toán". Mix mà KHÔNG có TK (ví dụ TM+TT)
+  // thì không cảnh báo.
+  const { data: mixedInvoiceIds } = useQuery({
+    queryKey: ['invoice-payment-methods-mixed', paidIdsKey],
+    enabled: paidInvoiceIds.length > 0,
+    queryFn: async (): Promise<Set<string>> => {
+      const { data, error } = await (supabase as any)
+        .from('payments')
+        .select('invoice_id, payment_method')
+        .in('invoice_id', paidInvoiceIds);
+      if (error) throw error;
+      const byInvoice = new Map<string, Set<string>>();
+      for (const row of (data ?? []) as Array<{
+        invoice_id: string;
+        payment_method: string;
+      }>) {
+        if (!byInvoice.has(row.invoice_id)) byInvoice.set(row.invoice_id, new Set());
+        byInvoice.get(row.invoice_id)!.add(row.payment_method);
+      }
+      const mixed = new Set<string>();
+      for (const [invId, methods] of byInvoice) {
+        if (methods.has('TK') && (methods.has('TM') || methods.has('TT'))) {
+          mixed.add(invId);
+        }
+      }
+      return mixed;
+    },
+  });
   const isAllSelected =
     selectableInvoices.length > 0 && selectedIds.length === selectableInvoices.length;
 
@@ -460,7 +503,16 @@ const InvoiceListTable = ({
 
                   {/* Đã thanh toán */}
                   {v.da_thanh_toan && (
-                    <TableCell className="text-right text-sm text-green-600">
+                    <TableCell
+                      className={`text-right text-sm text-green-600 ${
+                        mixedInvoiceIds?.has(invoice.id) ? 'bg-yellow-50' : ''
+                      }`}
+                      title={
+                        mixedInvoiceIds?.has(invoice.id)
+                          ? 'Có TK kèm TM/TT — đối soát sổ quỹ kỹ'
+                          : undefined
+                      }
+                    >
                       <span>{formatCurrency(invoice.paid_amount || 0)}</span>
                       {(invoice.paid_amount || 0) > 0 && (
                         <button
