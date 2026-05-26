@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
@@ -11,10 +12,19 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
+import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import type { InvoiceWithRelations } from '@/types/invoice';
-import { Image as ImageIcon, Calendar, Clock } from 'lucide-react';
+import { Image as ImageIcon, Calendar, Clock, Loader2, Check } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -22,14 +32,18 @@ interface Props {
   invoice: InvoiceWithRelations | null;
 }
 
+type PaymentMethod = 'TM' | 'TT' | 'TK';
+
 interface PaymentRow {
   id: string;
   amount: number;
-  payment_method: 'TM' | 'TT' | 'TK' | string;
+  payment_method: PaymentMethod | string;
   payment_date: string;
   receipt_image_url: string | null;
   created_at: string;
 }
+
+const METHOD_OPTIONS: PaymentMethod[] = ['TM', 'TT', 'TK'];
 
 const fmtVND = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
@@ -55,6 +69,17 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
       return (data || []) as PaymentRow[];
     },
   });
+
+  const updateMethod = useUpdatePaymentMethod();
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const handleChangeMethod = (paymentId: string, newMethod: PaymentMethod) => {
+    setEditingId(paymentId);
+    updateMethod.mutate(
+      { payment_id: paymentId, new_method: newMethod },
+      { onSettled: () => setEditingId(null) },
+    );
+  };
 
   if (!invoice) return null;
 
@@ -117,11 +142,40 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                         <div className="text-base font-semibold text-emerald-600">
                           +{fmtVND(Number(p.amount) || 0)}
                         </div>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeCls}`}
-                        >
-                          {p.payment_method}
-                        </span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            disabled={editingId === p.id}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold transition hover:opacity-80 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed ${badgeCls}`}
+                            title="Click để đổi phương thức thanh toán"
+                          >
+                            {editingId === p.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : null}
+                            {p.payment_method}
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                              Đổi phương thức
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {METHOD_OPTIONS.map((m) => (
+                              <DropdownMenuItem
+                                key={m}
+                                onSelect={() => {
+                                  if (m !== p.payment_method) {
+                                    handleChangeMethod(p.id, m);
+                                  }
+                                }}
+                                className="flex items-center justify-between"
+                              >
+                                <span className="font-semibold">{m}</span>
+                                {p.payment_method === m && (
+                                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                )}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
