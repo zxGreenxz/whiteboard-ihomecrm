@@ -50,9 +50,9 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
             ? "bg-red-50/60"
             : "bg-blue-50/30";
         const firstAttachment = job.attachments?.[0];
-        const location = [job.rooms?.name, job.buildings?.name]
-          .filter(Boolean)
-          .join(" - ");
+        const location = job.buildings?.name
+          ? `${job.rooms?.name ?? "Toàn nhà"} - ${job.buildings.name}`
+          : (job.rooms?.name ?? "");
         const assignee = job.profiles?.full_name || job.assignee_name;
 
         return (

@@ -153,11 +153,9 @@ export default function TaskTable({
                     {job.buildings?.name ? (
                       <div className="flex flex-col leading-tight">
                         <span>{job.buildings.name}</span>
-                        {job.rooms?.name && (
-                          <span className="text-xs text-muted-foreground">
-                            {job.rooms.name}
-                          </span>
-                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {job.rooms?.name ?? "Toàn tòa nhà"}
+                        </span>
                       </div>
                     ) : (
                       "—"

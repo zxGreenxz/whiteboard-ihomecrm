@@ -33,7 +33,8 @@ interface TaskCreateDialogProps {
 
 const PLACEHOLDER = `Ví dụ:  201 1392qt sửa vòi nước
         201 1392qt sửa vòi nước 2     (sau 2 ngày)
-        201 1392qt sửa vòi nước 17/5  (ngày cụ thể)`;
+        201 1392qt sửa vòi nước 17/5  (ngày cụ thể)
+        tn  1392qt sửa bóng đèn hành lang chung  (toàn tòa nhà)`;
 
 export default function TaskCreateDialog({
   open,
@@ -124,7 +125,7 @@ export default function TaskCreateDialog({
     hasInput &&
     !parsed.errors.structure &&
     !!parsed.buildingId &&
-    !!parsed.roomId &&
+    (!!parsed.roomId || parsed.isBuildingWide) &&
     !!parsed.jobTypeId &&
     parsed.descriptionText.trim().length > 0 &&
     !createJob.isPending;
@@ -206,7 +207,8 @@ export default function TaskCreateDialog({
         />
         <p className="text-[11px] text-muted-foreground leading-tight">
           Cú pháp: <code>(phòng) (tòa) (loại) (mô tả) [ngày]</code>. Ngày: số
-          (0=hôm nay, 1=mai…) hoặc <code>17/5</code>. Bỏ trống → mai.
+          (0=hôm nay, 1=mai…) hoặc <code>17/5</code>. Bỏ trống → mai. Nhập{" "}
+          <code>tn</code> ở chỗ phòng nếu là việc cho cả tòa nhà.
         </p>
       </div>
 
@@ -222,8 +224,12 @@ export default function TaskCreateDialog({
             <>
               <PreviewRow
                 label="Phòng"
-                ok={!!parsed.roomId}
-                valueOk={parsed.roomToken}
+                ok={!!parsed.roomId || parsed.isBuildingWide}
+                valueOk={
+                  parsed.isBuildingWide
+                    ? "Toàn tòa nhà (không phòng cụ thể)"
+                    : parsed.roomToken
+                }
                 error={parsed.errors.roomNotFound}
               />
               <PreviewRow

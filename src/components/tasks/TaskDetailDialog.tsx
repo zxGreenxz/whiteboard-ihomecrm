@@ -103,9 +103,9 @@ export default function TaskDetailDialog({
 
   const isInProgress = job.status === "IN_PROGRESS";
   const isCompleted = job.status === "COMPLETED";
-  const location = [job.rooms?.name, job.buildings?.name]
-    .filter(Boolean)
-    .join(" - ");
+  const location = job.buildings?.name
+    ? `${job.rooms?.name ?? "Toàn nhà"} - ${job.buildings.name}`
+    : (job.rooms?.name ?? "");
   const assignee = job.profiles?.full_name || job.assignee_name || null;
 
   return (

@@ -152,10 +152,10 @@ export default function TaskEditDialog({
             disabled={!buildingId}
           >
             <SelectTrigger>
-              <SelectValue placeholder="-- Chọn --" />
+              <SelectValue placeholder="Toàn tòa nhà" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">-- Chọn --</SelectItem>
+              <SelectItem value="__none__">Toàn tòa nhà</SelectItem>
               {roomsForBuilding.map((r: any) => (
                 <SelectItem key={r.id} value={r.id}>
                   {r.name}

@@ -27,6 +27,7 @@ export type ParsedJobInput = {
   descriptionText: string;
   deadline: Date;
   deadlineSource: "default-tomorrow" | "offset" | "date";
+  isBuildingWide: boolean;
   hasAnyError: boolean;
   errors: {
     structure?: string;
@@ -35,6 +36,8 @@ export type ParsedJobInput = {
     jobTypeNotFound?: string;
   };
 };
+
+const BUILDING_WIDE_TOKENS = ["tn", "tòa", "toa", "toanha", "toànhà"];
 
 const STRUCTURE_HINT =
   'Cần ít nhất 4 phần: (phòng) (tòa nhà) (loại công việc) (mô tả). Ví dụ: 201 1392qt sửa vòi nước';
@@ -59,6 +62,7 @@ export function parseJobQuickInput(
     descriptionText: "",
     deadline: endOfDay(addDays(today, 1)),
     deadlineSource: "default-tomorrow",
+    isBuildingWide: false,
     hasAnyError: true,
     errors: { structure: STRUCTURE_HINT },
   };
@@ -94,6 +98,7 @@ export function parseJobQuickInput(
 
   const [roomToken, buildingToken, jobTypeToken, ...descTokens] = headTokens;
   const descriptionText = descTokens.join(" ");
+  const isBuildingWide = BUILDING_WIDE_TOKENS.includes(normalizeLoose(roomToken));
 
   const buildingMatch = buildings.find(
     (b) =>
@@ -103,7 +108,7 @@ export function parseJobQuickInput(
 
   let roomMatch: RoomRef | undefined;
   let roomNotFoundMsg: string | undefined;
-  if (buildingMatch) {
+  if (buildingMatch && !isBuildingWide) {
     roomMatch = rooms.find(
       (r) =>
         r.building_id === buildingMatch.id &&
@@ -111,7 +116,7 @@ export function parseJobQuickInput(
           splitAliases(r.code).some((a) => eqInsensitive(a, roomToken))),
     );
     if (!roomMatch) {
-      roomNotFoundMsg = `Không tìm thấy phòng "${roomToken}" trong tòa "${buildingToken}". Kiểm tra danh sách phòng của tòa này.`;
+      roomNotFoundMsg = `Không tìm thấy phòng "${roomToken}" trong tòa "${buildingToken}". Dùng "tn" nếu là việc cho cả tòa nhà.`;
     }
   }
 
@@ -141,6 +146,7 @@ export function parseJobQuickInput(
     descriptionText,
     deadline,
     deadlineSource,
+    isBuildingWide,
     hasAnyError: Object.keys(errors).length > 0,
     errors,
   };
