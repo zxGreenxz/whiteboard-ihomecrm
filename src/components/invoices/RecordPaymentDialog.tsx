@@ -209,34 +209,47 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     [invoice?.payments],
   );
 
-  // Khoá TK trên dropdown của dòng `idx` nếu đã có TM/TT ở chỗ khác
-  // (phiếu cũ hoặc dòng hiện tại khác). Nếu dòng đang là TK thì KHÔNG
-  // khoá (option phải có để giữ giá trị hiển thị). Muốn thêm dòng TK
-  // mới phải bấm nút "+" — onClick sẽ append một dòng method='TK'.
-  const methodOptionsForRow = (idx: number): PaymentMethod[] => {
-    const current = watchedLines?.[idx]?.payment_method;
-    if (current === 'TK') return METHOD_ORDER;
-    if (priorHasTmTt) return METHOD_ORDER_NO_TK;
-    const otherHasTmTt = (watchedLines ?? []).some(
+  // Khoá TK trên dropdown khi state hiện tại đã có TM/TT (phiếu cũ
+  // hoặc dòng hiện tại khác `idx`). Khi bị khoá, dropdown chỉ hiển
+  // thị TM/TT + 1 nút "+" ở vị trí thứ 3 (xem JSX dưới). Người dùng
+  // bấm "+" để mở khoá TK cho riêng dòng đó (state `unlockedTkFieldIds`)
+  // — sau đó mở lại dropdown sẽ thấy TK như option bình thường.
+  const shouldLockTkForRow = (idx: number): boolean => {
+    if (priorHasTmTt) return true;
+    return (watchedLines ?? []).some(
       (l: any, i) =>
         i !== idx && (l?.payment_method === 'TM' || l?.payment_method === 'TT'),
     );
-    return otherHasTmTt ? METHOD_ORDER_NO_TK : METHOD_ORDER;
   };
 
-  // Click "+" để thêm dòng thanh toán mới. Nếu state hiện tại đã có TM/TT
-  // (phiếu cũ hoặc dòng đang nhập) — default method là TK, vì TM/TT đã bị
-  // khoá khỏi dropdown của dòng mới, người dùng sẽ không có lối khác để
-  // chọn TK ngoài việc bấm "+". Ngược lại, dùng logic alternate cũ.
+  // Mỗi field react-hook-form có `id` ổn định qua reorder/remove. Track
+  // các field đã được người dùng bấm "+" để mở khoá TK.
+  const [unlockedTkFieldIds, setUnlockedTkFieldIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const unlockTkForField = (fieldId: string) => {
+    setUnlockedTkFieldIds((prev) => {
+      if (prev.has(fieldId)) return prev;
+      const next = new Set(prev);
+      next.add(fieldId);
+      return next;
+    });
+  };
+  const isTkVisibleForRow = (
+    idx: number,
+    fieldId: string,
+    currentMethod: PaymentMethod | undefined,
+  ): boolean => {
+    if (currentMethod === 'TK') return true; // luôn giữ option khi đang chọn TK
+    if (!shouldLockTkForRow(idx)) return true;
+    return unlockedTkFieldIds.has(fieldId);
+  };
+
+  // Click "+ Thêm dòng thanh toán" để thêm dòng mới. Method mặc định
+  // là alternate (TM ↔ TT) — KHÔNG auto chọn TK. Muốn TK, người dùng
+  // mở dropdown dòng mới, bấm dấu "+" ở vị trí thứ 3 để hiện TK.
   const handleAppendPaymentRow = () => {
-    const hasTmTt =
-      priorHasTmTt ||
-      (watchedLines ?? []).some(
-        (l: any) => l?.payment_method === 'TM' || l?.payment_method === 'TT',
-      );
-    const method: PaymentMethod = hasTmTt
-      ? 'TK'
-      : defaultMethodForNewRow(watchedLines as any);
+    const method = defaultMethodForNewRow(watchedLines as any);
     append({
       amount: 0,
       payment_method: method,
@@ -269,6 +282,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     setReceiptImage(null);
     setReceiptPreview(null);
     setChangeUserEdited(false);
+    setUnlockedTkFieldIds(new Set());
     onOpenChange(false);
   };
 
@@ -591,14 +605,34 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      {watchedLines?.[0]?.payment_method ?? 'TM'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {methodOptionsForRow(0).map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="TM">TM</SelectItem>
+                    <SelectItem value="TT">TT</SelectItem>
+                    {isTkVisibleForRow(
+                      0,
+                      fields[0]?.id ?? '',
+                      watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
+                    ) ? (
+                      <SelectItem value="TK">TK</SelectItem>
+                    ) : (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        title="Bấm để hiện phương thức TK"
+                        className="relative flex w-full cursor-pointer select-none items-center justify-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          unlockTkForField(fields[0]?.id ?? '');
+                        }}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -718,14 +752,36 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                         }}
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue>
+                            {watchedLines?.[idx]?.payment_method ?? 'TM'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {methodOptionsForRow(idx).map((m) => (
-                            <SelectItem key={m} value={m}>
-                              {m}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="TM">TM</SelectItem>
+                          <SelectItem value="TT">TT</SelectItem>
+                          {isTkVisibleForRow(
+                            idx,
+                            field.id,
+                            watchedLines?.[idx]?.payment_method as
+                              | PaymentMethod
+                              | undefined,
+                          ) ? (
+                            <SelectItem value="TK">TK</SelectItem>
+                          ) : (
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              title="Bấm để hiện phương thức TK"
+                              className="relative flex w-full cursor-pointer select-none items-center justify-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                              onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                unlockTkForField(field.id);
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </div>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
