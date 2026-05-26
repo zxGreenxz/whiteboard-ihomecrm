@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -160,6 +160,9 @@ const InvoiceListTable = ({
   isSuper = false,
 }: InvoiceListTableProps) => {
   const { toast } = useToast();
+  // Double-click header "Đã thanh toán" → đưa các HĐ tô vàng (TK kèm TM/TT)
+  // lên đầu danh sách. Double-click lần nữa để tắt.
+  const [mixedToTop, setMixedToTop] = useState(false);
   const selectableInvoices = invoices.filter((inv) => (inv.paid_amount ?? 0) === 0);
 
   // ID các hoá đơn đang hiển thị có phát sinh thanh toán.
@@ -201,6 +204,17 @@ const InvoiceListTable = ({
       return mixed;
     },
   });
+
+  const displayInvoices = useMemo(() => {
+    if (!mixedToTop || !mixedInvoiceIds || mixedInvoiceIds.size === 0) return invoices;
+    // Stable partition: yellow ones first, giữ nguyên thứ tự gốc trong mỗi nhóm.
+    const top: typeof invoices = [];
+    const rest: typeof invoices = [];
+    for (const inv of invoices) {
+      (mixedInvoiceIds.has(inv.id) ? top : rest).push(inv);
+    }
+    return [...top, ...rest];
+  }, [mixedToTop, mixedInvoiceIds, invoices]);
   const isAllSelected =
     selectableInvoices.length > 0 && selectedIds.length === selectableInvoices.length;
 
@@ -245,7 +259,17 @@ const InvoiceListTable = ({
             {v.pdv && <TableHead className="text-right">PDV</TableHead>}
             {v.giam_tru && <TableHead className="text-right">Giảm trừ</TableHead>}
             {v.tong_tien && <TableHead className="text-right">Tổng tiền</TableHead>}
-            {v.da_thanh_toan && <TableHead className="text-right">Đã thanh toán</TableHead>}
+            {v.da_thanh_toan && (
+              <TableHead
+                className={`text-right select-none cursor-pointer ${
+                  mixedToTop ? 'text-yellow-700' : ''
+                }`}
+                onDoubleClick={() => setMixedToTop((v) => !v)}
+                title="Nhấp đúp để đưa các hoá đơn TK + TM/TT (tô vàng) lên đầu"
+              >
+                Đã thanh toán{mixedToTop ? ' ▼' : ''}
+              </TableHead>
+            )}
             {v.con_no && <TableHead className="text-right">Còn nợ</TableHead>}
             {v.no_cong_don && <TableHead className="text-right">Nợ cộng dồn</TableHead>}
             {v.han_tt && <TableHead>Hạn TT</TableHead>}
@@ -253,14 +277,14 @@ const InvoiceListTable = ({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {invoices.length === 0 ? (
+          {displayInvoices.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColCount} className="h-24 text-center text-muted-foreground">
                 Không có hoá đơn nào
               </TableCell>
             </TableRow>
           ) : (
-            invoices.map((invoice) => {
+            displayInvoices.map((invoice) => {
               const remaining = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
               const isSelectable = (invoice.paid_amount ?? 0) === 0;
               const isFullyPaid =
