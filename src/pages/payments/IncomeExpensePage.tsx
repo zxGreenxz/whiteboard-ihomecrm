@@ -608,7 +608,13 @@ const IncomeExpensePage = () => {
         voucher={detailVoucher}
         onCancel={handleCancelVoucher}
         onEdit={handleEditVoucher}
+        onQuickEdit={handleQuickEditVoucher}
         onApprove={handleApproveVoucher}
+      />
+      <IncomeExpenseQuickEditDialog
+        open={!!quickEditVoucher}
+        onOpenChange={handleQuickEditClose}
+        voucher={quickEditVoucher}
       />
       <IncomeExpenseBatchDetailDialog
         open={!!detailBatch}
