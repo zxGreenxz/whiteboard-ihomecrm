@@ -26,7 +26,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useAuth } from '@/hooks/useAuth';
-import { useMyContext } from '@/hooks/useMyContext';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -77,24 +76,11 @@ const parseVN = (s: string): number => {
 };
 
 type PaymentMethod = 'TM' | 'TT' | 'TK';
-const METHOD_ORDER: PaymentMethod[] = ['TM', 'TT', 'TK'];
-const METHOD_ORDER_NO_TK: PaymentMethod[] = ['TM', 'TT'];
-
-const defaultMethodForNewRow = (
-  lines: Array<{ payment_method?: PaymentMethod } | undefined>,
-): PaymentMethod => {
-  const first = lines[0]?.payment_method;
-  if (first === 'TT') return 'TM';
-  if (first === 'TK') return 'TM';
-  return 'TT';
-};
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
   const recordMutation = useRecordPaymentRPC();
   const { data: accounts = [] } = useAccounts();
   const { data: currentUser } = useAuth();
-  const { data: ctx } = useMyContext();
-  const isSuper = !!ctx?.isSuper;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -145,6 +131,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   // Sổ quỹ mặc định lấy từ cài đặt toà nhà (mọi user dùng chung).
   const buildingDefaultTT = (invoice?.building as any)?.default_account_id_tt ?? '';
   const buildingDefaultTK = (invoice?.building as any)?.default_account_id_tk ?? '';
+  // Toà nhà có cấu hình default sổ quỹ cho TT/TK chưa? Quyết định xem phương
+  // thức tương ứng có xuất hiện trong dropdown và có cần lock TK thành "+".
+  const hasBuildingTT = !!buildingDefaultTT;
+  const hasBuildingTK = !!buildingDefaultTK;
 
   const myCashAccountId = useMemo(() => {
     if (!currentUser?.id || !accounts.length) return '';
@@ -223,7 +213,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   // thị TM/TT + 1 nút "+" ở vị trí thứ 3 (xem JSX dưới). Người dùng
   // bấm "+" để mở khoá TK cho riêng dòng đó (state `unlockedTkFieldIds`)
   // — sau đó mở lại dropdown sẽ thấy TK như option bình thường.
+  // QUAN TRỌNG: chỉ áp dụng cơ chế khoá-thành-"+" khi cả TT và TK đều
+  // có default account; nếu thiếu một trong hai thì phương thức tương
+  // ứng bị ẩn hẳn (xem isTtVisible / isTkVisibleForRow).
   const shouldLockTkForRow = (idx: number): boolean => {
+    if (!hasBuildingTT || !hasBuildingTK) return false;
     if (priorHasTmTt) return true;
     return (watchedLines ?? []).some(
       (l: any, i) =>
@@ -244,14 +238,54 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       return next;
     });
   };
+  // TT chỉ hiện trong dropdown khi toà nhà có default account TT.
+  // Ngoại lệ: nếu dòng hiện tại đang là TT (state cũ) thì vẫn giữ option.
+  const isTtVisibleForRow = (currentMethod: PaymentMethod | undefined): boolean => {
+    if (currentMethod === 'TT') return true;
+    return hasBuildingTT;
+  };
+  // TK xuất hiện trong 3 trạng thái:
+  //   - Đang chọn TK: luôn hiện (tránh mất option khi state cũ)
+  //   - Toà nhà thiếu default TK: ẩn hẳn, không kể có TM/TT trước hay không
+  //   - Toà nhà có default TK: hiện như bình thường; chỉ khi cả TT cũng có
+  //     default (đầy đủ 2 phương thức) thì mới áp dụng cơ chế khoá-thành-"+"
   const isTkVisibleForRow = (
     idx: number,
     fieldId: string,
     currentMethod: PaymentMethod | undefined,
   ): boolean => {
-    if (currentMethod === 'TK') return true; // luôn giữ option khi đang chọn TK
+    if (currentMethod === 'TK') return true;
+    if (!hasBuildingTK) return false;
     if (!shouldLockTkForRow(idx)) return true;
     return unlockedTkFieldIds.has(fieldId);
+  };
+  // Có nên hiển thị nút "+" để mở khoá TK ở vị trí option thứ 3 không?
+  // Chỉ khi TK đang bị khoá (cần unlock) — không kể trường hợp TK đã bị
+  // ẩn hẳn vì thiếu default.
+  const showTkPlusForRow = (
+    idx: number,
+    fieldId: string,
+    currentMethod: PaymentMethod | undefined,
+  ): boolean => {
+    if (currentMethod === 'TK') return false;
+    if (!hasBuildingTK) return false;
+    if (!shouldLockTkForRow(idx)) return false;
+    return !unlockedTkFieldIds.has(fieldId);
+  };
+
+  // Method mặc định khi thêm dòng mới: ưu tiên alternate (TM ↔ TT),
+  // nhưng phải có default account cho method đó. Nếu không có default
+  // nào khả dụng thì fallback TM.
+  const defaultMethodForNewRow = (
+    lines: Array<{ payment_method?: PaymentMethod } | undefined>,
+  ): PaymentMethod => {
+    const first = lines[0]?.payment_method;
+    if (first === 'TT' || first === 'TK') return 'TM';
+    // Dòng đầu là TM (hoặc chưa có) → ưu tiên TT nếu có default,
+    // sau đó TK, cuối cùng TM (thêm dòng TM thứ 2).
+    if (hasBuildingTT) return 'TT';
+    if (hasBuildingTK) return 'TK';
+    return 'TM';
   };
 
   // Click "+ Thêm dòng thanh toán" để thêm dòng mới. Method mặc định
@@ -644,14 +678,19 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="TM">TM</SelectItem>
-                    <SelectItem value="TT">TT</SelectItem>
+                    {isTtVisibleForRow(
+                      watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
+                    ) && <SelectItem value="TT">TT</SelectItem>}
                     {isTkVisibleForRow(
                       0,
                       fields[0]?.id ?? '',
                       watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
-                    ) ? (
-                      <SelectItem value="TK">TK</SelectItem>
-                    ) : (
+                    ) && <SelectItem value="TK">TK</SelectItem>}
+                    {showTkPlusForRow(
+                      0,
+                      fields[0]?.id ?? '',
+                      watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
+                    ) && (
                       <div
                         role="button"
                         tabIndex={0}
@@ -682,11 +721,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 )}
               </div>
 
-              {/* Sổ quỹ nhận — super admin luôn thấy. User thường chỉ thấy
-                  khi auto-pick chưa ra (accounts chưa load xong hoặc tòa nhà
-                  chưa có default cho phương thức này) — để họ có chỗ chọn
-                  thay vì bấm "Ghi nhận thanh toán" không có phản hồi. */}
-              {(isSuper || !watchedLines?.[0]?.account_id) && (
+              {/* Sổ quỹ nhận — chỉ hiện khi auto-pick chưa ra (accounts
+                  chưa load xong hoặc tòa nhà chưa cấu hình default cho
+                  phương thức này). Đã cấu hình default sổ quỹ rồi thì
+                  field này luôn ẩn — lấy theo default. */}
+              {!watchedLines?.[0]?.account_id && (
                 <div className="space-y-2">
                   <Label>Sổ quỹ nhận *</Label>
                   <Select
@@ -791,16 +830,25 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="TM">TM</SelectItem>
-                          <SelectItem value="TT">TT</SelectItem>
+                          {isTtVisibleForRow(
+                            watchedLines?.[idx]?.payment_method as
+                              | PaymentMethod
+                              | undefined,
+                          ) && <SelectItem value="TT">TT</SelectItem>}
                           {isTkVisibleForRow(
                             idx,
                             field.id,
                             watchedLines?.[idx]?.payment_method as
                               | PaymentMethod
                               | undefined,
-                          ) ? (
-                            <SelectItem value="TK">TK</SelectItem>
-                          ) : (
+                          ) && <SelectItem value="TK">TK</SelectItem>}
+                          {showTkPlusForRow(
+                            idx,
+                            field.id,
+                            watchedLines?.[idx]?.payment_method as
+                              | PaymentMethod
+                              | undefined,
+                          ) && (
                             <div
                               role="button"
                               tabIndex={0}
@@ -819,9 +867,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       </Select>
                     </div>
                   </div>
-                  {/* Sổ quỹ nhận — super admin luôn thấy; user thường thấy
-                      khi auto-pick chưa ra để có chỗ chọn. */}
-                  {(isSuper || !watchedLines?.[idx]?.account_id) && (
+                  {/* Sổ quỹ nhận — chỉ hiện khi auto-pick chưa ra (toà nhà
+                      chưa cấu hình default cho phương thức này). Đã có
+                      default rồi thì luôn ẩn — lấy theo default. */}
+                  {!watchedLines?.[idx]?.account_id && (
                     <div className="space-y-2">
                       <Label>Sổ quỹ nhận *</Label>
                       <Select
