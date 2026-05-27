@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import type { InvoiceWithRelations } from '@/types/invoice';
+import { getInvoiceTitle } from '@/lib/invoiceUtils';
 import { Image as ImageIcon, Calendar, Clock, Loader2, Check } from 'lucide-react';
 
 interface Props {
@@ -98,7 +99,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
         <div className="text-sm text-muted-foreground -mt-2">
           Hoá đơn:{' '}
           <span className="font-medium text-foreground">
-            {invoice.invoice_number}
+            {getInvoiceTitle(invoice)}
           </span>
         </div>
 

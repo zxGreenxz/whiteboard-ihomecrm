@@ -27,7 +27,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import type { InvoiceWithRelations, InvoiceItem } from '@/types/invoice';
-import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
+import { canEditInvoice, canDeleteInvoice, getInvoiceTitle } from '@/lib/invoiceUtils';
 import type { InvoiceColumnVisibility } from './invoiceListColumns';
 
 interface InvoiceListTableProps {
@@ -86,47 +86,6 @@ const splitServiceAmounts = (items: InvoiceItem[] | undefined) => {
     }
   }
   return { electric, water, pdv };
-};
-
-/**
- * Build invoice title from items + notes.
- *
- * - Notes có "thanh lý" → "Hóa đơn thanh lý - <month>"
- * - RENT + SERVICE → "TIỀN PHÒNG - <phòng>/<toà> - MM/YYYY"
- *   (title đã chứa location → dòng phụ tòa/phòng bị ẩn đi)
- * - Chỉ RENT → "Hóa đơn tiền nhà - <month>"
- * - Chỉ SERVICE/PENALTY → "Hóa đơn dịch vụ - <month>"
- * - Còn lại → "Hóa đơn - <month>"
- */
-const getInvoiceTitle = (invoice: InvoiceWithRelations): string => {
-  const month = invoice.billing_month ?? '';
-  const monthDisplay = (() => {
-    if (!month) return '';
-    // billing_month dạng "2026-05" → "05/2026"
-    const m = /^(\d{4})-(\d{2})$/.exec(month);
-    return m ? `${m[2]}/${m[1]}` : month;
-  })();
-
-  const notes = invoice.notes ?? '';
-  const isLiquidation = /thanh\s*lý/i.test(notes);
-  if (isLiquidation) return `Hóa đơn thanh lý - ${month}`;
-
-  const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
-  const hasService = invoice.invoice_items?.some(
-    (i) => i.type === 'SERVICE' || i.type === 'PENALTY',
-  );
-
-  if (hasRent && hasService) {
-    const loc = [invoice.room?.name, invoice.building?.name]
-      .filter(Boolean)
-      .join('/');
-    return loc
-      ? `TIỀN PHÒNG - ${loc} - ${monthDisplay || month}`
-      : `TIỀN PHÒNG - ${monthDisplay || month}`;
-  }
-  if (hasRent) return `Hóa đơn tiền nhà - ${month}`;
-  if (hasService) return `Hóa đơn dịch vụ - ${month}`;
-  return `Hóa đơn - ${month}`;
 };
 
 /** Title đã chứa location chưa? Dùng để quyết định có hiển thị dòng phụ
