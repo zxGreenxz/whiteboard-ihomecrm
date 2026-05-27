@@ -9,6 +9,7 @@ export const contractFormSchema = z.object({
   rent_price: z.number().min(0, 'Tiền thuê không được âm'),
   total_deposit: z.number().min(0, 'Tiền cọc không được âm'),
   deposit_paid: z.number().min(0).optional(),
+  deposit_account_id: z.string().uuid().nullable().optional(),
   payment_cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
   start_billing_date: z.string().optional(),
   end_billing_date: z.string().optional(),

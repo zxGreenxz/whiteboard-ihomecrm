@@ -166,6 +166,7 @@ export function ContractFormDialog({
       rent_price: 0,
       total_deposit: 0,
       deposit_paid: 0,
+      deposit_account_id: null,
       payment_cycle: "MONTHLY" as PaymentCycle,
       start_billing_date: "",
       end_billing_date: "",
@@ -200,6 +201,7 @@ export function ContractFormDialog({
         rent_price: contract.rent_price ?? 0,
         total_deposit: contract.total_deposit ?? 0,
         deposit_paid: contract.deposit_paid ?? 0,
+        deposit_account_id: null,
         payment_cycle: contract.payment_cycle ?? "MONTHLY",
         start_billing_date: contract.start_billing_date?.split("T")[0] ?? "",
         end_billing_date: contract.end_billing_date?.split("T")[0] ?? "",
@@ -251,6 +253,7 @@ export function ContractFormDialog({
         rent_price: 0,
         total_deposit: 0,
         deposit_paid: 0,
+        deposit_account_id: null,
         payment_cycle: "MONTHLY",
         start_billing_date: "",
         end_billing_date: "",
@@ -262,6 +265,29 @@ export function ContractFormDialog({
       });
     }
   }, [open, contract, form]);
+
+  // Auto-prefill sổ quỹ thu cọc theo tên toà nhà (chỉ create mode). User vẫn
+  // có thể đổi sổ trong dropdown sau khi prefill. Logic ưu tiên giữ nguyên
+  // convention cũ: match theo tên toà → is_default → account đầu tiên.
+  useEffect(() => {
+    if (isEditMode) return;
+    if (!open) return;
+    if (!selectedBuildingId) return;
+    if (accounts.length === 0) return;
+    const building = (buildings as any[])?.find(
+      (b) => b.id === selectedBuildingId,
+    );
+    const buildingName: string = building?.name ?? "";
+    const matched =
+      accounts.find(
+        (a) =>
+          a.name.trim().toLowerCase() === buildingName.trim().toLowerCase(),
+      ) ??
+      accounts.find((a) => a.is_default) ??
+      accounts[0];
+    form.setValue("deposit_account_id", matched?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isEditMode, selectedBuildingId, accounts, buildings]);
 
   // Auto-điền "Đến ngày" = ngày 5 tháng kế tiếp khi user chọn "Ngày BĐ tính tiền"
   // và chưa nhập "Đến ngày". User vẫn có thể chỉnh tay sau đó.
@@ -634,27 +660,17 @@ export function ContractFormDialog({
           onSuccess: (contract) => {
             // Auto-tạo phiếu thu cọc với prefill toà/phòng/loại "Tiền cọc"
             // + ảnh đính kèm user đã upload. Chỉ tạo khi có đặt cọc > 0,
-            // có loại "Tiền cọc" trong danh mục và có default account.
+            // có loại "Tiền cọc" và user đã chọn sổ quỹ trong dropdown.
             const depositAmount = data.deposit_paid ?? 0;
+            const depositAccountId = data.deposit_account_id ?? null;
             const building = (buildings as any[])?.find(
               (b) => b.id === selectedBuildingId,
             );
             const buildingName: string = building?.name ?? "";
-            // Convention: mỗi toà nhà có 1 sổ quỹ cùng tên (vd 80ĐS3 →
-            // account 80ĐS3). Ưu tiên match theo tên, fallback is_default,
-            // sau cùng là account đầu tiên.
-            const matchedAccount =
-              accounts.find(
-                (a) =>
-                  a.name.trim().toLowerCase() ===
-                  buildingName.trim().toLowerCase(),
-              ) ??
-              accounts.find((a) => a.is_default) ??
-              accounts[0];
             if (
               depositAmount > 0 &&
               depositIncomeType &&
-              matchedAccount &&
+              depositAccountId &&
               selectedBuildingId
             ) {
               const room = (rooms as any[])?.find(
@@ -675,7 +691,7 @@ export function ContractFormDialog({
                 room_id: selectedRoomId || null,
                 tenant_id: null,
                 payer_name: null,
-                account_id: matchedAccount.id,
+                account_id: depositAccountId,
                 voucher_date: data.signed_date || today,
                 business_result_accounting: false,
                 repeat_cycle: "NONE",
@@ -693,9 +709,9 @@ export function ContractFormDialog({
                   },
                 ],
               });
-            } else if (depositAmount > 0 && !matchedAccount) {
+            } else if (depositAmount > 0 && !depositAccountId) {
               toast.warning(
-                "Đã lưu HĐ nhưng chưa tạo phiếu thu cọc: chưa có sổ quỹ.",
+                "Đã lưu HĐ nhưng chưa tạo phiếu thu cọc: chưa chọn sổ quỹ.",
               );
             } else if (depositAmount > 0 && !depositIncomeType) {
               toast.warning(
@@ -1152,6 +1168,43 @@ export function ContractFormDialog({
                     />
                   </div>
                 </div>
+
+                {/* Sổ quỹ thu cọc — auto-prefill theo tên toà nhà, user có
+                    thể đổi để chọn đúng sổ muốn ghi nhận. Chỉ tạo mới. */}
+                {!isEditMode && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="deposit_account_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Sổ quỹ thu cọc</FormLabel>
+                          <Select
+                            onValueChange={(v) =>
+                              field.onChange(v === "" ? null : v)
+                            }
+                            value={field.value ?? ""}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn sổ quỹ thu cọc" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {accounts.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                  {a.bank_name ? ` (${a.bank_name})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
 
                 {/* Ảnh đã cọc — đính kèm cho phiếu thu cọc auto-tạo khi
                     lưu HĐ. Chỉ hiển thị khi tạo mới (edit không auto-tạo
