@@ -10,6 +10,7 @@ import {
   X,
   CheckCircle,
   AlertCircle,
+  Pencil,
 } from 'lucide-react';
 
 import {
@@ -43,6 +44,10 @@ import {
   type BulkPaymentFailure,
 } from '@/hooks/useBulkRecordPayment';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
+import { useInvoice } from '@/hooks/useInvoices';
+import { canEditInvoice } from '@/lib/invoiceUtils';
+import type { InvoiceStatus } from '@/types/invoice';
+import EditInvoiceDialog from './EditInvoiceDialog';
 
 interface Props {
   open: boolean;
@@ -58,6 +63,7 @@ interface RowData {
   total_amount: number;
   paid_amount: number;
   remaining: number;
+  status: InvoiceStatus;
 
   selected: boolean;
   amount_tm: number;
@@ -112,6 +118,9 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failures, setFailures] = useState<BulkPaymentFailure[]>([]);
+  const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null);
+
+  const { data: editingInvoice } = useInvoice(editInvoiceId ?? undefined);
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -177,7 +186,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       const { data, error } = await (supabase as any)
         .from('invoices')
         .select(
-          `id, invoice_number, building_id, room_id,
+          `id, invoice_number, building_id, room_id, status,
            total_amount, paid_amount, remaining_amount, billing_month,
            room:rooms!invoices_room_id_fkey(id, name),
            contract:contracts!invoices_contract_id_fkey(
@@ -215,6 +224,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             total_amount: total,
             paid_amount: paid,
             remaining,
+            status: (inv.status ?? 'APPROVED') as InvoiceStatus,
             selected: remaining > 0,
             amount_tm: 0,
             amount_tk: 0,
@@ -735,7 +745,28 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                         onCheckedChange={(v) => updateRow(i, { selected: !!v })}
                       />
                     </td>
-                    <td className="p-1 border font-medium">{r.room_name}</td>
+                    <td className="p-1 border font-medium">
+                      <div className="flex items-center justify-between gap-1">
+                        <span>{r.room_name}</span>
+                        {canEditInvoice(r) ? (
+                          <button
+                            type="button"
+                            title="Sửa hoá đơn"
+                            className="text-slate-400 hover:text-blue-600 p-0.5 rounded"
+                            onClick={() => setEditInvoiceId(r.invoice_id)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <span
+                            title="Hoá đơn đã có thanh toán — không thể sửa"
+                            className="text-slate-300 p-0.5 cursor-not-allowed"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-1 border text-xs">{r.customer_name}</td>
                     <td className="p-1 border text-right text-slate-600">
                       {fmt(r.total_amount)}
@@ -958,6 +989,20 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           </Button>
         </DialogFooter>
       </DialogContent>
+      {editingInvoice && (
+        <EditInvoiceDialog
+          open={editInvoiceId != null}
+          onOpenChange={(v) => {
+            if (!v) {
+              const wasOpen = editInvoiceId != null;
+              setEditInvoiceId(null);
+              // Reload toàn bộ bảng để cell phản ánh dữ liệu HĐ vừa sửa
+              if (wasOpen && buildingId) handleLoad();
+            }
+          }}
+          invoice={editingInvoice}
+        />
+      )}
     </Dialog>
   );
 }
