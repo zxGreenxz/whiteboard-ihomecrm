@@ -36,6 +36,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { Receipt, Plus, Trash2, Pencil, AlertTriangle } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth, parse } from 'date-fns';
+import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
 
 interface GenerateInvoiceDialogProps {
   open: boolean;
@@ -71,6 +72,8 @@ const generateInvoiceSchema = z.object({
   discount_amount: z.number().min(0).default(0),
   discount_notes: z.string().nullable().optional(),
   applied_credit: z.number().min(0).optional(),
+  period_start_date: z.string().optional().nullable(),
+  period_end_date: z.string().optional().nullable(),
 });
 
 type GenerateInvoiceFormData = z.infer<typeof generateInvoiceSchema>;
@@ -144,6 +147,14 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const watchedDiscount = watch('discount_amount') || 0;
   const watchedDiscountNotes = watch('discount_notes') || '';
   const watchedBillingMonth = watch('billing_month') || '';
+  const watchedPeriodStart = watch('period_start_date') || '';
+  const watchedPeriodEnd = watch('period_end_date') || '';
+
+  const proratedDays = calcProratedDays(watchedPeriodStart, watchedPeriodEnd);
+  const isProrated = proratedDays > 0;
+  const proratedRent = isProrated ? prorateAmount(watchedRent, proratedDays) : watchedRent;
+  const proratedWater = isProrated ? prorateAmount(watchedWater, proratedDays) : watchedWater;
+  const proratedPDV = isProrated ? prorateAmount(watchedPDV, proratedDays) : watchedPDV;
 
   const selectedContract = contracts?.find((c) => c.id === watchedContractId);
   const buildingIdOfContract =
@@ -320,10 +331,10 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   }, [watchedContractId, creditBalance]);
 
   const subtotal =
-    watchedRent +
+    proratedRent +
     watchedElectric +
-    watchedWater +
-    watchedPDV +
+    proratedWater +
+    proratedPDV +
     watchedCustomItems.reduce(
       (s, it) => s + (it.quantity || 0) * (it.unit_price || 0),
       0,
@@ -375,15 +386,29 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       }
     }
 
-    // 2) Build items.
+    // 2) Build items. Nếu user điền period_start/end → prorate rent + nước + PDV
+    //    theo công thức `amount / 30 * số_ngày` và ghi from_date/to_date.
+    const itemDays = calcProratedDays(data.period_start_date, data.period_end_date);
+    const useProrate = itemDays > 0;
+    const itemFromDate = useProrate ? data.period_start_date! : fromDate;
+    const itemToDate = useProrate ? data.period_end_date! : toDate;
+    const prorateLabel = useProrate ? ` (${itemDays}/30 ngày)` : '';
+
+    const rentAmount = useProrate ? prorateAmount(data.rent_price, itemDays) : data.rent_price;
+    const waterAmount = useProrate ? prorateAmount(data.water_amount, itemDays) : data.water_amount;
+    const pdvAmount = useProrate ? prorateAmount(data.pdv_amount, itemDays) : data.pdv_amount;
+
     const items: InvoiceFormData['items'] = [];
     let order = 0;
     items.push({
       type: 'RENT',
-      description: `Tiền thuê căn hộ ${roomData?.name || bedData?.name || ''}`.trim(),
-      unit_price: data.rent_price,
+      description:
+        `Tiền thuê căn hộ ${roomData?.name || bedData?.name || ''}`.trim() + prorateLabel,
+      unit_price: rentAmount,
       quantity: 1,
       coefficient: 1,
+      from_date: useProrate ? itemFromDate : undefined,
+      to_date: useProrate ? itemToDate : undefined,
       sort_order: order++,
     });
     if (data.electric_amount > 0) {
@@ -402,26 +427,29 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         sort_order: order++,
       });
     }
-    if (data.water_amount > 0) {
+    if (waterAmount > 0) {
       items.push({
         service_id: defaults.waterServiceId,
         type: 'SERVICE',
-        description: `Tiền nước (${data.occupants} người)`,
-        unit_price:
-          data.occupants > 0 ? data.water_amount / data.occupants : data.water_amount,
-        quantity: data.occupants || 1,
+        description: `Tiền nước (${data.occupants} người)` + prorateLabel,
+        unit_price: waterAmount,
+        quantity: 1,
         coefficient: 1,
+        from_date: useProrate ? itemFromDate : undefined,
+        to_date: useProrate ? itemToDate : undefined,
         sort_order: order++,
       });
     }
-    if (data.pdv_amount > 0) {
+    if (pdvAmount > 0) {
       items.push({
         service_id: defaults.pdvServiceId,
         type: 'SERVICE',
-        description: 'Phí dịch vụ',
-        unit_price: data.pdv_amount,
+        description: 'Phí dịch vụ' + prorateLabel,
+        unit_price: pdvAmount,
         quantity: 1,
         coefficient: 1,
+        from_date: useProrate ? itemFromDate : undefined,
+        to_date: useProrate ? itemToDate : undefined,
         sort_order: order++,
       });
     }
@@ -726,6 +754,60 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                 <p className="px-2 py-1 text-[11px] text-muted-foreground bg-slate-50 border-t">
                   Đơn giá toà: điện {fmt(defaults.elec)}đ/kWh — nước {fmt(defaults.water)}đ/người — PDV {fmt(defaults.pdv)}đ/phòng.
                 </p>
+              </div>
+
+              {/* Prorate theo ngày thuê thực tế (optional) */}
+              <div className="border border-dashed rounded-md p-3 bg-slate-50 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <Label className="text-sm">
+                    Ngày thuê thực tế (nếu prorate giá phòng + nước + PDV)
+                  </Label>
+                  {isProrated && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
+                      Đã prorate {proratedDays}/30 ngày
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-3 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Ngày bắt đầu</Label>
+                    <DateInput
+                      value={watchedPeriodStart}
+                      onChange={(v) =>
+                        setValue('period_start_date', v || null, { shouldDirty: true })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Ngày kết thúc</Label>
+                    <DateInput
+                      value={watchedPeriodEnd}
+                      onChange={(v) =>
+                        setValue('period_end_date', v || null, { shouldDirty: true })
+                      }
+                    />
+                  </div>
+                  {(watchedPeriodStart || watchedPeriodEnd) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setValue('period_start_date', null, { shouldDirty: true });
+                        setValue('period_end_date', null, { shouldDirty: true });
+                      }}
+                    >
+                      Xoá ngày
+                    </Button>
+                  )}
+                </div>
+                {isProrated && (
+                  <div className="text-xs text-muted-foreground grid grid-cols-3 gap-3 pt-1">
+                    <div>Tiền phòng: <b className="text-slate-700">{fmt(proratedRent)}đ</b></div>
+                    <div>Nước: <b className="text-slate-700">{fmt(proratedWater)}đ</b></div>
+                    <div>PDV: <b className="text-slate-700">{fmt(proratedPDV)}đ</b></div>
+                  </div>
+                )}
               </div>
 
               {/* Custom items */}

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
 import { Table as TableIcon, Download, Loader2, Pencil } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
+import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
 
 import {
   Dialog,
@@ -59,6 +60,9 @@ interface RowData {
   applied_credit: number;
   /** Tiền nợ khách hiện có của contract (audit hint, không bao giờ ghi vào DB). */
   credit_balance: number;
+  /** Ngày bắt đầu/kết thúc thực tế — nếu set thì prorate rent + water + pdv. */
+  period_start_date: string | null;
+  period_end_date: string | null;
   selected: boolean;
 }
 
@@ -77,6 +81,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const [rows, setRows] = useState<RowData[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [prorateRowIdx, setProrateRowIdx] = useState<number | null>(null);
 
   const { data: bldSvc } = useBuildingServices(buildingId);
 
@@ -198,6 +203,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             discount_notes: credit > 0 ? `Nợ ${credit.toLocaleString('vi-VN')} Tiền Thối` : '',
             applied_credit: credit,
             credit_balance: credit,
+            period_start_date: null,
+            period_end_date: null,
             selected: true,
           };
         })
@@ -253,17 +260,21 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     });
   };
 
+  const computeRowTotal = (r: RowData) => {
+    const days = calcProratedDays(r.period_start_date, r.period_end_date);
+    const rent = days > 0 ? prorateAmount(r.rent_price, days) : r.rent_price;
+    const water = days > 0 ? prorateAmount(r.water_amount, days) : r.water_amount;
+    const pdv = days > 0 ? prorateAmount(r.pdv_amount, days) : r.pdv_amount;
+    return rent + r.electric_amount + water + pdv - r.discount;
+  };
+
   const totals = useMemo(() => {
     const sel = rows.filter((r) => r.selected);
     return {
       count: sel.length,
-      total: sel.reduce(
-        (s, r) =>
-          s +
-          (r.rent_price + r.electric_amount + r.water_amount + r.pdv_amount - r.discount),
-        0
-      ),
+      total: sel.reduce((s, r) => s + computeRowTotal(r), 0),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
   const allSelected = rows.length > 0 && rows.every((r) => r.selected);
@@ -315,15 +326,29 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           }
         }
 
-        // 2) Build invoice items.
+        // 2) Build invoice items. Nếu row có period_start/end → prorate
+        //    rent + nước + PDV theo `amount / 30 * số_ngày` và ghi from/to_date.
+        const itemDays = calcProratedDays(row.period_start_date, row.period_end_date);
+        const useProrate = itemDays > 0;
+        const itemFromDate = useProrate ? row.period_start_date! : fromDate;
+        const itemToDate = useProrate ? row.period_end_date! : toDate;
+        const prorateLabel = useProrate ? ` (${itemDays}/30 ngày)` : '';
+
+        const rentAmount = useProrate ? prorateAmount(row.rent_price, itemDays) : row.rent_price;
+        const waterAmount = useProrate ? prorateAmount(row.water_amount, itemDays) : row.water_amount;
+        const pdvAmount = useProrate ? prorateAmount(row.pdv_amount, itemDays) : row.pdv_amount;
+
         const items: InvoiceFormData['items'] = [];
         let order = 0;
         items.push({
           type: 'RENT',
-          description: `Tiền thuê phòng ${row.room_name} (${format(periodStart, 'MM/yyyy')})`,
-          unit_price: row.rent_price,
+          description:
+            `Tiền thuê phòng ${row.room_name} (${format(periodStart, 'MM/yyyy')})` + prorateLabel,
+          unit_price: rentAmount,
           quantity: 1,
           coefficient: 1,
+          from_date: useProrate ? itemFromDate : undefined,
+          to_date: useProrate ? itemToDate : undefined,
           sort_order: order++,
         });
         if (row.electric_amount > 0) {
@@ -342,25 +367,29 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             sort_order: order++,
           });
         }
-        if (row.water_amount > 0) {
+        if (waterAmount > 0) {
           items.push({
             service_id: defaults.waterServiceId,
             type: 'SERVICE',
-            description: `Tiền nước (${row.occupants} người)`,
-            unit_price: row.occupants > 0 ? row.water_amount / row.occupants : row.water_amount,
-            quantity: row.occupants || 1,
+            description: `Tiền nước (${row.occupants} người)` + prorateLabel,
+            unit_price: waterAmount,
+            quantity: 1,
             coefficient: 1,
+            from_date: useProrate ? itemFromDate : undefined,
+            to_date: useProrate ? itemToDate : undefined,
             sort_order: order++,
           });
         }
-        if (row.pdv_amount > 0) {
+        if (pdvAmount > 0) {
           items.push({
             service_id: defaults.pdvServiceId,
             type: 'SERVICE',
-            description: 'Phí dịch vụ',
-            unit_price: row.pdv_amount,
+            description: 'Phí dịch vụ' + prorateLabel,
+            unit_price: pdvAmount,
             quantity: 1,
             coefficient: 1,
+            from_date: useProrate ? itemFromDate : undefined,
+            to_date: useProrate ? itemToDate : undefined,
             sort_order: order++,
           });
         }
@@ -490,8 +519,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 </tr>
               )}
               {rows.map((r, i) => {
-                const total =
-                  r.rent_price + r.electric_amount + r.water_amount + r.pdv_amount - r.discount;
+                const total = computeRowTotal(r);
+                const rowDays = calcProratedDays(r.period_start_date, r.period_end_date);
                 return (
                   <tr key={r.contract_id} className={r.selected ? '' : 'opacity-50'}>
                     <td className="p-1 border text-center">
@@ -610,7 +639,28 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                       </div>
                     </td>
                     <td className="p-1 border text-right font-semibold bg-amber-50">
-                      {fmt(total)}
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="tabular-nums">{fmt(total)}</span>
+                          {rowDays > 0 && (
+                            <span className="text-[10px] font-normal text-emerald-700">
+                              {rowDays}/30 ngày
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          title="Prorate theo ngày bắt đầu/kết thúc"
+                          className={`p-0.5 rounded hover:bg-amber-100 ${
+                            rowDays > 0
+                              ? 'text-emerald-600'
+                              : 'text-slate-400 hover:text-amber-700'
+                          }`}
+                          onClick={() => setProrateRowIdx(i)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -648,6 +698,123 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             ) : (
               <>Tạo {totals.count} hoá đơn</>
             )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+      <ProrateRowDialog
+        row={prorateRowIdx != null ? rows[prorateRowIdx] : null}
+        onClose={() => setProrateRowIdx(null)}
+        onApply={(startDate, endDate) => {
+          if (prorateRowIdx == null) return;
+          updateRow(prorateRowIdx, {
+            period_start_date: startDate,
+            period_end_date: endDate,
+          });
+          setProrateRowIdx(null);
+        }}
+        onClear={() => {
+          if (prorateRowIdx == null) return;
+          updateRow(prorateRowIdx, {
+            period_start_date: null,
+            period_end_date: null,
+          });
+          setProrateRowIdx(null);
+        }}
+      />
+    </Dialog>
+  );
+}
+
+interface ProrateRowDialogProps {
+  row: RowData | null;
+  onClose: () => void;
+  onApply: (startDate: string, endDate: string) => void;
+  onClear: () => void;
+}
+
+function ProrateRowDialog({ row, onClose, onApply, onClear }: ProrateRowDialogProps) {
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+
+  useEffect(() => {
+    if (row) {
+      setStart(row.period_start_date || '');
+      setEnd(row.period_end_date || '');
+    }
+  }, [row]);
+
+  const days = calcProratedDays(start, end);
+  const open = row != null;
+  const previewRent = row && days > 0 ? prorateAmount(row.rent_price, days) : row?.rent_price ?? 0;
+  const previewWater = row && days > 0 ? prorateAmount(row.water_amount, days) : row?.water_amount ?? 0;
+  const previewPDV = row && days > 0 ? prorateAmount(row.pdv_amount, days) : row?.pdv_amount ?? 0;
+  const previewTotal =
+    previewRent + (row?.electric_amount ?? 0) + previewWater + previewPDV - (row?.discount ?? 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Prorate phòng {row?.room_name || ''}
+          </DialogTitle>
+          <DialogDescription>
+            Điền ngày bắt đầu và kết thúc thực tế → tiền phòng + nước + PDV sẽ chia tỉ lệ <code>/30 × số ngày</code>.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Ngày bắt đầu</Label>
+              <DateInput value={start} onChange={setStart} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Ngày kết thúc</Label>
+              <DateInput value={end} onChange={setEnd} />
+            </div>
+          </div>
+
+          {days > 0 ? (
+            <div className="border rounded-md p-3 bg-emerald-50 text-sm space-y-1">
+              <div className="font-medium text-emerald-800">
+                {days}/30 ngày — đã prorate
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-slate-700">
+                <div>Tiền phòng:</div>
+                <div className="text-right tabular-nums">{fmt(previewRent)}đ</div>
+                <div>Tiền điện:</div>
+                <div className="text-right tabular-nums">{fmt(row?.electric_amount ?? 0)}đ <span className="text-slate-400">(không prorate)</span></div>
+                <div>Nước:</div>
+                <div className="text-right tabular-nums">{fmt(previewWater)}đ</div>
+                <div>PDV:</div>
+                <div className="text-right tabular-nums">{fmt(previewPDV)}đ</div>
+                <div>Giảm trừ:</div>
+                <div className="text-right tabular-nums">−{fmt(row?.discount ?? 0)}đ</div>
+                <div className="font-semibold pt-1 border-t mt-1">Tổng:</div>
+                <div className="text-right tabular-nums font-semibold pt-1 border-t mt-1">{fmt(previewTotal)}đ</div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Bỏ trống cả 2 ngày để không prorate (giữ giá full tháng).
+            </p>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          {(row?.period_start_date || row?.period_end_date) && (
+            <Button type="button" variant="outline" onClick={onClear}>
+              Xoá prorate
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={onClose}>
+            Huỷ
+          </Button>
+          <Button
+            type="button"
+            disabled={!start || !end || days <= 0}
+            onClick={() => onApply(start, end)}
+          >
+            Áp dụng
           </Button>
         </DialogFooter>
       </DialogContent>
