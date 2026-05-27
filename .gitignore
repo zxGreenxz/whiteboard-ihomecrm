@@ -40,3 +40,7 @@ dataexcel/
 
 # Playwright MCP outputs
 .playwright-mcp/
+
+# Local scratch + RBAC refactor backups (KHÔNG commit - chứa data dump)
+.scratch/
+.backups/

@@ -772,8 +772,10 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await (supabase.rpc as any)('get_invoice_statistics', {
-        p_user_id: user.id,
+      // RBAC v2: không truyền p_user_id; quyền xác định qua can_access_building().
+      // Nhờ vậy super_admin thấy đủ data của các building trong scope (kể cả invoice
+      // do staff khác tạo), khắc phục lỗi "lệch owner" của bản v1.
+      const { data, error } = await (supabase.rpc as any)('get_invoice_statistics_v2', {
         p_building_id: filters?.building_id ?? null,
         p_room_id: filters?.room_id ?? null,
         p_status: filters?.status ?? null,
