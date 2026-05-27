@@ -210,3 +210,12 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
   if (hasService) return suffix ? `Hóa đơn dịch vụ - ${suffix}` : 'Hóa đơn dịch vụ';
   return suffix ? `Hóa đơn - ${suffix}` : 'Hóa đơn';
 }
+
+/**
+ * Phiên bản viết tắt của tên hoá đơn: "Hóa đơn" → "HĐ".
+ * Dùng cho field `name` của income_expenses (phiếu thu/chi từ hoá đơn) để
+ * khớp với cột "Hoá đơn" bên trang Hoá đơn nhưng ngắn gọn hơn.
+ */
+export function getInvoiceShortTitle(invoice: InvoiceWithRelations): string {
+  return getInvoiceTitle(invoice).replace(/Hóa đơn/gi, 'HĐ');
+}

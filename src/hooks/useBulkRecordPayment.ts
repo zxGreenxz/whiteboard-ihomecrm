@@ -24,6 +24,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 
 export interface BulkPaymentItem {
   invoice_id: string;
@@ -101,7 +102,7 @@ export const useBulkRecordPayment = () => {
           const { data: inv, error: invErr } = await (supabase
             .from('invoices')
             .select(
-              'id, user_id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount',
+              'id, user_id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)',
             )
             .eq('id', item.invoice_id)
             .single() as any);
@@ -227,7 +228,7 @@ export const useBulkRecordPayment = () => {
               .insert({
                 user_id: ownerId,
                 type: 'INCOME',
-                name: `Thu tiền theo hóa đơn ${(inv as any).invoice_number || ''} - ${(inv as any).billing_month || ''}`,
+                name: `Thu tiền theo HĐ ${getInvoiceShortTitle(inv as any)}`,
                 building_id: (inv as any).building_id,
                 room_id: (inv as any).room_id,
                 bed_id: (inv as any).bed_id,
@@ -258,7 +259,7 @@ export const useBulkRecordPayment = () => {
               .insert({
                 income_expense_id: (voucher as any).id,
                 income_expense_type_id: incomeTypeId,
-                description: `Thanh toán hoá đơn ${(inv as any).invoice_number || ''}`,
+                description: `Thanh toán HĐ ${getInvoiceShortTitle(inv as any)}`,
                 quantity: 1,
                 unit_price: effectiveAmount,
                 start_date: params.payment_date,

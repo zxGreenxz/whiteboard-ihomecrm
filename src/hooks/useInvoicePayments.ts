@@ -7,6 +7,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 
 // =============================================
 // Types
@@ -76,7 +77,7 @@ export const useRecordPaymentRPC = () => {
       const { data: inv } = await supabase
         .from('invoices')
         .select(
-          'id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, tenant_id:contract_id'
+          'id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, tenant_id:contract_id, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)'
         )
         .eq('id', data.invoice_id)
         .single() as any;
@@ -121,7 +122,7 @@ export const useRecordPaymentRPC = () => {
           .insert({
             user_id: user.id,
             type: 'INCOME',
-            name: `Thu tiền theo hóa đơn ${inv.invoice_number || ''} - ${inv.billing_month || ''}`,
+            name: `Thu tiền theo HĐ ${getInvoiceShortTitle(inv as any)}`,
             building_id: inv.building_id,
             room_id: inv.room_id,
             bed_id: inv.bed_id,
@@ -150,7 +151,7 @@ export const useRecordPaymentRPC = () => {
           .insert({
             income_expense_id: (voucher as any).id,
             income_expense_type_id: incomeTypeId,
-            description: `Thanh toán hoá đơn ${inv.invoice_number || ''}`,
+            description: `Thanh toán HĐ ${getInvoiceShortTitle(inv as any)}`,
             quantity: 1,
             unit_price: data.amount,
             start_date: data.payment_date,
@@ -223,7 +224,7 @@ export const useRecordRefundRPC = () => {
 
       const { data: inv, error: invErr } = await supabase
         .from('invoices')
-        .select('id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount')
+        .select('id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)')
         .eq('id', data.invoice_id)
         .single() as any;
       if (invErr || !inv) throw invErr ?? new Error('Không tìm thấy hoá đơn');
@@ -260,8 +261,10 @@ export const useRecordRefundRPC = () => {
 
       // The `[Hoàn trả thanh lý]` prefix is the marker recompute_invoice_for_id
       // looks for to count this voucher against a negative-total invoice.
+      // Marker [Hoàn trả thanh lý] bắt buộc giữ — recompute_invoice_for_id
+      // match prefix này để cộng dồn refund vào paid_amount.
       const voucherNotes =
-        '[Hoàn trả thanh lý] HĐ ' + (inv.invoice_number || '') +
+        '[Hoàn trả thanh lý] HĐ ' + getInvoiceShortTitle(inv as any) +
         (data.notes ? '\n' + data.notes : '');
 
       const { data: voucher, error: vErr } = await supabase
@@ -269,7 +272,7 @@ export const useRecordRefundRPC = () => {
         .insert({
           user_id: user.id,
           type: 'EXPENSE',
-          name: `Hoàn trả khách thanh lý — HĐ ${inv.invoice_number || ''}`,
+          name: `Hoàn trả khách thanh lý — HĐ ${getInvoiceShortTitle(inv as any)}`,
           building_id: inv.building_id,
           room_id: inv.room_id,
           bed_id: inv.bed_id,
@@ -292,7 +295,7 @@ export const useRecordRefundRPC = () => {
         .insert({
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
-          description: `Hoàn trả khách — HĐ ${inv.invoice_number || ''}`,
+          description: `Hoàn trả khách — HĐ ${getInvoiceShortTitle(inv as any)}`,
           quantity: 1,
           unit_price: data.amount,
           start_date: data.payment_date,
