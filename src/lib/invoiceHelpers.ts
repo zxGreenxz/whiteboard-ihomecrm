@@ -266,13 +266,14 @@ export async function computePreviousDebt(
 
   const sources: PreviousDebtSource[] = [];
 
-  // 1) HĐ cũ chưa tất toán — fetch kèm items/room/building/notes để build title
-  // khớp với cột "Hoá đơn" trên bảng danh sách.
+  // 1) HĐ cũ chưa tất toán — fetch kèm items/room/building/notes/previous_debt_sources
+  // để build title khớp + tránh double-count.
   const { getInvoiceTitle } = await import('./invoiceUtils');
   let invoicesQuery = (supabase
     .from('invoices') as any)
     .select(`
       id, invoice_number, billing_month, total_amount, paid_amount, status, notes,
+      previous_debt_sources,
       room:rooms!invoices_room_id_fkey (id, name),
       building:buildings!invoices_building_id_fkey (id, name),
       invoice_items (id, type, description)
@@ -285,7 +286,22 @@ export async function computePreviousDebt(
   }
   const { data: oldInvoices } = await invoicesQuery;
 
+  // Build set "đã được HĐ khác carry-over" để không cộng đúp:
+  //  - carriedInvoiceIds: HĐ X xuất hiện trong previous_debt_sources của HĐ Y
+  //    (mở) → HĐ X không tính riêng nữa.
+  //  - depositAlreadyCarried: nếu có HĐ Y mở đã gánh cọc → cọc không tính lại.
+  const carriedInvoiceIds = new Set<string>();
+  let depositAlreadyCarried = false;
   for (const inv of (oldInvoices ?? []) as any[]) {
+    const srcs = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
+    for (const s of srcs) {
+      if (s?.type === 'invoice' && s?.id) carriedInvoiceIds.add(String(s.id));
+      if (s?.type === 'deposit') depositAlreadyCarried = true;
+    }
+  }
+
+  for (const inv of (oldInvoices ?? []) as any[]) {
+    if (carriedInvoiceIds.has(String(inv.id))) continue;
     const remaining = (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0);
     if (remaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;
     const label = getInvoiceTitle(inv);
@@ -297,23 +313,25 @@ export async function computePreviousDebt(
     });
   }
 
-  // 2) Cọc còn thiếu
-  const { data: contract } = await (supabase
-    .from('contracts') as any)
-    .select('id, total_deposit, deposit_paid, deposit_remaining')
-    .eq('id', contractId)
-    .maybeSingle();
-  if (contract) {
-    const depositRemaining =
-      Number(contract.deposit_remaining ??
-        ((Number(contract.total_deposit) || 0) - (Number(contract.deposit_paid) || 0)));
-    if (depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD) {
-      sources.push({
-        type: 'deposit',
-        contract_id: contract.id,
-        amount: depositRemaining,
-        label: 'Cọc còn thiếu',
-      });
+  // 2) Cọc còn thiếu — skip nếu đã được HĐ khác carry-over.
+  if (!depositAlreadyCarried) {
+    const { data: contract } = await (supabase
+      .from('contracts') as any)
+      .select('id, total_deposit, deposit_paid, deposit_remaining')
+      .eq('id', contractId)
+      .maybeSingle();
+    if (contract) {
+      const depositRemaining =
+        Number(contract.deposit_remaining ??
+          ((Number(contract.total_deposit) || 0) - (Number(contract.deposit_paid) || 0)));
+      if (depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD) {
+        sources.push({
+          type: 'deposit',
+          contract_id: contract.id,
+          amount: depositRemaining,
+          label: 'Cọc còn thiếu',
+        });
+      }
     }
   }
 

@@ -208,11 +208,17 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
 
       // 5) Nợ cũ (khách nợ mình) per contract: HĐ APPROVED/PARTIAL_PAID/OVERDUE chưa tất toán + cọc còn thiếu.
       const previousDebtByContract = new Map<string, { total: number; sources: PreviousDebtSource[] }>();
+      // carriedInvoiceIds per contract: HĐ đã được HĐ khác carry-over → bỏ.
+      // depositCarriedByContract: contract đã có HĐ mở gánh cọc → bỏ cọc.
+      const carriedInvoiceIdsByContract = new Map<string, Set<string>>();
+      const depositCarriedByContract = new Set<string>();
+      let oldInvoicesData: any[] = [];
       if (contractIds.length > 0) {
         const { data: oldInvoices } = await (supabase as any)
           .from('invoices')
           .select(`
             id, invoice_number, billing_month, total_amount, paid_amount, contract_id, status, notes,
+            previous_debt_sources,
             room:rooms!invoices_room_id_fkey (id, name),
             building:buildings!invoices_building_id_fkey (id, name),
             invoice_items (id, type, description)
@@ -220,7 +226,25 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           .in('contract_id', contractIds)
           .in('status', ['APPROVED', 'PARTIAL_PAID', 'OVERDUE'])
           .is('deleted_at', null);
-        for (const inv of oldInvoices || []) {
+        oldInvoicesData = oldInvoices || [];
+        // Pass 1: build carryover map.
+        for (const inv of oldInvoicesData) {
+          const srcs = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
+          for (const s of srcs) {
+            if (s?.type === 'invoice' && s?.id) {
+              const set = carriedInvoiceIdsByContract.get(inv.contract_id) || new Set<string>();
+              set.add(String(s.id));
+              carriedInvoiceIdsByContract.set(inv.contract_id, set);
+            }
+            if (s?.type === 'deposit') {
+              depositCarriedByContract.add(inv.contract_id);
+            }
+          }
+        }
+        // Pass 2: push as sources, skip carried.
+        for (const inv of oldInvoicesData) {
+          const carried = carriedInvoiceIdsByContract.get(inv.contract_id);
+          if (carried?.has(String(inv.id))) continue;
           const remaining = (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0);
           if (remaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;
           const label = getInvoiceTitle(inv);
@@ -230,8 +254,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           previousDebtByContract.set(inv.contract_id, entry);
         }
       }
-      // Cộng cọc còn thiếu — đọc trực tiếp từ buildingContracts.
+      // Cộng cọc còn thiếu — skip nếu đã được HĐ khác gánh.
       for (const c of buildingContracts) {
+        if (depositCarriedByContract.has(c.id)) continue;
         const depositRemaining = Number(
           c.deposit_remaining ?? ((Number(c.total_deposit) || 0) - (Number(c.deposit_paid) || 0))
         );
