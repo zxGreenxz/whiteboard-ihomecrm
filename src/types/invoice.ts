@@ -122,8 +122,11 @@ export interface InvoiceFilters {
   bed_id?: string;
   contract_id?: string;
   status?: InvoiceStatus;
-  /** UI filter: đã thanh toán đủ ('paid') vs còn nợ ('unpaid'). */
-  payment_status?: 'paid' | 'unpaid';
+  /** UI filter trạng thái thanh toán:
+   *  - 'paid'    → status = PAID (đã thanh toán đủ, đã làm tròn cũng tính)
+   *  - 'partial' → status = PARTIAL_PAID (đã thu 1 phần, còn thiếu ≥ 10K)
+   *  - 'unpaid'  → chưa thu đồng nào (status NOT IN PAID/PARTIAL_PAID). */
+  payment_status?: 'paid' | 'unpaid' | 'partial';
   /** UI filter vòng đời HĐ:
    *  - 'active' (mặc định) → loại CANCELLED → các HĐ đang hoạt động.
    *  - 'cancelled' → chỉ HĐ đã huỷ.

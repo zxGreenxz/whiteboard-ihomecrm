@@ -111,8 +111,11 @@ export const useInvoices = (
       }
       if (filters?.payment_status === 'paid') {
         query = query.eq('status', 'PAID');
+      } else if (filters?.payment_status === 'partial') {
+        query = query.eq('status', 'PARTIAL_PAID');
       } else if (filters?.payment_status === 'unpaid') {
-        query = query.neq('status', 'PAID');
+        // Chưa thu đồng nào → loại cả PAID lẫn PARTIAL_PAID.
+        query = query.not('status', 'in', '(PAID,PARTIAL_PAID)');
       }
       // Vòng đời HĐ — mặc định 'active': ẩn các HĐ đã huỷ. Đặt SAU các filter
       // status/payment_status để không bị override khi user chọn cụ thể.
@@ -730,7 +733,7 @@ export interface InvoiceStatisticsFilters {
   start_date?: string;
   end_date?: string;
   billing_month?: string;
-  payment_status?: 'paid' | 'unpaid';
+  payment_status?: 'paid' | 'unpaid' | 'partial';
 }
 
 export interface InvoiceStatistics {

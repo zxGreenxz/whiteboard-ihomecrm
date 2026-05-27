@@ -165,6 +165,15 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     )?.id ?? '';
   }, [accounts]);
 
+  // Sổ quỹ "Làm tròn tiền thiếu" — dùng cho audit khi residual < 10K
+  // được làm tròn. Chỉ là ledger metadata, không trừ số dư.
+  const roundingAccountId = useMemo(() => {
+    if (!accounts.length) return '';
+    return (accounts as any[]).find(
+      (a) => typeof a.name === 'string' && a.name.trim() === 'Làm tròn tiền thiếu',
+    )?.id ?? '';
+  }, [accounts]);
+
   const accountIdForMethod = (method: PaymentMethod): string => {
     // TM: sổ Thu của chính nhân viên đang đăng nhập (joey → Hiển Thu,
     // nathan → Hiệp Thu, v.v. — match qua accounts.user_id). User khác
@@ -405,6 +414,20 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         return -1;
       })();
 
+      // Làm tròn tiền thiếu: residual sau khi thu line < 10K → đính kèm
+      // rounding metadata vào line CUỐI để tạo 1 audit entry duy nhất.
+      const totalAcrossLines = data.payment_lines.reduce(
+        (s, l) => s + (Number(l.amount) || 0),
+        0,
+      );
+      const residualAfter =
+        (invoice.total_amount || 0) - (invoice.paid_amount || 0) - totalAcrossLines;
+      const applyRounding =
+        residualAfter > 0 &&
+        residualAfter < ROUNDING_THRESHOLD &&
+        totalAcrossLines > 0;
+      const lastLineIdx = data.payment_lines.length - 1;
+
       for (let i = 0; i < data.payment_lines.length; i++) {
         const line = data.payment_lines[i];
         const isDeductLine = i === tmDeductIdx;
@@ -417,6 +440,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         // Khi keep_as_credit, gắn credit metadata lên line TM cuối để hook tạo
         // excess_amounts row link đúng payment.
         const isCreditLine = keepAsCredit && i === tmLastIdx;
+        const isRoundingLine = applyRounding && i === lastLineIdx;
         await recordMutation.mutateAsync({
           invoice_id: invoice.id,
           amount: effectiveAmount,
@@ -428,6 +452,9 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           change_amount: deducted,
           change_account_id: isDeductLine ? (data.change_account_id ?? null) : null,
           credit_amount: isCreditLine ? change : 0,
+          rounding_amount: isRoundingLine ? residualAfter : 0,
+          rounding_account_id:
+            isRoundingLine && roundingAccountId ? roundingAccountId : null,
         });
       }
       handleClose();
@@ -449,8 +476,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const newPaidAmount = (invoice.paid_amount || 0) + totalPaid;
   const newOutstanding = (invoice.total_amount || 0) - newPaidAmount;
-  const willBePaid = newOutstanding <= 0;
-  const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0;
+  // Áp dụng làm tròn tự động: residual > 0 và < 10K → coi như đã thanh toán
+  // đủ; phần thiếu được ghi nhận vào sổ "Làm tròn tiền thiếu" (metadata).
+  const ROUNDING_THRESHOLD = 10000;
+  const willRound =
+    newOutstanding > 0 && newOutstanding < ROUNDING_THRESHOLD && totalPaid > 0;
+  const roundingAmount = willRound ? newOutstanding : 0;
+  const willBePaid = newOutstanding <= 0 || willRound;
+  const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0 && !willRound;
 
   const isProcessing = recordMutation.isPending || isUploading;
 
@@ -1030,9 +1063,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <Alert className="bg-green-50 border-green-200">
                   <CheckCircle className="h-4 w-4 text-green-600" />
                   <AlertDescription className="text-green-800 text-sm">
-                    {newOutstanding < 0
-                      ? `Hóa đơn sẽ được thanh toán đầy đủ. Số tiền thừa ${formatCurrency(Math.abs(newOutstanding))} sẽ được ghi nhận cho khách thuê.`
-                      : 'Hóa đơn sẽ được đánh dấu là đã thanh toán đầy đủ'}
+                    {willRound
+                      ? `Còn thiếu ${formatCurrency(roundingAmount)} (< 10.000 ₫) — hệ thống tự làm tròn, ghi nhận vào sổ "Làm tròn tiền thiếu" và đánh dấu hoá đơn Đã thanh toán đủ.`
+                      : newOutstanding < 0
+                        ? `Hóa đơn sẽ được thanh toán đầy đủ. Số tiền thừa ${formatCurrency(Math.abs(newOutstanding))} sẽ được ghi nhận cho khách thuê.`
+                        : 'Hóa đơn sẽ được đánh dấu là đã thanh toán đầy đủ'}
                   </AlertDescription>
                 </Alert>
               )}

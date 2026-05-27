@@ -30,6 +30,12 @@ export interface RecordPaymentRPCData {
    *  KHÔNG khấu trừ vào amount của phiếu thu. Chỉ set trên ĐÚNG MỘT call
    *  trong loop nhiều line (line TM cuối). */
   credit_amount?: number;
+  /** Làm tròn tiền thiếu (residual < 10K) — metadata audit gắn lên phiếu
+   *  thu INCOME, KHÔNG ảnh hưởng số dư sổ quỹ. Trigger DB tự mark invoice
+   *  PAID khi residual < 10K. */
+  rounding_amount?: number;
+  /** Sổ quỹ "Làm tròn tiền thiếu" — bắt buộc nếu rounding_amount > 0. */
+  rounding_account_id?: string | null;
 }
 
 // =============================================
@@ -97,12 +103,15 @@ export const useRecordPaymentRPC = () => {
 
         const change = data.change_amount ?? 0;
         const credit = data.credit_amount ?? 0;
+        const rounding = data.rounding_amount ?? 0;
         const grossPaid = data.amount + change;
         const refundNote = change > 0
           ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${change.toLocaleString('vi-VN')}`
           : credit > 0
             ? `Thu ${data.amount.toLocaleString('vi-VN')} – Nợ khách ${credit.toLocaleString('vi-VN')} (trừ kỳ sau)`
-            : null;
+            : rounding > 0
+              ? `Thu ${data.amount.toLocaleString('vi-VN')} – Làm tròn thiếu ${rounding.toLocaleString('vi-VN')}`
+              : null;
         const composedNotes = [data.notes?.trim() || null, refundNote]
           .filter(Boolean)
           .join(' — ') || null;
@@ -128,6 +137,8 @@ export const useRecordPaymentRPC = () => {
             creator_name: creatorName,
             change_amount: change,
             change_account_id: data.change_account_id ?? null,
+            rounding_amount: rounding,
+            rounding_account_id: rounding > 0 ? (data.rounding_account_id ?? null) : null,
           } as any)
           .select()
           .single();

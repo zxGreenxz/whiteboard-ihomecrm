@@ -296,8 +296,21 @@ const InvoiceListTable = ({
                 .filter(Boolean)
                 .join(' / ');
 
+              // Tô nền dòng theo trạng thái thanh toán:
+              //  - PAID (kể cả đã làm tròn) → xanh nhạt
+              //  - CANCELLED → bỏ qua (đã có line-through riêng)
+              //  - còn lại (APPROVED / PARTIAL_PAID / OVERDUE) → đỏ nhạt
+              // Cell-level vàng nhạt ở "Đã thanh toán" (TK+TM/TT mix) vẫn ưu tiên
+              // do là background của <td>, ghi đè bg của <tr>.
+              const rowBgClass =
+                invoice.status === 'CANCELLED'
+                  ? ''
+                  : invoice.status === 'PAID'
+                    ? 'bg-emerald-50/60 hover:bg-emerald-50'
+                    : 'bg-rose-50/60 hover:bg-rose-50';
+
               return (
-                <TableRow key={invoice.id}>
+                <TableRow key={invoice.id} className={rowBgClass}>
                   {/* Checkbox */}
                   <TableCell>
                     <Checkbox

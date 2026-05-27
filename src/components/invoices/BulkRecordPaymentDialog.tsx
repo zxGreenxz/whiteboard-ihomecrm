@@ -160,6 +160,15 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     [accounts, headerChangeAccountId],
   );
 
+  // Sổ quỹ "Làm tròn tiền thiếu" — audit cho rounding < 10K (FE tự
+  // detect khi submit, không cần UI riêng).
+  const roundingAccountId = useMemo(() => {
+    if (!accounts.length) return '';
+    return (accounts as any[]).find(
+      (a) => typeof a.name === 'string' && a.name.trim() === 'Làm tròn tiền thiếu',
+    )?.id ?? '';
+  }, [accounts]);
+
   const handleLoad = async () => {
     if (!buildingId) return;
     setLoaded(false);
@@ -456,23 +465,35 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       );
       const urlMap = new Map(uploads.map((u) => [u.invoice_id, u.url]));
 
-      const items: BulkPaymentItem[] = selected.map((r) => ({
-        invoice_id: r.invoice_id,
-        invoice_number: r.invoice_number,
-        room_name: r.room_name,
-        amount_tm: r.amount_tm,
-        amount_tk: r.amount_tk,
-        amount_tt: r.amount_tt,
-        change_amount: r.change_amount,
-        account_id: r.account_id_override ?? headerAccountId,
-        change_account_id:
-          r.change_amount > 0 && !r.keep_as_credit
-            ? (r.change_account_id_override ?? headerChangeAccountId)
-            : null,
-        keep_as_credit: r.keep_as_credit && r.change_amount > 0,
-        receipt_image_url: urlMap.get(r.invoice_id) ?? null,
-        notes: r.notes || undefined,
-      }));
+      const items: BulkPaymentItem[] = selected.map((r) => {
+        // Làm tròn tự động: residual sau payment > 0 và < 10K → đính rounding
+        // metadata vào voucher cuối; trigger DB tự mark invoice PAID.
+        const sumThisRow = r.amount_tm + r.amount_tk + r.amount_tt;
+        const netThisRow = sumThisRow - r.change_amount;
+        const residualAfter = r.remaining - netThisRow;
+        const willRoundRow =
+          residualAfter > 0 && residualAfter < 10000 && netThisRow > 0;
+        return {
+          invoice_id: r.invoice_id,
+          invoice_number: r.invoice_number,
+          room_name: r.room_name,
+          amount_tm: r.amount_tm,
+          amount_tk: r.amount_tk,
+          amount_tt: r.amount_tt,
+          change_amount: r.change_amount,
+          account_id: r.account_id_override ?? headerAccountId,
+          change_account_id:
+            r.change_amount > 0 && !r.keep_as_credit
+              ? (r.change_account_id_override ?? headerChangeAccountId)
+              : null,
+          keep_as_credit: r.keep_as_credit && r.change_amount > 0,
+          receipt_image_url: urlMap.get(r.invoice_id) ?? null,
+          notes: r.notes || undefined,
+          rounding_amount: willRoundRow ? residualAfter : 0,
+          rounding_account_id:
+            willRoundRow && roundingAccountId ? roundingAccountId : null,
+        };
+      });
 
       const result = await bulkMutation.mutateAsync({
         payment_date: paymentDate,
@@ -689,8 +710,13 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                 const sum = r.amount_tm + r.amount_tk + r.amount_tt;
                 const net = sum - r.change_amount;
                 const newPaid = r.paid_amount + net;
-                const willBePaid = newPaid >= r.total_amount && net > 0;
-                const willBePartial = newPaid > 0 && newPaid < r.total_amount;
+                const residualAfter = r.total_amount - newPaid;
+                const willRound =
+                  residualAfter > 0 && residualAfter < 10000 && net > 0;
+                const willBePaid =
+                  net > 0 && (newPaid >= r.total_amount || willRound);
+                const willBePartial =
+                  newPaid > 0 && newPaid < r.total_amount && !willRound;
                 const noChange = net === 0;
                 return (
                   <tr
@@ -856,9 +882,16 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                       ) : noChange ? (
                         <span className="text-slate-400">—</span>
                       ) : willBePaid ? (
-                        <span className="inline-flex items-center gap-1 text-green-600">
+                        <span
+                          className="inline-flex items-center gap-1 text-green-600"
+                          title={
+                            willRound
+                              ? `Làm tròn thiếu ${fmt(residualAfter)}đ`
+                              : undefined
+                          }
+                        >
                           <CheckCircle className="h-3.5 w-3.5" />
-                          Đủ
+                          {willRound ? 'Đủ (làm tròn)' : 'Đủ'}
                         </span>
                       ) : willBePartial ? (
                         <span className="text-amber-600">Một phần</span>

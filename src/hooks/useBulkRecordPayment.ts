@@ -40,6 +40,11 @@ export interface BulkPaymentItem {
   keep_as_credit?: boolean;
   receipt_image_url?: string | null;
   notes?: string;
+  /** Số tiền làm tròn (residual < 10K) — audit metadata gắn lên voucher
+   *  INCOME của line cuối, KHÔNG trừ số dư. Trigger DB tự mark PAID. */
+  rounding_amount?: number;
+  /** Sổ quỹ "Làm tròn tiền thiếu". Bắt buộc nếu rounding_amount > 0. */
+  rounding_account_id?: string | null;
 }
 
 export interface BulkPaymentParams {
@@ -167,6 +172,11 @@ export const useBulkRecordPayment = () => {
           }
           let creditSourcePaymentId: string | null = null;
 
+          // Rounding: metadata làm tròn dán lên voucher line CUỐI.
+          const rounding = item.rounding_amount ?? 0;
+          const roundingAccountId = item.rounding_account_id ?? null;
+          const lastSubLineIdx = subLines.length - 1;
+
           // ── Mỗi sub-line: INSERT payment + voucher INCOME (bypass RPC) ──
           // user_id = owner của invoice (RLS staff_can dùng owner làm scope)
           const ownerId = (inv as any).user_id as string;
@@ -183,11 +193,14 @@ export const useBulkRecordPayment = () => {
 
             const grossPaid = effectiveAmount + deducted;
             const isCreditLine = keepAsCredit && i === tmLastIdx;
+            const isRoundingLine = rounding > 0 && i === lastSubLineIdx;
             const refundNote = deducted > 0
               ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${deducted.toLocaleString('vi-VN')}`
               : isCreditLine
                 ? `Thu ${effectiveAmount.toLocaleString('vi-VN')} – Nợ khách ${change.toLocaleString('vi-VN')} (trừ kỳ sau)`
-                : null;
+                : isRoundingLine
+                  ? `Thu ${effectiveAmount.toLocaleString('vi-VN')} – Làm tròn thiếu ${rounding.toLocaleString('vi-VN')}`
+                  : null;
             const composedNotes =
               [item.notes?.trim() || null, refundNote].filter(Boolean).join(' — ') || null;
 
@@ -233,6 +246,8 @@ export const useBulkRecordPayment = () => {
                 creator_name: creatorName,
                 change_amount: deducted,
                 change_account_id: isDeductLine ? (item.change_account_id ?? null) : null,
+                rounding_amount: isRoundingLine ? rounding : 0,
+                rounding_account_id: isRoundingLine ? roundingAccountId : null,
               } as any)
               .select()
               .single();

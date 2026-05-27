@@ -79,7 +79,7 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
       payment_status:
         value === ALL_VALUE
           ? undefined
-          : (value as 'paid' | 'unpaid'),
+          : (value as 'paid' | 'unpaid' | 'partial'),
     });
   };
 
@@ -170,6 +170,7 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
           <SelectContent>
             <SelectItem value={ALL_VALUE}>Tất cả</SelectItem>
             <SelectItem value="paid">Đã thanh toán</SelectItem>
+            <SelectItem value="partial">TT 1 phần</SelectItem>
             <SelectItem value="unpaid">Chưa thanh toán</SelectItem>
           </SelectContent>
         </Select>
