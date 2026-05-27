@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useCreateInvoice, useExcessAmount } from '@/hooks/useInvoices';
-import type { InvoiceFormData } from '@/types/invoice';
+import type { InvoiceFormData, PreviousDebtSource } from '@/types/invoice';
 import { useContracts } from '@/hooks/useContracts';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -34,7 +34,9 @@ import { useRooms } from '@/hooks/useRooms';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
-import { Receipt, Plus, Trash2, Pencil, AlertTriangle } from 'lucide-react';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { computePreviousDebt } from '@/lib/invoiceHelpers';
+import { Receipt, Plus, Trash2, Pencil, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth, parse } from 'date-fns';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
 
@@ -72,6 +74,20 @@ const generateInvoiceSchema = z.object({
   discount_amount: z.number().min(0).default(0),
   discount_notes: z.string().nullable().optional(),
   applied_credit: z.number().min(0).optional(),
+  previous_debt: z.number().min(0).default(0),
+  previous_debt_sources: z
+    .array(
+      z.object({
+        type: z.enum(['invoice', 'deposit']),
+        id: z.string().optional(),
+        contract_id: z.string().optional(),
+        amount: z.number().min(0),
+        label: z.string(),
+      }),
+    )
+    .default([])
+    .optional(),
+  previous_debt_overridden: z.boolean().default(false),
   period_start_date: z.string().optional().nullable(),
   period_end_date: z.string().optional().nullable(),
 });
@@ -127,6 +143,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       discount_amount: 0,
       discount_notes: '',
       applied_credit: 0,
+      previous_debt: 0,
+      previous_debt_sources: [],
+      previous_debt_overridden: false,
     },
   });
 
@@ -146,6 +165,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const watchedCustomItems = watch('custom_items') || [];
   const watchedDiscount = watch('discount_amount') || 0;
   const watchedDiscountNotes = watch('discount_notes') || '';
+  const watchedPreviousDebt = watch('previous_debt') || 0;
+  const watchedPreviousDebtSources = (watch('previous_debt_sources') ?? []) as PreviousDebtSource[];
   const watchedBillingMonth = watch('billing_month') || '';
   const watchedPeriodStart = watch('period_start_date') || '';
   const watchedPeriodEnd = watch('period_end_date') || '';
@@ -318,6 +339,36 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     },
   });
 
+  // Nợ cũ — auto-fill khi đổi contract; user chỉnh tay sẽ set overridden, không ghi đè.
+  const {
+    data: previousDebtBreakdown,
+    isFetching: isLoadingDebt,
+    refetch: refetchDebt,
+  } = useQuery({
+    queryKey: ['compute-previous-debt', watchedContractId],
+    enabled: !!watchedContractId,
+    queryFn: () => computePreviousDebt(watchedContractId),
+    staleTime: 5_000,
+  });
+
+  useEffect(() => {
+    if (!watchedContractId) return;
+    if (!previousDebtBreakdown) return;
+    if (watch('previous_debt_overridden')) return;
+    setValue('previous_debt', previousDebtBreakdown.total, { shouldDirty: true });
+    setValue('previous_debt_sources', previousDebtBreakdown.sources, { shouldDirty: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedContractId, previousDebtBreakdown]);
+
+  const handleReloadPreviousDebt = async () => {
+    const { data } = await refetchDebt();
+    if (data) {
+      setValue('previous_debt', data.total, { shouldDirty: true });
+      setValue('previous_debt_sources', data.sources, { shouldDirty: true });
+      setValue('previous_debt_overridden', false);
+    }
+  };
+
   // Credit auto-fill discount.
   const { data: creditBalance = 0 } = useExcessAmount(watchedContractId);
   useEffect(() => {
@@ -339,7 +390,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       (s, it) => s + (it.quantity || 0) * (it.unit_price || 0),
       0,
     );
-  const totalAmount = Math.max(0, subtotal - watchedDiscount);
+  // total = tạm tính − giảm trừ (mình nợ khách) + nợ cũ (khách nợ mình)
+  const totalAmount = Math.max(0, subtotal - watchedDiscount + watchedPreviousDebt);
 
   const handleClose = () => {
     reset();
@@ -486,7 +538,11 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       electricity_prev_overridden: !!data.prev_reading_overridden,
       tax_percent: 0,
       prepaid_amount: 0,
-      previous_debt: 0,
+      previous_debt: data.previous_debt || 0,
+      // User chỉnh tay → clear sources để trigger DB không cascade-paid sai.
+      previous_debt_sources: data.previous_debt_overridden
+        ? []
+        : (data.previous_debt_sources ?? []),
       items,
     };
 
@@ -915,7 +971,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                 )}
               </div>
 
-              {/* Giảm trừ */}
+              {/* Giảm trừ (mình nợ khách) */}
               <div className="bg-amber-50 border border-amber-200 p-3 rounded-md space-y-1">
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="discount_amount" className="text-amber-900 shrink-0">
@@ -940,6 +996,78 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                     Tiền nợ khách: {formatCurrency(creditBalance)}
                   </p>
                 )}
+              </div>
+
+              {/* Nợ cũ (khách nợ mình) */}
+              <div className="bg-red-50 border border-red-200 p-3 rounded-md space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="previous_debt" className="text-red-800 shrink-0">
+                    Nợ cũ:
+                  </Label>
+                  <HoverCard openDelay={0} closeDelay={100}>
+                    <HoverCardTrigger asChild>
+                      <div className="flex items-center gap-1 w-56">
+                        <CurrencyInput
+                          className={`h-9 text-right ${watchedPreviousDebt > 0 ? 'text-red-700 font-medium' : ''}`}
+                          suffix={false}
+                          value={watchedPreviousDebt}
+                          onChange={(v) => {
+                            setValue('previous_debt', v, { shouldDirty: true });
+                            setValue('previous_debt_overridden', true);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          title="Tải lại nợ cũ tự động"
+                          onClick={handleReloadPreviousDebt}
+                          className="text-slate-400 hover:text-amber-600 p-1 rounded"
+                          disabled={!watchedContractId || isLoadingDebt}
+                        >
+                          {isLoadingDebt ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="w-80 text-xs" align="end">
+                      <div className="font-semibold text-sm mb-2 text-red-700">
+                        Nợ cũ tổng: {formatCurrency(watchedPreviousDebt)}
+                      </div>
+                      {watchedPreviousDebtSources.length === 0 ? (
+                        <p className="text-muted-foreground">
+                          Không có nợ cũ (HĐ &lt; 10K được làm tròn bỏ qua).
+                        </p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {watchedPreviousDebtSources.map((s, i) => (
+                            <li
+                              key={i}
+                              className="flex justify-between gap-2 border-b border-dashed pb-1 last:border-0"
+                            >
+                              <span className="truncate">
+                                {s.type === 'deposit' ? '🏠 ' : '📄 '}
+                                {s.label}
+                              </span>
+                              <span className="tabular-nums font-medium">
+                                {formatCurrency(s.amount)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {watch('previous_debt_overridden') && (
+                        <p className="text-[10px] text-amber-700 mt-2">
+                          ⚠ Đã chỉnh tay — bấm ↻ để tải lại tự động.
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-2 leading-snug">
+                        Khi HĐ này thanh toán đủ, các nguồn trên sẽ tự tất toán.
+                      </p>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
               </div>
 
               {/* Total */}
