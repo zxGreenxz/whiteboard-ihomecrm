@@ -195,6 +195,16 @@ export default function TaskManagementPage() {
         onAddNotes={() => {
           if (selectedJob) handleAddNotes(selectedJob);
         }}
+        onDelete={
+          isMobile
+            ? () => {
+                if (selectedJob) {
+                  setIsDetailOpen(false);
+                  handleDelete(selectedJob.id);
+                }
+              }
+            : undefined
+        }
       />
       <TaskEditDialog
         open={isEditOpen}

@@ -22,6 +22,7 @@ interface TaskDetailDialogProps {
   onComplete: () => void;
   onEdit: () => void;
   onAddNotes: () => void;
+  onDelete?: () => void;
 }
 
 const isPdf = (url: string) =>
@@ -54,6 +55,7 @@ export default function TaskDetailDialog({
   onComplete,
   onEdit,
   onAddNotes,
+  onDelete,
 }: TaskDetailDialogProps) {
   const isMobile = useIsMobile();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -224,6 +226,15 @@ export default function TaskDetailDialog({
                     onClick={onAddNotes}
                   >
                     Ghi chú đánh giá
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button
+                    variant="outline"
+                    onClick={onDelete}
+                    className="w-full h-11 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  >
+                    Xoá phiếu
                   </Button>
                 )}
               </DialogFooter>
