@@ -7,9 +7,9 @@
 --     ghi nhận giao dịch "Làm tròn tiền thiếu" mà không trừ số dư sổ quỹ.
 --   - Sửa recompute_invoice_for_id: residual < 10.000 ₫ (và > 0) cũng coi
 --     là PAID — paid_amount giữ nguyên số thực thu, status chuyển PAID.
---   - Tạo sổ quỹ "Làm tròn tiền thiếu" cho mỗi user owner trong accounts
---     (idempotent qua ON CONFLICT trên unique(user_id, name) nếu có; nếu
---     không có ràng buộc unique thì kiểm tra NOT EXISTS).
+--   - Tạo DUY NHẤT 1 sổ quỹ "Làm tròn tiền thiếu" thuộc owner chính
+--     (user sở hữu nhiều building nhất). 2 nhân viên dùng chung qua RLS
+--     accounts_select_staff. KHÔNG seed 1 sổ / 1 user — owner phụ trách.
 -- =============================================
 
 BEGIN;
