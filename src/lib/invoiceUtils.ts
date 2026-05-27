@@ -172,11 +172,12 @@ export function isOverdue(dueDate: string, status: InvoiceStatus): boolean {
 /**
  * Build invoice display title from items + notes.
  *
- * - Notes có "thanh lý" → "Hóa đơn thanh lý - <month>"
+ * Mọi loại HĐ đều chèn `<phòng>/<toà>` nếu có để khỏi cần dòng phụ bên dưới:
+ * - Notes có "thanh lý" → "Hóa đơn thanh lý - <phòng>/<toà> - MM/YYYY"
  * - RENT + SERVICE → "TIỀN PHÒNG - <phòng>/<toà> - MM/YYYY"
- * - Chỉ RENT → "Hóa đơn tiền nhà - <month>"
- * - Chỉ SERVICE/PENALTY → "Hóa đơn dịch vụ - <month>"
- * - Còn lại → "Hóa đơn - <month>"
+ * - Chỉ RENT → "Hóa đơn tiền nhà - <phòng>/<toà> - MM/YYYY"
+ * - Chỉ SERVICE/PENALTY → "Hóa đơn dịch vụ - <phòng>/<toà> - MM/YYYY"
+ * - Còn lại → "Hóa đơn - <phòng>/<toà> - MM/YYYY"
  */
 export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
   const month = invoice.billing_month ?? '';
@@ -187,9 +188,15 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
     return m ? `${m[2]}/${m[1]}` : month;
   })();
 
+  const loc = [invoice.room?.name, invoice.building?.name]
+    .filter(Boolean)
+    .join('/');
+  const monthPart = monthDisplay || month;
+  const suffix = [loc, monthPart].filter(Boolean).join(' - ');
+
   const notes = invoice.notes ?? '';
   const isLiquidation = /thanh\s*lý/i.test(notes);
-  if (isLiquidation) return `Hóa đơn thanh lý - ${month}`;
+  if (isLiquidation) return suffix ? `Hóa đơn thanh lý - ${suffix}` : 'Hóa đơn thanh lý';
 
   const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
   const hasService = invoice.invoice_items?.some(
@@ -197,14 +204,9 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
   );
 
   if (hasRent && hasService) {
-    const loc = [invoice.room?.name, invoice.building?.name]
-      .filter(Boolean)
-      .join('/');
-    return loc
-      ? `TIỀN PHÒNG - ${loc} - ${monthDisplay || month}`
-      : `TIỀN PHÒNG - ${monthDisplay || month}`;
+    return suffix ? `TIỀN PHÒNG - ${suffix}` : 'TIỀN PHÒNG';
   }
-  if (hasRent) return `Hóa đơn tiền nhà - ${month}`;
-  if (hasService) return `Hóa đơn dịch vụ - ${month}`;
-  return `Hóa đơn - ${month}`;
+  if (hasRent) return suffix ? `Hóa đơn tiền nhà - ${suffix}` : 'Hóa đơn tiền nhà';
+  if (hasService) return suffix ? `Hóa đơn dịch vụ - ${suffix}` : 'Hóa đơn dịch vụ';
+  return suffix ? `Hóa đơn - ${suffix}` : 'Hóa đơn';
 }

@@ -88,17 +88,6 @@ const splitServiceAmounts = (items: InvoiceItem[] | undefined) => {
   return { electric, water, pdv };
 };
 
-/** Title đã chứa location chưa? Dùng để quyết định có hiển thị dòng phụ
- *  tòa/phòng bên dưới hay không. */
-const titleIncludesLocation = (invoice: InvoiceWithRelations): boolean => {
-  const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
-  const hasService = invoice.invoice_items?.some(
-    (i) => i.type === 'SERVICE' || i.type === 'PENALTY',
-  );
-  const isLiquidation = /thanh\s*lý/i.test(invoice.notes ?? '');
-  return !isLiquidation && !!hasRent && !!hasService;
-};
-
 const InvoiceListTable = ({
   invoices,
   selectedIds,
@@ -251,9 +240,6 @@ const InvoiceListTable = ({
                 (invoice.paid_amount || 0) >= (invoice.total_amount || 0);
               const rentAmount = sumByType(invoice.invoice_items, ['RENT']);
               const { electric, water, pdv } = splitServiceAmounts(invoice.invoice_items);
-              const locationCode = [invoice.building?.name, invoice.room?.name]
-                .filter(Boolean)
-                .join(' / ');
 
               // Tô nền dòng theo trạng thái thanh toán:
               //  - PAID (kể cả đã làm tròn) → xanh nhạt
@@ -412,11 +398,6 @@ const InvoiceListTable = ({
                         </span>
                       )}
                     </div>
-                    {locationCode && !titleIncludesLocation(invoice) && (
-                      <div className="text-xs font-semibold text-zinc-700">
-                        {locationCode}
-                      </div>
-                    )}
                   </TableCell>
 
                   {/* Tiền thuê */}
@@ -532,16 +513,17 @@ const InvoiceListTable = ({
                     </TableCell>
                   )}
 
-                  {/* Nợ cộng dồn = previous_debt + remaining */}
+                  {/* Nợ cộng dồn — sau migration nợ cũ:
+                     total_amount đã bao gồm previous_debt → remaining_amount
+                     chính là tổng còn nợ (kỳ này + nợ cũ kéo sang).
+                     Hiển thị bằng `remaining` để tránh double count. */}
                   {v.no_cong_don && (
                     <TableCell
                       className={`text-right text-sm ${
-                        ((invoice.previous_debt || 0) + remaining) > 0
-                          ? 'text-red-600 font-medium'
-                          : 'text-muted-foreground'
+                        remaining > 0 ? 'text-red-600 font-medium' : 'text-muted-foreground'
                       }`}
                     >
-                      {formatCurrency((invoice.previous_debt || 0) + remaining)}
+                      {formatCurrency(remaining)}
                     </TableCell>
                   )}
 
