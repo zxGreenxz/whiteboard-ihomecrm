@@ -2,7 +2,7 @@
 -- Quick edit phiếu thu/chi: cho người tạo phiếu (và super admin)
 -- chỉnh 3 field "non-financial" trên phiếu đã ghi nhận/đã huỷ:
 --   - account_id  (sổ quỹ)
---   - attachments (hình ảnh đính kèm)
+--   - attachments (hình ảnh đính kèm — jsonb array các URL)
 --   - notes       (ghi chú)
 --
 -- Trước đây phiếu APPROVED/CANCELLED chỉ super admin sửa được
@@ -19,10 +19,14 @@
 
 BEGIN;
 
+-- Drop signature cũ (text[]) trước khi tạo lại với jsonb, vì PostgreSQL
+-- coi đây là 2 function khác nhau (overload).
+DROP FUNCTION IF EXISTS public.update_income_expense_quick(uuid, uuid, text[], text);
+
 CREATE OR REPLACE FUNCTION public.update_income_expense_quick(
   p_id uuid,
   p_account_id uuid,
-  p_attachments text[],
+  p_attachments jsonb,
   p_notes text
 )
 RETURNS public.income_expenses
@@ -40,7 +44,7 @@ BEGIN
   UPDATE public.income_expenses
   SET
     account_id  = p_account_id,
-    attachments = COALESCE(p_attachments, ARRAY[]::text[]),
+    attachments = COALESCE(p_attachments, '[]'::jsonb),
     notes       = p_notes
   WHERE id = p_id
     AND deleted_at IS NULL
@@ -56,7 +60,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.update_income_expense_quick(uuid, uuid, text[], text)
+GRANT EXECUTE ON FUNCTION public.update_income_expense_quick(uuid, uuid, jsonb, text)
   TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
