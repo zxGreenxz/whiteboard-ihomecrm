@@ -45,6 +45,16 @@ export interface CreateContractPayload {
     from_date?: string | null;
     to_date?: string | null;
   }>;
+  /**
+   * Giảm trừ "Khuyến mãi tháng đầu" — ghi vào invoices.discount_amount +
+   * discount_notes (KHÔNG trộn vào items để tooltip "Giảm trừ" của cột HĐ
+   * hiển thị đúng). Slot 1/Y; các tháng 2..Y sẽ auto-fill bằng
+   * getContractDiscountSlot khi tạo HĐ tháng kế tiếp.
+   */
+  firstInvoiceDiscount?: {
+    amount: number;
+    notes: string;
+  };
 }
 
 export interface UpdateContractPayload {
@@ -182,9 +192,10 @@ async function createFirstInvoiceForContract(args: {
   contract: any;
   contractData: CreateContractPayload["contract"];
   invoiceItems: NonNullable<CreateContractPayload["invoiceItems"]>;
+  firstInvoiceDiscount?: CreateContractPayload["firstInvoiceDiscount"];
   userId: string;
 }) {
-  const { contract, contractData, invoiceItems, userId } = args;
+  const { contract, contractData, invoiceItems, firstInvoiceDiscount, userId } = args;
 
   if (!invoiceItems || invoiceItems.length === 0) return;
 
@@ -211,7 +222,10 @@ async function createFirstInvoiceForContract(args: {
     (sum, it) => sum + it.unit_price * it.quantity,
     0,
   );
-  const total_amount = subtotal;
+  const discount_amount = Math.max(0, firstInvoiceDiscount?.amount ?? 0);
+  const discount_notes = firstInvoiceDiscount?.notes?.trim() || null;
+  // total = subtotal − discount + tax + previous_debt (HĐ đầu: tax=0, prev=0).
+  const total_amount = Math.max(0, subtotal - discount_amount);
 
   const { generateInvoiceNumber } = await import("@/lib/invoiceUtils");
   const invoice_number = await generateInvoiceNumber(userId);
@@ -232,7 +246,8 @@ async function createFirstInvoiceForContract(args: {
       approved_at: new Date().toISOString(),
       approved_by: userId,
       subtotal,
-      discount_amount: 0,
+      discount_amount,
+      discount_notes,
       tax_percent: 0,
       tax_amount: 0,
       total_amount,
@@ -379,6 +394,7 @@ export const useCreateContract = () => {
             contract,
             contractData,
             invoiceItems: payload.invoiceItems,
+            firstInvoiceDiscount: payload.firstInvoiceDiscount,
             userId: user.id,
           });
         } catch (e) {

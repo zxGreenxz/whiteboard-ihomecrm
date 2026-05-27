@@ -337,6 +337,80 @@ export async function getPreviousDebt(
 }
 
 // =============================================
+// Contract Discount Slot — khuyến mãi tháng X/Y
+// Tính slot còn lại cho HĐ kế tiếp dựa trên contracts.discounts + số HĐ đã có.
+// =============================================
+
+export interface ContractDiscountSlot {
+  /** True nếu HĐ này còn được áp khuyến mãi (slotIndex <= totalMonths). */
+  applicable: boolean;
+  /** Slot thứ mấy (1-based) — VD slotIndex=2 nghĩa "tháng 2/Y". */
+  slotIndex: number;
+  totalMonths: number;
+  amountPerMonth: number;
+  /** Label ghi chú gợi ý, vd "Khuyến mãi HĐ — tháng 2/3 × 500.000đ". */
+  label: string;
+}
+
+const EMPTY_DISCOUNT_SLOT: ContractDiscountSlot = {
+  applicable: false,
+  slotIndex: 0,
+  totalMonths: 0,
+  amountPerMonth: 0,
+  label: '',
+};
+
+/**
+ * Đếm slot khuyến mãi còn lại cho contract. Trả về slot KẾ TIẾP sẽ áp dụng
+ * (đếm bao gồm HĐ vẫn còn hiệu lực: status ≠ CANCELLED, deleted_at IS NULL).
+ *
+ * - opts.excludeInvoiceId: khi edit HĐ hiện có, loại HĐ đó khỏi count để slot
+ *   của chính nó được giữ nguyên.
+ */
+export async function getContractDiscountSlot(
+  contractId: string,
+  opts: { excludeInvoiceId?: string } = {},
+): Promise<ContractDiscountSlot> {
+  if (!contractId) return EMPTY_DISCOUNT_SLOT;
+
+  const { data: contract } = await (supabase
+    .from('contracts') as any)
+    .select('id, discounts')
+    .eq('id', contractId)
+    .maybeSingle();
+
+  const discounts = (contract as any)?.discounts;
+  const months = Number(discounts?.months) || 0;
+  const amount = Number(discounts?.amount_per_month) || 0;
+  if (months <= 0 || amount <= 0) return EMPTY_DISCOUNT_SLOT;
+
+  // Đếm HĐ đã có cho contract (loại CANCELLED + soft-deleted).
+  let countQuery = (supabase
+    .from('invoices') as any)
+    .select('id', { count: 'exact', head: true })
+    .eq('contract_id', contractId)
+    .is('deleted_at', null)
+    .neq('status', 'CANCELLED');
+  if (opts.excludeInvoiceId) {
+    countQuery = countQuery.neq('id', opts.excludeInvoiceId);
+  }
+  const { count } = await countQuery;
+  const usedSlots = Number(count) || 0;
+  const slotIndex = usedSlots + 1;
+  const applicable = slotIndex <= months;
+
+  return {
+    applicable,
+    slotIndex,
+    totalMonths: months,
+    amountPerMonth: amount,
+    label: applicable
+      ? `Khuyến mãi HĐ — tháng ${slotIndex}/${months} × ${amount.toLocaleString('vi-VN')}đ`
+      : '',
+  };
+}
+
+// =============================================
 // AUTO INVOICE GENERATION
 // =============================================
 

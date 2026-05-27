@@ -58,6 +58,7 @@ import {
 import { CommissionVoucherModal } from "./CommissionVoucherModal";
 import {
   buildFirstInvoiceItems,
+  buildFirstInvoiceDiscount,
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
@@ -394,6 +395,28 @@ export function ContractFormDialog({
     [invoiceItems],
   );
 
+  // Khuyến mãi tháng đầu — tách khỏi items để hiển thị riêng & lưu vào
+  // invoices.discount_amount + discount_notes (slot 1/Y).
+  const firstInvoiceDiscount = useMemo(
+    () =>
+      buildFirstInvoiceDiscount({
+        rent_price: rentPriceWatch,
+        total_deposit: totalDepositWatch,
+        deposit_paid: depositPaidWatch,
+        discount_months: discountMonthsWatch,
+        discount_amount_per_month: discountAmtWatch,
+        services: [],
+      }),
+    [
+      rentPriceWatch,
+      totalDepositWatch,
+      depositPaidWatch,
+      discountMonthsWatch,
+      discountAmtWatch,
+    ],
+  );
+  const invoiceTotal = Math.max(0, invoiceSubtotal - firstInvoiceDiscount.amount);
+
   const updateInvoiceItem = (
     id: string,
     field: "description" | "quantity" | "unit_price",
@@ -655,6 +678,13 @@ export function ContractFormDialog({
             from_date: it.from_date ?? null,
             to_date: it.to_date ?? null,
           })),
+          firstInvoiceDiscount:
+            firstInvoiceDiscount.amount > 0
+              ? {
+                  amount: firstInvoiceDiscount.amount,
+                  notes: firstInvoiceDiscount.notes,
+                }
+              : undefined,
         },
         {
           onSuccess: (contract) => {
@@ -1469,10 +1499,32 @@ export function ContractFormDialog({
                             </div>
                           </div>
                         ))}
+                        <div className="flex items-center justify-between px-3 py-2 border rounded-md bg-slate-50">
+                          <span className="text-sm">Tạm tính</span>
+                          <span className="text-sm tabular-nums">
+                            {formatVND(invoiceSubtotal)}
+                          </span>
+                        </div>
+                        {firstInvoiceDiscount.amount > 0 && (
+                          <div
+                            className="flex items-center justify-between px-3 py-2 border rounded-md bg-amber-50 border-amber-200"
+                            title={firstInvoiceDiscount.notes}
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-sm text-amber-900">Giảm trừ</span>
+                              <span className="text-[11px] text-amber-700 leading-tight">
+                                {firstInvoiceDiscount.notes}
+                              </span>
+                            </div>
+                            <span className="text-sm tabular-nums text-amber-900">
+                              −{formatVND(firstInvoiceDiscount.amount)}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between px-3 py-2 border rounded-md bg-muted/40">
                           <span className="text-sm font-semibold">Tổng cộng</span>
                           <span className="text-sm font-semibold tabular-nums">
-                            {formatVND(invoiceSubtotal)}
+                            {formatVND(invoiceTotal)}
                           </span>
                         </div>
                       </div>
@@ -1539,12 +1591,40 @@ export function ContractFormDialog({
                             ))}
                           </tbody>
                           <tfoot>
-                            <tr className="border-t bg-muted/30">
+                            <tr className="border-t bg-slate-50">
+                              <td colSpan={3} className="px-3 py-2 text-right">
+                                Tạm tính
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {formatVND(invoiceSubtotal)}
+                              </td>
+                              <td></td>
+                            </tr>
+                            {firstInvoiceDiscount.amount > 0 && (
+                              <tr
+                                className="bg-amber-50 border-amber-200"
+                                title={firstInvoiceDiscount.notes}
+                              >
+                                <td colSpan={3} className="px-3 py-2 text-right text-amber-900">
+                                  <div className="flex flex-col items-end leading-tight">
+                                    <span>Giảm trừ</span>
+                                    <span className="text-[11px] text-amber-700">
+                                      {firstInvoiceDiscount.notes}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-right text-amber-900 tabular-nums">
+                                  −{formatVND(firstInvoiceDiscount.amount)}
+                                </td>
+                                <td></td>
+                              </tr>
+                            )}
+                            <tr className="bg-muted/40">
                               <td colSpan={3} className="px-3 py-2 text-right font-semibold">
                                 Tổng cộng
                               </td>
                               <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                                {formatVND(invoiceSubtotal)}
+                                {formatVND(invoiceTotal)}
                               </td>
                               <td></td>
                             </tr>

@@ -132,7 +132,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       const { data: contracts, error: e1 } = await (supabase as any)
         .from('contracts')
         .select(
-          `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining,
+          `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining, discounts,
            room:rooms!contracts_room_id_fkey (id, name, building_id),
            contract_customers!contract_customers_contract_id_fkey (id)`
         )
@@ -188,6 +188,24 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         }
       }
 
+      // 5b) Đếm số HĐ đã có (active) per contract — để biết slot khuyến mãi
+      //     kế tiếp (1/Y, 2/Y, …) cho từng phòng.
+      const invoiceCountByContract = new Map<string, number>();
+      if (contractIds.length > 0) {
+        const { data: allInvoices } = await (supabase as any)
+          .from('invoices')
+          .select('id, contract_id')
+          .in('contract_id', contractIds)
+          .is('deleted_at', null)
+          .neq('status', 'CANCELLED');
+        for (const inv of allInvoices || []) {
+          invoiceCountByContract.set(
+            inv.contract_id,
+            (invoiceCountByContract.get(inv.contract_id) || 0) + 1,
+          );
+        }
+      }
+
       // 5) Nợ cũ (khách nợ mình) per contract: HĐ APPROVED/PARTIAL_PAID/OVERDUE chưa tất toán + cọc còn thiếu.
       const previousDebtByContract = new Map<string, { total: number; sources: PreviousDebtSource[] }>();
       if (contractIds.length > 0) {
@@ -238,6 +256,26 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           const debtEntry = previousDebtByContract.get(c.id);
           const previousDebt = debtEntry?.total ?? 0;
           const previousDebtSources = debtEntry?.sources ?? [];
+
+          // Khuyến mãi HĐ (tháng X/Y): slot = số HĐ đã có + 1.
+          const promoMonths = Number((c.discounts as any)?.months) || 0;
+          const promoPer = Number((c.discounts as any)?.amount_per_month) || 0;
+          const used = invoiceCountByContract.get(c.id) || 0;
+          const slotIndex = used + 1;
+          const promoApplicable =
+            promoMonths > 0 && promoPer > 0 && slotIndex <= promoMonths;
+          const promoAmount = promoApplicable ? promoPer : 0;
+          const promoNote = promoApplicable
+            ? `Khuyến mãi HĐ — tháng ${slotIndex}/${promoMonths} × ${promoPer.toLocaleString('vi-VN')}đ`
+            : '';
+
+          const totalDiscount = credit + promoAmount;
+          const noteParts = [
+            promoNote,
+            credit > 0 ? `Nợ ${credit.toLocaleString('vi-VN')} Tiền Thối` : '',
+          ].filter(Boolean);
+          const combinedNotes = noteParts.join(' — ');
+
           return {
             contract_id: c.id,
             room_id: c.room_id,
@@ -253,8 +291,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             water_amount: occupants * defaults.water,
             water_overridden: false,
             pdv_amount: defaults.pdv,
-            discount: credit,
-            discount_notes: credit > 0 ? `Nợ ${credit.toLocaleString('vi-VN')} Tiền Thối` : '',
+            discount: totalDiscount,
+            discount_notes: combinedNotes,
             applied_credit: credit,
             credit_balance: credit,
             previous_debt: previousDebt,

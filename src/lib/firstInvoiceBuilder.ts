@@ -113,22 +113,10 @@ export function buildFirstInvoiceItems(
     });
   }
 
-  // DISCOUNT — khuyến mãi tháng đầu.
-  if (
-    input.discount_months &&
-    input.discount_amount_per_month &&
-    input.discount_months > 0 &&
-    input.discount_amount_per_month > 0
-  ) {
-    const amount = Math.abs(input.discount_amount_per_month);
-    items.push({
-      id: nextId("discount"),
-      type: "DISCOUNT",
-      description: `Khuyến mãi tháng đầu (${input.discount_months} tháng × ${amount.toLocaleString("vi-VN")}₫)`,
-      unit_price: -amount,
-      quantity: 1,
-    });
-  }
+  // NOTE: Khuyến mãi KHÔNG còn nằm trong items nữa — tách ra discount_amount
+  // riêng (xem buildFirstInvoiceDiscount). Lý do: để mỗi HĐ tháng có 1 dòng
+  // "Giảm trừ" thống nhất, có notes/tooltip rõ ràng "tháng X/Y × Z đ", và áp
+  // tự động cho cả HĐ tháng 2..N (qua getContractDiscountSlot).
 
   // SERVICE — dịch vụ cố định: prorate theo cùng tỉ lệ ngày như tiền thuê
   // (dịch vụ đồng hồ bỏ qua, sẽ chốt khi ghi chỉ số).
@@ -177,4 +165,23 @@ export function buildFirstInvoiceItems(
   }
 
   return items;
+}
+
+/**
+ * Tính giảm trừ "Khuyến mãi tháng đầu" cho HĐ cọc + tháng đầu (slot 1/Y).
+ * Trả về `{ amount, notes }` để dialog hiển thị và mutation set vào
+ * `invoices.discount_amount` + `invoices.discount_notes`.
+ *
+ * Khi HĐ tháng đầu PAID, slotIndex của HĐ kế tiếp = 2 (count HĐ đã active).
+ */
+export function buildFirstInvoiceDiscount(
+  input: FirstInvoiceBuilderInput,
+): { amount: number; notes: string } {
+  const months = Math.max(0, Math.floor(input.discount_months ?? 0));
+  const perMonth = Math.max(0, input.discount_amount_per_month ?? 0);
+  if (months <= 0 || perMonth <= 0) return { amount: 0, notes: '' };
+  return {
+    amount: perMonth,
+    notes: `Khuyến mãi HĐ — tháng 1/${months} × ${perMonth.toLocaleString('vi-VN')}đ`,
+  };
 }

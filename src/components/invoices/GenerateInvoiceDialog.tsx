@@ -35,7 +35,7 @@ import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { computePreviousDebt } from '@/lib/invoiceHelpers';
+import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpers';
 import { Receipt, Plus, Trash2, Pencil, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth, parse } from 'date-fns';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
@@ -369,17 +369,33 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     }
   };
 
-  // Credit auto-fill discount.
+  // Credit auto-fill discount + Khuyến mãi HĐ (tháng X/Y).
   const { data: creditBalance = 0 } = useExcessAmount(watchedContractId);
+  const { data: discountSlot } = useQuery({
+    queryKey: ['contract-discount-slot', watchedContractId],
+    enabled: !!watchedContractId,
+    queryFn: () => getContractDiscountSlot(watchedContractId),
+    staleTime: 5_000,
+  });
+
   useEffect(() => {
     if (!watchedContractId) return;
-    if (creditBalance <= 0) return;
-    if (watchedDiscount > 0) return;
-    setValue('discount_amount', creditBalance);
-    setValue('discount_notes', `Nợ ${creditBalance.toLocaleString('vi-VN')} Tiền Thối`);
-    setValue('applied_credit', creditBalance);
+    if (watchedDiscount > 0) return; // user đã chỉnh hoặc đã auto-fill rồi
+    const promoAmount = discountSlot?.applicable ? discountSlot.amountPerMonth : 0;
+    const promoNote = discountSlot?.applicable ? discountSlot.label : '';
+    const creditAmount = creditBalance > 0 ? creditBalance : 0;
+    const creditNote =
+      creditAmount > 0 ? `Nợ ${creditAmount.toLocaleString('vi-VN')} Tiền Thối` : '';
+
+    const total = promoAmount + creditAmount;
+    if (total <= 0) return;
+
+    const notes = [promoNote, creditNote].filter(Boolean).join(' — ');
+    setValue('discount_amount', total);
+    setValue('discount_notes', notes);
+    setValue('applied_credit', creditAmount);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedContractId, creditBalance]);
+  }, [watchedContractId, creditBalance, discountSlot?.applicable]);
 
   const subtotal =
     proratedRent +
