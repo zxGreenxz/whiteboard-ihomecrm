@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
@@ -23,9 +23,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
+import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
-import { Image as ImageIcon, Calendar, Clock, Loader2, Check } from 'lucide-react';
+import { Image as ImageIcon, Calendar, Clock, Loader2, Check, Upload } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -45,6 +47,55 @@ interface PaymentRow {
 }
 
 const METHOD_OPTIONS: PaymentMethod[] = ['TM', 'TT', 'TK'];
+
+/** Slot upload ảnh chứng từ cho 1 phiếu thu chưa có ảnh.
+ *  - Click → mở file picker
+ *  - Hover + Ctrl/Cmd+V → paste ảnh từ clipboard
+ *  Sau upload sẽ append vào income_expenses.attachments của phiếu Thu/Chi
+ *  liên kết. */
+const ReceiptUploadSlot = ({ paymentId }: { paymentId: string }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const upload = useUploadPaymentReceipt();
+  const handleFile = (file: File) => upload.mutate({ payment_id: paymentId, file });
+  const paste = useClipboardImagePaste({
+    enabled: !upload.isPending,
+    onFiles: (files) => {
+      if (files[0]) handleFile(files[0]);
+    },
+  });
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => fileInputRef.current?.click()}
+      onMouseEnter={paste.onMouseEnter}
+      onMouseLeave={paste.onMouseLeave}
+      className="shrink-0 h-14 w-14 grid place-items-center rounded-md border border-dashed border-zinc-300 text-zinc-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50 transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-200"
+      title="Click để chọn ảnh, hoặc hover + Ctrl/Cmd+V để dán ảnh từ clipboard"
+    >
+      {upload.isPending ? (
+        <Loader2 className="h-5 w-5 animate-spin" />
+      ) : (
+        <div className="relative">
+          <ImageIcon className="h-5 w-5" />
+          <Upload className="absolute -bottom-1 -right-1 h-3 w-3 bg-white rounded-full" />
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+};
 
 const fmtVND = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
@@ -224,9 +275,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                         </HoverCardContent>
                       </HoverCard>
                     ) : (
-                      <div className="shrink-0 h-14 w-14 grid place-items-center rounded-md border border-dashed border-zinc-200 text-zinc-300">
-                        <ImageIcon className="h-5 w-5" />
-                      </div>
+                      <ReceiptUploadSlot paymentId={p.id} />
                     )}
                   </li>
                 );
