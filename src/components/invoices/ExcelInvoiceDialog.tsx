@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
-import { Table as TableIcon, Download, Loader2, Pencil } from 'lucide-react';
+import { Table as TableIcon, Download, Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { PREVIOUS_DEBT_ROUND_THRESHOLD } from '@/lib/invoiceHelpers';
+import { getInvoiceTitle } from '@/lib/invoiceUtils';
+import { formatCurrency } from '@/lib/utils';
+import type { PreviousDebtSource } from '@/types/invoice';
 
 import {
   Dialog,
@@ -60,6 +65,11 @@ interface RowData {
   applied_credit: number;
   /** Tiền nợ khách hiện có của contract (audit hint, không bao giờ ghi vào DB). */
   credit_balance: number;
+  /** Nợ cũ (khách nợ mình) — auto từ HĐ chưa thu + cọc thiếu. */
+  previous_debt: number;
+  /** Auto-fill từ DB; user có thể override (-) hoặc reload từ DB. */
+  previous_debt_sources: PreviousDebtSource[];
+  previous_debt_overridden: boolean;
   /** Ngày bắt đầu/kết thúc thực tế — nếu set thì prorate rent + water + pdv. */
   period_start_date: string | null;
   period_end_date: string | null;
@@ -122,7 +132,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       const { data: contracts, error: e1 } = await (supabase as any)
         .from('contracts')
         .select(
-          `id, rent_price, room_id, status,
+          `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining,
            room:rooms!contracts_room_id_fkey (id, name, building_id),
            contract_customers!contract_customers_contract_id_fkey (id)`
         )
@@ -178,12 +188,56 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         }
       }
 
+      // 5) Nợ cũ (khách nợ mình) per contract: HĐ APPROVED/PARTIAL_PAID/OVERDUE chưa tất toán + cọc còn thiếu.
+      const previousDebtByContract = new Map<string, { total: number; sources: PreviousDebtSource[] }>();
+      if (contractIds.length > 0) {
+        const { data: oldInvoices } = await (supabase as any)
+          .from('invoices')
+          .select(`
+            id, invoice_number, billing_month, total_amount, paid_amount, contract_id, status, notes,
+            room:rooms!invoices_room_id_fkey (id, name),
+            building:buildings!invoices_building_id_fkey (id, name),
+            invoice_items (id, type, description)
+          `)
+          .in('contract_id', contractIds)
+          .in('status', ['APPROVED', 'PARTIAL_PAID', 'OVERDUE'])
+          .is('deleted_at', null);
+        for (const inv of oldInvoices || []) {
+          const remaining = (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0);
+          if (remaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;
+          const label = getInvoiceTitle(inv);
+          const entry = previousDebtByContract.get(inv.contract_id) || { total: 0, sources: [] };
+          entry.sources.push({ type: 'invoice', id: inv.id, amount: remaining, label });
+          entry.total += remaining;
+          previousDebtByContract.set(inv.contract_id, entry);
+        }
+      }
+      // Cộng cọc còn thiếu — đọc trực tiếp từ buildingContracts.
+      for (const c of buildingContracts) {
+        const depositRemaining = Number(
+          c.deposit_remaining ?? ((Number(c.total_deposit) || 0) - (Number(c.deposit_paid) || 0))
+        );
+        if (depositRemaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;
+        const entry = previousDebtByContract.get(c.id) || { total: 0, sources: [] };
+        entry.sources.push({
+          type: 'deposit',
+          contract_id: c.id,
+          amount: depositRemaining,
+          label: 'Cọc còn thiếu',
+        });
+        entry.total += depositRemaining;
+        previousDebtByContract.set(c.id, entry);
+      }
+
       const next: RowData[] = buildingContracts
         .map((c: any) => {
           const occupants = c.contract_customers?.length ?? 1;
           const meterId = meterByRoom.get(c.room_id) ?? null;
           const prev = meterId ? lastReading.get(meterId) ?? 0 : 0;
           const credit = Math.max(0, creditByContract.get(c.id) || 0);
+          const debtEntry = previousDebtByContract.get(c.id);
+          const previousDebt = debtEntry?.total ?? 0;
+          const previousDebtSources = debtEntry?.sources ?? [];
           return {
             contract_id: c.id,
             room_id: c.room_id,
@@ -203,6 +257,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             discount_notes: credit > 0 ? `Nợ ${credit.toLocaleString('vi-VN')} Tiền Thối` : '',
             applied_credit: credit,
             credit_balance: credit,
+            previous_debt: previousDebt,
+            previous_debt_sources: previousDebtSources,
+            previous_debt_overridden: false,
             period_start_date: null,
             period_end_date: null,
             selected: true,
@@ -260,12 +317,31 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     });
   };
 
+  // Re-fetch nợ cũ cho 1 row (sau khi user bấm ↻), ghi đè giá trị đã chỉnh tay.
+  const reloadPreviousDebt = async (idx: number) => {
+    const row = rows[idx];
+    if (!row) return;
+    const { computePreviousDebt } = await import('@/lib/invoiceHelpers');
+    const { total, sources } = await computePreviousDebt(row.contract_id);
+    setRows((prev) => {
+      const next = [...prev];
+      if (!next[idx]) return prev;
+      next[idx] = {
+        ...next[idx],
+        previous_debt: total,
+        previous_debt_sources: sources,
+        previous_debt_overridden: false,
+      };
+      return next;
+    });
+  };
+
   const computeRowTotal = (r: RowData) => {
     const days = calcProratedDays(r.period_start_date, r.period_end_date);
     const rent = days > 0 ? prorateAmount(r.rent_price, days) : r.rent_price;
     const water = days > 0 ? prorateAmount(r.water_amount, days) : r.water_amount;
     const pdv = days > 0 ? prorateAmount(r.pdv_amount, days) : r.pdv_amount;
-    return rent + r.electric_amount + water + pdv - r.discount;
+    return rent + r.electric_amount + water + pdv - r.discount + (r.previous_debt || 0);
   };
 
   const totals = useMemo(() => {
@@ -273,6 +349,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     return {
       count: sel.length,
       total: sel.reduce((s, r) => s + computeRowTotal(r), 0),
+      previousDebtSum: sel.reduce((s, r) => s + (r.previous_debt || 0), 0),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
@@ -412,7 +489,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           electricity_prev_overridden: row.prev_reading_overridden,
           tax_percent: 0,
           prepaid_amount: 0,
-          previous_debt: 0,
+          previous_debt: row.previous_debt || 0,
+          // Nếu user đã chỉnh tay → clear sources để DB trigger KHÔNG cascade-paid
+          // sai (vì amount đã không khớp tổng sources nữa). User tự đánh dấu HĐ
+          // cũ thanh toán nếu muốn.
+          previous_debt_sources: row.previous_debt_overridden ? [] : (row.previous_debt_sources ?? []),
           notes: null,
           items,
         };
@@ -507,13 +588,14 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 <th className="p-2 border text-right">Nước</th>
                 <th className="p-2 border text-right">Phí Dịch Vụ</th>
                 <th className="p-2 border text-right">Giảm trừ</th>
+                <th className="p-2 border text-right bg-red-50/60">Nợ cũ</th>
                 <th className="p-2 border text-right bg-amber-50">Tổng</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="text-center p-8 text-muted-foreground">
+                  <td colSpan={12} className="text-center p-8 text-muted-foreground">
                     {loaded ? 'Toà này không có hợp đồng đang hiệu lực.' : 'Chưa tải dữ liệu.'}
                   </td>
                 </tr>
@@ -638,6 +720,60 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                         />
                       </div>
                     </td>
+                    <td className="p-1 border bg-red-50/30">
+                      <HoverCard openDelay={0} closeDelay={100}>
+                        <HoverCardTrigger asChild>
+                          <div className="flex items-center gap-1">
+                            <CurrencyInput
+                              className={`h-7 text-right ${r.previous_debt > 0 ? 'text-red-600 font-medium' : ''}`}
+                              suffix={false}
+                              value={r.previous_debt}
+                              onChange={(v) =>
+                                updateRow(i, {
+                                  previous_debt: v,
+                                  previous_debt_overridden: true,
+                                })
+                              }
+                            />
+                            <button
+                              type="button"
+                              title="Tải lại nợ cũ tự động"
+                              className="text-slate-400 hover:text-amber-600 p-0.5 rounded"
+                              onClick={() => reloadPreviousDebt(i)}
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80 text-xs" align="end">
+                          <div className="font-semibold text-sm mb-2 text-red-700">
+                            Nợ cũ phòng {r.room_name}: {formatCurrency(r.previous_debt || 0)}
+                          </div>
+                          {r.previous_debt_sources.length === 0 ? (
+                            <p className="text-muted-foreground">
+                              Không có nợ cũ (HĐ &lt; 10K được làm tròn bỏ qua).
+                            </p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {r.previous_debt_sources.map((s, j) => (
+                                <li key={j} className="flex justify-between gap-2 border-b border-dashed pb-1 last:border-0">
+                                  <span className="truncate">
+                                    {s.type === 'deposit' ? '🏠 ' : '📄 '}
+                                    {s.label}
+                                  </span>
+                                  <span className="tabular-nums font-medium">{formatCurrency(s.amount)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {r.previous_debt_overridden && (
+                            <p className="text-[10px] text-amber-700 mt-2">
+                              ⚠ Đã chỉnh tay — bấm ↻ để tải lại tự động.
+                            </p>
+                          )}
+                        </HoverCardContent>
+                      </HoverCard>
+                    </td>
                     <td className="p-1 border text-right font-semibold bg-amber-50">
                       <div className="flex items-center justify-end gap-1">
                         <div className="flex flex-col items-end leading-tight">
@@ -671,6 +807,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                 <tr className="font-semibold">
                   <td colSpan={10} className="p-2 border text-right">
                     Tổng {totals.count} phòng đã chọn:
+                  </td>
+                  <td className="p-2 border text-right text-red-700 bg-red-50/40">
+                    {fmt(totals.previousDebtSum)}đ
                   </td>
                   <td className="p-2 border text-right text-indigo-700 text-base">
                     {fmt(totals.total)}đ

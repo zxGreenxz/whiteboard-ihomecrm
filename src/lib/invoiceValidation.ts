@@ -27,6 +27,18 @@ const invoiceItemSchema = z.object({
 });
 
 // ============================================================
+// Previous-debt source (1 nguồn nợ cũ — HĐ cũ hoặc cọc còn thiếu)
+// ============================================================
+
+const previousDebtSourceSchema = z.object({
+  type: z.enum(['invoice', 'deposit']),
+  id: z.string().optional(),
+  contract_id: z.string().optional(),
+  amount: z.number().min(0),
+  label: z.string(),
+});
+
+// ============================================================
 // Invoice Form Schema (create/edit)
 // ============================================================
 
@@ -47,6 +59,7 @@ export const invoiceFormSchema = z
     tax_percent: z.number().min(0).default(0),
     prepaid_amount: z.number().min(0).default(0),
     previous_debt: z.number().min(0).default(0),
+    previous_debt_sources: z.array(previousDebtSourceSchema).optional().default([]),
     items: z.array(invoiceItemSchema).min(1, 'Vui lòng thêm ít nhất 1 dịch vụ'),
   })
   .refine((data) => data.issue_date <= data.due_date, {

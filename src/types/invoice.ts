@@ -29,6 +29,22 @@ export type PaymentMethod = 'TM' | 'TK' | 'TT';
 // Core Entities (matching database tables)
 // =============================================
 
+/**
+ * Một nguồn nợ cũ được cộng vào previous_debt của HĐ mới.
+ * - type='invoice': remaining của HĐ cũ. Trigger DB sẽ tự mark HĐ đó PAID khi HĐ mới được thanh toán đủ.
+ * - type='deposit': cọc còn thiếu trong hợp đồng. Trigger DB sẽ cộng amount vào contracts.deposit_paid.
+ */
+export interface PreviousDebtSource {
+  type: 'invoice' | 'deposit';
+  /** Có với type='invoice' — id của HĐ cũ. */
+  id?: string;
+  /** Có với type='deposit' — id của hợp đồng. */
+  contract_id?: string;
+  amount: number;
+  /** Label hiển thị trong tooltip / print, vd "HĐ #INV-2026-04-001 (04/2026)" / "Cọc còn thiếu". */
+  label: string;
+}
+
 /** Matches `invoices` table */
 export interface Invoice {
   id: string;
@@ -52,6 +68,7 @@ export interface Invoice {
   paid_amount: number;
   remaining_amount: number; // GENERATED: total_amount - paid_amount
   previous_debt: number;
+  previous_debt_sources: PreviousDebtSource[];
   notes: string | null;
   discount_notes: string | null;
   electricity_prev_overridden: boolean;
@@ -173,6 +190,8 @@ export interface InvoiceFormData {
   tax_percent: number;
   prepaid_amount: number;
   previous_debt: number;
+  /** Breakdown của previous_debt — hiển thị tooltip + cascade khi HĐ này PAID. */
+  previous_debt_sources?: PreviousDebtSource[];
   items: InvoiceFormItem[];
 }
 

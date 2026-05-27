@@ -279,6 +279,12 @@ const InvoiceDetailPage = () => {
             <div className="max-w-sm ml-auto space-y-2 text-sm">
               <SummaryRow label="Tạm tính" value={formatVND(invoice.subtotal)} />
               <SummaryRow label="Giảm giá" value={`-${formatVND(invoice.discount_amount)}`} />
+              {(invoice.previous_debt ?? 0) > 0 && (
+                <SummaryRow
+                  label="Nợ cũ"
+                  value={`+${formatVND(invoice.previous_debt)}`}
+                />
+              )}
               <SummaryRow label={`Thuế (${invoice.tax_percent}%)`} value={formatVND(invoice.tax_amount)} />
               <Separator />
               <SummaryRow label="Thành tiền" value={formatVND(invoice.total_amount)} bold />

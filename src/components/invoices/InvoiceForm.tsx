@@ -59,6 +59,8 @@ interface InvoiceFormProps {
   onSubmit: (data: InvoiceFormData) => void;
   isSubmitting?: boolean;
   mode?: 'create' | 'edit';
+  /** Khi edit, loại HĐ hiện tại khỏi tính nợ cũ. */
+  invoiceId?: string;
 }
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
@@ -69,6 +71,7 @@ const InvoiceForm = ({
   onSubmit,
   isSubmitting = false,
   mode = 'create',
+  invoiceId,
 }: InvoiceFormProps) => {
   const { data: invoiceConfig } = useInvoiceConfig();
   const dueDays = invoiceConfig?.payment_due_days ?? 5;
@@ -96,6 +99,7 @@ const InvoiceForm = ({
       tax_percent: 0,
       prepaid_amount: 0,
       previous_debt: 0,
+      previous_debt_sources: [],
       items: [],
       ...defaultValues,
     },
@@ -393,6 +397,7 @@ const InvoiceForm = ({
         watch={watch}
         setValue={setValue}
         contractId={contractId || undefined}
+        excludeInvoiceId={invoiceId}
       />
 
       <Separator />

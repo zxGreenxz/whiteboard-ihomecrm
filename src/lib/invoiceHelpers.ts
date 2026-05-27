@@ -9,6 +9,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { generateInvoiceNumber } from './codeGenerator';
+import type { PreviousDebtSource } from '@/types/invoice';
 
 /**
  * Generate invoice number if auto-generation is enabled
@@ -235,45 +236,104 @@ export async function calculateLateFee(
 }
 
 /**
- * Get previous debt for a contract (if enabled in settings)
+ * Ngưỡng làm tròn: residual nhỏ hơn ngưỡng này thì coi như đã đủ, không tính
+ * vào nợ cũ. Khớp với chức năng "Làm tròn tiền thiếu" trong useBulkRecordPayment.
+ */
+export const PREVIOUS_DEBT_ROUND_THRESHOLD = 10000;
+
+export interface PreviousDebtBreakdown {
+  total: number;
+  sources: PreviousDebtSource[];
+}
+
+export interface ComputePreviousDebtOptions {
+  /** Khi edit HĐ hiện có, loại trừ chính HĐ đó khỏi nguồn nợ. */
+  excludeInvoiceId?: string;
+}
+
+/**
+ * Tính nợ cũ cho một hợp đồng — gồm:
+ *  1. Remaining của các HĐ APPROVED/PARTIAL_PAID/OVERDUE (loại bỏ residual < ngưỡng).
+ *  2. Cọc còn thiếu = contracts.total_deposit - contracts.deposit_paid (nếu > ngưỡng).
  *
- * @param userId - User ID
+ * Trả về breakdown để UI hiển thị tooltip + lưu vào invoices.previous_debt_sources.
+ */
+export async function computePreviousDebt(
+  contractId: string,
+  opts: ComputePreviousDebtOptions = {},
+): Promise<PreviousDebtBreakdown> {
+  if (!contractId) return { total: 0, sources: [] };
+
+  const sources: PreviousDebtSource[] = [];
+
+  // 1) HĐ cũ chưa tất toán — fetch kèm items/room/building/notes để build title
+  // khớp với cột "Hoá đơn" trên bảng danh sách.
+  const { getInvoiceTitle } = await import('./invoiceUtils');
+  let invoicesQuery = (supabase
+    .from('invoices') as any)
+    .select(`
+      id, invoice_number, billing_month, total_amount, paid_amount, status, notes,
+      room:rooms!invoices_room_id_fkey (id, name),
+      building:buildings!invoices_building_id_fkey (id, name),
+      invoice_items (id, type, description)
+    `)
+    .eq('contract_id', contractId)
+    .is('deleted_at', null)
+    .in('status', ['APPROVED', 'PARTIAL_PAID', 'OVERDUE']);
+  if (opts.excludeInvoiceId) {
+    invoicesQuery = invoicesQuery.neq('id', opts.excludeInvoiceId);
+  }
+  const { data: oldInvoices } = await invoicesQuery;
+
+  for (const inv of (oldInvoices ?? []) as any[]) {
+    const remaining = (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0);
+    if (remaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;
+    const label = getInvoiceTitle(inv);
+    sources.push({
+      type: 'invoice',
+      id: inv.id,
+      amount: remaining,
+      label,
+    });
+  }
+
+  // 2) Cọc còn thiếu
+  const { data: contract } = await (supabase
+    .from('contracts') as any)
+    .select('id, total_deposit, deposit_paid, deposit_remaining')
+    .eq('id', contractId)
+    .maybeSingle();
+  if (contract) {
+    const depositRemaining =
+      Number(contract.deposit_remaining ??
+        ((Number(contract.total_deposit) || 0) - (Number(contract.deposit_paid) || 0)));
+    if (depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD) {
+      sources.push({
+        type: 'deposit',
+        contract_id: contract.id,
+        amount: depositRemaining,
+        label: 'Cọc còn thiếu',
+      });
+    }
+  }
+
+  const total = sources.reduce((sum, s) => sum + (s.amount || 0), 0);
+  return { total, sources };
+}
+
+/**
+ * Get previous debt for a contract (legacy wrapper)
+ *
+ * @param _userId - User ID (deprecated, kept for backward compat)
  * @param contractId - Contract ID
  * @returns Previous debt amount
  */
 export async function getPreviousDebt(
-  userId: string,
+  _userId: string,
   contractId: string
 ): Promise<number> {
-  // Check if including previous debt is enabled
-  const { data: settings } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('user_id', userId)
-    .eq('key', 'invoice_config')
-    .maybeSingle();
-
-  if (!settings?.value) return 0;
-
-  const config = settings.value as any;
-
-  if (!config.include_previous_debt) return 0;
-
-  // Get all unpaid/partial paid invoices for this contract
-  const { data: invoices } = await supabase
-    .from('invoices')
-    .select('total_amount, paid_amount')
-    .eq('contract_id', contractId)
-    .in('status', ['APPROVED', 'PARTIAL_PAID']);
-
-  if (!invoices || invoices.length === 0) return 0;
-
-  // Calculate total debt
-  const totalDebt = invoices.reduce((sum, invoice) => {
-    return sum + ((invoice.total_amount ?? 0) - (invoice.paid_amount ?? 0));
-  }, 0);
-
-  return totalDebt;
+  const { total } = await computePreviousDebt(contractId);
+  return total;
 }
 
 // =============================================
@@ -535,11 +595,9 @@ export async function generateInvoiceForContract(
   // Calculate subtotal
   const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
 
-  // Get previous debt if enabled
-  let previousDebtAmount = 0;
-  if (settings.include_previous_debt) {
-    previousDebtAmount = await getPreviousDebt(userId, contract.id);
-  }
+  // Nợ cũ (luôn tính, bỏ qua source < ngưỡng làm tròn)
+  const { total: previousDebtAmount, sources: previousDebtSources } =
+    await computePreviousDebt(contract.id);
 
   // Calculate total
   const totalAmount = subtotal + previousDebtAmount;
@@ -575,6 +633,7 @@ export async function generateInvoiceForContract(
       billing_period_to: format(billingPeriod.to, 'yyyy-MM-dd'),
       subtotal,
       previous_debt: previousDebtAmount,
+      previous_debt_sources: previousDebtSources as any,
       discount_amount: 0,
       tax_rate: 0,
       tax_amount: 0,

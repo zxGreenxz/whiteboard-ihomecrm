@@ -53,7 +53,9 @@ function buildTemplateData(invoice: InvoiceWithRelations): InvoiceTemplateData {
     total: formatCurrencyVND(item.amount || 0),
   }));
 
-  const totalWithDebt = (invoice.total_amount || 0) + (invoice.previous_debt || 0);
+  // Từ migration 20260527 nợ cũ: total_amount đã bao gồm previous_debt rồi.
+  // Không cộng lại để tránh double count.
+  const totalWithDebt = invoice.total_amount || 0;
   const remain = totalWithDebt - (invoice.paid_amount || 0);
 
   return {

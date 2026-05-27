@@ -238,7 +238,12 @@ export const useCreateInvoice = () => {
         0,
       );
       const tax_amount = subtotal * (invoiceFields.tax_percent || 0) / 100;
-      const total_amount = subtotal - (invoiceFields.discount_amount || 0) + tax_amount;
+      // total = tạm tính − giảm trừ (mình nợ khách) + thuế + nợ cũ (khách nợ mình)
+      const total_amount =
+        subtotal
+        - (invoiceFields.discount_amount || 0)
+        + tax_amount
+        + (invoiceFields.previous_debt || 0);
 
       // Generate invoice number
       const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
@@ -274,6 +279,7 @@ export const useCreateInvoice = () => {
           prepaid_amount: invoiceFields.prepaid_amount || 0,
           paid_amount: 0,
           previous_debt: invoiceFields.previous_debt || 0,
+          previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
           notes: invoiceFields.notes || null,
           template_id: invoiceFields.template_id || null,
           creator_name: creatorName,
@@ -385,7 +391,12 @@ export const useUpdateInvoice = () => {
         0,
       );
       const tax_amount = subtotal * (invoiceFields.tax_percent || 0) / 100;
-      const total_amount = subtotal - (invoiceFields.discount_amount || 0) + tax_amount;
+      // total = tạm tính − giảm trừ + thuế + nợ cũ
+      const total_amount =
+        subtotal
+        - (invoiceFields.discount_amount || 0)
+        + tax_amount
+        + (invoiceFields.previous_debt || 0);
 
       // Update invoice
       const { data: invoice, error: updateError } = await supabase
@@ -407,6 +418,7 @@ export const useUpdateInvoice = () => {
           total_amount,
           prepaid_amount: invoiceFields.prepaid_amount || 0,
           previous_debt: invoiceFields.previous_debt || 0,
+          previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
           notes: invoiceFields.notes || null,
           template_id: invoiceFields.template_id || null,
         } as any)
