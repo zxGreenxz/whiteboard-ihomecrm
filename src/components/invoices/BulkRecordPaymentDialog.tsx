@@ -48,6 +48,7 @@ import { useInvoice } from '@/hooks/useInvoices';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import type { InvoiceStatus } from '@/types/invoice';
 import EditInvoiceDialog from './EditInvoiceDialog';
+import PaymentsSummaryDialog from './PaymentsSummaryDialog';
 
 interface Props {
   open: boolean;
@@ -119,8 +120,12 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [failures, setFailures] = useState<BulkPaymentFailure[]>([]);
   const [editInvoiceId, setEditInvoiceId] = useState<string | null>(null);
+  const [viewPaymentsInvoiceId, setViewPaymentsInvoiceId] = useState<string | null>(null);
 
   const { data: editingInvoice } = useInvoice(editInvoiceId ?? undefined);
+  const { data: viewingPaymentsInvoice } = useInvoice(
+    viewPaymentsInvoiceId ?? undefined,
+  );
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -772,7 +777,16 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                       {fmt(r.total_amount)}
                     </td>
                     <td className="p-1 border text-right text-green-600">
-                      {fmt(r.paid_amount)}
+                      <span>{fmt(r.paid_amount)}</span>
+                      {r.paid_amount > 0 && (
+                        <button
+                          type="button"
+                          className="ml-1 text-blue-500 hover:underline text-xs"
+                          onClick={() => setViewPaymentsInvoiceId(r.invoice_id)}
+                        >
+                          (Xem)
+                        </button>
+                      )}
                     </td>
                     <td className="p-1 border text-right font-semibold text-orange-600 bg-orange-50">
                       {fmt(r.remaining)}
@@ -1003,6 +1017,20 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           invoice={editingInvoice}
         />
       )}
+
+      <PaymentsSummaryDialog
+        open={viewPaymentsInvoiceId != null && !!viewingPaymentsInvoice}
+        onOpenChange={(v) => {
+          if (!v) {
+            const wasOpen = viewPaymentsInvoiceId != null;
+            setViewPaymentsInvoiceId(null);
+            // Reload bảng để paid_amount/còn lại phản ánh các phiếu vừa
+            // xoá trong PaymentsSummaryDialog.
+            if (wasOpen && buildingId) handleLoad();
+          }
+        }}
+        invoice={viewingPaymentsInvoice ?? null}
+      />
     </Dialog>
   );
 }

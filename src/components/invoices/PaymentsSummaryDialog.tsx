@@ -8,6 +8,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
@@ -24,10 +34,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
+import { useDeletePayment } from '@/hooks/useDeletePayment';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
-import { Image as ImageIcon, Calendar, Clock, Loader2, Check, Upload } from 'lucide-react';
+import { Image as ImageIcon, Calendar, Clock, Loader2, Check, Upload, Trash2 } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -123,7 +134,10 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
   });
 
   const updateMethod = useUpdatePaymentMethod();
+  const deletePayment = useDeletePayment();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleChangeMethod = (paymentId: string, newMethod: PaymentMethod) => {
     setEditingId(paymentId);
@@ -132,6 +146,24 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
       { onSettled: () => setEditingId(null) },
     );
   };
+
+  const handleConfirmDelete = () => {
+    if (!confirmDeleteId) return;
+    const id = confirmDeleteId;
+    setDeletingId(id);
+    deletePayment.mutate(
+      { payment_id: id },
+      {
+        onSettled: () => {
+          setDeletingId(null);
+          setConfirmDeleteId(null);
+        },
+      },
+    );
+  };
+
+  const confirmTarget = (payments ?? []).find((p) => p.id === confirmDeleteId);
+  const confirmIdx = (payments ?? []).findIndex((p) => p.id === confirmDeleteId);
 
   if (!invoice) return null;
 
@@ -243,6 +275,21 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                       </div>
                     </div>
 
+                    {/* Nút xoá phiếu thanh toán */}
+                    <button
+                      type="button"
+                      title="Xoá phiếu thanh toán này (xoá luôn phiếu thu liên kết)"
+                      disabled={deletingId === p.id}
+                      onClick={() => setConfirmDeleteId(p.id)}
+                      className="shrink-0 grid place-items-center h-9 w-9 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {deletingId === p.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
+
                     {/* Chứng từ */}
                     {p.receipt_image_url ? (
                       <HoverCard openDelay={120} closeDelay={80}>
@@ -293,6 +340,56 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           </>
         )}
       </DialogContent>
+
+      <AlertDialog
+        open={!!confirmDeleteId}
+        onOpenChange={(v) => {
+          if (!v && !deletePayment.isPending) setConfirmDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xoá phiếu thanh toán?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmTarget ? (
+                <>
+                  Bạn sắp xoá phiếu thanh toán
+                  {confirmIdx >= 0 ? ` #${confirmIdx + 1}` : ''}{' '}
+                  <span className="font-semibold text-emerald-700">
+                    {fmtVND(Number(confirmTarget.amount) || 0)}
+                  </span>{' '}
+                  ({confirmTarget.payment_method}). Phiếu Thu liên kết trong sổ
+                  Thu/Chi cũng sẽ bị xoá. Thao tác này không thể hoàn tác.
+                </>
+              ) : (
+                'Phiếu Thu liên kết trong sổ Thu/Chi cũng sẽ bị xoá. Thao tác này không thể hoàn tác.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePayment.isPending}>
+              Huỷ
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleConfirmDelete();
+              }}
+              disabled={deletePayment.isPending}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deletePayment.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Đang xoá...
+                </>
+              ) : (
+                'Xoá phiếu'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };
