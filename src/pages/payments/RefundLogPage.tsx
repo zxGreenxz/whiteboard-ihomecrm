@@ -47,29 +47,48 @@ interface RefundRow {
 
 const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 
+type LedgerMode = "refund" | "rounding";
+
+const ROUNDING_ACCOUNT_NAME = "Làm tròn tiền thiếu";
+
+function detectMode(name: string | null | undefined): LedgerMode {
+  return (name ?? "").trim() === ROUNDING_ACCOUNT_NAME ? "rounding" : "refund";
+}
+
 function useRefundLog(accountId: string | null, start: string, end: string) {
   return useQuery({
     queryKey: ["refund-log", accountId, start, end],
     enabled: !!accountId,
-    queryFn: async (): Promise<{ rows: RefundRow[]; total: number; count: number; accountName: string | null }> => {
-      if (!accountId) return { rows: [], total: 0, count: 0, accountName: null };
+    queryFn: async (): Promise<{
+      rows: RefundRow[];
+      total: number;
+      count: number;
+      accountName: string | null;
+      mode: LedgerMode;
+    }> => {
+      if (!accountId)
+        return { rows: [], total: 0, count: 0, accountName: null, mode: "refund" };
 
       const { data: acc } = await supabase
         .from("accounts")
         .select("id, name")
         .eq("id", accountId)
         .maybeSingle();
+      const mode = detectMode(acc?.name);
+      const filterColumn =
+        mode === "rounding" ? "rounding_account_id" : "change_account_id";
+      const amountColumn = mode === "rounding" ? "rounding_amount" : "change_amount";
 
       const { data, error } = await supabase
         .from("income_expenses" as any)
         .select(
-          `id, voucher_date, code, invoice_id, payer_name, change_amount, total_amount, notes,
+          `id, voucher_date, code, invoice_id, payer_name, change_amount, rounding_amount, total_amount, notes,
            building:buildings!income_expenses_building_id_fkey ( name ),
            room:rooms!income_expenses_room_id_fkey ( name ),
            bed:beds!income_expenses_bed_id_fkey ( name ),
            invoice:invoices!income_expenses_invoice_id_fkey ( invoice_number )`
         )
-        .eq("change_account_id", accountId)
+        .eq(filterColumn, accountId)
         .eq("approval_status", "APPROVED")
         .is("deleted_at", null)
         .gte("voucher_date", start)
@@ -78,7 +97,7 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
 
       if (error) {
         console.error("useRefundLog error:", error);
-        return { rows: [], total: 0, count: 0, accountName: acc?.name ?? null };
+        return { rows: [], total: 0, count: 0, accountName: acc?.name ?? null, mode };
       }
 
       const rows: RefundRow[] = ((data ?? []) as any[]).map((v) => ({
@@ -91,12 +110,12 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
         room_name: v.room?.name ?? null,
         bed_name: v.bed?.name ?? null,
         payer_name: v.payer_name,
-        change_amount: Number(v.change_amount ?? 0),
+        change_amount: Number(v[amountColumn] ?? 0),
         total_amount: Number(v.total_amount ?? 0),
         notes: v.notes,
       }));
       const total = rows.reduce((s, r) => s + r.change_amount, 0);
-      return { rows, total, count: rows.length, accountName: acc?.name ?? null };
+      return { rows, total, count: rows.length, accountName: acc?.name ?? null, mode };
     },
   });
 }
@@ -136,15 +155,31 @@ const RefundLogPage = () => {
   }, [period, customStart, customEnd]);
 
   const { data, isLoading } = useRefundLog(accountId, start, end);
-  const accountName = data?.accountName ?? "Sổ tiền thối";
+  const mode: LedgerMode = data?.mode ?? "refund";
+  const isRounding = mode === "rounding";
+  const accountName = data?.accountName ?? (isRounding ? "Sổ làm tròn" : "Sổ tiền thối");
   const total = data?.total ?? 0;
   const count = data?.count ?? 0;
   const rows = data?.rows ?? [];
 
+  const labels = isRounding
+    ? {
+        subtitle: "Tài chính → Sổ quỹ → Làm tròn tiền thiếu",
+        totalCard: "Tổng làm tròn",
+        amountCol: "Tiền làm tròn",
+        emptyMsg: "Chưa có phiếu làm tròn nào trong kỳ này",
+      }
+    : {
+        subtitle: "Tài chính → Sổ quỹ → Tiền thối",
+        totalCard: "Tổng tiền thối",
+        amountCol: "Tiền thối",
+        emptyMsg: "Chưa có phiếu thối nào trong kỳ này",
+      };
+
   return (
     <MainLayout
       title={accountName}
-      subtitle="Tài chính → Sổ quỹ → Tiền thối"
+      subtitle={labels.subtitle}
       icon={RotateCcw}
     >
       <div className="space-y-4">
@@ -190,7 +225,7 @@ const RefundLogPage = () => {
           <Card className="p-4 flex items-center gap-3 border-l-4 border-l-orange-500">
             <RotateCcw className="h-8 w-8 text-orange-500" />
             <div>
-              <div className="text-xs uppercase text-muted-foreground">Tổng tiền thối</div>
+              <div className="text-xs uppercase text-muted-foreground">{labels.totalCard}</div>
               <div className="text-2xl font-bold text-orange-600">{formatVND(total)}</div>
             </div>
           </Card>
@@ -222,7 +257,7 @@ const RefundLogPage = () => {
         ) : isMobile ? (
           <div className="space-y-2">
             {rows.length === 0 && (
-              <Card className="p-6 text-center text-muted-foreground">Chưa có phiếu thối nào trong kỳ này</Card>
+              <Card className="p-6 text-center text-muted-foreground">{labels.emptyMsg}</Card>
             )}
             {rows.map((r) => (
               <Card key={r.id} className="p-3">
@@ -253,7 +288,7 @@ const RefundLogPage = () => {
                   <TableHead>Hóa đơn</TableHead>
                   <TableHead>Tòa nhà</TableHead>
                   <TableHead>Phòng / Giường</TableHead>
-                  <TableHead className="text-right">Tiền thối</TableHead>
+                  <TableHead className="text-right">{labels.amountCol}</TableHead>
                   <TableHead>Ghi chú</TableHead>
                 </TableRow>
               </TableHeader>
@@ -261,7 +296,7 @@ const RefundLogPage = () => {
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Chưa có phiếu thối nào trong kỳ này
+                      {labels.emptyMsg}
                     </TableCell>
                   </TableRow>
                 )}

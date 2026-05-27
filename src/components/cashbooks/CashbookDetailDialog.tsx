@@ -53,7 +53,9 @@ export function CashbookDetailDialog({
     .join(", ");
 
   const isRefundLogAccount =
-    typeof account.name === "string" && account.name.trim().endsWith("Thối");
+    typeof account.name === "string" &&
+    (account.name.trim().endsWith("Thối") ||
+      account.name.trim() === "Làm tròn tiền thiếu");
 
   const handleViewIncomeExpense = () => {
     onOpenChange(false);
