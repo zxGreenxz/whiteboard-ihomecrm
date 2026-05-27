@@ -18,6 +18,7 @@ import {
 } from '@/hooks/usePagination';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useAuth } from '@/hooks/useAuth';
 import { Eye, Ban, Receipt, Pencil, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -28,6 +29,9 @@ interface IncomeExpenseListProps {
   onView: (voucher: IncomeExpenseWithRelations) => void;
   onCancel: (id: string) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho người tạo phiếu
+   *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
+  onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (id: string) => void;
   pagination: PaginationState;
   totalCount: number;
@@ -43,6 +47,7 @@ const IncomeExpenseList = ({
   onView,
   onCancel,
   onEdit,
+  onQuickEdit,
   onApprove,
   pagination,
   totalCount,
@@ -52,6 +57,8 @@ const IncomeExpenseList = ({
     [pagination.page, pagination.pageSize, totalCount],
   );
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: authUser } = useAuth();
+  const currentUserId = authUser?.id ?? null;
 
   if (isLoading) {
     return (
@@ -92,6 +99,14 @@ const IncomeExpenseList = ({
           {vouchers.map((voucher) => {
             const isCancelled = voucher.approval_status === 'CANCELLED';
             const isUnapproved = voucher.approval_status === 'UNAPPROVED';
+            const isCreator =
+              !!currentUserId && voucher.user_id === currentUserId;
+            // Nháp: cây bút mở full form (giữ nguyên flow cũ).
+            // Đã ghi nhận/đã huỷ: super admin vẫn mở full form; creator
+            // (không phải admin) mở dialog sửa nhanh 3 field.
+            const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+            const showQuickEdit =
+              !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
 
             return (
               <TableRow
@@ -113,13 +128,26 @@ const IncomeExpenseList = ({
                     </Button>
 
                     {/* Sửa: nháp -> mọi nhân viên; đã ghi nhận/đã huỷ -> chỉ super admin */}
-                    {onEdit && (isUnapproved || isAdmin) && (
+                    {showFullEdit && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                        onClick={() => onEdit(voucher)}
+                        onClick={() => onEdit!(voucher)}
                         title={isUnapproved ? 'Sửa phiếu nháp' : 'Sửa phiếu (Super Admin)'}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Sửa nhanh (3 field) — cho creator của phiếu đã ghi nhận/đã huỷ */}
+                    {showQuickEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => onQuickEdit!(voucher)}
+                        title="Sửa sổ quỹ / hình ảnh / ghi chú"
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>

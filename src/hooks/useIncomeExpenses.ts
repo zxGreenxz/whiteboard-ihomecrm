@@ -665,6 +665,48 @@ export const useUpdateIncomeExpense = () => {
   });
 };
 
+// Sửa nhanh phiếu thu/chi: chỉ 3 field "non-financial" (sổ quỹ, đính kèm,
+// ghi chú). Dùng cho người tạo phiếu để fix lẹ mà không cần super admin
+// và không phải mở full form (nguy hiểm vì có thể đổi total_amount/items).
+// Backend RPC tự kiểm tra quyền (creator hoặc super admin).
+export interface QuickUpdateIncomeExpenseInput {
+  id: string;
+  account_id: string | null;
+  attachments: string[];
+  notes: string | null;
+}
+
+export const useQuickUpdateIncomeExpense = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: QuickUpdateIncomeExpenseInput) => {
+      const { error } = await (supabase as any).rpc(
+        "update_income_expense_quick",
+        {
+          p_id: input.id,
+          p_account_id: input.account_id,
+          p_attachments: input.attachments,
+          p_notes: input.notes,
+        }
+      );
+      if (error) {
+        toast.error(error.message || "Không thể cập nhật phiếu");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.success("Dữ liệu đã được CẬP NHẬT thành công");
+    },
+    onError: (error) => {
+      console.error("Error quick-updating income expense:", error);
+    },
+  });
+};
+
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
 export const useApproveVoucher = () => {

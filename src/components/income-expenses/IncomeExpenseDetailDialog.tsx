@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -27,6 +28,9 @@ interface Props {
   voucher: IncomeExpenseWithRelations | null;
   onCancel?: (id: string) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho creator của
+   *  phiếu đã ghi nhận/đã huỷ, không cần super admin. */
+  onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (id: string) => void;
 }
 
@@ -55,11 +59,14 @@ export function IncomeExpenseDetailDialog({
   voucher,
   onCancel,
   onEdit,
+  onQuickEdit,
   onApprove,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: authUser } = useAuth();
+  const currentUserId = authUser?.id ?? null;
 
   const attachments = voucher?.attachments ?? [];
   const lightboxUrl =
@@ -107,6 +114,11 @@ export function IncomeExpenseDetailDialog({
   const isCancelled = voucher.approval_status === "CANCELLED";
   const isUnapproved = voucher.approval_status === "UNAPPROVED";
   const isExpense = voucher.type === "EXPENSE";
+  const isCreator =
+    !!currentUserId && voucher.user_id === currentUserId;
+  const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+  const showQuickEdit =
+    !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
 
   return (
     <>
@@ -144,14 +156,28 @@ export function IncomeExpenseDetailDialog({
           <div className="flex items-center justify-between mt-1">
             <SectionTitle>Thông tin chung</SectionTitle>
             <div className="flex items-center gap-1.5">
-              {onEdit && (isUnapproved || isAdmin) && (
+              {showFullEdit && (
                 <Button
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
                   title={isUnapproved ? 'Sửa phiếu nháp' : 'Sửa phiếu (Super Admin)'}
                   onClick={() => {
-                    onEdit(voucher);
+                    onEdit!(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {showQuickEdit && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
+                  title="Sửa sổ quỹ / hình ảnh / ghi chú"
+                  onClick={() => {
+                    onQuickEdit!(voucher);
                     onOpenChange(false);
                   }}
                 >

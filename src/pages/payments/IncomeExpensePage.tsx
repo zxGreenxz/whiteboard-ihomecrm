@@ -31,6 +31,7 @@ import IncomeExpenseFAB from "@/components/income-expenses/IncomeExpenseFAB";
 import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpenseFilterChips";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
+import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseBatchList from "@/components/income-expenses/IncomeExpenseBatchList";
@@ -96,6 +97,8 @@ const IncomeExpensePage = () => {
   const [detailVoucher, setDetailVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [editingVoucher, setEditingVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  const [quickEditVoucher, setQuickEditVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
@@ -190,6 +193,17 @@ const IncomeExpensePage = () => {
 
   const handleEditFormClose = useCallback((open: boolean) => {
     if (!open) setEditingVoucher(null);
+  }, []);
+
+  const handleQuickEditVoucher = useCallback(
+    (voucher: IncomeExpenseWithRelations) => {
+      setQuickEditVoucher(voucher);
+    },
+    []
+  );
+
+  const handleQuickEditClose = useCallback((open: boolean) => {
+    if (!open) setQuickEditVoucher(null);
   }, []);
 
   const handleApproveVoucher = useCallback((id: string) => {
@@ -358,7 +372,13 @@ const IncomeExpensePage = () => {
           voucher={detailVoucher}
           onCancel={handleCancelVoucher}
           onEdit={handleEditVoucher}
+          onQuickEdit={handleQuickEditVoucher}
           onApprove={handleApproveVoucher}
+        />
+        <IncomeExpenseQuickEditDialog
+          open={!!quickEditVoucher}
+          onOpenChange={handleQuickEditClose}
+          voucher={quickEditVoucher}
         />
         <IncomeExpenseBatchDetailDialog
           open={!!detailBatch}
@@ -546,6 +566,7 @@ const IncomeExpensePage = () => {
             onView={handleView}
             onCancel={handleCancelVoucher}
             onEdit={handleEditVoucher}
+            onQuickEdit={handleQuickEditVoucher}
             onApprove={handleApproveVoucher}
             pagination={pagination}
             totalCount={totalCount}
