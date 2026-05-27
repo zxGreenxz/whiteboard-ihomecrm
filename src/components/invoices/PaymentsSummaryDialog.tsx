@@ -275,21 +275,6 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                       </div>
                     </div>
 
-                    {/* Nút xoá phiếu thanh toán */}
-                    <button
-                      type="button"
-                      title="Xoá phiếu thanh toán này (xoá luôn phiếu thu liên kết)"
-                      disabled={deletingId === p.id}
-                      onClick={() => setConfirmDeleteId(p.id)}
-                      className="shrink-0 grid place-items-center h-9 w-9 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {deletingId === p.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
-
                     {/* Chứng từ */}
                     {p.receipt_image_url ? (
                       <HoverCard openDelay={120} closeDelay={80}>
@@ -324,6 +309,21 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                     ) : (
                       <ReceiptUploadSlot paymentId={p.id} />
                     )}
+
+                    {/* Nút xoá phiếu thanh toán — đặt ngoài cùng bên phải */}
+                    <button
+                      type="button"
+                      title="Xoá phiếu thanh toán này (xoá luôn phiếu thu liên kết)"
+                      disabled={deletingId === p.id}
+                      onClick={() => setConfirmDeleteId(p.id)}
+                      className="shrink-0 grid place-items-center h-9 w-9 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {deletingId === p.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
                   </li>
                 );
               })}
