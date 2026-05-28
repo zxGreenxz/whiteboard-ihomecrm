@@ -89,6 +89,7 @@ import CategoriesPage from "./pages/settings/CategoriesPage";
 import TemplatesPage from "./pages/settings/TemplatesPage";
 import SignaturesPage from "./pages/settings/SignaturesPage";
 import StaffPage from "./pages/settings/StaffPage";
+import AdminUsersPage from "./pages/admin/UsersPage";
 
 // Categories Sub-Pages
 import BankAccountsPage from "./pages/settings/categories/BankAccountsPage";
@@ -273,6 +274,9 @@ const App = () => (
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
 
           {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
+
+          {/* === ADMIN — QUẢN LÝ TÀI KHOẢN === */}
+          <Route path="/admin/users" element={<ProtectedRoute><AdminUsersPage /></ProtectedRoute>} />
 
           {/* === CÀI ĐẶT HỆ THỐNG === */}
           <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />
