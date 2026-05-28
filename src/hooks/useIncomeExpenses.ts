@@ -25,6 +25,8 @@ export interface IncomeExpenseFilters {
   // Nếu cả 2 cùng có → union (phiếu thu khớp HOẶC phiếu chi khớp).
   income_type_id?: string | null;
   expense_type_id?: string | null;
+  // Lọc theo người tạo phiếu = user_id của profile (owner hoặc staff).
+  creator_id?: string | null;
 }
 
 
@@ -165,6 +167,7 @@ export const useIncomeExpenses = (
       filters.approval_status,
       filters.income_type_id,
       filters.expense_type_id,
+      filters.creator_id,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -240,6 +243,9 @@ export const useIncomeExpenses = (
         query = query.in("approval_status", ["APPROVED", "UNAPPROVED"]);
       } else if (filters.approval_status) {
         query = query.eq("approval_status", filters.approval_status);
+      }
+      if (filters.creator_id) {
+        query = query.eq("user_id", filters.creator_id);
       }
 
       // When searching, we need to fetch all filtered records and search client-side
@@ -388,6 +394,7 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       filters.approval_status,
       filters.income_type_id,
       filters.expense_type_id,
+      filters.creator_id,
     ],
     queryFn: async (): Promise<{
       totalIncome: number;
@@ -447,6 +454,9 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
         query = query.in("approval_status", ["APPROVED", "UNAPPROVED"]);
       } else if (filters.approval_status) {
         query = query.eq("approval_status", filters.approval_status);
+      }
+      if (filters.creator_id) {
+        query = query.eq("user_id", filters.creator_id);
       }
 
       const { data, error } = await query;
@@ -1035,6 +1045,7 @@ export const useIncomeExpenseBatches = (
       filters.approval_status,
       filters.income_type_id,
       filters.expense_type_id,
+      filters.creator_id,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -1120,6 +1131,7 @@ export const useIncomeExpenseBatches = (
       );
       if (filters.start_date) voucherQuery = voucherQuery.gte("voucher_date", filters.start_date);
       if (filters.end_date) voucherQuery = voucherQuery.lte("voucher_date", filters.end_date);
+      if (filters.creator_id) voucherQuery = voucherQuery.eq("user_id", filters.creator_id);
 
       const { data: vouchers, error: voucherError } = await voucherQuery;
       if (voucherError) {

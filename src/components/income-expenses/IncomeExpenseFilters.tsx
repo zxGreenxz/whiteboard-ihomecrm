@@ -11,6 +11,7 @@ import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
+import { useStaffUsers } from "@/hooks/useStaffUsers";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
 interface IncomeExpenseFiltersProps {
@@ -28,6 +29,7 @@ export function IncomeExpenseFiltersBar({
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
   const { data: expenseTypes } = useIncomeExpenseTypes("expense");
+  const { data: staffUsers } = useStaffUsers();
 
   // Filter buildings by selected area
   const filteredBuildings = filters.area_id
@@ -81,6 +83,10 @@ export function IncomeExpenseFiltersBar({
 
   const handleExpenseTypeChange = (value: string) => {
     handleChange({ expense_type_id: value === "ALL" ? null : value });
+  };
+
+  const handleCreatorChange = (value: string) => {
+    handleChange({ creator_id: value === "ALL" ? null : value });
   };
 
   const handleApprovalChange = (value: string) => {
@@ -228,6 +234,24 @@ export function IncomeExpenseFiltersBar({
           <SelectItem value="ALL">Tất cả loại</SelectItem>
           <SelectItem value="INCOME">Phiếu thu</SelectItem>
           <SelectItem value="EXPENSE">Phiếu chi</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {/* Người tạo phiếu */}
+      <Select
+        value={filters.creator_id ?? "ALL"}
+        onValueChange={handleCreatorChange}
+      >
+        <SelectTrigger className="w-[150px] h-9 text-sm">
+          <SelectValue placeholder="Người tạo" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Người tạo</SelectItem>
+          {(staffUsers || []).map((u) => (
+            <SelectItem key={u.id} value={u.id}>
+              {u.full_name || u.email || "—"}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 

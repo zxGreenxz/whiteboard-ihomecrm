@@ -4,6 +4,7 @@ import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
+import { useStaffUsers } from "@/hooks/useStaffUsers";
 import { format } from "date-fns";
 
 interface Props {
@@ -28,6 +29,7 @@ export function IncomeExpenseFilterChips({
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
   const { data: expenseTypes } = useIncomeExpenseTypes("expense");
+  const { data: staffUsers } = useStaffUsers();
 
   const chips: Chip[] = [];
 
@@ -121,6 +123,16 @@ export function IncomeExpenseFilterChips({
         key: "account_id",
         label: `TK: ${acc.name}`,
         patch: { account_id: null },
+      });
+  }
+
+  if (filters.creator_id && staffUsers) {
+    const u = staffUsers.find((x) => x.id === filters.creator_id);
+    if (u)
+      chips.push({
+        key: "creator_id",
+        label: `Người tạo: ${u.full_name || u.email || "—"}`,
+        patch: { creator_id: null },
       });
   }
 
