@@ -32,6 +32,7 @@ import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpense
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
+import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseBatchList from "@/components/income-expenses/IncomeExpenseBatchList";
@@ -100,6 +101,8 @@ const IncomeExpensePage = () => {
   const [editingVoucher, setEditingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [quickEditVoucher, setQuickEditVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  const [verifyVoucher, setVerifyVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
@@ -205,6 +208,17 @@ const IncomeExpensePage = () => {
 
   const handleQuickEditClose = useCallback((open: boolean) => {
     if (!open) setQuickEditVoucher(null);
+  }, []);
+
+  const handleVerifyVoucher = useCallback(
+    (voucher: IncomeExpenseWithRelations) => {
+      setVerifyVoucher(voucher);
+    },
+    []
+  );
+
+  const handleVerifyClose = useCallback((open: boolean) => {
+    if (!open) setVerifyVoucher(null);
   }, []);
 
   const handleApproveVoucher = useCallback((id: string) => {
@@ -569,6 +583,7 @@ const IncomeExpensePage = () => {
             onEdit={handleEditVoucher}
             onQuickEdit={handleQuickEditVoucher}
             onApprove={handleApproveVoucher}
+            onVerify={handleVerifyVoucher}
             pagination={pagination}
             totalCount={totalCount}
           />
@@ -616,6 +631,11 @@ const IncomeExpensePage = () => {
         open={!!quickEditVoucher}
         onOpenChange={handleQuickEditClose}
         voucher={quickEditVoucher}
+      />
+      <IncomeExpenseVerifyDialog
+        open={!!verifyVoucher}
+        onOpenChange={handleVerifyClose}
+        voucher={verifyVoucher}
       />
       <IncomeExpenseBatchDetailDialog
         open={!!detailBatch}

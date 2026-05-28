@@ -76,6 +76,10 @@ export interface IncomeExpenseWithRelations {
   repeat_remaining: number;
   repeat_next_date: string | null;
   repeat_parent_id: string | null;
+  verified_at: string | null;
+  verified_by: string | null;
+  verified_by_name: string | null;
+  verified_note: string | null;
   items: IncomeExpenseItem[];
   created_at: string;
   updated_at: string;
@@ -344,6 +348,10 @@ export const useIncomeExpenses = (
           repeat_remaining: Number(v.repeat_remaining ?? 0),
           repeat_next_date: v.repeat_next_date ?? null,
           repeat_parent_id: v.repeat_parent_id ?? null,
+          verified_at: v.verified_at ?? null,
+          verified_by: v.verified_by ?? null,
+          verified_by_name: v.verified_by_name ?? null,
+          verified_note: v.verified_note ?? null,
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
@@ -788,6 +796,32 @@ export const useCancelIncomeExpense = () => {
   });
 };
 
+// Đánh dấu "đã kiểm" / bỏ kiểm phiếu thu/chi. Toggle theo trạng thái hiện tại
+// (RPC tự xử lý logic + check quyền). Note rỗng → lưu NULL.
+export const useVerifyIncomeExpense = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; note: string | null }) => {
+      const { error } = await (supabase as any).rpc("verify_income_expense", {
+        p_id: input.id,
+        p_note: input.note,
+      });
+      if (error) {
+        toast.error(error.message || "Không thể đánh dấu đã kiểm");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      toast.success("Đã cập nhật trạng thái kiểm");
+    },
+    onError: (error) => {
+      console.error("Error verifying income expense:", error);
+    },
+  });
+};
+
 // Import phiếu thu/chi hàng loạt từ Excel
 export const useImportIncomeExpenses = () => {
   const queryClient = useQueryClient();
@@ -1209,6 +1243,10 @@ export const useIncomeExpenseBatches = (
           repeat_remaining: Number(v.repeat_remaining ?? 0),
           repeat_next_date: v.repeat_next_date ?? null,
           repeat_parent_id: v.repeat_parent_id ?? null,
+          verified_at: v.verified_at ?? null,
+          verified_by: v.verified_by ?? null,
+          verified_by_name: v.verified_by_name ?? null,
+          verified_note: v.verified_note ?? null,
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,

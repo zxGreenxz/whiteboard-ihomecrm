@@ -19,7 +19,7 @@ import {
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
-import { Eye, Ban, Receipt, Pencil, CheckCircle2 } from 'lucide-react';
+import { Eye, Ban, Receipt, Pencil, CheckCircle2, BadgeCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -33,6 +33,7 @@ interface IncomeExpenseListProps {
    *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (id: string) => void;
+  onVerify?: (voucher: IncomeExpenseWithRelations) => void;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -49,6 +50,7 @@ const IncomeExpenseList = ({
   onEdit,
   onQuickEdit,
   onApprove,
+  onVerify,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -101,6 +103,7 @@ const IncomeExpenseList = ({
             const isUnapproved = voucher.approval_status === 'UNAPPROVED';
             const isCreator =
               !!currentUserId && voucher.user_id === currentUserId;
+            const isVerified = !!voucher.verified_at;
             // Nháp: cây bút mở full form (giữ nguyên flow cũ).
             // Đã ghi nhận/đã huỷ: super admin vẫn mở full form; creator
             // (không phải admin) mở dialog sửa nhanh 3 field.
@@ -108,11 +111,15 @@ const IncomeExpenseList = ({
             const showQuickEdit =
               !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
 
+            const rowClass = [
+              isCancelled ? 'opacity-60' : '',
+              isVerified && !isCancelled ? 'bg-emerald-50/70 hover:bg-emerald-50' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+
             return (
-              <TableRow
-                key={voucher.id}
-                className={isCancelled ? 'opacity-60' : ''}
-              >
+              <TableRow key={voucher.id} className={rowClass}>
                 {/* Thao tác */}
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -126,6 +133,27 @@ const IncomeExpenseList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+
+                    {/* Đánh dấu đã kiểm */}
+                    {onVerify && !isCancelled && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={
+                          isVerified
+                            ? 'h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+                            : 'h-8 w-8 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50'
+                        }
+                        onClick={() => onVerify(voucher)}
+                        title={
+                          isVerified
+                            ? `Đã kiểm bởi ${voucher.verified_by_name ?? ''}${voucher.verified_note ? ' — ' + voucher.verified_note : ''}`
+                            : 'Đánh dấu đã kiểm tra'
+                        }
+                      >
+                        <BadgeCheck className="h-4 w-4" />
+                      </Button>
+                    )}
 
                     {/* Sửa: nháp -> mọi nhân viên; đã ghi nhận/đã huỷ -> chỉ super admin */}
                     {showFullEdit && (
@@ -177,6 +205,21 @@ const IncomeExpenseList = ({
                       >
                         <Ban className="h-4 w-4" />
                       </Button>
+                    )}
+
+                    {/* Tên người kiểm — hiện ở cuối ô thao tác khi đã kiểm */}
+                    {isVerified && voucher.verified_by_name && (
+                      <span
+                        className="ml-1 inline-flex items-center gap-1 text-xs text-emerald-700 whitespace-nowrap"
+                        title={
+                          voucher.verified_note
+                            ? `Ghi chú: ${voucher.verified_note}`
+                            : 'Đã kiểm'
+                        }
+                      >
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        {voucher.verified_by_name}
+                      </span>
                     )}
                   </div>
                 </TableCell>
