@@ -2336,6 +2336,7 @@ export type Database = {
           description: string | null
           id: string
           is_default: boolean | null
+          is_deposit: boolean
           name: string
           type: string
           updated_at: string
@@ -2347,6 +2348,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_default?: boolean | null
+          is_deposit?: boolean
           name: string
           type: string
           updated_at?: string
@@ -2358,6 +2360,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_default?: boolean | null
+          is_deposit?: boolean
           name?: string
           type?: string
           updated_at?: string
@@ -2403,6 +2406,10 @@ export type Database = {
           type: string
           updated_at: string
           user_id: string
+          verified_at: string | null
+          verified_by: string | null
+          verified_by_name: string | null
+          verified_note: string | null
           voucher_date: string
         }
         Insert: {
@@ -2442,6 +2449,10 @@ export type Database = {
           type: string
           updated_at?: string
           user_id: string
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_by_name?: string | null
+          verified_note?: string | null
           voucher_date: string
         }
         Update: {
@@ -2481,6 +2492,10 @@ export type Database = {
           type?: string
           updated_at?: string
           user_id?: string
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_by_name?: string | null
+          verified_note?: string | null
           voucher_date?: string
         }
         Relationships: [
@@ -3645,6 +3660,324 @@ export type Database = {
           },
         ]
       }
+      material_adjustment_items: {
+        Row: {
+          adjustment_id: string
+          id: string
+          material_id: string
+          quantity: number
+        }
+        Insert: {
+          adjustment_id: string
+          id?: string
+          material_id: string
+          quantity: number
+        }
+        Update: {
+          adjustment_id?: string
+          id?: string
+          material_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_adjustment_items_adjustment_id_fkey"
+            columns: ["adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "material_adjustments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_adjustment_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_adjustments: {
+        Row: {
+          adjustment_date: string
+          code: string
+          created_at: string
+          id: string
+          reason: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          adjustment_date?: string
+          code: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          adjustment_date?: string
+          code?: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      material_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      material_purchase_items: {
+        Row: {
+          id: string
+          line_total: number | null
+          material_id: string
+          purchase_id: string
+          quantity: number
+          unit_price: number
+        }
+        Insert: {
+          id?: string
+          line_total?: number | null
+          material_id: string
+          purchase_id: string
+          quantity: number
+          unit_price: number
+        }
+        Update: {
+          id?: string
+          line_total?: number | null
+          material_id?: string
+          purchase_id?: string
+          quantity?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_purchase_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_purchase_items_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "material_purchases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_purchases: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          notes: string | null
+          purchase_date: string
+          supplier_id: string | null
+          total: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          purchase_date?: string
+          supplier_id?: string | null
+          total?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          purchase_date?: string
+          supplier_id?: string | null
+          total?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_purchases_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_usage_items: {
+        Row: {
+          id: string
+          material_id: string
+          quantity: number
+          unit_cost_at_usage: number
+          usage_id: string
+        }
+        Insert: {
+          id?: string
+          material_id: string
+          quantity: number
+          unit_cost_at_usage?: number
+          usage_id: string
+        }
+        Update: {
+          id?: string
+          material_id?: string
+          quantity?: number
+          unit_cost_at_usage?: number
+          usage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_usage_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_usage_items_usage_id_fkey"
+            columns: ["usage_id"]
+            isOneToOne: false
+            referencedRelation: "material_usages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_usages: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          job_id: string | null
+          notes: string | null
+          updated_at: string
+          usage_date: string
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          updated_at?: string
+          usage_date?: string
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          updated_at?: string
+          usage_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_usages_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      materials: {
+        Row: {
+          avg_unit_cost: number
+          category_id: string | null
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          name: string
+          on_hand: number
+          reorder_level: number
+          unit: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_unit_cost?: number
+          category_id?: string | null
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name: string
+          on_hand?: number
+          reorder_level?: number
+          unit?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avg_unit_cost?: number
+          category_id?: string | null
+          code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          on_hand?: number
+          reorder_level?: number
+          unit?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materials_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "material_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meter_readings: {
         Row: {
           approved_at: string | null
@@ -4597,6 +4930,7 @@ export type Database = {
           building_id: string | null
           created_at: string
           id: string
+          permissions: Json | null
           role_id: string
           staff_id: string
           updated_at: string
@@ -4606,6 +4940,7 @@ export type Database = {
           building_id?: string | null
           created_at?: string
           id?: string
+          permissions?: Json | null
           role_id: string
           staff_id: string
           updated_at?: string
@@ -4615,6 +4950,7 @@ export type Database = {
           building_id?: string | null
           created_at?: string
           id?: string
+          permissions?: Json | null
           role_id?: string
           staff_id?: string
           updated_at?: string
@@ -5535,6 +5871,21 @@ export type Database = {
           role: string
         }[]
       }
+      get_invoice_statistics: {
+        Args: {
+          p_area_id?: string
+          p_bed_id?: string
+          p_billing_month?: string
+          p_building_id?: string
+          p_end_date?: string
+          p_payment_status?: string
+          p_room_id?: string
+          p_start_date?: string
+          p_status?: Database["public"]["Enums"]["invoice_status"]
+          p_user_id: string
+        }
+        Returns: Json
+      }
       get_invoice_statistics_v2: {
         Args: {
           p_area_id?: string
@@ -5607,6 +5958,7 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: Json
       }
+      ie_has_deposit_item: { Args: { p_ie_id: string }; Returns: boolean }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_account_shared_with_me: {
         Args: { p_account_id: string }
@@ -5615,8 +5967,16 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      recompute_contract_deposit_paid: {
+        Args: { p_contract_id: string }
+        Returns: undefined
+      }
       recompute_invoice_for_id: {
         Args: { p_invoice_id: string }
+        Returns: undefined
+      }
+      recompute_material_stock: {
+        Args: { _material_id: string }
         Returns: undefined
       }
       record_invoice_payment_v2: {
@@ -5754,6 +6114,10 @@ export type Database = {
           type: string
           updated_at: string
           user_id: string
+          verified_at: string | null
+          verified_by: string | null
+          verified_by_name: string | null
+          verified_note: string | null
           voucher_date: string
         }
         SetofOptions: {
@@ -5762,6 +6126,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      verify_income_expense: {
+        Args: { p_id: string; p_note?: string }
+        Returns: undefined
       }
     }
     Enums: {
