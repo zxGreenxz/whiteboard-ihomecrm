@@ -265,6 +265,39 @@ Có thể restore bất kỳ bảng nào về trạng thái trước refactor n�
 
 ---
 
+## 4.A — Đợt 2 (Batch A-F) — hoàn tất 2026-05-28
+
+Sau khi đợt refactor chính (Phase 0-7) ổn định, đợt 2 đã thực hiện 7/10 đề
+xuất "không khẩn cấp" còn lại. Tóm tắt 6 batch:
+
+| Batch | Migration / Code | Mô tả | Status |
+|---|---|---|---|
+| A | `20260528000001_rbac_batch_a_config_tables.sql` | 80 policy *_rbac + 16 trigger cho 17 bảng config (suppliers, expenses, ct01, batches, templates, types, settings, history, quotas, sla, flows) — RBAC giờ cover **63 bảng / 252 policy** | ✅ |
+| B | 10 file frontend (`*.tsx`, `*.ts`) | Gỡ 17 filter `.eq('user_id', ...)` trùng với RLS trên data tables; giữ filter cá nhân (settings, user_subscriptions, code generators) | ✅ |
+| C | `20260528000002_rbac_batch_c_rpc_v2.sql` + 3 hook | 4 RPC v2 mới: `record_invoice_payment_v2`, `generate_invoices_for_building_v2`, `generate_recurring_vouchers_v2`, `get_meters_without_readings_v2`. Frontend đã switch sang v2 | ✅ |
+| D | `supabase/functions/admin-create-user` + `src/pages/admin/UsersPage.tsx` + `src/hooks/useAdminUsers.ts` + route | Edge function tạo user qua Supabase Admin API (verify super_admin); trang `/admin/users` cho super_admin liệt kê + tạo user mới | ✅ |
+| E | (defer) | Rename `user_id` → `created_by` HOÃN — giá trị cosmetic không bù được chi phí 80+ file frontend. COMMENT annotation từ Phase 6 đã đủ | ⏸ |
+| F | `20260528000003_rbac_batch_f_drop_legacy.sql` + `20260528000004_rbac_batch_f_drop_rpc_v1.sql` | Drop **344 legacy policy** (auth.uid()=user_id, staff_can-based, "Users can manage own"); drop `get_invoice_statistics(p_user_id, …)` v1 và `record_invoice_payment(p_user_id, …)` v1 | ✅ |
+
+### Số liệu sau đợt 2
+
+| Hạng mục | Trước đợt 2 | Sau đợt 2 |
+|---|---|---|
+| RLS policy `*_rbac` | 172 | **252** (+80, qua 63 bảng) |
+| Legacy policy còn lại trên RBAC-scope tables | ~344 | **0** |
+| Trigger `*_set_user_id_audit` | 35 | **51** |
+| RPC v2 | 1 | **5** |
+| Edge function | 2 | **3** |
+| Trang admin | 0 | **1** (/admin/users) |
+| Reconciliation 29 bảng | Khớp baseline | **Vẫn khớp 100%** |
+| Test production https://ptcrm.vercel.app | Pass | **Pass** (TM 532.879K, 268 contracts, 4 admin users) |
+
+### Còn lại không làm
+
+- **E. Hard rename user_id → created_by**: hoãn (xem 5.1 cập nhật)
+- **5.4 Sổ quỹ (accounts + shared_users)**: giữ nguyên — cần thảo luận với người dùng cuối về việc bỏ shared_users hay không
+- **5.10 Backfill 9 invoice "lệch owner"**: không cần — RBAC mới đã xử lý đúng
+
 ## 5. Đề xuất còn lại (không khẩn cấp)
 
 ### 5.1 Rename `user_id` → `created_by` (HOÃN — đã xem xét)
