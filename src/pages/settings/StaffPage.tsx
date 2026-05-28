@@ -1,13 +1,32 @@
-import { useState } from "react";
+// Trang Phân quyền nhân viên — refactor 2026-05-28
+//
+// Cấu trúc mới (per docs/DATABASE_SCHEMA.md mục 10):
+//   Tab "Mẫu phân quyền" — 4 system templates (Super Admin / Quản Lý Tòa /
+//       Partner / Viewer) + custom templates user tự tạo. Mỗi template chỉ
+//       là cài đặt nhanh — Apply để copy vào staff_assignments.permissions.
+//   Tab "Nhân viên" — list staff card, mỗi card có badge mẫu + phạm vi toà +
+//       diff vs mẫu. Edit dialog có 3 bước: ① quick-apply mẫu, ② phạm vi
+//       toà, ③ tinh chỉnh từng quyền qua <PermissionMatrix>.
+
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  UserCog,
-  Plus,
+  AlertTriangle,
+  Building2,
+  CheckCircle2,
+  Eye,
+  Handshake,
+  KeyRound,
   Pencil,
-  Trash2,
-  Shield,
-  Users,
+  Plus,
   Search,
+  Shield,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UserCog,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,16 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -36,12 +46,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +63,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+
 import {
   useRoles,
   useCreateRole,
@@ -63,465 +78,369 @@ import {
   useProvisionStaff,
   useUpdateStaffMember,
   useRemoveStaffMember,
-  type ProvisionStaffInput,
+  useApplyTemplate,
+  useUpdateStaffPermissions,
 } from "@/hooks/useStaffAssignments";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAreas } from "@/hooks/useAreas";
+import { PermissionMatrix } from "@/components/staff/PermissionMatrix";
+import {
+  ALL_MODULES,
+  buildEmptyPermissions,
+  countTrueActions,
+  diffPermissions,
+  isSuperAdminPerms,
+  parsePermissions,
+  type PermissionsMap,
+} from "@/lib/permissions";
 import type { Json } from "@/integrations/supabase/types";
 
-// Permission modules — full Resident parity (35 nhóm)
-const PERMISSION_MODULES = [
-  { key: "dashboard",        label: "Bảng tin" },
-  { key: "notifications",    label: "Thông báo" },
-  { key: "messages",         label: "Nhắn tin" },
-  { key: "tasks",            label: "Công việc" },
-  { key: "buildings",        label: "Căn hộ (toà nhà)" },
-  { key: "rooms",            label: "Phòng" },
-  { key: "services",         label: "Phí dịch vụ" },
-  { key: "service_quotas",   label: "Định mức" },
-  { key: "meters",           label: "Công tơ" },
-  { key: "meter_readings",   label: "Chốt công tơ" },
-  { key: "deposits",         label: "Cọc giữ chỗ" },
-  { key: "contracts",        label: "Hợp đồng" },
-  { key: "customers",        label: "Cư dân" },
-  { key: "vehicles",         label: "Phương tiện" },
-  { key: "cashbooks",        label: "Sổ quỹ" },
-  { key: "invoices",         label: "Hoá đơn" },
-  { key: "income_expenses",  label: "Thu chi" },
-  { key: "excess_amounts",   label: "Tiền thừa" },
-  { key: "suppliers",        label: "Nhà cung cấp" },
-  { key: "warehouses",       label: "Kho" },
-  { key: "asset_types",      label: "Loại tài sản" },
-  { key: "assets",           label: "Tài sản" },
-  { key: "reports_real_estate", label: "Báo cáo BĐS" },
-  { key: "reports_finance",  label: "Báo cáo tài chính" },
-  { key: "reports_tasks",    label: "Báo cáo công việc" },
-  { key: "roles",            label: "Loại tài khoản" },
-  { key: "users",            label: "Người dùng" },
-  { key: "subscription",     label: "Gói cước" },
-  { key: "settings",         label: "Cài đặt" },
-  { key: "areas",            label: "Khu vực" },
-  { key: "hotline",          label: "Cài đặt Hotline" },
-  { key: "iot_devices",      label: "Thiết bị IOT" },
-  { key: "building_layout",  label: "Sơ đồ toà nhà" },
-  { key: "leads",            label: "Khách hẹn" },
-  { key: "auto_debt",        label: "Gạch nợ tự động" },
-  { key: "templates",        label: "Biểu mẫu" },
-  { key: "zalo_oa",          label: "Zalo OA" },
-  { key: "task_types",       label: "Loại công việc" },
-  { key: "categories",       label: "Danh mục khác" },
-  { key: "e_invoices",       label: "Hoá đơn điện tử" },
-] as const;
+// =============================================================
+// Template metadata — icon + màu cho 4 system templates
+// =============================================================
 
-// 2 nhóm quyền mặc định: "Xem" (view) và "Quản lý" (gộp create + edit + delete).
-// Vẫn lưu thành 4 trường trong roles.permissions để DB RLS dùng staff_can()
-// kiểm tra từng action — chỉ UI gộp lại cho gọn.
-const PERMISSION_BUCKETS = [
-  { key: "view",   label: "Xem",      writes: ["view"] as const },
-  { key: "manage", label: "Quản lý",  writes: ["create", "edit", "delete"] as const },
-] as const;
+interface TemplateMeta {
+  icon: React.ComponentType<{ className?: string }>;
+  /** Tailwind classes cho border-l + bg accent */
+  accent: string;
+  /** Class cho icon container */
+  iconBg: string;
+}
 
-// Module "invoices" tách quyền chi tiết hơn (5 cột): Xem / Tạo / Sửa / Xóa /
-// Thanh Toán. "record_payment" chỉ gate UI nút Thu tiền — DB RLS vẫn check
-// invoices.create/edit/delete cho các action chuẩn.
-const INVOICE_PERMISSION_BUCKETS = [
-  { key: "view",           label: "Xem",        writes: ["view"] as const },
-  { key: "create",         label: "Tạo",        writes: ["create"] as const },
-  { key: "edit",           label: "Sửa",        writes: ["edit"] as const },
-  { key: "delete",         label: "Xóa",        writes: ["delete"] as const },
-  { key: "record_payment", label: "Thanh Toán", writes: ["record_payment"] as const },
-] as const;
-
-const bucketsForModule = (moduleKey: string) =>
-  moduleKey === "invoices" ? INVOICE_PERMISSION_BUCKETS : PERMISSION_BUCKETS;
-
-type PermissionsMap = Record<string, Record<string, boolean>>;
-
-const isBucketChecked = (
-  perms: PermissionsMap,
-  moduleKey: string,
-  bucketKey: string,
-): boolean => {
-  const bucket = bucketsForModule(moduleKey).find((b) => b.key === bucketKey);
-  if (!bucket) return false;
-  const mp = perms[moduleKey] || {};
-  return bucket.writes.every((w) => !!mp[w]);
+const TEMPLATE_META: Record<string, TemplateMeta> = {
+  "Super Admin": { icon: ShieldCheck, accent: "border-l-rose-500",   iconBg: "bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400" },
+  "Quản Lý Tòa": { icon: Building2,   accent: "border-l-blue-500",   iconBg: "bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400" },
+  "Partner":     { icon: Handshake,   accent: "border-l-emerald-500", iconBg: "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400" },
+  "Viewer":      { icon: Eye,          accent: "border-l-slate-400",  iconBg: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
 };
 
-function parsePermissions(permissions: Json): PermissionsMap {
-  if (typeof permissions === "object" && permissions !== null && !Array.isArray(permissions)) {
-    return permissions as unknown as PermissionsMap;
-  }
-  return {};
-}
+const DEFAULT_META: TemplateMeta = { icon: Shield, accent: "border-l-purple-500", iconBg: "bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400" };
 
-function buildDefaultPermissions(): PermissionsMap {
-  const perms: PermissionsMap = {};
-  for (const mod of PERMISSION_MODULES) {
-    if (mod.key === "invoices") {
-      perms[mod.key] = {
-        view: false,
-        create: false,
-        edit: false,
-        delete: false,
-        record_payment: false,
-      };
-    } else {
-      perms[mod.key] = { view: false, create: false, edit: false, delete: false };
-    }
-  }
-  return perms;
-}
+const metaForRole = (name: string): TemplateMeta => TEMPLATE_META[name] ?? DEFAULT_META;
 
-// ==================== ROLES TAB ====================
+// =============================================================
+// Tab 1 — Mẫu phân quyền (Templates)
+// =============================================================
 
-function RolesTab() {
+function TemplatesTab() {
   const { data: roles, isLoading } = useRoles();
+  const { data: assignments } = useStaffAssignments();
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
   const deleteRole = useDeleteRole();
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [editingRole, setEditingRole] = useState<{
-    id?: string;
-    name: string;
-    description: string;
-    permissions: PermissionsMap;
-  } | null>(null);
-  const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
+  const [viewSheet, setViewSheet] = useState<{ role: any; editable: boolean } | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ name: string; description: string; permissions: PermissionsMap } | null>(null);
 
-  const filteredRoles = (roles || []).filter((r) =>
-    !searchTerm || r.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Đếm số staff đang dùng mỗi role
+  const staffCountByRole = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const a of assignments || []) {
+      if (!map.has(a.role_id)) map.set(a.role_id, new Set());
+      map.get(a.role_id)!.add(a.staff_id);
+    }
+    return map;
+  }, [assignments]);
 
-  const openCreateDialog = () => {
-    setEditingRole({
-      name: "",
-      description: "",
-      permissions: buildDefaultPermissions(),
-    });
-    setDialogOpen(true);
+  const systemRoles = (roles || []).filter((r: any) => r.is_system);
+  const customRoles = (roles || []).filter((r: any) => !r.is_system);
+
+  const openView = (role: any) => setViewSheet({ role, editable: !role.is_system });
+  const openCreate = () => {
+    setDraft({ name: "", description: "", permissions: buildEmptyPermissions() });
+    setCreateDialogOpen(true);
   };
-
-  const openEditDialog = (role: (typeof roles extends (infer T)[] | undefined ? T : never)) => {
-    if (!role) return;
-    setEditingRole({
-      id: role.id,
-      name: role.name,
+  const openEdit = (role: any) => {
+    setDraft({ name: role.name, description: role.description || "", permissions: parsePermissions(role.permissions) });
+    setViewSheet({ role, editable: true });
+  };
+  const openCloneAsNew = (role: any) => {
+    setDraft({
+      name: `${role.name} (Bản sao)`,
       description: role.description || "",
       permissions: parsePermissions(role.permissions),
     });
-    setDialogOpen(true);
+    setCreateDialogOpen(true);
   };
 
-  const handleSaveRole = async () => {
-    if (!editingRole || !editingRole.name.trim()) return;
-
+  const handleSaveDraft = async (id?: string) => {
+    if (!draft || !draft.name.trim()) {
+      toast.error("Tên mẫu không được để trống");
+      return;
+    }
     const payload = {
-      name: editingRole.name.trim(),
-      description: editingRole.description.trim() || null,
-      permissions: editingRole.permissions as unknown as Json,
+      name: draft.name.trim(),
+      description: draft.description.trim() || null,
+      permissions: draft.permissions as unknown as Json,
     };
-
-    if (editingRole.id) {
-      await updateRole.mutateAsync({ id: editingRole.id, updates: payload });
+    if (id) {
+      await updateRole.mutateAsync({ id, updates: payload });
     } else {
       await createRole.mutateAsync(payload);
     }
-    setDialogOpen(false);
-    setEditingRole(null);
+    setCreateDialogOpen(false);
+    setDraft(null);
   };
 
-  const handleDeleteRole = async () => {
-    if (!deletingRoleId) return;
-    await deleteRole.mutateAsync(deletingRoleId);
-    setDeleteDialogOpen(false);
-    setDeletingRoleId(null);
-  };
-
-  const toggleBucket = (
-    moduleKey: string,
-    bucketKey: string,
-    next: boolean,
-  ) => {
-    if (!editingRole) return;
-    const bucket = bucketsForModule(moduleKey).find((b) => b.key === bucketKey);
-    if (!bucket) return;
-    const mp = { ...(editingRole.permissions[moduleKey] || {}) };
-    for (const w of bucket.writes) mp[w] = next;
-    setEditingRole({
-      ...editingRole,
-      permissions: { ...editingRole.permissions, [moduleKey]: mp },
-    });
-  };
-
-  const toggleAllModule = (moduleKey: string, checked: boolean) => {
-    if (!editingRole) return;
-    const base = {
-      view: checked,
-      create: checked,
-      edit: checked,
-      delete: checked,
-    } as Record<string, boolean>;
-    if (moduleKey === "invoices") base.record_payment = checked;
-    setEditingRole({
-      ...editingRole,
-      permissions: {
-        ...editingRole.permissions,
-        [moduleKey]: base,
-      },
-    });
-  };
-
-  const isModuleAllChecked = (moduleKey: string) => {
-    if (!editingRole) return false;
-    return bucketsForModule(moduleKey).every((b) =>
-      isBucketChecked(editingRole.permissions, moduleKey, b.key),
-    );
-  };
-
-  const countPermissions = (permissions: Json) => {
-    const perms = parsePermissions(permissions);
-    let count = 0;
-    for (const mod of Object.values(perms)) {
-      for (const val of Object.values(mod)) {
-        if (val) count++;
-      }
-    }
-    return count;
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    await deleteRole.mutateAsync(deleteId);
+    setDeleteId(null);
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <p className="text-muted-foreground">Đang tải...</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {[1,2,3,4].map((i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Tìm kiếm vai trò..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+    <div className="space-y-6">
+      {/* System templates 4 cards */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold">Mẫu hệ thống</h3>
+            <p className="text-xs text-muted-foreground">4 mẫu chuẩn — không sửa được, nhân bản để tạo mẫu riêng.</p>
+          </div>
         </div>
-        <Button onClick={openCreateDialog} className="bg-green-600 hover:bg-green-700">
-          <Plus className="h-4 w-4 mr-2" />
-          Thêm vai trò
-        </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {systemRoles.map((r: any) => {
+            const meta = metaForRole(r.name);
+            const Icon = meta.icon;
+            const count = staffCountByRole.get(r.id)?.size ?? 0;
+            const isSuper = isSuperAdminPerms(parsePermissions(r.permissions));
+            const permCount = isSuper ? "Toàn quyền" : `${countTrueActions(parsePermissions(r.permissions))} quyền`;
+            return (
+              <Card
+                key={r.id}
+                className={cn(
+                  "relative border-l-4 transition-shadow hover:shadow-md cursor-pointer group",
+                  meta.accent,
+                )}
+                onClick={() => openView(r)}
+              >
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={cn("rounded-lg p-2", meta.iconBg)}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <Badge variant="secondary" className="text-xs h-5">Hệ thống</Badge>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-sm">{r.name}</h4>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[2.5rem]">
+                      {r.description || "—"}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{count}</span> nhân viên
+                    </div>
+                    <span className="text-xs text-muted-foreground">{permCount}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tên vai trò</TableHead>
-                <TableHead>Mô tả</TableHead>
-                <TableHead className="text-center">Số quyền</TableHead>
-                <TableHead className="w-[100px]">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRoles.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
-                    <div className="flex flex-col items-center gap-2">
-                      <Shield className="h-12 w-12 text-gray-300" />
-                      <p className="text-muted-foreground">
-                        {searchTerm
-                          ? "Không tìm thấy vai trò nào"
-                          : "Chưa có vai trò nào. Nhấn 'Thêm vai trò' để tạo mới."}
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredRoles.map((role) => (
-                  <TableRow key={role.id}>
-                    <TableCell className="font-medium">{role.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {role.description || "—"}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary">
-                        {countPermissions(role.permissions)} quyền
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                          onClick={() => openEditDialog(role)}
-                        >
-                          <Pencil className="h-4 w-4" />
+      {/* Custom templates */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold">Mẫu tuỳ chỉnh ({customRoles.length})</h3>
+            <p className="text-xs text-muted-foreground">Mẫu riêng cho team của bạn.</p>
+          </div>
+          <Button onClick={openCreate} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+            <Plus className="h-4 w-4 mr-1.5" />
+            Tạo mẫu mới
+          </Button>
+        </div>
+        {customRoles.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="py-10 text-center">
+              <Sparkles className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">
+                Chưa có mẫu tuỳ chỉnh. Bấm <strong>Tạo mẫu mới</strong> để tạo mẫu riêng cho team.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {customRoles.map((r: any) => {
+              const meta = metaForRole(r.name);
+              const Icon = meta.icon;
+              const count = staffCountByRole.get(r.id)?.size ?? 0;
+              const permCount = countTrueActions(parsePermissions(r.permissions));
+              return (
+                <Card
+                  key={r.id}
+                  className={cn("relative border-l-4 group", meta.accent)}
+                >
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className={cn("rounded-lg p-2", meta.iconBg)}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)}>
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => {
-                            setDeletingRoleId(role.id);
-                            setDeleteDialogOpen(true);
-                          }}
+                          className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => setDeleteId(r.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm">{r.name}</h4>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[2.5rem]">
+                        {r.description || "—"}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{count}</span> nhân viên
+                      </div>
+                      <span className="text-xs text-muted-foreground">{permCount} quyền</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-      {/* Create/Edit Role Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      {/* View / Edit sheet */}
+      <Sheet open={!!viewSheet} onOpenChange={(o) => !o && (setViewSheet(null), setDraft(null))}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+          {viewSheet && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  {(() => {
+                    const Icon = metaForRole(viewSheet.role.name).icon;
+                    return <Icon className="h-5 w-5" />;
+                  })()}
+                  {draft?.name || viewSheet.role.name}
+                </SheetTitle>
+                <SheetDescription>{viewSheet.role.description}</SheetDescription>
+              </SheetHeader>
+
+              <div className="py-4 space-y-4">
+                {viewSheet.editable && draft && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Tên mẫu *</Label>
+                      <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Mô tả</Label>
+                      <Input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+                    </div>
+                  </>
+                )}
+
+                <PermissionMatrix
+                  value={draft?.permissions ?? parsePermissions(viewSheet.role.permissions)}
+                  onChange={(p) => draft && setDraft({ ...draft, permissions: p })}
+                  disabled={!viewSheet.editable}
+                />
+              </div>
+
+              <SheetFooter className="flex-row gap-2 justify-between sm:justify-between">
+                {viewSheet.role.is_system ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">Mẫu hệ thống — chỉ xem.</p>
+                    <Button variant="outline" onClick={() => openCloneAsNew(viewSheet.role)}>
+                      <Sparkles className="h-4 w-4 mr-1.5" />
+                      Tạo bản sao
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => (setViewSheet(null), setDraft(null))}>
+                      Đóng
+                    </Button>
+                    <Button
+                      onClick={() => handleSaveDraft(viewSheet.role.id)}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      Lưu thay đổi
+                    </Button>
+                  </>
+                )}
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Create dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={(o) => !o && (setCreateDialogOpen(false), setDraft(null))}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingRole?.id ? "Cập nhật vai trò" : "Thêm vai trò mới"}
-            </DialogTitle>
+            <DialogTitle>Tạo mẫu phân quyền mới</DialogTitle>
             <DialogDescription>
-              Thiết lập tên, mô tả và phân quyền cho vai trò
+              Đặt tên + tick các quyền — sau đó áp cho nhân viên trong tab "Nhân viên".
             </DialogDescription>
           </DialogHeader>
-
-          {editingRole && (
+          {draft && (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="role-name">Tên vai trò *</Label>
-                <Input
-                  id="role-name"
-                  placeholder="VD: Quản lý toà nhà"
-                  value={editingRole.name}
-                  onChange={(e) =>
-                    setEditingRole({ ...editingRole, name: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="role-desc">Mô tả</Label>
-                <Textarea
-                  id="role-desc"
-                  placeholder="Mô tả vai trò..."
-                  value={editingRole.description}
-                  onChange={(e) =>
-                    setEditingRole({ ...editingRole, description: e.target.value })
-                  }
-                  rows={2}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <Label>Phân quyền theo module</Label>
-                <p className="text-xs text-muted-foreground">
-                  Mục Hoá đơn tách 5 quyền chi tiết: Xem / Tạo / Sửa / Xóa / Thanh Toán.
-                </p>
-                <div className="border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[200px]">Module</TableHead>
-                        <TableHead className="text-center w-[80px]">Tất cả</TableHead>
-                        <TableHead>Quyền</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {PERMISSION_MODULES.map((mod) => {
-                        const buckets = bucketsForModule(mod.key);
-                        return (
-                          <TableRow key={mod.key}>
-                            <TableCell className="font-medium">{mod.label}</TableCell>
-                            <TableCell className="text-center">
-                              <Checkbox
-                                checked={isModuleAllChecked(mod.key)}
-                                onCheckedChange={(checked) =>
-                                  toggleAllModule(mod.key, !!checked)
-                                }
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                                {buckets.map((b) => (
-                                  <label
-                                    key={b.key}
-                                    className="flex items-center gap-1.5 text-sm cursor-pointer"
-                                  >
-                                    <Checkbox
-                                      checked={isBucketChecked(
-                                        editingRole.permissions,
-                                        mod.key,
-                                        b.key,
-                                      )}
-                                      onCheckedChange={(checked) =>
-                                        toggleBucket(mod.key, b.key, !!checked)
-                                      }
-                                    />
-                                    <span>{b.label}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Tên mẫu *</Label>
+                  <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="VD: Lễ tân toà A" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Mô tả</Label>
+                  <Input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="(không bắt buộc)" />
                 </div>
               </div>
+              <PermissionMatrix
+                value={draft.permissions}
+                onChange={(p) => setDraft({ ...draft, permissions: p })}
+              />
             </div>
           )}
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => (setCreateDialogOpen(false), setDraft(null))}>
               Hủy
             </Button>
             <Button
-              onClick={handleSaveRole}
-              disabled={
-                !editingRole?.name.trim() ||
-                createRole.isPending ||
-                updateRole.isPending
-              }
-              className="bg-green-600 hover:bg-green-700"
+              onClick={() => handleSaveDraft()}
+              disabled={!draft?.name.trim() || createRole.isPending}
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
-              {editingRole?.id ? "Cập nhật" : "Tạo mới"}
+              Tạo mẫu
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      {/* Delete confirm */}
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
+            <AlertDialogTitle>Xoá mẫu phân quyền?</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc chắn muốn xóa vai trò này? Hành động này không thể hoàn tác.
+              Hành động không thể hoàn tác. Nếu có nhân viên đang dùng mẫu này, hệ thống sẽ từ chối.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteRole}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Xóa
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">Xoá</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -529,81 +448,37 @@ function RolesTab() {
   );
 }
 
-// ==================== STAFF TAB ====================
+// =============================================================
+// Tab 2 — Nhân viên (Staff)
+// =============================================================
 
-type StaffFormState = {
-  /** Edit mode: the staff_id (auth user uuid) being edited. Empty for create. */
-  staff_id?: string;
-  /** Tên đăng nhập — required on create only, free-form characters. */
-  username: string;
-  // All identity fields are OPTIONAL.
-  full_name: string;
-  phone: string;
-  email: string;
-  role_id: string;
-  department: string;
-  job_title: string;
-  employee_code: string;
-  is_active: boolean;
-  all_buildings: boolean;
-  /** Multi-select buildings (empty when all_buildings = true) */
-  building_ids: string[];
-  /** Selected area filter (subset of areas) — purely a UI filter */
-  area_ids: string[];
-  building_search: string;
-  // Create-only:
-  password: string;
-  confirmPassword: string;
-};
-
-const emptyForm = (): StaffFormState => ({
-  username: "",
-  full_name: "",
-  phone: "",
-  email: "",
-  role_id: "",
-  department: "",
-  job_title: "",
-  employee_code: "",
-  is_active: true,
-  all_buildings: true,
-  building_ids: [],
-  area_ids: [],
-  building_search: "",
-  password: "",
-  confirmPassword: "",
-});
-
-/** Group raw assignments rows by staff_id → {profile, role, building_ids[]} */
 type StaffMember = {
   staff_id: string;
   profile: any;
   role_id: string;
   role: any;
-  building_ids: string[];        // [] = all buildings
+  current_permissions: PermissionsMap | null;
+  building_ids: string[];
   buildings: { id: string; name: string }[];
-  has_global: boolean;            // true if any row has building_id null
-  assignment_ids: string[];
+  has_global: boolean;
 };
 
 function groupByStaff(assignments: any[]): StaffMember[] {
   const map = new Map<string, StaffMember>();
   for (const a of assignments || []) {
-    const sid = a.staff_id;
-    if (!map.has(sid)) {
-      map.set(sid, {
-        staff_id: sid,
+    if (!map.has(a.staff_id)) {
+      map.set(a.staff_id, {
+        staff_id: a.staff_id,
         profile: a.profile || null,
         role_id: a.role_id,
         role: a.role,
+        current_permissions: a.permissions ? parsePermissions(a.permissions) : null,
         building_ids: [],
         buildings: [],
         has_global: false,
-        assignment_ids: [],
       });
     }
-    const m = map.get(sid)!;
-    m.assignment_ids.push(a.id);
+    const m = map.get(a.staff_id)!;
     if (a.building_id) {
       m.building_ids.push(a.building_id);
       if (a.building) m.buildings.push({ id: a.building.id, name: a.building.name });
@@ -614,70 +489,120 @@ function groupByStaff(assignments: any[]): StaffMember[] {
   return Array.from(map.values());
 }
 
+type StaffFormState = {
+  staff_id?: string;
+  username: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  role_id: string;
+  job_title: string;
+  is_active: boolean;
+  all_buildings: boolean;
+  building_ids: string[];
+  area_ids: string[];
+  building_search: string;
+  /** Permissions tinh chỉnh — null = dùng default từ role (chưa override) */
+  permissions: PermissionsMap;
+  /** Password (chỉ dùng khi tạo mới) */
+  password: string;
+  confirmPassword: string;
+};
+
+const emptyForm = (): StaffFormState => ({
+  username: "",
+  full_name: "",
+  phone: "",
+  email: "",
+  role_id: "",
+  job_title: "",
+  is_active: true,
+  all_buildings: true,
+  building_ids: [],
+  area_ids: [],
+  building_search: "",
+  permissions: buildEmptyPermissions(),
+  password: "",
+  confirmPassword: "",
+});
+
 function StaffTab() {
-  const { data: assignments, isLoading: loadingAssignments } = useStaffAssignments();
-  const { data: roles, isLoading: loadingRoles } = useRoles();
-  const { data: buildings, isLoading: loadingBuildings } = useBuildings();
+  const { data: assignments, isLoading: loadingA } = useStaffAssignments();
+  const { data: roles, isLoading: loadingR } = useRoles();
+  const { data: buildings, isLoading: loadingB } = useBuildings();
   const { data: areas } = useAreas();
   const provisionStaff = useProvisionStaff();
   const updateStaff = useUpdateStaffMember();
   const removeStaff = useRemoveStaffMember();
+  const applyTemplate = useApplyTemplate();
+  const updatePerms = useUpdateStaffPermissions();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [filterRoleId, setFilterRoleId] = useState<string>("");
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [form, setForm] = useState<StaffFormState | null>(null);
-  const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const isLoading = loadingAssignments || loadingRoles || loadingBuildings;
+  const isLoading = loadingA || loadingR || loadingB;
   const isEdit = !!form?.staff_id;
 
-  const staffMembers = groupByStaff(assignments || []);
+  const staffMembers = useMemo(() => groupByStaff(assignments || []), [assignments]);
 
-  const filteredMembers = staffMembers.filter((m) => {
-    if (!searchTerm) return true;
-    const s = searchTerm.toLowerCase();
-    const roleName = m.role?.name?.toLowerCase() || "";
-    const profile = m.profile || {};
-    const name = (profile.full_name || "").toLowerCase();
-    const phone = (profile.phone || "").toLowerCase();
-    const code = (profile.employee_code || "").toLowerCase();
-    const buildingNames = m.buildings.map((b) => b.name.toLowerCase()).join(" ");
-    return (
-      name.includes(s) ||
-      phone.includes(s) ||
-      code.includes(s) ||
-      roleName.includes(s) ||
-      buildingNames.includes(s)
-    );
-  });
+  const filtered = useMemo(() => {
+    let list = staffMembers;
+    if (filterRoleId) list = list.filter((m) => m.role_id === filterRoleId);
+    if (searchTerm) {
+      const s = searchTerm.toLowerCase();
+      list = list.filter((m) => {
+        const p = m.profile || {};
+        const name = (p.full_name || "").toLowerCase();
+        const phone = (p.phone || "").toLowerCase();
+        const email = (p.email || "").toLowerCase();
+        const role = (m.role?.name || "").toLowerCase();
+        const bldgs = m.buildings.map((b) => b.name.toLowerCase()).join(" ");
+        return name.includes(s) || phone.includes(s) || email.includes(s) || role.includes(s) || bldgs.includes(s);
+      });
+    }
+    return list;
+  }, [staffMembers, filterRoleId, searchTerm]);
 
-  const openCreateDialog = () => {
+  const openCreate = () => {
     setForm(emptyForm());
-    setDialogOpen(true);
+    setSheetOpen(true);
   };
 
-  const openEditDialog = (m: StaffMember) => {
-    const profile = m.profile || {};
+  const openEdit = (m: StaffMember) => {
+    const p = m.profile || {};
     setForm({
       staff_id: m.staff_id,
-      username: "", // not editable post-creation
-      full_name: profile.full_name || "",
-      phone: profile.phone || "",
-      email: profile.email || "",
+      username: "",
+      full_name: p.full_name || "",
+      phone: p.phone || "",
+      email: p.email || "",
       role_id: m.role_id || "",
-      department: profile.department || "",
-      job_title: profile.job_title || "",
-      employee_code: profile.employee_code || "",
-      is_active: profile.is_active ?? true,
+      job_title: p.job_title || "",
+      is_active: p.is_active ?? true,
       all_buildings: m.has_global,
       building_ids: m.building_ids,
       area_ids: [],
       building_search: "",
+      permissions: m.current_permissions ?? parsePermissions(m.role?.permissions),
       password: "",
       confirmPassword: "",
     });
-    setDialogOpen(true);
+    setSheetOpen(true);
+  };
+
+  // Khi user click "Áp mẫu" trong form → copy role.permissions vào draft
+  const applyTemplateToDraft = (roleId: string) => {
+    if (!form) return;
+    const role = (roles || []).find((r: any) => r.id === roleId);
+    if (!role) return;
+    setForm({
+      ...form,
+      role_id: roleId,
+      permissions: parsePermissions(role.permissions),
+    });
   };
 
   const phoneIsValid = (p: string) => p === "" || /^[0-9]{10,11}$/.test(p);
@@ -685,557 +610,502 @@ function StaffTab() {
 
   const handleSave = async () => {
     if (!form) return;
-    if (!form.role_id) return;
-    if (!form.all_buildings && form.building_ids.length === 0) return;
-
-    const phone = form.phone.trim();
-    const email = form.email.trim();
-    if (!phoneIsValid(phone)) {
-      toast.error("Số điện thoại phải có 10-11 chữ số (hoặc bỏ trống).");
+    if (!form.role_id) {
+      toast.error("Chọn mẫu phân quyền");
       return;
     }
-    if (!emailIsValid(email)) {
-      toast.error("Email không đúng định dạng (hoặc bỏ trống).");
+    if (!form.all_buildings && form.building_ids.length === 0) {
+      toast.error("Chọn ít nhất 1 toà nhà");
+      return;
+    }
+    if (!phoneIsValid(form.phone.trim())) {
+      toast.error("Số điện thoại 10-11 chữ số hoặc để trống");
+      return;
+    }
+    if (!emailIsValid(form.email.trim())) {
+      toast.error("Email không đúng định dạng");
       return;
     }
 
-    if (!isEdit) {
-      if (!form.username.trim()) return;
-      if (!form.password || form.password.length < 6) return;
-      if (form.password !== form.confirmPassword) return;
-      const payload: ProvisionStaffInput = {
+    if (isEdit && form.staff_id) {
+      // Sửa: update member info + permissions (nếu khác với role.permissions)
+      await updateStaff.mutateAsync({
+        staff_id: form.staff_id,
+        role_id: form.role_id,
+        building_ids: form.all_buildings ? null : form.building_ids,
+        profile_patch: {
+          full_name: form.full_name.trim() || undefined,
+          phone: form.phone.trim() || null,
+          email: form.email.trim() || null,
+          job_title: form.job_title.trim() || null,
+          is_active: form.is_active,
+        },
+      });
+      // Sau khi update role, permissions đã re-snapshot từ role.permissions.
+      // Nếu user tinh chỉnh thêm → save lại snapshot mới.
+      const roleObj = (roles || []).find((r: any) => r.id === form.role_id);
+      const rolePerms = parsePermissions(roleObj?.permissions);
+      const draftDiffs = diffPermissions(rolePerms, form.permissions);
+      if (draftDiffs.length > 0) {
+        await updatePerms.mutateAsync({ staffId: form.staff_id, permissions: form.permissions });
+      }
+    } else {
+      // Tạo mới
+      if (!form.username.trim()) {
+        toast.error("Tên đăng nhập bắt buộc");
+        return;
+      }
+      if (form.password.length < 6) {
+        toast.error("Mật khẩu tối thiểu 6 ký tự");
+        return;
+      }
+      if (form.password !== form.confirmPassword) {
+        toast.error("Mật khẩu xác nhận không khớp");
+        return;
+      }
+      const result = await provisionStaff.mutateAsync({
         username: form.username.trim(),
         password: form.password,
         role_id: form.role_id,
         building_ids: form.all_buildings ? null : form.building_ids,
-        full_name: form.full_name.trim() || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        department: form.department.trim() || undefined,
+        full_name: form.full_name.trim() || form.username.trim(),
+        phone: form.phone.trim() || undefined,
+        email: form.email.trim() || undefined,
         job_title: form.job_title.trim() || undefined,
-        employee_code: form.employee_code.trim() || undefined,
         is_active: form.is_active,
-      };
-      await provisionStaff.mutateAsync(payload);
-    } else {
-      await updateStaff.mutateAsync({
-        staff_id: form.staff_id!,
-        role_id: form.role_id,
-        building_ids: form.all_buildings ? null : form.building_ids,
-        profile_patch: {
-          full_name: form.full_name.trim(),
-          phone: phone || null,
-          email: email || null,
-          department: form.department.trim() || null,
-          job_title: form.job_title.trim() || null,
-          employee_code: form.employee_code.trim() || null,
-          is_active: form.is_active,
-        },
       });
+      // Nếu user đã tinh chỉnh permissions khác với template gốc → save override
+      const roleObj = (roles || []).find((r: any) => r.id === form.role_id);
+      const rolePerms = parsePermissions(roleObj?.permissions);
+      const draftDiffs = diffPermissions(rolePerms, form.permissions);
+      if (draftDiffs.length > 0 && result && result[0]?.staff_id) {
+        await updatePerms.mutateAsync({ staffId: result[0].staff_id, permissions: form.permissions });
+      }
     }
-    setDialogOpen(false);
+
+    setSheetOpen(false);
     setForm(null);
   };
 
   const handleDelete = async () => {
-    if (!deletingStaffId) return;
-    await removeStaff.mutateAsync(deletingStaffId);
-    setDeleteDialogOpen(false);
-    setDeletingStaffId(null);
+    if (!deletingId) return;
+    await removeStaff.mutateAsync(deletingId);
+    setDeletingId(null);
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <p className="text-muted-foreground">Đang tải...</p>
+      <div className="space-y-3">
+        {[1,2,3].map(i => <Skeleton key={i} className="h-28 rounded-xl" />)}
       </div>
     );
   }
 
+  const selectedRole = form ? (roles || []).find((r: any) => r.id === form.role_id) : null;
+  const selectedRolePerms = parsePermissions(selectedRole?.permissions);
+  const formDiffCount = form ? diffPermissions(selectedRolePerms, form.permissions).length : 0;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Tìm kiếm nhân viên..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+      {/* Header: search + filter + add button */}
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+        <div className="flex flex-col sm:flex-row gap-2 flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm theo tên / SĐT / email / toà…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <select
+            value={filterRoleId}
+            onChange={(e) => setFilterRoleId(e.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Tất cả mẫu</option>
+            {(roles || []).map((r: any) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
         </div>
-        <Button onClick={openCreateDialog} className="bg-green-600 hover:bg-green-700">
-          <Plus className="h-4 w-4 mr-2" />
-          Thêm người dùng
+        <Button onClick={openCreate} className="bg-green-600 hover:bg-green-700 text-white">
+          <UserPlus className="h-4 w-4 mr-1.5" />
+          Thêm nhân viên
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nhân viên</TableHead>
-                <TableHead>SĐT / Email</TableHead>
-                <TableHead>Vai trò</TableHead>
-                <TableHead>Toà nhà</TableHead>
-                <TableHead className="text-center">Trạng thái</TableHead>
-                <TableHead className="w-[100px]">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMembers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <div className="flex flex-col items-center gap-2">
-                      <Users className="h-12 w-12 text-gray-300" />
-                      <p className="text-muted-foreground">
-                        {searchTerm
-                          ? "Không tìm thấy nhân viên nào"
-                          : "Chưa có nhân viên nào. Nhấn 'Thêm người dùng' để tạo mới."}
-                      </p>
+      {/* Staff list */}
+      {filtered.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="py-10 text-center">
+            <Users className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">
+              {staffMembers.length === 0 ? "Chưa có nhân viên nào." : "Không tìm thấy nhân viên phù hợp."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2.5">
+          {filtered.map((m) => {
+            const meta = metaForRole(m.role?.name || "");
+            const Icon = meta.icon;
+            const profile = m.profile || {};
+            const initials = (profile.full_name || profile.email || "?").split(/\s+/).map((s: string) => s[0]).slice(-2).join("").toUpperCase();
+
+            // Diff vs template
+            const isSuper = isSuperAdminPerms(m.current_permissions);
+            const diffs = m.current_permissions && !isSuper
+              ? diffPermissions(parsePermissions(m.role?.permissions), m.current_permissions)
+              : [];
+            const diffCount = diffs.length;
+            const scopeLabel = m.has_global
+              ? "Tất cả toà"
+              : `${m.buildings.length} toà${m.buildings.length > 0 ? ` (${m.buildings.slice(0,3).map((b) => b.name).join(", ")}${m.buildings.length > 3 ? "…" : ""})` : ""}`;
+
+            return (
+              <Card key={m.staff_id} className={cn("border-l-4 group", meta.accent)}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    {/* Avatar */}
+                    <div className={cn("h-11 w-11 rounded-full flex items-center justify-center flex-shrink-0 font-semibold text-sm", meta.iconBg)}>
+                      {initials}
                     </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredMembers.map((m) => {
-                  const profile = m.profile || {};
-                  const initials = (profile.full_name || "NV")
-                    .split(" ")
-                    .map((p: string) => p[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase();
-                  return (
-                    <TableRow key={m.staff_id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center text-xs font-semibold">
-                            {initials}
-                          </div>
-                          <div>
-                            <div className="font-medium">
-                              {profile.full_name || (
-                                <span className="font-mono text-xs text-muted-foreground">
-                                  {m.staff_id.substring(0, 8)}…
-                                </span>
-                              )}
-                            </div>
-                            {profile.employee_code && (
-                              <div className="text-xs text-muted-foreground">
-                                Mã: {profile.employee_code}
-                              </div>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-sm flex items-center gap-1.5">
+                            {profile.full_name || "—"}
+                            {!profile.is_active && (
+                              <Badge variant="outline" className="h-4 text-xs">Khoá</Badge>
                             )}
-                          </div>
+                          </h4>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {profile.email || profile.phone || "—"}
+                            {profile.job_title && <span> · {profile.job_title}</span>}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{profile.phone || "—"}</div>
-                        {profile.email && (
-                          <div className="text-xs text-muted-foreground">{profile.email}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{m.role?.name || "—"}</Badge>
-                        {profile.job_title && (
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {profile.job_title}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {m.has_global ? (
-                          <span className="text-muted-foreground italic">Tất cả toà nhà</span>
-                        ) : m.buildings.length === 0 ? (
-                          <span className="text-muted-foreground">—</span>
-                        ) : m.buildings.length <= 2 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {m.buildings.map((b) => (
-                              <Badge key={b.id} variant="secondary" className="text-xs">
-                                {b.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            <Badge variant="secondary" className="text-xs">
-                              {m.buildings[0].name}
-                            </Badge>
-                            <Badge variant="secondary" className="text-xs">
-                              {m.buildings[1].name}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              +{m.buildings.length - 2}
-                            </Badge>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {profile.is_active === false ? (
-                          <Badge className="bg-gray-100 text-gray-700">Tạm khoá</Badge>
-                        ) : (
-                          <Badge className="bg-green-100 text-green-700">Hoạt động</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => openEditDialog(m)}
-                          >
-                            <Pencil className="h-4 w-4" />
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
+                            <Pencil className="h-3.5 w-3.5 mr-1" />
+                            Sửa quyền
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => {
-                              setDeletingStaffId(m.staff_id);
-                              setDeleteDialogOpen(true);
-                            }}
+                            onClick={() => setDeletingId(m.staff_id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                      </div>
+                      <div className="flex items-center gap-3 mt-2 flex-wrap text-xs">
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <Icon className="h-3.5 w-3.5" />
+                          <span className="font-medium text-foreground">{m.role?.name || "—"}</span>
+                        </span>
+                        <span className="text-muted-foreground/40">•</span>
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <Building2 className="h-3.5 w-3.5" />
+                          {scopeLabel}
+                        </span>
+                        <span className="text-muted-foreground/40">•</span>
+                        {isSuper ? (
+                          <span className="inline-flex items-center gap-1 text-rose-600 font-medium">
+                            <ShieldCheck className="h-3.5 w-3.5" /> Bypass toàn quyền
+                          </span>
+                        ) : diffCount === 0 ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-600">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Khớp mẫu
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
+                            <AlertTriangle className="h-3.5 w-3.5" /> {diffCount} thay đổi so với mẫu
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Create / Edit Manager Dialog — Resident-style fields */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {isEdit ? "Cập nhật người dùng" : "Thêm người dùng"}
-            </DialogTitle>
-            <DialogDescription>
+      {/* Add / Edit Sheet */}
+      <Sheet open={sheetOpen} onOpenChange={(o) => !o && (setSheetOpen(false), setForm(null))}>
+        <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{isEdit ? "Sửa phân quyền nhân viên" : "Thêm nhân viên mới"}</SheetTitle>
+            <SheetDescription>
               {isEdit
-                ? "Cập nhật vai trò và phạm vi quản lý của nhân viên"
-                : "Tạo tài khoản nhân viên mới với loại tài khoản, phạm vi và mật khẩu khởi tạo"}
-            </DialogDescription>
-          </DialogHeader>
+                ? "Cập nhật thông tin, áp mẫu phân quyền, và tinh chỉnh từng quyền cụ thể."
+                : "Tạo tài khoản nhân viên + áp mẫu phân quyền + chỉ định phạm vi toà nhà."}
+            </SheetDescription>
+          </SheetHeader>
 
           {form && (
-            <div className="space-y-5">
-              {/* Active toggle */}
-              <div className="flex items-center justify-between border rounded-lg p-3 bg-muted/30">
-                <div>
-                  <Label className="text-sm font-medium">Hoạt động</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Tắt nếu tài khoản này tạm thời không sử dụng
-                  </p>
+            <div className="py-4 space-y-6">
+              {/* ===== Section: thông tin nhân viên ===== */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-muted h-7 w-7 flex items-center justify-center text-xs font-semibold">1</div>
+                  <h3 className="font-semibold text-sm">Thông tin nhân viên</h3>
                 </div>
-                <Switch
-                  checked={form.is_active}
-                  onCheckedChange={(v) => setForm({ ...form, is_active: !!v })}
-                />
-              </div>
-
-              {/* Basic info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {!isEdit && (
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="staff-username">Tên đăng nhập *</Label>
-                    <Input
-                      id="staff-username"
-                      placeholder="VD: phukim, an.nguyen, Nhân viên 01..."
-                      value={form.username}
-                      onChange={(e) => setForm({ ...form, username: e.target.value })}
-                      autoComplete="off"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Cho phép bất kỳ ký tự nào (kể cả tiếng Việt có dấu, khoảng trắng).
-                      Đây là tên nhân viên dùng để đăng nhập.
-                    </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {!isEdit && (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label>Tên đăng nhập *</Label>
+                        <Input
+                          value={form.username}
+                          onChange={(e) => setForm({ ...form, username: e.target.value })}
+                          placeholder="VD: joey hoặc joey-nathan"
+                        />
+                      </div>
+                      <div /> {/* spacer */}
+                      <div className="space-y-1.5">
+                        <Label>Mật khẩu *</Label>
+                        <Input
+                          type="password"
+                          value={form.password}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
+                          placeholder="≥ 6 ký tự"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Xác nhận mật khẩu *</Label>
+                        <Input
+                          type="password"
+                          value={form.confirmPassword}
+                          onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                          placeholder="Nhập lại mật khẩu"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>Họ tên</Label>
+                    <Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
                   </div>
-                )}
-
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="staff-fullname">Họ tên</Label>
-                  <Input
-                    id="staff-fullname"
-                    placeholder="VD: Nguyễn Văn A (không bắt buộc)"
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="staff-phone">Số điện thoại</Label>
-                  <Input
-                    id="staff-phone"
-                    placeholder="0901234567 (không bắt buộc)"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  />
-                  {form.phone.trim() !== "" && !/^[0-9]{10,11}$/.test(form.phone.trim()) && (
-                    <p className="text-xs text-red-600">Phải là 10-11 chữ số</p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="staff-email">Email</Label>
-                  <Input
-                    id="staff-email"
-                    placeholder="email@domain.com (không bắt buộc)"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  />
-                  {form.email.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) && (
-                    <p className="text-xs text-red-600">Email không đúng định dạng</p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Loại người dùng *</Label>
-                  <Select
-                    value={form.role_id}
-                    onValueChange={(val) => setForm({ ...form, role_id: val })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn loại tài khoản" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(roles || []).map((role) => (
-                        <SelectItem key={role.id} value={role.id}>
-                          {role.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="staff-dept">Bộ phận</Label>
-                  <Input
-                    id="staff-dept"
-                    placeholder="Chọn bộ phận"
-                    value={form.department}
-                    onChange={(e) => setForm({ ...form, department: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="staff-job">Chức danh</Label>
-                  <Input
-                    id="staff-job"
-                    placeholder="Chức danh"
-                    value={form.job_title}
-                    onChange={(e) => setForm({ ...form, job_title: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="staff-code">Mã nhân viên</Label>
-                  <Input
-                    id="staff-code"
-                    placeholder="VD: NV001"
-                    value={form.employee_code}
-                    onChange={(e) => setForm({ ...form, employee_code: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* Password (create only) */}
-              {!isEdit && (
-                <div className="border-t pt-4 space-y-3">
-                  <div className="text-sm font-medium">Mật khẩu</div>
-                  <p className="text-xs text-muted-foreground">
-                    Lưu ý: Nếu tên đăng nhập đã tồn tại trên hệ thống, bạn sẽ phải chọn tên khác.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="staff-pw">Mật khẩu *</Label>
-                      <Input
-                        id="staff-pw"
-                        type="password"
-                        placeholder="Tối thiểu 6 ký tự"
-                        value={form.password}
-                        onChange={(e) => setForm({ ...form, password: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="staff-pw2">Xác nhận mật khẩu *</Label>
-                      <Input
-                        id="staff-pw2"
-                        type="password"
-                        placeholder="Nhập lại mật khẩu"
-                        value={form.confirmPassword}
-                        onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
-                      />
-                    </div>
+                  <div className="space-y-1.5">
+                    <Label>Chức danh</Label>
+                    <Input value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} placeholder="VD: Quản lý toà A" />
                   </div>
-                  {form.password && form.confirmPassword && form.password !== form.confirmPassword && (
-                    <p className="text-xs text-red-600">Mật khẩu xác nhận không khớp</p>
-                  )}
-                </div>
-              )}
-
-              {/* Buildings scope — Resident-style */}
-              <div className="border-t pt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">Quản lý toà nhà & công việc</div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm font-normal">Quản lý tất cả toà nhà</Label>
-                    <Switch
-                      checked={form.all_buildings}
-                      onCheckedChange={(v) =>
-                        setForm({
-                          ...form,
-                          all_buildings: !!v,
-                          building_ids: v ? [] : form.building_ids,
-                          area_ids: v ? [] : form.area_ids,
-                        })
-                      }
-                    />
+                  <div className="space-y-1.5">
+                    <Label>SĐT</Label>
+                    <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="10-11 chữ số" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} type="email" />
                   </div>
                 </div>
+                <div className="flex items-center justify-between pt-1">
+                  <Label htmlFor="is-active" className="cursor-pointer">Trạng thái hoạt động</Label>
+                  <Switch
+                    id="is-active"
+                    checked={form.is_active}
+                    onCheckedChange={(v) => setForm({ ...form, is_active: v })}
+                  />
+                </div>
+              </section>
 
+              <Separator />
+
+              {/* ===== Section: Cài đặt nhanh mẫu ===== */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-muted h-7 w-7 flex items-center justify-center text-xs font-semibold">2</div>
+                  <h3 className="font-semibold text-sm">Cài đặt nhanh — chọn mẫu</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Bấm 1 mẫu để khởi tạo nhanh 35 quyền. Sau đó có thể tinh chỉnh thêm/bớt từng quyền ở bước 4.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(roles || []).map((r: any) => {
+                    const meta = metaForRole(r.name);
+                    const Icon = meta.icon;
+                    const active = form.role_id === r.id;
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => applyTemplateToDraft(r.id)}
+                        className={cn(
+                          "rounded-lg border-2 p-3 text-left transition-all hover:shadow-sm",
+                          active ? "border-green-500 bg-green-50/50 dark:bg-green-950/20 ring-1 ring-green-500/20" : "border-border hover:border-foreground/20",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className={cn("rounded-md p-1.5", meta.iconBg)}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          {active && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                        </div>
+                        <div className="mt-2 text-sm font-medium leading-tight">{r.name}</div>
+                        {r.is_system && (
+                          <div className="text-[10px] text-muted-foreground mt-0.5">Hệ thống</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <Separator />
+
+              {/* ===== Section: Phạm vi toà nhà ===== */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-muted h-7 w-7 flex items-center justify-center text-xs font-semibold">3</div>
+                  <h3 className="font-semibold text-sm">Phạm vi toà nhà</h3>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <Checkbox
+                    checked={form.all_buildings}
+                    onCheckedChange={(v) => setForm({ ...form, all_buildings: v === true })}
+                  />
+                  <span className="text-sm">Áp dụng cho <strong>tất cả toà nhà</strong></span>
+                </label>
                 {!form.all_buildings && (
-                  <>
-                    {/* Khu vực filter */}
+                  <div className="space-y-2 pl-6">
                     {(areas || []).length > 0 && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Khu vực</Label>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Lọc theo khu vực</Label>
+                        <div className="flex flex-wrap gap-1.5">
                           {(areas || []).map((a: any) => {
-                            const checked = form.area_ids.includes(a.id);
+                            const active = form.area_ids.includes(a.id);
                             return (
-                              <label
+                              <button
                                 key={a.id}
-                                className="flex items-center gap-2 text-sm cursor-pointer"
+                                type="button"
+                                onClick={() => {
+                                  const next = active ? form.area_ids.filter((x) => x !== a.id) : [...form.area_ids, a.id];
+                                  setForm({ ...form, area_ids: next });
+                                }}
+                                className={cn(
+                                  "px-2.5 py-1 text-xs rounded-full border transition-colors",
+                                  active ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" : "border-border hover:bg-muted",
+                                )}
                               >
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={(v) => {
-                                    const next = v
-                                      ? [...form.area_ids, a.id]
-                                      : form.area_ids.filter((x) => x !== a.id);
-                                    setForm({ ...form, area_ids: next });
-                                  }}
-                                />
-                                <span>{a.name}</span>
-                              </label>
+                                {a.name}
+                              </button>
                             );
                           })}
                         </div>
                       </div>
                     )}
-
-                    {/* Tòa nhà search + multi-select */}
-                    <div className="space-y-2">
-                      <Label className="text-sm">Tòa nhà</Label>
-                      <Input
-                        placeholder="Tìm kiếm toà nhà..."
-                        value={form.building_search}
-                        onChange={(e) =>
-                          setForm({ ...form, building_search: e.target.value })
-                        }
-                      />
-                      {(() => {
-                        const search = form.building_search.trim().toLowerCase();
-                        const list = (buildings || []).filter((b: any) => {
-                          // area filter
-                          if (form.area_ids.length > 0) {
-                            if (!b.area_id || !form.area_ids.includes(b.area_id)) return false;
-                          }
-                          // search filter
-                          if (search && !(b.name || "").toLowerCase().includes(search)) return false;
-                          return true;
-                        });
-                        if (list.length === 0) {
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Chọn toà ({form.building_ids.length})</Label>
+                        <Input
+                          value={form.building_search}
+                          onChange={(e) => setForm({ ...form, building_search: e.target.value })}
+                          placeholder="Tìm toà…"
+                          className="h-7 max-w-[180px] text-xs"
+                        />
+                      </div>
+                      <div className="border rounded-md p-2 max-h-48 overflow-y-auto">
+                        {(() => {
+                          const q = form.building_search.trim().toLowerCase();
+                          const list = (buildings || []).filter((b: any) => {
+                            if (form.area_ids.length > 0 && (!b.area_id || !form.area_ids.includes(b.area_id))) return false;
+                            if (q && !(b.name || "").toLowerCase().includes(q)) return false;
+                            return true;
+                          });
+                          if (list.length === 0) return <p className="text-xs text-muted-foreground italic px-1">Không có toà phù hợp.</p>;
                           return (
-                            <p className="text-xs text-muted-foreground italic px-1">
-                              Không có toà nhà phù hợp.
-                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                              {list.map((b: any) => {
+                                const checked = form.building_ids.includes(b.id);
+                                return (
+                                  <label key={b.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                    <Checkbox
+                                      checked={checked}
+                                      onCheckedChange={(v) => {
+                                        const next = v ? [...form.building_ids, b.id] : form.building_ids.filter((x) => x !== b.id);
+                                        setForm({ ...form, building_ids: next });
+                                      }}
+                                    />
+                                    <span>{b.name}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
                           );
-                        }
-                        return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-56 overflow-y-auto border rounded-md p-2">
-                            {list.map((b: any) => {
-                              const checked = form.building_ids.includes(b.id);
-                              return (
-                                <label
-                                  key={b.id}
-                                  className="flex items-start gap-2 text-sm cursor-pointer"
-                                >
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={(v) => {
-                                      const next = v
-                                        ? [...form.building_ids, b.id]
-                                        : form.building_ids.filter((x) => x !== b.id);
-                                      setForm({ ...form, building_ids: next });
-                                    }}
-                                    className="mt-0.5"
-                                  />
-                                  <span className="leading-tight">{b.name}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
+                        })()}
+                      </div>
                       {form.building_ids.length === 0 && (
                         <p className="text-xs text-red-600">Chọn ít nhất 1 toà nhà</p>
                       )}
                     </div>
-                  </>
+                  </div>
                 )}
-              </div>
+              </section>
+
+              <Separator />
+
+              {/* ===== Section: Permission matrix tinh chỉnh ===== */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-md bg-muted h-7 w-7 flex items-center justify-center text-xs font-semibold">4</div>
+                  <h3 className="font-semibold text-sm">Tinh chỉnh từng quyền (tuỳ chọn)</h3>
+                  {formDiffCount > 0 && (
+                    <Badge variant="outline" className="ml-1 border-amber-500 text-amber-700 dark:text-amber-400">
+                      {formDiffCount} thay đổi
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Bỏ tick hoặc thêm quyền so với mẫu gốc. Lưu sẽ tạo bản tinh chỉnh riêng cho nhân viên này.
+                </p>
+                <PermissionMatrix
+                  value={form.permissions}
+                  onChange={(p) => setForm({ ...form, permissions: p })}
+                  baseline={form.role_id ? selectedRolePerms : null}
+                />
+              </section>
             </div>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy bỏ
+          <SheetFooter className="flex-row gap-2 justify-between sm:justify-between border-t pt-4">
+            <Button variant="outline" onClick={() => (setSheetOpen(false), setForm(null))}>
+              Hủy
             </Button>
             <Button
               onClick={handleSave}
               disabled={
                 !form?.role_id ||
                 (!form?.all_buildings && (form?.building_ids?.length || 0) === 0) ||
-                (!isEdit && (
-                  !form?.username?.trim() ||
-                  !form?.password ||
-                  form.password.length < 6 ||
-                  form.password !== form.confirmPassword
-                )) ||
-                provisionStaff.isPending ||
-                updateStaff.isPending
+                (!isEdit && (!form?.username?.trim() || !form?.password || form.password.length < 6 || form.password !== form.confirmPassword)) ||
+                provisionStaff.isPending || updateStaff.isPending || updatePerms.isPending
               }
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
-              {isEdit ? "Cập nhật" : "Lưu"}
+              {isEdit ? "Lưu thay đổi" : "Tạo nhân viên"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      {/* Delete confirm */}
+      <AlertDialog open={!!deletingId} onOpenChange={(o) => !o && setDeletingId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
+            <AlertDialogTitle>Xoá nhân viên?</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc chắn muốn xóa phân quyền này? Hành động này không thể hoàn tác.
+              Tài khoản auth + mọi phân quyền của nhân viên sẽ bị xoá vĩnh viễn. Hành động không thể hoàn tác.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Xóa
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+              Xoá
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1244,47 +1114,40 @@ function StaffTab() {
   );
 }
 
-// ==================== MAIN PAGE ====================
+// =============================================================
+// Main page
+// =============================================================
 
 const StaffPage = () => {
-  const [activeTab, setActiveTab] = useState("roles");
-
+  const [activeTab, setActiveTab] = useState("staff");
   return (
     <MainLayout>
-      <div className="container mx-auto p-6 max-w-6xl">
-        {/* Header */}
+      <div className="container mx-auto p-4 sm:p-6 max-w-7xl">
         <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-            <UserCog className="h-5 w-5 text-green-600" />
+          <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-950 flex items-center justify-center">
+            <UserCog className="h-5 w-5 text-green-600 dark:text-green-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Quản lý Nhân viên</h1>
+            <h1 className="text-2xl font-bold">Phân quyền nhân viên</h1>
             <p className="text-sm text-muted-foreground">
-              Quản lý loại tài khoản, phân quyền và gán nhân viên theo toà nhà
+              Quản lý mẫu phân quyền + cài quyền chi tiết cho từng nhân viên.
             </p>
           </div>
         </div>
 
-        {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">
-            <TabsTrigger value="roles" className="flex items-center gap-1.5">
-              <Shield className="h-4 w-4" />
-              Loại tài khoản
-            </TabsTrigger>
             <TabsTrigger value="staff" className="flex items-center gap-1.5">
               <Users className="h-4 w-4" />
-              Người dùng
+              Nhân viên
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="flex items-center gap-1.5">
+              <Shield className="h-4 w-4" />
+              Mẫu phân quyền
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="roles">
-            <RolesTab />
-          </TabsContent>
-
-          <TabsContent value="staff">
-            <StaffTab />
-          </TabsContent>
+          <TabsContent value="staff"><StaffTab /></TabsContent>
+          <TabsContent value="templates"><TemplatesTab /></TabsContent>
         </Tabs>
       </div>
     </MainLayout>

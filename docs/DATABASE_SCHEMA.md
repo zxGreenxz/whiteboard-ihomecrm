@@ -3668,74 +3668,389 @@ auth.users (Supabase managed)          (RBAC)
 
 ## 10. Mô hình phân quyền (RBAC)
 
-### Cấp độ quyền (4 tier)
+> Cập nhật 2026-05-28: chuyển sang mô hình **2-tier (template + per-staff override)**.
+> Tham chiếu: [RBAC_REFACTOR.md](RBAC_REFACTOR.md) (đợt refactor cũ), `supabase/migrations/20260529000001_per_staff_permissions.sql`, `20260529000002_seed_system_role_templates.sql`.
 
-| Tier | Bảng/Mechanism | Mô tả |
+### 10.1 Tổng quan 2-tier
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  TIER 1: TEMPLATE (roles table) — "Cài đặt nhanh"                │
+│  4 system templates: Super Admin / Quản Lý Tòa / Partner / Viewer│
+│  → chỉ preset, không tham gia tính permission cuối               │
+└──────────────────────────────────────────────────────────────────┘
+                        │ bấm "Áp template"
+                        ▼ COPY snapshot
+┌──────────────────────────────────────────────────────────────────┐
+│  TIER 2: STAFF PERMISSIONS (staff_assignments.permissions JSONB) │
+│  - 1 row per (staff, building) như hiện tại                      │
+│  - Cột permissions JSONB lưu FULL permission của staff đó        │
+│  - Admin tick/untick từng (module, action) cho riêng staff       │
+│  - permissions = NULL → fallback role.permissions (BC)           │
+└──────────────────────────────────────────────────────────────────┘
+                        │
+                        ▼ get_my_permissions() RPC
+                  COALESCE(sa.permissions, r.permissions)
+```
+
+**Tính chất quan trọng**:
+
+- Sau khi áp template, `staff_assignments.permissions` tách rời `roles.permissions` — cập nhật template **không** ảnh hưởng staff đã apply.
+- Đổi template = bấm "Áp template khác" → ghi đè permissions của staff.
+- Owner (không có `staff_assignments`) và super_admin (`super_admins` table) vẫn bypass tất cả qua sentinel `__superadmin: true`.
+
+### 10.2 4 cấp truy cập (sau merge 2-tier)
+
+| Cấp | Cơ chế | Mô tả |
 |---|---|---|
-| 1. Super admin | `super_admins` table | Toàn quyền, bypass RLS bằng `is_super_admin()` |
-| 2. Admin role | `roles.permissions` có `__superadmin: true` HOẶC `roles.name = Admin` | Bypass tương đương super_admin qua `is_admin()` |
-| 3. Staff full-scope | `staff_assignments` với `building_id IS NULL` | Quyền theo `roles.permissions` JSONB, áp dụng cho TẤT CẢ buildings |
-| 4. Staff per-building | `staff_assignments` với `building_id = X` | Chỉ thấy/sửa data thuộc building X (qua FK chain) |
+| 1. Super admin | `super_admins` table | Bypass mọi check qua `is_super_admin()`. |
+| 2. Owner / Admin role | `roles.permissions.__superadmin = true` HOẶC `roles.name = 'Super Admin'` | Bypass qua `is_admin()`. |
+| 3. Staff full-scope | `staff_assignments` với `building_id IS NULL` | Áp dụng cho TẤT CẢ buildings. Quyền = `COALESCE(sa.permissions, r.permissions)`. |
+| 4. Staff per-building | `staff_assignments` với `building_id = X` cụ thể | Chỉ thấy/sửa data thuộc building X. Quyền per-staff override độc lập. |
 
-### Schema permissions JSONB (trong bảng `roles`)
+### 10.3 Schema
+
+```sql
+super_admins (
+  user_id uuid PRIMARY KEY                           -- owner UUID
+)
+
+roles (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,                             -- owner UUID
+  name text NOT NULL,                                 -- VD: "Quản Lý Tòa"
+  description text,
+  is_system boolean DEFAULT false,                    -- true cho 4 mẫu hệ thống
+  permissions jsonb DEFAULT '[]'::jsonb,              -- TEMPLATE permission snapshot
+  UNIQUE(user_id, name)
+)
+
+staff_assignments (
+  id uuid PRIMARY KEY,
+  staff_id uuid NOT NULL,                             -- auth.users(id) — người được gán
+  role_id uuid NOT NULL REFERENCES roles(id),         -- template hiện tại
+  building_id uuid REFERENCES buildings(id),          -- NULL = full-scope (mọi toà)
+  user_id uuid NOT NULL,                              -- owner UUID (audit)
+  permissions jsonb,                                  -- ← MỚI: per-staff override (NULL = dùng role.permissions)
+  created_at timestamptz,
+  updated_at timestamptz,
+  UNIQUE(staff_id, building_id)
+)
+```
+
+### 10.4 Helper SQL
+
+| Function | Mục đích | Logic |
+|---|---|---|
+| `is_super_admin()` | Caller có trong `super_admins`? | Boolean |
+| `is_admin()` | Caller có role với `__superadmin: true`? | Boolean |
+| `get_my_permissions()` | JSONB quyền của caller hiện tại | `COALESCE(sa.permissions, r.permissions)` — ưu tiên override |
+| `can_access_building(uuid)` | Caller xem được building này? | `is_admin() OR staff_assignments khớp building` |
+| `can_do_on_building(table, action, uuid)` | Caller có `action` trên `table` cho building? | `is_admin() OR (COALESCE(sa.permissions, r.permissions) -> table ->> action)` |
+| `can_access_org_entity(resource, action)` | Cho entity global (không gắn building) | Tương tự, scope toàn org |
+| `building_of_contract/_invoice/_payment(uuid)` | FK traversal helper | Trả về `building_id` của row |
+
+```sql
+-- Ví dụ dùng trong RLS policy
+CREATE POLICY invoices_select_rbac ON invoices FOR SELECT TO authenticated
+  USING (can_access_building(building_id));
+CREATE POLICY invoices_update_rbac ON invoices FOR UPDATE TO authenticated
+  USING (can_do_on_building('invoices', 'edit', building_id));
+```
+
+### 10.5 35 module thực thi + actions chuẩn
+
+Đã clean từ 41 module gốc (bỏ 4 không có data: `messages`, `iot_devices`, `zalo_oa`, `e_invoices`; gộp 2: `beds`→`rooms`, `building_layout`→`buildings`). Module + table mapping:
+
+| Nhóm UI | Module key | Label | Table / nguồn | Action đặc biệt |
+|---|---|---|---|---|
+| **Tổng quan** | `dashboard` | Bảng tin | (KPI tổng hợp) | — |
+| | `notifications` | Thông báo | `notifications` | — |
+| **Bất động sản** | `areas` | Khu vực | `areas` | — |
+| | `buildings` | Toà nhà | `buildings`, `floors`, `building_services` | — |
+| | `rooms` | Căn hộ / Phòng | `rooms`, `beds` | — |
+| | `services` | Dịch vụ | `services` | — |
+| **Khách hàng** | `leads` | Khách hẹn | `leads`, `lead_activities` | `export` |
+| | `deposits` | Đặt cọc | `deposits` | `print` |
+| | `contracts` | Hợp đồng | `contracts`, `contract_*` | `approve`, `print`, `export` |
+| | `customers` | Cư dân | `customers`, `tenants` | `print`, `export` |
+| | `vehicles` | Phương tiện | `vehicles` | — |
+| **Tài chính** | `cashbooks` | Sổ quỹ | `accounts`, `account_shared_users` | — |
+| | `meter_readings` | Ghi chỉ số | `meter_readings` | `export` |
+| | `invoices` | Hoá đơn | `invoices`, `invoice_items`, `payments` | `record_payment`, `print`, `export` |
+| | `income_expenses` | Thu chi | `income_expenses`, `income_expense_items` | `approve`, `print`, `export` |
+| | `excess_amounts` | Tiền thừa | `excess_amounts` | — |
+| **Tài sản** | `assets` | Tài sản | `assets`, `asset_handovers`, `asset_movements`, `asset_maintenance` | — |
+| | `asset_types` | Loại tài sản | `asset_categories` | — |
+| | `warehouses` | Kho | `asset_warehouses` | — |
+| | `suppliers` | Nhà cung cấp | `suppliers` | — |
+| **Vận hành & Báo cáo** | `tasks` | Công việc | `jobs`, `issues`, `issue_*` | `approve` |
+| | `task_types` | Loại công việc | `task_types`, `job_types` | — |
+| | `reports_real_estate` | Báo cáo BĐS | (9 báo cáo) | `export` |
+| | `reports_finance` | Báo cáo tài chính | (8 báo cáo) | `export` |
+| **Cấu hình hệ thống** | `meters` | Đồng hồ / Công tơ | `meters` | — |
+| | `service_quotas` | Định mức dịch vụ | `service_quotas`, `service_quota_tiers` | — |
+| | `auto_debt` | Gạch nợ tự động | `auto_debt_config` | — |
+| | `hotline` | Hotline | `hotlines` | — |
+| | `categories` | Danh mục khác | `income_expense_types`, v.v. | — |
+| | `templates` | Biểu mẫu / Chữ ký | `document_templates`, `signature_templates`, `income_expense_templates` | — |
+| | `settings` | Cài đặt chung | `settings`, `profiles` | — |
+| | `users` | Người dùng | `staff_assignments` (qua trang `/settings/staff`) | — |
+| | `roles` | Mẫu phân quyền | `roles` (qua tab Mẫu) | — |
+| | `subscription` | Gói cước | `user_subscriptions`, `subscription_plans` | — |
+
+**Actions chuẩn**: `view, create, edit, delete` (mọi module).
+**Actions đặc biệt** (chỉ enforce ở FE): `record_payment` (invoices), `approve` (contracts/income_expenses/tasks), `print` (invoices/contracts/deposits/income_expenses/customers), `export` (list pages).
+
+### 10.6 4 System Templates
+
+#### 1. Super Admin
+
+```json
+{ "__superadmin": true }
+```
+
+Sentinel — bypass mọi check. Dùng cho owner và admin tin cậy hoàn toàn.
+
+#### 2. Quản Lý Tòa
+
+Full CRUD + record_payment + approve trên các module vận hành; **không** có quyền sửa roles/users/subscription/settings.
 
 ```json
 {
-  "buildings":   { "view": true, "create": true, "edit": true, "delete": true, "export": true, "print": true, "approve": true },
-  "rooms":       { "view": true, "create": true, "edit": true, "delete": true },
-  "contracts":   { "view": true, "create": true, "edit": true, "delete": true },
-  "invoices":    { "view": true, "create": true, "edit": true, "delete": true, "record_payment": true },
-  "income_expenses": { "view": true, "create": true, "edit": true, "delete": true },
-  "customers":   { "view": true, "create": true, "edit": true, "delete": true },
-  "tasks":       { "view": true, "create": true, "edit": true, "delete": true },
-  "__superadmin": true
+  "dashboard": { "view": true },
+  "notifications": { "view": true },
+  "tasks": { "view": true, "create": true, "edit": true, "delete": true, "approve": true },
+  "buildings": { "view": true, "create": true, "edit": true, "delete": true },
+  "rooms": { "view": true, "create": true, "edit": true, "delete": true },
+  "services": { "view": true, "create": true, "edit": true, "delete": true },
+  "service_quotas": { "view": true, "create": true, "edit": true, "delete": true },
+  "meters": { "view": true, "create": true, "edit": true, "delete": true },
+  "meter_readings": { "view": true, "create": true, "edit": true, "delete": true, "export": true },
+  "leads": { "view": true, "create": true, "edit": true, "delete": true, "export": true },
+  "deposits": { "view": true, "create": true, "edit": true, "delete": true, "print": true },
+  "contracts": { "view": true, "create": true, "edit": true, "delete": true, "approve": true, "print": true, "export": true },
+  "customers": { "view": true, "create": true, "edit": true, "delete": true, "export": true, "print": true },
+  "vehicles": { "view": true, "create": true, "edit": true, "delete": true },
+  "cashbooks": { "view": true, "create": true, "edit": true, "delete": true },
+  "invoices": { "view": true, "create": true, "edit": true, "delete": true, "record_payment": true, "print": true, "export": true },
+  "income_expenses": { "view": true, "create": true, "edit": true, "delete": true, "approve": true, "print": true, "export": true },
+  "excess_amounts": { "view": true, "edit": true },
+  "assets": { "view": true, "create": true, "edit": true, "delete": true },
+  "asset_types": { "view": true, "create": true, "edit": true, "delete": true },
+  "warehouses": { "view": true, "create": true, "edit": true, "delete": true },
+  "suppliers": { "view": true, "create": true, "edit": true, "delete": true },
+  "areas": { "view": true },
+  "hotline": { "view": true, "create": true, "edit": true, "delete": true },
+  "auto_debt": { "view": true, "edit": true },
+  "templates": { "view": true },
+  "task_types": { "view": true, "create": true, "edit": true, "delete": true },
+  "categories": { "view": true, "create": true, "edit": true, "delete": true },
+  "reports_real_estate": { "view": true, "export": true },
+  "reports_finance": { "view": true, "export": true }
 }
 ```
 
-**Resources khả dụng** (key trong JSONB):
-- Bất động sản: `areas`, `buildings`, `rooms`, `beds`, `floors`, `building_layout`, `building_services`
-- Khách hàng: `contracts`, `customers`, `tenants`, `deposits`, `vehicles`
-- Tài chính: `invoices`, `payments`, `cashbooks`, `income_expenses`, `excess_amounts`, `reports_finance`, `auto_debt`
-- Dịch vụ: `services`, `service_quotas`, `meters`, `meter_readings`
-- Tài sản: `assets`, `asset_types`, `warehouses`
-- Công việc: `tasks` (= jobs/issues), `task_types`, `leads`, `hotline`
-- Cấu hình: `templates`, `document_templates`, `signature_templates`, `settings`, `categories`
-- Hệ thống: `notifications`, `roles`, `users`, `subscription`, `reports_real_estate`, `reports_tasks`
+#### 3. Partner
 
-### Helper RBAC
+CTV/đối tác — xem dashboard, quản lý leads/deposits, xem khách + báo cáo BĐS.
 
-```sql
--- Xem được không?
-SELECT can_access_building($building_id);
-
--- Sửa được không?
-SELECT can_do_on_building('invoices', 'edit', $building_id);
-
--- Cho global entity (customers, services, ...)
-SELECT can_access_org_entity('customers', 'create');
-
--- Trong RPC SECURITY DEFINER
-SELECT * FROM invoices i WHERE can_access_building(i.building_id);
+```json
+{
+  "dashboard": { "view": true },
+  "notifications": { "view": true },
+  "buildings": { "view": true },
+  "rooms": { "view": true },
+  "leads": { "view": true, "create": true, "edit": true, "delete": true, "export": true },
+  "deposits": { "view": true, "create": true, "edit": true, "print": true },
+  "contracts": { "view": true },
+  "customers": { "view": true, "create": true, "edit": true },
+  "vehicles": { "view": true },
+  "reports_real_estate": { "view": true }
+}
 ```
 
-### Frontend hooks tương ứng
+#### 4. Viewer
 
-| Hook | Mục đích | RPC |
-|---|---|---|
-| `useMyContext` | { is_super, is_staff, owner_id } | `get_my_context` |
-| `useMyPermissions` | JSONB permissions của caller | `get_my_permissions` |
-| `useMyBuildingScope` | Danh sách building staff được giao | `get_my_assignments` |
-| `useIsAdmin` | Caller có quyền admin? | `is_admin` |
-| `useStaffAssignments` | CRUD staff_assignments | (direct table) |
+Chỉ xem mọi dữ liệu, không thao tác.
 
-### Lưu ý quan trọng khi viết code mới
+```json
+{
+  "dashboard": { "view": true }, "notifications": { "view": true },
+  "buildings": { "view": true }, "rooms": { "view": true }, "services": { "view": true },
+  "meters": { "view": true }, "meter_readings": { "view": true },
+  "leads": { "view": true }, "deposits": { "view": true }, "contracts": { "view": true },
+  "customers": { "view": true }, "vehicles": { "view": true },
+  "cashbooks": { "view": true }, "invoices": { "view": true }, "income_expenses": { "view": true },
+  "assets": { "view": true },
+  "reports_real_estate": { "view": true }, "reports_finance": { "view": true }
+}
+```
 
-1. **KHÔNG** filter `.eq("user_id", auth_uid)` trong frontend — RLS đã handle. (Trừ bảng cá nhân: `settings`, `user_subscriptions`, `notifications`).
-2. **KHÔNG** truyền `p_user_id` vào RPC mới — dùng RPC v2 nếu có (`*_v2` suffix) hoặc `auth.uid()` trực tiếp trong SECURITY DEFINER function.
-3. **KHÔNG** set `user_id: user.id` khi INSERT — trigger `set_user_id_from_auth` tự fill. Nếu bỏ qua, RLS INSERT check sẽ chặn (dùng `can_do_on_building`).
-4. Khi tạo bảng mới có `building_id`: thêm trigger `set_user_id_audit` + 4 policy `*_rbac` theo pattern Phase 4.
-5. Bảng config global (không gắn building): dùng `can_access_org_entity(resource, action)` theo pattern Phase 5.
+### 10.7 Page → permission matrix
+
+Mỗi page định nghĩa chính xác `(module, action)` cần để render + thao tác.
+
+**Quy ước cột**:
+- **View**: gate render page (thiếu → redirect `/`)
+- **CRUD**: từng nút trên page (Tạo / Sửa / Xoá)
+- **Action đặc biệt**: `record_payment`, `print`, `export`, `approve`
+- **Ghi chú**: hành vi đặc biệt
+
+#### Quick Dashboard
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/` | `dashboard.view` | — | — | KPI lọc theo scope của staff |
+| `/building-map` | `buildings.view` | — | — | Sơ đồ read-only |
+| `/notifications` | `notifications.view` | — | — | RLS recipient-based |
+
+#### Danh mục dữ liệu
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/areas` | `areas.view` | `areas.create/edit/delete` | — | INSERT yêu cầu staff full-scope |
+| `/buildings` | `buildings.view` | `buildings.create/edit/delete` | — | Tương tự areas |
+| `/buildings/:id` | `buildings.view` | `buildings.edit/delete`, `rooms.create` | — | Tab rooms cần `rooms.create` |
+| `/apartments` | `rooms.view` | `rooms.create/edit/delete` | — | Module = `rooms` dù URL `/apartments` |
+| `/apartments/:id` | `rooms.view` | `rooms.edit/delete`, `assets.view` | — | — |
+| `/services` | `services.view` | `services.create/edit/delete` | — | — |
+| `/assets` | `assets.view` | `assets.create/edit/delete` | — | 3 tab (assets/movements/maintenance) cùng module |
+
+#### Khách hàng
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/leads` | `leads.view` | `leads.create/edit/delete` | `leads.export` | — |
+| `/deposits` | `deposits.view` | `deposits.create/edit/delete` | `deposits.print` | Convert→contract cần `contracts.create` |
+| `/contracts` | `contracts.view` | `contracts.create/edit/delete` | `contracts.export` | — |
+| `/contracts/:id` | `contracts.view` | `contracts.edit/delete` | `contracts.print`, `contracts.approve` | Approve dùng cho Extend/Transfer/Terminate dialog (ghi `approved_by`) |
+| `/customers` | `customers.view` | `customers.create/edit/delete` | `customers.export` | — |
+| `/customers/new` | `customers.create` | `customers.create` | — | Redirect nếu thiếu |
+| `/customers/:id` | `customers.view` | `customers.edit/delete` (nút) | `customers.print` (CT01) | — |
+| `/customers/:id/edit` | `customers.edit` | `customers.edit` | — | — |
+| `/customers/:id/ct01` | `customers.view`+`customers.print` | `customers.edit` (lưu) | `customers.print` | Form khai báo cư trú |
+| `/vehicles` | `vehicles.view` | `vehicles.create/edit/delete` | — | — |
+
+#### Tài chính
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/meter-readings` | `meter_readings.view` | `meter_readings.create/edit/delete` | `meter_readings.export` | Bulk cần `create` |
+| `/invoices` | `invoices.view` | `invoices.create/edit/delete` | `invoices.record_payment`, `invoices.print`, `invoices.export` | Đã enforce sẵn |
+| `/invoices/:id` | `invoices.view` | `invoices.edit/delete` | `invoices.record_payment`, `invoices.print` | — |
+| `/invoices/print/:id` | `invoices.view`+`invoices.print` | — | `invoices.print` | — |
+| `/income-expense` | `income_expenses.view` | `income_expenses.create/edit/delete` | `income_expenses.approve`, `income_expenses.print`, `income_expenses.export` | Approve dùng cho voucher workflow |
+| `/income-expense/print/:id` | `income_expenses.view`+`income_expenses.print` | — | `income_expenses.print` | — |
+| `/finance/refund-log` | `excess_amounts.view` HOẶC `income_expenses.view` | `excess_amounts.delete` | — | Read-only audit + rollback |
+| `/finance/cashbooks` | `cashbooks.view` | `cashbooks.create/edit/delete` | — | Map → table `accounts` |
+
+#### Công việc & Báo cáo
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/tasks` | `tasks.view` | `tasks.create/edit/delete` | `tasks.approve` | Bảng `jobs` + `issues` |
+| `/reports/real-estate` (hub) | `reports_real_estate.view` | — | — | Ẩn link không có quyền |
+| `/reports/real-estate/*` (9 báo cáo) | `reports_real_estate.view` | — | `reports_real_estate.export` | Vacant/Expiring/Occupancy/Renewals/Promotions/NewLeases/Terminations/ExpenseRatio |
+| `/reports/finance` (hub) | `reports_finance.view` | — | — | — |
+| `/report/finance/*` & `/reports/finance/*` (8 báo cáo) | `reports_finance.view` | — | `reports_finance.export`, `reports_finance.print` | Cashbook/CashFlow/Profit/Debt/Calendar/Prepaid/Deposit |
+
+#### Cài đặt
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/settings/general` | `settings.view` | `settings.edit` | — | Thông tin chủ trọ |
+| `/settings/categories` (hub) | `categories.view` | — | — | Hub liệt kê sub |
+| `/settings/categories/bank-accounts` | `cashbooks.view` | `cashbooks.create/edit/delete` | — | — |
+| `/settings/categories/auto-debt` | `auto_debt.view` | `auto_debt.create/edit/delete` | — | — |
+| `/settings/categories/service-quotas` | `service_quotas.view` | `service_quotas.create/edit/delete` | — | — |
+| `/settings/meters` | `meters.view` | `meters.create/edit/delete` | — | — |
+| `/settings/income-expense-types` | `categories.view` | `categories.create/edit/delete` | — | — |
+| `/settings/income-expense-templates` | `templates.view` | `templates.create/edit/delete` | — | — |
+| `/settings/categories/suppliers` | `suppliers.view` | `suppliers.create/edit/delete` | — | — |
+| `/settings/categories/warehouses` | `warehouses.view` | `warehouses.create/edit/delete` | — | — |
+| `/settings/categories/asset-types` | `asset_types.view` | `asset_types.create/edit/delete` | — | — |
+| `/settings/categories/asset-movements` | `assets.view` | — | — | Read-only audit |
+| `/settings/categories/asset-maintenance` | `assets.view` | `assets.edit` | — | Inline edit status |
+| `/settings/categories/hotlines` | `hotline.view` | `hotline.create/edit/delete` | — | — |
+| `/settings/categories/general` | `categories.view` | `categories.create/edit/delete` | — | — |
+| `/settings/categories/floors` | `buildings.view` | `buildings.edit` | — | — |
+| `/settings/categories/task-types` | `task_types.view` | `task_types.create/edit/delete` | — | — |
+| `/settings/templates` | `templates.view` | `templates.create/edit/delete` | — | Document templates |
+| `/settings/signatures` | `templates.view` | `templates.create/edit/delete` | — | Signature templates |
+| `/settings/staff` | `users.view` | `roles.create/edit/delete` + `users.create/edit/delete` | — | 2 tab — sử dụng `<RequirePermission module="users">` |
+
+#### Tài khoản & Admin
+
+| Page | View | CRUD | Đặc biệt | Ghi chú |
+|---|---|---|---|---|
+| `/account/profile` | (authenticated) | — | — | RLS đảm bảo chỉ sửa profile mình |
+| `/account/subscription` | `subscription.view` | `subscription.edit` | — | — |
+| `/admin/users` | **super_admin only** + `users.view` | `users.create` | — | Bọc `<AdminOnlyRoute>` + verify trong edge function `admin-create-user` |
+
+Info pages không cần gate: `/faq`, `/changelog`, `/app-guide` (authenticated). `/login`, `/register`, `/forgot-password`, `/reset-password` dùng `<PublicRoute>`. `/public/contract/:contractId` open access.
+
+### 10.8 Frontend hooks + components
+
+| File | Mục đích |
+|---|---|
+| [src/hooks/useMyPermissions.ts](../src/hooks/useMyPermissions.ts) | RPC `get_my_permissions()` → JSONB + helper `can(perms, module, action)` |
+| [src/hooks/useIsAdmin.ts](../src/hooks/useIsAdmin.ts) | Check super_admin/admin role |
+| [src/hooks/useStaffAssignments.ts](../src/hooks/useStaffAssignments.ts) | CRUD staff + `useApplyTemplate`, `useUpdateStaffPermissions` |
+| [src/lib/permissions.ts](../src/lib/permissions.ts) | Central registry: 35 module × 7 nhóm + helper diff/preset |
+| [src/components/staff/PermissionMatrix.tsx](../src/components/staff/PermissionMatrix.tsx) | Controlled matrix component — accordion 7 nhóm × N action |
+| [src/components/auth/RequirePermission.tsx](../src/components/auth/RequirePermission.tsx) | Route guard — `<RequirePermission module="X" action="view">` |
+| [src/components/auth/AdminOnlyRoute.tsx](../src/components/auth/AdminOnlyRoute.tsx) | Route guard cho trang admin (super_admin only) |
+| [src/pages/settings/StaffPage.tsx](../src/pages/settings/StaffPage.tsx) | UI quản lý mẫu + nhân viên (2 tabs) |
+
+**Helper `can()` mirror SQL** (src/hooks/useMyPermissions.ts):
+
+```ts
+export const can = (perms, moduleKey, actionKey) => {
+  if (!perms) return false;
+  if (perms.__superadmin === true) return true;
+  return !!perms[moduleKey]?.[actionKey];
+};
+```
+
+**Pattern gate UI button**:
+
+```tsx
+const { data: perms } = useMyPermissions();
+{can(perms, 'invoices', 'record_payment') && (
+  <Button onClick={openRecordPayment}>Thu tiền</Button>
+)}
+```
+
+**Pattern gate route**:
+
+```tsx
+<Route path="/settings/staff" element={
+  <ProtectedRoute>
+    <RequirePermission module="users" action="view">
+      <StaffPage />
+    </RequirePermission>
+  </ProtectedRoute>
+} />
+```
+
+### 10.9 Checklist khi thêm bảng / page / module mới
+
+1. **Bảng mới có `building_id` NOT NULL**: thêm trigger `*_set_user_id_audit` + 4 policy `*_rbac` (SELECT/INSERT/UPDATE/DELETE) dùng `can_access_building` + `can_do_on_building`.
+2. **Bảng mới `building_id` nullable**: thêm policy mixed — `can_access_building` khi NOT NULL, `can_access_org_entity` khi NULL.
+3. **Bảng global (không có `building_id`)**: dùng `can_access_org_entity('resource_key', 'action')`.
+4. **Page mới**: bọc `<RequirePermission module="X" action="view">` trong `src/App.tsx`. Thêm dòng vào matrix mục 10.7 trên.
+5. **Module mới** (thêm key vào permission system): cập nhật `src/lib/permissions.ts` (thêm vào `PERMISSION_GROUPS` đúng nhóm), regen types nếu cần, cập nhật 4 system template trong migration mới.
+6. **Action đặc biệt mới** (`approve`, `record_payment`, …): thêm vào `extra` của module trong `PERMISSION_GROUPS`, thêm gate UI, document trong mục 10.7.
+
+### 10.10 Lưu ý quan trọng khi viết code
+
+1. **KHÔNG** filter `.eq("user_id", auth_uid)` trong frontend cho data tables — RLS đã handle. Trừ bảng cá nhân: `settings`, `user_subscriptions`, `notifications` (recipient-based).
+2. **KHÔNG** truyền `p_user_id` vào RPC mới — dùng RPC v2 (`*_v2` suffix) hoặc `auth.uid()` trong SECURITY DEFINER function.
+3. **KHÔNG** set `user_id: user.id` khi INSERT — trigger `set_user_id_from_auth` tự fill. Bỏ qua sẽ bị RLS chặn (RLS dùng `can_do_on_building`, không dùng `user_id`).
+4. **KHÔNG** sửa `roles.permissions` cho 4 system template (`is_system = true`) — UI từ chối. Nếu cần biến thể, **tạo bản sao** qua nút "Tạo bản sao" trong sheet xem chi tiết.
+5. **Khi đổi role của staff** qua `useUpdateStaffMember`, hook tự re-snapshot permissions từ template mới → mọi tinh chỉnh trước đó BỊ MẤT. Nếu muốn giữ tinh chỉnh, dùng `useUpdateStaffPermissions` riêng.
 
 ---
 
-*File này được generate tự động ngày 2026-05-28. Để cập nhật, chạy lại `.scratch/gen_schema.cjs`.*
+*Mục này phản ánh trạng thái hệ thống sau refactor 2-tier (2026-05-28). Khi thay đổi mô hình, cập nhật cả 10.1–10.10.*

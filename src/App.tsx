@@ -125,6 +125,8 @@ import AppGuidePage from "./pages/AppGuidePage";
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PublicRoute from "./components/auth/PublicRoute";
+import { AdminOnlyRoute } from "./components/auth/AdminOnlyRoute";
+import { RequirePermission } from "./components/auth/RequirePermission";
 
 const queryClient = new QueryClient();
 
@@ -274,7 +276,7 @@ const App = () => (
           {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
 
           {/* === ADMIN — QUẢN LÝ TÀI KHOẢN === */}
-          <Route path="/admin/users" element={<ProtectedRoute><AdminUsersPage /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute><AdminOnlyRoute><AdminUsersPage /></AdminOnlyRoute></ProtectedRoute>} />
 
           {/* === CÀI ĐẶT HỆ THỐNG === */}
           <Route path="/settings/general" element={<ProtectedRoute><GeneralSettingsPage /></ProtectedRoute>} />
@@ -311,7 +313,7 @@ const App = () => (
           <Route path="/settings/categories/task-types" element={<ProtectedRoute><TaskTypesPage /></ProtectedRoute>} />
           <Route path="/settings/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
           <Route path="/settings/signatures" element={<ProtectedRoute><SignaturesPage /></ProtectedRoute>} />
-          <Route path="/settings/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
+          <Route path="/settings/staff" element={<ProtectedRoute><RequirePermission module="users" action="view"><StaffPage /></RequirePermission></ProtectedRoute>} />
 
           {/* === TÀI KHOẢN === */}
           <Route path="/account/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

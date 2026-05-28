@@ -252,6 +252,14 @@ export const useProvisionStaff = () => {
       const newUserId = signUp.user?.id;
       if (!newUserId) throw new Error("Không tạo được tài khoản — kiểm tra lại tên đăng nhập");
 
+      // Seed permissions snapshot từ role.permissions để staff có quyền ngay
+      // (Tier 2 init = Tier 1). Owner sau đó có thể tinh chỉnh per staff.
+      const { data: roleRow } = await supabase
+        .from("roles")
+        .select("permissions")
+        .eq("id", input.role_id)
+        .single();
+
       const buildingIds = (input.building_ids && input.building_ids.length > 0)
         ? input.building_ids
         : [null]; // null = "tất cả toà nhà"
@@ -261,6 +269,7 @@ export const useProvisionStaff = () => {
         staff_id: newUserId,
         role_id: input.role_id,
         building_id: bid,
+        permissions: roleRow?.permissions ?? null,
       }));
 
       const { data: assignments, error: assignErr } = await supabase
@@ -353,7 +362,15 @@ export const useUpdateStaffMember = () => {
         if (error) throw error;
       }
 
-      // 4) Update role_id on rows we're keeping (if role changed)
+      // Đọc role.permissions để snapshot khi role đổi hoặc tạo row mới.
+      const { data: roleRow } = await supabase
+        .from("roles")
+        .select("permissions")
+        .eq("id", input.role_id)
+        .single();
+
+      // 4) Update role_id on rows we're keeping (if role changed).
+      // Khi role đổi → re-snapshot permissions từ template mới (Tier 1 → Tier 2).
       const toUpdateIds: string[] = [];
       for (const [key, val] of have.entries()) {
         if (want.has(key) && val.role_id !== input.role_id) toUpdateIds.push(val.id);
@@ -361,12 +378,12 @@ export const useUpdateStaffMember = () => {
       if (toUpdateIds.length > 0) {
         const { error } = await supabase
           .from("staff_assignments")
-          .update({ role_id: input.role_id })
+          .update({ role_id: input.role_id, permissions: roleRow?.permissions ?? null })
           .in("id", toUpdateIds);
         if (error) throw error;
       }
 
-      // 5) Insert missing rows
+      // 5) Insert missing rows (cho buildings mới được thêm)
       const toInsert = wantBuildings
         .filter((b) => !have.has(b ?? "__null__"))
         .map((b) => ({
@@ -374,6 +391,7 @@ export const useUpdateStaffMember = () => {
           staff_id: input.staff_id,
           role_id: input.role_id,
           building_id: b,
+          permissions: roleRow?.permissions ?? null,
         }));
       if (toInsert.length > 0) {
         const { error } = await supabase.from("staff_assignments").insert(toInsert);
@@ -412,6 +430,67 @@ export const useRemoveStaffMember = () => {
     onError: (error: Error) => {
       toast.error(`Không xoá được: ${error.message}`);
     },
+  });
+};
+
+// =============================================================
+// Áp template (Tier 1 → Tier 2): copy role.permissions vào
+// staff_assignments.permissions cho mọi row của staff. Đồng thời
+// cập nhật role_id để badge UI hiển thị mẫu hiện hành.
+// =============================================================
+export const useApplyTemplate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ staffId, roleId }: { staffId: string; roleId: string }) => {
+      const { data: role, error: roleErr } = await supabase
+        .from("roles")
+        .select("permissions")
+        .eq("id", roleId)
+        .single();
+      if (roleErr) throw roleErr;
+
+      const { error: updErr } = await supabase
+        .from("staff_assignments")
+        .update({ role_id: roleId, permissions: role!.permissions })
+        .eq("staff_id", staffId);
+      if (updErr) throw updErr;
+
+      return { staffId, roleId };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
+      toast.success("Đã áp mẫu phân quyền");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+};
+
+// =============================================================
+// Lưu permissions tinh chỉnh per staff. UPDATE mọi row của staff
+// cùng 1 JSONB (multi-building → multi-row nhưng cùng permissions).
+// =============================================================
+export const useUpdateStaffPermissions = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      staffId,
+      permissions,
+    }: {
+      staffId: string;
+      permissions: any;
+    }) => {
+      const { error } = await supabase
+        .from("staff_assignments")
+        .update({ permissions })
+        .eq("staff_id", staffId);
+      if (error) throw error;
+      return { staffId };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
+      toast.success("Đã lưu phân quyền");
+    },
+    onError: (e: Error) => toast.error(`Không lưu được: ${e.message}`),
   });
 };
 
