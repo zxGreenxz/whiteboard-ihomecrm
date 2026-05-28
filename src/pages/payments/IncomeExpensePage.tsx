@@ -64,7 +64,21 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   income_type_id: null,
   expense_type_id: null,
   creator_id: null,
+  amount_target: null,
 };
+
+// Parse search input: nếu toàn ký tự số (sau khi bỏ ., space, đ, d) → amount filter.
+// Trả về { amount } nếu là số, { text } nếu là chuỗi, { } nếu rỗng.
+function parseSearchInput(raw: string): { amount?: number; text?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  const cleaned = trimmed.replace(/[\s.,đdĐ]/g, "");
+  if (/^\d+$/.test(cleaned)) {
+    const amount = Number(cleaned);
+    if (amount > 0) return { amount };
+  }
+  return { text: trimmed };
+}
 
 const IncomeExpensePage = () => {
   const isMobile = useIsMobile();
@@ -112,17 +126,24 @@ const IncomeExpensePage = () => {
 
   const pagination = usePagination(isMobile ? 50 : 20);
 
+  // Parse search input: số → amount filter (±5.000đ), chữ → text search
+  const parsedSearch = parseSearchInput(searchQuery);
+  const effectiveFilters: IncomeExpenseFilters = {
+    ...filters,
+    amount_target: parsedSearch.amount ?? null,
+  };
+
   const { data: listResult, isLoading } = useIncomeExpenses(
-    filters,
+    effectiveFilters,
     { page: pagination.page, pageSize: pagination.pageSize },
-    searchQuery || undefined
+    parsedSearch.text
   );
 
   const { data: batchResult, isLoading: isBatchLoading } =
     useIncomeExpenseBatches(
-      filters,
+      effectiveFilters,
       { page: pagination.page, pageSize: pagination.pageSize },
-      searchQuery || undefined
+      parsedSearch.text
     );
 
   const vouchers = listResult?.data ?? [];
@@ -136,7 +157,7 @@ const IncomeExpensePage = () => {
       : null;
 
   const { data: stats, isLoading: isStatsLoading } =
-    useIncomeExpenseStats(filters);
+    useIncomeExpenseStats(effectiveFilters);
 
   const cancelMutation = useCancelIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
@@ -542,15 +563,6 @@ const IncomeExpensePage = () => {
             <ListFilter className="h-4 w-4 mr-2" />
             Lọc dữ liệu
           </Button>
-          <div className="relative flex-1 max-w-sm ml-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Tìm theo tên phiếu, khách hàng, mã phiếu..."
-              value={searchQuery}
-              onChange={handleSearchChange}
-              className="pl-9"
-            />
-          </div>
         </div>
 
         <IncomeExpenseFiltersBar
@@ -560,19 +572,35 @@ const IncomeExpensePage = () => {
 
         <IncomeExpenseStats stats={statsData} isLoading={isStatsLoading} />
 
-        {/* View mode toggle */}
-        <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-          <TabsList>
-            <TabsTrigger value="individual" className="gap-1.5">
-              <FileText className="h-4 w-4" />
-              Phiếu lẻ
-            </TabsTrigger>
-            <TabsTrigger value="batch" className="gap-1.5">
-              <Layers className="h-4 w-4" />
-              Phiếu tổng (gom nhóm)
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* View mode toggle + Search */}
+        <div className="flex items-center gap-2">
+          <Tabs value={viewMode} onValueChange={handleViewModeChange}>
+            <TabsList>
+              <TabsTrigger value="individual" className="gap-1.5">
+                <FileText className="h-4 w-4" />
+                Phiếu lẻ
+              </TabsTrigger>
+              <TabsTrigger value="batch" className="gap-1.5">
+                <Layers className="h-4 w-4" />
+                Phiếu tổng (gom nhóm)
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="relative flex-1 max-w-md ml-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm tên/mã phiếu hoặc gõ số tiền (±5.000đ)..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              className="pl-9"
+            />
+            {parsedSearch.amount != null && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                ±5.000đ
+              </span>
+            )}
+          </div>
+        </div>
 
         {viewMode === "individual" ? (
           <IncomeExpenseList

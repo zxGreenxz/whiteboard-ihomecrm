@@ -19,7 +19,20 @@ import {
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
-import { Eye, Ban, Receipt, Pencil, CheckCircle2, BadgeCheck } from 'lucide-react';
+import {
+  Eye,
+  Ban,
+  Receipt,
+  Pencil,
+  CheckCircle2,
+  BadgeCheck,
+  FileText as FileIcon,
+} from 'lucide-react';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -40,6 +53,75 @@ interface IncomeExpenseListProps {
 
 const formatVND = (amount: number): string => {
   return amount.toLocaleString('vi-VN') + ' đ';
+};
+
+const isImageUrl = (url: string): boolean =>
+  /\.(jpe?g|png|gif|webp|bmp|avif)(\?|#|$)/i.test(url);
+
+interface AttachmentPreviewProps {
+  urls: string[];
+}
+
+// Thumbnail nhỏ ảnh đính kèm + hover hiện kích thước thật. Nếu có nhiều file,
+// chỉ hiện cái đầu — chi tiết đầy đủ vẫn xem được trong dialog chi tiết.
+const AttachmentPreview = ({ urls }: AttachmentPreviewProps) => {
+  if (!urls || urls.length === 0) return null;
+  const first = urls[0];
+  const isImg = isImageUrl(first);
+  const extra = urls.length - 1;
+
+  if (!isImg) {
+    return (
+      <a
+        href={first}
+        target="_blank"
+        rel="noreferrer"
+        className="ml-1 inline-flex items-center gap-0.5 text-zinc-500 hover:text-zinc-700"
+        title="Mở file đính kèm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <FileIcon className="h-4 w-4" />
+        {extra > 0 && <span className="text-[10px]">+{extra}</span>}
+      </a>
+    );
+  }
+
+  return (
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <a
+          href={first}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-1 inline-flex items-center"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <img
+            src={first}
+            alt="Đính kèm"
+            className="h-7 w-7 rounded border border-zinc-200 object-cover hover:ring-2 hover:ring-blue-300"
+            loading="lazy"
+          />
+          {extra > 0 && (
+            <span className="ml-0.5 text-[10px] text-muted-foreground">
+              +{extra}
+            </span>
+          )}
+        </a>
+      </HoverCardTrigger>
+      <HoverCardContent
+        side="left"
+        align="center"
+        className="p-1 w-auto max-w-[480px]"
+      >
+        <img
+          src={first}
+          alt="Đính kèm full-size"
+          className="max-h-[420px] max-w-[460px] object-contain rounded"
+        />
+      </HoverCardContent>
+    </HoverCard>
+  );
 };
 
 const IncomeExpenseList = ({
@@ -206,6 +288,9 @@ const IncomeExpenseList = ({
                         <Ban className="h-4 w-4" />
                       </Button>
                     )}
+
+                    {/* Ảnh đính kèm — thumbnail + hover xem full-size */}
+                    <AttachmentPreview urls={voucher.attachments ?? []} />
 
                     {/* Tên người kiểm — hiện ở cuối ô thao tác khi đã kiểm */}
                     {isVerified && voucher.verified_by_name && (
