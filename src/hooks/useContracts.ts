@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendlyError";
 import type {
   Contract,
   ContractWithRelations,
@@ -408,13 +409,8 @@ export const useCreateContract = () => {
     },
     onError: (error: any) => {
       console.error("Error creating contract:", error);
-      if (error?.code === "23503") {
-        toast.error("Dữ liệu liên kết không tồn tại");
-      } else if (error?.code === "23505") {
-        toast.error("Khách hàng này đã được thêm vào hợp đồng");
-      } else {
-        toast.error(error?.message || "Có lỗi xảy ra. Vui lòng thử lại.");
-      }
+      const fe = friendlyError(error, "Không lưu được hợp đồng");
+      toast.error(fe.title, { description: fe.description });
     },
   });
 };
