@@ -183,7 +183,10 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     (selectedContract as any)?.bed?.room?.building_id ||
     '';
   const { data: bldSvc } = useBuildingServices(buildingIdOfContract);
-  const { data: vehicles } = useVehicles({ contract_id: watchedContractId });
+  const { data: vehiclesData } = useVehicles(
+    watchedContractId ? { contract_id: watchedContractId } : undefined,
+  );
+  const vehicles = vehiclesData?.data ?? [];
 
   // Lấy đơn giá mặc định từ building_services (giống ExcelInvoiceDialog).
   const defaults = useMemo(() => {
@@ -282,7 +285,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   // Auto-fill vehicle parking fees vào custom_items khi đổi HĐ.
   useEffect(() => {
     if (!selectedContract) return;
-    const next = (vehicles ?? [])
+    const next = vehicles
       .filter((v: any) => v.parking_fee && v.parking_fee > 0)
       .map((v: any) => ({
         type: 'SERVICE' as const,
@@ -292,7 +295,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       }));
     setValue('custom_items', next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContract?.id, vehicles?.length]);
+  }, [selectedContract?.id, vehicles.length]);
 
   // Auto chọn hợp đồng khi đã có toà + phòng. Nếu có nhiều HĐ ACTIVE cùng
   // phòng → để trống và cảnh báo đỏ user phải tự chọn.
@@ -432,25 +435,41 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     const toDate = format(periodEnd, 'yyyy-MM-dd');
 
     // 1) Ghi chỉ số mới (nếu user nhập) — APPROVED ngay.
+    //    Skip nếu đã có chỉ số APPROVED cho meter này trong cùng kỳ
+    //    (tránh 409 do unique reading_code / chỉ số trùng).
     const consumption =
       (Number(data.current_reading) || 0) - (Number(data.prev_reading) || 0);
     if (meterId && data.current_reading != null && consumption >= 0) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('meter_readings').insert({
-          user_id: user.id,
-          meter_id: meterId,
-          reading_date: data.issue_date,
-          settlement_month: data.billing_month,
-          previous_reading: data.prev_reading,
-          current_reading: Number(data.current_reading),
-          status: 'APPROVED',
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-          meter_type: 'ELECTRICITY',
-          service_id: defaults.elecServiceId,
-          recorded_by: user.id,
-        } as any);
+      const { data: existing } = await (supabase as any)
+        .from('meter_readings')
+        .select('id')
+        .eq('meter_id', meterId)
+        .eq('settlement_month', data.billing_month)
+        .is('deleted_at', null)
+        .limit(1);
+      if (!existing || existing.length === 0) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error: readingErr } = await supabase
+            .from('meter_readings')
+            .insert({
+              user_id: user.id,
+              meter_id: meterId,
+              reading_date: data.issue_date,
+              settlement_month: data.billing_month,
+              previous_reading: data.prev_reading,
+              current_reading: Number(data.current_reading),
+              status: 'APPROVED',
+              approved_by: user.id,
+              approved_at: new Date().toISOString(),
+              meter_type: 'ELECTRICITY',
+              service_id: defaults.elecServiceId,
+              recorded_by: user.id,
+            } as any);
+          if (readingErr) {
+            console.warn('Skip ghi chỉ số (đã tồn tại hoặc lỗi):', readingErr.message);
+          }
+        }
       }
     }
 

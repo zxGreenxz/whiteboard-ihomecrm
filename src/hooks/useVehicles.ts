@@ -95,6 +95,11 @@ export const useVehicles = (
         query = query.eq("customer_id", filters.customer_id);
       }
 
+      // Filter by contract
+      if (filters?.contract_id) {
+        query = query.eq("contract_id", filters.contract_id);
+      }
+
       // Filter by vehicle_name (dòng xe)
       if (filters?.vehicle_name) {
         query = query.eq("vehicle_name", filters.vehicle_name);

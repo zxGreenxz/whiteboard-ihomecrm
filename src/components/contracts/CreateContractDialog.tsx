@@ -319,7 +319,18 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
           <DialogTitle className="text-xl text-green-700 uppercase">Hợp đồng</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit, (errors) => { console.log("Form validation errors:", errors); })} className="space-y-6 p-6 pt-2">
+        <form
+          onSubmit={handleSubmit(onSubmit, (errors) => { console.log("Form validation errors:", errors); })}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            const target = e.target as HTMLElement;
+            const tag = target.tagName;
+            if (tag === 'TEXTAREA') return;
+            if (tag === 'BUTTON' && (target as HTMLButtonElement).type === 'submit') return;
+            e.preventDefault();
+          }}
+          className="space-y-6 p-6 pt-2"
+        >
 
           {/* 1. THÔNG TIN CHUNG */}
           <div className="space-y-4">

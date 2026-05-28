@@ -760,7 +760,20 @@ export function ContractFormDialog({
 
         <ScrollArea className="max-h-[calc(90vh-120px)] px-6 pb-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-6">
+            <form
+              onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+              onKeyDown={(e) => {
+                // Chặn Enter submit ngoài ý muốn — chỉ cho Enter trong
+                // <textarea> (để xuống dòng) và button submit (click thật sự).
+                if (e.key !== 'Enter') return;
+                const target = e.target as HTMLElement;
+                const tag = target.tagName;
+                if (tag === 'TEXTAREA') return;
+                if (tag === 'BUTTON' && (target as HTMLButtonElement).type === 'submit') return;
+                e.preventDefault();
+              }}
+              className="space-y-6"
+            >
               {/* ===== Section 1: Thông tin chung ===== */}
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-foreground border-b pb-2">
