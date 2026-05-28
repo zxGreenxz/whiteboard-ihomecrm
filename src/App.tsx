@@ -57,6 +57,9 @@ import RefundLogPage from "./pages/payments/RefundLogPage";
 // Assets Pages
 import AssetsPage from "./pages/assets/AssetsPage";
 
+// Materials (kho vật tư tiêu hao)
+import MaterialsPage from "./pages/materials/MaterialsPage";
+
 // Reports Pages
 import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
 import FinanceReportsPage from "./pages/reports/FinanceReportsPage";
@@ -203,6 +206,7 @@ const App = () => (
           <Route path="/rooms/:id" element={<Navigate to="/apartments" replace />} />
           <Route path="/services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
+          <Route path="/materials" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
 
           {/* === KHÁCH HÀNG === */}
           <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
