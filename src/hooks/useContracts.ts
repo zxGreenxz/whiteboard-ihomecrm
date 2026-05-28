@@ -745,7 +745,6 @@ const LEGACY_CONTRACT_SELECT = `
     building:buildings!rooms_building_id_fkey (
       id, name, code
     )
-  ),    )
   ),
   contract_tenants (
     id, tenant_id, is_representative, move_in_date,
