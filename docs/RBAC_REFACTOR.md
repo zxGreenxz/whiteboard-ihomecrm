@@ -267,20 +267,27 @@ Có thể restore bất kỳ bảng nào về trạng thái trước refactor n�
 
 ## 5. Đề xuất còn lại (không khẩn cấp)
 
-### 5.1 Rename `user_id` → `created_by` (Phase 6 hard)
+### 5.1 Rename `user_id` → `created_by` (HOÃN — đã xem xét)
 
-**Khi nào**: sau khi production stable ≥ 2 tuần với phase 1-5 đã merge.
+**Quyết định**: KHÔNG thực hiện trong batch refactor này. Lý do:
+- Phase 6 soft (COMMENT annotation 36 cột) đã đủ document audit-only semantics
+- Hard rename cần update ~80 chỗ frontend, rủi ro cao mà giá trị thấp (chỉ cosmetic)
+- Generated column alias (`created_by GENERATED ALWAYS AS (user_id)`) tăng storage 2x mà không giảm code complexity
+- Có thể làm sau khi có refactor lớn khác
 
-**Cách làm**:
+**Khi nào nên xem xét lại**:
+- App có > 10 chủ trọ thật (cột tên user_id sẽ gây nhầm với owner)
+- Có rewrite lớn frontend (nên tận dụng làm chung)
+- Vấn đề audit log cần ngữ nghĩa rõ ràng hơn
+
+**Cách làm nếu thực hiện**:
 1. `ALTER TABLE ... RENAME COLUMN user_id TO created_by` cho 30+ bảng
 2. Rename trigger `*_set_user_id_audit` → `*_set_created_by_audit`
-3. Regenerate `src/integrations/supabase/types.ts`
-4. Sửa ~80 chỗ frontend tham chiếu `.user_id` trên data tables → `.created_by`
-5. **Không** rename trên các bảng auth (`profiles`, `roles`, `user_roles`,
+3. Update function `set_user_id_from_auth()` → ref `NEW.created_by`
+4. Regenerate `src/integrations/supabase/types.ts`
+5. Sửa ~80 chỗ frontend tham chiếu `.user_id` trên data tables → `.created_by`
+6. **Không** rename trên các bảng auth (`profiles`, `roles`, `user_roles`,
    `staff_assignments.user_id`, `super_admins.user_id`, `account_shared_users`)
-   vì các bảng đó `user_id` thật sự là FK đến `auth.users`.
-
-**Rủi ro**: high — chạm 80+ file frontend. Cần code-review kỹ.
 
 ### 5.2 Trang `/admin/users` cho super_admin invite
 
