@@ -80,8 +80,41 @@ OK — all 29 tables match baseline.
 # DB state không thay đổi.
 ```
 
+## Đợt 2 — Đối chiếu sâu folder với DB hiện tại (2026-05-28)
+
+Script `.scratch/audit_migrations.cjs` parse SQL của từng file, đối chiếu với DB state để tìm:
+- File `CREATE TABLE X` nhưng `X` không có trong DB hiện tại (= obsolete)
+- Bảng trong DB nhưng không có `CREATE TABLE` trong folder (= missing)
+
+### Đã XÓA (1 file obsolete)
+
+| File | Lý do |
+|---|---|
+| `027_ai_api_keys.sql` | Tạo bảng `ai_api_keys` nhưng đã bị xoá ngoài migrations (không còn trong DB, 0 reference trong `src/`). Giữ lại trong git history qua commit này. |
+
+### Đã BỔ SUNG (2 file missing — extract từ `supabase_migrations.schema_migrations` tracker)
+
+| File mới | Mô tả |
+|---|---|
+| `20260222135029_recreate_areas_table.sql` | Recreate `areas` table + `buildings.area_id` FK. Trước đó `20250101000011_drop_areas_table.sql` đã xóa, nay khôi phục với schema mới (RLS, indexes, trigger). Cần thiết vì hiện tại `areas` đang là bảng quan trọng (NATHAN/JOEY). |
+| `20260222155059_rebuild_services_schema.sql` | Tạo `service_buildings`, `service_quota_tiers`, thêm cột `fee_type/pricing_type/tax_rate/quota_id` vào `services`. Cần thiết vì `service_quota_tiers` đang tồn tại trong DB nhưng KHÔNG file nào trong folder tạo nó. Đồng thời tạo `service_buildings` để các migration sau (`unify_service_building_links`, `drop_service_buildings`) hoạt động đúng khi run từ scratch. |
+
+Nội dung SQL được lấy y nguyên từ Supabase migration tracker (đã được apply lên DB từ ngày 2026-02-22).
+
+### Kiểm tra sau cleanup đợt 2
+
+| Trước | Sau |
+|---|---|
+| 157 files | **158 files** (157 - 1 xóa + 2 thêm) |
+| 2 bảng "ghost" (referenced nhưng không có CREATE trong folder): `service_buildings`, `service_quota_tiers` | **0 bảng ghost** — mọi bảng trong DB hiện tại đều có CREATE statement trong folder |
+| 1 bảng "orphan" (CREATE trong folder nhưng không có trong DB): `ai_api_keys` | **0 bảng orphan** |
+
+→ Folder `migrations/` giờ là **bản lossless** của DB hiện tại. Run `supabase db reset` sẽ tạo lại đúng schema (modulo các tracked migrations đang được apply qua `supabase_migrations.schema_migrations`).
+
 ## Tham chiếu
 
 - **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** — schema chi tiết hiện tại (sinh tự động từ DB)
 - **[RBAC_REFACTOR.md](RBAC_REFACTOR.md)** — lịch sử refactor multi-tenant → RBAC
-- Log JSON: `.scratch/audit/migration_renames.json`
+- Log JSON:
+  - `.scratch/audit/migration_renames.json` (13 rename đợt 1)
+  - `.scratch/audit/migration_audit.json` (parse từng file đợt 2)
