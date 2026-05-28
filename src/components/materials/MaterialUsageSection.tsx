@@ -57,6 +57,12 @@ export default function MaterialUsageSection({ jobId, className }: Props) {
     return sum + q * Number(m?.avg_unit_cost ?? 0);
   }, 0);
 
+  // Chi phí THẬT đã lưu (snapshot at save), không phải ước tính
+  const savedCost = (usage?.items ?? []).reduce(
+    (sum, it) => sum + Number(it.quantity) * Number(it.unit_cost_at_usage),
+    0,
+  );
+
   const updateItem = (key: string, patch: Partial<ItemRow>) => {
     setItems((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
     setDirty(true);
@@ -105,6 +111,11 @@ export default function MaterialUsageSection({ jobId, className }: Props) {
           Vật tư đã sử dụng
           {usage?.code && (
             <span className="font-mono text-xs text-muted-foreground">({usage.code})</span>
+          )}
+          {savedCost > 0 && !dirty && (
+            <span className="text-xs text-muted-foreground font-normal">
+              · Chi phí: <b className="font-mono text-foreground">{savedCost.toLocaleString('vi-VN')} đ</b>
+            </span>
           )}
         </h3>
         <Button size="sm" variant="outline" onClick={addItem} className="h-7 gap-1">
