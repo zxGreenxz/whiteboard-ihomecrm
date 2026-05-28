@@ -33,7 +33,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpdateDeposit, useDeleteDeposit, type DepositWithRelations } from "@/hooks/useDeposits";
 import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,7 +48,6 @@ import { useState } from "react";
 const depositSchema = z.object({
   tenant_id: z.string().min(1, "Phải chọn khách hàng"),
   room_id: z.string().min(1, "Phải chọn căn hộ"),
-  bed_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
@@ -72,14 +70,12 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
   const deleteDeposit = useDeleteDeposit();
   const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
-  const { data: beds = [] } = useBeds();
 
   const form = useForm<DepositFormValues>({
     resolver: zodResolver(depositSchema),
     defaultValues: {
       tenant_id: "",
       room_id: "",
-      bed_id: undefined,
       amount: 0,
       deposit_date: "",
       hold_until_date: "",
@@ -94,7 +90,6 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
       form.reset({
         tenant_id: deposit.tenant_id || "",
         room_id: deposit.room_id || "",
-        bed_id: deposit.bed_id || undefined,
         amount: deposit.amount || 0,
         deposit_date: deposit.deposit_date || "",
         hold_until_date: deposit.hold_until_date || "",
@@ -110,7 +105,6 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
       await updateDeposit.mutateAsync({
         id: deposit.id,
         ...data,
-        bed_id: data.bed_id || null,
         ctv_name: data.ctv_name || null,
         notes: data.notes || null,
       } as any);
@@ -169,57 +163,30 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
                   )}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="room_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Căn hộ *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn căn hộ" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {rooms.map((room) => (
-                              <SelectItem key={room.id} value={room.id}>
-                                {room.name} {room.code && `(${room.code})`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="bed_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Giường (nếu có)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn giường" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {beds.map((bed) => (
-                              <SelectItem key={bed.id} value={bed.id}>
-                                {bed.name} {bed.code && `(${bed.code})`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                <FormField
+                  control={form.control}
+                  name="room_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Căn hộ *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn căn hộ" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {rooms.map((room) => (
+                            <SelectItem key={room.id} value={room.id}>
+                              {room.name} {room.code && `(${room.code})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <div className="grid grid-cols-3 gap-4">
                   <FormField

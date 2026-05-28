@@ -94,7 +94,6 @@ export async function calculateTerminationCosts(
       *,
       tenant:tenants(*),
       room:rooms(*, building:buildings(*)),
-      bed:beds(*, room:rooms(*, building:buildings(*))),
       contract_services(*, service:services(*))
     `)
     .eq('id', input.contract_id)
@@ -543,7 +542,7 @@ export async function processTermination(params: {
   // 4. Update room/bed status to AVAILABLE
   const { data: contract } = await supabase
     .from('contracts')
-    .select('room_id, bed_id')
+    .select('room_id')
     .eq('id', params.contract_id)
     .single();
 
@@ -552,13 +551,6 @@ export async function processTermination(params: {
       .from('rooms')
       .update({ status: 'AVAILABLE' })
       .eq('id', contract.room_id);
-  }
-
-  if (contract?.bed_id) {
-    await supabase
-      .from('beds')
-      .update({ status: 'AVAILABLE' })
-      .eq('id', contract.bed_id);
   }
 
   return {

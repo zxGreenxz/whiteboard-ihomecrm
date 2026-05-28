@@ -102,7 +102,7 @@ export const useBulkRecordPayment = () => {
           const { data: inv, error: invErr } = await (supabase
             .from('invoices')
             .select(
-              'id, user_id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)',
+              'id, user_id, invoice_number, building_id, room_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)',
             )
             .eq('id', item.invoice_id)
             .single() as any);
@@ -231,7 +231,6 @@ export const useBulkRecordPayment = () => {
                 name: `Thu tiền theo HĐ ${getInvoiceShortTitle(inv as any)}`,
                 building_id: (inv as any).building_id,
                 room_id: (inv as any).room_id,
-                bed_id: (inv as any).bed_id,
                 contract_id: (inv as any).contract_id,
                 account_id: item.account_id,
                 invoice_id: (inv as any).id,

@@ -13,7 +13,6 @@ export const useJobs = (filters?: TaskFilters) => {
           *,
           buildings(id, name),
           rooms(id, name),
-          beds(id, name),
           job_types(id, name),
           profiles!jobs_assignee_id_fkey(id, full_name)
         `)

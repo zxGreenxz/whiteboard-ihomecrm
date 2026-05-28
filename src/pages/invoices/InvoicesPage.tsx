@@ -119,9 +119,7 @@ const InvoicesPage = () => {
     () => ({
       area_id: filters.area_id,
       building_id: filters.building_id,
-      room_id: filters.room_id,
-      bed_id: filters.bed_id,
-      status: filters.status,
+      room_id: filters.room_id,      status: filters.status,
       start_date: filters.date_range?.start,
       end_date: filters.date_range?.end,
       billing_month: filters.billing_month,

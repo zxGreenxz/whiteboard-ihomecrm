@@ -454,9 +454,7 @@ export interface ContractForInvoice {
   id: string;
   contract_number: string;
   tenant_id: string;
-  room_id: string | null;
-  bed_id: string | null;
-  rent_price: number;
+  room_id: string | null;  rent_price: number;
   start_date: string;
   end_date: string;
   start_billing_date: string | null;

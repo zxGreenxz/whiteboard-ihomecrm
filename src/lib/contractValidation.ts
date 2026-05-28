@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 export const contractFormSchema = z.object({
   room_id: z.string().uuid('Vui lòng chọn phòng'),
-  bed_id: z.string().uuid().nullable().optional(),
   signed_date: z.string().min(1, 'Ngày ký không được để trống'),
   start_date: z.string().min(1, 'Ngày bắt đầu không được để trống'),
   end_date: z.string().min(1, 'Ngày kết thúc không được để trống'),
@@ -32,7 +31,6 @@ export const renewFormSchema = z.object({
 
 export const transferRoomFormSchema = z.object({
   new_room_id: z.string().uuid('Vui lòng chọn phòng mới'),
-  new_bed_id: z.string().uuid().nullable().optional(),
   new_rent_price: z.number().min(0).optional(),
   transfer_date: z.string().min(1, 'Ngày chuyển không được để trống'),
   notes: z.string().optional(),

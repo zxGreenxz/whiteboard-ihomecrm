@@ -73,7 +73,6 @@ export interface CustomerFilters {
   area_id?: string;
   building_id?: string;
   room_id?: string;
-  bed_id?: string;
   search?: string;
 }
 

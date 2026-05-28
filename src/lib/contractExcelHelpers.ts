@@ -17,7 +17,6 @@ import { parseDateToISO } from '@/lib/customerExcelHelpers';
 
 export interface ContractImportRow {
   room_name: string;
-  bed_name?: string;
   customer_name: string;
   customer_phone: string;
   customer_id_number?: string;
@@ -51,7 +50,6 @@ const EXPORT_COLS = [
 
 const IMPORT_HEADERS = [
   'Phòng (*)',
-  'Giường',
   'Tên KH (*)',
   'SĐT (*)',
   'CCCD',
@@ -66,7 +64,6 @@ const IMPORT_HEADERS = [
 
 const IMPORT_HEADER_MAP: Record<string, keyof ContractImportRow> = {
   'Phòng (*)':                                           'room_name',
-  'Giường':                                              'bed_name',
   'Tên KH (*)':                                          'customer_name',
   'SĐT (*)':                                             'customer_phone',
   'CCCD':                                                'customer_id_number',
@@ -92,7 +89,6 @@ function formatLocation(contract: ContractWithRelations): string {
   const parts: string[] = [];
   if (contract.room?.building?.name) parts.push(contract.room.building.name);
   if (contract.room?.name) parts.push(contract.room.name);
-  if (contract.bed?.name) parts.push(contract.bed.name);
   return parts.join(' - ');
 }
 
@@ -211,7 +207,6 @@ export function validateContractImportRow(
     return { valid: false, errors: rowErrors };
   }
 
-  const bedName = row.bed_name ? String(row.bed_name).trim() : undefined;
   const idNumber = row.customer_id_number ? String(row.customer_id_number).trim() : undefined;
   const notes = row.notes ? String(row.notes).trim() : undefined;
 
@@ -219,7 +214,6 @@ export function validateContractImportRow(
     valid: true,
     data: {
       room_name: roomName,
-      bed_name: bedName || undefined,
       customer_name: customerName,
       customer_phone: customerPhone,
       customer_id_number: idNumber || undefined,
@@ -494,13 +488,11 @@ export async function parseContractExcel(
           if (rowErrors.length > 0) {
             errors.push({ row: excelRowNum, message: rowErrors.join('; ') });
           } else {
-            const bedName = row.bed_name ? String(row.bed_name).trim() : undefined;
             const idNumber = row.customer_id_number ? String(row.customer_id_number).trim() : undefined;
             const notes = row.notes ? String(row.notes).trim() : undefined;
 
             success.push({
               room_name: roomName,
-              bed_name: bedName || undefined,
               customer_name: customerName,
               customer_phone: customerPhone,
               customer_id_number: idNumber || undefined,

@@ -46,7 +46,6 @@ export const invoiceFormSchema = z
   .object({
     building_id: z.string().min(1, 'Vui lòng chọn tòa nhà'),
     room_id: z.string().min(1, 'Vui lòng chọn phòng'),
-    bed_id: z.string().nullable().optional(),
     contract_id: z.string().min(1, 'Vui lòng chọn hợp đồng'),
     billing_month: z.string().min(1, 'Vui lòng chọn kỳ thanh toán'),
     issue_date: z.string().min(1, 'Vui lòng chọn ngày lập'),

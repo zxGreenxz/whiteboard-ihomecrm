@@ -542,7 +542,6 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     const invoiceFormData: InvoiceFormData = {
       building_id: buildingId,
       room_id: roomId,
-      bed_id: bedId,
       contract_id: data.contract_id,
       billing_month: data.billing_month,
       issue_date: data.issue_date,

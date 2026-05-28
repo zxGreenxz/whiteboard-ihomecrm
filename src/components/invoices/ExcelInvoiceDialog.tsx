@@ -541,7 +541,6 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         const formData: InvoiceFormData = {
           building_id: buildingId,
           room_id: row.room_id,
-          bed_id: null,
           contract_id: row.contract_id,
           billing_month: billingMonth,
           issue_date: issueDate,

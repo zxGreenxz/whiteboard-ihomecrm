@@ -16,7 +16,6 @@ export const jobCreateSchema = z.object({
   description: z.string().optional().nullable(),
   building_id: z.string().uuid().optional().nullable(),
   room_id: z.string().uuid().optional().nullable(),
-  bed_id: z.string().uuid().optional().nullable(),
   job_type_id: z.string().uuid().optional().nullable(),
   priority: z.enum(['NORMAL', 'LOW', 'URGENT']).default('NORMAL'),
   assignee_id: z.string().uuid().optional().nullable(),

@@ -46,7 +46,6 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 import {
   CustomerSelectionDialog,
   type CustomerBasic,
@@ -111,16 +110,11 @@ export function ContractFormDialog({
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
 
   const { data: rooms = [] } = useRooms(selectedBuildingId || undefined);
-  const { data: beds = [] } = useBeds(selectedRoomId || undefined);
 
-  // Filtered rooms/beds for cascading
+  // Filtered rooms for cascading
   const filteredRooms = useMemo(
     () => (selectedBuildingId ? rooms : []),
     [rooms, selectedBuildingId]
-  );
-  const filteredBeds = useMemo(
-    () => (selectedRoomId ? beds : []),
-    [beds, selectedRoomId]
   );
 
   // Customer & service local state
@@ -160,7 +154,6 @@ export function ContractFormDialog({
     resolver: zodResolver(contractFormSchema),
     defaultValues: {
       room_id: "",
-      bed_id: null,
       signed_date: new Date().toISOString().split("T")[0],
       start_date: "",
       end_date: "",
@@ -195,7 +188,6 @@ export function ContractFormDialog({
 
       form.reset({
         room_id: contract.room_id ?? "",
-        bed_id: contract.bed_id ?? null,
         signed_date: contract.signed_date?.split("T")[0] ?? "",
         start_date: contract.start_date?.split("T")[0] ?? "",
         end_date: contract.end_date?.split("T")[0] ?? "",
@@ -247,8 +239,7 @@ export function ContractFormDialog({
       setDepositAttachments([]);
       form.reset({
         room_id: "",
-        bed_id: null,
-        signed_date: new Date().toISOString().split("T")[0],
+          signed_date: new Date().toISOString().split("T")[0],
         start_date: "",
         end_date: "",
         rent_price: 0,
@@ -449,17 +440,11 @@ export function ContractFormDialog({
     setSelectedBuildingId(buildingId);
     setSelectedRoomId("");
     form.setValue("room_id", "");
-    form.setValue("bed_id", null);
   };
 
   const handleRoomChange = (roomId: string) => {
     setSelectedRoomId(roomId);
     form.setValue("room_id", roomId);
-    form.setValue("bed_id", null);
-  };
-
-  const handleBedChange = (bedId: string) => {
-    form.setValue("bed_id", bedId || null);
   };
 
   // ---- Customer handlers ----
@@ -530,7 +515,6 @@ export function ContractFormDialog({
   // rule). Người dùng cần thấy ngay vì sao bấm Lưu mà không lưu được.
   const FIELD_LABELS: Record<string, string> = {
     room_id: "Phòng",
-    bed_id: "Giường",
     signed_date: "Ngày ký",
     start_date: "Ngày bắt đầu",
     end_date: "Hạn hợp đồng",
@@ -601,7 +585,6 @@ export function ContractFormDialog({
       // Edit mode: update contract fields
       const updates: Record<string, any> = {
         room_id: data.room_id,
-        bed_id: data.bed_id || null,
         signed_date: data.signed_date,
         start_date: data.start_date,
         end_date: data.end_date,
@@ -650,7 +633,6 @@ export function ContractFormDialog({
         {
           contract: {
             room_id: data.room_id,
-            bed_id: data.bed_id || undefined,
             signed_date: data.signed_date,
             start_date: data.start_date,
             end_date: data.end_date,
@@ -841,38 +823,6 @@ export function ContractFormDialog({
                     )}
                   />
 
-                  {/* Giường */}
-                  <FormField
-                    control={form.control}
-                    name="bed_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Giường</FormLabel>
-                        <Select
-                          value={field.value ?? ""}
-                          onValueChange={(val) => {
-                            handleBedChange(val);
-                            field.onChange(val || null);
-                          }}
-                          disabled={!selectedRoomId}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn giường" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {filteredBeds.map((b: any) => (
-                              <SelectItem key={b.id} value={b.id}>
-                                {b.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

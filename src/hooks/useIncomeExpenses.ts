@@ -51,10 +51,7 @@ export interface IncomeExpenseWithRelations {
   building_id: string;
   building_name: string;
   room_id: string | null;
-  room_name: string | null;
-  bed_id: string | null;
-  bed_name: string | null;
-  tenant_id: string | null;
+  room_name: string | null;  tenant_id: string | null;
   tenant_name: string | null;
   voucher_date: string;
   total_amount: number;
@@ -191,9 +188,7 @@ export const useIncomeExpenses = (
           `
           *,
           building:buildings!income_expenses_building_id_fkey ( id, name ),
-          room:rooms!income_expenses_room_id_fkey ( id, name ),
-          bed:beds!income_expenses_bed_id_fkey ( id, name ),
-          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
+          room:rooms!income_expenses_room_id_fkey ( id, name ),          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
           account:accounts!income_expenses_account_id_fkey ( id, name )
         `,
           { count: "exact" }
@@ -320,10 +315,7 @@ export const useIncomeExpenses = (
           building_id: v.building_id,
           building_name: v.building?.name ?? "",
           room_id: v.room_id,
-          room_name: v.room?.name ?? null,
-          bed_id: v.bed_id,
-          bed_name: v.bed?.name ?? null,
-          tenant_id: v.tenant_id,
+          room_name: v.room?.name ?? null,          tenant_id: v.tenant_id,
           tenant_name: v.tenant?.full_name ?? null,
           voucher_date: v.voucher_date,
           total_amount: Number(v.total_amount),
@@ -1182,10 +1174,7 @@ export const useIncomeExpenseBatches = (
           building_id: v.building_id,
           building_name: v.building?.name ?? "",
           room_id: v.room_id,
-          room_name: v.room?.name ?? null,
-          bed_id: v.bed_id,
-          bed_name: v.bed?.name ?? null,
-          tenant_id: v.tenant_id,
+          room_name: v.room?.name ?? null,          tenant_id: v.tenant_id,
           tenant_name: v.tenant?.full_name ?? null,
           voucher_date: v.voucher_date,
           total_amount: Number(v.total_amount),

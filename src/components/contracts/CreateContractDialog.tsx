@@ -28,7 +28,6 @@ import { useCreateContract, useUploadContractFile } from '@/hooks/useContracts';
 import { useTenantsLegacy } from '@/hooks/useTenants';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useBeds } from '@/hooks/useBeds';
 import { useServices } from '@/hooks/useServices';
 import { useDeposits } from '@/hooks/useDeposits';
 import { useDocumentTemplates } from '@/hooks/useDocumentTemplates';
@@ -55,8 +54,7 @@ const contractSchema = z.object({
   // General Info
   building_id: z.string().optional(), // Helper for filtering rooms
   room_id: z.string().optional(),
-  bed_id: z.string().optional(),
-  rental_type: z.enum(['room', 'bed']),
+  rental_type: z.enum(['room', 'bed']).default('room'),
   signed_date: z.string().min(1, 'Vui lòng chọn ngày ký'),
   start_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu'),
   end_date: z.string().min(1, 'Vui lòng chọn ngày kết thúc'),
@@ -89,9 +87,9 @@ const contractSchema = z.object({
   // Attachments
   contract_file_url: z.string().optional(),
 }).refine((data) => {
-  return !!(data.room_id || data.bed_id);
+  return !!data.room_id;
 }, {
-  message: "Vui lòng chọn căn hộ hoặc giường",
+  message: "Vui lòng chọn căn hộ",
   path: ["room_id"],
 });
 
@@ -104,10 +102,8 @@ type ContractFormData = z.infer<typeof contractSchema>;
 
 const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps) => {
   const [selectedTenants, setSelectedTenants] = useState<SelectedTenant[]>([]);
-  const [rentalType, setRentalType] = useState<'room' | 'bed'>('room');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
-  const [selectedBedId, setSelectedBedId] = useState<string>('');
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -126,7 +122,6 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const { data: tenants } = useTenantsLegacy();
   const { data: buildings } = useBuildings();
   const { data: allRooms } = useRooms(); // Load all rooms
-  const { data: allBeds } = useBeds(); // Load all beds
   const { data: services } = useServices();
   const representativeTenantId = selectedTenants.find(t => t.is_representative)?.tenant_id || '';
   const { data: deposits } = useDeposits({
@@ -136,22 +131,14 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   const { data: contractTemplates } = useDocumentTemplates('CONTRACT_NEW');
   const { data: invoiceTemplates } = useDocumentTemplates('INVOICE');
 
-  // Get room_id for assets filter (from room or bed)
-  const roomIdForAssets = selectedRoomId || (selectedBedId ? allBeds?.find(b => b.id === selectedBedId)?.room_id : undefined);
-
   const { data: assets } = useAssets({
-    room_id: roomIdForAssets,
+    room_id: selectedRoomId || undefined,
   });
 
-  // Filter rooms and beds based on building selection and availability
+  // Filter rooms based on building selection and availability
   const availableRooms = allRooms?.filter(room =>
     (!selectedBuildingId || room.building_id === selectedBuildingId) &&
     room.status === 'AVAILABLE'
-  );
-
-  const availableBeds = allBeds?.filter(bed =>
-    bed.status === 'AVAILABLE' &&
-    (!selectedBuildingId || bed.room?.building_id === selectedBuildingId)
   );
 
   const {
@@ -310,13 +297,12 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
   // Auto-fill deposit paid from deposits table
   const totalDepositPaid = deposits?.reduce((sum, d) => sum + (d.amount || 0), 0) || 0;
 
-  // Auto-fill rent price from selected room/bed
+  // Auto-fill rent price from selected room
   const selectedRoom = availableRooms?.find(r => r.id === selectedRoomId);
-  const selectedBed = availableBeds?.find(b => b.id === selectedBedId);
-  const autoRentPrice = rentalType === 'room' ? selectedRoom?.rent_price : selectedBed?.rent_price;
-  const autoDeposit = rentalType === 'room' ? selectedRoom?.deposit_amount : selectedBed?.deposit_amount;
+  const autoRentPrice = selectedRoom?.rent_price;
+  const autoDeposit = selectedRoom?.deposit_amount;
 
-  // Update form values when room/bed changes
+  // Update form values when room changes
   useEffect(() => {
     if (autoRentPrice !== undefined) setValue('rent_price', autoRentPrice);
     if (autoDeposit !== undefined) setValue('total_deposit', autoDeposit);
@@ -346,11 +332,8 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                   onValueChange={(value) => {
                     setSelectedBuildingId(value);
                     setValue('building_id', value);
-                    // Reset room/bed selection when building changes
                     setSelectedRoomId('');
-                    setSelectedBedId('');
                     setValue('room_id', undefined);
-                    setValue('bed_id', undefined);
                   }}
                 >
                   <SelectTrigger>
@@ -373,9 +356,6 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                   onValueChange={(value) => {
                     setSelectedRoomId(value);
                     setValue('room_id', value);
-                    setValue('bed_id', undefined);
-                    setSelectedBedId('');
-                    setRentalType('room');
                     setValue('rental_type', 'room');
                     // Auto-set building from room
                     const room = availableRooms?.find(r => r.id === value);
@@ -392,38 +372,6 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
                     {availableRooms?.map((room) => (
                       <SelectItem key={room.id} value={room.id}>
                         {room.building?.name} - {room.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Giường</Label>
-                <Select
-                  value={selectedBedId}
-                  onValueChange={(value) => {
-                    setSelectedBedId(value);
-                    setValue('bed_id', value);
-                    setValue('room_id', undefined);
-                    setSelectedRoomId('');
-                    setRentalType('bed');
-                    // Auto-set building from bed
-                    const bed = availableBeds?.find(b => b.id === value);
-                    if (bed?.room) {
-                      setSelectedBuildingId(bed.room.building_id);
-                      setValue('building_id', bed.room.building_id);
-                    }
-                  }}
-                  disabled={!!selectedRoomId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn giường..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableBeds?.map((bed) => (
-                      <SelectItem key={bed.id} value={bed.id}>
-                        {bed.room?.building?.name} - {bed.room?.name} - {bed.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

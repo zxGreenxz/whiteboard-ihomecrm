@@ -35,7 +35,6 @@ import type { ContractWithRelations } from "@/types/contract";
 import { useTransferRoom } from "@/hooks/useContractOperations";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 
 interface TransferRoomDialogProps {
   open: boolean;
@@ -63,17 +62,10 @@ export function TransferRoomDialog({
     [roomsData]
   );
 
-  const { data: bedsData } = useBeds();
-  const allBeds = useMemo(
-    () => (Array.isArray(bedsData) ? bedsData : []),
-    [bedsData]
-  );
-
   const form = useForm<TransferRoomFormData>({
     resolver: zodResolver(transferRoomFormSchema),
     defaultValues: {
       new_room_id: "",
-      new_bed_id: null,
       new_rent_price: undefined,
       transfer_date: new Date().toISOString().split("T")[0],
       notes: "",
@@ -82,14 +74,12 @@ export function TransferRoomDialog({
 
   // Local state for building selection (not part of form schema)
   const selectedBuildingId = form.watch("_building_id" as any) as string | undefined;
-  const selectedRoomId = form.watch("new_room_id");
 
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
       form.reset({
         new_room_id: "",
-        new_bed_id: null,
         new_rent_price: undefined,
         transfer_date: new Date().toISOString().split("T")[0],
         notes: "",
@@ -107,23 +97,14 @@ export function TransferRoomDialog({
     );
   }, [allRooms, selectedBuildingId]);
 
-  // Cascading: filter beds by selected room
-  const availableBeds = useMemo(() => {
-    if (!selectedRoomId) return [];
-    return allBeds.filter((b: any) => b.room_id === selectedRoomId);
-  }, [allBeds, selectedRoomId]);
-
-  // Reset room & bed when building changes
+  // Reset room when building changes
   const handleBuildingChange = (buildingId: string) => {
     form.setValue("_building_id" as any, buildingId);
     form.setValue("new_room_id", "");
-    form.setValue("new_bed_id", null);
   };
 
-  // Reset bed when room changes
   const handleRoomChange = (roomId: string) => {
     form.setValue("new_room_id", roomId);
-    form.setValue("new_bed_id", null);
     form.trigger("new_room_id");
   };
 
@@ -132,7 +113,6 @@ export function TransferRoomDialog({
       {
         contractId: contract.id,
         newRoomId: data.new_room_id,
-        newBedId: data.new_bed_id ?? undefined,
         newRentPrice: data.new_rent_price,
         transferDate: data.transfer_date,
         notes: data.notes,
@@ -234,42 +214,6 @@ export function TransferRoomDialog({
                       {availableRooms.map((r: any) => (
                         <SelectItem key={r.id} value={r.id}>
                           {r.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* New bed (optional) */}
-            <FormField
-              control={form.control}
-              name="new_bed_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Giường mới</FormLabel>
-                  <Select
-                    value={field.value || ""}
-                    onValueChange={(val) => field.onChange(val || null)}
-                    disabled={!selectedRoomId || availableBeds.length === 0}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={
-                          !selectedRoomId
-                            ? "Chọn phòng trước"
-                            : availableBeds.length === 0
-                            ? "Không có giường"
-                            : "Chọn giường"
-                        } />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {availableBeds.map((b: any) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

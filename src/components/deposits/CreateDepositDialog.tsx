@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { useCreateDeposit } from "@/hooks/useDeposits";
 import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
-import { useBeds } from "@/hooks/useBeds";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const depositSchema = z.object({
@@ -41,7 +40,6 @@ const depositSchema = z.object({
   tenant_name: z.string().optional(),
   tenant_phone: z.string().optional(),
   room_id: z.string().min(1, "Phải chọn căn hộ"),
-  bed_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until_date: z.string().min(1, "Ngày giữ căn hộ là bắt buộc"),
@@ -63,7 +61,6 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   const createTenant = useCreateTenant();
   const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
-  const { data: beds = [] } = useBeds();
 
   const form = useForm<DepositFormValues>({
     resolver: zodResolver(depositSchema),
@@ -73,7 +70,6 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       tenant_name: "",
       tenant_phone: "",
       room_id: "",
-      bed_id: undefined,
       amount: 0,
       deposit_date: new Date().toISOString().split('T')[0],
       hold_until_date: "",
@@ -105,7 +101,6 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       await createDeposit.mutateAsync({
         tenant_id: tenantId,
         room_id: data.room_id || null,
-        bed_id: data.bed_id || null,
         amount: data.amount,
         deposit_date: data.deposit_date,
         hold_until_date: data.hold_until_date,
@@ -206,58 +201,31 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 )}
               </div>
 
-              {/* Room/Bed Selection */}
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="room_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Căn hộ *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn căn hộ" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {rooms.map((room) => (
-                            <SelectItem key={room.id} value={room.id}>
-                              {room.name} {room.code && `(${room.code})`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="bed_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Giường (nếu có)</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn giường" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {beds.map((bed) => (
-                            <SelectItem key={bed.id} value={bed.id}>
-                              {bed.name} {bed.code && `(${bed.code})`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              {/* Room Selection */}
+              <FormField
+                control={form.control}
+                name="room_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Căn hộ *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn căn hộ" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {rooms.map((room) => (
+                          <SelectItem key={room.id} value={room.id}>
+                            {room.name} {room.code && `(${room.code})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Deposit Info */}
               <div className="grid grid-cols-3 gap-4">

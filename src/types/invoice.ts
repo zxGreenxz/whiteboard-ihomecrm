@@ -52,7 +52,6 @@ export interface Invoice {
   contract_id: string;
   building_id: string;
   room_id: string;
-  bed_id: string | null;
   invoice_number: string | null;
   billing_month: string; // YYYY-MM
   issue_date: string; // DATE
@@ -136,7 +135,6 @@ export interface InvoiceFilters {
   area_id?: string;
   building_id?: string;
   room_id?: string;
-  bed_id?: string;
   contract_id?: string;
   status?: InvoiceStatus;
   /** UI filter trạng thái thanh toán:
@@ -172,7 +170,6 @@ export interface InvoiceTotals {
 export interface InvoiceFormData {
   building_id: string;
   room_id: string;
-  bed_id?: string | null;
   contract_id: string;
   billing_month: string; // YYYY-MM
   issue_date: string; // DATE

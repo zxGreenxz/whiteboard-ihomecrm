@@ -51,11 +51,7 @@ export const useLeads = (filters?: {
             building:buildings!rooms_building_id_fkey (
               id, name
             )
-          ),
-          bed:beds!leads_bed_id_fkey (
-            id, name, code
-          )
-        `)
+          ),        `)
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
@@ -97,11 +93,7 @@ export const useLead = (id: string) => {
             building:buildings!rooms_building_id_fkey (
               id, name
             )
-          ),
-          bed:beds!leads_bed_id_fkey (
-            id, name, code
-          )
-        `)
+          ),        `)
         .eq("id", id)
         .single();
 

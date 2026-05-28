@@ -39,7 +39,6 @@ export function ConvertToContractDialog({
           depositId: deposit.id,
           tenantId: deposit.tenant_id,
           roomId: deposit.room_id,
-          bedId: deposit.bed_id,
           depositAmount: deposit.amount,
         },
       });

@@ -39,9 +39,7 @@ const INVOICE_LIST_SELECT = `
     )
   ),
   building:buildings!invoices_building_id_fkey (id, name, default_account_id_tt, default_account_id_tk),
-  room:rooms!invoices_room_id_fkey (id, name),
-  bed:beds!invoices_bed_id_fkey (id, name),
-  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
+  room:rooms!invoices_room_id_fkey (id, name),  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
   payments (id, amount, payment_date, payment_method, notes, receipt_image_url)
 `;
 
@@ -99,9 +97,6 @@ export const useInvoices = (
       }
       if (filters?.room_id) {
         query = query.eq('room_id', filters.room_id);
-      }
-      if (filters?.bed_id) {
-        query = query.eq('bed_id', filters.bed_id);
       }
       if (filters?.contract_id) {
         query = query.eq('contract_id', filters.contract_id);
@@ -260,9 +255,7 @@ export const useCreateInvoice = () => {
           user_id: user.id,
           contract_id: invoiceFields.contract_id,
           building_id: invoiceFields.building_id,
-          room_id: invoiceFields.room_id,
-          bed_id: invoiceFields.bed_id || null,
-          invoice_number,
+          room_id: invoiceFields.room_id,          invoice_number,
           billing_month: invoiceFields.billing_month,
           issue_date: invoiceFields.issue_date,
           due_date: invoiceFields.due_date,
@@ -404,9 +397,7 @@ export const useUpdateInvoice = () => {
         .update({
           contract_id: invoiceFields.contract_id,
           building_id: invoiceFields.building_id,
-          room_id: invoiceFields.room_id,
-          bed_id: invoiceFields.bed_id || null,
-          billing_month: invoiceFields.billing_month,
+          room_id: invoiceFields.room_id,          billing_month: invoiceFields.billing_month,
           issue_date: invoiceFields.issue_date,
           due_date: invoiceFields.due_date,
           subtotal,
@@ -740,7 +731,6 @@ export interface InvoiceStatisticsFilters {
   area_id?: string;
   building_id?: string;
   room_id?: string;
-  bed_id?: string;
   status?: InvoiceStatus;
   start_date?: string;
   end_date?: string;
@@ -782,9 +772,7 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
         p_start_date: filters?.start_date ?? null,
         p_end_date: filters?.end_date ?? null,
         p_billing_month: filters?.billing_month ?? null,
-        p_payment_status: filters?.payment_status ?? null,
-        p_bed_id: filters?.bed_id ?? null,
-        p_area_id: filters?.area_id ?? null,
+        p_payment_status: filters?.payment_status ?? null,        p_area_id: filters?.area_id ?? null,
       });
 
       if (error) throw error;

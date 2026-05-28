@@ -19,7 +19,6 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useBeds } from '@/hooks/useBeds';
 import { useContracts } from '@/hooks/useContracts';
 import { useDocumentTemplates } from '@/hooks/useDocumentTemplates';
 import { useInvoiceConfig } from '@/hooks/useSettings';
@@ -39,7 +38,6 @@ const useContractWithServices = (contractId?: string) => {
         .select(`
           id, rent_price,
           room:rooms!contracts_room_id_fkey (id, name),
-          bed:beds!contracts_bed_id_fkey (id, name),
           contract_services (
             id, service_id, unit_price, initial_reading,
             service:services!inner (id, name, type)
@@ -88,7 +86,6 @@ const InvoiceForm = ({
     defaultValues: {
       building_id: '',
       room_id: '',
-      bed_id: null,
       contract_id: '',
       billing_month: currentMonth(),
       issue_date: today(),
@@ -120,7 +117,6 @@ const InvoiceForm = ({
   // Data hooks
   const { data: buildings } = useBuildings();
   const { data: rooms } = useRooms(buildingId || undefined);
-  const { data: beds } = useBeds(roomId || undefined);
   const { data: contractsData } = useContracts();
   const contracts = (contractsData ?? []).filter((c: any) =>
     c.status === 'ACTIVE' && (!roomId || c.room_id === roomId),
@@ -140,8 +136,7 @@ const InvoiceForm = ({
 
     // Add rent item
     if (contractDetail.rent_price) {
-      const roomName =
-        (contractDetail.room as any)?.name || (contractDetail.bed as any)?.name || '';
+      const roomName = (contractDetail.room as any)?.name || '';
       items.push({
         type: 'RENT',
         description: `Tiền thuê ${roomName}`,
@@ -177,7 +172,6 @@ const InvoiceForm = ({
     (value: string) => {
       setValue('building_id', value);
       setValue('room_id', '');
-      setValue('bed_id', null);
       setValue('contract_id', '');
       populatedContractRef.current = null;
     },
@@ -188,16 +182,8 @@ const InvoiceForm = ({
   const handleRoomChange = useCallback(
     (value: string) => {
       setValue('room_id', value);
-      setValue('bed_id', null);
       setValue('contract_id', '');
       populatedContractRef.current = null;
-    },
-    [setValue],
-  );
-
-  const handleBedChange = useCallback(
-    (value: string) => {
-      setValue('bed_id', value === '__none__' ? null : value);
     },
     [setValue],
   );
@@ -266,28 +252,6 @@ const InvoiceForm = ({
             {errors.room_id && (
               <p className="text-xs text-red-500">{errors.room_id.message}</p>
             )}
-          </div>
-
-          {/* Giường */}
-          <div className="space-y-1.5">
-            <Label>Giường</Label>
-            <Select
-              value={watch('bed_id') ?? '__none__'}
-              onValueChange={handleBedChange}
-              disabled={!roomId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn giường (nếu có)..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">— Không chọn —</SelectItem>
-                {(beds ?? []).map((b: any) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Hợp đồng */}

@@ -77,7 +77,6 @@ const PERMISSION_MODULES = [
   { key: "tasks",            label: "Công việc" },
   { key: "buildings",        label: "Căn hộ (toà nhà)" },
   { key: "rooms",            label: "Phòng" },
-  { key: "beds",             label: "Giường" },
   { key: "services",         label: "Phí dịch vụ" },
   { key: "service_quotas",   label: "Định mức" },
   { key: "meters",           label: "Công tơ" },

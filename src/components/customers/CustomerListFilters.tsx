@@ -40,26 +40,20 @@ export default function CustomerListFilters({
       ...filters,
       area_id: value || undefined,
       building_id: undefined,
-      room_id: undefined,
-      bed_id: undefined,
-    });
+      room_id: undefined,    });
   };
 
   const handleBuildingChange = (value: string) => {
     onFiltersChange({
       ...filters,
       building_id: value || undefined,
-      room_id: undefined,
-      bed_id: undefined,
-    });
+      room_id: undefined,    });
   };
 
   const handleRoomChange = (value: string) => {
     onFiltersChange({
       ...filters,
-      room_id: value || undefined,
-      bed_id: undefined,
-    });
+      room_id: value || undefined,    });
   };
 
   return (

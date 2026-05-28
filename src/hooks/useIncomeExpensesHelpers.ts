@@ -13,7 +13,6 @@ export function createVoucherPayload(input: {
   name: string;
   buildingId: string;
   roomId?: string;
-  bedId?: string;
   tenantId?: string;
   voucherDate: string;
   notes?: string;
@@ -22,9 +21,7 @@ export function createVoucherPayload(input: {
   type: 'INCOME' | 'EXPENSE';
   name: string;
   building_id: string;
-  room_id: string | null;
-  bed_id: string | null;
-  tenant_id: string | null;
+  room_id: string | null;  tenant_id: string | null;
   voucher_date: string;
   notes: string | null;
   approval_status: 'UNAPPROVED';
@@ -34,9 +31,7 @@ export function createVoucherPayload(input: {
     type: input.type,
     name: input.name,
     building_id: input.buildingId,
-    room_id: input.roomId ?? null,
-    bed_id: input.bedId ?? null,
-    tenant_id: input.tenantId ?? null,
+    room_id: input.roomId ?? null,    tenant_id: input.tenantId ?? null,
     voucher_date: input.voucherDate,
     notes: input.notes ?? null,
     approval_status: 'UNAPPROVED',
@@ -84,16 +79,14 @@ export interface VoucherBase {
   type: 'INCOME' | 'EXPENSE';
   name: string;
   building_id: string;
-  room_id: string | null;
-  bed_id: string | null;
-  tenant_id: string | null;
+  room_id: string | null;  tenant_id: string | null;
   voucher_date: string;
   notes: string | null;
   approval_status: 'UNAPPROVED' | 'APPROVED';
   updated_at: string;
 }
 
-export type VoucherUpdates = Partial<Pick<VoucherBase, 'name' | 'building_id' | 'room_id' | 'bed_id' | 'tenant_id' | 'voucher_date' | 'notes'>>;
+export type VoucherUpdates = Partial<Pick<VoucherBase, 'name' | 'building_id' | 'room_id' | 'tenant_id' | 'voucher_date' | 'notes'>>;
 
 export function applyVoucherUpdate(voucher: VoucherBase, updates: VoucherUpdates, newUpdatedAt: string): VoucherBase {
   const definedUpdates: Record<string, unknown> = {};
@@ -184,20 +177,14 @@ export function computeIncomeExpenseStats(vouchers: VoucherForStats[]): Computed
 
 // --- Pure helper: cascade dropdown filter ---
 export interface RoomFilterable { id: string; building_id: string; }
-export interface BedFilterable { id: string; room_id: string; }
-export interface TenantFilterable { id: string; room_id?: string | null; bed_id?: string | null; }
+export interface TenantFilterable { id: string; room_id?: string | null; }
 
 export function filterRoomsByBuilding<T extends RoomFilterable>(rooms: T[], buildingId: string): T[] {
   return rooms.filter(r => r.building_id === buildingId);
 }
 
-export function filterBedsByRoom<T extends BedFilterable>(beds: T[], roomId: string): T[] {
-  return beds.filter(b => b.room_id === roomId);
-}
-
-export function filterTenantsByRoomOrBed<T extends TenantFilterable>(tenants: T[], roomId?: string, bedId?: string): T[] {
+export function filterTenantsByRoomOrBed<T extends TenantFilterable>(tenants: T[], roomId?: string): T[] {
   return tenants.filter(t => {
-    if (bedId && t.bed_id === bedId) return true;
     if (roomId && t.room_id === roomId) return true;
     return false;
   });

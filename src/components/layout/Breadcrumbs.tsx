@@ -19,7 +19,6 @@ const routeLabels: Record<string, string> = {
   '/buildings': 'Toà nhà',
   '/apartments': 'Căn hộ',
   '/rooms': 'Căn hộ',
-  '/beds': 'Giường',
   '/services': 'Dịch vụ',
   '/assets': 'Tài sản',
 
@@ -108,7 +107,6 @@ const routeParentGroups: Record<string, { label: string; path?: string }[]> = {
   '/buildings': [{ label: 'Danh mục dữ liệu' }],
   '/apartments': [{ label: 'Danh mục dữ liệu' }],
   '/rooms': [{ label: 'Danh mục dữ liệu' }],
-  '/beds': [{ label: 'Danh mục dữ liệu' }],
   '/services': [{ label: 'Danh mục dữ liệu' }],
   '/assets': [{ label: 'Danh mục dữ liệu' }],
 

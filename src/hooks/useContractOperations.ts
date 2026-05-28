@@ -60,9 +60,7 @@ export const useTransferRoom = () => {
     }) => {
       const { data, error } = await (supabase as any).rpc("transfer_room", {
         p_contract_id: params.contractId,
-        p_new_room_id: params.newRoomId,
-        p_new_bed_id: params.newBedId ?? null,
-        p_new_rent_price: params.newRentPrice ?? null,
+        p_new_room_id: params.newRoomId,        p_new_rent_price: params.newRentPrice ?? null,
         p_transfer_date: params.transferDate,
         p_notes: params.notes ?? null,
       });

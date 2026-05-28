@@ -14,7 +14,6 @@ import type {
 export interface CreateContractPayload {
   contract: {
     room_id: string;
-    bed_id?: string;
     signed_date: string;
     start_date: string;
     end_date: string;
@@ -59,7 +58,6 @@ export interface CreateContractPayload {
 
 export interface UpdateContractPayload {
   room_id?: string;
-  bed_id?: string | null;
   signed_date?: string;
   start_date?: string;
   end_date?: string;
@@ -92,11 +90,7 @@ const CONTRACT_SELECT = `
       id, name, type, area_id,
       street_address, ward, district, province
     )
-  ),
-  bed:beds!contracts_bed_id_fkey (
-    id, name
-  ),
-  contract_customers!contract_customers_contract_id_fkey (
+  ),  contract_customers!contract_customers_contract_id_fkey (
     id, contract_id, customer_id, is_representative, notes, created_at, updated_at,
     customer:customers!contract_customers_customer_id_fkey (
       id, full_name, phone, email, id_number,
@@ -236,9 +230,7 @@ async function createFirstInvoiceForContract(args: {
       user_id: userId,
       contract_id: contract.id,
       building_id,
-      room_id: contractData.room_id,
-      bed_id: contractData.bed_id || null,
-      invoice_number,
+      room_id: contractData.room_id,      invoice_number,
       billing_month,
       issue_date,
       due_date,
@@ -604,7 +596,6 @@ export interface ContractFilters {
   status?: string;
   tenant_id?: string;
   room_id?: string;
-  bed_id?: string;
   search?: string;
 }
 
@@ -685,7 +676,6 @@ export interface ContractTenantData {
 export interface CreateContractData {
   tenant_id: string;
   room_id?: string;
-  bed_id?: string;
   signed_date: string;
   start_date: string;
   start_billing_date?: string;
@@ -727,7 +717,6 @@ export interface TransferContractData {
   transfer_type: "TENANT_CHANGE" | "ROOM_CHANGE" | "BOTH_CHANGE";
   new_tenant_id?: string;
   new_room_id?: string;
-  new_bed_id?: string;
   new_rent_price?: number;
   transfer_fee?: number;
   reason?: string;
@@ -760,15 +749,7 @@ const LEGACY_CONTRACT_SELECT = `
     building:buildings!rooms_building_id_fkey (
       id, name, code
     )
-  ),
-  bed:beds!contracts_bed_id_fkey (
-    id, name, code,
-    room:rooms!beds_room_id_fkey (
-      id, name,
-      building:buildings!rooms_building_id_fkey (
-        id, name
-      )
-    )
+  ),    )
   ),
   contract_tenants (
     id, tenant_id, is_representative, move_in_date,
@@ -783,7 +764,6 @@ export const useContractsLegacy = (filters?: {
   status?: string;
   tenant_id?: string;
   room_id?: string;
-  bed_id?: string;
 }) => {
   return useQuery({
     queryKey: ["contracts-legacy", filters],
@@ -801,7 +781,6 @@ export const useContractsLegacy = (filters?: {
       if (filters?.status) query = query.eq("status", filters.status as any);
       if (filters?.tenant_id) query = query.eq("tenant_id", filters.tenant_id);
       if (filters?.room_id) query = query.eq("room_id", filters.room_id);
-      if (filters?.bed_id) query = query.eq("bed_id", filters.bed_id);
 
       const { data, error } = await query;
       if (error) {
@@ -883,9 +862,7 @@ export const useTransferContract = () => {
             transfer_type: data.transfer_type,
             transfer_date: new Date().toISOString(),
             new_tenant_id: data.new_tenant_id,
-            new_room_id: data.new_room_id,
-            new_bed_id: data.new_bed_id,
-            new_rent_price: data.new_rent_price,
+            new_room_id: data.new_room_id,            new_rent_price: data.new_rent_price,
             transfer_fee: data.transfer_fee || 0,
             reason: data.reason,
             status: "DRAFT",
@@ -1080,7 +1057,6 @@ export const usePendingTerminations = () => {
             *,
             tenant:tenants(id, full_name, phone, email),
             room:rooms(id, name, code, building:buildings(id, name, code)),
-            bed:beds(id, name, code, room:rooms(id, name, building:buildings(id, name)))
           )
         `
         )
@@ -1167,7 +1143,7 @@ export const useApproveTermination = () => {
 
       const { data: contract } = await supabase
         .from("contracts")
-        .select("room_id, bed_id")
+        .select("room_id")
         .eq("id", data.contract_id)
         .single();
 
@@ -1177,20 +1153,12 @@ export const useApproveTermination = () => {
           .update({ status: "AVAILABLE" } as any)
           .eq("id", contract.room_id);
       }
-      if (contract?.bed_id) {
-        await supabase
-          .from("beds")
-          .update({ status: "AVAILABLE" } as any)
-          .eq("id", contract.bed_id);
-      }
-
       return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["pending-terminations"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["beds"] });
       legacyToast({
         title: "Hợp đồng đã được thanh lý thành công",
       });

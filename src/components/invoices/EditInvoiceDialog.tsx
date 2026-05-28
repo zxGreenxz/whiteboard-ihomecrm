@@ -347,7 +347,6 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
     const formData: InvoiceFormData = {
       building_id: invoice.building_id,
       room_id: invoice.room_id,
-      bed_id: invoice.bed_id,
       contract_id: invoice.contract_id,
       billing_month: data.billing_month,
       issue_date: data.issue_date,

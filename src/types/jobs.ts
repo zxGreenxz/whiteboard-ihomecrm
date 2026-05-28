@@ -34,7 +34,6 @@ export interface Job {
   description: string | null;
   building_id: string | null;
   room_id: string | null;
-  bed_id: string | null;
   job_type_id: string | null;
   priority: JobPriority;
   assignee_id: string | null;
@@ -55,7 +54,6 @@ export interface Job {
 export interface JobWithRelations extends Job {
   buildings: { id: string; name: string } | null;
   rooms: { id: string; name: string } | null;
-  beds: { id: string; name: string } | null;
   job_types: { id: string; name: string } | null;
   profiles: { id: string; full_name: string } | null;
 }

@@ -331,7 +331,6 @@ export function buildContractTemplateData({
     ROOM_SIZE: ((room as Record<string, unknown> | undefined)?.area_sqm as number) ?? "",
     ROOM_NUMBER_BEDS: ((room as Record<string, unknown> | undefined)?.number_of_beds as number) ?? "",
     MAX_TENANTS: ((room as Record<string, unknown> | undefined)?.max_tenants as number) ?? "",
-    BED_NAME: contract.bed?.name ?? "",
     FLOOR_NAME: ((room as Record<string, unknown> | undefined)?.floor_name as string) ?? "",
 
     // ===== Giá thuê & Thanh toán =====

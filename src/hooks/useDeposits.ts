@@ -43,11 +43,7 @@ export const useDeposits = (filters?: {
           ),
           room:rooms!deposits_room_id_fkey (
             id, name, code
-          ),
-          bed:beds!deposits_bed_id_fkey (
-            id, name, code
-          )
-        `)
+          ),        `)
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
@@ -88,7 +84,6 @@ export const useCreateDeposit = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['beds'] });
       toast({
         title: 'Đặt cọc đã được tạo thành công',
         description: 'Thông tin đặt cọc đã được lưu.',
@@ -124,7 +119,6 @@ export const useUpdateDeposit = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['beds'] });
       toast({
         title: 'Đặt cọc đã được cập nhật thành công',
         description: 'Thông tin đặt cọc đã được cập nhật.',
@@ -157,7 +151,6 @@ export const useDeleteDeposit = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deposits'] });
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['beds'] });
       toast({
         title: 'Đặt cọc đã được xóa thành công',
         description: 'Phiếu đặt cọc đã được xóa.',

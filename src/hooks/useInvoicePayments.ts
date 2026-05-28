@@ -77,7 +77,7 @@ export const useRecordPaymentRPC = () => {
       const { data: inv } = await supabase
         .from('invoices')
         .select(
-          'id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, tenant_id:contract_id, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)'
+          'id, invoice_number, building_id, room_id, contract_id, billing_month, tenant_id:contract_id, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)'
         )
         .eq('id', data.invoice_id)
         .single() as any;
@@ -124,9 +124,7 @@ export const useRecordPaymentRPC = () => {
             type: 'INCOME',
             name: `Thu tiền theo HĐ ${getInvoiceShortTitle(inv as any)}`,
             building_id: inv.building_id,
-            room_id: inv.room_id,
-            bed_id: inv.bed_id,
-            contract_id: inv.contract_id,
+            room_id: inv.room_id,            contract_id: inv.contract_id,
             account_id: data.account_id,
             invoice_id: inv.id,
             payment_id: newPaymentId,
@@ -224,7 +222,7 @@ export const useRecordRefundRPC = () => {
 
       const { data: inv, error: invErr } = await supabase
         .from('invoices')
-        .select('id, invoice_number, building_id, room_id, bed_id, contract_id, billing_month, total_amount, paid_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)')
+        .select('id, invoice_number, building_id, room_id, contract_id, billing_month, total_amount, paid_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)')
         .eq('id', data.invoice_id)
         .single() as any;
       if (invErr || !inv) throw invErr ?? new Error('Không tìm thấy hoá đơn');
@@ -273,9 +271,7 @@ export const useRecordRefundRPC = () => {
           type: 'EXPENSE',
           name: `Hoàn trả khách thanh lý — HĐ ${getInvoiceShortTitle(inv as any)}`,
           building_id: inv.building_id,
-          room_id: inv.room_id,
-          bed_id: inv.bed_id,
-          contract_id: inv.contract_id,
+          room_id: inv.room_id,          contract_id: inv.contract_id,
           account_id: data.account_id,
           invoice_id: inv.id,
           voucher_date: data.payment_date,

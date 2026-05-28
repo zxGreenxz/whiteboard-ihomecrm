@@ -38,7 +38,6 @@ interface RefundRow {
   invoice_number: string | null;
   building_name: string | null;
   room_name: string | null;
-  bed_name: string | null;
   payer_name: string | null;
   change_amount: number;
   total_amount: number;
@@ -85,7 +84,6 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
           `id, voucher_date, code, invoice_id, payer_name, change_amount, rounding_amount, total_amount, notes,
            building:buildings!income_expenses_building_id_fkey ( name ),
            room:rooms!income_expenses_room_id_fkey ( name ),
-           bed:beds!income_expenses_bed_id_fkey ( name ),
            invoice:invoices!income_expenses_invoice_id_fkey ( invoice_number )`
         )
         .eq(filterColumn, accountId)
@@ -108,7 +106,6 @@ function useRefundLog(accountId: string | null, start: string, end: string) {
         invoice_number: v.invoice?.invoice_number ?? null,
         building_name: v.building?.name ?? null,
         room_name: v.room?.name ?? null,
-        bed_name: v.bed?.name ?? null,
         payer_name: v.payer_name,
         change_amount: Number(v[amountColumn] ?? 0),
         total_amount: Number(v.total_amount ?? 0),

@@ -24,7 +24,6 @@ export interface Contract {
   id: string;
   user_id: string;
   room_id: string | null;
-  bed_id: string | null;
   tenant_id: string;
   contract_number: string | null;
   signed_date: string;
@@ -130,7 +129,6 @@ export interface ContractFilters {
   area_id?: string;
   building_id?: string;
   room_id?: string;
-  bed_id?: string;
   rental_type?: string;  // building type
   month?: string;        // 'YYYY-MM'
 }
@@ -138,7 +136,6 @@ export interface ContractFilters {
 // Form data
 export interface ContractFormData {
   room_id: string;
-  bed_id?: string | null;
   signed_date: string;
   start_date: string;
   end_date: string;
