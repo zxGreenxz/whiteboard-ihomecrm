@@ -86,7 +86,6 @@ const ExportExcelDialog = ({
         query = supabase
           .from('buildings')
           .select('*')
-          .eq('user_id', user.id)
           .is('deleted_at', null);
         break;
 
@@ -94,7 +93,6 @@ const ExportExcelDialog = ({
         query = supabase
           .from('rooms')
           .select(includeRelations ? '*, building:buildings(name)' : '*')
-          .eq('user_id', user.id)
           .is('deleted_at', null);
         break;
 
@@ -102,7 +100,6 @@ const ExportExcelDialog = ({
         query = supabase
           .from('tenants')
           .select('*')
-          .eq('user_id', user.id)
           .is('deleted_at', null);
         break;
 
@@ -112,7 +109,6 @@ const ExportExcelDialog = ({
           .select(includeRelations
             ? '*, tenant:tenants(full_name), room:rooms(name, building:buildings(name))'
             : '*')
-          .eq('user_id', user.id)
           .is('deleted_at', null);
         break;
 
@@ -122,7 +118,6 @@ const ExportExcelDialog = ({
           .select(includeRelations
             ? '*, contract:contracts(contract_number, tenant:tenants(full_name))'
             : '*')
-          .eq('user_id', user.id)
           .is('deleted_at', null);
         break;
 
@@ -132,7 +127,6 @@ const ExportExcelDialog = ({
           .select(includeRelations
             ? '*, room:rooms(name, building:buildings(name))'
             : '*')
-          .eq('user_id', user.id)
           .is('deleted_at', null);
         break;
 
@@ -141,8 +135,7 @@ const ExportExcelDialog = ({
           .from('payments')
           .select(includeRelations
             ? '*, invoice:invoices(invoice_number, contract:contracts(contract_number, tenant:tenants(full_name, phone)))'
-            : '*')
-          .eq('user_id', user.id);
+            : '*');
         break;
 
       default:

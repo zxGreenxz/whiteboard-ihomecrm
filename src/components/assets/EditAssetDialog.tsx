@@ -53,9 +53,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
   const { data: categories = [] } = useQuery({
     queryKey: ["asset-categories"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const { data, error } = await supabase.from("asset_categories").select("*").eq('user_id', user.id).order("name");
+      const { data, error } = await supabase.from("asset_categories").select("*").order("name");
       if (error) throw error;
       return data || [];
     },
@@ -64,9 +62,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const { data, error } = await supabase.from("suppliers").select("*").eq('user_id', user.id).order("name");
+      const { data, error } = await supabase.from("suppliers").select("*").order("name");
       if (error) throw error;
       return data || [];
     },

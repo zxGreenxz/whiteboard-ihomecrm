@@ -138,14 +138,12 @@ export function ContractImportExportDialog({
       .from('rooms')
       .select('id, name, code')
       .eq('building_id', selectedBuildingId)
-      .eq('user_id', user.id)
       .is('deleted_at', null);
 
     // Load existing customers
     const { data: existingCustomers } = await (supabase as any)
       .from('customers')
       .select('id, full_name, phone, id_number')
-      .eq('user_id', user.id)
       .is('deleted_at', null);
 
     const customersList: Array<{ id: string; full_name: string; phone: string; id_number: string | null }> = existingCustomers ?? [];

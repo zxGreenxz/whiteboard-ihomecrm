@@ -107,9 +107,6 @@ export function CollectPaymentDialog({
   const { data: invoices = [] } = useQuery({
     queryKey: ["unpaid-invoices"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
       const { data, error } = await supabase
         .from("invoices")
         .select(`
@@ -121,7 +118,6 @@ export function CollectPaymentDialog({
             )
           )
         `)
-        .eq('user_id', user.id)
         .in("status", ["APPROVED", "PARTIAL_PAID"])
         .order("issue_date", { ascending: false });
 

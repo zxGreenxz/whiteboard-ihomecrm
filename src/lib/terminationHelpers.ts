@@ -98,7 +98,6 @@ export async function calculateTerminationCosts(
       contract_services(*, service:services(*))
     `)
     .eq('id', input.contract_id)
-    .eq('user_id', user.id)
     .single();
 
   if (contractError || !contract) {
@@ -110,7 +109,6 @@ export async function calculateTerminationCosts(
     .from('invoices')
     .select('*')
     .eq('contract_id', input.contract_id)
-    .eq('user_id', user.id)
     .in('status', ['PENDING', 'OVERDUE', 'PARTIAL'])
     .is('deleted_at', null);
 
@@ -120,7 +118,6 @@ export async function calculateTerminationCosts(
     .from('meter_readings')
     .select('*')
     .eq('room_id', roomId)
-    .eq('user_id', user.id)
     .order('reading_date', { ascending: false })
     .limit(1)
     .single();
@@ -498,8 +495,7 @@ export async function processTermination(params: {
       status: 'TERMINATED',
       updated_at: new Date().toISOString(),
     })
-    .eq('id', params.contract_id)
-    .eq('user_id', user.id);
+    .eq('id', params.contract_id);
 
   if (contractError) throw contractError;
 
@@ -511,8 +507,7 @@ export async function processTermination(params: {
       refund_amount: params.refund_amount,
       refund_date: new Date().toISOString(),
     })
-    .eq('id', params.termination_id)
-    .eq('user_id', user.id);
+    .eq('id', params.termination_id);
 
   if (terminationError) throw terminationError;
 

@@ -407,7 +407,6 @@ export function useExpenseRatioReport(
       let incomeQuery = supabase
         .from("income_expenses" as any)
         .select("voucher_date, building_id, total_amount")
-        .eq("user_id", user.id)
         .eq("type", "INCOME")
         .eq("approval_status", "APPROVED")
         .is("deleted_at", null)
@@ -433,7 +432,6 @@ export function useExpenseRatioReport(
              income_expense_type:income_expense_type_id (id, name, category, type)
            )`
         )
-        .eq("user_id", user.id)
         .eq("type", "EXPENSE")
         .eq("approval_status", "APPROVED")
         .is("deleted_at", null)

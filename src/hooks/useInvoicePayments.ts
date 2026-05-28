@@ -233,7 +233,6 @@ export const useRecordRefundRPC = () => {
       const { data: existingType } = await supabase
         .from('income_expense_types' as any)
         .select('id')
-        .eq('user_id', user.id)
         .eq('type', 'expense')
         .eq('name', 'Hoàn trả thanh lý')
         .limit(1)

@@ -77,12 +77,9 @@ const AssetsPage = () => {
   const { data: categories = [] } = useQuery({
     queryKey: ["asset-categories"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
       const { data, error } = await supabase
         .from("asset_categories")
         .select("*")
-        .eq('user_id', user.id)
         .order("name");
       if (error) throw error;
       return data || [];
