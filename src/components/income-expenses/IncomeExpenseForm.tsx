@@ -43,7 +43,8 @@ import {
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useAccounts } from '@/hooks/useAccounts';
-import type { IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
+import { useContractsLegacy } from '@/hooks/useContracts';
+import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
@@ -118,6 +119,12 @@ const IncomeExpenseForm = ({
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: rooms = [] } = useRooms(selectedBuildingId);
   const { data: accounts = [] } = useAccounts();
+  // Danh sách HĐ trên phòng đã chọn — để link phiếu cọc đúng HĐ.
+  const { data: roomContracts = [] } = useContractsLegacy(
+    selectedRoomId ? { room_id: selectedRoomId } : undefined,
+  );
+  // Lookup is_deposit cho từng type_id → biết phiếu có cọc hay không.
+  const { data: incomeTypes = [] } = useIncomeExpenseTypes('income');
 
   const form = useForm<IncomeExpenseFormValues>({
     resolver: zodResolver(incomeExpenseFormSchema),
@@ -127,6 +134,7 @@ const IncomeExpenseForm = ({
       building_id: '',
       room_id: null,
       tenant_id: null,
+      contract_id: null,
       payer_name: '',
       account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
@@ -167,6 +175,7 @@ const IncomeExpenseForm = ({
         building_id: voucher.building_id,
         room_id: voucher.room_id ?? null,
         tenant_id: voucher.tenant_id ?? null,
+        contract_id: voucher.contract_id ?? null,
         payer_name: voucher.payer_name ?? '',
         account_id: voucher.account_id ?? '',
         voucher_date: voucher.voucher_date,
@@ -227,6 +236,7 @@ const IncomeExpenseForm = ({
         building_id: prefillBuilding ?? '',
         room_id: prefillRoom,
         tenant_id: null,
+        contract_id: null,
         payer_name: '',
         account_id: '',
         voucher_date: today,
@@ -241,22 +251,47 @@ const IncomeExpenseForm = ({
     }
   }, [voucher, open, defaultType, defaultPrefill, form]);
 
-  // Cascade: when building changes → clear room, tenant
+  // Cascade: when building changes → clear room, tenant, contract
   const handleBuildingChange = (buildingId: string) => {
     setSelectedBuildingId(buildingId);
     setSelectedRoomId(undefined);
     form.setValue('building_id', buildingId);
     form.setValue('room_id', null);
     form.setValue('tenant_id', null);
+    form.setValue('contract_id', null);
   };
 
-  // Cascade: when room changes → clear tenant
+  // Cascade: when room changes → clear tenant + contract
   const handleRoomChange = (roomId: string) => {
     const value = roomId === '__none__' ? null : roomId;
     setSelectedRoomId(value ?? undefined);
     form.setValue('room_id', value);
     form.setValue('tenant_id', null);
+    form.setValue('contract_id', null);
   };
+
+  // Auto-prefill contract_id khi:
+  //  • Đang tạo mới (chưa có voucher)
+  //  • Đã pick room
+  //  • Có đúng 1 HĐ ACTIVE/EXTENDED trên phòng đó
+  // Tránh ghi đè khi user đang edit phiếu cũ hoặc đã chọn HĐ rồi.
+  useEffect(() => {
+    if (voucher) return; // edit mode → giữ value cũ
+    const activeContracts = roomContracts.filter(
+      (c: any) => c.status === 'ACTIVE' || c.status === 'EXTENDED',
+    );
+    if (activeContracts.length === 1) {
+      const currentValue = form.getValues('contract_id');
+      if (!currentValue) {
+        form.setValue('contract_id', activeContracts[0].id);
+      }
+    }
+  }, [roomContracts, voucher, form]);
+
+  // Phiếu có phải "phiếu cọc" hay không (có ít nhất 1 item is_deposit)?
+  const hasDepositItem = itemRows.some((r) =>
+    incomeTypes.find((t) => t.id === r.income_expense_type_id)?.is_deposit,
+  );
 
   const handleAccountChange = (accountId: string) => {
     form.setValue('account_id', accountId);
@@ -544,6 +579,58 @@ const IncomeExpenseForm = ({
                   )}
                 />
               </div>
+
+              {/* Row 1.5: Hợp đồng — chỉ hiển thị khi có room đã chọn + có HĐ
+                  trên phòng đó. Phiếu cọc nên gắn HĐ để hệ thống tự đồng bộ
+                  contracts.deposit_paid. Cọc trước khi có HĐ thì để trống —
+                  trigger DB sẽ tự link khi HĐ được tạo cho cùng phòng. */}
+              {selectedRoomId && roomContracts.length > 0 && (
+                <FormField
+                  control={form.control}
+                  name="contract_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Hợp đồng {hasDepositItem ? '(cọc)' : '(tuỳ chọn)'}
+                      </FormLabel>
+                      <Select
+                        onValueChange={(v) =>
+                          field.onChange(v === '__none__' ? null : v)
+                        }
+                        value={field.value ?? '__none__'}
+                        disabled={!canEdit}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn hợp đồng" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">
+                            -- Không gắn HĐ --
+                          </SelectItem>
+                          {roomContracts.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.contract_number}
+                              {c.status ? ` · ${c.status}` : ''}
+                              {c.tenant?.full_name
+                                ? ` · ${c.tenant.full_name}`
+                                : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {hasDepositItem && !field.value && (
+                        <p className="text-xs text-amber-600">
+                          Phiếu cọc chưa gắn HĐ — sẽ tự link khi HĐ được tạo
+                          trên phòng này.
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               {/* Row 2: (chỉ EXPENSE) Tên người nhận + Ngày, hoặc (INCOME) chỉ Ngày */}
               <div className="grid grid-cols-2 gap-3">

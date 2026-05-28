@@ -753,6 +753,10 @@ export interface InvoiceStatistics {
   payment_tk: number;
   payment_tt: number;
   change_amount: number;
+  /** Cọc đã thu — tổng IE INCOME APPROVED có item is_deposit, filter theo
+   *  area/building/room/billing_month tương tự các stat khác. Tách riêng để
+   *  không trộn vào TM/TK/TT vì cọc không phải thanh toán hoá đơn. */
+  deposit_collected: number;
 }
 
 export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
@@ -793,6 +797,7 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
         payment_tk: Number(result?.payment_tk ?? 0),
         payment_tt: Number(result?.payment_tt ?? 0),
         change_amount: Number(result?.change_amount ?? 0),
+        deposit_collected: Number(result?.deposit_collected ?? 0),
       };
     },
   });

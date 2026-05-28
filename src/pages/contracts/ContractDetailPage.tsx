@@ -112,6 +112,39 @@ const ContractDetailPage = () => {
     contract_id: id
   });
 
+  // Fetch phiếu thu cọc (IE) đã link contract này — để chứng minh
+  // contracts.deposit_paid khớp với phiếu thực tế.
+  const { data: depositVouchers = [] } = useQuery({
+    queryKey: ['contract-deposit-vouchers', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('income_expenses')
+        .select(`
+          id, code, name, total_amount, voucher_date, approval_status,
+          account:accounts!income_expenses_account_id_fkey ( id, name ),
+          income_expense_items (
+            id, income_expense_type_id,
+            type:income_expense_types!income_expense_items_income_expense_type_id_fkey (
+              id, name, is_deposit
+            )
+          )
+        `)
+        .eq('contract_id', id)
+        .eq('type', 'INCOME')
+        .is('deleted_at', null)
+        .order('voucher_date', { ascending: false });
+      if (error) {
+        console.error('Fetch deposit vouchers error:', error);
+        return [];
+      }
+      // Chỉ giữ phiếu có ít nhất 1 item is_deposit
+      return (data ?? []).filter((v: any) =>
+        (v.income_expense_items ?? []).some((it: any) => it.type?.is_deposit),
+      );
+    },
+  });
+
   // Fetch contract services
   const [contractServices, setContractServices] = useState<ContractService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
@@ -850,6 +883,39 @@ const ContractDetailPage = () => {
                         Đã thu đủ tiền cọc
                       </AlertDescription>
                     </Alert>
+                  )}
+
+                  {/* Danh sách phiếu cọc đã link — minh bạch nguồn gốc của
+                      contracts.deposit_paid. Mỗi phiếu là 1 row IE INCOME có
+                      item is_deposit. */}
+                  {depositVouchers.length > 0 && (
+                    <div className="pt-3 border-t">
+                      <p className="text-xs font-medium text-gray-600 mb-2">
+                        Phiếu thu cọc đã ghi nhận
+                      </p>
+                      <div className="space-y-1.5">
+                        {depositVouchers.map((v: any) => (
+                          <div
+                            key={v.id}
+                            className="flex justify-between items-start text-xs gap-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-mono text-gray-500">{v.code}</p>
+                              <p className="text-gray-700 truncate">
+                                {format(new Date(v.voucher_date), 'dd/MM/yyyy')}
+                                {v.account?.name ? ` · ${v.account.name}` : ''}
+                                {v.approval_status !== 'APPROVED'
+                                  ? ` · ${v.approval_status}`
+                                  : ''}
+                              </p>
+                            </div>
+                            <span className="font-medium text-green-700 whitespace-nowrap">
+                              {formatCurrency(Number(v.total_amount) || 0)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </CardContent>
               </Card>

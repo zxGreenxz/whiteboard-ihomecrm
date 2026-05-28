@@ -702,6 +702,7 @@ export function ContractFormDialog({
                 building_id: selectedBuildingId,
                 room_id: selectedRoomId || null,
                 tenant_id: null,
+                contract_id: contract?.id ?? null,
                 payer_name: null,
                 account_id: depositAccountId,
                 voucher_date: data.signed_date || today,

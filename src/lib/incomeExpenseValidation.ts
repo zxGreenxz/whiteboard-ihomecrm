@@ -22,6 +22,11 @@ export const incomeExpenseFormSchema = z.object({
   building_id: z.string().min(1, 'Vui lòng chọn căn hộ'),
   room_id: z.string().nullable().optional(),
   tenant_id: z.string().nullable().optional(),
+  // Hợp đồng liên quan — bắt buộc cho phiếu cọc nếu HĐ đã tồn tại, optional
+  // cho các loại khác. Nếu phòng có HĐ ACTIVE và user tạo cọc thì sẽ tự
+  // prefill; với cọc trước HĐ thì để null, trigger DB sẽ tự link khi HĐ
+  // được tạo.
+  contract_id: z.string().nullable().optional(),
   payer_name: z.string().nullable().optional(),
   account_id: z.string().min(1, 'Vui lòng chọn tài khoản'),
   voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),

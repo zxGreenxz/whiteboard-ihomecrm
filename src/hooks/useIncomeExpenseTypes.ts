@@ -12,6 +12,9 @@ export interface IncomeExpenseType {
   category: string | null;
   description: string | null;
   is_default: boolean;
+  // Cờ "đây có phải loại Tiền cọc" — bật → ảnh hưởng contracts.deposit_paid
+  // và stats "Cọc đã thu". Set DB-side, FE chỉ đọc.
+  is_deposit: boolean;
   created_at: string;
   updated_at: string;
 }
