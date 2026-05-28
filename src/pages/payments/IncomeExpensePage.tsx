@@ -65,6 +65,7 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   expense_type_id: null,
   creator_id: null,
   amount_target: null,
+  verified_status: null,
 };
 
 // Parse search input: nếu toàn ký tự số (sau khi bỏ ., space, đ, d) → amount filter.

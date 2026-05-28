@@ -30,6 +30,9 @@ export interface IncomeExpenseFilters {
   // Lọc theo số tiền (đồng) — match phiếu có total_amount trong [target-5000, target+5000].
   // Dùng khi user gõ số vào ô tìm kiếm.
   amount_target?: number | null;
+  // Lọc theo trạng thái "đã kiểm tra": null = tất cả, "VERIFIED" = đã check,
+  // "UNVERIFIED" = chưa check.
+  verified_status?: "VERIFIED" | "UNVERIFIED" | null;
 }
 
 // Sai số mặc định khi lọc theo số tiền: ±5.000đ. Cho phép match nhỏ
@@ -180,6 +183,7 @@ export const useIncomeExpenses = (
       filters.expense_type_id,
       filters.creator_id,
       filters.amount_target,
+      filters.verified_status,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -263,6 +267,11 @@ export const useIncomeExpenses = (
         query = query
           .gte("total_amount", filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
           .lte("total_amount", filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
+      }
+      if (filters.verified_status === "VERIFIED") {
+        query = query.not("verified_at", "is", null);
+      } else if (filters.verified_status === "UNVERIFIED") {
+        query = query.is("verified_at", null);
       }
 
       // When searching, we need to fetch all filtered records and search client-side
@@ -417,6 +426,7 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       filters.expense_type_id,
       filters.creator_id,
       filters.amount_target,
+      filters.verified_status,
     ],
     queryFn: async (): Promise<{
       totalIncome: number;
@@ -484,6 +494,11 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
         query = query
           .gte("total_amount", filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
           .lte("total_amount", filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
+      }
+      if (filters.verified_status === "VERIFIED") {
+        query = query.not("verified_at", "is", null);
+      } else if (filters.verified_status === "UNVERIFIED") {
+        query = query.is("verified_at", null);
       }
 
       const { data, error } = await query;
@@ -563,6 +578,7 @@ export const useCreateIncomeExpense = () => {
           building_id: input.building_id,
           room_id: input.room_id ?? null,
           tenant_id: input.tenant_id ?? null,
+          contract_id: input.contract_id ?? null,
           payer_name: input.payer_name ?? null,
           account_id: input.account_id ?? null,
           attachments: input.attachments ?? [],
@@ -636,6 +652,7 @@ export const useUpdateIncomeExpense = () => {
           building_id: data.building_id,
           room_id: data.room_id ?? null,
           tenant_id: data.tenant_id ?? null,
+          contract_id: data.contract_id ?? null,
           payer_name: data.payer_name ?? null,
           account_id: data.account_id ?? null,
           attachments: data.attachments ?? [],
@@ -1100,6 +1117,7 @@ export const useIncomeExpenseBatches = (
       filters.expense_type_id,
       filters.creator_id,
       filters.amount_target,
+      filters.verified_status,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -1190,6 +1208,11 @@ export const useIncomeExpenseBatches = (
         voucherQuery = voucherQuery
           .gte("total_amount", filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
           .lte("total_amount", filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
+      }
+      if (filters.verified_status === "VERIFIED") {
+        voucherQuery = voucherQuery.not("verified_at", "is", null);
+      } else if (filters.verified_status === "UNVERIFIED") {
+        voucherQuery = voucherQuery.is("verified_at", null);
       }
 
       const { data: vouchers, error: voucherError } = await voucherQuery;

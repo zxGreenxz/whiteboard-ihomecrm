@@ -47,6 +47,12 @@ const TYPE_OPTIONS = [
   { value: "EXPENSE", label: "Phiếu chi" },
 ] as const;
 
+const VERIFIED_OPTIONS = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "VERIFIED", label: "Đã check" },
+  { value: "UNVERIFIED", label: "Chưa check" },
+] as const;
+
 const SEG_BUTTON =
   "flex-1 px-3 py-1.5 text-sm rounded-md transition-colors border";
 const SEG_ACTIVE = "bg-primary text-primary-foreground border-primary";
@@ -142,6 +148,34 @@ export function IncomeExpenseFilterPanel({
                           | "APPROVED"
                           | "UNAPPROVED"
                           | "CANCELLED",
+                      })
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Kiểm tra — segmented control */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Kiểm tra</Label>
+            <div className="flex gap-2">
+              {VERIFIED_OPTIONS.map((opt) => {
+                const current = draft.verified_status ?? "ALL";
+                const active = current === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`${SEG_BUTTON} ${active ? SEG_ACTIVE : SEG_IDLE}`}
+                    onClick={() =>
+                      patch({
+                        verified_status:
+                          opt.value === "ALL"
+                            ? null
+                            : (opt.value as "VERIFIED" | "UNVERIFIED"),
                       })
                     }
                   >

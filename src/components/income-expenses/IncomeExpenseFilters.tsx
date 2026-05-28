@@ -89,6 +89,15 @@ export function IncomeExpenseFiltersBar({
     handleChange({ creator_id: value === "ALL" ? null : value });
   };
 
+  const handleVerifiedChange = (value: string) => {
+    handleChange({
+      verified_status:
+        value === "ALL"
+          ? null
+          : (value as "VERIFIED" | "UNVERIFIED"),
+    });
+  };
+
   const handleApprovalChange = (value: string) => {
     handleChange({
       approval_status: value as
@@ -252,6 +261,21 @@ export function IncomeExpenseFiltersBar({
               {u.full_name || u.email || "—"}
             </SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      {/* Đã kiểm tra */}
+      <Select
+        value={filters.verified_status ?? "ALL"}
+        onValueChange={handleVerifiedChange}
+      >
+        <SelectTrigger className="w-[140px] h-9 text-sm">
+          <SelectValue placeholder="Kiểm tra" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Tất cả</SelectItem>
+          <SelectItem value="VERIFIED">Đã check</SelectItem>
+          <SelectItem value="UNVERIFIED">Chưa check</SelectItem>
         </SelectContent>
       </Select>
 

@@ -126,6 +126,20 @@ export function IncomeExpenseFilterChips({
       });
   }
 
+  if (filters.verified_status === "VERIFIED") {
+    chips.push({
+      key: "verified_status",
+      label: "Đã check",
+      patch: { verified_status: null },
+    });
+  } else if (filters.verified_status === "UNVERIFIED") {
+    chips.push({
+      key: "verified_status",
+      label: "Chưa check",
+      patch: { verified_status: null },
+    });
+  }
+
   if (filters.creator_id && staffUsers) {
     const u = staffUsers.find((x) => x.id === filters.creator_id);
     if (u)
