@@ -17,6 +17,13 @@ import { useCreateJob, useProfiles } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
+import { Package } from "lucide-react";
+import MaterialUsageItemsEditor, {
+  type UsageItemRow,
+  newUsageItemRow,
+} from "@/components/materials/MaterialUsageItemsEditor";
+import { useUpsertJobMaterialUsage } from "@/hooks/useMaterialUsages";
+import { useMaterials } from "@/hooks/useMaterials";
 import {
   parseJobQuickInput,
   formatDeadlineLabel,
@@ -48,12 +55,17 @@ export default function TaskCreateDialog({
   const { data: profiles = [] } = useProfiles();
   const createJob = useCreateJob();
   const createJobType = useCreateJobType();
+  const upsertJobMaterials = useUpsertJobMaterialUsage();
+  const { data: allMaterials = [] } = useMaterials({});
   const isMobile = useIsMobile();
 
   const [rawInput, setRawInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [assigneeText, setAssigneeText] = useState("");
   const [creatingType, setCreatingType] = useState(false);
+  const [materialItems, setMaterialItems] = useState<UsageItemRow[]>([
+    newUsageItemRow(),
+  ]);
   const assigneeInitedRef = useRef(false);
   const assigneeClearedOnFocusRef = useRef(false);
 
@@ -62,6 +74,7 @@ export default function TaskCreateDialog({
       setRawInput("");
       setAttachments([]);
       setCreatingType(false);
+      setMaterialItems([newUsageItemRow()]);
       assigneeInitedRef.current = false;
       assigneeClearedOnFocusRef.current = false;
       setAssigneeText("");
@@ -160,7 +173,7 @@ export default function TaskCreateDialog({
     const title = `${titleType} ${parsed.descriptionText}`.trim();
     const { assignee_id, assignee_name } = resolveAssignee();
     try {
-      await createJob.mutateAsync({
+      const job: any = await createJob.mutateAsync({
         title,
         description: rawInput.trim(),
         building_id: parsed.buildingId,
@@ -175,6 +188,31 @@ export default function TaskCreateDialog({
         status: "IN_PROGRESS",
         started_at: new Date().toISOString(),
       });
+
+      const cleanMaterials = materialItems
+        .map((r) => {
+          const m = allMaterials.find((x) => x.id === r.material_id);
+          return {
+            material_id: r.material_id ?? "",
+            quantity: Number(r.quantity) || 0,
+            unit_cost_at_usage: Number(m?.avg_unit_cost ?? 0),
+          };
+        })
+        .filter((it) => it.material_id && it.quantity > 0);
+
+      if (cleanMaterials.length > 0 && job?.id) {
+        try {
+          await upsertJobMaterials.mutateAsync({
+            job_id: job.id,
+            usage_date: new Date().toISOString().slice(0, 10),
+            notes: null,
+            items: cleanMaterials,
+          });
+        } catch {
+          // toast already shown; job đã tạo nên không rollback
+        }
+      }
+
       onOpenChange(false);
       onSuccess();
     } catch {
@@ -294,6 +332,21 @@ export default function TaskCreateDialog({
             <option key={p.id} value={p.full_name} />
           ))}
         </datalist>
+      </div>
+
+      {/* Vật tư sử dụng */}
+      <div className="space-y-1">
+        <label className="text-[13px] font-medium flex items-center gap-1.5">
+          <Package className="h-3.5 w-3.5" />
+          Vật tư sử dụng cho công việc
+          <span className="text-muted-foreground font-normal text-[11px]">
+            (tuỳ chọn — sẽ tự trừ kho khi lưu)
+          </span>
+        </label>
+        <MaterialUsageItemsEditor
+          items={materialItems}
+          onItemsChange={setMaterialItems}
+        />
       </div>
 
       {/* Đính kèm */}
