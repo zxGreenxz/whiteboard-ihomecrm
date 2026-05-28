@@ -43,7 +43,8 @@ export const useDeposits = (filters?: {
           ),
           room:rooms!deposits_room_id_fkey (
             id, name, code
-          ),        `)
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (filters?.status) {

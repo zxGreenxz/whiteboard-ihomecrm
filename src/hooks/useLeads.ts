@@ -51,7 +51,8 @@ export const useLeads = (filters?: {
             building:buildings!rooms_building_id_fkey (
               id, name
             )
-          ),        `)
+          )
+        `)
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
@@ -93,7 +94,8 @@ export const useLead = (id: string) => {
             building:buildings!rooms_building_id_fkey (
               id, name
             )
-          ),        `)
+          )
+        `)
         .eq("id", id)
         .single();
 
