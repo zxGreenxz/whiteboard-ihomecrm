@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { JobWithRelations } from "@/types/jobs";
 import { getStatusColor, getStatusLabel } from "@/lib/jobValidation";
+import MaterialUsageSection from "@/components/materials/MaterialUsageSection";
 
 interface TaskDetailDialogProps {
   open: boolean;
@@ -172,6 +173,8 @@ export default function TaskDetailDialog({
                   )}
                 </div>
 
+                <MaterialUsageSection jobId={job.id} />
+
                 {attachments.length > 0 && (
                   <div>
                     <h3 className="text-[13px] font-semibold mb-1.5 text-muted-foreground">
@@ -278,6 +281,8 @@ export default function TaskDetailDialog({
                   />
                 )}
               </div>
+
+              <MaterialUsageSection jobId={job.id} className="mt-3" />
 
               {attachments.length > 0 && (
                 <div className="mt-3">

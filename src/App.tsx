@@ -59,6 +59,7 @@ import AssetsPage from "./pages/assets/AssetsPage";
 
 // Materials (kho vật tư tiêu hao)
 import MaterialsPage from "./pages/materials/MaterialsPage";
+import MaterialPurchasesPage from "./pages/materials/MaterialPurchasesPage";
 
 // Reports Pages
 import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
@@ -207,6 +208,7 @@ const App = () => (
           <Route path="/services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
           <Route path="/materials" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
+          <Route path="/materials/purchases" element={<ProtectedRoute><MaterialPurchasesPage /></ProtectedRoute>} />
 
           {/* === KHÁCH HÀNG === */}
           <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />
