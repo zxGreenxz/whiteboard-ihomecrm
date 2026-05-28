@@ -53,10 +53,10 @@ export const useRecordPaymentRPC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // RBAC v2: bỏ p_user_id; quyền xác định qua can_do_on_building.
       const { data: result, error } = await (supabase.rpc as any)(
-        'record_invoice_payment',
+        'record_invoice_payment_v2',
         {
-          p_user_id: user.id,
           p_invoice_id: data.invoice_id,
           p_amount: data.amount,
           p_payment_method: data.payment_method,

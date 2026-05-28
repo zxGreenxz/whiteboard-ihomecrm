@@ -1419,11 +1419,10 @@ export const useGenerateRecurringVouchers = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
+      // RBAC v2: không cần p_user_id; v2 tự lookup các owner caller được phép.
       const { data, error } = await (supabase.rpc as any)(
-        "generate_recurring_vouchers",
-        { p_user_id: user.id }
+        "generate_recurring_vouchers_v2",
+        {}
       );
       if (error) {
         toast.error(error.message || "Không thể sinh phiếu lặp lại");
