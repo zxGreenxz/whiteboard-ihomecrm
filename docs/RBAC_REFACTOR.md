@@ -1,5 +1,9 @@
 # Refactor multi-tenant → pure RBAC
 
+> **Tài liệu liên quan**:
+> - [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) — schema chi tiết hiện tại (82 tables, 467 policies, 252 functions) — sinh tự động từ DB ngày 2026-05-28
+> - [MIGRATIONS_CLEANUP.md](MIGRATIONS_CLEANUP.md) — log cleanup folder migrations (rename 13 file trùng timestamp prefix)
+
 Tài liệu chi tiết về đợt refactor mô hình phân quyền từ "multi-tenant qua
 `user_id` mỗi row" sang "single-org RBAC qua roles + building scope".
 
