@@ -26,24 +26,26 @@ export function useClipboardImagePaste({ onFiles, enabled = true, multiple = fal
     const handlePaste = (e: ClipboardEvent) => {
       if (!e.clipboardData) return;
 
-      const files: File[] = [];
-      const seen = new Set<string>();
-      const push = (f: File | null) => {
-        if (!f || !f.type.startsWith('image/')) return;
-        const key = `${f.name}|${f.size}|${f.type}|${f.lastModified}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        files.push(f);
-      };
-
-      for (let i = 0; i < e.clipboardData.items.length; i++) {
-        const item = e.clipboardData.items[i];
-        if (item.kind === 'file') push(item.getAsFile());
+      // Chỉ đọc từ MỘT nguồn để tránh đếm trùng cùng một ảnh (gây "hiện ra
+      // hai bản" khi dán). Trình duyệt hiện đại đã đưa mọi ảnh dán — kể cả
+      // ảnh chụp màn hình — vào clipboardData.files; chỉ fallback sang
+      // items khi files trống (trình duyệt cũ).
+      const collected: File[] = [];
+      if (e.clipboardData.files.length > 0) {
+        for (let i = 0; i < e.clipboardData.files.length; i++) {
+          collected.push(e.clipboardData.files[i]);
+        }
+      } else {
+        for (let i = 0; i < e.clipboardData.items.length; i++) {
+          const item = e.clipboardData.items[i];
+          if (item.kind === 'file') {
+            const f = item.getAsFile();
+            if (f) collected.push(f);
+          }
+        }
       }
-      for (let i = 0; i < e.clipboardData.files.length; i++) {
-        push(e.clipboardData.files[i]);
-      }
 
+      const files = collected.filter((f) => f && f.type.startsWith('image/'));
       if (files.length === 0) return;
       e.preventDefault();
       onFiles(multiple ? files : files.slice(0, 1));
