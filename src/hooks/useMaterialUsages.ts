@@ -7,6 +7,30 @@ export interface MaterialUsageWithItems extends MaterialUsage {
   items: (MaterialUsageItem & { material: Pick<Material, 'id' | 'name' | 'unit'> | null })[];
 }
 
+export interface MaterialUsageWithJob extends MaterialUsageWithItems {
+  job: { id: string; code: string; title: string } | null;
+}
+
+export const useMaterialUsages = () => {
+  return useQuery({
+    queryKey: ['material-usages', 'list'],
+    queryFn: async (): Promise<MaterialUsageWithJob[]> => {
+      const { data, error } = await supabase
+        .from('material_usages' as any)
+        .select(
+          '*, items:material_usage_items(*, material:materials(id,name,unit)), job:jobs(id,code,title)',
+        )
+        .order('usage_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('useMaterialUsages error:', error);
+        return [];
+      }
+      return (data ?? []) as unknown as MaterialUsageWithJob[];
+    },
+  });
+};
+
 export const useMaterialUsageByJob = (jobId: string | null | undefined) => {
   return useQuery({
     queryKey: ['material-usages', 'by-job', jobId],

@@ -1,22 +1,25 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Package, Receipt, ClipboardList } from 'lucide-react';
+import { Package, Receipt, ClipboardList, ArrowDownToLine } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import MaterialsListContent from '@/components/materials/MaterialsListContent';
 import MaterialPurchasesContent from '@/components/materials/MaterialPurchasesContent';
+import MaterialUsagesContent from '@/components/materials/MaterialUsagesContent';
 import MaterialAdjustmentsContent from '@/components/materials/MaterialAdjustmentsContent';
 
-type TabKey = 'list' | 'purchases' | 'adjustments';
+type TabKey = 'list' | 'purchases' | 'usages' | 'adjustments';
 
 const PATH_TO_TAB: Record<string, TabKey> = {
   '/materials': 'list',
   '/materials/purchases': 'purchases',
+  '/materials/usages': 'usages',
   '/materials/adjustments': 'adjustments',
 };
 
 const TAB_TO_PATH: Record<TabKey, string> = {
   list: '/materials',
   purchases: '/materials/purchases',
+  usages: '/materials/usages',
   adjustments: '/materials/adjustments',
 };
 
@@ -46,6 +49,10 @@ export default function MaterialsPage() {
               <Receipt className="h-4 w-4" />
               Phiếu nhập
             </TabsTrigger>
+            <TabsTrigger value="usages" className="gap-1.5">
+              <ArrowDownToLine className="h-4 w-4" />
+              Phiếu xuất
+            </TabsTrigger>
             <TabsTrigger value="adjustments" className="gap-1.5">
               <ClipboardList className="h-4 w-4" />
               Kiểm kê
@@ -57,6 +64,9 @@ export default function MaterialsPage() {
           </TabsContent>
           <TabsContent value="purchases" className="mt-4">
             <MaterialPurchasesContent />
+          </TabsContent>
+          <TabsContent value="usages" className="mt-4">
+            <MaterialUsagesContent />
           </TabsContent>
           <TabsContent value="adjustments" className="mt-4">
             <MaterialAdjustmentsContent />

@@ -209,6 +209,7 @@ const App = () => (
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
           <Route path="/materials" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
           <Route path="/materials/purchases" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
+          <Route path="/materials/usages" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
           <Route path="/materials/adjustments" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
 
           {/* === KHÁCH HÀNG === */}
