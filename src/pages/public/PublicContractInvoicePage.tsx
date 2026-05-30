@@ -244,8 +244,8 @@ export default function PublicContractInvoicePage() {
                 const note = parsed.note;
                 return (
                   <div key={it.id} className="px-4 py-3 text-sm">
-                    {/* Mobile: 3 cột canh đều — [Mô tả] [SL×Đơn giá] [Thành tiền] */}
-                    <div className="sm:hidden grid grid-cols-3 items-start gap-2">
+                    {/* Mobile: 2 cột — [Mô tả] [Thành tiền]. Bỏ chú thích SL×Đơn giá. */}
+                    <div className="sm:hidden flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium leading-snug break-words">
                           {title}
@@ -255,9 +255,6 @@ export default function PublicContractInvoicePage() {
                             {note}
                           </div>
                         )}
-                      </div>
-                      <div className="text-xs text-gray-500 text-center tabular-nums whitespace-nowrap pt-0.5">
-                        {qty} × {formatCurrency(unitPrice)}
                       </div>
                       <div className="text-right font-semibold tabular-nums whitespace-nowrap">
                         {formatCurrency(it.amount)}
@@ -288,9 +285,9 @@ export default function PublicContractInvoicePage() {
                 );
               })}
               <div className="px-4 py-3 bg-gray-50 font-bold text-sm">
-                {/* Mobile: cùng grid 3 cột, label canh phải sát amount */}
-                <div className="sm:hidden grid grid-cols-3 items-center gap-2">
-                  <div className="col-span-2 text-right">Tổng cộng</div>
+                {/* Mobile: label + amount canh 2 đầu */}
+                <div className="sm:hidden flex items-center justify-between gap-3">
+                  <div>Tổng cộng</div>
                   <div className="text-right tabular-nums">
                     {formatCurrency(invoice.total_amount)}
                   </div>
