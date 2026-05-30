@@ -18,7 +18,7 @@ export const useBuildingServices = (buildingId: string) => {
           unit_price_override,
           created_at,
           updated_at,
-          service:services(id, name, unit_price, unit)
+          service:services(id, name, unit_price, unit, type, pricing_type)
         `)
         .eq("building_id", buildingId) as any);
 

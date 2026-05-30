@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +48,8 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
+import { useBuildingServices } from "@/hooks/useBuildingServices";
+import type { BuildingServiceWithDetails } from "@/types/building";
 import {
   CustomerSelectionDialog,
   type CustomerBasic,
@@ -125,6 +128,37 @@ export function ContractFormDialog({
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+
+  // Nút gạt "Dùng dịch vụ riêng cho HĐ". OFF (mặc định) = HĐ dùng dịch vụ của
+  // toà → KHÔNG lưu contract_services, hoá đơn tự fallback đơn giá toà. ON =
+  // HĐ có dịch vụ riêng (seed từ toà rồi thêm/bớt/sửa) → lưu contract_services
+  // và hoá đơn lấy đúng theo HĐ. Khớp luồng resolveInvoicePricing.
+  const [useCustomServices, setUseCustomServices] = useState(false);
+
+  // Dịch vụ đang BẬT của toà — dùng để (1) hiển thị preview mờ khi OFF, (2)
+  // seed vào dịch vụ riêng khi user bật nút gạt lần đầu.
+  const { data: buildingServicesData = [] } = useBuildingServices(selectedBuildingId);
+  const buildingActiveServices = useMemo(
+    () =>
+      (buildingServicesData as BuildingServiceWithDetails[]).filter(
+        (b) => b.is_active,
+      ),
+    [buildingServicesData],
+  );
+  const buildingServicesAsSelected = useMemo<SelectedService[]>(
+    () =>
+      buildingActiveServices.map((b) => ({
+        id: b.service_id,
+        name: b.service?.name ?? "",
+        unit_price: b.unit_price_override ?? b.service?.unit_price ?? 0,
+        unit: b.service?.unit ?? null,
+        type: b.service?.type ?? "",
+        pricing_type: b.service?.pricing_type ?? null,
+        initial_reading: 0,
+        quantity: 1,
+      })),
+    [buildingActiveServices],
+  );
 
   // Invoice preview (hoá đơn cọc + tháng đầu) — items được tự sinh từ
   // rent/cọc/services, user có thể chỉnh trực tiếp; khi lưu HĐ items này
@@ -233,12 +267,15 @@ export function ContractFormDialog({
           quantity: 1,
         })) ?? [];
       setSelectedServices(services);
+      // HĐ đã có dịch vụ riêng → bật nút gạt; chưa có → dùng mặc định toà.
+      setUseCustomServices(services.length > 0);
     } else {
       // Create mode: reset
       setSelectedBuildingId("");
       setSelectedRoomId("");
       setSelectedCustomers([]);
       setSelectedServices([]);
+      setUseCustomServices(false);
       setDepositAttachments([]);
       form.reset({
         room_id: "",
@@ -361,7 +398,9 @@ export function ContractFormDialog({
       end_billing_date: endBilling || undefined,
       discount_months: discountMonthsWatch,
       discount_amount_per_month: discountAmtWatch,
-      services: selectedServices.map((s) => ({
+      // Toggle OFF (dùng dịch vụ toà) → không đưa service vào hoá đơn đầu
+      // (giống HĐ chưa cấu hình dịch vụ); ON → dùng dịch vụ riêng của HĐ.
+      services: (useCustomServices ? selectedServices : []).map((s) => ({
         service_id: s.id,
         name: s.name,
         unit_price: s.unit_price,
@@ -382,6 +421,7 @@ export function ContractFormDialog({
     discountMonthsWatch,
     discountAmtWatch,
     servicesKey,
+    useCustomServices,
   ]);
 
   const invoiceSubtotal = useMemo(
@@ -492,6 +532,16 @@ export function ContractFormDialog({
   };
 
   // ---- Service handlers ----
+  // Bật/tắt "Dùng dịch vụ riêng". Lần đầu bật mà chưa có dịch vụ nào → seed
+  // từ dịch vụ đang bật của toà để user chỉnh tiếp (thêm/bớt/sửa giá). Tắt
+  // lại không xoá lựa chọn (giữ để bật lại không mất), chỉ không lưu khi save.
+  const handleToggleCustomServices = (on: boolean) => {
+    setUseCustomServices(on);
+    if (on && selectedServices.length === 0 && buildingServicesAsSelected.length > 0) {
+      setSelectedServices(buildingServicesAsSelected);
+    }
+  };
+
   const handleServicesSelected = (services: ServiceBasic[]) => {
     const newServices: SelectedService[] = services.map((s) => {
       const existing = selectedServices.find((ss) => ss.id === s.id);
@@ -578,7 +628,9 @@ export function ContractFormDialog({
       notes: c.notes,
     }));
 
-    const services = selectedServices.map((s) => ({
+    // Chỉ lưu contract_services khi user bật "Dùng dịch vụ riêng". OFF → lưu
+    // rỗng để hoá đơn fallback đơn giá toà (đúng ý: chưa cấu hình → theo toà).
+    const services = (useCustomServices ? selectedServices : []).map((s) => ({
       service_id: s.id,
       unit_price: s.unit_price,
       initial_reading: s.initial_reading || undefined,
@@ -1273,24 +1325,89 @@ export function ContractFormDialog({
 
               {/* ===== Section 4: Tiền phí dịch vụ ===== */}
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b pb-2">
-                  <h3 className="text-sm font-semibold text-foreground">
+                <div className="flex items-center justify-between border-b pb-2 gap-3">
+                  <h3 className="text-sm font-semibold text-foreground shrink-0">
                     Tiền phí dịch vụ
                   </h3>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setServiceDialogOpen(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Thêm dịch vụ
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="use-custom-services"
+                        checked={useCustomServices}
+                        onCheckedChange={handleToggleCustomServices}
+                      />
+                      <Label
+                        htmlFor="use-custom-services"
+                        className="text-xs font-normal cursor-pointer text-muted-foreground"
+                      >
+                        Dùng dịch vụ riêng cho HĐ
+                      </Label>
+                    </div>
+                    {useCustomServices && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setServiceDialogOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Thêm dịch vụ
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
-                {selectedServices.length === 0 ? (
+                {!useCustomServices ? (
+                  /* OFF: dùng dịch vụ mặc định của toà — hiển thị mờ, chỉ xem.
+                     Hoá đơn sẽ tự lấy đơn giá toà cho HĐ này. */
+                  buildingActiveServices.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      {selectedBuildingId
+                        ? "Toà chưa cấu hình dịch vụ mặc định. Bật \"Dùng dịch vụ riêng\" để thêm dịch vụ cho HĐ."
+                        : "Chọn toà nhà để xem dịch vụ mặc định."}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="border rounded-md overflow-x-auto opacity-60 pointer-events-none select-none">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/50">
+                              <th className="text-left px-3 py-2 font-medium">
+                                Tên dịch vụ
+                              </th>
+                              <th className="text-left px-3 py-2 font-medium">
+                                Đơn vị
+                              </th>
+                              <th className="text-right px-3 py-2 font-medium">
+                                Đơn giá (toà)
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {buildingServicesAsSelected.map((s) => (
+                              <tr key={s.id}>
+                                <td className="px-3 py-2">{s.name}</td>
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  {s.unit ?? "—"}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatVND(s.unit_price)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        HĐ đang dùng dịch vụ mặc định theo toà. Bật{" "}
+                        <span className="font-medium">"Dùng dịch vụ riêng cho HĐ"</span>{" "}
+                        để chỉnh đơn giá/loại điện riêng cho hợp đồng này.
+                      </p>
+                    </div>
+                  )
+                ) : selectedServices.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center">
-                    Chưa chọn dịch vụ nào
+                    Chưa chọn dịch vụ nào — bấm "Thêm dịch vụ" để chọn.
                   </p>
                 ) : (
                   <div className="border rounded-md overflow-x-auto">

@@ -86,6 +86,8 @@ export interface BuildingServiceWithDetails extends BuildingService {
     name: string;
     unit_price: number;
     unit: string | null;
+    type?: string | null;
+    pricing_type?: string | null;
   };
 }
 
