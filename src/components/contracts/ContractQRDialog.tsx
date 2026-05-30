@@ -114,29 +114,29 @@ export default function ContractQRDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col items-center gap-4 py-2">
-          <div className="rounded-lg border bg-white p-3 inline-block">
+        <div className="flex w-full min-w-0 flex-col items-center gap-4 py-2">
+          <div className="rounded-lg border bg-white p-3 inline-block max-w-full">
             {dataUrl ? (
               <img
                 src={dataUrl}
                 alt={`QR hợp đồng ${contractLabel}`}
                 width={280}
                 height={280}
-                className="block"
+                className="block h-auto w-full max-w-[280px]"
               />
             ) : (
-              <div className="w-[280px] h-[280px] flex items-center justify-center text-sm text-gray-400">
+              <div className="aspect-square w-full max-w-[280px] flex items-center justify-center text-sm text-gray-400">
                 Đang tạo QR...
               </div>
             )}
           </div>
 
-          <div className="w-full">
+          <div className="w-full min-w-0">
             <div className="text-xs text-gray-500 mb-1">Link công khai</div>
             <button
               type="button"
               onClick={handleCopyLink}
-              className="w-full text-left text-xs font-mono text-blue-600 hover:text-blue-800 truncate flex items-center gap-1"
+              className="flex w-full min-w-0 items-center gap-1 text-left text-xs font-mono text-blue-600 hover:text-blue-800"
               title="Bấm để copy"
             >
               <ExternalLink className="h-3 w-3 shrink-0" />
