@@ -25,6 +25,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { getContractDisplayStatus } from '@/types/contract';
+import { compareBuildingThenRoom } from '@/lib/roomSort';
 import type {
   ContractWithRelations,
   ContractStatFilter,
@@ -237,14 +238,29 @@ export default function ContractsPage() {
   ]);
 
   // =============================================
+  // Sort: gom theo toà nhà rồi sắp theo tên phòng (MB* → G* → L* → 1,2,3,4...)
+  // =============================================
+
+  const sortedContracts = useMemo(() => {
+    return [...filteredContracts].sort((a, b) =>
+      compareBuildingThenRoom(
+        a.room?.building?.name ?? '',
+        a.room?.name ?? '',
+        b.room?.building?.name ?? '',
+        b.room?.name ?? '',
+      ),
+    );
+  }, [filteredContracts]);
+
+  // =============================================
   // Pagination (client-side slice)
   // =============================================
 
-  const totalCount = filteredContracts.length;
+  const totalCount = sortedContracts.length;
   const paginatedContracts = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredContracts.slice(start, start + pageSize);
-  }, [filteredContracts, page, pageSize]);
+    return sortedContracts.slice(start, start + pageSize);
+  }, [sortedContracts, page, pageSize]);
 
   // =============================================
   // Handlers
@@ -410,7 +426,7 @@ export default function ContractsPage() {
                 <Upload className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => exportContracts(filteredContracts)} title="Xuất">
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => exportContracts(sortedContracts)} title="Xuất">
               <Download className="h-4 w-4" />
             </Button>
             <Button

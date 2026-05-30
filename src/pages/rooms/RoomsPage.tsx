@@ -15,6 +15,7 @@ import { useFloors } from '@/hooks/useFloors';
 import type { RoomWithRelations } from '@/types/room';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
+import { compareBuildingThenRoom } from '@/lib/roomSort';
 
 export default function RoomsPage() {
   const [searchParams] = useSearchParams();
@@ -62,9 +63,10 @@ export default function RoomsPage() {
 
   const updateStatus = useUpdateRoomStatus();
 
-  // Client-side filtering
+  // Client-side filtering + sắp xếp: gom theo toà nhà rồi theo tên phòng
+  // (MB* → G* → L* → 1,2,3,4...)
   const filteredRooms = useMemo(() => {
-    return rooms.filter((room) => {
+    const result = rooms.filter((room) => {
       // Search filter: name, code (case-insensitive)
       const term = searchTerm.toLowerCase();
       const matchesSearch =
@@ -90,6 +92,15 @@ export default function RoomsPage() {
 
       return matchesSearch && matchesBuilding && matchesFloor && matchesStatus;
     });
+
+    return result.sort((a, b) =>
+      compareBuildingThenRoom(
+        a.building?.name ?? '',
+        a.name ?? '',
+        b.building?.name ?? '',
+        b.name ?? '',
+      ),
+    );
   }, [rooms, searchTerm, buildingFilter, floorFilter, statusFilter]);
 
   // Handlers
