@@ -628,13 +628,13 @@ const InvoiceDetailPage = () => {
       />
 
       {/* QR Hợp đồng Dialog */}
-      {invoice.contract_id && (
+      {invoice.contract?.public_code && (
         <ContractQRDialog
           open={qrDialogOpen}
           onOpenChange={setQrDialogOpen}
-          contractId={invoice.contract_id}
+          publicCode={invoice.contract.public_code}
           contractLabel={
-            invoice.contract?.contract_number || apartmentLabel || invoice.contract_id.slice(0, 8)
+            invoice.contract?.contract_number || apartmentLabel || invoice.contract_id?.slice(0, 8) || ''
           }
         />
       )}

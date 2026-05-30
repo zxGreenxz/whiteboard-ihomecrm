@@ -1352,7 +1352,7 @@ const ContractDetailPage = () => {
       <ContractQRDialog
         open={qrDialogOpen}
         onOpenChange={setQrDialogOpen}
-        contractId={contract.id}
+        publicCode={contract.public_code}
         contractLabel={contract.contract_number || contract.id.slice(0, 8)}
       />
 

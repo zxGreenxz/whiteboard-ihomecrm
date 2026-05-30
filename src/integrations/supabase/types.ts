@@ -1430,6 +1430,7 @@ export type Database = {
           notes: string | null
           parent_contract_id: string | null
           payment_cycle: Database["public"]["Enums"]["payment_cycle"] | null
+          public_code: string
           rent_price: number
           room_id: string | null
           signed_date: string
@@ -1461,6 +1462,7 @@ export type Database = {
           notes?: string | null
           parent_contract_id?: string | null
           payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
+          public_code?: string
           rent_price: number
           room_id?: string | null
           signed_date: string
@@ -1492,6 +1494,7 @@ export type Database = {
           notes?: string | null
           parent_contract_id?: string | null
           payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
+          public_code?: string
           rent_price?: number
           room_id?: string | null
           signed_date?: string

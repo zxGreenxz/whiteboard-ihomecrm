@@ -92,15 +92,15 @@ const statusLabel = (s: string) => {
 };
 
 export default function PublicContractInvoicePage() {
-  const { contractId } = useParams<{ contractId: string }>();
+  const { code } = useParams<{ code: string }>();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['public-contract-invoice', contractId],
-    enabled: !!contractId,
+    queryKey: ['public-contract-invoice', code],
+    enabled: !!code,
     queryFn: async (): Promise<PublicPayload | null> => {
       const { data, error } = await (supabase as any).rpc(
-        'get_public_latest_invoice_by_contract',
-        { p_contract_id: contractId },
+        'get_public_latest_invoice_by_code',
+        { p_code: code },
       );
       if (error) throw error;
       return data as PublicPayload | null;

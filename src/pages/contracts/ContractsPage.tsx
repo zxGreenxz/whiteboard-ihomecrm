@@ -571,7 +571,7 @@ export default function ContractsPage() {
               setQrDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contractId={selectedContract.id}
+            publicCode={selectedContract.public_code}
             contractLabel={
               selectedContract.contract_number ||
               selectedContract.id.slice(0, 8)

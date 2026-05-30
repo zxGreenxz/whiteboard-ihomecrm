@@ -32,7 +32,7 @@ export interface UpdateInvoiceData {
 const INVOICE_LIST_SELECT = `
   *,
   contract:contracts!invoices_contract_id_fkey (
-    id, contract_number, status,
+    id, contract_number, status, public_code,
     contract_customers!contract_customers_contract_id_fkey (
       id, is_representative,
       customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)

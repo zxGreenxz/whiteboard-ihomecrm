@@ -176,8 +176,9 @@ const App = () => (
           {/* ========================================
               PUBLIC PAGES - Không cần đăng nhập
               (Dùng cho QR hợp đồng → hoá đơn mới nhất)
+              Link ngắn: /c/<public_code 6 ký tự>
               ======================================== */}
-          <Route path="/public/contract/:contractId" element={<PublicContractInvoicePage />} />
+          <Route path="/c/:code" element={<PublicContractInvoicePage />} />
 
           {/* ========================================
               PROTECTED ROUTES - Require authentication

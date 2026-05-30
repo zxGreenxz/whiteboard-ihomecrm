@@ -26,6 +26,8 @@ export interface Contract {
   room_id: string | null;
   tenant_id: string;
   contract_number: string | null;
+  /** Mã ngắn ngẫu nhiên (6 ký tự) dùng cho link QR công khai: /c/<public_code>. */
+  public_code: string;
   signed_date: string;
   start_date: string;
   end_date: string;

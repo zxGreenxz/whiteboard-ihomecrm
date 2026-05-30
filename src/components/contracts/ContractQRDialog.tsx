@@ -14,7 +14,8 @@ import { toast } from '@/hooks/use-toast';
 interface ContractQRDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  contractId: string;
+  /** Mã ngắn của hợp đồng (contracts.public_code) — dựng link /c/<code>. */
+  publicCode: string;
   contractLabel: string;
 }
 
@@ -23,13 +24,13 @@ const QR_SIZE = 480;
 export default function ContractQRDialog({
   open,
   onOpenChange,
-  contractId,
+  publicCode,
   contractLabel,
 }: ContractQRDialogProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const publicUrl = `${window.location.origin}/public/contract/${contractId}`;
+  const publicUrl = `${window.location.origin}/c/${publicCode}`;
 
   useEffect(() => {
     if (!open) return;
