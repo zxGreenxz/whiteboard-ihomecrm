@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Home, Building2, DoorOpen } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
+import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { ReportLayout } from "@/components/reports/ReportLayout";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { ExportButtons } from "@/components/reports/ExportButtons";
@@ -26,6 +27,20 @@ export default function VacantRoomsReport() {
   const { data: buildings } = useBuildings();
   const { data: floors } = useFloors(buildingId);
   const { data: vacantRooms, isLoading } = useVacantRoomsReport(buildingId, floorId);
+
+  // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...)
+  const sortedRooms = useMemo(
+    () =>
+      [...(vacantRooms ?? [])].sort((a, b) =>
+        compareBuildingThenRoom(
+          a.buildings?.name ?? "",
+          a.name ?? "",
+          b.buildings?.name ?? "",
+          b.name ?? "",
+        ),
+      ),
+    [vacantRooms],
+  );
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN", {
@@ -63,7 +78,7 @@ export default function VacantRoomsReport() {
     </>
   );
 
-  const exportData = vacantRooms?.map(room => ({
+  const exportData = sortedRooms.map(room => ({
     "Tòa nhà": room.buildings?.name || "N/A",
     "Căn hộ": room.name,
     "Tầng": room.floor ?? "N/A",
@@ -149,7 +164,7 @@ export default function VacantRoomsReport() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {vacantRooms.map((room) => (
+                    {sortedRooms.map((room) => (
                       <TableRow key={room.id}>
                         <TableCell className="font-medium">
                           {room.buildings?.name || "N/A"}

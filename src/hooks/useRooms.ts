@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { RoomWithRelations } from "@/types/room";
+import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { toast } from "sonner";
 
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
@@ -35,7 +36,17 @@ export const useRooms = (buildingId?: string) => {
         return [] as RoomWithRelations[];
       }
 
-      return (data || []) as unknown as RoomWithRelations[];
+      // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...) — áp dụng
+      // cho mọi nơi dùng useRooms: dropdown chọn phòng, sơ đồ toà nhà, danh sách...
+      const rooms = (data || []) as unknown as RoomWithRelations[];
+      return [...rooms].sort((a, b) =>
+        compareBuildingThenRoom(
+          a.building?.name ?? "",
+          a.name ?? "",
+          b.building?.name ?? "",
+          b.name ?? "",
+        ),
+      );
     },
   });
 };
