@@ -149,7 +149,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       const { data: contracts, error: e1 } = await (supabase as any)
         .from('contracts')
         .select(
-          `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining, discounts,
+          `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining, discounts, start_date, created_at,
            room:rooms!contracts_room_id_fkey (id, name, building_id),
            contract_customers!contract_customers_contract_id_fkey (id),
            contract_services (
@@ -160,9 +160,40 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         .eq('status', 'ACTIVE')
         .is('deleted_at', null);
       if (e1) throw e1;
-      const buildingContracts = (contracts || []).filter(
+      const buildingContractsRaw = (contracts || []).filter(
         (c: any) => c.room?.building_id === buildingId
       );
+      // Gom theo phòng: mỗi phòng chỉ lập hoá đơn cho 1 HĐ. Nếu phòng có >1 HĐ
+      // ACTIVE (dữ liệu lỗi — HĐ cũ chưa thanh lý), giữ HĐ mới nhất (start_date
+      // desc, tie-break created_at desc) để không lập hoá đơn nhân đôi, rồi cảnh báo.
+      const byRoom = new Map<string, any>();
+      const dupRoomNames = new Set<string>();
+      const pickNewer = (a: any, b: any) => {
+        const sa = a.start_date ?? '';
+        const sb = b.start_date ?? '';
+        if (sa !== sb) return sa > sb ? a : b;
+        return (a.created_at ?? '') >= (b.created_at ?? '') ? a : b;
+      };
+      for (const c of buildingContractsRaw) {
+        const existing = byRoom.get(c.room_id);
+        if (!existing) {
+          byRoom.set(c.room_id, c);
+          continue;
+        }
+        dupRoomNames.add(c.room?.name ?? existing.room?.name ?? '?');
+        byRoom.set(c.room_id, pickNewer(existing, c));
+      }
+      const buildingContracts = Array.from(byRoom.values());
+      if (dupRoomNames.size > 0) {
+        const names = Array.from(dupRoomNames).sort((a, b) =>
+          a.localeCompare(b, 'vi', { numeric: true })
+        );
+        toast({
+          variant: 'destructive',
+          title: 'Phòng có nhiều hợp đồng hiệu lực',
+          description: `Phòng ${names.join(', ')} đang có 2 hợp đồng hiệu lực — đã chọn HĐ mới nhất để lập hoá đơn. Vui lòng thanh lý hợp đồng cũ.`,
+        });
+      }
 
       // 2) Electricity meters in this building.
       const { data: meters } = await supabase

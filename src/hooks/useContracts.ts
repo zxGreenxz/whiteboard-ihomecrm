@@ -306,6 +306,27 @@ export const useCreateContract = () => {
         );
       }
 
+      // Guard: a room can only have ONE active contract at a time. Without this,
+      // moving a new tenant in while the old contract is still ACTIVE leaves two
+      // ACTIVE contracts on the same room → phòng bị "nhân đôi" ở các màn lập hoá
+      // đơn. Chặn tại đây (luồng tạo HĐ duy nhất từ UI); gia hạn/chuyển phòng đi
+      // qua RPC riêng nên không bị ảnh hưởng.
+      if (contractData.room_id) {
+        const { data: existingActive, error: activeErr } = await supabase
+          .from("contracts")
+          .select("id")
+          .eq("room_id", contractData.room_id)
+          .eq("status", "ACTIVE")
+          .is("deleted_at", null)
+          .limit(1);
+        if (activeErr) throw activeErr;
+        if (existingActive && existingActive.length > 0) {
+          throw new Error(
+            "Phòng này đang có hợp đồng hiệu lực. Vui lòng thanh lý / kết thúc hợp đồng cũ trước khi tạo hợp đồng mới."
+          );
+        }
+      }
+
       // 1. Insert contract.
       // NOTE: contracts.tenant_id is the legacy column that used to FK to
       // `tenants`. The authoritative customer link is in contract_customers
