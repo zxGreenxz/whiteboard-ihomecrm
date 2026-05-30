@@ -44,9 +44,10 @@ export function ServiceSelectionDialog({
   const [searchTerm, setSearchTerm] = useState("");
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
-  const { data: services = [], isLoading } = useServices(
-    buildingId ? { building_id: buildingId } : undefined
-  );
+  // Hiển thị TOÀN BỘ dịch vụ trong danh mục (page Dịch vụ), không lọc theo
+  // toà — để user gán bất kỳ dịch vụ nào cho HĐ (vd loại điện khác mặc định
+  // toà). buildingId chỉ dùng để gắn nhãn "toà" cho dịch vụ là mặc định.
+  const { data: services = [], isLoading } = useServices();
 
   // Reset checked state when dialog opens
   const handleOpenChange = useCallback(
@@ -136,8 +137,17 @@ export function ServiceSelectionDialog({
                       onCheckedChange={() => toggleService(service.id)}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {service.name}
+                      <p className="text-sm font-medium truncate flex items-center gap-2">
+                        <span className="truncate">{service.name}</span>
+                        {buildingId &&
+                          (service as any).building_services?.some(
+                            (bs: { building_id: string; is_active: boolean }) =>
+                              bs.building_id === buildingId && bs.is_active,
+                          ) && (
+                            <span className="shrink-0 text-[10px] font-normal bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                              toà
+                            </span>
+                          )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {formatVND(service.unit_price)}
