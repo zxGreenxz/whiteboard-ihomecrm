@@ -57,10 +57,8 @@ import RefundLogPage from "./pages/payments/RefundLogPage";
 // Assets Pages
 import AssetsPage from "./pages/assets/AssetsPage";
 
-// Materials (kho vật tư tiêu hao)
+// Materials (kho vật tư tiêu hao) — hub page với 3 tab
 import MaterialsPage from "./pages/materials/MaterialsPage";
-import MaterialPurchasesPage from "./pages/materials/MaterialPurchasesPage";
-import MaterialAdjustmentsPage from "./pages/materials/MaterialAdjustmentsPage";
 
 // Reports Pages
 import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
@@ -209,8 +207,8 @@ const App = () => (
           <Route path="/services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
           <Route path="/materials" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
-          <Route path="/materials/purchases" element={<ProtectedRoute><MaterialPurchasesPage /></ProtectedRoute>} />
-          <Route path="/materials/adjustments" element={<ProtectedRoute><MaterialAdjustmentsPage /></ProtectedRoute>} />
+          <Route path="/materials/purchases" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
+          <Route path="/materials/adjustments" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
 
           {/* === KHÁCH HÀNG === */}
           <Route path="/leads" element={<ProtectedRoute><LeadsPage /></ProtectedRoute>} />

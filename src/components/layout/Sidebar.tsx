@@ -83,8 +83,6 @@ const navigationGroups: NavGroup[] = [
           { title: 'Dịch vụ', href: '/services', icon: Wrench },
           { title: 'Tài sản', href: '/assets', icon: Package },
           { title: 'Kho vật tư', href: '/materials', icon: Package },
-          { title: 'Phiếu nhập kho', href: '/materials/purchases', icon: Receipt },
-          { title: 'Kiểm kê vật tư', href: '/materials/adjustments', icon: ClipboardList },
         ],
       },
       {
