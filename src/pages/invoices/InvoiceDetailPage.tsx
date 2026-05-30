@@ -636,6 +636,8 @@ const InvoiceDetailPage = () => {
           contractLabel={
             invoice.contract?.contract_number || apartmentLabel || invoice.contract_id?.slice(0, 8) || ''
           }
+          buildingName={invoice.building?.name}
+          roomName={invoice.room?.name}
         />
       )}
     </MainLayout>

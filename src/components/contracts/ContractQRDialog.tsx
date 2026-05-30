@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Copy, Download, Check, ExternalLink } from 'lucide-react';
+import { Copy, Download, Check, ExternalLink, Building2, DoorOpen } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 interface ContractQRDialogProps {
@@ -17,15 +17,24 @@ interface ContractQRDialogProps {
   /** Mã ngắn của hợp đồng (contracts.public_code) — dựng link /c/<code>. */
   publicCode: string;
   contractLabel: string;
+  /** Tên toà nhà — hiện dưới ảnh QR. */
+  buildingName?: string | null;
+  /** Mã/tên phòng — hiện dưới ảnh QR. */
+  roomName?: string | null;
 }
 
 const QR_SIZE = 480;
+
+/** Font "dễ thương" (rounded) cho nhãn phòng/toà — load ở index.html. */
+const CUTE_FONT = "'Baloo 2', system-ui, sans-serif";
 
 export default function ContractQRDialog({
   open,
   onOpenChange,
   publicCode,
   contractLabel,
+  buildingName,
+  roomName,
 }: ContractQRDialogProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -131,6 +140,27 @@ export default function ContractQRDialog({
               </div>
             )}
           </div>
+
+          {/* Nhãn phòng + toà nhà (font dễ thương + icon màu sắc) */}
+          {(buildingName || roomName) && (
+            <div
+              className="flex flex-col items-center gap-1.5 text-center"
+              style={{ fontFamily: CUTE_FONT }}
+            >
+              {roomName && (
+                <div className="flex items-center gap-2 rounded-full bg-gradient-to-r from-pink-100 via-rose-100 to-amber-100 px-4 py-1 text-xl font-extrabold text-rose-600 shadow-sm ring-1 ring-rose-200">
+                  <DoorOpen className="h-5 w-5 text-amber-500" />
+                  <span>Phòng {roomName}</span>
+                </div>
+              )}
+              {buildingName && (
+                <div className="flex items-center gap-1.5 text-sm font-bold text-violet-600">
+                  <Building2 className="h-4 w-4 text-violet-500" />
+                  <span>{buildingName}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="w-full min-w-0">
             <div className="text-xs text-gray-500 mb-1">Link công khai</div>

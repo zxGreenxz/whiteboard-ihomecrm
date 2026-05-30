@@ -576,6 +576,8 @@ export default function ContractsPage() {
               selectedContract.contract_number ||
               selectedContract.id.slice(0, 8)
             }
+            buildingName={selectedContract.room?.building?.name}
+            roomName={selectedContract.room?.name}
           />
         )}
       </div>

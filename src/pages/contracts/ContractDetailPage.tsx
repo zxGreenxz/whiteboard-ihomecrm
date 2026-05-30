@@ -1354,6 +1354,8 @@ const ContractDetailPage = () => {
         onOpenChange={setQrDialogOpen}
         publicCode={contract.public_code}
         contractLabel={contract.contract_number || contract.id.slice(0, 8)}
+        buildingName={contract.room?.building?.name}
+        roomName={contract.room?.name}
       />
 
       <ContractFormDialog
