@@ -271,6 +271,14 @@ function StepForfeit({
           </div>
         )}
 
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+          Khi thanh lý bỏ cọc: tiền cọc được giữ làm phí phạt. Hoá đơn của
+          tháng này nếu <strong>chưa thu</strong> sẽ bị huỷ; nếu{" "}
+          <strong>đã thu một phần/toàn bộ</strong> thì phần còn nợ bị huỷ và{" "}
+          <strong>số đã thu được giữ lại làm doanh thu</strong> (không hoàn về
+          khách).
+        </div>
+
         <DialogFooter className="gap-2">
           <Button type="button" variant="ghost" onClick={onBack}>
             <ArrowLeft className="h-4 w-4 mr-1" />
