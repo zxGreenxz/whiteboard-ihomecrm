@@ -208,9 +208,9 @@ export default function ContractsPage() {
         if (contract.room?.building_id !== buildingFilter) return false;
       }
 
-      // Room filter
+      // Room filter — lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà)
       if (roomFilter !== 'all') {
-        if (contract.room_id !== roomFilter) return false;
+        if ((contract.room?.name ?? '') !== roomFilter) return false;
       }
 
       // Month filter: contract's active period overlaps with selected month

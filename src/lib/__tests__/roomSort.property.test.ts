@@ -4,6 +4,7 @@ import {
   roomNameGroupRank,
   compareRoomNames,
   compareBuildingThenRoom,
+  uniqueRoomNames,
 } from "@/lib/roomSort";
 
 const sortNames = (names: string[]) => [...names].sort(compareRoomNames);
@@ -101,6 +102,26 @@ describe("compareRoomNames", () => {
         },
       ),
     );
+  });
+});
+
+describe("uniqueRoomNames", () => {
+  it("gộp tên phòng trùng (nhiều toà cùng '101' → 1 mục) và sắp đúng thứ tự", () => {
+    const rooms = [
+      { name: "101" }, // 1392QT
+      { name: "205" },
+      { name: "101" }, // 80DS3
+      { name: "L03" },
+      { name: "101" }, // 417LVT
+      { name: "L05" },
+    ];
+    expect(uniqueRoomNames(rooms)).toEqual(["L03", "L05", "101", "205"]);
+  });
+
+  it("bỏ qua tên rỗng/null", () => {
+    expect(
+      uniqueRoomNames([{ name: "" }, { name: null }, { name: "101" }]),
+    ).toEqual(["101"]);
   });
 });
 

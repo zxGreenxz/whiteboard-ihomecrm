@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { uniqueRoomNames } from '@/lib/roomSort';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
 import type { ContractLifecycleFilter } from '@/types/contract';
@@ -92,7 +93,7 @@ export default function ContractListFilters({
         ]}
       />
 
-      {/* Phòng */}
+      {/* Phòng — gộp theo tên (vd nhiều toà cùng có "101" → 1 mục "101") */}
       <SearchableSelect
         value={roomFilter}
         onValueChange={onRoomChange}
@@ -100,7 +101,7 @@ export default function ContractListFilters({
         placeholder="Chọn phòng"
         options={[
           { value: 'all', label: 'Tất cả phòng' },
-          ...rooms.map((room) => ({ value: room.id, label: room.name })),
+          ...uniqueRoomNames(rooms).map((name) => ({ value: name, label: name })),
         ]}
       />
 

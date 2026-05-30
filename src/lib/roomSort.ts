@@ -45,3 +45,18 @@ export function compareBuildingThenRoom(
   if (bc !== 0) return bc;
   return compareRoomNames(aRoom, bRoom);
 }
+
+/**
+ * Gộp danh sách phòng theo tên: mỗi tên phòng chỉ còn 1 mục, đã sắp theo
+ * `compareRoomNames`. Dùng cho ô lọc phòng khi CHƯA chọn toà nhà — vd nhiều
+ * toà cùng có phòng "101" thì dropdown chỉ hiện "101" một lần; chọn "101" sẽ
+ * lọc tất cả phòng tên "101" ở mọi toà nhà mà user thấy được.
+ */
+export function uniqueRoomNames(rooms: { name?: string | null }[]): string[] {
+  const seen = new Set<string>();
+  for (const r of rooms) {
+    const n = (r?.name ?? "").trim();
+    if (n) seen.add(n);
+  }
+  return [...seen].sort(compareRoomNames);
+}
