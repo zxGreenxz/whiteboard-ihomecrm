@@ -15,9 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   ComposedChart,
   Bar,
@@ -142,40 +140,26 @@ export default function ExpenseRatioReport() {
   const filters = (
     <div className="flex flex-wrap gap-4">
       <div className="w-[200px]">
-        <Select
+        <SearchableSelect
           value={buildingId || "all"}
           onValueChange={(v) => setBuildingId(v === "all" ? undefined : v)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn toà nhà" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả toà nhà</SelectItem>
-            {buildings?.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {b.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Chọn toà nhà"
+          options={[
+            { value: "all", label: "Tất cả toà nhà" },
+            ...(buildings?.map((b) => ({ value: b.id, label: b.name })) ?? []),
+          ]}
+        />
       </div>
       <div className="w-[220px]">
-        <Select
+        <SearchableSelect
           value={category ?? "all"}
           onValueChange={(v) => setCategory(v === "all" ? undefined : v)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn nhóm hạng mục" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả nhóm</SelectItem>
-            {(categoriesList ?? []).map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Chọn nhóm hạng mục"
+          options={[
+            { value: "all", label: "Tất cả nhóm" },
+            ...(categoriesList ?? []).map((c) => ({ value: c, label: c })),
+          ]}
+        />
       </div>
       <DateRangePicker value={dateRange} onChange={setDateRange} />
     </div>

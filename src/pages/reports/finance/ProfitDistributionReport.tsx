@@ -11,6 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
@@ -115,69 +116,66 @@ export default function ProfitDistributionReport() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3">
-          <Select value={monthStr} onValueChange={setMonthStr}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={monthStr}
+            onValueChange={setMonthStr}
+            className="w-[140px]"
+            options={monthOptions.map((m) => ({ value: m, label: m }))}
+          />
 
-          <Select value={areaId} onValueChange={setAreaId}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Chọn khu vực" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả khu vực</SelectItem>
-              {(areas as any[]).map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={areaId}
+            onValueChange={setAreaId}
+            className="w-[180px]"
+            placeholder="Chọn khu vực"
+            options={[
+              { value: 'all', label: 'Tất cả khu vực' },
+              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
+            ]}
+          />
 
-          <Select value={buildingId} onValueChange={setBuildingId}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Chọn tòa nhà" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả tòa nhà</SelectItem>
-              {buildings.map((b) => (
-                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={buildingId}
+            onValueChange={setBuildingId}
+            className="w-[180px]"
+            placeholder="Chọn tòa nhà"
+            options={[
+              { value: 'all', label: 'Tất cả tòa nhà' },
+              ...buildings.map((b) => ({ value: b.id, label: b.name })),
+            ]}
+          />
 
-          <Select value={roomId} onValueChange={setRoomId}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Chọn phòng" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả phòng</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={roomId}
+            onValueChange={setRoomId}
+            className="w-[160px]"
+            placeholder="Chọn phòng"
+            options={[
+              { value: 'all', label: 'Tất cả phòng' },
+            ]}
+          />
 
-          <Select value={bedId} onValueChange={setBedId}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Chọn giường" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả giường</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={bedId}
+            onValueChange={setBedId}
+            className="w-[160px]"
+            placeholder="Chọn giường"
+            options={[
+              { value: 'all', label: 'Tất cả giường' },
+            ]}
+          />
 
-          <Select value={voucherType} onValueChange={setVoucherType}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Loại thu chi" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả loại</SelectItem>
-              <SelectItem value="INCOME">Thu</SelectItem>
-              <SelectItem value="EXPENSE">Chi</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={voucherType}
+            onValueChange={setVoucherType}
+            className="w-[180px]"
+            placeholder="Loại thu chi"
+            options={[
+              { value: 'all', label: 'Tất cả loại' },
+              { value: 'INCOME', label: 'Thu' },
+              { value: 'EXPENSE', label: 'Chi' },
+            ]}
+          />
         </div>
 
         {/* Table */}

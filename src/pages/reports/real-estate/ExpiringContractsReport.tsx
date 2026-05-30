@@ -19,13 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -102,42 +96,33 @@ export default function ExpiringContractsReport() {
   const filters = (
     <div className="flex flex-wrap gap-4">
       <div className="w-[200px]">
-        <Select
+        <SearchableSelect
           value={buildingId || "all"}
           onValueChange={(v) => {
             setBuildingId(v === "all" ? undefined : v);
             setFloorId(undefined);
           }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn toà nhà" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả toà nhà</SelectItem>
-            {buildings?.map((b) => (
-              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Chọn toà nhà"
+          options={[
+            { value: "all", label: "Tất cả toà nhà" },
+            ...(buildings?.map((b) => ({ value: b.id, label: b.name })) ?? []),
+          ]}
+        />
       </div>
       <div className="w-[200px]">
-        <Select
+        <SearchableSelect
           value={floorId || "all"}
           onValueChange={(v) => setFloorId(v === "all" ? undefined : v)}
           disabled={!buildingId}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn tầng" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả tầng</SelectItem>
-            {floors?.map((f) => (
-              <SelectItem key={f.id} value={String(f.floor_number)}>
-                {f.name || `Tầng ${f.floor_number}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Chọn tầng"
+          options={[
+            { value: "all", label: "Tất cả tầng" },
+            ...(floors?.map((f) => ({
+              value: String(f.floor_number),
+              label: f.name || `Tầng ${f.floor_number}`,
+            })) ?? []),
+          ]}
+        />
       </div>
       <div>
         <Tabs value={daysFilter.toString()} onValueChange={(v) => setDaysFilter(Number(v))}>

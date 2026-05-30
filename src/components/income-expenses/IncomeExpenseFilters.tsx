@@ -1,10 +1,4 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateInput } from "@/components/ui/date-input";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -127,173 +121,131 @@ export function IncomeExpenseFiltersBar({
       />
 
       {/* Khu vực */}
-      <Select
+      <SearchableSelect
         value={filters.area_id ?? "ALL"}
         onValueChange={handleAreaChange}
-      >
-        <SelectTrigger className="w-[150px] h-9 text-sm">
-          <SelectValue placeholder="Chọn khu vực" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Chọn khu vực</SelectItem>
-          {(areas || []).map((a) => (
-            <SelectItem key={a.id} value={a.id}>
-              {a.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[150px] h-9 text-sm"
+        placeholder="Chọn khu vực"
+        options={[
+          { value: "ALL", label: "Chọn khu vực" },
+          ...(areas || []).map((a) => ({ value: a.id, label: a.name })),
+        ]}
+      />
 
       {/* Tòa nhà */}
-      <Select
+      <SearchableSelect
         value={filters.building_id ?? "ALL"}
         onValueChange={handleBuildingChange}
-      >
-        <SelectTrigger className="w-[150px] h-9 text-sm">
-          <SelectValue placeholder="Chọn tòa nhà" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Chọn tòa nhà</SelectItem>
-          {filteredBuildings.map((b) => (
-            <SelectItem key={b.id} value={b.id}>
-              {b.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[150px] h-9 text-sm"
+        placeholder="Chọn tòa nhà"
+        options={[
+          { value: "ALL", label: "Chọn tòa nhà" },
+          ...filteredBuildings.map((b) => ({ value: b.id, label: b.name })),
+        ]}
+      />
 
       {/* Phòng */}
-      <Select
+      <SearchableSelect
         value={filters.room_id ?? "ALL"}
         onValueChange={handleRoomChange}
-      >
-        <SelectTrigger className="w-[140px] h-9 text-sm">
-          <SelectValue placeholder="Chọn phòng" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Chọn phòng</SelectItem>
-          {(rooms || []).map((r) => (
-            <SelectItem key={r.id} value={r.id}>
-              {r.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[140px] h-9 text-sm"
+        placeholder="Chọn phòng"
+        options={[
+          { value: "ALL", label: "Chọn phòng" },
+          ...(rooms || []).map((r) => ({ value: r.id, label: r.name })),
+        ]}
+      />
 
       {/* Tài khoản */}
-      <Select
+      <SearchableSelect
         value={filters.account_id ?? "ALL"}
         onValueChange={handleAccountChange}
-      >
-        <SelectTrigger className="w-[150px] h-9 text-sm">
-          <SelectValue placeholder="Sổ quỹ" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Sổ quỹ</SelectItem>
-          {(accounts || []).map((acc) => (
-            <SelectItem key={acc.id} value={acc.id}>
-              {acc.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[150px] h-9 text-sm"
+        placeholder="Sổ quỹ"
+        options={[
+          { value: "ALL", label: "Sổ quỹ" },
+          ...(accounts || []).map((acc) => ({ value: acc.id, label: acc.name })),
+        ]}
+      />
 
       {/* Hạng mục thu */}
-      <Select
+      <SearchableSelect
         value={filters.income_type_id ?? "ALL"}
         onValueChange={handleIncomeTypeChange}
-      >
-        <SelectTrigger className="w-[160px] h-9 text-sm">
-          <SelectValue placeholder="Hạng mục thu" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Hạng mục thu</SelectItem>
-          {(incomeTypes || []).map((t) => (
-            <SelectItem key={t.id} value={t.id}>
-              {t.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[160px] h-9 text-sm"
+        placeholder="Hạng mục thu"
+        options={[
+          { value: "ALL", label: "Hạng mục thu" },
+          ...(incomeTypes || []).map((t) => ({ value: t.id, label: t.name })),
+        ]}
+      />
 
       {/* Hạng mục chi */}
-      <Select
+      <SearchableSelect
         value={filters.expense_type_id ?? "ALL"}
         onValueChange={handleExpenseTypeChange}
-      >
-        <SelectTrigger className="w-[160px] h-9 text-sm">
-          <SelectValue placeholder="Hạng mục chi" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Hạng mục chi</SelectItem>
-          {(expenseTypes || []).map((t) => (
-            <SelectItem key={t.id} value={t.id}>
-              {t.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[160px] h-9 text-sm"
+        placeholder="Hạng mục chi"
+        options={[
+          { value: "ALL", label: "Hạng mục chi" },
+          ...(expenseTypes || []).map((t) => ({ value: t.id, label: t.name })),
+        ]}
+      />
 
       {/* Loại phiếu */}
-      <Select value={filters.type ?? "ALL"} onValueChange={handleTypeChange}>
-        <SelectTrigger className="w-[140px] h-9 text-sm">
-          <SelectValue placeholder="Loại phiếu" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Tất cả loại</SelectItem>
-          <SelectItem value="INCOME">Phiếu thu</SelectItem>
-          <SelectItem value="EXPENSE">Phiếu chi</SelectItem>
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={filters.type ?? "ALL"}
+        onValueChange={handleTypeChange}
+        className="w-[140px] h-9 text-sm"
+        placeholder="Loại phiếu"
+        options={[
+          { value: "ALL", label: "Tất cả loại" },
+          { value: "INCOME", label: "Phiếu thu" },
+          { value: "EXPENSE", label: "Phiếu chi" },
+        ]}
+      />
 
       {/* Người tạo phiếu */}
-      <Select
+      <SearchableSelect
         value={filters.creator_id ?? "ALL"}
         onValueChange={handleCreatorChange}
-      >
-        <SelectTrigger className="w-[150px] h-9 text-sm">
-          <SelectValue placeholder="Người tạo" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Người tạo</SelectItem>
-          {(staffUsers || []).map((u) => (
-            <SelectItem key={u.id} value={u.id}>
-              {u.full_name || u.email || "—"}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="w-[150px] h-9 text-sm"
+        placeholder="Người tạo"
+        options={[
+          { value: "ALL", label: "Người tạo" },
+          ...(staffUsers || []).map((u) => ({
+            value: u.id,
+            label: u.full_name || u.email || "—",
+          })),
+        ]}
+      />
 
       {/* Đã kiểm tra */}
-      <Select
+      <SearchableSelect
         value={filters.verified_status ?? "ALL"}
         onValueChange={handleVerifiedChange}
-      >
-        <SelectTrigger className="w-[140px] h-9 text-sm">
-          <SelectValue placeholder="Kiểm tra" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Tất cả</SelectItem>
-          <SelectItem value="VERIFIED">Đã check</SelectItem>
-          <SelectItem value="UNVERIFIED">Chưa check</SelectItem>
-        </SelectContent>
-      </Select>
+        className="w-[140px] h-9 text-sm"
+        placeholder="Kiểm tra"
+        options={[
+          { value: "ALL", label: "Tất cả" },
+          { value: "VERIFIED", label: "Đã check" },
+          { value: "UNVERIFIED", label: "Chưa check" },
+        ]}
+      />
 
       {/* Trạng thái — mặc định Tất cả (Đã ghi nhận + Nháp) */}
-      <Select
+      <SearchableSelect
         value={filters.approval_status ?? "ALL_ACTIVE"}
         onValueChange={handleApprovalChange}
-      >
-        <SelectTrigger className="w-[160px] h-9 text-sm">
-          <SelectValue placeholder="Trạng thái" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL_ACTIVE">Tất cả</SelectItem>
-          <SelectItem value="APPROVED">Đã ghi nhận</SelectItem>
-          <SelectItem value="UNAPPROVED">Nháp (chưa duyệt)</SelectItem>
-          <SelectItem value="CANCELLED">Đã huỷ</SelectItem>
-        </SelectContent>
-      </Select>
+        className="w-[160px] h-9 text-sm"
+        placeholder="Trạng thái"
+        options={[
+          { value: "ALL_ACTIVE", label: "Tất cả" },
+          { value: "APPROVED", label: "Đã ghi nhận" },
+          { value: "UNAPPROVED", label: "Nháp (chưa duyệt)" },
+          { value: "CANCELLED", label: "Đã huỷ" },
+        ]}
+      />
     </div>
   );
 }

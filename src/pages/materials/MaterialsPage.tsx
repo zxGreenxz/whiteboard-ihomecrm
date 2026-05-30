@@ -9,13 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Table,
   TableBody,
@@ -192,19 +186,16 @@ export default function MaterialsPage() {
                   className="pl-9"
                 />
               </div>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="md:w-56">
-                  <SelectValue placeholder="Mọi danh mục" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Mọi danh mục</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={categoryId}
+                onValueChange={setCategoryId}
+                className="md:w-56"
+                placeholder="Mọi danh mục"
+                options={[
+                  { value: ALL, label: 'Mọi danh mục' },
+                  ...categories.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
             </div>
 
             <Tabs value={tab} onValueChange={(v) => setTab(v as 'all' | 'low')}>

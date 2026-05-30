@@ -1,10 +1,4 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import type { CustomerFilters } from '@/types/customer';
@@ -60,51 +54,30 @@ export default function CustomerListFilters({
     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
       {/* Area — desktop only */}
       <div className="hidden md:block">
-        <Select value={filters.area_id || ''} onValueChange={handleAreaChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn khu vực" />
-          </SelectTrigger>
-          <SelectContent>
-            {areas.map((a: any) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={filters.area_id || ''}
+          onValueChange={handleAreaChange}
+          placeholder="Chọn khu vực"
+          options={areas.map((a: any) => ({ value: a.id, label: a.name }))}
+        />
       </div>
 
       {/* Building */}
-      <Select value={filters.building_id || ''} onValueChange={handleBuildingChange}>
-        <SelectTrigger>
-          <SelectValue placeholder="Chọn toà nhà" />
-        </SelectTrigger>
-        <SelectContent>
-          {filteredBuildings.map((b: any) => (
-            <SelectItem key={b.id} value={b.id}>
-              {b.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={filters.building_id || ''}
+        onValueChange={handleBuildingChange}
+        placeholder="Chọn toà nhà"
+        options={filteredBuildings.map((b: any) => ({ value: b.id, label: b.name }))}
+      />
 
       {/* Room */}
-      <Select
+      <SearchableSelect
         value={filters.room_id || ''}
         onValueChange={handleRoomChange}
         disabled={!filters.building_id}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Chọn phòng" />
-        </SelectTrigger>
-        <SelectContent>
-          {rooms.map((r: any) => (
-            <SelectItem key={r.id} value={r.id}>
-              {r.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        placeholder="Chọn phòng"
+        options={rooms.map((r: any) => ({ value: r.id, label: r.name }))}
+      />
     </div>
   );
 }

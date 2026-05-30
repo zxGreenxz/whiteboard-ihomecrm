@@ -10,9 +10,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { DateRange } from "react-day-picker";
 import { addDays, format, startOfMonth } from "date-fns";
@@ -98,41 +96,38 @@ export default function DailyCashbookReport() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <Select value={areaId} onValueChange={setAreaId}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Chọn khu vực" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả khu vực</SelectItem>
-              {(areas as any[]).map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={areaId}
+            onValueChange={setAreaId}
+            className="w-[200px]"
+            placeholder="Chọn khu vực"
+            options={[
+              { value: "all", label: "Tất cả khu vực" },
+              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
+            ]}
+          />
 
-          <Select value={buildingId} onValueChange={setBuildingId}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Chọn tòa nhà" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả tòa nhà</SelectItem>
-              {buildings.map((b) => (
-                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={buildingId}
+            onValueChange={setBuildingId}
+            className="w-[200px]"
+            placeholder="Chọn tòa nhà"
+            options={[
+              { value: "all", label: "Tất cả tòa nhà" },
+              ...buildings.map((b) => ({ value: b.id, label: b.name })),
+            ]}
+          />
 
-          <Select value={accountId} onValueChange={setAccountId}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Tài khoản" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả tài khoản</SelectItem>
-              {(accounts as any[]).map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={accountId}
+            onValueChange={setAccountId}
+            className="w-[220px]"
+            placeholder="Tài khoản"
+            options={[
+              { value: "all", label: "Tất cả tài khoản" },
+              ...(accounts as any[]).map((a) => ({ value: a.id, label: a.name })),
+            ]}
+          />
 
           <DateRangePicker value={dateRange} onChange={setDateRange} />
         </div>

@@ -7,9 +7,7 @@ import { useBuildings } from "@/hooks/useBuildings";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -91,30 +89,25 @@ export default function CashFlowReport() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Năm</span>
-            <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((y) => (
-                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={String(year)}
+              onValueChange={(v) => setYear(parseInt(v, 10))}
+              className="w-[140px]"
+              options={yearOptions.map((y) => ({ value: String(y), label: String(y) }))}
+            />
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Tòa nhà</span>
-            <Select value={buildingId} onValueChange={setBuildingId}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Chọn tòa nhà" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả tòa nhà</SelectItem>
-                {buildings.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={buildingId}
+              onValueChange={setBuildingId}
+              className="w-[220px]"
+              placeholder="Chọn tòa nhà"
+              options={[
+                { value: 'all', label: 'Tất cả tòa nhà' },
+                ...buildings.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+            />
           </div>
         </div>
 

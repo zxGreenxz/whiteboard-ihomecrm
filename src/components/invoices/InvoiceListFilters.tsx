@@ -6,13 +6,7 @@ import { useMyContext } from '@/hooks/useMyContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { InvoiceFilters } from '@/types/invoice';
 
 interface InvoiceListFiltersProps {
@@ -105,75 +99,71 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     <div className={compact ? 'flex flex-nowrap items-center gap-2 px-3 pt-3' : 'flex flex-wrap items-center gap-2 mb-4'}>
       {/* Chọn khu vực — ẩn cho staff */}
       {!compact && showAreaFilter && (
-        <Select value={filters.area_id ?? ALL_VALUE} onValueChange={handleAreaChange}>
-          <SelectTrigger className="h-9 text-sm w-[150px]">
-            <SelectValue placeholder="Chọn khu vực" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VALUE}>Tất cả khu vực</SelectItem>
-            {(areas as any[]).map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={filters.area_id ?? ALL_VALUE}
+          onValueChange={handleAreaChange}
+          className="h-9 text-sm w-[150px]"
+          placeholder="Chọn khu vực"
+          options={[
+            { value: ALL_VALUE, label: 'Tất cả khu vực' },
+            ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
+          ]}
+        />
       )}
 
       {/* Chọn toà nhà */}
-      <Select value={filters.building_id ?? ALL_VALUE} onValueChange={handleBuildingChange}>
-        <SelectTrigger className={triggerClass}>
-          <SelectValue placeholder="Chọn toà nhà" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>{compact ? 'Tất cả' : 'Tất cả toà nhà'}</SelectItem>
-          {buildings.map((b: any) => (
-            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={filters.building_id ?? ALL_VALUE}
+        onValueChange={handleBuildingChange}
+        className={triggerClass}
+        placeholder="Chọn toà nhà"
+        options={[
+          { value: ALL_VALUE, label: compact ? 'Tất cả' : 'Tất cả toà nhà' },
+          ...buildings.map((b: any) => ({ value: b.id, label: b.name })),
+        ]}
+      />
 
       {/* Chọn phòng */}
-      <Select value={filters.room_id ?? ALL_VALUE} onValueChange={handleRoomChange}>
-        <SelectTrigger className={roomTriggerClass}>
-          <SelectValue placeholder="Chọn phòng" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL_VALUE}>{compact ? 'Tất cả' : 'Tất cả phòng'}</SelectItem>
-          {rooms.map((r: any) => (
-            <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={filters.room_id ?? ALL_VALUE}
+        onValueChange={handleRoomChange}
+        className={roomTriggerClass}
+        placeholder="Chọn phòng"
+        options={[
+          { value: ALL_VALUE, label: compact ? 'Tất cả' : 'Tất cả phòng' },
+          ...rooms.map((r: any) => ({ value: r.id, label: r.name })),
+        ]}
+      />
 
       {/* Trạng thái hoá đơn: Đã duyệt (mặc định, ẩn HĐ huỷ) / Đã huỷ / Tất cả */}
       {!compact && (
-        <Select value={viewStatusValue} onValueChange={handleViewStatusChange}>
-          <SelectTrigger className="h-9 text-sm w-[140px]">
-            <SelectValue placeholder="Trạng thái" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="active">Đã duyệt</SelectItem>
-            <SelectItem value="cancelled">Đã huỷ</SelectItem>
-            <SelectItem value="all">Tất cả</SelectItem>
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={viewStatusValue}
+          onValueChange={handleViewStatusChange}
+          className="h-9 text-sm w-[140px]"
+          placeholder="Trạng thái"
+          options={[
+            { value: 'active', label: 'Đã duyệt' },
+            { value: 'cancelled', label: 'Đã huỷ' },
+            { value: 'all', label: 'Tất cả' },
+          ]}
+        />
       )}
 
       {/* Trạng thái thanh toán */}
       {!compact && (
-        <Select
+        <SearchableSelect
           value={filters.payment_status ?? ALL_VALUE}
           onValueChange={handlePaymentStatusChange}
-        >
-          <SelectTrigger className="h-9 text-sm w-[170px]">
-            <SelectValue placeholder="Trạng thái TT" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VALUE}>Tất cả</SelectItem>
-            <SelectItem value="paid">Đã thanh toán</SelectItem>
-            <SelectItem value="partial">TT 1 phần</SelectItem>
-            <SelectItem value="unpaid">Chưa thanh toán</SelectItem>
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm w-[170px]"
+          placeholder="Trạng thái TT"
+          options={[
+            { value: ALL_VALUE, label: 'Tất cả' },
+            { value: 'paid', label: 'Đã thanh toán' },
+            { value: 'partial', label: 'TT 1 phần' },
+            { value: 'unpaid', label: 'Chưa thanh toán' },
+          ]}
+        />
       )}
 
       {/* Chọn tháng - Custom Month Picker */}

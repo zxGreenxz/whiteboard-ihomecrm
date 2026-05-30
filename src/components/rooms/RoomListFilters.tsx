@@ -1,11 +1,5 @@
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Search } from 'lucide-react';
 import type { BuildingWithRelations } from '@/types/building';
 
@@ -52,42 +46,40 @@ export default function RoomListFilters({
           className="pl-9"
         />
       </div>
-      <Select value={buildingFilter} onValueChange={(val) => { onBuildingChange(val); onFloorChange('all'); }}>
-        <SelectTrigger className="w-full sm:w-[200px]">
-          <SelectValue placeholder="Toà nhà" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả toà nhà</SelectItem>
-          {buildings.map((building) => (
-            <SelectItem key={building.id} value={building.id}>
-              {building.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={floorFilter} onValueChange={onFloorChange}>
-        <SelectTrigger className="w-full sm:w-[180px]">
-          <SelectValue placeholder="Tầng" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả tầng</SelectItem>
-          {floors.map((floor) => (
-            <SelectItem key={floor.id} value={floor.floor_number.toString()}>
-              Tầng {floor.floor_number}{floor.name ? ` - ${floor.name}` : ''}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={statusFilter} onValueChange={onStatusChange}>
-        <SelectTrigger className="w-full sm:w-[200px]">
-          <SelectValue placeholder="Trạng thái hoạt động" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả</SelectItem>
-          <SelectItem value="ACTIVE">Đang hoạt động</SelectItem>
-          <SelectItem value="INACTIVE">Ngừng hoạt động</SelectItem>
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={buildingFilter}
+        onValueChange={(val) => { onBuildingChange(val); onFloorChange('all'); }}
+        className="w-full sm:w-[200px]"
+        placeholder="Toà nhà"
+        options={[
+          { value: 'all', label: 'Tất cả toà nhà' },
+          ...buildings.map((building) => ({ value: building.id, label: building.name })),
+        ]}
+      />
+      <SearchableSelect
+        value={floorFilter}
+        onValueChange={onFloorChange}
+        className="w-full sm:w-[180px]"
+        placeholder="Tầng"
+        options={[
+          { value: 'all', label: 'Tất cả tầng' },
+          ...floors.map((floor) => ({
+            value: floor.floor_number.toString(),
+            label: `Tầng ${floor.floor_number}${floor.name ? ` - ${floor.name}` : ''}`,
+          })),
+        ]}
+      />
+      <SearchableSelect
+        value={statusFilter}
+        onValueChange={onStatusChange}
+        className="w-full sm:w-[200px]"
+        placeholder="Trạng thái hoạt động"
+        options={[
+          { value: 'all', label: 'Tất cả' },
+          { value: 'ACTIVE', label: 'Đang hoạt động' },
+          { value: 'INACTIVE', label: 'Ngừng hoạt động' },
+        ]}
+      />
     </div>
   );
 }

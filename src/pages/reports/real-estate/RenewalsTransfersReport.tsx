@@ -15,9 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -73,20 +71,15 @@ export default function RenewalsTransfersReport() {
   const filters = (
     <div className="flex flex-wrap gap-4 items-end">
       <div className="w-[200px]">
-        <Select
+        <SearchableSelect
           value={buildingId || "all"}
           onValueChange={(v) => setBuildingId(v === "all" ? undefined : v)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn toà nhà" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả toà nhà</SelectItem>
-            {buildings?.map((b) => (
-              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Chọn toà nhà"
+          options={[
+            { value: "all", label: "Tất cả toà nhà" },
+            ...(buildings?.map((b) => ({ value: b.id, label: b.name })) ?? []),
+          ]}
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="startDate">Từ ngày</Label>

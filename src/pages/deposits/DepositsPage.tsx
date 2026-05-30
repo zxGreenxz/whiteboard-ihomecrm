@@ -12,13 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useDeposits, type DepositWithRelations } from "@/hooks/useDeposits";
@@ -122,19 +116,19 @@ const DepositsPage = () => {
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Lọc theo trạng thái" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả</SelectItem>
-            {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-              <SelectItem key={key} value={key}>
-                {config.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          className="w-[200px]"
+          placeholder="Lọc theo trạng thái"
+          options={[
+            { value: "ALL", label: "Tất cả" },
+            ...Object.entries(STATUS_CONFIG).map(([key, config]) => ({
+              value: key,
+              label: config.label,
+            })),
+          ]}
+        />
       </div>
 
       {/* Table */}

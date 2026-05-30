@@ -11,13 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Pencil, Trash2, MapPin } from "lucide-react";
@@ -114,16 +108,17 @@ export default function AreasPage() {
                   className="pl-10"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Trạng thái" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả</SelectItem>
-                  <SelectItem value="ACTIVE">Hoạt động</SelectItem>
-                  <SelectItem value="INACTIVE">Không hoạt động</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+                className="w-[180px]"
+                placeholder="Trạng thái"
+                options={[
+                  { value: "all", label: "Tất cả" },
+                  { value: "ACTIVE", label: "Hoạt động" },
+                  { value: "INACTIVE", label: "Không hoạt động" },
+                ]}
+              />
             </div>
 
             {isLoading ? (

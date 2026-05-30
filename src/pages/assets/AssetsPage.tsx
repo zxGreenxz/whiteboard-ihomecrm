@@ -12,13 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -204,50 +198,46 @@ const AssetsPage = () => {
                 className="pl-9"
               />
             </div>
-            <Select value={buildingFilter} onValueChange={(val) => { setBuildingFilter(val); setRoomFilter("ALL"); }}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Toà nhà" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả toà nhà</SelectItem>
-                {buildings.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={roomFilter} onValueChange={setRoomFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Căn hộ" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả căn hộ</SelectItem>
-                {rooms.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Loại tài sản" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả loại</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={conditionFilter} onValueChange={setConditionFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Tình trạng" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả</SelectItem>
-                {Object.entries(CONDITION_CONFIG).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>{config.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={buildingFilter}
+              onValueChange={(val) => { setBuildingFilter(val); setRoomFilter("ALL"); }}
+              className="w-[180px]"
+              placeholder="Toà nhà"
+              options={[
+                { value: 'ALL', label: 'Tất cả toà nhà' },
+                ...buildings.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+            />
+            <SearchableSelect
+              value={roomFilter}
+              onValueChange={setRoomFilter}
+              className="w-[180px]"
+              placeholder="Căn hộ"
+              options={[
+                { value: 'ALL', label: 'Tất cả căn hộ' },
+                ...rooms.map((r) => ({ value: r.id, label: r.name })),
+              ]}
+            />
+            <SearchableSelect
+              value={categoryFilter}
+              onValueChange={setCategoryFilter}
+              className="w-[180px]"
+              placeholder="Loại tài sản"
+              options={[
+                { value: 'ALL', label: 'Tất cả loại' },
+                ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
+              ]}
+            />
+            <SearchableSelect
+              value={conditionFilter}
+              onValueChange={setConditionFilter}
+              className="w-[160px]"
+              placeholder="Tình trạng"
+              options={[
+                { value: 'ALL', label: 'Tất cả' },
+                ...Object.entries(CONDITION_CONFIG).map(([key, config]) => ({ value: key, label: config.label })),
+              ]}
+            />
           </div>
 
           {/* Assets Table */}

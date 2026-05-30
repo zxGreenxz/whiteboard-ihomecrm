@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, RefreshCw, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -113,33 +114,27 @@ export default function ServicesPage() {
 
         {/* Filters */}
         <div className="flex items-center gap-3">
-          <Select value={buildingFilter} onValueChange={(v) => { setBuildingFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Chọn tòa nhà" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
-              {(buildings || []).map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={buildingFilter}
+            onValueChange={(v) => { setBuildingFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}
+            className="w-[200px]"
+            placeholder="Chọn tòa nhà"
+            options={[
+              { value: 'ALL', label: 'Tất cả tòa nhà' },
+              ...(buildings || []).map((b) => ({ value: b.id, label: b.name })),
+            ]}
+          />
 
-          <Select value={feeTypeFilter} onValueChange={(v) => { setFeeTypeFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Loại dịch vụ" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tất cả loại</SelectItem>
-              {Object.entries(FEE_TYPE_LABELS).map(([key, label]) => (
-                <SelectItem key={key} value={key}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={feeTypeFilter}
+            onValueChange={(v) => { setFeeTypeFilter(v === "ALL" ? "" : v); setCurrentPage(1); }}
+            className="w-[200px]"
+            placeholder="Loại dịch vụ"
+            options={[
+              { value: 'ALL', label: 'Tất cả loại' },
+              ...Object.entries(FEE_TYPE_LABELS).map(([key, label]) => ({ value: key, label })),
+            ]}
+          />
         </div>
 
         {/* Table */}

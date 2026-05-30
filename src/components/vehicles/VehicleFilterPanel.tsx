@@ -7,13 +7,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useDistinctVehicleValues } from "@/hooks/useVehicles";
@@ -74,7 +68,7 @@ export default function VehicleFilterPanel({
           {/* Tòa nhà */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Tòa nhà</Label>
-            <Select
+            <SearchableSelect
               value={draft.building_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({
@@ -82,89 +76,73 @@ export default function VehicleFilterPanel({
                   room_id: undefined,
                 })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn tòa nhà" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
-                {(buildings || []).map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn tòa nhà"
+              options={[
+                { value: "ALL", label: "Tất cả tòa nhà" },
+                ...(buildings || []).map((b) => ({
+                  value: b.id,
+                  label: b.name,
+                })),
+              ]}
+            />
           </div>
 
           {/* Phòng */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Phòng</Label>
-            <Select
+            <SearchableSelect
               value={draft.room_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({ room_id: v === "ALL" ? undefined : v })
               }
               disabled={!draft.building_id}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn phòng" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả phòng</SelectItem>
-                {(rooms || []).map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn phòng"
+              options={[
+                { value: "ALL", label: "Tất cả phòng" },
+                ...(rooms || []).map((r) => ({
+                  value: r.id,
+                  label: r.name,
+                })),
+              ]}
+            />
           </div>
 
           {/* Dòng xe */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Dòng xe</Label>
-            <Select
+            <SearchableSelect
               value={draft.vehicle_name ?? "ALL"}
               onValueChange={(v) =>
                 patch({ vehicle_name: v === "ALL" ? undefined : v })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn dòng xe" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả dòng xe</SelectItem>
-                {(distinct?.vehicleNames || []).map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn dòng xe"
+              options={[
+                { value: "ALL", label: "Tất cả dòng xe" },
+                ...(distinct?.vehicleNames || []).map((name) => ({
+                  value: name,
+                  label: name,
+                })),
+              ]}
+            />
           </div>
 
           {/* Màu */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Màu</Label>
-            <Select
+            <SearchableSelect
               value={draft.color ?? "ALL"}
               onValueChange={(v) =>
                 patch({ color: v === "ALL" ? undefined : v })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn màu" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả màu</SelectItem>
-                {(distinct?.colors || []).map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn màu"
+              options={[
+                { value: "ALL", label: "Tất cả màu" },
+                ...(distinct?.colors || []).map((c) => ({
+                  value: c,
+                  label: c,
+                })),
+              ]}
+            />
           </div>
         </div>
 

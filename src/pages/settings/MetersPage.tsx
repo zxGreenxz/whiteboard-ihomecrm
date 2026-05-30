@@ -5,13 +5,7 @@ import MeterForm from '@/components/meters/MeterForm';
 import { useMetersWithLatestReading } from '@/hooks/useMeters';
 import { useBuildings } from '@/hooks/useBuildings';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Plus } from 'lucide-react';
 
 const METER_TYPE_OPTIONS = [
@@ -65,39 +59,27 @@ export default function MetersPage() {
 
         {/* Filters */}
         <div className="flex items-center gap-3">
-          <Select
+          <SearchableSelect
             value={buildingFilter ?? 'ALL'}
             onValueChange={(v) => setBuildingFilter(v === 'ALL' ? null : v)}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Chọn tòa nhà" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
-              {(buildings || []).map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="w-[200px]"
+            placeholder="Chọn tòa nhà"
+            options={[
+              { value: 'ALL', label: 'Tất cả tòa nhà' },
+              ...(buildings || []).map((b) => ({ value: b.id, label: b.name })),
+            ]}
+          />
 
-          <Select
+          <SearchableSelect
             value={meterTypeFilter ?? 'ALL'}
             onValueChange={(v) => setMeterTypeFilter(v === 'ALL' ? null : v)}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Loại công tơ" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tất cả loại</SelectItem>
-              {METER_TYPE_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="w-[200px]"
+            placeholder="Loại công tơ"
+            options={[
+              { value: 'ALL', label: 'Tất cả loại' },
+              ...METER_TYPE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
+            ]}
+          />
         </div>
 
         {/* Meter List */}

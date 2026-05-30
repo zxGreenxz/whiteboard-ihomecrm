@@ -11,9 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -54,17 +52,15 @@ export default function OccupancyNewReport() {
   const filters = (
     <div className="flex flex-wrap gap-4 items-end">
       <div className="w-[200px]">
-        <Select value={buildingId || "all"} onValueChange={(v) => setBuildingId(v === "all" ? undefined : v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Chọn toà nhà" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả toà nhà</SelectItem>
-            {buildings?.map((b) => (
-              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={buildingId || "all"}
+          onValueChange={(v) => setBuildingId(v === "all" ? undefined : v)}
+          placeholder="Chọn toà nhà"
+          options={[
+            { value: "all", label: "Tất cả toà nhà" },
+            ...(buildings?.map((b) => ({ value: b.id, label: b.name })) ?? []),
+          ]}
+        />
       </div>
     </div>
   );

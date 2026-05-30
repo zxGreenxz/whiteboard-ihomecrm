@@ -1,11 +1,5 @@
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
 import type { ContractLifecycleFilter } from '@/types/contract';
@@ -53,76 +47,62 @@ export default function ContractListFilters({
   return (
     <div className="grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-3">
       {/* Trạng thái hợp đồng */}
-      <Select value={lifecycleFilter} onValueChange={(val) => onLifecycleChange(val as ContractLifecycleFilter)}>
-        <SelectTrigger className="md:w-[160px]">
-          <SelectValue placeholder="Trạng thái" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
-          <SelectItem value="ACTIVE">Đang ở</SelectItem>
-          <SelectItem value="TERMINATED">Thanh lý</SelectItem>
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={lifecycleFilter}
+        onValueChange={(val) => onLifecycleChange(val as ContractLifecycleFilter)}
+        className="md:w-[160px]"
+        placeholder="Trạng thái"
+        options={[
+          { value: 'ALL', label: 'Tất cả trạng thái' },
+          { value: 'ACTIVE', label: 'Đang ở' },
+          { value: 'TERMINATED', label: 'Thanh lý' },
+        ]}
+      />
 
       {/* Khu vực — desktop only */}
       <div className="hidden md:block">
-        <Select
+        <SearchableSelect
           value={areaFilter}
           onValueChange={(val) => {
             onAreaChange(val);
             onBuildingChange('all');
             onRoomChange('all');
           }}
-        >
-          <SelectTrigger className="md:w-[160px]">
-            <SelectValue placeholder="Chọn khu vực" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tất cả khu vực</SelectItem>
-            {areas.map((area) => (
-              <SelectItem key={area.id} value={area.id}>
-                {area.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="md:w-[160px]"
+          placeholder="Chọn khu vực"
+          options={[
+            { value: 'all', label: 'Tất cả khu vực' },
+            ...areas.map((area) => ({ value: area.id, label: area.name })),
+          ]}
+        />
       </div>
 
       {/* Toà nhà */}
-      <Select
+      <SearchableSelect
         value={buildingFilter}
         onValueChange={(val) => {
           onBuildingChange(val);
           onRoomChange('all');
         }}
-      >
-        <SelectTrigger className="md:w-[160px]">
-          <SelectValue placeholder="Chọn toà nhà" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả toà nhà</SelectItem>
-          {buildings.map((building) => (
-            <SelectItem key={building.id} value={building.id}>
-              {building.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="md:w-[160px]"
+        placeholder="Chọn toà nhà"
+        options={[
+          { value: 'all', label: 'Tất cả toà nhà' },
+          ...buildings.map((building) => ({ value: building.id, label: building.name })),
+        ]}
+      />
 
       {/* Phòng */}
-      <Select value={roomFilter} onValueChange={onRoomChange}>
-        <SelectTrigger className="md:w-[160px]">
-          <SelectValue placeholder="Chọn phòng" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả phòng</SelectItem>
-          {rooms.map((room) => (
-            <SelectItem key={room.id} value={room.id}>
-              {room.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={roomFilter}
+        onValueChange={onRoomChange}
+        className="md:w-[160px]"
+        placeholder="Chọn phòng"
+        options={[
+          { value: 'all', label: 'Tất cả phòng' },
+          ...rooms.map((room) => ({ value: room.id, label: room.name })),
+        ]}
+      />
 
       {/* Chọn tháng — desktop only */}
       <Input

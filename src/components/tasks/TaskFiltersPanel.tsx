@@ -1,10 +1,4 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
@@ -58,120 +52,84 @@ export function TaskFiltersPanel({
     <div className="border rounded-lg p-4 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Căn hộ */}
-        <Select
+        <SearchableSelect
           value={filters.building_id ?? "ALL"}
           onValueChange={handleBuildingChange}
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Chọn căn hộ" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Chọn căn hộ</SelectItem>
-            {(buildings || []).map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {b.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm"
+          placeholder="Chọn căn hộ"
+          options={[
+            { value: "ALL", label: "Chọn căn hộ" },
+            ...(buildings || []).map((b) => ({ value: b.id, label: b.name })),
+          ]}
+        />
 
         {/* Phòng */}
-        <Select
+        <SearchableSelect
           value={filters.room_id ?? "ALL"}
           onValueChange={handleRoomChange}
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Chọn phòng" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Chọn phòng</SelectItem>
-            {(rooms || []).map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm"
+          placeholder="Chọn phòng"
+          options={[
+            { value: "ALL", label: "Chọn phòng" },
+            ...(rooms || []).map((r) => ({ value: r.id, label: r.name })),
+          ]}
+        />
 
         {/* Loại công việc */}
-        <Select
+        <SearchableSelect
           value={filters.job_type_id ?? "ALL"}
           onValueChange={(v) =>
             handleChange({ job_type_id: v === "ALL" ? null : v })
           }
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Loại công việc" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Loại công việc</SelectItem>
-            {(jobTypes || []).map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                {t.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm"
+          placeholder="Loại công việc"
+          options={[
+            { value: "ALL", label: "Loại công việc" },
+            ...(jobTypes || []).map((t) => ({ value: t.id, label: t.name })),
+          ]}
+        />
 
         {/* Mức độ ưu tiên */}
-        <Select
+        <SearchableSelect
           value={filters.priority ?? "ALL"}
           onValueChange={(v) =>
             handleChange({ priority: v === "ALL" ? null : (v as any) })
           }
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Mức độ ưu tiên" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Mức độ ưu tiên</SelectItem>
-            {JOB_PRIORITIES.map((p) => (
-              <SelectItem key={p} value={p}>
-                {PRIORITY_LABELS[p]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm"
+          placeholder="Mức độ ưu tiên"
+          options={[
+            { value: "ALL", label: "Mức độ ưu tiên" },
+            ...JOB_PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] })),
+          ]}
+        />
 
         {/* Người thực hiện */}
-        <Select
+        <SearchableSelect
           value={filters.assignee_id ?? "ALL"}
           onValueChange={(v) =>
             handleChange({ assignee_id: v === "ALL" ? null : v })
           }
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Người thực hiện" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Người thực hiện</SelectItem>
-            {(profiles || []).map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.full_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm"
+          placeholder="Người thực hiện"
+          options={[
+            { value: "ALL", label: "Người thực hiện" },
+            ...(profiles || []).map((p) => ({ value: p.id, label: p.full_name })),
+          ]}
+        />
 
         {/* Trạng thái */}
-        <Select
+        <SearchableSelect
           value={filters.status ?? "ALL"}
           onValueChange={(v) =>
             handleChange({ status: v === "ALL" ? null : (v as any) })
           }
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue placeholder="Trạng thái" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Trạng thái</SelectItem>
-            {JOB_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          className="h-9 text-sm"
+          placeholder="Trạng thái"
+          options={[
+            { value: "ALL", label: "Trạng thái" },
+            ...JOB_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+          ]}
+        />
 
         {/* Từ ngày */}
         <DateInput

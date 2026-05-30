@@ -13,13 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePayments, usePaymentsSummary } from "@/hooks/usePayments";
@@ -224,42 +218,44 @@ const PaymentsPage = () => {
           className="w-40"
         />
 
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Loại" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả loại</SelectItem>
-            <SelectItem value="income">Thu</SelectItem>
-            <SelectItem value="expense">Chi</SelectItem>
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={typeFilter}
+          onValueChange={setTypeFilter}
+          className="w-[140px]"
+          placeholder="Loại"
+          options={[
+            { value: 'ALL', label: 'Tất cả loại' },
+            { value: 'income', label: 'Thu' },
+            { value: 'expense', label: 'Chi' },
+          ]}
+        />
 
-        <Select value={methodFilter} onValueChange={setMethodFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Phương thức" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả PT</SelectItem>
-            {Object.entries(PAYMENT_METHODS).map(([key, config]) => (
-              <SelectItem key={key} value={key}>
-                {config.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={methodFilter}
+          onValueChange={setMethodFilter}
+          className="w-[160px]"
+          placeholder="Phương thức"
+          options={[
+            { value: 'ALL', label: 'Tất cả PT' },
+            ...Object.entries(PAYMENT_METHODS).map(([key, config]) => ({
+              value: key,
+              label: config.label,
+            })),
+          ]}
+        />
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Trạng thái" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Tất cả TT</SelectItem>
-            <SelectItem value="PENDING">Chờ duyệt</SelectItem>
-            <SelectItem value="APPROVED">Đã duyệt</SelectItem>
-            <SelectItem value="REJECTED">Từ chối</SelectItem>
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={statusFilter}
+          onValueChange={setStatusFilter}
+          className="w-[140px]"
+          placeholder="Trạng thái"
+          options={[
+            { value: 'ALL', label: 'Tất cả TT' },
+            { value: 'PENDING', label: 'Chờ duyệt' },
+            { value: 'APPROVED', label: 'Đã duyệt' },
+            { value: 'REJECTED', label: 'Từ chối' },
+          ]}
+        />
       </div>
 
       {/* Table */}

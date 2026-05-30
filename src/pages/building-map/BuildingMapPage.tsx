@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Input } from "@/components/ui/input";
 import { RoomCard, RoomStatus } from "@/components/building-map/RoomCard";
 import { RoomDetailDialog } from "@/components/building-map/RoomDetailDialog";
@@ -249,51 +249,44 @@ const BuildingMapPage = () => {
               {buildingsLoading ? (
                 <Skeleton className="h-10 w-full" />
               ) : (
-                <Select value={selectedBuildingId} onValueChange={(val) => {
-                  setSelectedBuildingId(val);
-                  setSelectedFloor("all");
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn tòa nhà" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {buildings.map((building) => (
-                      <SelectItem key={building.id} value={building.id}>
-                        {building.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={selectedBuildingId}
+                  onValueChange={(val) => {
+                    setSelectedBuildingId(val);
+                    setSelectedFloor("all");
+                  }}
+                  placeholder="Chọn tòa nhà"
+                  options={buildings.map((building) => ({
+                    value: building.id,
+                    label: building.name,
+                  }))}
+                />
               )}
 
               {/* Floor filter */}
-              <Select value={selectedFloor} onValueChange={setSelectedFloor}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn tầng" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả tầng</SelectItem>
-                  {floors.map((floor) => (
-                    <SelectItem key={floor.id} value={floor.floor_number.toString()}>
-                      {floor.name || `Tầng ${floor.floor_number}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={selectedFloor}
+                onValueChange={setSelectedFloor}
+                placeholder="Chọn tầng"
+                options={[
+                  { value: "all", label: "Tất cả tầng" },
+                  ...floors.map((floor) => ({
+                    value: floor.floor_number.toString(),
+                    label: floor.name || `Tầng ${floor.floor_number}`,
+                  })),
+                ]}
+              />
 
               {/* Status filter */}
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Trạng thái" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={selectedStatus}
+                onValueChange={setSelectedStatus}
+                placeholder="Trạng thái"
+                options={STATUS_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                }))}
+              />
 
               {/* Search */}
               <div className="relative">

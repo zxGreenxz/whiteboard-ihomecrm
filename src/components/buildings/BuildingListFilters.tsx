@@ -1,11 +1,5 @@
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Search } from 'lucide-react';
 
 interface Area {
@@ -44,29 +38,27 @@ export default function BuildingListFilters({
           className="pl-9"
         />
       </div>
-      <Select value={statusFilter} onValueChange={onStatusChange}>
-        <SelectTrigger className="w-full sm:w-[200px]">
-          <SelectValue placeholder="Trạng thái hoạt động" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả</SelectItem>
-          <SelectItem value="ACTIVE">Đang hoạt động</SelectItem>
-          <SelectItem value="INACTIVE">Ngừng hoạt động</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select value={areaFilter} onValueChange={onAreaChange}>
-        <SelectTrigger className="w-full sm:w-[200px]">
-          <SelectValue placeholder="Khu vực" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Tất cả khu vực</SelectItem>
-          {areas.map((area) => (
-            <SelectItem key={area.id} value={area.id}>
-              {area.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchableSelect
+        value={statusFilter}
+        onValueChange={onStatusChange}
+        className="w-full sm:w-[200px]"
+        placeholder="Trạng thái hoạt động"
+        options={[
+          { value: 'all', label: 'Tất cả' },
+          { value: 'ACTIVE', label: 'Đang hoạt động' },
+          { value: 'INACTIVE', label: 'Ngừng hoạt động' },
+        ]}
+      />
+      <SearchableSelect
+        value={areaFilter}
+        onValueChange={onAreaChange}
+        className="w-full sm:w-[200px]"
+        placeholder="Khu vực"
+        options={[
+          { value: 'all', label: 'Tất cả khu vực' },
+          ...areas.map((area) => ({ value: area.id, label: area.name })),
+        ]}
+      />
     </div>
   );
 }

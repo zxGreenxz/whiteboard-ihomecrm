@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Building2, Home, DollarSign, AlertTriangle, BarChart3, Wallet, CheckSquare, ArrowRight, DoorOpen } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/useDashboard';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -52,22 +52,16 @@ const Dashboard = () => {
           </div>
           <div className="flex gap-2 items-center">
             {/* Building Filter */}
-            <Select
+            <SearchableSelect
               value={selectedBuilding || 'all'}
               onValueChange={(value) => setSelectedBuilding(value === 'all' ? null : value)}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Tất cả toà nhà" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả toà nhà</SelectItem>
-                {buildings.map((building: any) => (
-                  <SelectItem key={building.id} value={building.id}>
-                    {building.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="w-[200px]"
+              placeholder="Tất cả toà nhà"
+              options={[
+                { value: 'all', label: 'Tất cả toà nhà' },
+                ...buildings.map((building: any) => ({ value: building.id, label: building.name })),
+              ]}
+            />
             <Button variant="outline" size="sm" asChild>
               <Link to="/reports/real-estate">
                 <BarChart3 className="h-4 w-4 mr-2" />

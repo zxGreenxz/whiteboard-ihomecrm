@@ -8,13 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
@@ -217,7 +211,7 @@ export function IncomeExpenseFilterPanel({
           {/* Khu vực */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Khu vực</Label>
-            <Select
+            <SearchableSelect
               value={draft.area_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({
@@ -226,25 +220,18 @@ export function IncomeExpenseFilterPanel({
                   room_id: null,
                 })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn khu vực" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả khu vực</SelectItem>
-                {(areas || []).map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn khu vực"
+              options={[
+                { value: "ALL", label: "Tất cả khu vực" },
+                ...(areas || []).map((a) => ({ value: a.id, label: a.name })),
+              ]}
+            />
           </div>
 
           {/* Tòa nhà */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Tòa nhà</Label>
-            <Select
+            <SearchableSelect
               value={draft.building_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({
@@ -252,25 +239,18 @@ export function IncomeExpenseFilterPanel({
                   room_id: null,
                 })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn tòa nhà" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả tòa nhà</SelectItem>
-                {filteredBuildings.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn tòa nhà"
+              options={[
+                { value: "ALL", label: "Tất cả tòa nhà" },
+                ...filteredBuildings.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+            />
           </div>
 
           {/* Phòng */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Phòng</Label>
-            <Select
+            <SearchableSelect
               value={draft.room_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({
@@ -278,111 +258,79 @@ export function IncomeExpenseFilterPanel({
                 })
               }
               disabled={!draft.building_id}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn phòng" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả phòng</SelectItem>
-                {(rooms || []).map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn phòng"
+              options={[
+                { value: "ALL", label: "Tất cả phòng" },
+                ...(rooms || []).map((r) => ({ value: r.id, label: r.name })),
+              ]}
+            />
           </div>
 
           {/* Sổ quỹ */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Sổ quỹ</Label>
-            <Select
+            <SearchableSelect
               value={draft.account_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({ account_id: v === "ALL" ? null : v })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn sổ quỹ" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả sổ quỹ</SelectItem>
-                {(accounts || []).map((acc) => (
-                  <SelectItem key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Chọn sổ quỹ"
+              options={[
+                { value: "ALL", label: "Tất cả sổ quỹ" },
+                ...(accounts || []).map((acc) => ({ value: acc.id, label: acc.name })),
+              ]}
+            />
           </div>
 
           {/* Hạng mục thu */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Hạng mục thu</Label>
-            <Select
+            <SearchableSelect
               value={draft.income_type_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({ income_type_id: v === "ALL" ? null : v })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Tất cả hạng mục thu" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả hạng mục thu</SelectItem>
-                {(incomeTypes || []).map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Tất cả hạng mục thu"
+              options={[
+                { value: "ALL", label: "Tất cả hạng mục thu" },
+                ...(incomeTypes || []).map((t) => ({ value: t.id, label: t.name })),
+              ]}
+            />
           </div>
 
           {/* Hạng mục chi */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Hạng mục chi</Label>
-            <Select
+            <SearchableSelect
               value={draft.expense_type_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({ expense_type_id: v === "ALL" ? null : v })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Tất cả hạng mục chi" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả hạng mục chi</SelectItem>
-                {(expenseTypes || []).map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Tất cả hạng mục chi"
+              options={[
+                { value: "ALL", label: "Tất cả hạng mục chi" },
+                ...(expenseTypes || []).map((t) => ({ value: t.id, label: t.name })),
+              ]}
+            />
           </div>
 
           {/* Người tạo phiếu */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Người tạo phiếu</Label>
-            <Select
+            <SearchableSelect
               value={draft.creator_id ?? "ALL"}
               onValueChange={(v) =>
                 patch({ creator_id: v === "ALL" ? null : v })
               }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Tất cả người tạo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tất cả người tạo</SelectItem>
-                {(staffUsers || []).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.full_name || u.email || "—"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Tất cả người tạo"
+              options={[
+                { value: "ALL", label: "Tất cả người tạo" },
+                ...(staffUsers || []).map((u) => ({
+                  value: u.id,
+                  label: u.full_name || u.email || "—",
+                })),
+              ]}
+            />
           </div>
         </div>
 
