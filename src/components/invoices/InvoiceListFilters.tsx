@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from '@/lib/roomSort';
 import type { InvoiceFilters } from '@/types/invoice';
 
 interface InvoiceListFiltersProps {
@@ -55,18 +56,28 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
 
   const handleAreaChange = (value: string) => {
     const areaId = value === ALL_VALUE ? undefined : value;
-    update({ area_id: areaId, building_id: undefined, room_id: undefined });
+    update({ area_id: areaId, building_id: undefined, room_id: undefined, room_ids: undefined });
   };
 
   const handleBuildingChange = (value: string) => {
     const buildingId = value === ALL_VALUE ? undefined : value;
-    update({ building_id: buildingId, room_id: undefined });
+    update({ building_id: buildingId, room_id: undefined, room_ids: undefined });
   };
 
-  const handleRoomChange = (value: string) => {
-    const roomId = value === ALL_VALUE ? undefined : value;
-    update({ room_id: roomId });
+  // Lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà → 1 lựa chọn).
+  const handleRoomChange = (name: string) => {
+    update({
+      room_id: undefined,
+      room_ids: name === ALL_VALUE ? undefined : roomIdsByName(rooms as any[], name),
+    });
   };
+
+  const roomValue =
+    roomNameFromIds(rooms as any[], filters.room_ids) ??
+    (filters.room_id
+      ? (rooms as any[]).find((r) => r.id === filters.room_id)?.name
+      : undefined) ??
+    ALL_VALUE;
 
   const handlePaymentStatusChange = (value: string) => {
     update({
@@ -123,15 +134,15 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
         ]}
       />
 
-      {/* Chọn phòng */}
+      {/* Chọn phòng — gộp theo tên (nhiều toà cùng "101" → 1 mục) */}
       <SearchableSelect
-        value={filters.room_id ?? ALL_VALUE}
+        value={roomValue}
         onValueChange={handleRoomChange}
         className={roomTriggerClass}
         placeholder="Chọn phòng"
         options={[
           { value: ALL_VALUE, label: compact ? 'Tất cả' : 'Tất cả phòng' },
-          ...rooms.map((r: any) => ({ value: r.id, label: r.name })),
+          ...uniqueRoomNames(rooms as any[]).map((n) => ({ value: n, label: n })),
         ]}
       />
 

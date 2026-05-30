@@ -13,6 +13,8 @@ export interface IncomeExpenseFilters {
   area_id?: string | null;
   building_id?: string | null;
   room_id?: string | null;
+  /** Lọc nhiều phòng cùng tên (gộp mọi toà). Ưu tiên hơn room_id. */
+  room_ids?: string[] | null;
   account_id?: string | null;
   cash_book_id?: string | null;
   type?: "INCOME" | "EXPENSE" | null;
@@ -174,6 +176,7 @@ export const useIncomeExpenses = (
       filters.area_id,
       filters.building_id,
       filters.room_id,
+      filters.room_ids,
       filters.account_id,
       filters.type,
       filters.start_date,
@@ -237,7 +240,9 @@ export const useIncomeExpenses = (
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
       }
-      if (filters.room_id) {
+      if (filters.room_ids?.length) {
+        query = query.in("room_id", filters.room_ids);
+      } else if (filters.room_id) {
         query = query.eq("room_id", filters.room_id);
       }
       if (filters.account_id) {
@@ -417,6 +422,7 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       filters.area_id,
       filters.building_id,
       filters.room_id,
+      filters.room_ids,
       filters.account_id,
       filters.type,
       filters.start_date,
@@ -465,7 +471,9 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
       }
-      if (filters.room_id) {
+      if (filters.room_ids?.length) {
+        query = query.in("room_id", filters.room_ids);
+      } else if (filters.room_id) {
         query = query.eq("room_id", filters.room_id);
       }
       if (filters.account_id) {

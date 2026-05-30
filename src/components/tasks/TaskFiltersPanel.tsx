@@ -1,4 +1,5 @@
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
@@ -41,12 +42,24 @@ export function TaskFiltersPanel({
     handleChange({
       building_id: buildingId,
       room_id: null,
+      room_ids: null,
     });
   };
 
-  const handleRoomChange = (value: string) => {
-    handleChange({ room_id: value === "ALL" ? null : value });
+  // Lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà → 1 lựa chọn).
+  const handleRoomChange = (name: string) => {
+    handleChange({
+      room_id: null,
+      room_ids: name === "ALL" ? null : roomIdsByName(rooms || [], name),
+    });
   };
+
+  const roomValue =
+    roomNameFromIds(rooms || [], filters.room_ids) ??
+    (filters.room_id
+      ? (rooms || []).find((r) => r.id === filters.room_id)?.name
+      : undefined) ??
+    "ALL";
 
   return (
     <div className="border rounded-lg p-4 space-y-4">
@@ -63,15 +76,15 @@ export function TaskFiltersPanel({
           ]}
         />
 
-        {/* Phòng */}
+        {/* Phòng — gộp theo tên (nhiều toà cùng "101" → 1 mục) */}
         <SearchableSelect
-          value={filters.room_id ?? "ALL"}
+          value={roomValue}
           onValueChange={handleRoomChange}
           className="h-9 text-sm"
           placeholder="Chọn phòng"
           options={[
             { value: "ALL", label: "Chọn phòng" },
-            ...(rooms || []).map((r) => ({ value: r.id, label: r.name })),
+            ...uniqueRoomNames(rooms || []).map((n) => ({ value: n, label: n })),
           ]}
         />
 

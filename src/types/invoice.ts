@@ -135,6 +135,8 @@ export interface InvoiceFilters {
   area_id?: string;
   building_id?: string;
   room_id?: string;
+  /** Lọc nhiều phòng cùng tên (gộp mọi toà). Ưu tiên hơn room_id. */
+  room_ids?: string[];
   contract_id?: string;
   status?: InvoiceStatus;
   /** UI filter trạng thái thanh toán:

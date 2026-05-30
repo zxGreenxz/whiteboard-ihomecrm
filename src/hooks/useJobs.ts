@@ -21,7 +21,9 @@ export const useJobs = (filters?: TaskFilters) => {
       if (filters?.building_id) {
         query = query.eq("building_id", filters.building_id);
       }
-      if (filters?.room_id) {
+      if (filters?.room_ids?.length) {
+        query = query.in("room_id", filters.room_ids);
+      } else if (filters?.room_id) {
         query = query.eq("room_id", filters.room_id);
       }
       if (filters?.job_type_id) {

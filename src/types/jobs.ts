@@ -62,6 +62,8 @@ export interface JobWithRelations extends Job {
 export interface TaskFilters {
   building_id: string | null;
   room_id: string | null;
+  /** Lọc theo nhiều phòng cùng tên (gộp mọi toà). Ưu tiên hơn room_id. */
+  room_ids?: string[] | null;
   job_type_id: string | null;
   priority: JobPriority | null;
   assignee_id: string | null;

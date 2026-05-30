@@ -1,4 +1,5 @@
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { DateInput } from "@/components/ui/date-input";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -40,6 +41,7 @@ export function IncomeExpenseFiltersBar({
       area_id: areaId,
       building_id: null,
       room_id: null,
+      room_ids: null,
     });
   };
 
@@ -48,15 +50,24 @@ export function IncomeExpenseFiltersBar({
     handleChange({
       building_id: buildingId,
       room_id: null,
+      room_ids: null,
     });
   };
 
-  const handleRoomChange = (value: string) => {
-    const roomId = value === "ALL" ? null : value;
+  // Lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà → 1 lựa chọn).
+  const handleRoomChange = (name: string) => {
     handleChange({
-      room_id: roomId,
+      room_id: null,
+      room_ids: name === "ALL" ? null : roomIdsByName(rooms || [], name),
     });
   };
+
+  const roomValue =
+    roomNameFromIds(rooms || [], filters.room_ids) ??
+    (filters.room_id
+      ? (rooms || []).find((r) => r.id === filters.room_id)?.name
+      : undefined) ??
+    "ALL";
 
   const handleAccountChange = (value: string) => {
     handleChange({ account_id: value === "ALL" ? null : value });
@@ -146,13 +157,13 @@ export function IncomeExpenseFiltersBar({
 
       {/* Phòng */}
       <SearchableSelect
-        value={filters.room_id ?? "ALL"}
+        value={roomValue}
         onValueChange={handleRoomChange}
         className="w-[140px] h-9 text-sm"
         placeholder="Chọn phòng"
         options={[
           { value: "ALL", label: "Chọn phòng" },
-          ...(rooms || []).map((r) => ({ value: r.id, label: r.name })),
+          ...uniqueRoomNames(rooms || []).map((n) => ({ value: n, label: n })),
         ]}
       />
 

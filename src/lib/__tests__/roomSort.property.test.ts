@@ -5,6 +5,8 @@ import {
   compareRoomNames,
   compareBuildingThenRoom,
   uniqueRoomNames,
+  roomIdsByName,
+  roomNameFromIds,
 } from "@/lib/roomSort";
 
 const sortNames = (names: string[]) => [...names].sort(compareRoomNames);
@@ -122,6 +124,35 @@ describe("uniqueRoomNames", () => {
     expect(
       uniqueRoomNames([{ name: "" }, { name: null }, { name: "101" }]),
     ).toEqual(["101"]);
+  });
+});
+
+describe("roomIdsByName / roomNameFromIds", () => {
+  const rooms = [
+    { id: "a", name: "101" },
+    { id: "b", name: "205" },
+    { id: "c", name: "101" },
+    { id: "d", name: "L03" },
+  ];
+
+  it("roomIdsByName lấy tất cả id của các phòng cùng tên", () => {
+    expect(roomIdsByName(rooms, "101")).toEqual(["a", "c"]);
+    expect(roomIdsByName(rooms, "205")).toEqual(["b"]);
+    expect(roomIdsByName(rooms, "999")).toEqual([]);
+  });
+
+  it("roomNameFromIds suy ngược tên phòng từ tập id (để hiện trên dropdown)", () => {
+    expect(roomNameFromIds(rooms, ["a", "c"])).toBe("101");
+    expect(roomNameFromIds(rooms, ["b"])).toBe("205");
+    expect(roomNameFromIds(rooms, [])).toBeUndefined();
+    expect(roomNameFromIds(rooms, null)).toBeUndefined();
+    expect(roomNameFromIds(rooms, undefined)).toBeUndefined();
+  });
+
+  it("roundtrip: name → ids → name", () => {
+    for (const name of uniqueRoomNames(rooms)) {
+      expect(roomNameFromIds(rooms, roomIdsByName(rooms, name))).toBe(name);
+    }
   });
 });
 

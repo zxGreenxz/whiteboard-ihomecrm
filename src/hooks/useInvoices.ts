@@ -95,7 +95,9 @@ export const useInvoices = (
       } else if (buildingIdsByArea) {
         query = query.in('building_id', buildingIdsByArea);
       }
-      if (filters?.room_id) {
+      if (filters?.room_ids?.length) {
+        query = query.in('room_id', filters.room_ids);
+      } else if (filters?.room_id) {
         query = query.eq('room_id', filters.room_id);
       }
       if (filters?.contract_id) {

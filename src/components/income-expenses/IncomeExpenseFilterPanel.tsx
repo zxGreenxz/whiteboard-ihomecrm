@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
@@ -218,6 +219,7 @@ export function IncomeExpenseFilterPanel({
                   area_id: v === "ALL" ? null : v,
                   building_id: null,
                   room_id: null,
+                  room_ids: null,
                 })
               }
               placeholder="Chọn khu vực"
@@ -237,6 +239,7 @@ export function IncomeExpenseFilterPanel({
                 patch({
                   building_id: v === "ALL" ? null : v,
                   room_id: null,
+                  room_ids: null,
                 })
               }
               placeholder="Chọn tòa nhà"
@@ -247,21 +250,31 @@ export function IncomeExpenseFilterPanel({
             />
           </div>
 
-          {/* Phòng */}
+          {/* Phòng — gộp theo tên (nhiều toà cùng "101" → 1 mục) */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Phòng</Label>
             <SearchableSelect
-              value={draft.room_id ?? "ALL"}
-              onValueChange={(v) =>
+              value={
+                roomNameFromIds(rooms || [], draft.room_ids) ??
+                (draft.room_id
+                  ? (rooms || []).find((r) => r.id === draft.room_id)?.name
+                  : undefined) ??
+                "ALL"
+              }
+              onValueChange={(name) =>
                 patch({
-                  room_id: v === "ALL" ? null : v,
+                  room_id: null,
+                  room_ids:
+                    name === "ALL" ? null : roomIdsByName(rooms || [], name),
                 })
               }
-              disabled={!draft.building_id}
               placeholder="Chọn phòng"
               options={[
                 { value: "ALL", label: "Tất cả phòng" },
-                ...(rooms || []).map((r) => ({ value: r.id, label: r.name })),
+                ...uniqueRoomNames(rooms || []).map((n) => ({
+                  value: n,
+                  label: n,
+                })),
               ]}
             />
           </div>

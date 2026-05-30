@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useDistinctVehicleValues } from "@/hooks/useVehicles";
@@ -74,6 +75,7 @@ export default function VehicleFilterPanel({
                 patch({
                   building_id: v === "ALL" ? undefined : v,
                   room_id: undefined,
+                  room_ids: undefined,
                 })
               }
               placeholder="Chọn tòa nhà"
@@ -87,21 +89,30 @@ export default function VehicleFilterPanel({
             />
           </div>
 
-          {/* Phòng */}
+          {/* Phòng — gộp theo tên (nhiều toà cùng "101" → 1 mục) */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Phòng</Label>
             <SearchableSelect
-              value={draft.room_id ?? "ALL"}
-              onValueChange={(v) =>
-                patch({ room_id: v === "ALL" ? undefined : v })
+              value={
+                roomNameFromIds(rooms || [], draft.room_ids) ??
+                (draft.room_id
+                  ? (rooms || []).find((r) => r.id === draft.room_id)?.name
+                  : undefined) ??
+                "ALL"
               }
-              disabled={!draft.building_id}
+              onValueChange={(name) =>
+                patch({
+                  room_id: undefined,
+                  room_ids:
+                    name === "ALL" ? undefined : roomIdsByName(rooms || [], name),
+                })
+              }
               placeholder="Chọn phòng"
               options={[
                 { value: "ALL", label: "Tất cả phòng" },
-                ...(rooms || []).map((r) => ({
-                  value: r.id,
-                  label: r.name,
+                ...uniqueRoomNames(rooms || []).map((n) => ({
+                  value: n,
+                  label: n,
                 })),
               ]}
             />

@@ -85,8 +85,10 @@ export const useVehicles = (
         query = query.eq("building_id", filters.building_id);
       }
 
-      // Filter by room
-      if (filters?.room_id) {
+      // Filter by room — hỗ trợ nhiều phòng cùng tên (gộp mọi toà)
+      if (filters?.room_ids?.length) {
+        query = query.in("room_id", filters.room_ids);
+      } else if (filters?.room_id) {
         query = query.eq("room_id", filters.room_id);
       }
 

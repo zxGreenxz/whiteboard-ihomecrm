@@ -52,7 +52,7 @@ const InvoicesPage = () => {
   const lockedAreaId = ctx?.isStaff && ctx?.defaultAreaId ? ctx.defaultAreaId : null;
   useEffect(() => {
     if (lockedAreaId && filters.area_id !== lockedAreaId) {
-      setFilters((f) => ({ ...f, area_id: lockedAreaId, building_id: undefined, room_id: undefined }));
+      setFilters((f) => ({ ...f, area_id: lockedAreaId, building_id: undefined, room_id: undefined, room_ids: undefined }));
     }
   }, [lockedAreaId, filters.area_id]);
 
@@ -119,7 +119,12 @@ const InvoicesPage = () => {
     () => ({
       area_id: filters.area_id,
       building_id: filters.building_id,
-      room_id: filters.room_id,      status: filters.status,
+      room_id:
+        filters.room_ids?.length === 1
+          ? filters.room_ids[0]
+          : filters.room_ids?.length
+            ? undefined
+            : filters.room_id,      status: filters.status,
       start_date: filters.date_range?.start,
       end_date: filters.date_range?.end,
       billing_month: filters.billing_month,

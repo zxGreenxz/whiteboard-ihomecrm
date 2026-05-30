@@ -60,3 +60,21 @@ export function uniqueRoomNames(rooms: { name?: string | null }[]): string[] {
   }
   return [...seen].sort(compareRoomNames);
 }
+
+/** Tất cả id của các phòng có tên `name` (gộp mọi toà nhà trong danh sách). */
+export function roomIdsByName(
+  rooms: { id: string; name?: string | null }[],
+  name: string,
+): string[] {
+  return rooms.filter((r) => (r.name ?? "") === name).map((r) => r.id);
+}
+
+/** Tên phòng tương ứng với tập id đang lọc (lấy tên của phòng khớp đầu tiên). */
+export function roomNameFromIds(
+  rooms: { id: string; name?: string | null }[],
+  ids: string[] | null | undefined,
+): string | undefined {
+  if (!ids?.length) return undefined;
+  const set = new Set(ids);
+  return rooms.find((r) => set.has(r.id))?.name ?? undefined;
+}
