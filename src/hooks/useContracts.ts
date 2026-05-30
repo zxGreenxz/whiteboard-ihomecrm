@@ -513,6 +513,56 @@ export const useSyncContractCustomers = () => {
 };
 
 // =============================================
+// useSyncContractServices — replace contract_services for a contract.
+// Dùng cho luồng Cập nhật hợp đồng: xoá hết dòng dịch vụ cũ rồi insert lại
+// theo danh sách trong form (đổi loại điện, đơn giá, chỉ số đầu, …). Luồng
+// update không tự đụng contract_services nên phải gọi tay sau khi update HĐ
+// — giống useSyncContractCustomers.
+// =============================================
+
+export const useSyncContractServices = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      contractId,
+      services,
+    }: {
+      contractId: string;
+      services: Array<{
+        service_id: string;
+        unit_price: number;
+        initial_reading?: number | null;
+      }>;
+    }) => {
+      const { error: delErr } = await supabase
+        .from("contract_services")
+        .delete()
+        .eq("contract_id", contractId);
+      if (delErr) throw delErr;
+
+      if (services.length === 0) return;
+
+      const rows = services.map((s) => ({
+        contract_id: contractId,
+        service_id: s.service_id,
+        unit_price: s.unit_price,
+        initial_reading: s.initial_reading ?? null,
+      }));
+
+      const { error: insErr } = await supabase
+        .from("contract_services")
+        .insert(rows as any);
+      if (insErr) throw insErr;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["contracts", vars.contractId] });
+    },
+  });
+};
+
+// =============================================
 // useDeleteContract — Delete contract (check financial records first)
 // Requirements: 10.1, 10.2, 10.3
 // =============================================

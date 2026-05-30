@@ -41,6 +41,7 @@ import { PAYMENT_CYCLE_LABELS } from "@/types/contract";
 import {
   useCreateContract,
   useSyncContractCustomers,
+  useSyncContractServices,
   useUpdateContract,
 } from "@/hooks/useContracts";
 import { formatCurrency } from "@/lib/utils";
@@ -97,10 +98,12 @@ export function ContractFormDialog({
   const createContract = useCreateContract();
   const updateContract = useUpdateContract();
   const syncCustomers = useSyncContractCustomers();
+  const syncServices = useSyncContractServices();
   const isPending =
     createContract.isPending ||
     updateContract.isPending ||
-    syncCustomers.isPending;
+    syncCustomers.isPending ||
+    syncServices.isPending;
 
   // Data hooks
   const { data: buildings = [] } = useBuildings();
@@ -609,13 +612,23 @@ export function ContractFormDialog({
       updateContract.mutate(
         { id: contract.id, updates },
         {
-          onSuccess: () => {
-            // Sync khách hàng (đại diện + ghi chú) — luồng update không
-            // tự đụng tới contract_customers, phải gọi tay sau khi update.
-            syncCustomers.mutate(
-              { contractId: contract.id, customers },
-              { onSuccess: () => onOpenChange(false) }
-            );
+          onSuccess: async () => {
+            // Luồng update không tự đụng contract_customers / contract_services
+            // → phải sync tay sau khi update HĐ. Đồng bộ cả khách (đại diện +
+            // ghi chú) lẫn dịch vụ (đổi loại điện, đơn giá, chỉ số đầu). Chỉ
+            // đóng dialog khi cả hai thành công; lỗi sẽ giữ dialog mở + toast.
+            try {
+              await Promise.all([
+                syncCustomers.mutateAsync({ contractId: contract.id, customers }),
+                syncServices.mutateAsync({ contractId: contract.id, services }),
+              ]);
+              onOpenChange(false);
+            } catch (e) {
+              console.error("Sync khách hàng/dịch vụ HĐ thất bại:", e);
+              toast.error("Đã cập nhật HĐ nhưng đồng bộ khách hàng/dịch vụ thất bại", {
+                description: "Vui lòng thử lại.",
+              });
+            }
           },
         }
       );

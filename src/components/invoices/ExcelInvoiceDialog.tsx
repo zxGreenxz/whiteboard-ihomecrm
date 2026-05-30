@@ -4,6 +4,7 @@ import { format, addMonths, endOfMonth, startOfMonth, parse } from 'date-fns';
 import { Table as TableIcon, Download, Loader2, Pencil, RotateCcw } from 'lucide-react';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
+import { resolveInvoicePricing, type ContractServiceInput } from '@/lib/contractServicePricing';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { PREVIOUS_DEBT_ROUND_THRESHOLD } from '@/lib/invoiceHelpers';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
@@ -59,6 +60,22 @@ interface RowData {
   water_amount: number; // overrideable
   water_overridden: boolean;
   pdv_amount: number; // overrideable
+  pdv_overridden: boolean;
+  /**
+   * Đơn giá + service_id hiệu lực cho từng phòng — ưu tiên dịch vụ HĐ đăng ký
+   * (vd "Điện 3K1"), fallback đơn giá toà khi HĐ chưa cấu hình. *_applicable =
+   * false nghĩa HĐ KHÔNG đăng ký dịch vụ đó → không tự bỏ vào hoá đơn.
+   */
+  elec_rate: number;
+  elec_service_id: string | null;
+  water_rate: number;
+  water_service_id: string | null;
+  water_applicable: boolean;
+  pdv_rate: number;
+  pdv_service_id: string | null;
+  pdv_applicable: boolean;
+  /** contract_services thô — để re-resolve khi đơn giá toà load sau. */
+  services_raw: ContractServiceInput[];
   discount: number;
   discount_notes: string;
   /** Credit (excess_amounts) đã áp vào discount — INSERT excess row âm khi tạo HĐ. */
@@ -134,7 +151,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         .select(
           `id, rent_price, room_id, status, total_deposit, deposit_paid, deposit_remaining, discounts,
            room:rooms!contracts_room_id_fkey (id, name, building_id),
-           contract_customers!contract_customers_contract_id_fkey (id)`
+           contract_customers!contract_customers_contract_id_fkey (id),
+           contract_services (
+             service_id, unit_price,
+             service:services!contract_services_service_id_fkey (name, pricing_type)
+           )`
         )
         .eq('status', 'ACTIVE')
         .is('deleted_at', null);
@@ -301,6 +322,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           ].filter(Boolean);
           const combinedNotes = noteParts.join(' — ');
 
+          // Đơn giá hiệu lực cho phòng: ưu tiên dịch vụ HĐ đăng ký (vd "Điện
+          // 3K1"); HĐ không có nước/PDV → không prefill các khoản đó.
+          const servicesRaw = (c.contract_services ?? []) as ContractServiceInput[];
+          const pricing = resolveInvoicePricing(servicesRaw, defaults);
+
           return {
             contract_id: c.id,
             room_id: c.room_id,
@@ -313,9 +339,19 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
             current_reading: '' as const,
             electric_amount: 0,
             electric_overridden: false,
-            water_amount: occupants * defaults.water,
+            water_amount: pricing.waterApplicable ? occupants * pricing.water : 0,
             water_overridden: false,
-            pdv_amount: defaults.pdv,
+            pdv_amount: pricing.pdvApplicable ? pricing.pdv : 0,
+            pdv_overridden: false,
+            elec_rate: pricing.elec,
+            elec_service_id: pricing.elecServiceId,
+            water_rate: pricing.water,
+            water_service_id: pricing.waterServiceId,
+            water_applicable: pricing.waterApplicable,
+            pdv_rate: pricing.pdv,
+            pdv_service_id: pricing.pdvServiceId,
+            pdv_applicable: pricing.pdvApplicable,
+            services_raw: servicesRaw,
             discount: totalDiscount,
             discount_notes: combinedNotes,
             applied_credit: credit,
@@ -343,18 +379,35 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  // Recompute water amount when defaults change (after building_services loads).
+  // Re-resolve đơn giá khi building_services load sau handleLoad. Re-resolve
+  // theo từng dòng (HĐ có dịch vụ riêng giữ nguyên giá HĐ; HĐ legacy nhận giá
+  // toà mới). Tôn trọng override tay của user.
   useEffect(() => {
     if (!loaded) return;
     setRows((prev) =>
-      prev.map((r) => ({
-        ...r,
-        water_amount: r.water_overridden ? r.water_amount : r.occupants * defaults.water,
-        pdv_amount: r.pdv_amount === 0 ? defaults.pdv : r.pdv_amount,
-      }))
+      prev.map((r) => {
+        const p = resolveInvoicePricing(r.services_raw, defaults);
+        return {
+          ...r,
+          elec_rate: p.elec,
+          elec_service_id: p.elecServiceId,
+          water_rate: p.water,
+          water_service_id: p.waterServiceId,
+          water_applicable: p.waterApplicable,
+          pdv_rate: p.pdv,
+          pdv_service_id: p.pdvServiceId,
+          pdv_applicable: p.pdvApplicable,
+          water_amount: r.water_overridden
+            ? r.water_amount
+            : p.waterApplicable
+              ? r.occupants * p.water
+              : 0,
+          pdv_amount: r.pdv_overridden ? r.pdv_amount : p.pdvApplicable ? p.pdv : 0,
+        };
+      })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaults.water, defaults.pdv]);
+  }, [defaults.elec, defaults.water, defaults.pdv]);
 
   const updateRow = (idx: number, patch: Partial<RowData>) => {
     setRows((prev) => {
@@ -369,11 +422,14 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           0,
           (Number(row.current_reading) || 0) - (Number(row.prev_reading) || 0)
         );
-        row.electric_amount = consumption * defaults.elec;
+        row.electric_amount = consumption * row.elec_rate;
       }
-      // Auto-recompute water unless user overrode it.
+      // Auto-recompute water unless user overrode it. HĐ không đăng ký nước →
+      // giữ 0.
       if ('occupants' in patch && !row.water_overridden) {
-        row.water_amount = (Number(row.occupants) || 0) * defaults.water;
+        row.water_amount = row.water_applicable
+          ? (Number(row.occupants) || 0) * row.water_rate
+          : 0;
       }
       next[idx] = row;
       return next;
@@ -460,7 +516,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
               approved_by: user.id,
               approved_at: new Date().toISOString(),
               meter_type: 'ELECTRICITY',
-              service_id: defaults.elecServiceId,
+              service_id: row.elec_service_id,
               recorded_by: user.id,
             } as any);
           }
@@ -494,7 +550,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         if (row.electric_amount > 0) {
           const cons = Math.max(consumption, 0);
           items.push({
-            service_id: defaults.elecServiceId,
+            service_id: row.elec_service_id,
             type: 'SERVICE',
             description: `Tiền điện (${row.prev_reading} → ${row.current_reading || row.prev_reading})`,
             unit_price: cons > 0 ? row.electric_amount / cons : row.electric_amount,
@@ -509,7 +565,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         }
         if (waterAmount > 0) {
           items.push({
-            service_id: defaults.waterServiceId,
+            service_id: row.water_service_id,
             type: 'SERVICE',
             description: `Tiền nước (${row.occupants} người)` + prorateLabel,
             unit_price: waterAmount,
@@ -522,7 +578,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         }
         if (pdvAmount > 0) {
           items.push({
-            service_id: defaults.pdvServiceId,
+            service_id: row.pdv_service_id,
             type: 'SERVICE',
             description: 'Phí dịch vụ' + prorateLabel,
             unit_price: pdvAmount,
@@ -628,8 +684,9 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           </Button>
           {loaded && (
             <span className="text-sm text-muted-foreground">
-              Đã tải {rows.length} phòng — đơn giá: điện {fmt(defaults.elec)}đ/kWh, nước{' '}
-              {fmt(defaults.water)}đ/người, PDV {fmt(defaults.pdv)}đ/phòng
+              Đã tải {rows.length} phòng — đơn giá toà (mặc định): điện{' '}
+              {fmt(defaults.elec)}đ/kWh, nước {fmt(defaults.water)}đ/người, PDV{' '}
+              {fmt(defaults.pdv)}đ/phòng. HĐ có đăng ký dịch vụ riêng sẽ dùng giá HĐ.
             </span>
           )}
         </div>
@@ -764,7 +821,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
                         className="h-7 text-right"
                         suffix={false}
                         value={r.pdv_amount}
-                        onChange={(v) => updateRow(i, { pdv_amount: v })}
+                        onChange={(v) => updateRow(i, { pdv_amount: v, pdv_overridden: true })}
                       />
                     </td>
                     <td className="p-1 border">

@@ -39,6 +39,7 @@ import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpe
 import { Receipt, Plus, Trash2, Pencil, AlertTriangle, RotateCcw, Loader2 } from 'lucide-react';
 import { format, addMonths, startOfMonth, endOfMonth, parse } from 'date-fns';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
+import { resolveInvoicePricing } from '@/lib/contractServicePricing';
 
 interface GenerateInvoiceDialogProps {
   open: boolean;
@@ -213,6 +214,18 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     return { elec, water, pdv, elecServiceId, waterServiceId, pdvServiceId };
   }, [bldSvc]);
 
+  // Đơn giá hiệu lực = ưu tiên dịch vụ HĐ đã đăng ký, fallback đơn giá toà.
+  // HĐ có cấu hình dịch vụ riêng → nước/PDV CHỈ áp khi HĐ liệt kê (không thì
+  // không tự bỏ vào hoá đơn). Điện lấy đúng loại + đơn giá của HĐ (vd 3K1).
+  const pricing = useMemo(
+    () =>
+      resolveInvoicePricing(
+        (selectedContract as any)?.contract_services,
+        defaults,
+      ),
+    [selectedContract, defaults],
+  );
+
   // Khi chọn HĐ: load rent_price, occupants, meter prev_reading; prefill nước+PDV.
   useEffect(() => {
     if (!selectedContract) return;
@@ -223,9 +236,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     setValue('prev_reading_overridden', false);
     setValue('electric_amount', 0);
     setValue('electric_overridden', false);
-    setValue('water_amount', occ * defaults.water);
+    setValue('water_amount', pricing.waterApplicable ? occ * pricing.water : 0);
     setValue('water_overridden', false);
-    setValue('pdv_amount', defaults.pdv);
+    setValue('pdv_amount', pricing.pdvApplicable ? pricing.pdv : 0);
     // Auto tiêu đề
     const billing = watchedBillingMonth || format(new Date(), 'yyyy-MM');
     setValue(
@@ -265,22 +278,29 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       setValue('prev_reading', 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContract?.id, defaults.water, defaults.pdv]);
+  }, [
+    selectedContract?.id,
+    pricing.water,
+    pricing.pdv,
+    pricing.waterApplicable,
+    pricing.pdvApplicable,
+  ]);
 
   // Auto tính tiền điện theo chỉ số (nếu user không override).
   useEffect(() => {
     if (watch('electric_overridden')) return;
     const consumption = Math.max(0, (Number(watchedCurrent) || 0) - watchedPrev);
-    setValue('electric_amount', consumption * defaults.elec);
+    setValue('electric_amount', consumption * pricing.elec);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedCurrent, watchedPrev, defaults.elec]);
+  }, [watchedCurrent, watchedPrev, pricing.elec]);
 
-  // Auto tính nước theo số người (nếu không override).
+  // Auto tính nước theo số người (nếu không override). HĐ không đăng ký dịch
+  // vụ nước → giữ 0, không tự bỏ vào hoá đơn.
   useEffect(() => {
     if (watch('water_overridden')) return;
-    setValue('water_amount', watchedOccupants * defaults.water);
+    setValue('water_amount', pricing.waterApplicable ? watchedOccupants * pricing.water : 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedOccupants, defaults.water]);
+  }, [watchedOccupants, pricing.water, pricing.waterApplicable]);
 
   // Auto-fill vehicle parking fees vào custom_items khi đổi HĐ.
   useEffect(() => {
@@ -463,7 +483,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
               approved_by: user.id,
               approved_at: new Date().toISOString(),
               meter_type: 'ELECTRICITY',
-              service_id: defaults.elecServiceId,
+              service_id: pricing.elecServiceId,
               recorded_by: user.id,
             } as any);
           if (readingErr) {
@@ -501,7 +521,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     if (data.electric_amount > 0) {
       const cons = Math.max(consumption, 0);
       items.push({
-        service_id: defaults.elecServiceId,
+        service_id: pricing.elecServiceId,
         type: 'SERVICE',
         description: `Tiền điện (${data.prev_reading} → ${data.current_reading ?? data.prev_reading})`,
         unit_price: cons > 0 ? data.electric_amount / cons : data.electric_amount,
@@ -516,7 +536,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     }
     if (waterAmount > 0) {
       items.push({
-        service_id: defaults.waterServiceId,
+        service_id: pricing.waterServiceId,
         type: 'SERVICE',
         description: `Tiền nước (${data.occupants} người)` + prorateLabel,
         unit_price: waterAmount,
@@ -529,7 +549,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     }
     if (pdvAmount > 0) {
       items.push({
-        service_id: defaults.pdvServiceId,
+        service_id: pricing.pdvServiceId,
         type: 'SERVICE',
         description: 'Phí dịch vụ' + prorateLabel,
         unit_price: pdvAmount,
@@ -842,7 +862,15 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                   </tbody>
                 </table>
                 <p className="px-2 py-1 text-[11px] text-muted-foreground bg-slate-50 border-t">
-                  Đơn giá toà: điện {fmt(defaults.elec)}đ/kWh — nước {fmt(defaults.water)}đ/người — PDV {fmt(defaults.pdv)}đ/phòng.
+                  {pricing.hasContractServices ? 'Đơn giá HĐ' : 'Đơn giá toà'}: điện{' '}
+                  {fmt(pricing.elec)}đ/kWh
+                  {pricing.waterApplicable
+                    ? ` — nước ${fmt(pricing.water)}đ/người`
+                    : ' — nước: HĐ không đăng ký'}
+                  {pricing.pdvApplicable
+                    ? ` — PDV ${fmt(pricing.pdv)}đ/phòng`
+                    : ' — PDV: HĐ không đăng ký'}
+                  .
                 </p>
               </div>
 
