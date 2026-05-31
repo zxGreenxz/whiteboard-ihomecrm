@@ -35,6 +35,10 @@ export interface IncomeExpenseFilters {
   // Lọc theo trạng thái "đã kiểm tra": null = tất cả, "VERIFIED" = đã check,
   // "UNVERIFIED" = chưa check.
   verified_status?: "VERIFIED" | "UNVERIFIED" | null;
+  // Chỉ lấy phiếu CÓ hạch toán kết quả kinh doanh (counts_in_business_result=TRUE).
+  // Dùng cho báo cáo Lợi nhuận để loại "tiền cọc" (và khoản không-KQKD). Mặc
+  // định null/false = lấy hết (trang Thu chi giữ nguyên là sổ dòng tiền).
+  business_result_only?: boolean | null;
 }
 
 // Sai số mặc định khi lọc theo số tiền: ±5.000đ. Cho phép match nhỏ
@@ -78,7 +82,10 @@ export interface IncomeExpenseWithRelations {
   account_name: string | null;
   contract_id: string | null;
   attachments: string[];
-  business_result_accounting: boolean;
+  // NULL = tự động (suy theo hạng mục cọc); TRUE/FALSE = override tay.
+  business_result_accounting: boolean | null;
+  // Cờ hiệu lực do DB tính: có tính vào báo cáo Lợi nhuận hay không.
+  counts_in_business_result: boolean;
   receive_bank_name: string | null;
   receive_bank_account: string | null;
   creator_name: string | null;
@@ -187,6 +194,7 @@ export const useIncomeExpenses = (
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
+      filters.business_result_only,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -278,6 +286,10 @@ export const useIncomeExpenses = (
       } else if (filters.verified_status === "UNVERIFIED") {
         query = query.is("verified_at", null);
       }
+      // Báo cáo Lợi nhuận: chỉ phiếu có hạch toán KQKD (loại tiền cọc).
+      if (filters.business_result_only) {
+        query = query.eq("counts_in_business_result", true);
+      }
 
       // When searching, we need to fetch all filtered records and search client-side
       // because tenant_name comes from a joined table and can't be searched server-side.
@@ -365,7 +377,8 @@ export const useIncomeExpenses = (
           account_name: v.account?.name ?? null,
           contract_id: v.contract_id ?? null,
           attachments: v.attachments ?? [],
-          business_result_accounting: v.business_result_accounting ?? false,
+          business_result_accounting: v.business_result_accounting ?? null,
+          counts_in_business_result: v.counts_in_business_result ?? true,
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,
@@ -414,7 +427,11 @@ export const useIncomeExpenses = (
   });
 };
 
-export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
+export const useIncomeExpenseStats = (
+  filters: IncomeExpenseFilters,
+  opts?: { businessResultOnly?: boolean }
+) => {
+  const businessResultOnly = opts?.businessResultOnly ?? false;
   return useQuery({
     queryKey: [
       "income-expenses",
@@ -433,6 +450,7 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
+      businessResultOnly,
     ],
     queryFn: async (): Promise<{
       totalIncome: number;
@@ -507,6 +525,11 @@ export const useIncomeExpenseStats = (filters: IncomeExpenseFilters) => {
         query = query.not("verified_at", "is", null);
       } else if (filters.verified_status === "UNVERIFIED") {
         query = query.is("verified_at", null);
+      }
+      // Báo cáo Lợi nhuận (P&L): chỉ phiếu có hạch toán KQKD → loại tiền cọc
+      // (và khoản override không-KQKD). Trang Thu chi không bật cờ này.
+      if (businessResultOnly) {
+        query = query.eq("counts_in_business_result", true);
       }
 
       const { data, error } = await query;
@@ -590,7 +613,8 @@ export const useCreateIncomeExpense = () => {
           payer_name: input.payer_name ?? null,
           account_id: input.account_id ?? null,
           attachments: input.attachments ?? [],
-          business_result_accounting: input.business_result_accounting ?? false,
+          // null = tự động (DB suy theo hạng mục cọc); false/true = override tay.
+          business_result_accounting: input.business_result_accounting ?? null,
           repeat_cycle: input.repeat_cycle ?? "NONE",
           repeat_infinity: !!input.repeat_infinity,
           repeat_count: input.repeat_count ?? 0,
@@ -664,7 +688,7 @@ export const useUpdateIncomeExpense = () => {
           payer_name: data.payer_name ?? null,
           account_id: data.account_id ?? null,
           attachments: data.attachments ?? [],
-          business_result_accounting: data.business_result_accounting ?? false,
+          business_result_accounting: data.business_result_accounting ?? null,
           voucher_date: data.voucher_date,
         })
         .eq("id", id)
@@ -969,7 +993,7 @@ export interface IncomeExpenseBatchSummary {
   voucher_date: string | null;
   account_id: string | null;
   account_name: string | null;
-  business_result_accounting: boolean;
+  business_result_accounting: boolean | null;
   creator_name: string | null;
   // Tổng hợp:
   vouchers: IncomeExpenseWithRelations[];
@@ -1032,7 +1056,7 @@ export const useCreateIncomeExpenseBatch = () => {
               account_id: input.account_id,
               payer_name: input.payer_name ?? null,
               attachments: input.attachments ?? [],
-              business_result_accounting: input.business_result_accounting ?? false,
+              business_result_accounting: input.business_result_accounting ?? null,
               voucher_date: input.voucher_date,
               repeat_cycle: "NONE",
               repeat_infinity: false,
@@ -1126,6 +1150,7 @@ export const useIncomeExpenseBatches = (
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
+      filters.business_result_only,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -1289,7 +1314,8 @@ export const useIncomeExpenseBatches = (
           account_name: v.account?.name ?? null,
           contract_id: v.contract_id ?? null,
           attachments: v.attachments ?? [],
-          business_result_accounting: v.business_result_accounting ?? false,
+          business_result_accounting: v.business_result_accounting ?? null,
+          counts_in_business_result: v.counts_in_business_result ?? true,
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,

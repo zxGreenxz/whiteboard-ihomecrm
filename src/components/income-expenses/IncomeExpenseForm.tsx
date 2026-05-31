@@ -125,6 +125,15 @@ const IncomeExpenseForm = ({
   );
   // Lookup is_deposit cho từng type_id → biết phiếu có cọc hay không.
   const { data: incomeTypes = [] } = useIncomeExpenseTypes('income');
+  const { data: expenseTypes = [] } = useIncomeExpenseTypes('expense');
+
+  // Tập type_id thuộc hạng mục "cọc" (is_deposit) — gồm cả thu (Tiền cọc) lẫn
+  // chi (Hoàn cọc thanh lý) → dùng để tự suy mặc định cờ "Hạch toán KQKD".
+  const depositTypeIds = new Set(
+    [...incomeTypes, ...expenseTypes]
+      .filter((t) => t.is_deposit)
+      .map((t) => t.id),
+  );
 
   const form = useForm<IncomeExpenseFormValues>({
     resolver: zodResolver(incomeExpenseFormSchema),
@@ -138,7 +147,7 @@ const IncomeExpenseForm = ({
       payer_name: '',
       account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
-      business_result_accounting: false,
+      business_result_accounting: null,
       repeat_cycle: 'NONE',
       repeat_infinity: false,
       repeat_count: 0,
@@ -179,7 +188,7 @@ const IncomeExpenseForm = ({
         payer_name: voucher.payer_name ?? '',
         account_id: voucher.account_id ?? '',
         voucher_date: voucher.voucher_date,
-        business_result_accounting: voucher.business_result_accounting ?? false,
+        business_result_accounting: voucher.business_result_accounting ?? null,
         repeat_cycle: (voucher.repeat_cycle as any) ?? 'NONE',
         repeat_infinity: voucher.repeat_infinity ?? false,
         repeat_count: voucher.repeat_count ?? 0,
@@ -240,7 +249,7 @@ const IncomeExpenseForm = ({
         payer_name: '',
         account_id: '',
         voucher_date: today,
-        business_result_accounting: false,
+        business_result_accounting: null,
         repeat_cycle: 'NONE',
         repeat_infinity: false,
         repeat_count: 0,
@@ -290,8 +299,10 @@ const IncomeExpenseForm = ({
 
   // Phiếu có phải "phiếu cọc" hay không (có ít nhất 1 item is_deposit)?
   const hasDepositItem = itemRows.some((r) =>
-    incomeTypes.find((t) => t.id === r.income_expense_type_id)?.is_deposit,
+    depositTypeIds.has(r.income_expense_type_id),
   );
+  // Giá trị "tự động" của cờ KQKD (khi business_result_accounting = null).
+  const autoBusinessResult = !hasDepositItem;
 
   const handleAccountChange = (accountId: string) => {
     form.setValue('account_id', accountId);
@@ -706,24 +717,39 @@ const IncomeExpenseForm = ({
 
               {/* Step 3: Items */}
               <div className="space-y-3">
-                {/* Business result accounting toggle */}
+                {/* Business result accounting toggle (hybrid: auto theo hạng mục + override) */}
                 <FormField
                   control={form.control}
                   name="business_result_accounting"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                      <FormLabel className="text-sm font-medium">
-                        Hạch toán kết quả kinh doanh?
-                      </FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          disabled={!canEdit}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const isAuto = field.value === null || field.value === undefined;
+                    const effective = isAuto ? autoBusinessResult : !!field.value;
+                    return (
+                      <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-sm font-medium">
+                            Hạch toán kết quả kinh doanh?
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">
+                            {isAuto
+                              ? hasDepositItem
+                                ? 'Tự động: có hạng mục cọc → không tính vào lợi nhuận'
+                                : 'Tự động: tính vào lợi nhuận'
+                              : effective
+                                ? 'Ép tính vào lợi nhuận (override)'
+                                : 'Ép loại khỏi lợi nhuận (override)'}
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={effective}
+                            onCheckedChange={(v) => field.onChange(v)}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    );
+                  }}
                 />
 
                 <div className="flex items-center justify-between">

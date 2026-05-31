@@ -226,7 +226,8 @@ export const useCreateCommissionVoucher = () => {
             ? `Người nhận: ${input.recipient_name}`
             : null,
           attachments: [],
-          business_result_accounting: false,
+          // null = tự động: hoa hồng là chi phí kinh doanh thật → tính vào P&L.
+          business_result_accounting: null,
           repeat_cycle: "NONE",
           repeat_infinity: false,
           repeat_count: 0,

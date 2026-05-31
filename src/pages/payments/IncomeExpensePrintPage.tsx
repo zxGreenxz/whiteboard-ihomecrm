@@ -18,7 +18,7 @@ interface VoucherRow {
   receive_bank_account: string | null;
   notes: string | null;
   approval_status: string;
-  business_result_accounting: boolean;
+  business_result_accounting: boolean | null;
   creator_name: string | null;
   created_at: string;
   building?: { id: string; name: string } | null;

@@ -771,7 +771,9 @@ export function ContractFormDialog({
                 payer_name: null,
                 account_id: depositAccountId,
                 voucher_date: data.signed_date || today,
-                business_result_accounting: false,
+                // null = tự động; hạng mục "Tiền cọc" (is_deposit) đã tự loại
+                // khoản này khỏi báo cáo Lợi nhuận.
+                business_result_accounting: null,
                 repeat_cycle: "NONE",
                 repeat_infinity: false,
                 repeat_count: 0,

@@ -649,7 +649,6 @@ describe('Property 11: Thống kê đúng', () => {
 
 import {
   filterRoomsByBuilding,
-  filterBedsByRoom,
   filterTenantsByRoomOrBed,
 } from '../useIncomeExpensesHelpers';
 
@@ -668,11 +667,6 @@ describe('Property 12: Cascade dropdown Building → Room → Bed đúng', () =>
   const roomArb = fc.record({
     id: fc.constantFrom(...roomIdPool),
     building_id: fc.constantFrom(...buildingIdPool),
-  });
-
-  const bedArb = fc.record({
-    id: fc.uuid(),
-    room_id: fc.constantFrom(...roomIdPool),
   });
 
   it('all rooms returned by filterRoomsByBuilding must have matching building_id', () => {
@@ -695,25 +689,6 @@ describe('Property 12: Cascade dropdown Building → Room → Bed đúng', () =>
     );
   });
 
-  it('all beds returned by filterBedsByRoom must have matching room_id', () => {
-    fc.assert(
-      fc.property(
-        fc.array(bedArb, { minLength: 0, maxLength: 20 }),
-        fc.constantFrom(...roomIdPool),
-        (beds, roomId) => {
-          const result = filterBedsByRoom(beds, roomId);
-
-          for (const bed of result) {
-            expect(bed.room_id).toBe(roomId);
-          }
-
-          const expectedCount = beds.filter(b => b.room_id === roomId).length;
-          expect(result.length).toBe(expectedCount);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
 });
 
 /**

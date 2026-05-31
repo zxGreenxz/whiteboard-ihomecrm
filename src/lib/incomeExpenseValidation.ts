@@ -30,7 +30,9 @@ export const incomeExpenseFormSchema = z.object({
   payer_name: z.string().nullable().optional(),
   account_id: z.string().min(1, 'Vui lòng chọn tài khoản'),
   voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
-  business_result_accounting: z.boolean().default(false),
+  // null = tự động (DB suy theo hạng mục cọc → cọc không tính KQKD);
+  // true/false = override tay. Mặc định null (auto).
+  business_result_accounting: z.boolean().nullable().default(null),
   attachments: z.array(z.string()).default([]),
   // Cài đặt lặp lại (mirror Resident "Cài đặt lặp lại")
   repeat_cycle: z
@@ -126,7 +128,8 @@ export const incomeExpenseBatchFormSchema = z.object({
   account_id: z.string().min(1, 'Vui lòng chọn sổ quỹ'),
   voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
   payer_name: z.string().nullable().optional(),
-  business_result_accounting: z.boolean().default(false),
+  // null = tự động (theo hạng mục cọc); true/false = override tay.
+  business_result_accounting: z.boolean().nullable().default(null),
   attachments: z.array(z.string()).default([]),
   notes: z.string().nullable().optional(),
   items: z.array(batchItemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),

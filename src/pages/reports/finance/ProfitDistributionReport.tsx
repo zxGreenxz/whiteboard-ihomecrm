@@ -16,6 +16,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
@@ -52,6 +54,9 @@ export default function ProfitDistributionReport() {
   const [roomId, setRoomId] = useState<string>("all");
   const [bedId, setBedId] = useState<string>("all");
   const [voucherType, setVoucherType] = useState<string>("all");
+  // Mặc định: chỉ tính khoản CÓ hạch toán KQKD (loại tiền cọc & khoản
+  // override không-KQKD). Bật toggle để xem cả khoản không hạch toán.
+  const [pnlOnly, setPnlOnly] = useState<boolean>(true);
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
@@ -72,12 +77,15 @@ export default function ProfitDistributionReport() {
     start_date: startDate,
     end_date: endDate,
     approval_status: "APPROVED",
+    business_result_only: pnlOnly,
   };
 
   const { data: result, isLoading } = useIncomeExpenses(filters, { page, pageSize });
-  // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter (không phụ thuộc phân trang),
-  // dùng chung hook với trang Thu chi để số liệu nhất quán.
-  const { data: stats } = useIncomeExpenseStats(filters);
+  // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter (không phụ thuộc phân trang).
+  // businessResultOnly đồng bộ với toggle → loại tiền cọc khỏi Doanh thu/Lợi nhuận.
+  const { data: stats } = useIncomeExpenseStats(filters, {
+    businessResultOnly: pnlOnly,
+  });
 
   const rows = result?.data ?? [];
   const totalCount = result?.totalCount ?? 0;
@@ -172,6 +180,20 @@ export default function ProfitDistributionReport() {
               { value: 'EXPENSE', label: 'Chi' },
             ]}
           />
+
+          <div className="flex items-center gap-2 h-9">
+            <Switch
+              id="pnl-only"
+              checked={!pnlOnly}
+              onCheckedChange={(v) => {
+                setPnlOnly(!v);
+                setPage(1);
+              }}
+            />
+            <Label htmlFor="pnl-only" className="text-sm text-muted-foreground whitespace-nowrap">
+              Hiện cả khoản không hạch toán KQKD (cọc…)
+            </Label>
+          </div>
         </div>
 
         {/* Table */}
@@ -216,6 +238,9 @@ export default function ProfitDistributionReport() {
                     </TableCell>
                     <TableCell>
                       {(r.items || []).map((it: any) => it.type_name).filter(Boolean).join(", ") || "—"}
+                      {r.counts_in_business_result === false && (
+                        <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

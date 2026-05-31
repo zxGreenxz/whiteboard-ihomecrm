@@ -38,7 +38,7 @@ import { useCreateIncomeExpenseBatch } from '@/hooks/useIncomeExpenses';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useAccounts } from '@/hooks/useAccounts';
-import type { IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
+import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
@@ -200,6 +200,19 @@ const IncomeExpenseBatchForm = ({
 
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: accounts = [] } = useAccounts();
+  const { data: incomeTypes = [] } = useIncomeExpenseTypes('income');
+  const { data: expenseTypes = [] } = useIncomeExpenseTypes('expense');
+
+  // Hạng mục "cọc" (is_deposit) → tự suy mặc định cờ "Hạch toán KQKD".
+  const depositTypeIds = new Set(
+    [...incomeTypes, ...expenseTypes]
+      .filter((t) => t.is_deposit)
+      .map((t) => t.id),
+  );
+  const hasDepositItem = itemRows.some((r) =>
+    depositTypeIds.has(r.income_expense_type_id),
+  );
+  const autoBusinessResult = !hasDepositItem;
 
   const form = useForm<IncomeExpenseBatchFormValues>({
     resolver: zodResolver(incomeExpenseBatchFormSchema),
@@ -209,7 +222,7 @@ const IncomeExpenseBatchForm = ({
       account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
       payer_name: '',
-      business_result_accounting: false,
+      business_result_accounting: null,
       attachments: [],
       notes: '',
       items: [],
@@ -227,7 +240,7 @@ const IncomeExpenseBatchForm = ({
       account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
       payer_name: '',
-      business_result_accounting: false,
+      business_result_accounting: null,
       attachments: [],
       notes: '',
       items: [],
@@ -447,19 +460,32 @@ const IncomeExpenseBatchForm = ({
                 <FormField
                   control={form.control}
                   name="business_result_accounting"
-                  render={({ field }) => (
-                    <FormItem className="flex items-end justify-between rounded-lg border p-2 h-[62px] mt-auto">
-                      <FormLabel className="text-sm font-medium">
-                        Hạch toán KQKD?
-                      </FormLabel>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const isAuto = field.value === null || field.value === undefined;
+                    const effective = isAuto ? autoBusinessResult : !!field.value;
+                    return (
+                      <FormItem className="flex items-end justify-between rounded-lg border p-2 h-[62px] mt-auto">
+                        <FormLabel
+                          className="text-sm font-medium"
+                          title={
+                            isAuto
+                              ? hasDepositItem
+                                ? 'Tự động: có hạng mục cọc → không tính lợi nhuận'
+                                : 'Tự động: tính vào lợi nhuận'
+                              : 'Override tay'
+                          }
+                        >
+                          Hạch toán KQKD?{isAuto ? ' (tự động)' : ''}
+                        </FormLabel>
+                        <FormControl>
+                          <Switch
+                            checked={effective}
+                            onCheckedChange={(v) => field.onChange(v)}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    );
+                  }}
                 />
               </div>
 

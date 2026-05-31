@@ -288,9 +288,10 @@ export function IncomeExpenseBatchDetailDialog({
             <Row
               label="Hạch toán KQKD"
               value={
-                batch.business_result_accounting
+                ((batch.vouchers?.[0]?.counts_in_business_result ?? true)
                   ? 'Có hạch toán'
-                  : 'Không hạch toán'
+                  : 'Không hạch toán') +
+                (batch.business_result_accounting == null ? ' (tự động)' : ' (override)')
               }
             />
             {batch.notes && <Row label="Ghi chú" value={batch.notes} />}

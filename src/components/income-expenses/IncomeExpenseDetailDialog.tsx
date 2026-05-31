@@ -343,9 +343,8 @@ export function IncomeExpenseDetailDialog({
             <Row
               label="Hạch toán kết quả kinh doanh"
               value={
-                voucher.business_result_accounting
-                  ? "Có hạch toán"
-                  : "Không hạch toán"
+                (voucher.counts_in_business_result ? "Có hạch toán" : "Không hạch toán") +
+                (voucher.business_result_accounting == null ? " (tự động)" : " (override)")
               }
             />
             {voucher.notes && <Row label="Ghi chú" value={voucher.notes} />}

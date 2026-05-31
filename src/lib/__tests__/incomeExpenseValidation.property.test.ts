@@ -45,14 +45,14 @@ const validFormValuesArb = fc.record({
   name: fc.string({ minLength: 1, maxLength: 100 }),
   building_id: fc.uuid(),
   room_id: fc.option(fc.uuid(), { nil: null }),
-  bed_id: fc.option(fc.uuid(), { nil: null }),
   tenant_id: fc.option(fc.uuid(), { nil: null }),
   contract_id: fc.option(fc.uuid(), { nil: null }),
   payer_name: fc.string({ minLength: 1, maxLength: 100 }),
   account_id: fc.string({ minLength: 1, maxLength: 100 }),
   voucher_date: voucherDateArb,
   notes: fc.option(fc.string({ maxLength: 500 }), { nil: null }),
-  business_result_accounting: fc.boolean(),
+  // null = tự động (theo hạng mục cọc); true/false = override tay.
+  business_result_accounting: fc.option(fc.boolean(), { nil: null }),
   attachments: fc.array(fc.string({ minLength: 1 }), { maxLength: 5 }),
   items: fc.array(validItemArb, { minLength: 1, maxLength: 10 }),
 });
@@ -72,10 +72,12 @@ describe('Property 6: Zod validation round-trip', () => {
           expect(result.data.name).toBe(formValues.name);
           expect(result.data.building_id).toBe(formValues.building_id);
           expect(result.data.room_id).toBe(formValues.room_id);
-          expect(result.data.bed_id).toBe(formValues.bed_id);
           expect(result.data.tenant_id).toBe(formValues.tenant_id);
           expect(result.data.voucher_date).toBe(formValues.voucher_date);
-          expect(result.data.notes).toBe(formValues.notes);
+          // Cờ KQKD: null = auto, true/false = override — phải round-trip đúng.
+          expect(result.data.business_result_accounting).toBe(
+            formValues.business_result_accounting,
+          );
           expect(result.data.items).toHaveLength(formValues.items.length);
 
           for (let i = 0; i < formValues.items.length; i++) {

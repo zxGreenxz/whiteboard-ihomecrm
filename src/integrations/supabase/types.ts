@@ -2379,7 +2379,8 @@ export type Database = {
           approved_by: string | null
           attachments: Json
           building_id: string
-          business_result_accounting: boolean
+          business_result_accounting: boolean | null
+          counts_in_business_result: boolean
           change_account_id: string | null
           change_amount: number
           code: string | null
@@ -2422,7 +2423,8 @@ export type Database = {
           approved_by?: string | null
           attachments?: Json
           building_id: string
-          business_result_accounting?: boolean
+          business_result_accounting?: boolean | null
+          counts_in_business_result?: boolean
           change_account_id?: string | null
           change_amount?: number
           code?: string | null
@@ -2465,7 +2467,8 @@ export type Database = {
           approved_by?: string | null
           attachments?: Json
           building_id?: string
-          business_result_accounting?: boolean
+          business_result_accounting?: boolean | null
+          counts_in_business_result?: boolean
           change_account_id?: string | null
           change_amount?: number
           code?: string | null
@@ -6087,7 +6090,8 @@ export type Database = {
           approved_by: string | null
           attachments: Json
           building_id: string
-          business_result_accounting: boolean
+          business_result_accounting: boolean | null
+          counts_in_business_result: boolean
           change_account_id: string | null
           change_amount: number
           code: string | null
