@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -35,6 +36,8 @@ import {
   Eye,
   QrCode,
   Phone,
+  Copy,
+  Loader2,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { ContractWithRelations } from '@/types/contract';
@@ -43,6 +46,8 @@ import {
   CONTRACT_STATUS_CONFIG,
 } from '@/types/contract';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { copyContractQrToClipboard } from '@/lib/contractQrImage';
+import { toast } from '@/hooks/use-toast';
 
 interface ContractListTableProps {
   contracts: ContractWithRelations[];
@@ -136,6 +141,41 @@ export default function ContractListTable({
 }: ContractListTableProps) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const { canManageBuilding } = useMyBuildingScope();
+  const [copyingId, setCopyingId] = useState<string | null>(null);
+
+  // Click ô "Vị trí" → copy ảnh QR (QR + phòng/toà) vào clipboard.
+  const handleCopyLocationQr = async (contract: ContractWithRelations) => {
+    if (copyingId) return;
+    if (getActionButtonStates(contract).qrDisabled || !contract.public_code) {
+      toast({
+        title: 'QR không khả dụng',
+        description: 'Hợp đồng đã thanh lý hoặc còn nháp.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setCopyingId(contract.id);
+    try {
+      await copyContractQrToClipboard({
+        publicCode: contract.public_code,
+        roomName: contract.room?.name,
+        buildingName: contract.room?.building?.name,
+      });
+      const loc = getLocationText(contract);
+      toast({
+        title: 'Đã copy ảnh QR',
+        description: [loc.buildingCode, loc.roomName].filter(Boolean).join(' · '),
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Không copy được ảnh QR',
+        description: e?.message || 'Lỗi không xác định',
+        variant: 'destructive',
+      });
+    } finally {
+      setCopyingId(null);
+    }
+  };
 
   const allSelected =
     contracts.length > 0 && contracts.every((c) => selectedIds.includes(c.id));
@@ -224,13 +264,25 @@ export default function ContractListTable({
                       </span>
                     </TableCell>
                     <TableCell className="text-sm">
-                      <Link
-                        to={`/contracts/${contract.id}`}
-                        className="block hover:underline"
+                      <button
+                        type="button"
+                        onClick={() => handleCopyLocationQr(contract)}
+                        disabled={copyingId === contract.id}
+                        title="Bấm để copy ảnh QR phòng này"
+                        className="group -mx-1 block w-full rounded px-1 py-0.5 text-left hover:bg-muted/60 disabled:opacity-60"
                       >
-                        <div className="font-medium">{getLocationText(contract).buildingCode}</div>
-                        <div className="text-muted-foreground text-xs">{getLocationText(contract).roomName}</div>
-                      </Link>
+                        <div className="flex items-center gap-1 font-medium">
+                          <span>{getLocationText(contract).buildingCode}</span>
+                          {copyingId === contract.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Copy className="h-3 w-3 text-muted-foreground/50 transition-colors group-hover:text-purple-500" />
+                          )}
+                        </div>
+                        <div className="text-muted-foreground text-xs">
+                          {getLocationText(contract).roomName}
+                        </div>
+                      </button>
                     </TableCell>
                     <TableCell className="text-sm">
                       <Link
