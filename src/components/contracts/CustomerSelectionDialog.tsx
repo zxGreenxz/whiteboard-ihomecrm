@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,21 @@ export function CustomerSelectionDialog({
   const { data: customerData, isLoading } = useCustomers(undefined, undefined);
   const customers = customerData?.data ?? [];
 
+  // Seed checked state + known ids each time the dialog opens. The parent
+  // controls `open` directly (no DialogTrigger), and Radix does NOT fire
+  // onOpenChange for externally-controlled opens — so seeding inside the
+  // onOpenChange handler never runs. Without this, the contract's already
+  // selected customers show up UNCHECKED, and confirming (especially right
+  // after "Tạo mới") drops them. Depend only on `open` so the user's in-dialog
+  // toggles aren't reset on every parent re-render.
+  useEffect(() => {
+    if (!open) return;
+    setCheckedIds(new Set(selectedCustomerIds));
+    setSearchTerm("");
+    knownIdsRef.current = new Set(customers.map((c) => c.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   // Auto-check newly created customers (any id we've never seen before).
   useEffect(() => {
     if (!open) return;
@@ -58,19 +73,6 @@ export function CustomerSelectionDialog({
     }
     for (const c of customers) known.add(c.id);
   }, [customers, open]);
-
-  // Reset checked state when dialog opens
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) {
-        setCheckedIds(new Set(selectedCustomerIds));
-        setSearchTerm("");
-        knownIdsRef.current = new Set(customers.map((c) => c.id));
-      }
-      onOpenChange(nextOpen);
-    },
-    [selectedCustomerIds, onOpenChange, customers]
-  );
 
   // Filter customers by search term (name, phone, id_number)
   const filtered = useMemo(() => {
@@ -110,7 +112,7 @@ export function CustomerSelectionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Chọn khách hàng</DialogTitle>

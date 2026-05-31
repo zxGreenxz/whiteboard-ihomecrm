@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -49,17 +49,17 @@ export function ServiceSelectionDialog({
   // toà). buildingId chỉ dùng để gắn nhãn "toà" cho dịch vụ là mặc định.
   const { data: services = [], isLoading } = useServices();
 
-  // Reset checked state when dialog opens
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) {
-        setCheckedIds(new Set(selectedServiceIds));
-        setSearchTerm("");
-      }
-      onOpenChange(nextOpen);
-    },
-    [selectedServiceIds, onOpenChange]
-  );
+  // Seed checked state each time the dialog opens. The parent controls `open`
+  // directly (no DialogTrigger) and Radix doesn't fire onOpenChange for
+  // externally-controlled opens, so seeding in the handler never runs — the
+  // HĐ's existing services would show UNCHECKED and confirming would drop them.
+  // Depend only on `open` so in-dialog toggles aren't reset on re-render.
+  useEffect(() => {
+    if (!open) return;
+    setCheckedIds(new Set(selectedServiceIds));
+    setSearchTerm("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Filter services by search term (name)
   const filtered = useMemo(() => {
@@ -96,7 +96,7 @@ export function ServiceSelectionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Chọn dịch vụ</DialogTitle>
