@@ -2,7 +2,11 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight, DollarSign } from "lucide-react";
-import { useIncomeExpenses } from "@/hooks/useIncomeExpenses";
+import {
+  useIncomeExpenses,
+  useIncomeExpenseStats,
+  type IncomeExpenseFilters,
+} from "@/hooks/useIncomeExpenses";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import {
@@ -60,31 +64,23 @@ export default function ProfitDistributionReport() {
   const { data: areas = [] } = useAreas();
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
 
-  const { data: result, isLoading } = useIncomeExpenses(
-    {
-      area_id: areaId === "all" ? undefined : areaId,
-      building_id: buildingId === "all" ? undefined : buildingId,
-      room_id: roomId === "all" ? undefined : roomId,
-      type: voucherType === "all" ? undefined : (voucherType as any),
-      start_date: startDate,
-      end_date: endDate,
-      approval_status: "APPROVED" as any,
-    },
-    { page, pageSize }
-  );
+  const filters: IncomeExpenseFilters = {
+    area_id: areaId === "all" ? undefined : areaId,
+    building_id: buildingId === "all" ? undefined : buildingId,
+    room_id: roomId === "all" ? undefined : roomId,
+    type: voucherType === "all" ? undefined : (voucherType as any),
+    start_date: startDate,
+    end_date: endDate,
+    approval_status: "APPROVED",
+  };
+
+  const { data: result, isLoading } = useIncomeExpenses(filters, { page, pageSize });
+  // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter (không phụ thuộc phân trang),
+  // dùng chung hook với trang Thu chi để số liệu nhất quán.
+  const { data: stats } = useIncomeExpenseStats(filters);
 
   const rows = result?.data ?? [];
   const totalCount = result?.totalCount ?? 0;
-
-  const totals = useMemo(() => {
-    const income = rows
-      .filter((r: any) => r.type === "INCOME")
-      .reduce((s: number, r: any) => s + r.total_amount, 0);
-    const expense = rows
-      .filter((r: any) => r.type === "EXPENSE")
-      .reduce((s: number, r: any) => s + r.total_amount, 0);
-    return { income, expense, profit: income - expense };
-  }, [rows]);
 
   const monthOptions = useMemo(() => {
     const out: string[] = [];
@@ -109,9 +105,9 @@ export default function ProfitDistributionReport() {
 
         {/* 3 Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard label="Doanh thu" value={totals.income} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
-          <StatCard label="Chi phí" value={totals.expense} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
-          <StatCard label="Lợi nhuận" value={totals.profit} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
+          <StatCard label="Doanh thu" value={stats?.totalIncome ?? 0} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
+          <StatCard label="Chi phí" value={stats?.totalExpense ?? 0} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
+          <StatCard label="Lợi nhuận" value={stats?.difference ?? 0} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
         </div>
 
         {/* Filters */}
