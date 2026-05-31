@@ -28,6 +28,106 @@ const QR_SIZE = 480;
 /** Font "dễ thương" (rounded) cho nhãn phòng/toà — load ở index.html. */
 const CUTE_FONT = "'Baloo 2', system-ui, sans-serif";
 
+const loadImage = (src: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
+/** Vẽ path hình chữ nhật bo tròn (không dùng ctx.roundRect để tương thích rộng). */
+const roundRectPath = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) => {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+};
+
+/**
+ * Ghép ảnh xuất ra: QR ở trên, dưới là "Phòng <mã>" (pill hồng) + tên toà
+ * nhà (chữ tím), dùng font Baloo 2. Trả về dataURL PNG. Nếu không có nhãn
+ * thì trả về luôn ảnh QR gốc.
+ */
+const composeExportImage = async (
+  qrUrl: string,
+  roomName?: string | null,
+  buildingName?: string | null,
+): Promise<string> => {
+  const hasLabel = !!(roomName || buildingName);
+  if (!hasLabel) return qrUrl;
+
+  const qrImg = await loadImage(qrUrl);
+  const size = QR_SIZE;
+
+  // Đảm bảo font Baloo 2 sẵn sàng trước khi vẽ canvas (nếu bị chặn → fallback).
+  try {
+    const fonts = (document as any).fonts;
+    if (fonts?.load) {
+      await Promise.all([
+        fonts.load("800 40px 'Baloo 2'"),
+        fonts.load("700 30px 'Baloo 2'"),
+      ]);
+    }
+  } catch {
+    /* fallback system-ui */
+  }
+
+  const gapTop = 26;
+  const pillH = roomName ? 60 : 0;
+  const midGap = roomName && buildingName ? 12 : 0;
+  const bldgH = buildingName ? 44 : 0;
+  const bottomPad = 30;
+  const width = size;
+  const height = size + gapTop + pillH + midGap + bldgH + bottomPad;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return qrUrl;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(qrImg, 0, 0, size, size);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let y = size + gapTop;
+
+  if (roomName) {
+    const text = `Phòng ${roomName}`;
+    ctx.font = "800 40px 'Baloo 2', system-ui, sans-serif";
+    const tw = ctx.measureText(text).width;
+    const pillW = Math.min(tw + 56, width - 24);
+    const pillX = (width - pillW) / 2;
+    roundRectPath(ctx, pillX, y, pillW, pillH, pillH / 2);
+    ctx.fillStyle = '#ffe4e6'; // rose-100
+    ctx.fill();
+    ctx.fillStyle = '#e11d48'; // rose-600
+    ctx.fillText(text, width / 2, y + pillH / 2 + 2);
+    y += pillH + midGap;
+  }
+  if (buildingName) {
+    ctx.font = "700 30px 'Baloo 2', system-ui, sans-serif";
+    ctx.fillStyle = '#7c3aed'; // violet-600
+    ctx.fillText(buildingName, width / 2, y + bldgH / 2);
+  }
+
+  return canvas.toDataURL('image/png');
+};
+
 export default function ContractQRDialog({
   open,
   onOpenChange,
@@ -36,7 +136,10 @@ export default function ContractQRDialog({
   buildingName,
   roomName,
 }: ContractQRDialogProps) {
+  // dataUrl: ảnh QR thuần (preview trên màn hình).
+  // imageUrl: ảnh ghép QR + nhãn phòng/toà (dùng khi Copy / Tải xuống).
   const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const publicUrl = `${window.location.origin}/c/${publicCode}`;
@@ -44,16 +147,20 @@ export default function ContractQRDialog({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    QRCode.toDataURL(publicUrl, {
-      width: QR_SIZE,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-      color: { dark: '#000000', light: '#ffffff' },
-    })
-      .then((url) => {
-        if (!cancelled) setDataUrl(url);
-      })
-      .catch((err) => {
+    setImageUrl(null);
+    (async () => {
+      try {
+        const url = await QRCode.toDataURL(publicUrl, {
+          width: QR_SIZE,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+        if (cancelled) return;
+        setDataUrl(url);
+        const composed = await composeExportImage(url, roomName, buildingName);
+        if (!cancelled) setImageUrl(composed);
+      } catch (err: any) {
         if (!cancelled) {
           toast({
             title: 'Lỗi tạo QR',
@@ -61,11 +168,12 @@ export default function ContractQRDialog({
             variant: 'destructive',
           });
         }
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [open, publicUrl]);
+  }, [open, publicUrl, roomName, buildingName]);
 
   const dataUrlToBlob = async (url: string): Promise<Blob> => {
     const res = await fetch(url);
@@ -73,14 +181,14 @@ export default function ContractQRDialog({
   };
 
   const handleCopyImage = async () => {
-    if (!dataUrl) return;
+    if (!imageUrl) return;
     try {
       if (!navigator.clipboard || !window.ClipboardItem) {
         throw new Error(
           'Trình duyệt không hỗ trợ copy ảnh. Vui lòng dùng nút Tải xuống.',
         );
       }
-      const blob = await dataUrlToBlob(dataUrl);
+      const blob = await dataUrlToBlob(imageUrl);
       await navigator.clipboard.write([
         new ClipboardItem({ 'image/png': blob }),
       ]);
@@ -97,10 +205,10 @@ export default function ContractQRDialog({
   };
 
   const handleDownload = () => {
-    if (!dataUrl) return;
+    if (!imageUrl) return;
     const link = document.createElement('a');
     link.download = `QR-${contractLabel.replace(/\s+/g, '_')}.png`;
-    link.href = dataUrl;
+    link.href = imageUrl;
     link.click();
   };
 
@@ -181,7 +289,7 @@ export default function ContractQRDialog({
             onClick={handleCopyImage}
             className="flex-1"
             variant="default"
-            disabled={!dataUrl}
+            disabled={!imageUrl}
           >
             {copied ? (
               <Check className="h-4 w-4 mr-2" />
@@ -194,7 +302,7 @@ export default function ContractQRDialog({
             onClick={handleDownload}
             variant="outline"
             className="flex-1"
-            disabled={!dataUrl}
+            disabled={!imageUrl}
           >
             <Download className="h-4 w-4 mr-2" />
             Tải xuống
