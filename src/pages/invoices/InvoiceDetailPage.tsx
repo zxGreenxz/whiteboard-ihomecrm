@@ -394,6 +394,40 @@ const InvoiceDetailPage = () => {
                       </TableCell>
                     </TableRow>
                   )}
+                  {invoice.discount_amount > 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-right text-gray-600">Giảm trừ</TableCell>
+                      <TableCell className="text-right font-medium text-green-600">
+                        −{formatCurrency(invoice.discount_amount)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {invoice.tax_amount > 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-right text-gray-600">Thuế</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(invoice.tax_amount)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {invoice.previous_debt > 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-right align-top">
+                        <div className="font-medium text-orange-700">Nợ cũ kỳ trước</div>
+                        {invoice.previous_debt_sources?.length > 0 && (
+                          <div className="text-xs font-normal text-gray-500">
+                            {invoice.previous_debt_sources
+                              .map((s) => s.label)
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-orange-700">
+                        {formatCurrency(invoice.previous_debt)}
+                      </TableCell>
+                    </TableRow>
+                  )}
                   <TableRow className="bg-gray-50 font-bold">
                     <TableCell colSpan={3} className="text-right">Tổng cộng</TableCell>
                     <TableCell className="text-right">{formatCurrency(invoice.total_amount || 0)}</TableCell>

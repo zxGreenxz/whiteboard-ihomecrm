@@ -169,6 +169,16 @@ export default function PublicContractInvoicePage() {
   const outstanding =
     (invoice.total_amount || 0) - (invoice.paid_amount || 0);
 
+  // Các dòng điều chỉnh hiện giữa "khoản thu" và "Tổng cộng" để tổng cộng
+  // luôn cộng khớp (đặc biệt là "Nợ cũ kỳ trước").
+  const adjustments: { label: string; amount: number; sign: string; cls: string }[] = [];
+  if (invoice.discount_amount && invoice.discount_amount > 0)
+    adjustments.push({ label: 'Giảm trừ', amount: invoice.discount_amount, sign: '−', cls: 'text-green-600' });
+  if (invoice.tax_amount && invoice.tax_amount > 0)
+    adjustments.push({ label: 'Thuế', amount: invoice.tax_amount, sign: '', cls: '' });
+  if (invoice.previous_debt && invoice.previous_debt > 0)
+    adjustments.push({ label: 'Nợ cũ kỳ trước', amount: invoice.previous_debt, sign: '', cls: 'text-orange-700' });
+
   return (
     <div className="min-h-screen bg-gray-50 py-4 px-3 sm:py-8 sm:px-4">
       <div className="max-w-2xl mx-auto space-y-4">
@@ -284,6 +294,26 @@ export default function PublicContractInvoicePage() {
                   </div>
                 );
               })}
+              {adjustments.map((adj) => (
+                <div key={adj.label} className="px-4 py-3 text-sm">
+                  {/* Mobile */}
+                  <div className="sm:hidden flex items-center justify-between gap-3">
+                    <div className={`font-medium ${adj.cls}`}>{adj.label}</div>
+                    <div className={`text-right font-semibold tabular-nums whitespace-nowrap ${adj.cls}`}>
+                      {adj.sign}
+                      {formatCurrency(adj.amount)}
+                    </div>
+                  </div>
+                  {/* Desktop */}
+                  <div className="hidden sm:grid grid-cols-12 gap-2 items-start">
+                    <div className={`col-span-9 font-medium ${adj.cls}`}>{adj.label}</div>
+                    <div className={`col-span-3 text-right font-medium tabular-nums ${adj.cls}`}>
+                      {adj.sign}
+                      {formatCurrency(adj.amount)}
+                    </div>
+                  </div>
+                </div>
+              ))}
               <div className="px-4 py-3 bg-gray-50 font-bold text-sm">
                 {/* Mobile: label + amount canh 2 đầu */}
                 <div className="sm:hidden flex items-center justify-between gap-3">
