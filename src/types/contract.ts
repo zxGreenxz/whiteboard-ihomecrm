@@ -156,6 +156,16 @@ export interface ContractFormData {
   services: { service_id: string; unit_price: number; initial_reading?: number }[];
 }
 
+// Trạng thái hợp đồng "đang hiệu lực" (đang ở / còn tính tiền / còn thao tác được).
+// Gia hạn (renew_contract) chuyển ACTIVE → EXTENDED, nên EXTENDED cũng là đang hiệu lực.
+// Dùng helper này thay cho mọi chỗ check `status === 'ACTIVE'` mang nghĩa "còn hiệu lực".
+export const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ['ACTIVE', 'EXTENDED'];
+
+/** True nếu hợp đồng đang hiệu lực (ACTIVE hoặc EXTENDED — đã gia hạn). */
+export function isContractInEffect(status?: string | null): boolean {
+  return status === 'ACTIVE' || status === 'EXTENDED';
+}
+
 // Helper: compute display status
 export function getContractDisplayStatus(contract: Contract): ContractDisplayStatus {
   if (contract.status === 'TERMINATED') return 'TERMINATED';

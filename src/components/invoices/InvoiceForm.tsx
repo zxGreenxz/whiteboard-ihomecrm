@@ -26,6 +26,7 @@ import { invoiceFormSchema } from '@/lib/invoiceValidation';
 import InvoiceItemsTable from './InvoiceItemsTable';
 import InvoiceSummarySection from './InvoiceSummarySection';
 import type { InvoiceFormData, InvoiceFormItem } from '@/types/invoice';
+import { isContractInEffect } from '@/types/contract';
 
 /** Fetch contract with its services for auto-populating invoice items */
 const useContractWithServices = (contractId?: string) => {
@@ -118,7 +119,7 @@ const InvoiceForm = ({
   const { data: rooms } = useRooms(buildingId || undefined);
   const { data: contractsData } = useContracts();
   const contracts = (contractsData ?? []).filter((c: any) =>
-    c.status === 'ACTIVE' && (!roomId || c.room_id === roomId),
+    isContractInEffect(c.status) && (!roomId || c.room_id === roomId),
   );
   const { data: templates } = useDocumentTemplates('INVOICE');
   const { data: contractDetail } = useContractWithServices(contractId || undefined);

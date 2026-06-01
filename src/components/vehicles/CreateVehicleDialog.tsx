@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateVehicle } from "@/hooks/useVehicles";
 import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useContractsLegacy } from "@/hooks/useContracts";
+import { isContractInEffect } from "@/types/contract";
 
 const vehicleSchema = z.object({
   tenant_id: z.string().min(1, "Phải chọn khách hàng"),
@@ -53,7 +54,7 @@ export function CreateVehicleDialog({ open, onOpenChange }: CreateVehicleDialogP
 
   const selectedTenantId = form.watch("tenant_id");
   const tenantContracts = contracts.filter(
-    (c) => c.tenant_id === selectedTenantId && c.status === "ACTIVE"
+    (c) => c.tenant_id === selectedTenantId && isContractInEffect(c.status)
   );
 
   const onSubmit = async (data: VehicleFormValues) => {

@@ -44,7 +44,7 @@ export async function checkContractExpiryReminders(userId: string): Promise<void
       room:rooms(name)
     `)
     .eq('user_id', userId)
-    .eq('status', 'ACTIVE');
+    .in('status', ['ACTIVE', 'EXTENDED']);
 
   if (!contracts) return;
 

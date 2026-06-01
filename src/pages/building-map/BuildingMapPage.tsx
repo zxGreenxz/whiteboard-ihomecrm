@@ -79,7 +79,7 @@ const BuildingMapPage = () => {
            )`
         )
         .is("deleted_at", null)
-        .eq("contracts.status", "ACTIVE") as any;
+        .in("contracts.status", ["ACTIVE", "EXTENDED"]) as any;
 
       if (selectedBuildingId) {
         query = query.eq("building_id", selectedBuildingId);

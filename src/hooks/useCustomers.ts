@@ -8,6 +8,7 @@ import type {
   CustomerFormData,
 } from "@/types/customer";
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
+import { isContractInEffect } from "@/types/contract";
 
 // Resolve building/room/bed filter → customer IDs.
 // contracts has no customer_id (link is via contract_customers) and no
@@ -132,7 +133,7 @@ export const useCustomers = (
             ) as any)
             .in('customer_id', slice.split(','));
           for (const l of (links || []) as any[]) {
-            if (!l.contract || l.contract.status !== 'ACTIVE') continue;
+            if (!l.contract || !isContractInEffect(l.contract.status)) continue;
             const bid = l.contract.room?.building?.id || null;
             const bn = l.contract.room?.building?.name || '';
             const rn = l.contract.room?.name || '';

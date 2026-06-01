@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { useCreateInvoice, useExcessAmount } from '@/hooks/useInvoices';
 import type { InvoiceFormData, PreviousDebtSource } from '@/types/invoice';
+import { isContractInEffect } from '@/types/contract';
 import { useContracts } from '@/hooks/useContracts';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -107,7 +108,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
   const createMutation = useCreateInvoice();
   const { data: contractsData } = useContracts();
-  const allActiveContracts = (contractsData ?? []).filter((c: any) => c.status === 'ACTIVE');
+  const allActiveContracts = (contractsData ?? []).filter((c: any) => isContractInEffect(c.status));
   const contracts = allActiveContracts.filter((c: any) => {
     if (filterBuildingId && c.room?.building_id !== filterBuildingId) return false;
     if (filterRoomId && c.room_id !== filterRoomId) return false;

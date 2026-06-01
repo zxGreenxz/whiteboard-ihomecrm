@@ -157,7 +157,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
              service:services!contract_services_service_id_fkey (name, pricing_type)
            )`
         )
-        .eq('status', 'ACTIVE')
+        .in('status', ['ACTIVE', 'EXTENDED'])
         .is('deleted_at', null);
       if (e1) throw e1;
       const buildingContractsRaw = (contracts || []).filter(

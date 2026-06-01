@@ -314,7 +314,7 @@ export const useCreateContract = () => {
           .from("contracts")
           .select("id")
           .eq("room_id", contractData.room_id)
-          .eq("status", "ACTIVE")
+          .in("status", ["ACTIVE", "EXTENDED"])
           .is("deleted_at", null)
           .limit(1);
         if (activeErr) throw activeErr;
@@ -825,7 +825,7 @@ const LEGACY_CONTRACT_SELECT = `
 
 /** @deprecated Use useContracts() instead */
 export const useContractsLegacy = (filters?: {
-  status?: string;
+  status?: string | string[];
   tenant_id?: string;
   room_id?: string;
 }) => {
@@ -842,7 +842,11 @@ export const useContractsLegacy = (filters?: {
         .select(LEGACY_CONTRACT_SELECT, { count: "exact" })
         .order("created_at", { ascending: false });
 
-      if (filters?.status) query = query.eq("status", filters.status as any);
+      if (filters?.status) {
+        query = Array.isArray(filters.status)
+          ? query.in("status", filters.status as any)
+          : query.eq("status", filters.status as any);
+      }
       if (filters?.tenant_id) query = query.eq("tenant_id", filters.tenant_id);
       if (filters?.room_id) query = query.eq("room_id", filters.room_id);
 

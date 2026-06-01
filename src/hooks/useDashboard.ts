@@ -84,7 +84,7 @@ export const useDashboardStats = (buildingId?: string | null) => {
       let occupiedRoomsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
-        .eq("status", "ACTIVE")
+        .in("status", ["ACTIVE", "EXTENDED"])
         .not("room_id", "is", null);
 
       if (buildingIds.length > 0) {
@@ -215,7 +215,7 @@ export const useOccupancyChart = (buildingId?: string | null) => {
       let contractsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
-        .eq("status", "ACTIVE")
+        .in("status", ["ACTIVE", "EXTENDED"])
         .not("room_id", "is", null);
 
       if (buildingIds.length > 0) {
@@ -299,7 +299,7 @@ export const useAlerts = (buildingId?: string | null) => {
              customer:customers!contract_customers_customer_id_fkey(full_name)
            )`
         )
-        .eq("status", "ACTIVE")
+        .in("status", ["ACTIVE", "EXTENDED"])
         .lte("end_date", thirtyDaysFromNow.toISOString())
         .gte("end_date", new Date().toISOString())
         .order("end_date", { ascending: true })

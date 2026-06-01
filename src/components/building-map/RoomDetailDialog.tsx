@@ -52,7 +52,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
           )
         `)
         .eq("room_id", roomId)
-        .eq("status", "ACTIVE")
+        .in("status", ["ACTIVE", "EXTENDED"])
         .single();
 
       return data;

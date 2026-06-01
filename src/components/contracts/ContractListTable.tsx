@@ -44,6 +44,7 @@ import type { ContractWithRelations } from '@/types/contract';
 import {
   getContractDisplayStatus,
   CONTRACT_STATUS_CONFIG,
+  isContractInEffect,
 } from '@/types/contract';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { copyContractQrToClipboard } from '@/lib/contractQrImage';
@@ -105,14 +106,16 @@ function getLocationText(contract: ContractWithRelations): { buildingCode: strin
 export function getActionButtonStates(contract: ContractWithRelations) {
   const displayStatus = getContractDisplayStatus(contract);
   const dbStatus = contract.status;
+  // Hợp đồng đã gia hạn (EXTENDED) vẫn đang hiệu lực → cho thao tác như ACTIVE.
+  const inEffect = isContractInEffect(dbStatus);
 
   return {
     editDisabled: dbStatus === 'TERMINATED',
-    renewDisabled: !(dbStatus === 'ACTIVE' || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
-    transferRoomDisabled: dbStatus !== 'ACTIVE',
-    moveOutDisabled: dbStatus !== 'ACTIVE',
-    transferContractDisabled: dbStatus !== 'ACTIVE',
-    terminateDisabled: !(dbStatus === 'ACTIVE' || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
+    renewDisabled: !(inEffect || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
+    transferRoomDisabled: !inEffect,
+    moveOutDisabled: !inEffect,
+    transferContractDisabled: !inEffect,
+    terminateDisabled: !(inEffect || displayStatus === 'EXPIRED' || displayStatus === 'EXPIRING'),
     deleteDisabled: !(dbStatus === 'DRAFT'),
     qrDisabled: dbStatus === 'TERMINATED' || dbStatus === 'DRAFT',
   };

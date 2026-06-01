@@ -82,12 +82,15 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
  * that match the following rules based on contract.status (dbStatus) and
  * getContractDisplayStatus (displayStatus):
  *
+ * A renewed contract has dbStatus === 'EXTENDED' but is still in effect, so it
+ * must allow the same management actions as 'ACTIVE'.
+ *
  * - editDisabled: true only when dbStatus === 'TERMINATED'
- * - renewDisabled: true unless dbStatus === 'ACTIVE' OR displayStatus is 'EXPIRED'/'EXPIRING'
- * - transferRoomDisabled: true unless dbStatus === 'ACTIVE'
- * - moveOutDisabled: true unless dbStatus === 'ACTIVE'
- * - transferContractDisabled: true unless dbStatus === 'ACTIVE'
- * - terminateDisabled: true unless dbStatus === 'ACTIVE' OR displayStatus is 'EXPIRED'/'EXPIRING'
+ * - renewDisabled: true unless dbStatus is ACTIVE/EXTENDED OR displayStatus is 'EXPIRED'/'EXPIRING'
+ * - transferRoomDisabled: true unless dbStatus is ACTIVE/EXTENDED
+ * - moveOutDisabled: true unless dbStatus is ACTIVE/EXTENDED
+ * - transferContractDisabled: true unless dbStatus is ACTIVE/EXTENDED
+ * - terminateDisabled: true unless dbStatus is ACTIVE/EXTENDED OR displayStatus is 'EXPIRED'/'EXPIRING'
  * - deleteDisabled: true unless dbStatus === 'DRAFT'
  *
  * **Validates: Requirements 3.4, 4.4, 5.5, 6.4, 7.4, 10.4**
@@ -107,13 +110,16 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
     );
   });
 
-  it('renewDisabled is false only when dbStatus is ACTIVE or displayStatus is EXPIRED/EXPIRING', () => {
+  // Renewed contracts (EXTENDED) are still in effect → treated like ACTIVE.
+  const inEffect = (s: ContractStatus) => s === 'ACTIVE' || s === 'EXTENDED';
+
+  it('renewDisabled is false only when dbStatus is ACTIVE/EXTENDED or displayStatus is EXPIRED/EXPIRING', () => {
     fc.assert(
       fc.property(contractWithRelationsArb(), (contract) => {
         const states = getActionButtonStates(contract);
         const displayStatus = getContractDisplayStatus(contract);
         const shouldBeEnabled =
-          contract.status === 'ACTIVE' ||
+          inEffect(contract.status) ||
           displayStatus === 'EXPIRED' ||
           displayStatus === 'EXPIRING';
 
@@ -123,43 +129,43 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
     );
   });
 
-  it('transferRoomDisabled is false only when dbStatus is ACTIVE', () => {
+  it('transferRoomDisabled is false only when dbStatus is ACTIVE/EXTENDED', () => {
     fc.assert(
       fc.property(contractWithRelationsArb(), (contract) => {
         const states = getActionButtonStates(contract);
-        expect(states.transferRoomDisabled).toBe(contract.status !== 'ACTIVE');
+        expect(states.transferRoomDisabled).toBe(!inEffect(contract.status));
       }),
       { numRuns: 100 },
     );
   });
 
-  it('moveOutDisabled is false only when dbStatus is ACTIVE', () => {
+  it('moveOutDisabled is false only when dbStatus is ACTIVE/EXTENDED', () => {
     fc.assert(
       fc.property(contractWithRelationsArb(), (contract) => {
         const states = getActionButtonStates(contract);
-        expect(states.moveOutDisabled).toBe(contract.status !== 'ACTIVE');
+        expect(states.moveOutDisabled).toBe(!inEffect(contract.status));
       }),
       { numRuns: 100 },
     );
   });
 
-  it('transferContractDisabled is false only when dbStatus is ACTIVE', () => {
+  it('transferContractDisabled is false only when dbStatus is ACTIVE/EXTENDED', () => {
     fc.assert(
       fc.property(contractWithRelationsArb(), (contract) => {
         const states = getActionButtonStates(contract);
-        expect(states.transferContractDisabled).toBe(contract.status !== 'ACTIVE');
+        expect(states.transferContractDisabled).toBe(!inEffect(contract.status));
       }),
       { numRuns: 100 },
     );
   });
 
-  it('terminateDisabled is false only when dbStatus is ACTIVE or displayStatus is EXPIRED/EXPIRING', () => {
+  it('terminateDisabled is false only when dbStatus is ACTIVE/EXTENDED or displayStatus is EXPIRED/EXPIRING', () => {
     fc.assert(
       fc.property(contractWithRelationsArb(), (contract) => {
         const states = getActionButtonStates(contract);
         const displayStatus = getContractDisplayStatus(contract);
         const shouldBeEnabled =
-          contract.status === 'ACTIVE' ||
+          inEffect(contract.status) ||
           displayStatus === 'EXPIRED' ||
           displayStatus === 'EXPIRING';
 

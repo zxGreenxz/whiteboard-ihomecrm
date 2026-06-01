@@ -39,6 +39,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isContractInEffect } from '@/types/contract';
 
 // Vehicle type
 interface Vehicle {
@@ -248,7 +249,7 @@ const TenantDetailPage = () => {
   const outstandingAmount = totalInvoiced - totalPaid;
 
   // Count contracts by status
-  const activeContracts = contracts?.filter(c => c.status === 'ACTIVE').length || 0;
+  const activeContracts = contracts?.filter(c => isContractInEffect(c.status)).length || 0;
   const totalContracts = contracts?.length || 0;
 
   return (

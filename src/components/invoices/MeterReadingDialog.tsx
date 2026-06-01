@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { useRecordMeterReading, useMeterReadings } from '@/hooks/useInvoices';
 import { useContracts } from '@/hooks/useContracts';
+import { isContractInEffect } from '@/types/contract';
 import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import { Gauge, Zap, Droplet } from 'lucide-react';
 
@@ -51,7 +52,7 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
 
   const recordMutation = useRecordMeterReading();
   const { data: contractsData } = useContracts();
-  const contracts = (contractsData ?? []).filter((c: any) => c.status === 'ACTIVE');
+  const contracts = (contractsData ?? []).filter((c: any) => isContractInEffect(c.status));
   const { data: previousReadings } = useMeterReadings(selectedContractId);
 
   const {

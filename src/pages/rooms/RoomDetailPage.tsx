@@ -29,6 +29,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { EditRoomDialog } from '@/components/rooms/EditRoomDialog';
+import { isContractInEffect } from '@/types/contract';
 
 type Contract = {
   id: string;
@@ -129,7 +130,7 @@ const RoomDetailPage = () => {
             tenant:tenants(id, full_name, phone, email, status)
           `)
           .eq('room_id', id)
-          .eq('status', 'ACTIVE')
+          .in('status', ['ACTIVE', 'EXTENDED'])
           .is('deleted_at', null);
 
         if (error) throw error;
@@ -328,7 +329,7 @@ const RoomDetailPage = () => {
   };
 
   // Get active contract
-  const activeContract = contracts.find(c => c.status === 'ACTIVE');
+  const activeContract = contracts.find(c => isContractInEffect(c.status));
 
   return (
     <MainLayout

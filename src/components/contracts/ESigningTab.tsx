@@ -77,7 +77,7 @@ const getStatusBadge = (status: ESigningStatus) => {
 };
 
 const ESigningTab = () => {
-  const { data: contracts, isLoading } = useContractsLegacy({ status: 'ACTIVE' });
+  const { data: contracts, isLoading } = useContractsLegacy({ status: ['ACTIVE', 'EXTENDED'] });
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
   const [recipientEmail, setRecipientEmail] = useState('');

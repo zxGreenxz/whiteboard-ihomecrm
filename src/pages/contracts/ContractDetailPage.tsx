@@ -49,6 +49,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useContract, ContractWithRelations } from '@/hooks/useContracts';
+import { isContractInEffect } from '@/types/contract';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -446,7 +447,7 @@ const ContractDetailPage = () => {
 
   const isExpiringSoon = daysRemaining > 0 && daysRemaining <= 30;
   const isExpired = daysRemaining < 0;
-  const isActive = contract.status === 'ACTIVE';
+  const isActive = isContractInEffect(contract.status);
 
   // Calculate total paid and outstanding from invoices
   const totalInvoiced = invoices?.reduce((sum, inv) => sum + (inv.total_amount || 0), 0) || 0;

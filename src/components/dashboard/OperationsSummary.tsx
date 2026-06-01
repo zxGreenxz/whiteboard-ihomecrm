@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
 import { useDeposits } from "@/hooks/useDeposits";
 import { useContracts } from "@/hooks/useContracts";
+import { isContractInEffect } from "@/types/contract";
 import { differenceInDays } from "date-fns";
 
 interface MiniStat {
@@ -112,13 +113,13 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
     : "0%";
 
   // Contracts
-  const activeContracts = contracts.filter((c: any) => c.status === "ACTIVE").length;
+  const activeContracts = contracts.filter((c: any) => isContractInEffect(c.status)).length;
   const newThisMonth = contracts.filter((c: any) => {
     const start = c.start_date ? new Date(c.start_date) : null;
     return start && start >= startOfMonth;
   }).length;
   const expiringSoon = contracts.filter((c: any) => {
-    if (c.status !== "ACTIVE" || !c.end_date) return false;
+    if (!isContractInEffect(c.status) || !c.end_date) return false;
     const days = differenceInDays(new Date(c.end_date), now);
     return days >= 0 && days <= 30;
   }).length;
