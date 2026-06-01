@@ -32,7 +32,6 @@ import {
   useCreateService,
   FEE_TYPE_LABELS,
   PRICING_TYPE_LABELS,
-  TAX_RATE_OPTIONS,
   UNIT_OPTIONS,
   useServiceQuotas,
 } from "@/hooks/useServices";
@@ -45,7 +44,6 @@ const serviceSchema = z.object({
   unit_price: z.string().min(1, "Đơn giá là bắt buộc"),
   unit: z.string().optional(),
   quota_id: z.string().optional(),
-  tax_rate: z.string().optional(),
   building_ids: z.array(z.string()).min(1, "Chọn ít nhất một tòa nhà"),
   description: z.string().optional(),
 });
@@ -71,7 +69,6 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
       unit_price: "",
       unit: "",
       quota_id: "",
-      tax_rate: "0",
       building_ids: [],
       description: "",
     },
@@ -86,7 +83,6 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
         unit_price: parseFloat(data.unit_price),
         unit: data.unit || null,
         quota_id: data.quota_id || null,
-        tax_rate: data.tax_rate ? parseFloat(data.tax_rate) : 0,
         type: "FIXED", // backward compat default
         description: data.description || null,
         building_ids: data.building_ids,
@@ -234,30 +230,6 @@ export function CreateServiceDialog({ open, onOpenChange }: CreateServiceDialogP
                         <SelectItem value="none">Không chọn</SelectItem>
                         {(quotas || []).map((q) => (
                           <SelectItem key={q.id} value={q.id}>{q.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Thuế suất */}
-              <FormField
-                control={form.control}
-                name="tax_rate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Thuế suất</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || "0"}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn thuế suất" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {TAX_RATE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

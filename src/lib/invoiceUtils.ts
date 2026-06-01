@@ -49,17 +49,15 @@ export async function generateInvoiceNumber(userId: string): Promise<string> {
 // =============================================
 
 /**
- * Calculate all invoice totals from line items, discount, tax, and prepaid.
+ * Calculate all invoice totals from line items, discount, and prepaid.
  *
  * - subtotal = Σ(unit_price × quantity × coefficient)
- * - tax_amount = subtotal × taxPercent / 100
- * - total_amount = subtotal - discount + tax_amount
+ * - total_amount = subtotal - discount
  * - remaining = total_amount - prepaid
  */
 export function calculateInvoiceTotals(
   items: TotalsItem[],
   discount: number,
-  taxPercent: number,
   prepaid: number,
 ): InvoiceTotals {
   const subtotal = items.reduce(
@@ -67,15 +65,12 @@ export function calculateInvoiceTotals(
     0,
   );
 
-  const tax_amount = subtotal * taxPercent / 100;
-  const total_amount = subtotal - discount + tax_amount;
+  const total_amount = subtotal - discount;
   const remaining = total_amount - prepaid;
 
   return {
     subtotal,
     discount_amount: discount,
-    tax_percent: taxPercent,
-    tax_amount,
     total_amount,
     prepaid_amount: prepaid,
     remaining,

@@ -52,7 +52,6 @@ export interface Customer {
   id_images: Record<string, string> | null; // { front, back, passport }
   // Organization fields
   company_name: string | null;
-  tax_code: string | null;
   representative: string | null;
   business_registration_url: string | null;
   headquarters_address: string | null;
@@ -121,7 +120,6 @@ export interface CustomerFormData {
   id_images?: Record<string, string>;
   // Organization
   company_name?: string;
-  tax_code?: string;
   representative?: string;
   business_registration_url?: string;
   headquarters_address?: string;

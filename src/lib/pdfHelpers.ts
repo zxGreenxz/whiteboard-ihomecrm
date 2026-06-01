@@ -107,7 +107,6 @@ export function generateInvoiceHTML(invoice: {
   subtotal: number;
   previous_debt: number;
   discount_amount: number;
-  tax_amount: number;
   total_amount: number;
   paid_amount: number;
   company?: {
@@ -213,12 +212,6 @@ export function generateInvoiceHTML(invoice: {
       <tr>
         <td colspan="4" class="text-right">Giảm giá:</td>
         <td class="text-right">-${formatCurrency(invoice.discount_amount)}</td>
-      </tr>
-      ` : ''}
-      ${invoice.tax_amount > 0 ? `
-      <tr>
-        <td colspan="4" class="text-right">Thuế VAT:</td>
-        <td class="text-right">${formatCurrency(invoice.tax_amount)}</td>
       </tr>
       ` : ''}
       <tr class="total-row">

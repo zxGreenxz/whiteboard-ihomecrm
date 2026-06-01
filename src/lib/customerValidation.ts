@@ -62,7 +62,6 @@ export const customerOrganizationSchema = z.object({
   full_name: z.string().optional().default(''),
   phone: z.string().regex(phoneRegex, 'Số điện thoại phải có 10-11 chữ số'),
   email: z.string().email('Email không hợp lệ').optional().or(z.literal('')),
-  tax_code: z.string().optional(),
   representative: z.string().optional(),
   business_registration_url: z.string().optional(),
   headquarters_address: z.string().optional(),

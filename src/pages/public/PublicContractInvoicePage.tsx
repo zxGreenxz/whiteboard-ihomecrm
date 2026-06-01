@@ -36,7 +36,6 @@ type PublicInvoice = {
   status: string;
   subtotal: number | null;
   discount_amount: number | null;
-  tax_amount: number | null;
   total_amount: number | null;
   paid_amount: number | null;
   remaining_amount: number | null;
@@ -174,8 +173,6 @@ export default function PublicContractInvoicePage() {
   const adjustments: { label: string; amount: number; sign: string; cls: string }[] = [];
   if (invoice.discount_amount && invoice.discount_amount > 0)
     adjustments.push({ label: 'Giảm trừ', amount: invoice.discount_amount, sign: '−', cls: 'text-green-600' });
-  if (invoice.tax_amount && invoice.tax_amount > 0)
-    adjustments.push({ label: 'Thuế', amount: invoice.tax_amount, sign: '', cls: '' });
   if (invoice.previous_debt && invoice.previous_debt > 0)
     adjustments.push({ label: 'Nợ cũ kỳ trước', amount: invoice.previous_debt, sign: '', cls: 'text-orange-700' });
 

@@ -7,10 +7,9 @@ import { calculateInvoiceTotals, type TotalsItem } from '../invoiceUtils';
  * Property 1: Tính toán tổng hoá đơn chính xác
  *
  * Với bất kỳ danh sách dòng dịch vụ (items), giảm giá (discount),
- * phần trăm thuế (tax_percent), và tiền trả trước (prepaid), hệ thống phải tính:
+ * và tiền trả trước (prepaid), hệ thống phải tính:
  * - subtotal = Σ(unit_price × quantity × coefficient)
- * - tax_amount = subtotal × tax_percent / 100
- * - total_amount = subtotal - discount + tax_amount
+ * - total_amount = subtotal - discount
  * - remaining = total_amount - prepaid
  *
  * **Validates: Requirements 1.10**
@@ -24,13 +23,12 @@ describe('Feature: invoice-reimplementation, Property 1: Tính toán tổng hoá
 
   const itemsArb = fc.array(itemArb, { minLength: 0, maxLength: 20 });
   const discountArb = fc.double({ min: 0, max: 100_000_000, noNaN: true, noDefaultInfinity: true });
-  const taxPercentArb = fc.double({ min: 0, max: 100, noNaN: true, noDefaultInfinity: true });
   const prepaidArb = fc.double({ min: 0, max: 100_000_000, noNaN: true, noDefaultInfinity: true });
 
   it('subtotal should equal sum of unit_price × quantity × coefficient for all items', () => {
     fc.assert(
-      fc.property(itemsArb, discountArb, taxPercentArb, prepaidArb, (items, discount, taxPercent, prepaid) => {
-        const result = calculateInvoiceTotals(items, discount, taxPercent, prepaid);
+      fc.property(itemsArb, discountArb, prepaidArb, (items, discount, prepaid) => {
+        const result = calculateInvoiceTotals(items, discount, prepaid);
 
         const expectedSubtotal = items.reduce(
           (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,
@@ -43,25 +41,12 @@ describe('Feature: invoice-reimplementation, Property 1: Tính toán tổng hoá
     );
   });
 
-  it('tax_amount should equal subtotal × tax_percent / 100', () => {
+  it('total_amount should equal subtotal - discount', () => {
     fc.assert(
-      fc.property(itemsArb, discountArb, taxPercentArb, prepaidArb, (items, discount, taxPercent, prepaid) => {
-        const result = calculateInvoiceTotals(items, discount, taxPercent, prepaid);
+      fc.property(itemsArb, discountArb, prepaidArb, (items, discount, prepaid) => {
+        const result = calculateInvoiceTotals(items, discount, prepaid);
 
-        const expectedTaxAmount = result.subtotal * taxPercent / 100;
-
-        expect(result.tax_amount).toBe(expectedTaxAmount);
-      }),
-      { numRuns: 100 },
-    );
-  });
-
-  it('total_amount should equal subtotal - discount + tax_amount', () => {
-    fc.assert(
-      fc.property(itemsArb, discountArb, taxPercentArb, prepaidArb, (items, discount, taxPercent, prepaid) => {
-        const result = calculateInvoiceTotals(items, discount, taxPercent, prepaid);
-
-        const expectedTotal = result.subtotal - discount + result.tax_amount;
+        const expectedTotal = result.subtotal - discount;
 
         expect(result.total_amount).toBe(expectedTotal);
       }),
@@ -71,8 +56,8 @@ describe('Feature: invoice-reimplementation, Property 1: Tính toán tổng hoá
 
   it('remaining should equal total_amount - prepaid', () => {
     fc.assert(
-      fc.property(itemsArb, discountArb, taxPercentArb, prepaidArb, (items, discount, taxPercent, prepaid) => {
-        const result = calculateInvoiceTotals(items, discount, taxPercent, prepaid);
+      fc.property(itemsArb, discountArb, prepaidArb, (items, discount, prepaid) => {
+        const result = calculateInvoiceTotals(items, discount, prepaid);
 
         const expectedRemaining = result.total_amount - prepaid;
 
@@ -82,13 +67,12 @@ describe('Feature: invoice-reimplementation, Property 1: Tính toán tổng hoá
     );
   });
 
-  it('discount_amount, tax_percent, and prepaid_amount should be stored correctly', () => {
+  it('discount_amount and prepaid_amount should be stored correctly', () => {
     fc.assert(
-      fc.property(itemsArb, discountArb, taxPercentArb, prepaidArb, (items, discount, taxPercent, prepaid) => {
-        const result = calculateInvoiceTotals(items, discount, taxPercent, prepaid);
+      fc.property(itemsArb, discountArb, prepaidArb, (items, discount, prepaid) => {
+        const result = calculateInvoiceTotals(items, discount, prepaid);
 
         expect(result.discount_amount).toBe(discount);
-        expect(result.tax_percent).toBe(taxPercent);
         expect(result.prepaid_amount).toBe(prepaid);
       }),
       { numRuns: 100 },
@@ -141,7 +125,7 @@ describe('Feature: invoice-reimplementation, Property 5: Tính toán số lượ
 
           // Use the quantity in an invoice item with coefficient = 1
           const item: TotalsItem = { unit_price: unitPrice, quantity, coefficient: 1 };
-          const result = calculateInvoiceTotals([item], 0, 0, 0);
+          const result = calculateInvoiceTotals([item], 0, 0);
 
           expect(result.subtotal).toBe(unitPrice * quantity);
         },

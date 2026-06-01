@@ -60,8 +60,6 @@ export interface Invoice {
   status: InvoiceStatus;
   subtotal: number;
   discount_amount: number;
-  tax_percent: number;
-  tax_amount: number;
   total_amount: number;
   prepaid_amount: number;
   paid_amount: number;
@@ -161,8 +159,6 @@ export interface InvoiceFilters {
 export interface InvoiceTotals {
   subtotal: number;
   discount_amount: number;
-  tax_percent: number;
-  tax_amount: number;
   total_amount: number;
   prepaid_amount: number;
   remaining: number;
@@ -186,7 +182,6 @@ export interface InvoiceFormData {
   applied_credit?: number;
   /** Cờ chỉ số điện đầu (CHỈ SỐ ĐẦU) bị NV sửa tay khi tạo HĐ. */
   electricity_prev_overridden?: boolean;
-  tax_percent: number;
   prepaid_amount: number;
   previous_debt: number;
   /** Breakdown của previous_debt — hiển thị tooltip + cascade khi HĐ này PAID. */

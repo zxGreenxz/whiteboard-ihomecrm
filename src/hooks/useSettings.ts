@@ -18,7 +18,6 @@ export interface CompanyInfo {
   company_address: string;
   company_phone: string;
   company_email: string;
-  company_tax_code?: string;
   company_logo_url?: string;
   bank_name?: string;
   bank_account_number?: string;

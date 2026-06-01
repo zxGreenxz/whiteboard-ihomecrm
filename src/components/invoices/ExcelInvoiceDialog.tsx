@@ -636,7 +636,6 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           discount_notes: row.discount_notes?.trim() || null,
           applied_credit: appliedCredit,
           electricity_prev_overridden: row.prev_reading_overridden,
-          tax_percent: 0,
           prepaid_amount: 0,
           previous_debt: row.previous_debt || 0,
           // Nếu user đã chỉnh tay → clear sources để DB trigger KHÔNG cascade-paid

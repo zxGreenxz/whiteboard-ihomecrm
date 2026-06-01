@@ -725,8 +725,6 @@ export async function generateInvoiceForContract(
       previous_debt: previousDebtAmount,
       previous_debt_sources: previousDebtSources as any,
       discount_amount: 0,
-      tax_rate: 0,
-      tax_amount: 0,
       total_amount: totalAmount,
       paid_amount: 0,
       status: settings.auto_approve ? 'APPROVED' : 'DRAFT',

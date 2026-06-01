@@ -219,7 +219,7 @@ async function createFirstInvoiceForContract(args: {
   );
   const discount_amount = Math.max(0, firstInvoiceDiscount?.amount ?? 0);
   const discount_notes = firstInvoiceDiscount?.notes?.trim() || null;
-  // total = subtotal − discount + tax + previous_debt (HĐ đầu: tax=0, prev=0).
+  // total = subtotal − discount + previous_debt (HĐ đầu: prev=0).
   const total_amount = Math.max(0, subtotal - discount_amount);
 
   const { generateInvoiceNumber } = await import("@/lib/invoiceUtils");
@@ -241,8 +241,6 @@ async function createFirstInvoiceForContract(args: {
       subtotal,
       discount_amount,
       discount_notes,
-      tax_percent: 0,
-      tax_amount: 0,
       total_amount,
       prepaid_amount: 0,
       paid_amount: 0,

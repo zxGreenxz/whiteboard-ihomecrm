@@ -402,14 +402,6 @@ const InvoiceDetailPage = () => {
                       </TableCell>
                     </TableRow>
                   )}
-                  {invoice.tax_amount > 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-right text-gray-600">Thuế</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(invoice.tax_amount)}
-                      </TableCell>
-                    </TableRow>
-                  )}
                   {invoice.previous_debt > 0 && (
                     <TableRow>
                       <TableCell colSpan={3} className="text-right align-top">

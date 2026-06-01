@@ -48,7 +48,6 @@ const DATE_FIELDS = new Set([
 const MONEY_FIELDS = new Set([
   'subtotal',
   'discount_amount',
-  'tax_amount',
   'total_amount',
   'prepaid_amount',
   'paid_amount',
@@ -84,8 +83,6 @@ const FIELD_LABELS: Record<string, string> = {
   billing_month: 'Tháng tính phí',
   subtotal: 'Tạm tính',
   discount_amount: 'Chiết khấu',
-  tax_percent: 'Thuế (%)',
-  tax_amount: 'Tiền thuế',
   total_amount: 'Tổng tiền',
   prepaid_amount: 'Đã ứng trước',
   previous_debt: 'Nợ kỳ trước',

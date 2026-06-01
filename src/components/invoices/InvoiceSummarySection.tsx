@@ -31,7 +31,6 @@ const InvoiceSummarySection = ({
   const items = watch('items') || [];
   const discountAmount = watch('discount_amount') || 0;
   const discountNotes = watch('discount_notes') || '';
-  const taxPercent = watch('tax_percent') || 0;
   const prepaidAmount = watch('prepaid_amount') || 0;
   const previousDebt = watch('previous_debt') || 0;
   const previousDebtSources = (watch('previous_debt_sources') ?? []) as PreviousDebtSource[];
@@ -108,11 +107,10 @@ const InvoiceSummarySection = ({
       (sum, item) => sum + (item.unit_price || 0) * (item.quantity || 0) * (item.coefficient || 1),
       0,
     );
-    const taxAmount = subtotal * taxPercent / 100;
-    const total = subtotal - discountAmount + taxAmount + (previousDebt || 0);
+    const total = subtotal - discountAmount + (previousDebt || 0);
     const remaining = total - prepaidAmount;
-    return { subtotal, taxAmount, total, remaining };
-  }, [items, discountAmount, taxPercent, prepaidAmount, previousDebt]);
+    return { subtotal, total, remaining };
+  }, [items, discountAmount, prepaidAmount, previousDebt]);
 
   return (
     <div className="space-y-3">
@@ -197,21 +195,6 @@ const InvoiceSummarySection = ({
             </HoverCardContent>
           </HoverCard>
         </div>
-
-        {/* Thuế % - editable */}
-        <Label htmlFor="tax_percent" className="self-center">Thuế %</Label>
-        <NumberInput
-          value={watch('tax_percent')}
-          onChange={(v) => setValue('tax_percent', v, { shouldValidate: true, shouldDirty: true })}
-          allowDecimal
-          min={0}
-          max={100}
-          className="h-8 text-sm text-right"
-        />
-
-        {/* Tiền thuế - read only */}
-        <Label className="text-muted-foreground self-center">Tiền thuế</Label>
-        <div className="text-right font-medium">{formatCurrency(totals.taxAmount)}</div>
 
         {/* Thành tiền - read only */}
         <Label className="text-muted-foreground self-center font-semibold">Thành tiền</Label>

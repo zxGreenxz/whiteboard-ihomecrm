@@ -77,7 +77,6 @@ export default function CustomerFormPage() {
             ? (customer.id_images as Record<string, string>)
             : undefined,
         company_name: customer.company_name ?? undefined,
-        tax_code: customer.tax_code ?? undefined,
         representative: customer.representative ?? undefined,
         business_registration_url: customer.business_registration_url ?? undefined,
         headquarters_address: customer.headquarters_address ?? undefined,

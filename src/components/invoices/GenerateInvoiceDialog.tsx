@@ -590,7 +590,6 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       discount_notes: data.discount_notes?.trim() || null,
       applied_credit: appliedCredit,
       electricity_prev_overridden: !!data.prev_reading_overridden,
-      tax_percent: 0,
       prepaid_amount: 0,
       previous_debt: data.previous_debt || 0,
       // User chỉnh tay → clear sources để trigger DB không cascade-paid sai.

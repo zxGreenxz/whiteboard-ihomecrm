@@ -356,7 +356,6 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       discount_notes: data.discount_notes?.trim() || null,
       applied_credit: 0,
       electricity_prev_overridden: !!data.prev_reading_overridden,
-      tax_percent: 0,
       prepaid_amount: invoice.prepaid_amount || 0,
       previous_debt: invoice.previous_debt || 0,
       items,

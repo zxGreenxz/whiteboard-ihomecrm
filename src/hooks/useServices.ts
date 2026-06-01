@@ -25,13 +25,6 @@ export const PRICING_TYPE_LABELS: Record<string, string> = {
   DON_GIA_THEO_PHONG: "Đơn giá theo phòng",
 };
 
-export const TAX_RATE_OPTIONS = [
-  { value: 0, label: "Không thuế" },
-  { value: 5, label: "5%" },
-  { value: 8, label: "8%" },
-  { value: 10, label: "10%" },
-];
-
 export const UNIT_OPTIONS = [
   "Phòng", "Người", "Kwh", "m³", "Lượt", "Tháng", "Chiếc",
 ];

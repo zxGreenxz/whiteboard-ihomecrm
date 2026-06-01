@@ -184,9 +184,6 @@ const InvoicePrintPage = () => {
           {Number(inv.discount_amount || 0) > 0 && (
             <div><span>Giảm giá:</span><span>− {formatVND(inv.discount_amount)}</span></div>
           )}
-          {Number(inv.tax_amount || 0) > 0 && (
-            <div><span>Thuế ({inv.tax_percent}%):</span><span>{formatVND(inv.tax_amount)}</span></div>
-          )}
           {Number(inv.previous_debt || 0) !== 0 && (
             <div><span>Nợ kỳ trước:</span><span>{formatVND(inv.previous_debt)}</span></div>
           )}

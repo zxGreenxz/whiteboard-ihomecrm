@@ -12,7 +12,7 @@ import type { CustomerFormData } from '@/types/customer';
 /**
  * CustomerOrganizationFields
  * Fields for organization customer: Tên công ty*, SĐT*, Email,
- * Mã số thuế, Người đại diện, Địa chỉ trụ sở
+ * Người đại diện, Địa chỉ trụ sở
  * Requirements: 3.1
  */
 export default function CustomerOrganizationFields() {
@@ -59,21 +59,6 @@ export default function CustomerOrganizationFields() {
             <FormLabel>Email</FormLabel>
             <FormControl>
               <Input placeholder="Nhập email" type="email" {...field} value={field.value ?? ''} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      {/* Mã số thuế */}
-      <FormField
-        control={control}
-        name="tax_code"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Mã số thuế</FormLabel>
-            <FormControl>
-              <Input placeholder="Nhập mã số thuế" {...field} value={field.value ?? ''} />
             </FormControl>
             <FormMessage />
           </FormItem>

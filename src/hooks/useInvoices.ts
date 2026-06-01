@@ -234,12 +234,10 @@ export const useCreateInvoice = () => {
         (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,
         0,
       );
-      const tax_amount = subtotal * (invoiceFields.tax_percent || 0) / 100;
-      // total = tạm tính − giảm trừ (mình nợ khách) + thuế + nợ cũ (khách nợ mình)
+      // total = tạm tính − giảm trừ (mình nợ khách) + nợ cũ (khách nợ mình)
       const total_amount =
         subtotal
         - (invoiceFields.discount_amount || 0)
-        + tax_amount
         + (invoiceFields.previous_debt || 0);
 
       // Generate invoice number
@@ -268,8 +266,6 @@ export const useCreateInvoice = () => {
           discount_amount: invoiceFields.discount_amount || 0,
           discount_notes: invoiceFields.discount_notes || null,
           electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
-          tax_percent: invoiceFields.tax_percent || 0,
-          tax_amount,
           total_amount,
           prepaid_amount: invoiceFields.prepaid_amount || 0,
           paid_amount: 0,
@@ -385,12 +381,10 @@ export const useUpdateInvoice = () => {
         (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,
         0,
       );
-      const tax_amount = subtotal * (invoiceFields.tax_percent || 0) / 100;
-      // total = tạm tính − giảm trừ + thuế + nợ cũ
+      // total = tạm tính − giảm trừ + nợ cũ
       const total_amount =
         subtotal
         - (invoiceFields.discount_amount || 0)
-        + tax_amount
         + (invoiceFields.previous_debt || 0);
 
       // Update invoice
@@ -406,8 +400,6 @@ export const useUpdateInvoice = () => {
           discount_amount: invoiceFields.discount_amount || 0,
           discount_notes: invoiceFields.discount_notes || null,
           electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
-          tax_percent: invoiceFields.tax_percent || 0,
-          tax_amount,
           total_amount,
           prepaid_amount: invoiceFields.prepaid_amount || 0,
           previous_debt: invoiceFields.previous_debt || 0,

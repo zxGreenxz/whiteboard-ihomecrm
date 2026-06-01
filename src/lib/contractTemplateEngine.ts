@@ -414,7 +414,6 @@ export function buildContractTemplateData({
     REPRESENT_BANK_NAME: repStr("bank_name"),
     REPRESENT_CONSULTANT_NAME: repStr("advisor"),
     REPRESENT_CONSULTANT_PHONE: repStr("advisor_phone"),
-    REPRESENT_BUSINESS_CODE: repStr("tax_code"),
 
     // ===== Chủ nhà =====
     CHU_HOP_DONG: owner?.name ?? "",

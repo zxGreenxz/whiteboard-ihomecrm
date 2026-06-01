@@ -285,7 +285,6 @@ const InvoiceDetailPage = () => {
                   value={`+${formatVND(invoice.previous_debt)}`}
                 />
               )}
-              <SummaryRow label={`Thuế (${invoice.tax_percent}%)`} value={formatVND(invoice.tax_amount)} />
               <Separator />
               <SummaryRow label="Thành tiền" value={formatVND(invoice.total_amount)} bold />
               {invoice.prepaid_amount > 0 && (

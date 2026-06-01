@@ -327,7 +327,6 @@ function generateA4Content(invoice: InvoiceWithRelations): string {
       <span>${fmtCurrency(invoice.subtotal || 0)}</span>
     </div>
     ${invoice.discount_amount ? `<div class="summary-row"><span>Giảm giá:</span><span>-${fmtCurrency(invoice.discount_amount)}</span></div>` : ''}
-    ${invoice.tax_amount ? `<div class="summary-row"><span>Thuế (${invoice.tax_percent}%):</span><span>${fmtCurrency(invoice.tax_amount)}</span></div>` : ''}
     <div class="summary-row">
       <span>Tổng tiền:</span>
       <span>${fmtCurrency(invoice.total_amount || 0)}</span>

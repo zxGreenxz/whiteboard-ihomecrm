@@ -55,7 +55,6 @@ export const invoiceFormSchema = z
     discount_amount: z.number().min(0).default(0),
     discount_notes: z.string().nullable().optional(),
     applied_credit: z.number().min(0).default(0).optional(),
-    tax_percent: z.number().min(0).default(0),
     prepaid_amount: z.number().min(0).default(0),
     previous_debt: z.number().min(0).default(0),
     previous_debt_sources: z.array(previousDebtSourceSchema).optional().default([]),

@@ -1666,7 +1666,6 @@ export type Database = {
           representative: string | null
           status: Database["public"]["Enums"]["customer_status"] | null
           status_v2: Database["public"]["Enums"]["customer_status_v2"] | null
-          tax_code: string | null
           updated_at: string
           user_id: string
           vehicles: Json | null
@@ -1714,7 +1713,6 @@ export type Database = {
           representative?: string | null
           status?: Database["public"]["Enums"]["customer_status"] | null
           status_v2?: Database["public"]["Enums"]["customer_status_v2"] | null
-          tax_code?: string | null
           updated_at?: string
           user_id: string
           vehicles?: Json | null
@@ -1762,7 +1760,6 @@ export type Database = {
           representative?: string | null
           status?: Database["public"]["Enums"]["customer_status"] | null
           status_v2?: Database["public"]["Enums"]["customer_status_v2"] | null
-          tax_code?: string | null
           updated_at?: string
           user_id?: string
           vehicles?: Json | null
@@ -2780,8 +2777,6 @@ export type Database = {
           room_id: string
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
-          tax_amount: number
-          tax_percent: number
           template_id: string | null
           total_amount: number
           updated_at: string
@@ -2813,8 +2808,6 @@ export type Database = {
           room_id: string
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
-          tax_amount?: number
-          tax_percent?: number
           template_id?: string | null
           total_amount?: number
           updated_at?: string
@@ -2846,8 +2839,6 @@ export type Database = {
           room_id?: string
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
-          tax_amount?: number
-          tax_percent?: number
           template_id?: string | null
           total_amount?: number
           updated_at?: string
@@ -4771,7 +4762,6 @@ export type Database = {
           name: string
           pricing_type: Database["public"]["Enums"]["pricing_type"] | null
           quota_id: string | null
-          tax_rate: number | null
           type: Database["public"]["Enums"]["service_type"]
           unit: string | null
           unit_price: number
@@ -4790,7 +4780,6 @@ export type Database = {
           name: string
           pricing_type?: Database["public"]["Enums"]["pricing_type"] | null
           quota_id?: string | null
-          tax_rate?: number | null
           type: Database["public"]["Enums"]["service_type"]
           unit?: string | null
           unit_price?: number
@@ -4809,7 +4798,6 @@ export type Database = {
           name?: string
           pricing_type?: Database["public"]["Enums"]["pricing_type"] | null
           quota_id?: string | null
-          tax_rate?: number | null
           type?: Database["public"]["Enums"]["service_type"]
           unit?: string | null
           unit_price?: number

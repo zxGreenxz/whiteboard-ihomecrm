@@ -93,7 +93,6 @@ const InvoiceForm = ({
       template_id: null,
       notes: null,
       discount_amount: 0,
-      tax_percent: 0,
       prepaid_amount: 0,
       previous_debt: 0,
       previous_debt_sources: [],
