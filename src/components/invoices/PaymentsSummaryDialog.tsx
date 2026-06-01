@@ -31,6 +31,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StorageImage } from '@/components/ui/storage-image';
+import { openStoredFile } from '@/lib/storage';
 import { supabase } from '@/integrations/supabase/client';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
@@ -279,19 +281,18 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                     {p.receipt_image_url ? (
                       <HoverCard openDelay={120} closeDelay={80}>
                         <HoverCardTrigger asChild>
-                          <a
-                            href={p.receipt_image_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openStoredFile(p.receipt_image_url!)}
                             className="shrink-0 block"
                             title="Click mở ảnh lớn"
                           >
-                            <img
-                              src={p.receipt_image_url}
+                            <StorageImage
+                              value={p.receipt_image_url}
                               alt="Chứng từ"
                               className="h-14 w-14 object-cover rounded-md border border-zinc-200 hover:border-emerald-400 transition-colors"
                             />
-                          </a>
+                          </button>
                         </HoverCardTrigger>
                         <HoverCardContent
                           side="left"
@@ -299,8 +300,8 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                           sideOffset={12}
                           className="p-1 w-auto border-zinc-200 shadow-2xl"
                         >
-                          <img
-                            src={p.receipt_image_url}
+                          <StorageImage
+                            value={p.receipt_image_url}
                             alt="Chứng từ"
                             className="max-w-[min(80vw,720px)] max-h-[80vh] object-contain rounded"
                           />

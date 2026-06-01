@@ -18,6 +18,8 @@ import {
   Pencil,
 } from 'lucide-react';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useSignedUrl } from '@/hooks/useSignedUrl';
+import { StorageImage } from '@/components/ui/storage-image';
 import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
@@ -101,6 +103,7 @@ export function IncomeExpenseBatchDetailDialog({
   const attachments = batch?.attachments ?? [];
   const lightboxUrl =
     lightboxIdx !== null ? attachments[lightboxIdx] ?? null : null;
+  const lightboxSignedUrl = useSignedUrl(lightboxUrl);
   const hasMultiple = attachments.length > 1;
   const isLightboxOpen = lightboxIdx !== null;
 
@@ -314,8 +317,8 @@ export function IncomeExpenseBatchDetailDialog({
                         <FileText className="h-10 w-10 text-muted-foreground" />
                       </div>
                     ) : (
-                      <img
-                        src={url}
+                      <StorageImage
+                        value={url}
                         alt="Đính kèm"
                         className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
                       />
@@ -519,13 +522,13 @@ export function IncomeExpenseBatchDetailDialog({
           )}
           {isPdf(lightboxUrl) ? (
             <iframe
-              src={lightboxUrl}
+              src={lightboxSignedUrl}
               className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <img
-              src={lightboxUrl}
+            <StorageImage
+              value={lightboxUrl}
               alt="Đính kèm phóng lớn"
               className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
               onClick={(e) => e.stopPropagation()}

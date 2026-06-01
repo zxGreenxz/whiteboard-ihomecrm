@@ -41,6 +41,8 @@ import { vi } from 'date-fns/locale';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { StorageImage } from '@/components/ui/storage-image';
+import { openStoredFile } from '@/lib/storage';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
@@ -457,16 +459,15 @@ const InvoiceDetailPage = () => {
                         <TableCell className="capitalize">{payment.payment_method?.toLowerCase()}</TableCell>
                         <TableCell>
                           {payment.receipt_image_url ? (
-                            <a
-                              href={payment.receipt_image_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => openStoredFile(payment.receipt_image_url!)}
                               className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
                             >
                               <Image className="h-4 w-4" />
                               <span>Xem ảnh</span>
                               <ExternalLink className="h-3 w-3" />
-                            </a>
+                            </button>
                           ) : (
                             <span className="text-gray-400 text-sm">Không có</span>
                           )}
@@ -484,15 +485,14 @@ const InvoiceDetailPage = () => {
                       {invoice.payments
                         .filter(p => p.receipt_image_url)
                         .map((payment) => (
-                          <a
+                          <button
                             key={payment.id}
-                            href={payment.receipt_image_url!}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            type="button"
+                            onClick={() => openStoredFile(payment.receipt_image_url!)}
                             className="group relative aspect-video rounded-lg overflow-hidden border bg-gray-100 hover:ring-2 hover:ring-blue-500 transition-all"
                           >
-                            <img
-                              src={payment.receipt_image_url!}
+                            <StorageImage
+                              value={payment.receipt_image_url!}
                               alt={`Chứng từ thanh toán ${format(new Date(payment.payment_date), 'dd/MM/yyyy', { locale: vi })}`}
                               className="w-full h-full object-cover"
                             />
@@ -504,7 +504,7 @@ const InvoiceDetailPage = () => {
                                 {format(new Date(payment.payment_date), 'dd/MM/yyyy', { locale: vi })} - {formatCurrency(payment.amount)}
                               </p>
                             </div>
-                          </a>
+                          </button>
                         ))}
                     </div>
                   </div>

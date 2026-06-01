@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { StorageImage } from "@/components/ui/storage-image";
 import { ClipboardList, Image as ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import type { JobWithRelations } from "@/types/jobs";
@@ -118,8 +119,8 @@ export function TaskListMobile({ jobs, isLoading, onView }: Props) {
                     {/\.pdf(\?|$)/i.test(firstAttachment) ? (
                       <ImageIcon className="h-3.5 w-3.5 text-zinc-400" />
                     ) : (
-                      <img
-                        src={firstAttachment}
+                      <StorageImage
+                        value={firstAttachment}
                         alt=""
                         loading="lazy"
                         className="w-full h-full object-cover"

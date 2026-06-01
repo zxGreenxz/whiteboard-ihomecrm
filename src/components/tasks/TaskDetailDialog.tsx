@@ -12,6 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
+import { StorageImage } from "@/components/ui/storage-image";
 import type { JobWithRelations } from "@/types/jobs";
 import { getStatusColor, getStatusLabel } from "@/lib/jobValidation";
 import MaterialUsageSection from "@/components/materials/MaterialUsageSection";
@@ -65,6 +67,7 @@ export default function TaskDetailDialog({
   const isLightboxOpen = lightboxIdx !== null;
   const lightboxUrl =
     lightboxIdx !== null ? attachments[lightboxIdx] ?? null : null;
+  const lightboxSignedUrl = useSignedUrl(lightboxUrl);
   const hasMultiple = attachments.length > 1;
 
   const closeLightbox = () => setLightboxIdx(null);
@@ -193,8 +196,8 @@ export default function TaskDetailDialog({
                               <FileText className="h-8 w-8 text-muted-foreground" />
                             </div>
                           ) : (
-                            <img
-                              src={url}
+                            <StorageImage
+                              value={url}
                               alt="Đính kèm"
                               className="w-full h-full object-cover"
                             />
@@ -301,8 +304,8 @@ export default function TaskDetailDialog({
                             <FileText className="h-10 w-10 text-muted-foreground" />
                           </div>
                         ) : (
-                          <img
-                            src={url}
+                          <StorageImage
+                            value={url}
                             alt="Đính kèm"
                             className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
                           />
@@ -388,13 +391,13 @@ export default function TaskDetailDialog({
           )}
           {isPdf(lightboxUrl) ? (
             <iframe
-              src={lightboxUrl}
+              src={lightboxSignedUrl}
               className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <img
-              src={lightboxUrl}
+            <StorageImage
+              value={lightboxUrl}
               alt="Đính kèm phóng lớn"
               className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
               onClick={(e) => e.stopPropagation()}

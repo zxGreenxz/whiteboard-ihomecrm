@@ -18,6 +18,7 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StorageImage } from '@/components/ui/storage-image';
 import {
   Card,
   CardContent,
@@ -248,8 +249,8 @@ export default function CustomerDetailPage() {
                     {customer.id_images.front && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Mặt trước</p>
-                        <img
-                          src={customer.id_images.front}
+                        <StorageImage
+                          value={customer.id_images.front}
                           alt="CCCD mặt trước"
                           className="h-32 w-auto rounded border object-cover"
                         />
@@ -258,8 +259,8 @@ export default function CustomerDetailPage() {
                     {customer.id_images.back && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Mặt sau</p>
-                        <img
-                          src={customer.id_images.back}
+                        <StorageImage
+                          value={customer.id_images.back}
                           alt="CCCD mặt sau"
                           className="h-32 w-auto rounded border object-cover"
                         />

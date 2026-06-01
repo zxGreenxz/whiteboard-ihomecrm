@@ -1,6 +1,7 @@
 import { Eye, Pencil, Trash2, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { StorageImage } from '@/components/ui/storage-image';
 import {
   Table,
   TableBody,
@@ -119,10 +120,11 @@ export default function CustomerListTable({
                     aria-label={`Xem chi tiết ${customer.full_name}`}
                   >
                     {customer.avatar_url ? (
-                      <img
-                        src={customer.avatar_url}
+                      <StorageImage
+                        value={customer.avatar_url}
                         alt={customer.full_name}
                         className="h-8 w-8 rounded-full object-cover"
+                        fallback={<AvatarInitial name={customer.full_name} />}
                       />
                     ) : (
                       <AvatarInitial name={customer.full_name} />

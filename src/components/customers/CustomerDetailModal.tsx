@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import { StorageImage } from '@/components/ui/storage-image';
 import { toast } from 'sonner';
 import { useCustomer } from '@/hooks/useCustomers';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -193,8 +194,8 @@ export default function CustomerDetailModal({
                     {customer.id_images.front && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Mặt trước</p>
-                        <img
-                          src={customer.id_images.front}
+                        <StorageImage
+                          value={customer.id_images.front}
                           alt="CCCD mặt trước"
                           className="h-24 w-auto rounded border object-cover"
                         />
@@ -203,8 +204,8 @@ export default function CustomerDetailModal({
                     {customer.id_images.back && (
                       <div className="space-y-1">
                         <p className="text-xs text-muted-foreground">Mặt sau</p>
-                        <img
-                          src={customer.id_images.back}
+                        <StorageImage
+                          value={customer.id_images.back}
                           alt="CCCD mặt sau"
                           className="h-24 w-auto rounded border object-cover"
                         />

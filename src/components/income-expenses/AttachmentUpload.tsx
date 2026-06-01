@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
+import { StorageImage } from '@/components/ui/storage-image';
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
@@ -207,8 +208,8 @@ export default function AttachmentUpload({
                   <FileText className="h-8 w-8 text-muted-foreground" />
                 </div>
               ) : (
-                <img
-                  src={url}
+                <StorageImage
+                  value={url}
                   alt="Đính kèm"
                   className="w-full h-full object-cover"
                 />

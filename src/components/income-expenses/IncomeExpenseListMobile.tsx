@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { StorageImage } from "@/components/ui/storage-image";
 import { Receipt, Image as ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
@@ -148,8 +149,8 @@ export function IncomeExpenseListMobile({
                     {/\.pdf(\?|$)/i.test(firstAttachment) ? (
                       <ImageIcon className="h-4 w-4 text-zinc-400" />
                     ) : (
-                      <img
-                        src={firstAttachment}
+                      <StorageImage
+                        value={firstAttachment}
                         alt=""
                         loading="lazy"
                         className="w-full h-full object-cover"

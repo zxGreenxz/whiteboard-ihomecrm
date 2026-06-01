@@ -24,6 +24,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { StorageImage } from '@/components/ui/storage-image';
 import { NumberInput } from '@/components/ui/number-input';
 import { DateInput } from '@/components/ui/date-input';
 import {
@@ -598,8 +599,8 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
                                 {form.watch(
                                   `readings.${index}.meter_image_url`
                                 ) ? (
-                                  <img
-                                    src={form.watch(
+                                  <StorageImage
+                                    value={form.watch(
                                       `readings.${index}.meter_image_url`
                                     )}
                                     alt="Công tơ"

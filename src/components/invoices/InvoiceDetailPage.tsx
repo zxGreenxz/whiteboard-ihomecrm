@@ -17,6 +17,7 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import InvoiceStatusBadge from './InvoiceStatusBadge';
 import { Button } from '@/components/ui/button';
+import { openStoredFile } from '@/lib/storage';
 import {
   Card,
   CardContent,
@@ -352,16 +353,15 @@ const InvoiceDetailPage = () => {
                       </TableCell>
                       <TableCell>
                         {p.receipt_image_url ? (
-                          <a
-                            href={p.receipt_image_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openStoredFile(p.receipt_image_url!)}
                             className="inline-flex items-center gap-1 text-blue-600 hover:underline text-xs"
                           >
                             <Image className="h-3.5 w-3.5" />
                             Xem ảnh
                             <ExternalLink className="h-3 w-3" />
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-muted-foreground text-xs">Không có</span>
                         )}

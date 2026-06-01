@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
+import { StorageImage } from '@/components/ui/storage-image';
+import { openStoredFile } from '@/lib/storage';
 import {
   calculatePaginationInfo,
   type PaginationState,
@@ -72,32 +74,34 @@ const AttachmentPreview = ({ urls }: AttachmentPreviewProps) => {
 
   if (!isImg) {
     return (
-      <a
-        href={first}
-        target="_blank"
-        rel="noreferrer"
+      <button
+        type="button"
         className="ml-1 inline-flex items-center gap-0.5 text-zinc-500 hover:text-zinc-700"
         title="Mở file đính kèm"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openStoredFile(first);
+        }}
       >
         <FileIcon className="h-4 w-4" />
         {extra > 0 && <span className="text-[10px]">+{extra}</span>}
-      </a>
+      </button>
     );
   }
 
   return (
     <HoverCard openDelay={120} closeDelay={80}>
       <HoverCardTrigger asChild>
-        <a
-          href={first}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
           className="ml-1 inline-flex items-center"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            openStoredFile(first);
+          }}
         >
-          <img
-            src={first}
+          <StorageImage
+            value={first}
             alt="Đính kèm"
             className="h-7 w-7 rounded border border-zinc-200 object-cover hover:ring-2 hover:ring-blue-300"
             loading="lazy"
@@ -107,15 +111,15 @@ const AttachmentPreview = ({ urls }: AttachmentPreviewProps) => {
               +{extra}
             </span>
           )}
-        </a>
+        </button>
       </HoverCardTrigger>
       <HoverCardContent
         side="left"
         align="center"
         className="p-1 w-auto max-w-[480px]"
       >
-        <img
-          src={first}
+        <StorageImage
+          value={first}
           alt="Đính kèm full-size"
           className="max-h-[420px] max-w-[460px] object-contain rounded"
         />

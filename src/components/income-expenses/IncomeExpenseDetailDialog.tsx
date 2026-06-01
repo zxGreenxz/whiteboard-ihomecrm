@@ -19,6 +19,8 @@ import {
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
+import { StorageImage } from "@/components/ui/storage-image";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -71,6 +73,7 @@ export function IncomeExpenseDetailDialog({
   const attachments = voucher?.attachments ?? [];
   const lightboxUrl =
     lightboxIdx !== null ? attachments[lightboxIdx] ?? null : null;
+  const lightboxSignedUrl = useSignedUrl(lightboxUrl);
   const hasMultiple = attachments.length > 1;
   const isLightboxOpen = lightboxIdx !== null;
 
@@ -397,8 +400,8 @@ export function IncomeExpenseDetailDialog({
                         <FileText className="h-10 w-10 text-muted-foreground" />
                       </div>
                     ) : (
-                      <img
-                        src={url}
+                      <StorageImage
+                        value={url}
                         alt="Đính kèm"
                         className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
                       />
@@ -459,13 +462,13 @@ export function IncomeExpenseDetailDialog({
           )}
           {isPdf(lightboxUrl) ? (
             <iframe
-              src={lightboxUrl}
+              src={lightboxSignedUrl}
               className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <img
-              src={lightboxUrl}
+            <StorageImage
+              value={lightboxUrl}
               alt="Đính kèm phóng lớn"
               className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
               onClick={(e) => e.stopPropagation()}

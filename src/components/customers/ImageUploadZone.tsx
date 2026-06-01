@@ -3,6 +3,7 @@ import { Upload, X, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { imageValidation } from '@/lib/vehicleValidation';
 import { uploadFile } from '@/lib/storage';
+import { StorageImage } from '@/components/ui/storage-image';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
@@ -113,8 +114,8 @@ export default function ImageUploadZone({
       <label className="text-sm font-medium text-gray-700">{label}</label>
       {value ? (
         <div className="relative group w-full h-32 rounded-lg border overflow-hidden">
-          <img
-            src={value}
+          <StorageImage
+            value={value}
             alt={label}
             className="w-full h-full object-cover"
           />
