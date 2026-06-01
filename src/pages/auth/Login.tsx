@@ -72,11 +72,10 @@ const Login = () => {
           <CardContent className="space-y-4">
             {/* Phone or Email */}
             <div className="space-y-2">
-              <Label htmlFor="identifier">Tên đăng nhập, Số điện thoại hoặc Email</Label>
+              <Label htmlFor="identifier">Tài Khoản</Label>
               <Input
                 id="identifier"
                 type="text"
-                placeholder="VD: nathan / 0901234567 / email@example.com"
                 value={formData.identifier}
                 onChange={(e) => handleChange('identifier', e.target.value)}
                 className={errors.identifier ? 'border-red-500' : ''}
