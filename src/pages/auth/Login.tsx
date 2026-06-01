@@ -23,7 +23,7 @@ const Login = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.identifier.trim()) {
-      newErrors.identifier = 'Tên đăng nhập, Số điện thoại hoặc Email không được để trống';
+      newErrors.identifier = 'Tài Khoản không được để trống';
     }
 
     if (!formData.password) {
@@ -101,7 +101,6 @@ const Login = () => {
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
                   value={formData.password}
                   onChange={(e) => handleChange('password', e.target.value)}
                   className={errors.password ? 'border-red-500' : ''}
