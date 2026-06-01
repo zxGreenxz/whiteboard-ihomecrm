@@ -54,7 +54,7 @@ const contractSchema = z.object({
   // General Info
   building_id: z.string().optional(), // Helper for filtering rooms
   room_id: z.string().optional(),
-  rental_type: z.enum(['room', 'bed']).default('room'),
+  rental_type: z.enum(['room']).default('room'),
   signed_date: z.string().min(1, 'Vui lòng chọn ngày ký'),
   start_date: z.string().min(1, 'Vui lòng chọn ngày bắt đầu'),
   end_date: z.string().min(1, 'Vui lòng chọn ngày kết thúc'),
@@ -181,7 +181,6 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
     setSelectedTenants([]);
     setSelectedBuildingId('');
     setSelectedRoomId('');
-    setSelectedBedId('');
     setSelectedServices(new Set());
     setContractFile(null);
     setSelectedAssets([]);
@@ -234,7 +233,7 @@ const CreateContractDialog = ({ open, onOpenChange }: CreateContractDialogProps)
 
     // Remove helper fields that are not in DB schema
     // building_id: helper for filtering rooms
-    // rental_type: UI helper (room/bed)
+    // rental_type: UI helper (luôn = 'room')
     // discount_months, discount_amount_per_month: converted to discounts array above
     const {
       building_id,

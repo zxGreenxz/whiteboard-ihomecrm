@@ -21,7 +21,6 @@ export default function OverpaymentReport() {
   const [areaId, setAreaId] = useState<string>("all");
   const [buildingId, setBuildingId] = useState<string>("all");
   const [roomId, setRoomId] = useState<string>("all");
-  const [bedId, setBedId] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
@@ -85,16 +84,6 @@ export default function OverpaymentReport() {
               { value: "all", label: "Tất cả phòng" },
             ]}
           />
-
-          <SearchableSelect
-            value={bedId}
-            onValueChange={setBedId}
-            className="w-[200px]"
-            placeholder="Chọn giường"
-            options={[
-              { value: "all", label: "Tất cả giường" },
-            ]}
-          />
         </div>
 
         <div className="text-base font-semibold">Tổng: {formatCurrency(total)}</div>
@@ -106,7 +95,6 @@ export default function OverpaymentReport() {
                 <TableHead>Mã</TableHead>
                 <TableHead>Tòa nhà</TableHead>
                 <TableHead>Căn hộ</TableHead>
-                <TableHead>Giường</TableHead>
                 <TableHead>Khách hàng</TableHead>
                 <TableHead className="text-right">Số tiền thừa</TableHead>
               </TableRow>
@@ -115,12 +103,12 @@ export default function OverpaymentReport() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell>
+                    <TableCell colSpan={5}><Skeleton className="h-6 w-full" /></TableCell>
                   </TableRow>
                 ))
               ) : pageRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu nào để hiển thị
                   </TableCell>
                 </TableRow>
@@ -130,7 +118,6 @@ export default function OverpaymentReport() {
                     <TableCell>{op.invoice_number || op.id?.substring(0, 8) || "—"}</TableCell>
                     <TableCell>{op.rooms?.buildings?.name || "—"}</TableCell>
                     <TableCell>{op.rooms?.room_number || "—"}</TableCell>
-                    <TableCell>—</TableCell>
                     <TableCell>{op.tenants?.full_name || "—"}</TableCell>
                     <TableCell className="text-right text-green-600 font-semibold">
                       {formatCurrency(op.overpaid_amount || 0)}

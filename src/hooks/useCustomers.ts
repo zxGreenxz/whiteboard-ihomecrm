@@ -10,7 +10,7 @@ import type {
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
 import { isContractInEffect } from "@/types/contract";
 
-// Resolve building/room/bed filter → customer IDs.
+// Resolve building/room filter → customer IDs.
 // contracts has no customer_id (link is via contract_customers) and no
 // building_id (building is reached via rooms.building_id). Returns [] when
 // nothing matches so callers can short-circuit.
@@ -83,7 +83,7 @@ export const useCustomers = (
         }
       }
 
-      // Filter by building/room/bed via contract_customers junction table
+      // Filter by building/room via contract_customers junction table
       if (filters?.building_id || filters?.room_id ) {
         const customerIds = await resolveCustomerIdsByLocation({
           building_id: filters.building_id,

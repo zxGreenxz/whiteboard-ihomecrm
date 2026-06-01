@@ -329,7 +329,6 @@ export function buildContractTemplateData({
       "",
     ROOM_NAME: room?.name ?? "",
     ROOM_SIZE: ((room as Record<string, unknown> | undefined)?.area_sqm as number) ?? "",
-    ROOM_NUMBER_BEDS: ((room as Record<string, unknown> | undefined)?.number_of_beds as number) ?? "",
     MAX_TENANTS: ((room as Record<string, unknown> | undefined)?.max_tenants as number) ?? "",
     FLOOR_NAME: ((room as Record<string, unknown> | undefined)?.floor_name as string) ?? "",
 

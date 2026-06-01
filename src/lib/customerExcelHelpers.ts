@@ -31,7 +31,6 @@ export interface CustomerImportRow {
   id_image_urls?: string[];
   // Location info (for reference only, not directly inserted)
   room_name?: string;
-  bed_name?: string;
   building_name?: string;
   // Internal warning (not blocking)
   _phone_warning?: string;
@@ -65,7 +64,6 @@ const EXPORT_COLS = [
   { header: 'Số hộ chiếu',                  key: 'so_ho_chieu',           wch: 16 },
   { header: 'Căn hộ',                       key: 'can_ho',                wch: 14 },
   { header: 'Phòng',                        key: 'phong',                 wch: 12 },
-  { header: 'Giường',                       key: 'giuong',                wch: 10 },
   { header: 'Số mạng kết nối TikTok/App',  key: 'so_mang',               wch: 22 },
   { header: 'Họ tên người liên hệ',         key: 'ho_ten_lien_he',        wch: 22 },
   { header: 'SĐT người liên hệ',            key: 'sdt_lien_he',           wch: 16 },
@@ -91,7 +89,6 @@ const IMPORT_HEADERS = [
   'Số hộ chiếu',
   'Căn hộ',
   'Phòng',
-  'Giường',
   'Số mạng kết nối TikTok/App',
   'Họ tên người liên hệ',
   'SĐT người liên hệ',
@@ -113,7 +110,6 @@ const IMPORT_HEADER_MAP: Record<string, keyof CustomerImportRow> = {
   'Số hộ chiếu':                    'passport_number',
   'Căn hộ':                         'building_name',
   'Phòng':                          'room_name',
-  'Giường':                         'bed_name',
   'Họ tên người liên hệ':           'contact_person',
   'SĐT người liên hệ':              'contact_person_phone',
 };
@@ -191,7 +187,6 @@ export function parseDateToISO(raw: string | number | undefined | null): string 
 export interface CustomerWithLocation extends Customer {
   building_name?: string;
   room_name?: string;
-  bed_name?: string;
 }
 
 export function exportCustomers(
@@ -233,7 +228,6 @@ export function exportCustomers(
       '', // Số hộ chiếu — not in current schema
       c.building_name ?? '',
       c.room_name ?? '',
-      c.bed_name ?? '',
       '', // Số mạng kết nối TikTok/App
       c.contact_person ?? '',
       c.contact_person_phone ?? '',
@@ -290,7 +284,6 @@ export function downloadCustomerImportTemplate(): void {
     '',                // Số hộ chiếu
     'Tòa A',           // Căn hộ
     '101',             // Phòng
-    'G1',              // Giường
     '',                // Số mạng kết nối TikTok/App
     'Nguyễn Thị B',   // Họ tên người liên hệ
     '0987654321',      // SĐT người liên hệ
@@ -319,7 +312,6 @@ export function downloadCustomerImportTemplate(): void {
     { wch: 16 }, // Số hộ chiếu
     { wch: 14 }, // Căn hộ
     { wch: 12 }, // Phòng
-    { wch: 10 }, // Giường
     { wch: 22 }, // Số mạng kết nối TikTok/App
     { wch: 22 }, // Họ tên người liên hệ
     { wch: 16 }, // SĐT người liên hệ
@@ -461,7 +453,6 @@ export async function parseCustomerExcel(file: File): Promise<CustomerImportResu
               id_image_urls:        row.id_image_urls,
               building_name:        row.building_name?.trim() || undefined,
               room_name:            row.room_name?.trim() || undefined,
-              bed_name:             row.bed_name?.trim() || undefined,
             });
           }
         });

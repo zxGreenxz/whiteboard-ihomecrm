@@ -94,9 +94,7 @@ const ESigningTab = () => {
 
     const roomName = selectedContract.room
       ? `${selectedContract.room.building?.name} - ${selectedContract.room.name}`
-      : selectedContract.bed
-        ? `${selectedContract.bed.room?.building?.name} - ${selectedContract.bed.room?.name} - ${selectedContract.bed.name}`
-        : 'N/A';
+      : 'N/A';
 
     const mockLink = `https://app.resident.vn/sign/${selectedContract.id.slice(0, 8)}`;
 
@@ -249,9 +247,7 @@ const ESigningTab = () => {
                   const tenantName = getRepresentativeName(contract as any, 'N/A');
                   const roomName = contract.room
                     ? `${contract.room.building?.name} - ${contract.room.name}`
-                    : contract.bed
-                      ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}`
-                      : 'N/A';
+                    : 'N/A';
 
                   // Apply filter for NOT_SENT
                   if (filterStatus === 'NOT_SENT' && record) return null;

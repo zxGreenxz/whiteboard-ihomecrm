@@ -108,7 +108,6 @@ export default function DepositsReport() {
                 <TableHead>Tòa nhà</TableHead>
                 <TableHead>Căn hộ</TableHead>
                 <TableHead>Khách hàng</TableHead>
-                <TableHead>Giường</TableHead>
                 <TableHead className="text-right">Số tiền cọc</TableHead>
                 <TableHead className="text-right">Số tiền cọc (giữ chỗ)</TableHead>
                 <TableHead className="text-right">Số tiền cọc (trong hóa đơn)</TableHead>
@@ -119,12 +118,12 @@ export default function DepositsReport() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={8}><Skeleton className="h-6 w-full" /></TableCell>
+                    <TableCell colSpan={7}><Skeleton className="h-6 w-full" /></TableCell>
                   </TableRow>
                 ))
               ) : pageRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu nào để hiển thị
                   </TableCell>
                 </TableRow>
@@ -134,7 +133,6 @@ export default function DepositsReport() {
                     <TableCell>{d.rooms?.buildings?.name || "—"}</TableCell>
                     <TableCell>{d.rooms?.room_number || "—"}</TableCell>
                     <TableCell>{d.leads?.full_name || d.tenants?.full_name || "—"}</TableCell>
-                    <TableCell>—</TableCell>
                     <TableCell className="text-right font-semibold">
                       {formatCurrency(d.amount || 0)}
                     </TableCell>

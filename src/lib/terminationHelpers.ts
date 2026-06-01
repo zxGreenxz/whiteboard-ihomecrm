@@ -539,7 +539,7 @@ export async function processTermination(params: {
     cashBookEntryId = cashEntry?.id;
   }
 
-  // 4. Update room/bed status to AVAILABLE
+  // 4. Update room status to AVAILABLE
   const { data: contract } = await supabase
     .from('contracts')
     .select('room_id')

@@ -284,7 +284,7 @@ const RefundLogPage = () => {
                   <TableHead>Ngày</TableHead>
                   <TableHead>Hóa đơn</TableHead>
                   <TableHead>Tòa nhà</TableHead>
-                  <TableHead>Phòng / Giường</TableHead>
+                  <TableHead>Phòng</TableHead>
                   <TableHead className="text-right">{labels.amountCol}</TableHead>
                   <TableHead>Ghi chú</TableHead>
                 </TableRow>
@@ -314,9 +314,7 @@ const RefundLogPage = () => {
                       )}
                     </TableCell>
                     <TableCell>{r.building_name ?? "—"}</TableCell>
-                    <TableCell>
-                      {[r.room_name, r.bed_name].filter(Boolean).join(" / ") || "—"}
-                    </TableCell>
+                    <TableCell>{r.room_name || "—"}</TableCell>
                     <TableCell className="text-right font-bold text-orange-600">
                       {formatVND(r.change_amount)}
                     </TableCell>

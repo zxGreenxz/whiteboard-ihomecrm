@@ -42,7 +42,7 @@ export const useRenewContract = () => {
 };
 
 // =============================================
-// useTransferRoom — Chuyển phòng/giường
+// useTransferRoom — Chuyển phòng
 // Requirements: 5.2, 5.3
 // =============================================
 
@@ -53,7 +53,6 @@ export const useTransferRoom = () => {
     mutationFn: async (params: {
       contractId: string;
       newRoomId: string;
-      newBedId?: string;
       newRentPrice?: number;
       transferDate: string;
       notes?: string;

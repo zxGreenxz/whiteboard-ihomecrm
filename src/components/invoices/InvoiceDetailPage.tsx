@@ -199,7 +199,6 @@ const InvoiceDetailPage = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-sm">
               <InfoField label="Toà nhà" value={invoice.building?.name} />
               <InfoField label="Phòng" value={invoice.room?.name} />
-              <InfoField label="Giường" value={invoice.bed?.name ?? '—'} />
               <InfoField label="Hợp đồng" value={invoice.contract?.contract_number} />
               <InfoField label="Khách thuê" value={invoice.tenant?.full_name} />
               <InfoField label="SĐT" value={invoice.tenant?.phone} />

@@ -100,9 +100,6 @@ const TerminationApprovalsTab = () => {
   const getLocationDisplay = (termination: TerminationWithRelations) => {
     const contract = termination.contract;
     if (!contract) return 'N/A';
-    if (contract.bed) {
-      return `${contract.bed.name} - ${contract.bed.room.name} - ${contract.bed.room.building.name}`;
-    }
     if (contract.room) {
       return `${contract.room.name} - ${contract.room.building.name}`;
     }

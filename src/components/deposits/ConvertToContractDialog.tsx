@@ -70,10 +70,7 @@ export function ConvertToContractDialog({
               <div>{deposit.tenant?.phone}</div>
 
               <div className="text-muted-foreground">Căn hộ:</div>
-              <div>
-                {deposit.room?.name}
-                {deposit.bed && ` - ${deposit.bed.name}`}
-              </div>
+              <div>{deposit.room?.name}</div>
 
               <div className="text-muted-foreground">Số tiền cọc:</div>
               <div className="font-medium text-green-600">

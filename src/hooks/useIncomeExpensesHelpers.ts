@@ -183,7 +183,7 @@ export function filterRoomsByBuilding<T extends RoomFilterable>(rooms: T[], buil
   return rooms.filter(r => r.building_id === buildingId);
 }
 
-export function filterTenantsByRoomOrBed<T extends TenantFilterable>(tenants: T[], roomId?: string): T[] {
+export function filterTenantsByRoom<T extends TenantFilterable>(tenants: T[], roomId?: string): T[] {
   return tenants.filter(t => {
     if (roomId && t.room_id === roomId) return true;
     return false;

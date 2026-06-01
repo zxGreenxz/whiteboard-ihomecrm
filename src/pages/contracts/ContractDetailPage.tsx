@@ -338,9 +338,6 @@ const ContractDetailPage = () => {
   };
 
   const getLocationDisplay = (contract: ContractWithRelations) => {
-    if (contract.bed) {
-      return `${contract.bed.name} - ${contract.bed.room.name} - ${contract.bed.room.building.name}`;
-    }
     if (contract.room) {
       return `${contract.room.name} - ${contract.room.building.name}`;
     }
@@ -821,7 +818,7 @@ const ContractDetailPage = () => {
                         Tòa nhà
                       </div>
                       <div className="font-medium">
-                        {contract.room?.building.name || contract.bed?.room.building.name || 'N/A'}
+                        {contract.room?.building?.name || 'N/A'}
                       </div>
                     </div>
                     {contract.initial_electricity_reading !== null && (

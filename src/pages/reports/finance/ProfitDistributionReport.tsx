@@ -52,7 +52,6 @@ export default function ProfitDistributionReport() {
   const [areaId, setAreaId] = useState<string>("all");
   const [buildingId, setBuildingId] = useState<string>("all");
   const [roomId, setRoomId] = useState<string>("all");
-  const [bedId, setBedId] = useState<string>("all");
   const [voucherType, setVoucherType] = useState<string>("all");
   // Mặc định: chỉ tính khoản CÓ hạch toán KQKD (loại tiền cọc & khoản
   // override không-KQKD). Bật toggle để xem cả khoản không hạch toán.
@@ -156,16 +155,6 @@ export default function ProfitDistributionReport() {
             placeholder="Chọn phòng"
             options={[
               { value: 'all', label: 'Tất cả phòng' },
-            ]}
-          />
-
-          <SearchableSelect
-            value={bedId}
-            onValueChange={setBedId}
-            className="w-[160px]"
-            placeholder="Chọn giường"
-            options={[
-              { value: 'all', label: 'Tất cả giường' },
             ]}
           />
 

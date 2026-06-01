@@ -182,7 +182,6 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const selectedContract = contracts?.find((c) => c.id === watchedContractId);
   const buildingIdOfContract =
     (selectedContract as any)?.room?.building_id ||
-    (selectedContract as any)?.bed?.room?.building_id ||
     '';
   const { data: bldSvc } = useBuildingServices(buildingIdOfContract);
   const { data: vehiclesData } = useVehicles(
@@ -248,7 +247,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     );
 
     // Load meter điện cho phòng + chỉ số đầu (latest APPROVED).
-    const roomId = (selectedContract as any).room_id || (selectedContract as any).bed?.room?.id;
+    const roomId = (selectedContract as any).room_id;
     if (roomId) {
       (async () => {
         const { data: meters } = await supabase
@@ -444,10 +443,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const onSubmit = async (data: GenerateInvoiceFormData) => {
     if (!selectedContract) return;
     const roomData = (selectedContract as any).room;
-    const bedData = (selectedContract as any).bed;
-    const buildingId = roomData?.building_id || bedData?.room?.building_id || '';
-    const roomId = roomData?.id || bedData?.room?.id || '';
-    const bedId = bedData?.id || null;
+    const buildingId = roomData?.building_id || '';
+    const roomId = roomData?.id || '';
     if (!buildingId || !roomId) return;
 
     const periodStart = startOfMonth(parse(data.billing_month + '-01', 'yyyy-MM-dd', new Date()));
@@ -511,7 +508,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     items.push({
       type: 'RENT',
       description:
-        `Tiền thuê căn hộ ${roomData?.name || bedData?.name || ''}`.trim() + prorateLabel,
+        `Tiền thuê căn hộ ${roomData?.name || ''}`.trim() + prorateLabel,
       unit_price: rentAmount,
       quantity: 1,
       coefficient: 1,
@@ -686,7 +683,6 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                       {contract.contract_number || contract.id.slice(0, 8)}
                       {customerName && ` - ${customerName}`}
                       {contract.room && ` - ${contract.room.name}`}
-                      {contract.bed && ` - ${contract.bed.name}`}
                     </SelectItem>
                   );
                 })}

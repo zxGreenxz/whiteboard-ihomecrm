@@ -236,10 +236,9 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                   <span className="font-medium">{getRepresentativeName(contract as any)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Căn hộ/Giường:</span>
+                  <span className="text-gray-600">Căn hộ:</span>
                   <span className="font-medium">
-                    {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : ''}
-                    {contract.bed ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}` : ''}
+                    {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : 'N/A'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -286,10 +285,9 @@ const TerminateContractDialog = ({ open, onOpenChange, contract }: TerminateCont
                     <div className="font-medium">{getRepresentativeName(contract as any)}</div>
                   </div>
                   <div>
-                    <span className="text-gray-600">Căn hộ/Giường:</span>
+                    <span className="text-gray-600">Căn hộ:</span>
                     <div className="font-medium">
-                      {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : ''}
-                      {contract.bed ? `${contract.bed.room?.building?.name} - ${contract.bed.room?.name} - ${contract.bed.name}` : ''}
+                      {contract.room ? `${contract.room.building?.name} - ${contract.room.name}` : 'N/A'}
                     </div>
                   </div>
                   <div>

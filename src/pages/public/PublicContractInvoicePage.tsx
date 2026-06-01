@@ -47,7 +47,6 @@ type PublicPayload = {
   invoice: PublicInvoice | null;
   room: { id: string; name: string; code: string | null } | null;
   building: { id: string; name: string } | null;
-  bed?: { id: string; name: string } | null;
   customer?: { full_name: string; phone: string | null } | null;
 };
 
@@ -131,9 +130,9 @@ export default function PublicContractInvoicePage() {
     );
   }
 
-  const { invoice, room, building, bed, customer } = data;
+  const { invoice, room, building, customer } = data;
 
-  const apartmentLabel = [building?.name, room?.name + (bed ? ` · ${bed.name}` : '')]
+  const apartmentLabel = [building?.name, room?.name]
     .filter((s) => s && s.trim())
     .join(' - ');
 

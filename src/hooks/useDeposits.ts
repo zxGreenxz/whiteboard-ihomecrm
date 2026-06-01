@@ -17,11 +17,6 @@ export interface DepositWithRelations extends Deposit {
     name: string;
     code: string | null;
   };
-  bed?: {
-    id: string;
-    name: string;
-    code: string | null;
-  };
 }
 
 export const useDeposits = (filters?: {

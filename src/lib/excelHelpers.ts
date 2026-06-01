@@ -531,7 +531,7 @@ export function downloadContractImportTemplate(
   rooms: Array<{ name: string }>
 ): void {
   const headers = [
-    'Căn hộ (*)', 'Giường', 'Họ tên khách hàng (*)', 'SĐT khách hàng (*)',
+    'Căn hộ (*)', 'Họ tên khách hàng (*)', 'SĐT khách hàng (*)',
     'Ngày ký (*)', 'Ngày bắt đầu (*)', 'Hạn hợp đồng (*)',
     'Tiền thuê (*)', 'Chu kỳ thanh toán', 'Ngày bắt đầu tính tiền',
     'Tiền cọc', 'Đã đặt cọc', 'Ghi chú'
@@ -540,7 +540,6 @@ export function downloadContractImportTemplate(
   const sampleData = [
     {
       'Căn hộ (*)': rooms[0]?.name || 'Căn hộ 101',
-      'Giường': '',
       'Họ tên khách hàng (*)': 'Nguyễn Văn A',
       'SĐT khách hàng (*)': '0901234567',
       'Ngày ký (*)': '01/01/2025',
@@ -558,7 +557,6 @@ export function downloadContractImportTemplate(
   if (rooms.length > 1) {
     sampleData.push({
       'Căn hộ (*)': rooms[1]?.name || 'Căn hộ 102',
-      'Giường': '',
       'Họ tên khách hàng (*)': 'Trần Thị B',
       'SĐT khách hàng (*)': '0909876543',
       'Ngày ký (*)': '15/01/2025',
@@ -577,7 +575,7 @@ export function downloadContractImportTemplate(
 
   // Set column widths
   worksheet['!cols'] = [
-    { wch: 15 }, { wch: 12 }, { wch: 25 }, { wch: 15 },
+    { wch: 15 }, { wch: 25 }, { wch: 15 },
     { wch: 15 }, { wch: 15 }, { wch: 15 },
     { wch: 15 }, { wch: 18 }, { wch: 20 },
     { wch: 15 }, { wch: 12 }, { wch: 25 },
@@ -599,7 +597,6 @@ export function downloadContractImportTemplate(
  */
 export interface ContractImportRow {
   room_name: string;
-  bed_name?: string;
   tenant_name: string;
   tenant_phone: string;
   signed_date: string;
@@ -618,7 +615,6 @@ export async function importContracts(
 ): Promise<ImportResult<ContractImportRow>> {
   const headerMapping = {
     'Căn hộ (*)': 'room_name',
-    'Giường': 'bed_name',
     'Họ tên khách hàng (*)': 'tenant_name',
     'SĐT khách hàng (*)': 'tenant_phone',
     'Ngày ký (*)': 'signed_date',
@@ -718,7 +714,6 @@ export async function importContracts(
 
     success.push({
       room_name: String(item.room_name).trim(),
-      bed_name: item.bed_name ? String(item.bed_name).trim() : undefined,
       tenant_name: String(item.tenant_name).trim(),
       tenant_phone: String(item.tenant_phone).trim(),
       signed_date: signedDate,

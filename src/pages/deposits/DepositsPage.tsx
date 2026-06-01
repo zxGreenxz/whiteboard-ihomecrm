@@ -139,7 +139,7 @@ const DepositsPage = () => {
               <TableHead>Mã</TableHead>
               <TableHead>Khách hàng</TableHead>
               <TableHead>SĐT</TableHead>
-              <TableHead>Căn hộ/Giường</TableHead>
+              <TableHead>Căn hộ</TableHead>
               <TableHead>CTV</TableHead>
               <TableHead>Số tiền</TableHead>
               <TableHead>Ngày cọc</TableHead>
@@ -179,7 +179,6 @@ const DepositsPage = () => {
                   <TableCell>{deposit.tenant?.phone || "-"}</TableCell>
                   <TableCell>
                     {deposit.room?.name || "-"}
-                    {deposit.bed && ` - ${deposit.bed.name}`}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {(deposit as any).ctv_name || "-"}

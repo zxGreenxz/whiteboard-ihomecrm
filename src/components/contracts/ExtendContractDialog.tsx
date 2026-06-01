@@ -107,9 +107,9 @@ const ExtendContractDialog = ({ open, onOpenChange, contract }: ExtendContractDi
               <span className="font-medium">{getRepresentativeName(contract as any)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Căn hộ/Giường:</span>
+              <span className="text-gray-600">Căn hộ:</span>
               <span className="font-medium">
-                {contract.room ? contract.room.name : contract.bed?.name}
+                {contract.room?.name || 'N/A'}
               </span>
             </div>
             <div className="flex justify-between">

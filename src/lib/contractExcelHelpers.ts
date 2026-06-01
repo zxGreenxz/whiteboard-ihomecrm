@@ -316,7 +316,6 @@ export function downloadContractImportTemplate(): void {
   // Row 5: example
   const example = [
     '101',             // Phòng
-    'G1',              // Giường
     'Nguyễn Văn A',   // Tên KH
     '0901234567',      // SĐT
     '012345678901',    // CCCD
@@ -338,7 +337,6 @@ export function downloadContractImportTemplate(): void {
 
   ws['!cols'] = [
     { wch: 12 }, // Phòng
-    { wch: 10 }, // Giường
     { wch: 25 }, // Tên KH
     { wch: 14 }, // SĐT
     { wch: 16 }, // CCCD

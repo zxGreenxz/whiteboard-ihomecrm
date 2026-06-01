@@ -138,7 +138,6 @@ export default function PaymentScheduleReport() {
               <TableRow>
                 <TableHead>Tòa nhà</TableHead>
                 <TableHead>Căn hộ</TableHead>
-                <TableHead>Giường</TableHead>
                 <TableHead>Khách hàng</TableHead>
                 <TableHead>Đã lên hóa đơn đến ngày</TableHead>
               </TableRow>
@@ -147,12 +146,12 @@ export default function PaymentScheduleReport() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={5}><Skeleton className="h-6 w-full" /></TableCell>
+                    <TableCell colSpan={4}><Skeleton className="h-6 w-full" /></TableCell>
                   </TableRow>
                 ))
               ) : pageRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu nào để hiển thị
                   </TableCell>
                 </TableRow>
@@ -161,7 +160,6 @@ export default function PaymentScheduleReport() {
                   <TableRow key={idx}>
                     <TableCell>{r.building}</TableCell>
                     <TableCell>{r.room}</TableCell>
-                    <TableCell>—</TableCell>
                     <TableCell>{r.tenant}</TableCell>
                     <TableCell>
                       {r.billedThrough

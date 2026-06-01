@@ -128,7 +128,6 @@ export function TransferRoomDialog({
   // Current contract info for display
   const currentBuilding = contract.room?.building?.name || "—";
   const currentRoom = contract.room?.name || "—";
-  const currentBed = contract.bed?.name || "—";
   const representativeCustomer = contract.contract_customers?.find(
     (cc) => cc.is_representative
   );
@@ -151,9 +150,6 @@ export function TransferRoomDialog({
           </p>
           <p>
             <span className="font-medium">Phòng:</span> {currentRoom}
-          </p>
-          <p>
-            <span className="font-medium">Giường:</span> {currentBed}
           </p>
           <p>
             <span className="font-medium">Giá thuê hiện tại:</span>{" "}

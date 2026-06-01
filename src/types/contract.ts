@@ -72,10 +72,6 @@ export interface ContractWithRelations extends Contract {
       province?: string | null;
     } | null;
   } | null;
-  bed?: {
-    id: string;
-    name: string;
-  } | null;
   contract_customers?: ContractCustomer[];
   contract_services?: ContractServiceWithDetails[];
 }

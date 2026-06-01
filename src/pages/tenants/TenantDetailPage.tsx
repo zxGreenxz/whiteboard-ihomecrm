@@ -527,7 +527,7 @@ const TenantDetailPage = () => {
                           {contract.contract_number || contract.id.slice(0, 8)}
                         </TableCell>
                         <TableCell>
-                          {contract.room?.name || contract.bed?.name || 'N/A'}
+                          {contract.room?.name || 'N/A'}
                         </TableCell>
                         <TableCell>
                           {format(new Date(contract.start_date), 'dd/MM/yyyy', { locale: vi })}

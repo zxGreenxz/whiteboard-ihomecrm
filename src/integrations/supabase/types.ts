@@ -5865,21 +5865,6 @@ export type Database = {
           role: string
         }[]
       }
-      get_invoice_statistics: {
-        Args: {
-          p_area_id?: string
-          p_bed_id?: string
-          p_billing_month?: string
-          p_building_id?: string
-          p_end_date?: string
-          p_payment_status?: string
-          p_room_id?: string
-          p_start_date?: string
-          p_status?: Database["public"]["Enums"]["invoice_status"]
-          p_user_id: string
-        }
-        Returns: Json
-      }
       get_invoice_statistics_v2: {
         Args: {
           p_area_id?: string
@@ -6130,12 +6115,6 @@ export type Database = {
     Enums: {
       ai_message_role: "user" | "assistant" | "system"
       asset_condition: "NEW" | "GOOD" | "FAIR" | "POOR" | "BROKEN"
-      bed_status:
-        | "AVAILABLE"
-        | "OCCUPIED"
-        | "RESERVED"
-        | "MAINTENANCE"
-        | "UNAVAILABLE"
       building_status: "ACTIVE" | "INACTIVE" | "MAINTENANCE"
       building_type:
         | "APARTMENT"
@@ -6375,13 +6354,6 @@ export const Constants = {
     Enums: {
       ai_message_role: ["user", "assistant", "system"],
       asset_condition: ["NEW", "GOOD", "FAIR", "POOR", "BROKEN"],
-      bed_status: [
-        "AVAILABLE",
-        "OCCUPIED",
-        "RESERVED",
-        "MAINTENANCE",
-        "UNAVAILABLE",
-      ],
       building_status: ["ACTIVE", "INACTIVE", "MAINTENANCE"],
       building_type: [
         "APARTMENT",

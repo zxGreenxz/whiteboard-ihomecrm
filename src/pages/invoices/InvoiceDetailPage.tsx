@@ -174,7 +174,6 @@ const InvoiceDetailPage = () => {
 
   const buildingName = (invoice as any).building?.name?.trim() || '';
   const roomName = (invoice as any).room?.name?.trim() || '';
-  const bedName = (invoice as any).bed?.name?.trim() || '';
   const billingLabel = invoice.billing_month
     ? (() => {
         const [y, m] = invoice.billing_month.split('-');
@@ -190,13 +189,13 @@ const InvoiceDetailPage = () => {
     contractCustomers[0]?.customer ??
     null;
 
-  // Hiển thị "Toà - Phòng[ · Giường]" cho ô Căn hộ.
-  const apartmentLabel = [buildingName, roomName + (bedName ? ` · ${bedName}` : '')]
+  // Hiển thị "Toà - Phòng" cho ô Căn hộ.
+  const apartmentLabel = [buildingName, roomName]
     .filter((s) => s.trim())
     .join(' - ');
   const titleParts = [
     buildingName,
-    roomName + (bedName ? ` · ${bedName}` : ''),
+    roomName,
     billingLabel,
   ].filter((s) => s && s.trim());
   const invoiceTitle =

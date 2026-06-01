@@ -702,19 +702,6 @@ export interface LegacyContractWithRelations extends ContractRow {
       code: string | null;
     };
   };
-  bed?: {
-    id: string;
-    name: string;
-    code: string | null;
-    room: {
-      id: string;
-      name: string;
-      building: {
-        id: string;
-        name: string;
-      };
-    };
-  };
   contract_services?: Array<{
     id: string;
     service_id: string;
@@ -1290,7 +1277,6 @@ export const useRejectTermination = () => {
 /** @deprecated */
 export interface BulkContractImportRow {
   room_name: string;
-  bed_name?: string;
   tenant_name: string;
   tenant_phone: string;
   signed_date: string;

@@ -95,7 +95,6 @@ export default function CustomerDebtReport() {
                 <TableHead>Khu vực</TableHead>
                 <TableHead>Tòa nhà</TableHead>
                 <TableHead>Căn hộ</TableHead>
-                <TableHead>Giường</TableHead>
                 <TableHead>Khách hàng</TableHead>
                 <TableHead className="text-right">Tổng nợ tháng này</TableHead>
                 <TableHead className="text-right">Đã TT</TableHead>
@@ -105,12 +104,12 @@ export default function CustomerDebtReport() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={7}><Skeleton className="h-6 w-full" /></TableCell>
+                    <TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell>
                   </TableRow>
                 ))
               ) : pageRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu nào để hiển thị
                   </TableCell>
                 </TableRow>
@@ -120,7 +119,6 @@ export default function CustomerDebtReport() {
                     <TableCell>{d.room?.buildings?.area?.name || "—"}</TableCell>
                     <TableCell>{d.room?.buildings?.name || "—"}</TableCell>
                     <TableCell>{d.room?.room_number || "—"}</TableCell>
-                    <TableCell>—</TableCell>
                     <TableCell>{d.tenant?.full_name || "—"}</TableCell>
                     <TableCell className="text-right text-red-600 font-semibold">
                       {formatCurrency(d.totalDebt)}

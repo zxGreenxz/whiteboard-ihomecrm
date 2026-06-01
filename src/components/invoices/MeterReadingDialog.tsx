@@ -159,7 +159,6 @@ const MeterReadingDialog = ({ open, onOpenChange }: MeterReadingDialogProps) => 
                   <SelectItem key={contract.id} value={contract.id}>
                     {contract.contract_number || contract.id.slice(0, 8)} - {getRepresentativeName(contract as any, '')}
                     {contract.room && ` - ${contract.room.name}`}
-                    {contract.bed && ` - ${contract.bed.name}`}
                   </SelectItem>
                 ))}
               </SelectContent>

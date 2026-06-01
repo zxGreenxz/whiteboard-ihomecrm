@@ -107,7 +107,6 @@ function makeValidBase() {
     name: 'Test voucher',
     building_id: '00000000-0000-0000-0000-000000000001',
     room_id: null,
-    bed_id: null,
     tenant_id: null,
     contract_id: null,
     payer_name: 'Nguyen Van A',

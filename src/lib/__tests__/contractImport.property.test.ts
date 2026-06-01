@@ -227,18 +227,15 @@ describe('Property 15: Excel import row validation', () => {
         validImportRowArb(),
         nonEmptyStringArb,
         nonEmptyStringArb,
-        nonEmptyStringArb,
-        (row, bedName, idNumber, notes) => {
+        (row, idNumber, notes) => {
           const rowWithOptionals = {
             ...row,
-            bed_name: bedName,
             customer_id_number: idNumber,
             notes,
           };
           const result = validateContractImportRow(rowWithOptionals);
           expect(result.valid).toBe(true);
           if (result.valid) {
-            expect(result.data.bed_name).toBe(bedName.trim() || undefined);
             expect(result.data.customer_id_number).toBe(idNumber.trim() || undefined);
             expect(result.data.notes).toBe(notes.trim() || undefined);
           }

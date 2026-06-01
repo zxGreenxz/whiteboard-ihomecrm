@@ -21,7 +21,6 @@ export function filterContracts(
     areaFilter?: string;
     buildingFilter?: string;
     roomFilter?: string;
-    bedFilter?: string;
     rentalTypeFilter?: string;
     monthFilter?: string;
   },
@@ -65,11 +64,6 @@ export function filterContracts(
       if (contract.room_id !== filters.roomFilter) return false;
     }
 
-    // Bed filter
-    if (filters.bedFilter && filters.bedFilter !== 'all') {
-      if (contract.bed_id !== filters.bedFilter) return false;
-    }
-
     // Rental type filter
     if (filters.rentalTypeFilter && filters.rentalTypeFilter !== 'all') {
       if (contract.room?.building?.type !== filters.rentalTypeFilter) return false;
@@ -109,14 +103,6 @@ export function filterRoomsByBuilding(
   return rooms.filter((r) => r.building_id === buildingFilter);
 }
 
-export function filterBedsByRoom(
-  beds: { id: string; room_id: string }[],
-  roomFilter: string,
-): { id: string; room_id: string }[] {
-  if (roomFilter === 'all') return beds;
-  return beds.filter((b) => b.room_id === roomFilter);
-}
-
 // =============================================
 // Shared Arbitraries
 // =============================================
@@ -148,7 +134,6 @@ function dateStringArb(minYear = 2023, maxYear = 2026): fc.Arbitrary<string> {
 const areaIdPoolArb = fc.constantFrom('area-1', 'area-2', 'area-3', null);
 const buildingIdPoolArb = fc.constantFrom('bld-1', 'bld-2', 'bld-3');
 const roomIdPoolArb = fc.constantFrom('room-1', 'room-2', 'room-3');
-const bedIdPoolArb = fc.constantFrom('bed-1', 'bed-2', 'bed-3', null);
 
 /** Generate a ContractCustomer with representative flag */
 function contractCustomerArb(isRep: boolean): fc.Arbitrary<ContractCustomer> {
@@ -176,7 +161,6 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
     status: contractStatusArb,
     contract_number: fc.option(fc.constantFrom('HD-001', 'HD-002', 'HD-003', 'HD-100', 'HD-200', null), { nil: null }),
     room_id: roomIdPoolArb,
-    bed_id: bedIdPoolArb,
     building_id: buildingIdPoolArb,
     area_id: areaIdPoolArb,
     building_type: buildingTypeArb,
@@ -184,11 +168,10 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
     start_date: dateStringArb(),
     end_date: dateStringArb(),
     repCustomer: contractCustomerArb(true),
-  }).map(({ id, status, contract_number, room_id, bed_id, building_id, area_id, building_type, room_name, start_date, end_date, repCustomer }) => ({
+  }).map(({ id, status, contract_number, room_id, building_id, area_id, building_type, room_name, start_date, end_date, repCustomer }) => ({
     id,
     user_id: '00000000-0000-0000-0000-000000000000',
     room_id,
-    bed_id,
     tenant_id: '00000000-0000-0000-0000-000000000000',
     contract_number,
     signed_date: start_date,
@@ -225,7 +208,6 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
         area_id,
       },
     },
-    bed: bed_id ? { id: bed_id, name: `Bed ${bed_id}` } : null,
     contract_customers: [repCustomer],
   }));
 }
@@ -236,7 +218,6 @@ function filtersArb(): fc.Arbitrary<{
   areaFilter?: string;
   buildingFilter?: string;
   roomFilter?: string;
-  bedFilter?: string;
   rentalTypeFilter?: string;
   monthFilter?: string;
 }> {
@@ -255,10 +236,6 @@ function filtersArb(): fc.Arbitrary<{
     ),
     roomFilter: fc.option(
       fc.constantFrom('all', 'room-1', 'room-2', 'room-3'),
-      { nil: undefined },
-    ),
-    bedFilter: fc.option(
-      fc.constantFrom('all', 'bed-1', 'bed-2', 'bed-3'),
       { nil: undefined },
     ),
     rentalTypeFilter: fc.option(
@@ -326,11 +303,6 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
             expect(c.room_id).toBe(filters.roomFilter);
           }
 
-          // Bed filter check
-          if (filters.bedFilter && filters.bedFilter !== 'all') {
-            expect(c.bed_id).toBe(filters.bedFilter);
-          }
-
           // Rental type filter check
           if (filters.rentalTypeFilter && filters.rentalTypeFilter !== 'all') {
             expect(c.room?.building?.type).toBe(filters.rentalTypeFilter);
@@ -390,10 +362,6 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
 
           if (allMatch && filters.roomFilter && filters.roomFilter !== 'all') {
             if (c.room_id !== filters.roomFilter) allMatch = false;
-          }
-
-          if (allMatch && filters.bedFilter && filters.bedFilter !== 'all') {
-            if (c.bed_id !== filters.bedFilter) allMatch = false;
           }
 
           if (allMatch && filters.rentalTypeFilter && filters.rentalTypeFilter !== 'all') {
@@ -471,13 +439,12 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
  * Property 4: Cascading dropdown filtering
  *
  * For any building selection, the rooms dropdown should only contain rooms
- * belonging to that building. For any room selection, the beds dropdown should
- * only contain beds belonging to that room.
+ * belonging to that building.
  *
  * **Validates: Requirements 1.5, 1.6, 2.3**
  */
 describe('Feature: lease-contract-management, Property 4: Cascading dropdown filtering', () => {
-  /** Generate a hierarchy of buildings, rooms, and beds */
+  /** Generate a hierarchy of buildings and rooms */
   const buildingArb = fc.record({
     id: buildingIdPoolArb,
     area_id: areaIdPoolArb,
@@ -488,14 +455,8 @@ describe('Feature: lease-contract-management, Property 4: Cascading dropdown fil
     building_id: buildingIdPoolArb,
   });
 
-  const bedArb = fc.record({
-    id: fc.constantFrom('bed-1', 'bed-2', 'bed-3', 'bed-4', 'bed-5'),
-    room_id: roomIdPoolArb,
-  });
-
   const buildingListArb = fc.array(buildingArb, { minLength: 1, maxLength: 10 });
   const roomListArb = fc.array(roomArb, { minLength: 1, maxLength: 15 });
-  const bedListArb = fc.array(bedArb, { minLength: 1, maxLength: 20 });
 
   it('filtering buildings by area returns only buildings with matching area_id', () => {
     fc.assert(
@@ -544,29 +505,6 @@ describe('Feature: lease-contract-management, Property 4: Cascading dropdown fil
     );
   });
 
-  it('filtering beds by room returns only beds with matching room_id', () => {
-    fc.assert(
-      fc.property(
-        bedListArb,
-        fc.constantFrom('all', 'room-1', 'room-2', 'room-3'),
-        (beds, roomFilter) => {
-          const result = filterBedsByRoom(beds, roomFilter);
-
-          if (roomFilter === 'all') {
-            expect(result.length).toBe(beds.length);
-          } else {
-            for (const b of result) {
-              expect(b.room_id).toBe(roomFilter);
-            }
-            const expected = beds.filter((b) => b.room_id === roomFilter);
-            expect(result.length).toBe(expected.length);
-          }
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
   it('cascading: rooms from filtered buildings are a subset of all rooms for those buildings', () => {
     fc.assert(
       fc.property(
@@ -593,55 +531,21 @@ describe('Feature: lease-contract-management, Property 4: Cascading dropdown fil
     );
   });
 
-  it('cascading: beds from filtered rooms are a subset of all beds for those rooms', () => {
-    fc.assert(
-      fc.property(
-        roomListArb,
-        bedListArb,
-        fc.constantFrom('all', 'bld-1', 'bld-2', 'bld-3'),
-        (rooms, beds, buildingFilter) => {
-          const filteredRooms = filterRoomsByBuilding(rooms, buildingFilter);
-          const filteredRoomIds = new Set(filteredRooms.map((r) => r.id));
-
-          // Beds that belong to filtered rooms
-          const cascadedBeds = beds.filter((b) => filteredRoomIds.has(b.room_id));
-
-          // Every cascaded bed must belong to a filtered room
-          for (const b of cascadedBeds) {
-            expect(filteredRoomIds.has(b.room_id)).toBe(true);
-          }
-
-          expect(cascadedBeds.length).toBeLessThanOrEqual(beds.length);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('full cascade: area → building → room → bed produces correct subsets', () => {
+  it('full cascade: area → building → room produces correct subsets', () => {
     fc.assert(
       fc.property(
         buildingListArb,
         roomListArb,
-        bedListArb,
         fc.constantFrom('all', 'area-1', 'area-2'),
-        (buildings, rooms, beds, areaFilter) => {
+        (buildings, rooms, areaFilter) => {
           // Step 1: Filter buildings by area
           const filteredBuildings = filterBuildingsByArea(buildings, areaFilter);
-          const filteredBuildingIds = new Set(filteredBuildings.map((b) => b.id));
 
           // Step 2: Pick a building from filtered list (or 'all')
           const buildingFilter = filteredBuildings.length > 0
             ? filteredBuildings[0].id
             : 'all';
           const filteredRooms = filterRoomsByBuilding(rooms, buildingFilter);
-          const filteredRoomIds = new Set(filteredRooms.map((r) => r.id));
-
-          // Step 3: Pick a room from filtered list (or 'all')
-          const roomFilter = filteredRooms.length > 0
-            ? filteredRooms[0].id
-            : 'all';
-          const filteredBeds = filterBedsByRoom(beds, roomFilter);
 
           // Verify: all filtered rooms belong to the selected building
           if (buildingFilter !== 'all') {
@@ -650,17 +554,9 @@ describe('Feature: lease-contract-management, Property 4: Cascading dropdown fil
             }
           }
 
-          // Verify: all filtered beds belong to the selected room
-          if (roomFilter !== 'all') {
-            for (const b of filteredBeds) {
-              expect(b.room_id).toBe(roomFilter);
-            }
-          }
-
           // Verify: cascade monotonicity
           expect(filteredBuildings.length).toBeLessThanOrEqual(buildings.length);
           expect(filteredRooms.length).toBeLessThanOrEqual(rooms.length);
-          expect(filteredBeds.length).toBeLessThanOrEqual(beds.length);
         },
       ),
       { numRuns: 100 },
@@ -669,10 +565,9 @@ describe('Feature: lease-contract-management, Property 4: Cascading dropdown fil
 
   it('selecting "all" at any level returns the full list for that level', () => {
     fc.assert(
-      fc.property(buildingListArb, roomListArb, bedListArb, (buildings, rooms, beds) => {
+      fc.property(buildingListArb, roomListArb, (buildings, rooms) => {
         expect(filterBuildingsByArea(buildings, 'all').length).toBe(buildings.length);
         expect(filterRoomsByBuilding(rooms, 'all').length).toBe(rooms.length);
-        expect(filterBedsByRoom(beds, 'all').length).toBe(beds.length);
       }),
       { numRuns: 100 },
     );

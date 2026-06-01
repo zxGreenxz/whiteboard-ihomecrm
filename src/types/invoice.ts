@@ -231,10 +231,6 @@ export interface InvoiceWithRelations extends Invoice {
     id: string;
     name: string;
   };
-  bed?: {
-    id: string;
-    name: string;
-  } | null;
   tenant?: {
     id: string;
     full_name: string;

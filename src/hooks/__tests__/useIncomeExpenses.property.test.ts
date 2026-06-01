@@ -31,7 +31,6 @@ describe('Property 1: Phiếu mới luôn có trạng thái UNAPPROVED và mã p
           name: fc.string({ minLength: 1, maxLength: 50 }),
           buildingId: fc.uuid(),
           roomId: fc.option(fc.uuid(), { nil: undefined }),
-          bedId: fc.option(fc.uuid(), { nil: undefined }),
           tenantId: fc.option(fc.uuid(), { nil: undefined }),
           voucherDate: fc.integer({ min: 2020, max: 2030 }).chain(y =>
             fc.integer({ min: 1, max: 12 }).chain(m =>
@@ -175,7 +174,6 @@ describe('Property 6: Cập nhật phiếu round-trip', () => {
     name: fc.string({ minLength: 1, maxLength: 50 }),
     building_id: fc.uuid(),
     room_id: fc.option(fc.uuid(), { nil: null }),
-    bed_id: fc.option(fc.uuid(), { nil: null }),
     tenant_id: fc.option(fc.uuid(), { nil: null }),
     voucher_date: fc.constant('2025-01-15'),
     notes: fc.option(fc.string({ minLength: 0, maxLength: 100 }), { nil: null }),
@@ -649,18 +647,17 @@ describe('Property 11: Thống kê đúng', () => {
 
 import {
   filterRoomsByBuilding,
-  filterTenantsByRoomOrBed,
+  filterTenantsByRoom,
 } from '../useIncomeExpensesHelpers';
 
 /**
  * Feature: thu-chi-reimplementation
- * Property 12: Cascade dropdown Building → Room → Bed đúng
+ * Property 12: Cascade dropdown Building → Room đúng
  * **Validates: Yêu cầu 13.1, 13.2**
  *
  * Với bất kỳ building_id nào được chọn, tất cả rooms trong dropdown phải có building_id khớp.
- * Tương tự, với bất kỳ room_id nào được chọn, tất cả beds trong dropdown phải có room_id khớp.
  */
-describe('Property 12: Cascade dropdown Building → Room → Bed đúng', () => {
+describe('Property 12: Cascade dropdown Building → Room đúng', () => {
   const buildingIdPool = ['bld-A', 'bld-B', 'bld-C'] as const;
   const roomIdPool = ['room-1', 'room-2', 'room-3', 'room-4'] as const;
 
@@ -693,20 +690,18 @@ describe('Property 12: Cascade dropdown Building → Room → Bed đúng', () =>
 
 /**
  * Feature: thu-chi-reimplementation
- * Property 13: Gợi ý khách hàng theo phòng/giường đúng
+ * Property 13: Gợi ý khách hàng theo phòng đúng
  * **Validates: Yêu cầu 13.3**
  *
- * Với bất kỳ room_id hoặc bed_id nào được chọn, danh sách khách hàng gợi ý phải chỉ
- * bao gồm những khách hàng có liên kết tại phòng/giường đó.
+ * Với bất kỳ room_id nào được chọn, danh sách khách hàng gợi ý phải chỉ
+ * bao gồm những khách hàng có liên kết tại phòng đó.
  */
-describe('Property 13: Gợi ý khách hàng theo phòng/giường đúng', () => {
+describe('Property 13: Gợi ý khách hàng theo phòng đúng', () => {
   const roomIdPool = ['room-1', 'room-2', 'room-3'] as const;
-  const bedIdPool = ['bed-A', 'bed-B', 'bed-C'] as const;
 
   const tenantArb = fc.record({
     id: fc.uuid(),
     room_id: fc.option(fc.constantFrom(...roomIdPool), { nil: null }),
-    bed_id: fc.option(fc.constantFrom(...bedIdPool), { nil: null }),
   });
 
   it('tenants filtered by roomId must all have matching room_id', () => {
@@ -715,48 +710,10 @@ describe('Property 13: Gợi ý khách hàng theo phòng/giường đúng', () =
         fc.array(tenantArb, { minLength: 0, maxLength: 20 }),
         fc.constantFrom(...roomIdPool),
         (tenants, roomId) => {
-          const result = filterTenantsByRoomOrBed(tenants, roomId, undefined);
+          const result = filterTenantsByRoom(tenants, roomId);
 
           for (const t of result) {
             expect(t.room_id).toBe(roomId);
-          }
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('tenants filtered by bedId must all have matching bed_id', () => {
-    fc.assert(
-      fc.property(
-        fc.array(tenantArb, { minLength: 0, maxLength: 20 }),
-        fc.constantFrom(...bedIdPool),
-        (tenants, bedId) => {
-          const result = filterTenantsByRoomOrBed(tenants, undefined, bedId);
-
-          for (const t of result) {
-            expect(t.bed_id).toBe(bedId);
-          }
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('tenants filtered by both roomId and bedId should match bed_id first', () => {
-    fc.assert(
-      fc.property(
-        fc.array(tenantArb, { minLength: 0, maxLength: 20 }),
-        fc.constantFrom(...roomIdPool),
-        fc.constantFrom(...bedIdPool),
-        (tenants, roomId, bedId) => {
-          const result = filterTenantsByRoomOrBed(tenants, roomId, bedId);
-
-          for (const t of result) {
-            // Must match either bed_id or room_id
-            const matchesBed = t.bed_id === bedId;
-            const matchesRoom = t.room_id === roomId;
-            expect(matchesBed || matchesRoom).toBe(true);
           }
         },
       ),
