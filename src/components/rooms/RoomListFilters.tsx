@@ -10,15 +10,23 @@ interface Floor {
   name: string | null;
 }
 
+interface Area {
+  id: string;
+  name: string;
+}
+
 interface RoomListFiltersProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
+  areaFilter: string;
+  onAreaChange: (value: string) => void;
   buildingFilter: string;
   onBuildingChange: (value: string) => void;
   floorFilter: string;
   onFloorChange: (value: string) => void;
   statusFilter: string;
   onStatusChange: (value: string) => void;
+  areas: Area[];
   buildings: BuildingWithRelations[];
   floors: Floor[];
 }
@@ -26,12 +34,15 @@ interface RoomListFiltersProps {
 export default function RoomListFilters({
   searchTerm,
   onSearchChange,
+  areaFilter,
+  onAreaChange,
   buildingFilter,
   onBuildingChange,
   floorFilter,
   onFloorChange,
   statusFilter,
   onStatusChange,
+  areas,
   buildings,
   floors,
 }: RoomListFiltersProps) {
@@ -46,6 +57,16 @@ export default function RoomListFilters({
           className="pl-9"
         />
       </div>
+      <SearchableSelect
+        value={areaFilter}
+        onValueChange={onAreaChange}
+        className="w-full sm:w-[200px]"
+        placeholder="Khu vực"
+        options={[
+          { value: 'all', label: 'Tất cả khu vực' },
+          ...areas.map((area) => ({ value: area.id, label: area.name })),
+        ]}
+      />
       <SearchableSelect
         value={buildingFilter}
         onValueChange={(val) => { onBuildingChange(val); onFloorChange('all'); }}

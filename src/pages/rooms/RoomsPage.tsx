@@ -11,6 +11,7 @@ import RoomFormDialog from '@/components/rooms/RoomFormDialog';
 
 import { useRooms, useUpdateRoomStatus } from '@/hooks/useRooms';
 import { useBuildings } from '@/hooks/useBuildings';
+import { useAreas } from '@/hooks/useAreas';
 import { useFloors } from '@/hooks/useFloors';
 import type { RoomWithRelations } from '@/types/room';
 import type { BuildingWithRelations } from '@/types/building';
@@ -26,6 +27,7 @@ export default function RoomsPage() {
 
   // State
   const [searchTerm, setSearchTerm] = useState('');
+  const [areaFilter, setAreaFilter] = useState('all');
   const [buildingFilter, setBuildingFilter] = useState(preselectedBuildingId || 'all');
   const [floorFilter, setFloorFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -43,10 +45,25 @@ export default function RoomsPage() {
   }, [preselectedBuildingId]);
 
   // Data
+  const { data: areasData } = useAreas();
+  const areas = useMemo(
+    () => (Array.isArray(areasData) ? areasData : []),
+    [areasData]
+  );
+
   const { data: buildingsData } = useBuildings();
   const buildings = useMemo(
     () => (Array.isArray(buildingsData) ? buildingsData : []) as BuildingWithRelations[],
     [buildingsData]
+  );
+
+  // Toà nhà thuộc khu vực đang lọc (để giới hạn dropdown toà nhà cho khớp)
+  const buildingsInArea = useMemo(
+    () =>
+      areaFilter === 'all'
+        ? buildings
+        : buildings.filter((b) => b.area_id === areaFilter),
+    [buildings, areaFilter]
   );
 
   const { data: floorsData } = useFloors(buildingFilter !== 'all' ? buildingFilter : undefined);
@@ -74,6 +91,10 @@ export default function RoomsPage() {
         room.name.toLowerCase().includes(term) ||
         room.code?.toLowerCase().includes(term);
 
+      // Area (khu vực) filter — khu vực nằm ở toà nhà của phòng
+      const matchesArea =
+        areaFilter === 'all' || room.building?.area_id === areaFilter;
+
       // Building filter
       const matchesBuilding =
         buildingFilter === 'all' || room.building_id === buildingFilter;
@@ -90,7 +111,7 @@ export default function RoomsPage() {
         matchesStatus = room.status === 'UNAVAILABLE';
       }
 
-      return matchesSearch && matchesBuilding && matchesFloor && matchesStatus;
+      return matchesSearch && matchesArea && matchesBuilding && matchesFloor && matchesStatus;
     });
 
     return result.sort((a, b) =>
@@ -101,7 +122,7 @@ export default function RoomsPage() {
         b.name ?? '',
       ),
     );
-  }, [rooms, searchTerm, buildingFilter, floorFilter, statusFilter]);
+  }, [rooms, searchTerm, areaFilter, buildingFilter, floorFilter, statusFilter]);
 
   // Handlers
   const handleEdit = (room: RoomWithRelations) => {
@@ -125,7 +146,14 @@ export default function RoomsPage() {
     queryClient.invalidateQueries({ queryKey: ['rooms'] });
   };
 
-  const hasFilters = searchTerm || buildingFilter !== 'all' || floorFilter !== 'all' || statusFilter !== 'all';
+  // Đổi khu vực → reset toà nhà + tầng (toà nhà cũ có thể không thuộc khu vực mới)
+  const handleAreaChange = (value: string) => {
+    setAreaFilter(value);
+    setBuildingFilter('all');
+    setFloorFilter('all');
+  };
+
+  const hasFilters = searchTerm || areaFilter !== 'all' || buildingFilter !== 'all' || floorFilter !== 'all' || statusFilter !== 'all';
 
   return (
     <MainLayout title="Căn hộ" subtitle="Danh mục dữ liệu > Căn hộ" icon={Home}>
@@ -134,13 +162,16 @@ export default function RoomsPage() {
         <RoomListFilters
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
+          areaFilter={areaFilter}
+          onAreaChange={handleAreaChange}
           buildingFilter={buildingFilter}
           onBuildingChange={setBuildingFilter}
           floorFilter={floorFilter}
           onFloorChange={setFloorFilter}
           statusFilter={statusFilter}
           onStatusChange={setStatusFilter}
-          buildings={buildings}
+          areas={areas}
+          buildings={buildingsInArea}
           floors={floors}
         />
 
