@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Home, Plus, Search, RefreshCw, LayoutGrid, List } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import EmptyState from '@/components/ui/EmptyState';
 import RoomListFilters from '@/components/rooms/RoomListFilters';
 import RoomListTable from '@/components/rooms/RoomListTable';
@@ -13,6 +14,8 @@ import { useRooms, useUpdateRoomStatus } from '@/hooks/useRooms';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useAreas } from '@/hooks/useAreas';
 import { useFloors } from '@/hooks/useFloors';
+import { useRoomsWithActiveContracts } from '@/hooks/useRoomsWithContracts';
+import { getRoomDisplayStatus } from '@/lib/roomStatus';
 import type { RoomWithRelations } from '@/types/room';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
@@ -78,6 +81,16 @@ export default function RoomsPage() {
     [roomsData]
   );
 
+  // Hợp đồng đang hiệu lực (toàn bộ toà) để suy ra phòng trống / sắp hết hạn
+  const { data: roomsWithContracts = [] } = useRoomsWithActiveContracts();
+  const endDateByRoomId = useMemo(() => {
+    const map = new Map<string, string>();
+    roomsWithContracts.forEach((r) => {
+      if (r.activeContract?.end_date) map.set(r.id, r.activeContract.end_date);
+    });
+    return map;
+  }, [roomsWithContracts]);
+
   const updateStatus = useUpdateRoomStatus();
 
   // Client-side filtering + sắp xếp: gom theo toà nhà rồi theo tên phòng
@@ -123,6 +136,18 @@ export default function RoomsPage() {
       ),
     );
   }, [rooms, searchTerm, areaFilter, buildingFilter, floorFilter, statusFilter]);
+
+  // Thống kê theo danh sách đang hiển thị: tổng phòng, phòng trống, sắp hết hạn
+  const roomStats = useMemo(() => {
+    let available = 0;
+    let expiring = 0;
+    for (const room of filteredRooms) {
+      const status = getRoomDisplayStatus(room.status, endDateByRoomId.get(room.id));
+      if (status === 'AVAILABLE') available += 1;
+      else if (status === 'EXPIRING_SOON') expiring += 1;
+    }
+    return { total: filteredRooms.length, available, expiring };
+  }, [filteredRooms, endDateByRoomId]);
 
   // Handlers
   const handleEdit = (room: RoomWithRelations) => {
@@ -174,6 +199,28 @@ export default function RoomsPage() {
           buildings={buildingsInArea}
           floors={floors}
         />
+
+        {/* Stat cards */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold">{roomStats.total}</div>
+              <p className="text-xs text-muted-foreground">Tổng phòng</p>
+            </CardContent>
+          </Card>
+          <Card className="border-l-4 border-l-red-500">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-red-700">{roomStats.available}</div>
+              <p className="text-xs text-muted-foreground">Tổng phòng trống</p>
+            </CardContent>
+          </Card>
+          <Card className="border-l-4 border-l-purple-500">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-purple-700">{roomStats.expiring}</div>
+              <p className="text-xs text-muted-foreground">Sắp hết hạn</p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between">

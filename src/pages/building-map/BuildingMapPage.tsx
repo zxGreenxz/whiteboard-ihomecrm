@@ -8,36 +8,12 @@ import { RoomDetailDialog } from "@/components/building-map/RoomDetailDialog";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useFloors } from "@/hooks/useFloors";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useAreas } from "@/hooks/useAreas";
+import { useRoomsWithActiveContracts } from "@/hooks/useRoomsWithContracts";
+import { getRoomDisplayStatus } from "@/lib/roomStatus";
 import { Building2, Layers, Search, Filter } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInDays } from "date-fns";
-
-interface RoomWithContract {
-  id: string;
-  name: string;
-  rent_price: number;
-  floor: number;
-  status: string;
-  activeContract?: {
-    id: string;
-    end_date: string;
-    tenant?: {
-      full_name: string;
-    };
-  };
-}
-
-interface SupabaseContractRow {
-  id: string;
-  end_date: string;
-  status: string;
-  contract_customers?: Array<{
-    is_representative: boolean;
-    customer?: { id: string; full_name: string } | null;
-  }>;
-}
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "Tất cả trạng thái" },
@@ -49,6 +25,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const BuildingMapPage = () => {
+  const [selectedAreaId, setSelectedAreaId] = useState<string>("all");
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
   const [selectedFloor, setSelectedFloor] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -56,83 +33,37 @@ const BuildingMapPage = () => {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
+  const { data: areas = [] } = useAreas();
   const { data: buildings = [], isLoading: buildingsLoading } = useBuildings();
   const { data: allRooms = [], isLoading: roomsLoading } = useRooms();
   const { data: floors = [], isLoading: floorsLoading } = useFloors(selectedBuildingId || undefined);
 
-  // Get rooms with their ACTIVE contracts. The join goes:
-  //   rooms ⟵ contracts ⟵ contract_customers ⟵ customers
-  // We pick the representative customer to display as the "tenant" name.
-  const { data: roomsWithContracts = [] } = useQuery({
-    queryKey: ["rooms-with-contracts", selectedBuildingId],
-    queryFn: async (): Promise<RoomWithContract[]> => {
-      let query = supabase
-        .from("rooms")
-        .select(
-          `id, name, rent_price, floor, status, building_id,
-           contracts!inner (
-             id, end_date, status,
-             contract_customers!contract_customers_contract_id_fkey (
-               is_representative,
-               customer:customers!contract_customers_customer_id_fkey ( id, full_name )
-             )
-           )`
-        )
-        .is("deleted_at", null)
-        .in("contracts.status", ["ACTIVE", "EXTENDED"]) as any;
+  // Toà nhà thuộc khu vực đang lọc (để giới hạn dropdown toà nhà cho khớp)
+  const buildingsInArea = useMemo(
+    () =>
+      selectedAreaId === "all"
+        ? buildings
+        : buildings.filter((b) => b.area_id === selectedAreaId),
+    [buildings, selectedAreaId]
+  );
 
-      if (selectedBuildingId) {
-        query = query.eq("building_id", selectedBuildingId);
-      }
+  // Phòng kèm hợp đồng đang hiệu lực (ACTIVE/EXTENDED) của toà đang chọn
+  const { data: roomsWithContracts = [] } = useRoomsWithActiveContracts(
+    selectedBuildingId || undefined
+  );
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      return (data || []).map((room: any) => {
-        const c: SupabaseContractRow | undefined = room.contracts?.[0];
-        const reps = c?.contract_customers || [];
-        const repTenant =
-          reps.find((cc) => cc.is_representative)?.customer ||
-          reps[0]?.customer;
-        return {
-          id: room.id,
-          name: room.name,
-          rent_price: room.rent_price,
-          floor: room.floor,
-          status: room.status,
-          activeContract: c
-            ? {
-                id: c.id,
-                end_date: c.end_date,
-                tenant: repTenant ? { full_name: repTenant.full_name } : undefined,
-              }
-            : undefined,
-        };
-      });
-    },
-    enabled: !!selectedBuildingId,
-  });
+  const contractByRoomId = useMemo(() => {
+    const map = new Map<string, (typeof roomsWithContracts)[number]>();
+    roomsWithContracts.forEach((r) => map.set(r.id, r));
+    return map;
+  }, [roomsWithContracts]);
 
   // Determine room status with contract info
-  const getRoomStatus = (room: any): RoomStatus => {
-    const contract = roomsWithContracts.find(r => r.id === room.id);
-
-    if (contract?.activeContract) {
-      const daysUntilExpiry = differenceInDays(
-        new Date(contract.activeContract.end_date),
-        new Date()
-      );
-
-      if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
-        return "EXPIRING_SOON";
-      }
-      return "OCCUPIED";
-    }
-
-    if (room.status === "MAINTENANCE") return "MAINTENANCE";
-    if (room.status === "RESERVED") return "RESERVED";
-    return "AVAILABLE";
-  };
+  const getRoomStatus = (room: any): RoomStatus =>
+    getRoomDisplayStatus(
+      room.status,
+      contractByRoomId.get(room.id)?.activeContract?.end_date
+    );
 
   // Filter rooms by building, floor, status, and search query
   const filteredRooms = useMemo(() => {
@@ -147,7 +78,7 @@ const BuildingMapPage = () => {
     }
 
     const enrichedRooms = rooms.map(room => {
-      const contract = roomsWithContracts.find(r => r.id === room.id);
+      const contract = contractByRoomId.get(room.id);
       return {
         ...room,
         displayStatus: getRoomStatus(room),
@@ -174,7 +105,7 @@ const BuildingMapPage = () => {
     }
 
     return result;
-  }, [allRooms, selectedBuildingId, selectedFloor, selectedStatus, searchQuery, roomsWithContracts]);
+  }, [allRooms, selectedBuildingId, selectedFloor, selectedStatus, searchQuery, contractByRoomId]);
 
   // Group rooms by floor for display
   const roomsByFloor = useMemo(() => {
@@ -212,16 +143,16 @@ const BuildingMapPage = () => {
     const maintenance = enriched.filter(r => r.displayStatus === "MAINTENANCE").length;
 
     return { total, occupied, available, reserved, expiring, maintenance };
-  }, [allRooms, selectedBuildingId, roomsWithContracts]);
+  }, [allRooms, selectedBuildingId, contractByRoomId]);
 
   const handleRoomClick = (roomId: string) => {
     setSelectedRoomId(roomId);
     setDetailDialogOpen(true);
   };
 
-  // Auto-select first building if available
-  if (!selectedBuildingId && buildings.length > 0) {
-    setSelectedBuildingId(buildings[0].id);
+  // Auto-select first building in the current area scope if none selected
+  if (!selectedBuildingId && buildingsInArea.length > 0) {
+    setSelectedBuildingId(buildingsInArea[0].id);
   }
 
   return (
@@ -244,7 +175,22 @@ const BuildingMapPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              {/* Area (khu vực) filter */}
+              <SearchableSelect
+                value={selectedAreaId}
+                onValueChange={(val) => {
+                  setSelectedAreaId(val);
+                  setSelectedBuildingId("");
+                  setSelectedFloor("all");
+                }}
+                placeholder="Khu vực"
+                options={[
+                  { value: "all", label: "Tất cả khu vực" },
+                  ...areas.map((area) => ({ value: area.id, label: area.name })),
+                ]}
+              />
+
               {/* Building filter */}
               {buildingsLoading ? (
                 <Skeleton className="h-10 w-full" />
@@ -256,7 +202,7 @@ const BuildingMapPage = () => {
                     setSelectedFloor("all");
                   }}
                   placeholder="Chọn tòa nhà"
-                  options={buildings.map((building) => ({
+                  options={buildingsInArea.map((building) => ({
                     value: building.id,
                     label: building.name,
                   }))}
