@@ -41,16 +41,10 @@ export default function BuildingsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editBuilding, setEditBuilding] = useState<BuildingWithRelations | undefined>(undefined);
 
-  // Stats computed from ALL buildings (not filtered)
-  const stats = useMemo(() => {
-    const total = buildings.length;
-    const active = buildings.filter((b) => b.status === 'ACTIVE').length;
-    const inactive = buildings.filter((b) => b.status === 'INACTIVE').length;
-    return { total, active, inactive };
-  }, [buildings]);
-
-  // Client-side filtering
-  const filteredBuildings = useMemo(() => {
+  // Phạm vi cho thẻ thống kê: lọc theo tìm kiếm + khu vực (KHÔNG theo bộ lọc trạng thái).
+  // Nhờ vậy 3 thẻ vẫn là phân tích Đang/Ngừng hoạt động đầy đủ của phạm vi đang xem;
+  // nếu áp luôn bộ lọc trạng thái thì thẻ còn lại sẽ luôn bằng 0.
+  const scopedBuildings = useMemo(() => {
     return buildings.filter((building) => {
       // Search filter: name, code, street_address (case-insensitive)
       const term = searchTerm.toLowerCase();
@@ -60,17 +54,28 @@ export default function BuildingsPage() {
         building.code?.toLowerCase().includes(term) ||
         building.street_address?.toLowerCase().includes(term);
 
-      // Status filter
-      const matchesStatus =
-        statusFilter === 'all' || building.status === statusFilter;
-
       // Area filter
       const matchesArea =
         areaFilter === 'all' || building.area_id === areaFilter;
 
-      return matchesSearch && matchesStatus && matchesArea;
+      return matchesSearch && matchesArea;
     });
-  }, [buildings, searchTerm, statusFilter, areaFilter]);
+  }, [buildings, searchTerm, areaFilter]);
+
+  // Stats theo phạm vi tìm kiếm + khu vực (cập nhật khi đổi bộ lọc)
+  const stats = useMemo(() => {
+    const total = scopedBuildings.length;
+    const active = scopedBuildings.filter((b) => b.status === 'ACTIVE').length;
+    const inactive = scopedBuildings.filter((b) => b.status === 'INACTIVE').length;
+    return { total, active, inactive };
+  }, [scopedBuildings]);
+
+  // Bảng áp thêm bộ lọc trạng thái lên phạm vi trên
+  const filteredBuildings = useMemo(() => {
+    return scopedBuildings.filter(
+      (building) => statusFilter === 'all' || building.status === statusFilter
+    );
+  }, [scopedBuildings, statusFilter]);
 
   // Handlers
   const handleEdit = (building: BuildingWithRelations) => {
