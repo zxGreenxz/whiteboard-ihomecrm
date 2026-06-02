@@ -1,15 +1,16 @@
-export type BuildingRef = {
-  id: string;
-  name: string | null;
-  code: string | null;
-};
+import {
+  BUILDING_WIDE_TOKENS,
+  eqInsensitive,
+  eqLoose,
+  normalizeLoose,
+  splitAliases,
+  type BuildingRef,
+  type RoomRef,
+} from "./textMatch";
 
-export type RoomRef = {
-  id: string;
-  name: string | null;
-  code: string | null;
-  building_id: string | null;
-};
+// Re-export để các import cũ (TaskCreateDialog…) vẫn dùng từ đây được.
+export { splitAliases };
+export type { BuildingRef, RoomRef };
 
 export type JobTypeRef = {
   id: string;
@@ -36,8 +37,6 @@ export type ParsedJobInput = {
     jobTypeNotFound?: string;
   };
 };
-
-const BUILDING_WIDE_TOKENS = ["tn", "tòa", "toa", "toanha", "toànhà"];
 
 const STRUCTURE_HINT =
   'Cần ít nhất 4 phần: (phòng) (tòa nhà) (loại công việc) (mô tả). Ví dụ: 201 1392qt sửa vòi nước';
@@ -150,40 +149,6 @@ export function parseJobQuickInput(
     hasAnyError: Object.keys(errors).length > 0,
     errors,
   };
-}
-
-function eqInsensitive(
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean {
-  if (!a || !b) return false;
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-function normalizeLoose(s: string | null | undefined): string {
-  if (!s) return "";
-  return s
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/g, "d");
-}
-
-function eqLoose(
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean {
-  if (!a || !b) return false;
-  return normalizeLoose(a) === normalizeLoose(b);
-}
-
-export function splitAliases(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
 }
 
 function addDays(d: Date, days: number): Date {
