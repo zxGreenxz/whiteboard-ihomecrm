@@ -113,7 +113,8 @@ export const useDashboardStats = (buildingId?: string | null) => {
       const { data: unpaidInvoices } = await supabase
         .from("invoices")
         .select("total_amount, paid_amount")
-        .in("status", ["APPROVED", "PARTIAL_PAID"]);
+        .in("status", ["APPROVED", "PARTIAL_PAID"])
+        .is("deleted_at", null);
 
       const totalDebt = unpaidInvoices?.reduce((sum, inv) => {
         const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
@@ -268,6 +269,7 @@ export const useAlerts = (buildingId?: string | null) => {
            )`
         )
         .in("status", ["APPROVED", "PARTIAL_PAID"])
+        .is("deleted_at", null)
         .lt("due_date", new Date().toISOString())
         .order("due_date", { ascending: true })
         .limit(5);

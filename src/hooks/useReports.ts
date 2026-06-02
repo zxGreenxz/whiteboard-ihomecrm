@@ -656,6 +656,7 @@ export function useDebtReport() {
           )
         `)
         .in("status", ["APPROVED", "PARTIAL_PAID", "OVERDUE"])
+        .is("deleted_at", null)
         .order("due_date", { ascending: true });
 
       if (error) throw error;
@@ -720,6 +721,7 @@ export function useCustomerDebtReport() {
           )
         `)
         .in("status", ["APPROVED", "PARTIAL_PAID", "OVERDUE"])
+        .is("deleted_at", null)
         .order("due_date", { ascending: true });
 
       if (error) throw error;
