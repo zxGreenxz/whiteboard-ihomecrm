@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, X, ArrowUp, ArrowDown, Layers } from "lucide-react";
+import { Plus, X, ArrowUp, ArrowDown, Layers, Zap } from "lucide-react";
 
 interface Props {
+  onCreateQuick?: () => void;
   onCreateIncome: () => void;
   onCreateExpense: () => void;
   onCreateBatch?: () => void;
 }
 
 export function IncomeExpenseFAB({
+  onCreateQuick,
   onCreateIncome,
   onCreateExpense,
   onCreateBatch,
@@ -51,6 +53,21 @@ export function IncomeExpenseFAB({
         }`}
         style={{ bottom: "calc(140px + env(safe-area-inset-bottom, 0px))" }}
       >
+        {onCreateQuick && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2.5 pl-4 pr-2 py-2 bg-white rounded-full shadow-lg border border-zinc-200 active:scale-95 transition-transform"
+            onClick={() => {
+              close();
+              onCreateQuick();
+            }}
+          >
+            <span className="text-sm font-medium text-zinc-700">Tạo nhanh</span>
+            <span className="w-9 h-9 rounded-full bg-amber-500 grid place-items-center">
+              <Zap className="h-4 w-4 text-white" />
+            </span>
+          </button>
+        )}
         <button
           type="button"
           className="inline-flex items-center gap-2.5 pl-4 pr-2 py-2 bg-white rounded-full shadow-lg border border-zinc-200 active:scale-95 transition-transform"

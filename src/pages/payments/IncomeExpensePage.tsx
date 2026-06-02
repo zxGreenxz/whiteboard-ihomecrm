@@ -30,6 +30,7 @@ import IncomeExpenseListMobile from "@/components/income-expenses/IncomeExpenseL
 import IncomeExpenseFAB from "@/components/income-expenses/IncomeExpenseFAB";
 import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpenseFilterChips";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
+import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
 import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
@@ -108,6 +109,7 @@ const IncomeExpensePage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"individual" | "batch">("individual");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isQuickOpen, setIsQuickOpen] = useState(false);
   const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -379,12 +381,18 @@ const IncomeExpensePage = () => {
 
         {/* FAB */}
         <IncomeExpenseFAB
+          onCreateQuick={() => setIsQuickOpen(true)}
           onCreateIncome={handleAddIncome}
           onCreateExpense={handleAddExpense}
           onCreateBatch={() => handleAddBatch("EXPENSE")}
         />
 
         {/* Dialogs */}
+        <IncomeExpenseQuickCreateDialog
+          open={isQuickOpen}
+          onOpenChange={setIsQuickOpen}
+          defaultType="EXPENSE"
+        />
         <IncomeExpenseForm
           open={isFormOpen}
           onOpenChange={handleFormClose}
