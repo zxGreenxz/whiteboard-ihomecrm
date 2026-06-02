@@ -52,7 +52,13 @@ export const incomeExpenseTypeFormSchema = z.object({
   type: z.enum(['income', 'expense'], {
     required_error: 'Vui lòng chọn loại',
   }),
-  category: z.string().nullable().optional(),
+  // Nhóm (category) bắt buộc — mỗi hạng mục phải thuộc 1 nhóm để dễ thống kê,
+  // phân loại thu chi. Nhận null từ combobox → coerce '' rồi chặn rỗng.
+  category: z
+    .string({ invalid_type_error: 'Vui lòng chọn nhóm Thu/Chi' })
+    .nullable()
+    .transform((v) => (v ?? '').trim())
+    .pipe(z.string().min(1, 'Vui lòng chọn nhóm Thu/Chi')),
   description: z.string().nullable().optional(),
   is_default: z.boolean().optional().default(false),
 });

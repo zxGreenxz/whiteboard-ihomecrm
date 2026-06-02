@@ -227,7 +227,7 @@ export default function IncomeExpenseTypesPage() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nhóm (Loại)</FormLabel>
+                      <FormLabel>Nhóm (Loại) *</FormLabel>
                       <FormControl>
                         <CategoryCombobox
                           value={field.value ?? null}
