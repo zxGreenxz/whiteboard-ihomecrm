@@ -39,17 +39,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
+import { useBuildings } from "@/hooks/useBuildings";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useAccountSharedUsers,
   useSyncAccountSharedUsers,
 } from "@/hooks/useAccountSharedUsers";
 
+const NO_BUILDING = "__none__";
+
 const schema = z.object({
   name: z.string().min(1, "Tên sổ quỹ bắt buộc").max(120),
   initial_amount: z.coerce.number().min(0, "Số dư đầu kỳ không âm"),
   initial_date: z.string().min(1, "Ngày chốt đầu kỳ bắt buộc"),
   description: z.string().nullable().optional(),
+  quick_default_building_id: z.string().nullable().optional(),
   user_id: z.string().min(1, "Người phụ trách bắt buộc"),
 });
 
@@ -72,6 +76,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const { data: isAdmin } = useIsAdmin();
   const { data: currentUser } = useAuth();
   const { data: staffUsers } = useStaffUsers();
+  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: existingShared } = useAccountSharedUsers(account?.id);
 
   // Người phụ trách hiện tại của form (theo dõi để loại trừ khỏi list shared).
@@ -89,6 +94,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       initial_amount: Number(account?.initial_amount ?? 0),
       initial_date: account?.initial_date?.slice(0, 10) ?? todayISO(),
       description: account?.description ?? "",
+      quick_default_building_id: account?.quick_default_building_id ?? null,
       user_id: account?.user_id ?? currentUser?.id ?? "",
     }),
     [account, currentUser?.id]
@@ -115,6 +121,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       initial_amount: values.initial_amount,
       initial_date: values.initial_date,
       description: values.description || null,
+      quick_default_building_id: values.quick_default_building_id || null,
       // Chỉ admin mới được set/đổi người phụ trách. Non-admin gửi cũng vô hại
       // vì RLS chặn đổi user_id sang user khác (admin_all bypass cho admin).
       user_id: isAdmin ? values.user_id : undefined,
@@ -262,6 +269,42 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
                       value={field.value ?? ""}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="quick_default_building_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tòa nhà mặc định khi tạo phiếu nhanh</FormLabel>
+                  <Select
+                    value={field.value ?? NO_BUILDING}
+                    onValueChange={(v) =>
+                      field.onChange(v === NO_BUILDING ? null : v)
+                    }
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="— Không gán —" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={NO_BUILDING}>— Không gán —</SelectItem>
+                      {buildings.map((b: any) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                          {b.code ? ` (${b.code})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Khi tạo phiếu nhanh và chọn tòa nhà này, sổ quỹ sẽ được tự
+                    chọn (vẫn đổi lại được).
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

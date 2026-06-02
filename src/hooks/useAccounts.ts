@@ -15,6 +15,8 @@ export interface Account {
   branch: string | null;
   description: string | null;
   is_default: boolean;
+  // Tòa nhà mặc định để tự chọn sổ quỹ này trong dialog Tạo phiếu nhanh.
+  quick_default_building_id: string | null;
   initial_amount: number;
   initial_date: string;        // YYYY-MM-DD
   lock_date: string | null;    // YYYY-MM-DD
@@ -33,6 +35,8 @@ export interface AccountFormValues {
   initial_amount: number;
   initial_date: string;
   is_default?: boolean;
+  /** Tòa nhà mặc định khi tạo phiếu nhanh (null = không gán). */
+  quick_default_building_id?: string | null;
   /** ID của user phụ trách (= accounts.user_id). Chỉ admin mới được đổi.
    *  Khi undefined → giữ nguyên (update) hoặc auto = auth.uid() (create). */
   user_id?: string;
@@ -144,6 +148,7 @@ export const useCreateAccount = () => {
         initial_amount: values.initial_amount,
         initial_date: values.initial_date,
         is_default: values.is_default ?? false,
+        quick_default_building_id: values.quick_default_building_id ?? null,
       };
 
       const { data, error } = await supabase
@@ -176,6 +181,7 @@ export const useUpdateAccount = () => {
         initial_amount: input.values.initial_amount,
         initial_date: input.values.initial_date,
         is_default: input.values.is_default ?? false,
+        quick_default_building_id: input.values.quick_default_building_id ?? null,
       };
       // Chỉ gán user_id khi form thực sự đẩy lên (admin đổi người phụ trách).
       // Non-admin không gửi field này → giữ nguyên user_id cũ.
