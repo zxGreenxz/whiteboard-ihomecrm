@@ -44,6 +44,8 @@ export function AlertsList({ buildingId }: { buildingId?: string | null }) {
         return "Hợp đồng hết hạn";
       case "urgent_issue":
         return "Công việc khẩn cấp";
+      case "deposit_shortfall":
+        return "Thiếu cọc";
       default:
         return "Thông báo";
     }

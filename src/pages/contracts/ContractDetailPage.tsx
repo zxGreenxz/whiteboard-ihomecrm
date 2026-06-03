@@ -874,11 +874,46 @@ const ContractDetailPage = () => {
                     </div>
                   </div>
 
-                  {(contract.deposit_remaining || 0) <= 0 && (
+                  {(contract.deposit_remaining || 0) <= 0 ? (
                     <Alert className="bg-green-50 border-green-200">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                       <AlertDescription className="text-green-800 text-sm">
                         Đã thu đủ tiền cọc
+                      </AlertDescription>
+                    </Alert>
+                  ) : (contract as any).deposit_debt_mode === 'FIRST_INVOICE' ? (
+                    <Alert className="bg-blue-50 border-blue-200">
+                      <AlertCircle className="h-4 w-4 text-blue-600" />
+                      <AlertDescription className="text-blue-800 text-sm space-y-1">
+                        <p className="font-medium">
+                          Còn {formatCurrency(contract.deposit_remaining || 0)} cọc — thu trong hoá đơn đầu
+                        </p>
+                        <p className="text-xs">
+                          Khách thanh toán đủ cọc trong hoá đơn cọc + tháng đầu (không nhắc bổ sung).
+                        </p>
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Alert className="bg-orange-50 border-orange-200">
+                      <AlertCircle className="h-4 w-4 text-orange-600" />
+                      <AlertDescription className="text-orange-800 text-sm space-y-1">
+                        <p className="font-medium">
+                          Còn thiếu {formatCurrency(contract.deposit_remaining || 0)} tiền cọc
+                        </p>
+                        {(contract as any).deposit_debt_reason && (
+                          <p className="text-xs">
+                            Lý do cho nợ: {(contract as any).deposit_debt_reason}
+                          </p>
+                        )}
+                        {(contract as any).deposit_topup_due_date && (
+                          <p className="text-xs">
+                            Hẹn bổ sung:{' '}
+                            {format(
+                              new Date((contract as any).deposit_topup_due_date),
+                              'dd/MM/yyyy',
+                            )}
+                          </p>
+                        )}
                       </AlertDescription>
                     </Alert>
                   )}

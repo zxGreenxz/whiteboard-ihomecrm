@@ -9,6 +9,12 @@ export const contractFormSchema = z.object({
   total_deposit: z.number().min(0, 'Tiền cọc không được âm'),
   deposit_paid: z.number().min(0).optional(),
   deposit_account_id: z.string().uuid().nullable().optional(),
+  // Xử lý thiếu cọc khi ký (chặn ở form + hook nếu chưa chọn cách xử lý).
+  // mode: 'DEBT' = nợ cọc (có lý do/hẹn) | 'FIRST_INVOICE' = thu đủ ở hoá đơn đầu.
+  deposit_debt_acknowledged: z.boolean().optional(),
+  deposit_debt_mode: z.enum(['DEBT', 'FIRST_INVOICE']).optional(),
+  deposit_debt_reason: z.string().optional(),
+  deposit_topup_due_date: z.string().optional(),
   payment_cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
   start_billing_date: z.string().optional(),
   end_billing_date: z.string().optional(),

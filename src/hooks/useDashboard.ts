@@ -29,7 +29,7 @@ export interface OccupancyData {
 
 export interface Alert {
   id: string;
-  type: "overdue_invoice" | "expiring_contract" | "urgent_issue";
+  type: "overdue_invoice" | "expiring_contract" | "urgent_issue" | "deposit_shortfall";
   title: string;
   description: string;
   severity: "high" | "medium" | "low";
@@ -343,6 +343,45 @@ export const useAlerts = (buildingId?: string | null) => {
           severity: "high",
           date: issue.created_at,
           link: `/issues/${issue.id}`,
+        });
+      });
+
+      // Deposit shortfall — HĐ đang hiệu lực còn thiếu cọc (mode DEBT/legacy;
+      // KHÔNG gồm FIRST_INVOICE vì khoản đó thu qua hoá đơn đầu, đã có cảnh báo
+      // hoá đơn quá hạn riêng). Đánh dấu để admin nhớ thu đủ cọc.
+      const { data: depositShortContracts } = await (supabase as any)
+        .from("contracts")
+        .select(
+          `id, contract_number, total_deposit, deposit_paid, deposit_remaining, deposit_topup_due_date,
+           contract_customers!contract_customers_contract_id_fkey(
+             is_representative,
+             customer:customers!contract_customers_customer_id_fkey(full_name)
+           )`
+        )
+        .in("status", ["ACTIVE", "EXTENDED"])
+        .is("deleted_at", null)
+        .gte("deposit_remaining", 10000)
+        .or("deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT")
+        .order("deposit_remaining", { ascending: false })
+        .limit(5);
+
+      depositShortContracts?.forEach((c: any) => {
+        const customerName = getRepresentativeName(c, "Khách hàng");
+        const dueIso = c.deposit_topup_due_date as string | null;
+        const overdue = dueIso ? new Date(dueIso).getTime() < Date.now() : false;
+        const dueText = dueIso
+          ? ` - hẹn ${new Date(dueIso).toLocaleDateString("vi-VN")}`
+          : "";
+        alerts.push({
+          id: `deposit-${c.id}`,
+          type: "deposit_shortfall",
+          title: "Hợp đồng thiếu cọc",
+          description: `${customerName} - ${c.contract_number || "HĐ"} - Thiếu ${Number(
+            c.deposit_remaining || 0,
+          ).toLocaleString()}đ${dueText}`,
+          severity: overdue ? "high" : "medium",
+          date: dueIso || new Date().toISOString(),
+          link: `/contracts/${c.id}`,
         });
       });
 

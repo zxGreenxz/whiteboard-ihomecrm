@@ -16,6 +16,7 @@ export interface DepositWithRelations extends Deposit {
     id: string;
     name: string;
     code: string | null;
+    building?: { id: string; name: string } | null;
   };
 }
 
@@ -37,7 +38,8 @@ export const useDeposits = (filters?: {
             id, full_name, phone
           ),
           room:rooms!deposits_room_id_fkey (
-            id, name, code
+            id, name, code,
+            building:buildings!rooms_building_id_fkey ( id, name )
           )
         `)
         .order('created_at', { ascending: false });

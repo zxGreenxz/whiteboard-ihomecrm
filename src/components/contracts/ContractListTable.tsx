@@ -82,6 +82,54 @@ const formatDate = (dateStr: string) => {
   return `${dd}/${mm}/${yyyy}`;
 };
 
+// Ngưỡng làm tròn: chênh cọc < 10.000đ coi như đủ (khớp PREVIOUS_DEBT_ROUND_THRESHOLD).
+const DEPOSIT_SHORTFALL_THRESHOLD = 10000;
+
+/** Badge cọc cho HĐ đang hiệu lực — để admin thấy ngay HĐ nào chưa thu đủ cọc.
+ *  - Đủ cọc (xanh) khi remaining < ngưỡng.
+ *  - Còn thiếu + mode 'FIRST_INVOICE' → "Cọc ở HĐ đầu" (xanh dương): khách sẽ
+ *    trả đủ ngay trong hoá đơn cọc+tháng đầu, không phải nợ cần nhắc.
+ *  - Còn thiếu + mode 'DEBT'/legacy → "Thiếu cọc" (cam): nợ cọc cần thu/nhắc.
+ *  HĐ chưa hiệu lực (nháp/đã thanh lý) không hiển thị. */
+function DepositBadge({ contract }: { contract: ContractWithRelations }) {
+  if (!isContractInEffect(contract.status)) return null;
+  const total = contract.total_deposit || 0;
+  if (total <= 0) return null;
+  const remaining = total - (contract.deposit_paid || 0);
+  const isShort = remaining >= DEPOSIT_SHORTFALL_THRESHOLD;
+  if (!isShort) {
+    return (
+      <div className="mt-0.5 flex justify-end">
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-100 text-green-700"
+          title="Đã thu đủ cọc"
+        >
+          Đủ cọc
+        </span>
+      </div>
+    );
+  }
+  const firstInvoice = (contract as any).deposit_debt_mode === 'FIRST_INVOICE';
+  return (
+    <div className="mt-0.5 flex justify-end">
+      <span
+        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+          firstInvoice ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+        }`}
+        title={
+          firstInvoice
+            ? `Khách trả ${formatVND(remaining)} cọc trong hoá đơn đầu`
+            : `Còn thiếu ${formatVND(remaining)} tiền cọc`
+        }
+      >
+        {firstInvoice
+          ? `Cọc ở HĐ đầu ${formatVND(remaining)}`
+          : `Thiếu cọc ${formatVND(remaining)}`}
+      </span>
+    </div>
+  );
+}
+
 function getRepresentativeCustomerName(contract: ContractWithRelations): string {
   const rep = contract.contract_customers?.find((cc) => cc.is_representative);
   if (rep?.customer?.full_name) return rep.customer.full_name;
@@ -313,6 +361,7 @@ export default function ContractListTable({
                     </TableCell>
                     <TableCell className="text-right">
                       {formatVND(contract.total_deposit)}
+                      <DepositBadge contract={contract} />
                     </TableCell>
                     <TableCell className="text-sm">
                       {formatDate(contract.start_date)}

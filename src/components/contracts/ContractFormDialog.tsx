@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -37,6 +38,7 @@ import { toast } from "sonner";
 
 import { contractFormSchema } from "@/lib/contractValidation";
 import type { ContractFormData } from "@/lib/contractValidation";
+import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
 import type { ContractWithRelations, PaymentCycle } from "@/types/contract";
 import { PAYMENT_CYCLE_LABELS } from "@/types/contract";
 import {
@@ -206,12 +208,21 @@ export function ContractFormDialog({
       notes: "",
       discount_months: 0,
       discount_amount_per_month: 0,
+      deposit_debt_acknowledged: false,
+      deposit_debt_mode: undefined,
+      deposit_debt_reason: "",
+      deposit_topup_due_date: "",
     },
   });
 
   const totalDeposit = form.watch("total_deposit") ?? 0;
   const depositPaid = form.watch("deposit_paid") ?? 0;
   const depositRemaining = Math.max(0, totalDeposit - depositPaid);
+  const depositDebtMode = form.watch("deposit_debt_mode");
+  // Chặn ký khi thiếu cọc (chênh ≥ ngưỡng làm tròn) mà chưa chọn cách xử lý
+  // (Nợ cọc / Đóng đủ trong hoá đơn). Chỉ áp dụng lúc tạo mới — edit không khoá.
+  const depositShortfall = depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD;
+  const blockByDepositDebt = !isEditMode && depositShortfall && !depositDebtMode;
 
   // ---- Reset form when dialog opens ----
   useEffect(() => {
@@ -240,6 +251,12 @@ export function ContractFormDialog({
         notes: contract.notes ?? "",
         discount_months: contract.discounts?.months ?? 0,
         discount_amount_per_month: contract.discounts?.amount_per_month ?? 0,
+        deposit_debt_acknowledged:
+          (contract as any).deposit_debt_acknowledged ?? false,
+        deposit_debt_mode: (contract as any).deposit_debt_mode ?? undefined,
+        deposit_debt_reason: (contract as any).deposit_debt_reason ?? "",
+        deposit_topup_due_date:
+          (contract as any).deposit_topup_due_date?.split("T")[0] ?? "",
       });
 
       // Pre-populate customers
@@ -294,6 +311,10 @@ export function ContractFormDialog({
         notes: "",
         discount_months: 0,
         discount_amount_per_month: 0,
+        deposit_debt_acknowledged: false,
+        deposit_debt_mode: undefined,
+        deposit_debt_reason: "",
+        deposit_topup_due_date: "",
       });
     }
   }, [open, contract, form]);
@@ -574,6 +595,10 @@ export function ContractFormDialog({
     rent_price: "Tiền thuê",
     total_deposit: "Tiền cọc",
     deposit_paid: "Đã đặt cọc",
+    deposit_debt_acknowledged: "Xử lý thiếu cọc",
+    deposit_debt_mode: "Cách xử lý thiếu cọc",
+    deposit_debt_reason: "Lý do cho nợ cọc",
+    deposit_topup_due_date: "Hẹn bổ sung cọc",
     payment_cycle: "Chu kỳ thanh toán",
     start_billing_date: "Ngày BĐ tính tiền",
     end_billing_date: "Đến ngày",
@@ -686,6 +711,36 @@ export function ContractFormDialog({
       );
     } else {
       // Create mode
+
+      // Chặn ký khi khách chưa đóng đủ cọc, trừ khi chọn cách xử lý. Cọc thiếu
+      // vẫn vào hoá đơn cọc+tháng đầu như flow gốc; lựa chọn chỉ quyết định
+      // có nhắc bổ sung sau hay không.
+      const remaining =
+        (data.total_deposit || 0) - (data.deposit_paid || 0);
+      if (remaining >= PREVIOUS_DEBT_ROUND_THRESHOLD) {
+        if (!data.deposit_debt_mode) {
+          form.setError("deposit_debt_mode", {
+            type: "manual",
+            message:
+              "Khách chưa đóng đủ cọc — chọn cách xử lý (Nợ cọc / Đóng đủ trong hoá đơn).",
+          });
+          toast.error("Không thể lưu hợp đồng", {
+            description: `Khách còn thiếu ${formatCurrency(remaining)} tiền cọc. Chọn "Nợ cọc" hoặc "Đóng đủ trong hoá đơn" để tiếp tục.`,
+          });
+          return;
+        }
+        if (data.deposit_debt_mode === "DEBT" && !data.deposit_debt_reason?.trim()) {
+          form.setError("deposit_debt_reason", {
+            type: "manual",
+            message: "Nhập lý do cho nợ cọc.",
+          });
+          toast.error("Không thể lưu hợp đồng", {
+            description: "Vui lòng nhập lý do cho nợ cọc.",
+          });
+          return;
+        }
+      }
+
       const discounts =
         data.discount_months && data.discount_amount_per_month
           ? {
@@ -711,6 +766,18 @@ export function ContractFormDialog({
             invoice_template_id: data.invoice_template_id || undefined,
             notes: data.notes || undefined,
             discounts,
+            // Xử lý thiếu cọc — chỉ ý nghĩa khi còn thiếu cọc; ngược lại null.
+            // mode DEBT giữ lý do + hẹn ngày để nhắc; FIRST_INVOICE bỏ qua.
+            deposit_debt_acknowledged: !!data.deposit_debt_mode,
+            deposit_debt_mode: data.deposit_debt_mode ?? null,
+            deposit_debt_reason:
+              data.deposit_debt_mode === "DEBT"
+                ? data.deposit_debt_reason?.trim() || null
+                : null,
+            deposit_topup_due_date:
+              data.deposit_debt_mode === "DEBT"
+                ? data.deposit_topup_due_date || null
+                : null,
           },
           customers,
           services,
@@ -1230,6 +1297,109 @@ export function ContractFormDialog({
                   </div>
                 </div>
 
+                {/* Xử lý thiếu cọc — chặn ký khi khách chưa đóng đủ cọc. Chọn
+                    "Nợ cọc" (theo dõi + nhắc) hoặc "Đóng đủ trong hoá đơn"
+                    (thu đủ ngay ở hoá đơn đầu). Cọc thiếu vẫn vào hoá đơn
+                    cọc+tháng đầu như flow gốc. Chỉ hiện khi tạo mới & thiếu cọc. */}
+                {!isEditMode && depositShortfall && (
+                  <Alert variant="destructive" className="space-y-3">
+                    <AlertDescription className="space-y-3">
+                      <div>
+                        <p className="font-medium">
+                          Khách chưa đóng đủ cọc — còn thiếu{" "}
+                          {formatCurrency(depositRemaining)}
+                        </p>
+                        <p className="text-xs">
+                          Phần còn thiếu vẫn được tính vào hoá đơn cọc + tháng
+                          đầu. Chọn cách xử lý để lưu hợp đồng.
+                        </p>
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="deposit_debt_mode"
+                        render={({ field }) => (
+                          <FormItem className="space-y-2">
+                            <FormControl>
+                              <RadioGroup
+                                value={field.value ?? ""}
+                                onValueChange={field.onChange}
+                                className="gap-2"
+                              >
+                                <label className="flex items-start gap-2 cursor-pointer">
+                                  <RadioGroupItem value="DEBT" className="mt-0.5" />
+                                  <span className="text-sm">
+                                    <span className="font-medium">Nợ cọc</span>{" "}
+                                    — theo dõi &amp; nhắc khách bổ sung cọc sau.
+                                  </span>
+                                </label>
+                                <label className="flex items-start gap-2 cursor-pointer">
+                                  <RadioGroupItem
+                                    value="FIRST_INVOICE"
+                                    className="mt-0.5"
+                                  />
+                                  <span className="text-sm">
+                                    <span className="font-medium">
+                                      Đóng đủ trong hoá đơn
+                                    </span>{" "}
+                                    — khách thanh toán đủ ngay ở hoá đơn cọc +
+                                    tháng đầu, không nhắc bổ sung sau.
+                                  </span>
+                                </label>
+                              </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {depositDebtMode === "DEBT" && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="deposit_debt_reason"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Lý do cho nợ cọc</FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    rows={2}
+                                    placeholder="VD: khách hẹn bổ sung sau khi nhận lương"
+                                    value={field.value ?? ""}
+                                    onChange={field.onChange}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="deposit_topup_due_date"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Hẹn bổ sung cọc</FormLabel>
+                                <FormControl>
+                                  <DateInput
+                                    value={field.value ?? ""}
+                                    onChange={field.onChange}
+                                    onBlur={field.onBlur}
+                                    name={field.name}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Sổ quỹ thu cọc — auto-prefill theo tên toà nhà, user có
                     thể đổi để chọn đúng sổ muốn ghi nhận. Chỉ tạo mới. */}
                 {!isEditMode && (
@@ -1742,7 +1912,15 @@ export function ContractFormDialog({
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={isPending}>
+                <Button
+                  type="submit"
+                  disabled={isPending || blockByDepositDebt}
+                  title={
+                    blockByDepositDebt
+                      ? "Khách chưa đóng đủ cọc — tích \"Đồng ý cho nợ cọc\" để lưu"
+                      : undefined
+                  }
+                >
                   {isPending && (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   )}

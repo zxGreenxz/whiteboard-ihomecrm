@@ -231,6 +231,90 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
 }
 
 /**
+ * Check and create deposit shortfall reminders.
+ * Should be called daily.
+ *
+ * HĐ đang hiệu lực còn thiếu cọc (deposit_remaining >= ngưỡng) và KHÔNG ở chế độ
+ * "đóng đủ trong hoá đơn" (FIRST_INVOICE — khoản đó thu qua hoá đơn, đã có nhắc
+ * hoá đơn quá hạn riêng). Nhắc lại tối đa 1 lần/tuần cho mỗi HĐ; nếu quá hẹn
+ * bổ sung (deposit_topup_due_date) thì nhắc dày hơn (mỗi ngày).
+ *
+ * @param userId - User ID
+ */
+export async function checkDepositTopupReminders(userId: string): Promise<void> {
+  const SHORTFALL_THRESHOLD = 10000;
+
+  const { data: contracts } = await (supabase as any)
+    .from('contracts')
+    .select(`
+      id,
+      contract_number,
+      deposit_remaining,
+      deposit_topup_due_date,
+      contract_customers!contract_customers_contract_id_fkey(
+        is_representative,
+        customer:customers!contract_customers_customer_id_fkey(full_name)
+      )
+    `)
+    .eq('user_id', userId)
+    .in('status', ['ACTIVE', 'EXTENDED'])
+    .is('deleted_at', null)
+    .gte('deposit_remaining', SHORTFALL_THRESHOLD)
+    .or('deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT');
+
+  if (!contracts) return;
+
+  const today = new Date();
+
+  for (const contract of contracts as any[]) {
+    const remaining = Number(contract.deposit_remaining) || 0;
+    if (remaining < SHORTFALL_THRESHOLD) continue;
+
+    const dueIso: string | null = contract.deposit_topup_due_date ?? null;
+    const overdue = dueIso ? new Date(dueIso) < today : false;
+
+    // Throttle: quá hẹn → nhắc tối đa 1 lần/ngày; chưa tới hẹn → 1 lần/tuần.
+    const minGapDays = overdue ? 1 : 7;
+    const { data: lastNotification } = await supabase
+      .from('notifications')
+      .select('created_at')
+      .eq('contract_id', contract.id)
+      .eq('type', 'DEPOSIT_SHORTFALL')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastNotification) {
+      const daysSince = differenceInDays(today, new Date(lastNotification.created_at));
+      if (daysSince < minGapDays) continue;
+    }
+
+    const rep = (contract.contract_customers ?? []).find(
+      (cc: any) => cc.is_representative,
+    );
+    const customerName =
+      rep?.customer?.full_name ||
+      (contract.contract_customers ?? [])[0]?.customer?.full_name ||
+      'Khách hàng';
+
+    const dueText = dueIso
+      ? ` (hẹn bổ sung ${format(new Date(dueIso), 'dd/MM/yyyy')})`
+      : '';
+    const subject = overdue ? 'Quá hẹn bổ sung cọc' : 'Hợp đồng thiếu cọc';
+
+    await supabase.from('notifications').insert({
+      user_id: userId,
+      type: 'DEPOSIT_SHORTFALL',
+      channel: 'IN_APP',
+      subject,
+      content: `Hợp đồng ${contract.contract_number || ''} của ${customerName} còn thiếu ${remaining.toLocaleString('vi-VN')}đ tiền cọc${dueText}. Vui lòng thu đủ cọc.`,
+      contract_id: contract.id,
+      status: 'PENDING',
+    });
+  }
+}
+
+/**
  * Run all scheduled notification checks
  * Call this function daily (e.g., via cron job or on app startup)
  *
@@ -242,6 +326,7 @@ export async function runScheduledNotifications(userId: string): Promise<void> {
       checkContractExpiryReminders(userId),
       checkInvoicePaymentReminders(userId),
       checkOverdueInvoices(userId),
+      checkDepositTopupReminders(userId),
     ]);
   } catch (error) {
     console.error('Error running scheduled notifications:', error);

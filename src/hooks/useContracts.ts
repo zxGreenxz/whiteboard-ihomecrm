@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
+import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
 import type {
   Contract,
   ContractWithRelations,
@@ -28,6 +29,11 @@ export interface CreateContractPayload {
     invoice_template_id?: string;
     notes?: string;
     discounts?: { months: number; amount_per_month: number };
+    // Xử lý thiếu cọc khi ký: cách xử lý + lý do + hẹn ngày bổ sung.
+    deposit_debt_acknowledged?: boolean;
+    deposit_debt_mode?: 'DEBT' | 'FIRST_INVOICE' | null;
+    deposit_debt_reason?: string | null;
+    deposit_topup_due_date?: string | null;
   };
   customers: { customer_id: string; is_representative: boolean }[];
   services: { service_id: string; unit_price: number; initial_reading?: number }[];
@@ -323,6 +329,20 @@ export const useCreateContract = () => {
             "Phòng này đang có hợp đồng hiệu lực. Vui lòng thanh lý / kết thúc hợp đồng cũ trước khi tạo hợp đồng mới."
           );
         }
+      }
+
+      // Guard: bắt buộc thu đủ cọc khi ký. Nếu deposit_paid < total_deposit
+      // (chênh ≥ ngưỡng làm tròn) thì admin phải chủ động "Đồng ý cho nợ cọc"
+      // (kèm lý do nhập ở form) — defense-in-depth, khớp rule ở ContractFormDialog.
+      const depositRemaining =
+        (contractData.total_deposit || 0) - (contractData.deposit_paid || 0);
+      if (
+        depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD &&
+        !contractData.deposit_debt_acknowledged
+      ) {
+        throw new Error(
+          "Khách chưa đóng đủ cọc. Vui lòng thu đủ cọc, hoặc tích \"Đồng ý cho nợ cọc\" kèm lý do để tiếp tục.",
+        );
       }
 
       // 1. Insert contract.
