@@ -6,6 +6,7 @@ import type {
   ExcelImportRow,
   IncomeExpenseBatchFormValues,
 } from "@/lib/incomeExpenseValidation";
+import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 
 // --- Types ---
 
@@ -39,6 +40,11 @@ export interface IncomeExpenseFilters {
   // Dùng cho báo cáo Lợi nhuận để loại "tiền cọc" (và khoản không-KQKD). Mặc
   // định null/false = lấy hết (trang Thu chi giữ nguyên là sổ dòng tiền).
   business_result_only?: boolean | null;
+  // Lọc theo KỲ ÁP DỤNG (theo tháng) của items: lấy phiếu có ÍT NHẤT 1 item mà
+  // kỳ [start_date, end_date] giao với khoảng [period_start_month, period_end_month].
+  // Định dạng 'YYYY-MM'. Chỉ xét item CÓ kỳ (bỏ qua item null-period).
+  period_start_month?: string | null;
+  period_end_month?: string | null;
 }
 
 // Sai số mặc định khi lọc theo số tiền: ±5.000đ. Cho phép match nhỏ
@@ -169,6 +175,67 @@ async function getVoucherIdsByItemTypes(
   return ids;
 }
 
+// Trả về danh sách voucher_id có ÍT NHẤT 1 item mà kỳ áp dụng [start_date,
+// end_date] GIAO với khoảng [periodStartMonth, periodEndMonth] (theo tháng).
+// Overlap: item.start_date <= cuối-tháng-periodEnd AND item.end_date >= đầu-tháng-periodStart.
+// Chỉ xét item CÓ kỳ (item null-period bị loại — "lọc kỳ" ngụ ý item đã gán kỳ).
+// Trả null nếu không có filter kỳ; [] nếu có filter nhưng không voucher nào match.
+async function getVoucherIdsByItemPeriod(
+  periodStartMonth?: string | null,
+  periodEndMonth?: string | null
+): Promise<string[] | null> {
+  if (!periodStartMonth && !periodEndMonth) return null;
+  // Nếu chỉ có 1 đầu, coi khoảng = đúng tháng đó (start=end).
+  const startM = periodStartMonth || periodEndMonth!;
+  const endM = periodEndMonth || periodStartMonth!;
+  const rangeStart = monthToStartDate(startM); // 'YYYY-MM-01'
+  const rangeEnd = monthToEndDate(endM); // ngày cuối tháng
+
+  const { data, error } = await supabase
+    .from("income_expense_items" as any)
+    .select("income_expense_id")
+    .not("start_date", "is", null)
+    .not("end_date", "is", null)
+    .lte("start_date", rangeEnd)
+    .gte("end_date", rangeStart);
+
+  if (error) {
+    console.error("getVoucherIdsByItemPeriod error:", error);
+    return [];
+  }
+  const ids = Array.from(
+    new Set(((data ?? []) as any[]).map((r) => r.income_expense_id))
+  );
+  return ids;
+}
+
+// Giao (intersection) hai tập voucher_id của các filter cấp item.
+// null = "filter này không áp dụng". Quy ước:
+//  - cả hai null → null (không lọc item).
+//  - một null → trả cái còn lại (chỉ 1 filter áp dụng).
+//  - cả hai có giá trị → GIAO (phiếu phải thoả CẢ hai filter item).
+function intersectVoucherIdFilters(
+  a: string[] | null,
+  b: string[] | null
+): string[] | null {
+  if (a === null && b === null) return null;
+  if (a === null) return b;
+  if (b === null) return a;
+  const setB = new Set(b);
+  return a.filter((id) => setB.has(id));
+}
+
+// Gộp toàn bộ filter cấp item (loại hạng mục + kỳ áp dụng) → tập voucher_id.
+async function resolveItemVoucherIds(
+  filters: IncomeExpenseFilters
+): Promise<string[] | null> {
+  const [typeIds, periodIds] = await Promise.all([
+    getVoucherIdsByItemTypes(filters),
+    getVoucherIdsByItemPeriod(filters.period_start_month, filters.period_end_month),
+  ]);
+  return intersectVoucherIdFilters(typeIds, periodIds);
+}
+
 // --- Query Hooks ---
 
 export const useIncomeExpenses = (
@@ -195,6 +262,8 @@ export const useIncomeExpenses = (
       filters.amount_target,
       filters.verified_status,
       filters.business_result_only,
+      filters.period_start_month,
+      filters.period_end_month,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -205,8 +274,8 @@ export const useIncomeExpenses = (
     }> => {
       const hasSearch = searchQuery && searchQuery.trim().length > 0;
 
-      // Lọc theo hạng mục item (nếu có) — lấy danh sách voucher_id trước
-      const itemFilterIds = await getVoucherIdsByItemTypes(filters);
+      // Lọc theo hạng mục item + kỳ áp dụng (nếu có) — lấy voucher_id trước
+      const itemFilterIds = await resolveItemVoucherIds(filters);
       if (itemFilterIds !== null && itemFilterIds.length === 0) {
         return { data: [], totalCount: 0 };
       }
@@ -450,6 +519,8 @@ export const useIncomeExpenseStats = (
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
+      filters.period_start_month,
+      filters.period_end_month,
       businessResultOnly,
     ],
     queryFn: async (): Promise<{
@@ -457,7 +528,7 @@ export const useIncomeExpenseStats = (
       totalExpense: number;
       difference: number;
     }> => {
-      const itemFilterIds = await getVoucherIdsByItemTypes(filters);
+      const itemFilterIds = await resolveItemVoucherIds(filters);
       if (itemFilterIds !== null && itemFilterIds.length === 0) {
         return { totalIncome: 0, totalExpense: 0, difference: 0 };
       }
@@ -1282,6 +1353,8 @@ export const useIncomeExpenseBatches = (
       filters.amount_target,
       filters.verified_status,
       filters.business_result_only,
+      filters.period_start_month,
+      filters.period_end_month,
       pagination.page,
       pagination.pageSize,
       searchQuery,
@@ -1290,7 +1363,7 @@ export const useIncomeExpenseBatches = (
       data: IncomeExpenseBatchSummary[];
       totalCount: number;
     }> => {
-      const itemFilterIds = await getVoucherIdsByItemTypes(filters);
+      const itemFilterIds = await resolveItemVoucherIds(filters);
       if (itemFilterIds !== null && itemFilterIds.length === 0) {
         return { data: [], totalCount: 0 };
       }

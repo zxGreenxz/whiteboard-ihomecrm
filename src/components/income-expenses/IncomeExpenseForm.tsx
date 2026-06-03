@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
 import { DateInput } from '@/components/ui/date-input';
+import { MonthInput } from '@/components/ui/month-input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -35,6 +36,12 @@ import {
   incomeExpenseFormSchema,
   type IncomeExpenseFormValues,
 } from '@/lib/incomeExpenseValidation';
+import {
+  dateToMonth,
+  monthToStartDate,
+  monthToEndDate,
+  currentMonth,
+} from '@/lib/monthPeriod';
 import {
   useCreateIncomeExpense,
   useUpdateIncomeExpense,
@@ -176,7 +183,10 @@ const IncomeExpenseForm = ({
       setSelectedBuildingId(voucher.building_id);
       setSelectedRoomId(voucher.room_id ?? undefined);
 
-      const today = new Date().toISOString().split('T')[0];
+      // Kỳ áp dụng mặc định (chỉ dùng khi item cũ chưa có start/end) = tháng hiện tại.
+      // KHÔNG ghi đè giá trị có sẵn của item — chỉ fallback khi null.
+      const defPeriodStart = monthToStartDate(currentMonth());
+      const defPeriodEnd = monthToEndDate(currentMonth());
 
       form.reset({
         type: voucher.type,
@@ -198,8 +208,8 @@ const IncomeExpenseForm = ({
           description: item.description,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          start_date: item.start_date ?? today,
-          end_date: item.end_date ?? today,
+          start_date: item.start_date ?? defPeriodStart,
+          end_date: item.end_date ?? defPeriodEnd,
         })),
       });
 
@@ -210,8 +220,8 @@ const IncomeExpenseForm = ({
           description: item.description,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          start_date: item.start_date ?? today,
-          end_date: item.end_date ?? today,
+          start_date: item.start_date ?? defPeriodStart,
+          end_date: item.end_date ?? defPeriodEnd,
         }))
       );
     } else {
@@ -221,13 +231,16 @@ const IncomeExpenseForm = ({
       setSelectedRoomId(prefillRoom ?? undefined);
 
       const today = new Date().toISOString().split('T')[0];
+      // Kỳ áp dụng mặc định cho hạng mục = tháng hiện tại → tháng hiện tại.
+      const defPeriodStart = monthToStartDate(currentMonth());
+      const defPeriodEnd = monthToEndDate(currentMonth());
       const prefillItemsForm = (defaultPrefill?.items ?? []).map((it) => ({
         income_expense_type_id: it.income_expense_type_id,
         description: it.description ?? null,
         quantity: it.quantity,
         unit_price: it.unit_price,
-        start_date: today,
-        end_date: today,
+        start_date: defPeriodStart,
+        end_date: defPeriodEnd,
       }));
       const prefillItemsRows = (defaultPrefill?.items ?? []).map((it) => ({
         income_expense_type_id: it.income_expense_type_id,
@@ -235,8 +248,8 @@ const IncomeExpenseForm = ({
         description: it.description ?? null,
         quantity: it.quantity,
         unit_price: it.unit_price,
-        start_date: today,
-        end_date: today,
+        start_date: defPeriodStart,
+        end_date: defPeriodEnd,
       }));
 
       form.reset({
@@ -311,7 +324,9 @@ const IncomeExpenseForm = ({
   // Item selector callback
   const handleItemsSelected = (types: IncomeExpenseType[]) => {
     const existingIds = new Set(itemRows.map((r) => r.income_expense_type_id));
-    const today = new Date().toISOString().split('T')[0];
+    // Kỳ áp dụng mặc định khi thêm hạng mục = tháng hiện tại → tháng hiện tại.
+    const defPeriodStart = monthToStartDate(currentMonth());
+    const defPeriodEnd = monthToEndDate(currentMonth());
     const newRows: FormItemRow[] = [];
 
     for (const t of types) {
@@ -322,8 +337,8 @@ const IncomeExpenseForm = ({
           description: null,
           quantity: 1,
           unit_price: 0,
-          start_date: today,
-          end_date: today,
+          start_date: defPeriodStart,
+          end_date: defPeriodEnd,
         });
       }
     }
@@ -784,8 +799,8 @@ const IncomeExpenseForm = ({
                     <div className="grid grid-cols-[1fr_120px_120px_120px_36px] gap-2 text-xs text-muted-foreground font-medium px-1">
                       <span>Hạng mục</span>
                       <span>Số tiền</span>
-                      <span>Ngày bắt đầu</span>
-                      <span>Ngày kết thúc</span>
+                      <span>Từ tháng</span>
+                      <span>Đến tháng</span>
                       <span></span>
                     </div>
                     {itemRows.map((item, index) => (
@@ -803,15 +818,19 @@ const IncomeExpenseForm = ({
                           className="h-8"
                           placeholder="Số tiền"
                         />
-                        <DateInput
-                          value={item.start_date}
-                          onChange={(v) => handleItemStartDateChange(index, v)}
+                        <MonthInput
+                          value={dateToMonth(item.start_date)}
+                          onChange={(m) =>
+                            handleItemStartDateChange(index, monthToStartDate(m))
+                          }
                           disabled={!canEdit}
                           className="h-8"
                         />
-                        <DateInput
-                          value={item.end_date}
-                          onChange={(v) => handleItemEndDateChange(index, v)}
+                        <MonthInput
+                          value={dateToMonth(item.end_date)}
+                          onChange={(m) =>
+                            handleItemEndDateChange(index, monthToEndDate(m))
+                          }
                           disabled={!canEdit}
                           className="h-8"
                         />

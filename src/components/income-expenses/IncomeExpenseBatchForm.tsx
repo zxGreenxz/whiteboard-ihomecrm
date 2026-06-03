@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DateInput } from '@/components/ui/date-input';
+import { MonthInput } from '@/components/ui/month-input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -35,6 +36,12 @@ import {
   type IncomeExpenseBatchFormValues,
 } from '@/lib/incomeExpenseValidation';
 import { useCreateIncomeExpenseBatch } from '@/hooks/useIncomeExpenses';
+import {
+  dateToMonth,
+  monthToStartDate,
+  monthToEndDate,
+  currentMonth,
+} from '@/lib/monthPeriod';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useAccounts } from '@/hooks/useAccounts';
@@ -162,21 +169,21 @@ const ItemRow = ({
         <div className="grid grid-cols-2 gap-1">
           <div>
             <label className="text-[11px] text-muted-foreground font-medium">
-              Từ ngày
+              Từ tháng
             </label>
-            <DateInput
-              value={item.start_date}
-              onChange={(v) => onChange(index, { start_date: v })}
+            <MonthInput
+              value={dateToMonth(item.start_date)}
+              onChange={(m) => onChange(index, { start_date: monthToStartDate(m) })}
               className="h-8 text-sm"
             />
           </div>
           <div>
             <label className="text-[11px] text-muted-foreground font-medium">
-              Đến
+              Đến tháng
             </label>
-            <DateInput
-              value={item.end_date}
-              onChange={(v) => onChange(index, { end_date: v })}
+            <MonthInput
+              value={dateToMonth(item.end_date)}
+              onChange={(m) => onChange(index, { end_date: monthToEndDate(m) })}
               className="h-8 text-sm"
             />
           </div>
@@ -278,7 +285,9 @@ const IncomeExpenseBatchForm = ({
   // Item selector: thêm 1 hạng mục cho MỖI loại được chọn (mỗi hạng mục = 1 phiếu).
   // Nếu chọn lại loại đã có, vẫn cho thêm dòng mới (vì có thể vệ sinh máy lạnh ở 4 nhà).
   const handleItemsSelected = (types: IncomeExpenseType[]) => {
-    const today = new Date().toISOString().split('T')[0];
+    // Kỳ áp dụng mặc định = tháng hiện tại → tháng hiện tại.
+    const defPeriodStart = monthToStartDate(currentMonth());
+    const defPeriodEnd = monthToEndDate(currentMonth());
     const newRows: BatchItemRow[] = types.map((t) => ({
       building_id: '',
       room_id: null,
@@ -287,8 +296,8 @@ const IncomeExpenseBatchForm = ({
       description: null,
       quantity: 1,
       unit_price: 0,
-      start_date: today,
-      end_date: today,
+      start_date: defPeriodStart,
+      end_date: defPeriodEnd,
     }));
     const merged = [...itemRows, ...newRows];
     setItemRows(merged);

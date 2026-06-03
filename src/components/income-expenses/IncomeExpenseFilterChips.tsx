@@ -72,6 +72,20 @@ export function IncomeExpenseFilterChips({
     });
   }
 
+  if (filters.period_start_month || filters.period_end_month) {
+    // 'YYYY-MM' → 'MM/yyyy'
+    const fmtM = (m?: string | null) => {
+      if (!m) return "...";
+      const [y, mo] = m.split("-");
+      return `${mo}/${y}`;
+    };
+    chips.push({
+      key: "period_start_month",
+      label: `Kỳ: ${fmtM(filters.period_start_month)} → ${fmtM(filters.period_end_month)}`,
+      patch: { period_start_month: null, period_end_month: null },
+    });
+  }
+
   if (filters.area_id && areas) {
     const a = areas.find((x) => x.id === filters.area_id);
     if (a)

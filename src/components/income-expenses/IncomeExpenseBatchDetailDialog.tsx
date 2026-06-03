@@ -27,6 +27,7 @@ import type {
 import { useUpdateBatchAccount } from '@/hooks/useIncomeExpenses';
 import { useAccounts } from '@/hooks/useAccounts';
 import { format } from 'date-fns';
+import { formatPeriod } from '@/lib/monthPeriod';
 import { useIsMobile } from '@/hooks/use-mobile';
 import IncomeExpenseDetailDialog from './IncomeExpenseDetailDialog';
 import {
@@ -350,6 +351,10 @@ export function IncomeExpenseBatchDetailDialog({
               const isUnapproved = v.approval_status === 'UNAPPROVED';
               const canEditInline = (isUnapproved || isAdmin) && !!onEditVoucher;
               const itemName = v.items[0]?.type_name ?? '';
+              const itemPeriod = formatPeriod(
+                v.items[0]?.start_date,
+                v.items[0]?.end_date,
+              );
               return (
                 <div
                   key={v.id}
@@ -373,6 +378,11 @@ export function IncomeExpenseBatchDetailDialog({
                       {itemName && (
                         <div className="text-xs text-muted-foreground">
                           {itemName}
+                        </div>
+                      )}
+                      {itemPeriod && (
+                        <div className="text-xs text-muted-foreground">
+                          Kỳ: {itemPeriod}
                         </div>
                       )}
                     </div>

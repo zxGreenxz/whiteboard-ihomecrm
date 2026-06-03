@@ -67,6 +67,8 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   creator_id: null,
   amount_target: null,
   verified_status: null,
+  period_start_month: null,
+  period_end_month: null,
 };
 
 // Parse search input: nếu toàn ký tự số (sau khi bỏ ., space, đ, d) → amount filter.

@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
+import { MonthInput } from "@/components/ui/month-input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
@@ -122,6 +123,24 @@ export function IncomeExpenseFilterPanel({
                 placeholder="Đến ngày"
               />
             </div>
+          </div>
+
+          {/* Kỳ áp dụng của hạng mục (theo tháng) — chỉ ra phiếu có item gán kỳ giao khoảng này */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Kỳ áp dụng (theo tháng)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <MonthInput
+                value={draft.period_start_month ?? ""}
+                onChange={(m) => patch({ period_start_month: m || null })}
+              />
+              <MonthInput
+                value={draft.period_end_month ?? ""}
+                onChange={(m) => patch({ period_end_month: m || null })}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Chỉ lọc các phiếu có hạng mục được gán kỳ áp dụng.
+            </p>
           </div>
 
           {/* Trạng thái — segmented control */}

@@ -7,6 +7,8 @@ import {
   useIncomeExpenseStats,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
+import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
+import { formatPeriod } from "@/lib/monthPeriod";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
 import {
@@ -56,14 +58,18 @@ export default function ProfitDistributionReport() {
   // Mặc định: chỉ tính khoản CÓ hạch toán KQKD (loại tiền cọc & khoản
   // override không-KQKD). Bật toggle để xem cả khoản không hạch toán.
   const [pnlOnly, setPnlOnly] = useState<boolean>(true);
+  // Ghi nhận: false = theo Ngày phiếu (voucher_date, hành vi cũ);
+  // true = theo Kỳ phân bổ (accrual — chia đều số tiền item ra các tháng trong kỳ).
+  const [accrualMode, setAccrualMode] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  // Parse monthStr "MM-yyyy" → start/end date
+  // Parse monthStr "MM-yyyy" → start/end date + 'YYYY-MM'
   const [mm, yyyy] = monthStr.split("-").map((s) => parseInt(s, 10));
   const monthDate = new Date(yyyy, (mm || 1) - 1, 1);
   const startDate = format(startOfMonth(monthDate), "yyyy-MM-dd");
   const endDate = format(endOfMonth(monthDate), "yyyy-MM-dd");
+  const ym = `${yyyy}-${String(mm || 1).padStart(2, "0")}`;
 
   const { data: areas = [] } = useAreas();
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
@@ -86,8 +92,32 @@ export default function ProfitDistributionReport() {
     businessResultOnly: pnlOnly,
   });
 
-  const rows = result?.data ?? [];
-  const totalCount = result?.totalCount ?? 0;
+  // Chế độ accrual: phân bổ số tiền item theo kỳ áp dụng (theo tháng).
+  // Truyền month='' khi tắt → hook trả rỗng, không query.
+  const { data: accrual, isLoading: accrualLoading } = useAccrualMonthReport(
+    accrualMode ? ym : "",
+    {
+      area_id: areaId === "all" ? undefined : areaId,
+      building_id: buildingId === "all" ? undefined : buildingId,
+      room_id: roomId === "all" ? undefined : roomId,
+      type: voucherType === "all" ? undefined : (voucherType as any),
+      approval_status: "APPROVED",
+      business_result_only: pnlOnly,
+    },
+    { businessResultOnly: pnlOnly }
+  );
+
+  // Giá trị 3 thẻ + bảng theo chế độ ghi nhận.
+  const displayIncome = accrualMode ? accrual?.totalIncome ?? 0 : stats?.totalIncome ?? 0;
+  const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : stats?.totalExpense ?? 0;
+  const displayDiff = accrualMode ? accrual?.difference ?? 0 : stats?.difference ?? 0;
+
+  const accrualRows = accrual?.rows ?? [];
+  const rows = accrualMode
+    ? accrualRows.slice((page - 1) * pageSize, page * pageSize)
+    : result?.data ?? [];
+  const totalCount = accrualMode ? accrualRows.length : result?.totalCount ?? 0;
+  const loading = accrualMode ? accrualLoading : isLoading;
 
   const monthOptions = useMemo(() => {
     const out: string[] = [];
@@ -112,9 +142,9 @@ export default function ProfitDistributionReport() {
 
         {/* 3 Stat cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard label="Doanh thu" value={stats?.totalIncome ?? 0} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
-          <StatCard label="Chi phí" value={stats?.totalExpense ?? 0} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
-          <StatCard label="Lợi nhuận" value={stats?.difference ?? 0} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
+          <StatCard label="Doanh thu" value={displayIncome} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
+          <StatCard label="Chi phí" value={displayExpense} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
+          <StatCard label="Lợi nhuận" value={displayDiff} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
         </div>
 
         {/* Filters */}
@@ -183,6 +213,20 @@ export default function ProfitDistributionReport() {
               Hiện cả khoản không hạch toán KQKD (cọc…)
             </Label>
           </div>
+
+          <div className="flex items-center gap-2 h-9">
+            <Switch
+              id="accrual-mode"
+              checked={accrualMode}
+              onCheckedChange={(v) => {
+                setAccrualMode(v);
+                setPage(1);
+              }}
+            />
+            <Label htmlFor="accrual-mode" className="text-sm text-muted-foreground whitespace-nowrap">
+              Phân bổ theo kỳ áp dụng
+            </Label>
+          </div>
         </div>
 
         {/* Table */}
@@ -196,24 +240,49 @@ export default function ProfitDistributionReport() {
                 <TableHead>Phòng</TableHead>
                 <TableHead className="text-right">Doanh thu</TableHead>
                 <TableHead className="text-right">Chi phí</TableHead>
+                <TableHead>Kỳ</TableHead>
                 <TableHead>Phân loại</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={7}><Skeleton className="h-6 w-full" /></TableCell>
+                    <TableCell colSpan={8}><Skeleton className="h-6 w-full" /></TableCell>
                   </TableRow>
                 ))
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     Không có dữ liệu nào để hiển thị
                   </TableCell>
                 </TableRow>
+              ) : accrualMode ? (
+                (rows as any[]).map((r) => (
+                  <TableRow key={r.itemId}>
+                    <TableCell>{`${String(mm || 1).padStart(2, "0")}/${yyyy}`}</TableCell>
+                    <TableCell>{r.voucherName}</TableCell>
+                    <TableCell>{r.buildingName || "—"}</TableCell>
+                    <TableCell>{r.roomName || "—"}</TableCell>
+                    <TableCell className="text-right">
+                      {r.income > 0 ? formatCurrency(r.income) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {r.expense > 0 ? formatCurrency(r.expense) : "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {formatPeriod(r.startDate, r.endDate) || "—"}
+                    </TableCell>
+                    <TableCell>
+                      {r.typeName || "—"}
+                      {r.countsInBusinessResult === false && (
+                        <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
               ) : (
-                rows.map((r: any) => (
+                (rows as any[]).map((r) => (
                   <TableRow key={r.id}>
                     <TableCell>{format(new Date(r.voucher_date), "MM/yyyy")}</TableCell>
                     <TableCell>{r.name}</TableCell>
@@ -225,6 +294,7 @@ export default function ProfitDistributionReport() {
                     <TableCell className="text-right">
                       {r.type === "EXPENSE" ? formatCurrency(r.total_amount) : "—"}
                     </TableCell>
+                    <TableCell>—</TableCell>
                     <TableCell>
                       {(r.items || []).map((it: any) => it.type_name).filter(Boolean).join(", ") || "—"}
                       {r.counts_in_business_result === false && (

@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { StorageImage } from "@/components/ui/storage-image";
 import { format } from "date-fns";
+import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Props {
@@ -371,6 +372,11 @@ export function IncomeExpenseDetailDialog({
                         <span className="text-muted-foreground ml-1">
                           — {item.description}
                         </span>
+                      ) : null}
+                      {formatPeriod(item.start_date, item.end_date) ? (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Kỳ: {formatPeriod(item.start_date, item.end_date)}
+                        </div>
                       ) : null}
                     </div>
                     <div className="px-4 py-2.5 text-sm text-right">
