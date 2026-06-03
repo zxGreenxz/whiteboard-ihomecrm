@@ -104,6 +104,8 @@ const navigationGroups: NavGroup[] = [
           { title: 'Hoá đơn', href: '/invoices', icon: Receipt },
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet },
+          { title: 'Chia lợi nhuận', href: '/finance/shareholder-profit', icon: PieChart },
+          { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins },
         ],
       },
       { title: 'Công việc', href: '/tasks', icon: ClipboardList },

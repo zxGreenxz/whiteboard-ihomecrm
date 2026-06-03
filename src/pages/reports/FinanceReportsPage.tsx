@@ -40,6 +40,14 @@ const reports = [
     bgColor: "bg-indigo-50",
   },
   {
+    title: "Chia lợi nhuận cổ đông",
+    description: "Lợi nhuận theo nhà/tháng, chia theo tỷ lệ, theo dõi đã ứng & còn lại",
+    icon: Users,
+    path: "/finance/shareholder-profit",
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+  },
+  {
     title: "Công nợ hợp đồng mới",
     description: "Công nợ phát sinh từ các hợp đồng mới ký kết",
     icon: FileText,
@@ -90,7 +98,7 @@ const FinanceReportsPage = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
             <p className="text-muted-foreground">
-              8 loại báo cáo phân tích tài chính và dòng tiền
+              9 loại báo cáo phân tích tài chính và dòng tiền
             </p>
           </div>
         </div>

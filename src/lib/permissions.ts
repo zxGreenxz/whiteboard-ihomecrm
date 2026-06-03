@@ -1,8 +1,8 @@
 // Central registry of permission modules + groups + actions.
 //
-// 35 modules thực thi (đã clean từ 41 module gốc — bỏ messages/iot_devices/
-// zalo_oa/e_invoices/beds/building_layout vì không có table/page tương ứng).
-// Tổ chức theo 7 nhóm UI để hiển thị accordion trong PermissionMatrix.
+// 37 modules thực thi (35 gốc + shareholder_profit/personal_finance cho module
+// Chia lợi nhuận cổ đông + Ví thu chi cá nhân).
+// Tổ chức theo 8 nhóm UI để hiển thị accordion trong PermissionMatrix.
 
 import type { Json } from "@/integrations/supabase/types";
 
@@ -31,7 +31,7 @@ export interface GroupDef {
   modules: ModuleDef[];
 }
 
-/** 7 nhóm UI × 35 module. Thứ tự = thứ tự hiển thị trong matrix. */
+/** 8 nhóm UI × 37 module. Thứ tự = thứ tự hiển thị trong matrix. */
 export const PERMISSION_GROUPS: GroupDef[] = [
   {
     key: "core",
@@ -71,6 +71,14 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "invoices",        label: "Hoá đơn",    extra: ["record_payment", "print", "export"] },
       { key: "income_expenses", label: "Thu chi",    extra: ["approve", "print", "export"] },
       { key: "excess_amounts",  label: "Tiền thừa" },
+    ],
+  },
+  {
+    key: "shareholder",
+    label: "Cổ đông & Cá nhân",
+    modules: [
+      { key: "shareholder_profit", label: "Lợi nhuận cổ đông", extra: ["export"] },
+      { key: "personal_finance",   label: "Ví thu chi cá nhân" },
     ],
   },
   {

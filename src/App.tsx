@@ -101,6 +101,8 @@ import MetersPage from "./pages/settings/MetersPage";
 import IncomeExpenseTypesNewPage from "./pages/settings/IncomeExpenseTypesPage";
 import IncomeExpenseTemplatesPage from "./pages/settings/IncomeExpenseTemplatesPage";
 import CashbooksPage from "./pages/settings/finance/CashbooksPage";
+import ShareholderProfitPage from "./pages/finance/ShareholderProfitPage";
+import PersonalWalletPage from "./pages/finance/PersonalWalletPage";
 
 import SuppliersPage from "./pages/settings/categories/SuppliersPage";
 import WarehousesPage from "./pages/settings/categories/WarehousesPage";
@@ -280,6 +282,11 @@ const App = () => (
           <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><PaymentScheduleReport /></ProtectedRoute>} />
           <Route path="/reports/finance/overpayment" element={<ProtectedRoute><OverpaymentReport /></ProtectedRoute>} />
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><DepositsReport /></ProtectedRoute>} />
+
+          {/* === CHIA LỢI NHUẬN CỔ ĐÔNG + VÍ THU CHI CÁ NHÂN === */}
+          <Route path="/finance/shareholder-profit" element={<ProtectedRoute><RequirePermission module="shareholder_profit" action="view"><ShareholderProfitPage /></RequirePermission></ProtectedRoute>} />
+          <Route path="/reports/finance/shareholder-profit" element={<Navigate to="/finance/shareholder-profit" replace />} />
+          <Route path="/finance/personal-wallet" element={<ProtectedRoute><RequirePermission module="personal_finance" action="view"><PersonalWalletPage /></RequirePermission></ProtectedRoute>} />
 
           {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
 
