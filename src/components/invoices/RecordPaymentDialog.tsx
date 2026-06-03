@@ -25,6 +25,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
+import { changeAccountOptions, findOwnChangeAccount } from '@/lib/changeAccounts';
 import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
@@ -311,14 +312,13 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     setValue('change_amount', Math.min(overpaid, tmTotal));
   }, [totalPaid, outstandingAmount, tmTotal, changeUserEdited, setValue]);
 
-  // Pre-select sổ ghi nhận thối: tìm account thuộc user có name kết thúc "Thối"
+  // Pre-select sổ ghi nhận thối theo user: Hiển→Hiển Thối, Hiệp→Hiệp Thối
+  // (user khác: sổ "Thối" đầu tiên — giữ hành vi cũ).
   useEffect(() => {
     if (!watchedChangeAmount || watchedChangeAccountId || !accounts.length) return;
-    const target = (accounts as any[]).find(
-      (a) => typeof a.name === 'string' && a.name.trim().endsWith('Thối'),
-    );
+    const target = findOwnChangeAccount(accounts as any[], currentUser?.id);
     if (target) setValue('change_account_id', target.id);
-  }, [watchedChangeAmount, watchedChangeAccountId, accounts, setValue]);
+  }, [watchedChangeAmount, watchedChangeAccountId, accounts, currentUser?.id, setValue]);
 
   const handleClose = () => {
     reset();
@@ -973,7 +973,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   <SelectValue placeholder="Chọn sổ ghi nhận tiền thối" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.map((a: any) => (
+                  {changeAccountOptions(accounts as any[], currentUser?.id).map((a: any) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
                       {a.bank_name ? ` — ${a.bank_name}` : ''}

@@ -36,6 +36,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useAccounts } from '@/hooks/useAccounts';
+import { changeAccountOptions, ownChangeAccountName } from '@/lib/changeAccounts';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -84,9 +85,6 @@ interface RowData {
 
   error?: string;
 }
-
-const JOEY_USER_ID = 'd45a7506-5250-4d99-ac94-9f73cbd4df17';
-const NATHAN_USER_ID = 'df8d1df5-1c24-4723-9733-4640c43c382b';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
@@ -153,15 +151,15 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     }
   }, [buildingName, accounts, headerAccountUserEdited]);
 
-  // ─── Auto-detect sổ quỹ thối theo user ───
+  // ─── Auto-detect sổ quỹ thối theo user: Hiển→Hiển Thối, Hiệp→Hiệp Thối ───
   useEffect(() => {
     if (headerChangeAccountUserEdited) return;
     if (!accounts.length || !currentUserId) return;
-    let target: any | undefined;
-    if (currentUserId === JOEY_USER_ID)
-      target = (accounts as any[]).find((a) => a.name === 'Hiển Thối');
-    else if (currentUserId === NATHAN_USER_ID)
-      target = (accounts as any[]).find((a) => a.name === 'Hiệp Thối');
+    const ownName = ownChangeAccountName(currentUserId);
+    if (!ownName) return;
+    const target = (accounts as any[]).find(
+      (a) => (a.name ?? '').trim() === ownName,
+    );
     if (target) setHeaderChangeAccountId(target.id);
   }, [accounts, currentUserId, headerChangeAccountUserEdited]);
 
@@ -667,7 +665,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                   <SelectValue placeholder="Chọn sổ quỹ chi tiền thối..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {(accounts as any[]).map((a) => (
+                  {changeAccountOptions(accounts as any[], currentUserId).map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
                       {a.bank_name ? ` — ${a.bank_name}` : ''}
@@ -888,7 +886,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                               <SelectValue placeholder="—" />
                             </SelectTrigger>
                             <SelectContent>
-                              {(accounts as any[]).map((a) => (
+                              {changeAccountOptions(accounts as any[], currentUserId).map((a) => (
                                 <SelectItem key={a.id} value={a.id}>
                                   {a.name}
                                 </SelectItem>
