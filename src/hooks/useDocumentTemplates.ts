@@ -144,30 +144,36 @@ function sanitizeStorageFileName(name: string): string {
   return ext ? `${safeBase}.${ext}` : safeBase;
 }
 
-// Helper function to generate template code
-async function generateTemplateCode(userId: string): Promise<string> {
+// Compute the next template code number.
+// IMPORTANT: the `code` column has a GLOBAL UNIQUE constraint that also covers
+// soft-deleted rows (deleted_at != null). So the max must be taken across ALL
+// rows — NOT just `deleted_at IS NULL`. Otherwise deleting the most-recent
+// template and re-uploading regenerates its exact code and collides with the
+// lingering soft-deleted row (Postgres 23505). Order by `code` (zero-padded →
+// lexicographic == numeric) rather than created_at so out-of-order timestamps
+// or gaps can never lower the max.
+async function getNextTemplateNumber(userId: string): Promise<number> {
   const { data, error } = await supabase
     .from("document_templates")
     .select("code")
     .eq("user_id", userId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
+    .order("code", { ascending: false })
     .limit(1);
 
   if (error) {
-    console.error("Error generating code:", error);
-    return "MHD000001";
+    console.error("Error reading template codes:", error);
+    throw error;
   }
 
   if (!data || data.length === 0) {
-    return "MHD000001";
+    return 1;
   }
 
-  const lastCode = data[0].code;
-  const lastNumber = parseInt(lastCode.replace("MHD", ""));
-  const newNumber = lastNumber + 1;
-  return `MHD${newNumber.toString().padStart(6, "0")}`;
+  const lastNumber = parseInt(data[0].code.replace("MHD", ""), 10);
+  return Number.isFinite(lastNumber) ? lastNumber + 1 : 1;
 }
+
+const formatTemplateCode = (n: number): string => `MHD${n.toString().padStart(6, "0")}`;
 
 // 1. FETCH ALL TEMPLATES
 export const useDocumentTemplates = (category?: TemplateCategory) => {
@@ -285,10 +291,7 @@ export const useCreateDocumentTemplate = () => {
         throw new Error("User not authenticated");
       }
 
-      // 1. Generate code
-      const code = await generateTemplateCode(user.id);
-
-      // 2. Upload file to storage (sanitize name — Storage rejects diacritics/spaces)
+      // 1. Upload file to storage (sanitize name — Storage rejects diacritics/spaces)
       const fileExt = payload.file.name.split(".").pop();
       const safeName = sanitizeStorageFileName(payload.file.name);
       const fileName = `${Date.now()}_${safeName}`;
@@ -307,42 +310,61 @@ export const useCreateDocumentTemplate = () => {
         throw uploadError;
       }
 
-      // 3. Get public URL
+      // 2. Get public URL
       const { data: urlData } = supabase.storage
         .from("document-templates")
         .getPublicUrl(filePath);
 
-      // 4. Insert record
-      const { data, error } = await supabase
-        .from("document_templates")
-        .insert({
-          user_id: user.id,
-          code,
-          name: payload.name,
-          category: payload.category,
-          description: payload.description,
-          file_url: urlData.publicUrl,
-          file_name: payload.file.name,
-          file_size: payload.file.size,
-          file_type: fileExt,
-          is_default: payload.is_default,
-          type: payload.type,
-          variables: payload.variables,
-          content: payload.content,
-        })
-        .select()
-        .single();
+      // 3. Insert record with collision-retry. The `code` UNIQUE constraint also
+      // covers soft-deleted rows, so a freshly computed code can still collide
+      // (e.g. re-uploading a previously deleted template). On 23505 bump the
+      // number and retry; this self-heals even if several codes are taken.
+      const startNumber = await getNextTemplateNumber(user.id);
+      let data: DocumentTemplate | null = null;
+      let lastError: { code?: string } | null = null;
 
-      if (error) {
-        // Cleanup: delete uploaded file if database insert fails
+      for (let attempt = 0; attempt < 25; attempt++) {
+        const code = formatTemplateCode(startNumber + attempt);
+        const res = await supabase
+          .from("document_templates")
+          .insert({
+            user_id: user.id,
+            code,
+            name: payload.name,
+            category: payload.category,
+            description: payload.description,
+            file_url: urlData.publicUrl,
+            file_name: payload.file.name,
+            file_size: payload.file.size,
+            file_type: fileExt,
+            is_default: payload.is_default,
+            type: payload.type,
+            variables: payload.variables,
+            content: payload.content,
+          })
+          .select()
+          .single();
+
+        if (!res.error) {
+          data = res.data as DocumentTemplate;
+          break;
+        }
+
+        lastError = res.error;
+        // Only a duplicate-code error is retryable; anything else is fatal.
+        if (res.error.code !== "23505") break;
+      }
+
+      if (!data) {
+        // Cleanup: delete uploaded file if database insert never succeeded
         await supabase.storage.from("document-templates").remove([filePath]);
 
-        if (error.code === "23505") {
+        if (lastError?.code === "23505") {
           toast.error("Mã mẫu đã tồn tại");
         } else {
           toast.error("Không thể tạo mẫu");
         }
-        throw error;
+        throw lastError ?? new Error("Không thể tạo mẫu");
       }
 
       return data;
