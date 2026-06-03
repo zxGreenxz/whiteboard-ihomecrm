@@ -29,6 +29,8 @@ import {
   CheckCircle2,
   BadgeCheck,
   FileText as FileIcon,
+  Repeat,
+  CalendarX,
 } from 'lucide-react';
 import {
   HoverCard,
@@ -43,6 +45,8 @@ interface IncomeExpenseListProps {
   isLoading: boolean;
   onView: (voucher: IncomeExpenseWithRelations) => void;
   onCancel: (id: string) => void;
+  /** Dừng lặp lại cho 1 phiếu gốc (repeat_cycle != NONE, không phải phiếu con). */
+  onStopRecurring?: (id: string) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho người tạo phiếu
    *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
@@ -133,6 +137,7 @@ const IncomeExpenseList = ({
   isLoading,
   onView,
   onCancel,
+  onStopRecurring,
   onEdit,
   onQuickEdit,
   onApprove,
@@ -293,6 +298,23 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
+                    {/* Dừng lặp lại — chỉ phiếu GỐC đang lặp, chưa huỷ */}
+                    {onStopRecurring &&
+                      voucher.repeat_cycle &&
+                      voucher.repeat_cycle !== 'NONE' &&
+                      !voucher.repeat_parent_id &&
+                      !isCancelled && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                          onClick={() => onStopRecurring(voucher.id)}
+                          title="Dừng lặp lại (giữ phiếu + các phiếu đã sinh)"
+                        >
+                          <CalendarX className="h-4 w-4" />
+                        </Button>
+                      )}
+
                     {/* Ảnh đính kèm — thumbnail + hover xem full-size */}
                     <AttachmentPreview urls={voucher.attachments ?? []} />
 
@@ -341,6 +363,27 @@ const IncomeExpenseList = ({
                         className="shrink-0 bg-green-100 text-green-800 hover:bg-green-100"
                       >
                         Đã ghi nhận
+                      </Badge>
+                    )}
+                    {/* Phiếu gốc đang lặp */}
+                    {voucher.repeat_cycle &&
+                      voucher.repeat_cycle !== 'NONE' &&
+                      !voucher.repeat_parent_id && (
+                        <Badge
+                          variant="secondary"
+                          className="shrink-0 gap-1 bg-blue-100 text-blue-700 hover:bg-blue-100"
+                        >
+                          <Repeat className="h-3 w-3" />
+                          Lặp lại
+                        </Badge>
+                      )}
+                    {/* Phiếu con tự động sinh */}
+                    {voucher.repeat_parent_id && (
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 bg-sky-100 text-sky-700 hover:bg-sky-100"
+                      >
+                        Tự động
                       </Badge>
                     )}
                   </div>

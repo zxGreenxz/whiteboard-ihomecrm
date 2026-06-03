@@ -7,6 +7,7 @@ import type {
   IncomeExpenseBatchFormValues,
 } from "@/lib/incomeExpenseValidation";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
+import { addCycle, type RepeatCycle } from "@/lib/recurring";
 
 // --- Types ---
 
@@ -692,9 +693,10 @@ export const useCreateIncomeExpense = () => {
           repeat_remaining: input.repeat_infinity
             ? 0
             : Number(input.repeat_count ?? 0),
+          // Phiếu gốc = kỳ #1; ngày sinh tiếp theo là kỳ kế (tránh trùng kỳ đầu).
           repeat_next_date:
             input.repeat_cycle && input.repeat_cycle !== "NONE"
-              ? input.voucher_date
+              ? addCycle(input.voucher_date, input.repeat_cycle as RepeatCycle, 1)
               : null,
           voucher_date: input.voucher_date,
         })
@@ -892,6 +894,17 @@ export const useUpdateIncomeExpense = () => {
           attachments: data.attachments ?? [],
           business_result_accounting: data.business_result_accounting ?? null,
           voucher_date: data.voucher_date,
+          // FIX: trước đây bỏ qua các trường repeat_* nên sửa "Cài đặt lặp lại"
+          // không lưu (và không tắt được lặp). repeat_remaining/next_date sẽ được
+          // RPC tự suy lại theo số phiếu con thực tế ở lần sinh kế tiếp.
+          repeat_cycle: data.repeat_cycle ?? "NONE",
+          repeat_infinity: !!data.repeat_infinity,
+          repeat_count: data.repeat_count ?? 0,
+          repeat_remaining: data.repeat_infinity ? 0 : Number(data.repeat_count ?? 0),
+          repeat_next_date:
+            data.repeat_cycle && data.repeat_cycle !== "NONE"
+              ? addCycle(data.voucher_date, data.repeat_cycle as RepeatCycle, 1)
+              : null,
         })
         .eq("id", id)
         .select()
@@ -1738,6 +1751,33 @@ export const useUpdateBatchAccount = () => {
 
 // (Workflow Duyệt/Bỏ duyệt đã bị loại bỏ — phiếu mặc định APPROVED khi tạo,
 //  Huỷ thì set CANCELLED qua useCancelIncomeExpense.)
+
+// Dừng lặp lại cho 1 phiếu GỐC: giữ nguyên phiếu + các phiếu con đã sinh,
+// chỉ ngừng sinh phiếu con tương lai.
+export const useStopRecurring = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("income_expenses" as any)
+        .update({
+          repeat_cycle: "NONE",
+          repeat_infinity: false,
+          repeat_remaining: 0,
+          repeat_next_date: null,
+        })
+        .eq("id", id);
+      if (error) {
+        toast.error(error.message || "Không thể dừng lặp lại");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      toast.success("Đã dừng lặp lại cho phiếu này");
+    },
+  });
+};
 
 // Sinh các phiếu lặp lại tới hôm nay (RPC).
 export const useGenerateRecurringVouchers = () => {

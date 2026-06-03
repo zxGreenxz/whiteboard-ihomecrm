@@ -40,8 +40,19 @@ export const incomeExpenseFormSchema = z.object({
     .default('NONE')
     .optional(),
   repeat_infinity: z.boolean().default(false).optional(),
-  repeat_count: z.coerce.number().int().min(0).default(0).optional(),
+  repeat_count: z.coerce.number().int().min(0).max(240).default(0).optional(),
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
+}).superRefine((val, ctx) => {
+  // Chọn chu kỳ nhưng KHÔNG bật "Lặp vô hạn" thì bắt buộc số lần lặp >= 1 —
+  // tránh tạo phiếu "lặp" nhưng không bao giờ sinh phiếu con (cấu hình chết).
+  const cycle = val.repeat_cycle ?? 'NONE';
+  if (cycle !== 'NONE' && !val.repeat_infinity && (val.repeat_count ?? 0) < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Nhập số lần lặp ≥ 1 hoặc bật "Lặp vô hạn"',
+      path: ['repeat_count'],
+    });
+  }
 });
 
 export type IncomeExpenseFormValues = z.infer<typeof incomeExpenseFormSchema>;

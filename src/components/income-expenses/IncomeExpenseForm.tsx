@@ -36,6 +36,7 @@ import {
   incomeExpenseFormSchema,
   type IncomeExpenseFormValues,
 } from '@/lib/incomeExpenseValidation';
+import { addCycle, type RepeatCycle } from '@/lib/recurring';
 import {
   dateToMonth,
   monthToStartDate,
@@ -876,7 +877,22 @@ const IncomeExpenseForm = ({
                       <FormItem>
                         <FormLabel>Chu kỳ</FormLabel>
                         <Select
-                          onValueChange={field.onChange}
+                          onValueChange={(v) => {
+                            field.onChange(v);
+                            // Tránh bẫy "cấu hình chết": chọn chu kỳ thì gợi ý
+                            // số lần lặp = 1; chọn "Không lặp lại" thì reset.
+                            if (v === 'NONE') {
+                              form.setValue('repeat_count', 0);
+                              form.setValue('repeat_infinity', false);
+                            } else if (
+                              !form.getValues('repeat_infinity') &&
+                              (form.getValues('repeat_count') ?? 0) < 1
+                            ) {
+                              form.setValue('repeat_count', 1, {
+                                shouldValidate: true,
+                              });
+                            }
+                          }}
                           value={field.value ?? 'NONE'}
                           disabled={!canEdit}
                         >
@@ -915,6 +931,7 @@ const IncomeExpenseForm = ({
                               onBlur={field.onBlur}
                               name={field.name}
                               min={0}
+                              max={240}
                               disabled={disabled}
                             />
                           </FormControl>
@@ -945,10 +962,24 @@ const IncomeExpenseForm = ({
                     }}
                   />
                 </div>
+                {(() => {
+                  const cycle = form.watch('repeat_cycle');
+                  const vDate = form.watch('voucher_date');
+                  if (cycle && cycle !== 'NONE' && vDate) {
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        Phiếu kế tiếp dự kiến:{' '}
+                        <b>{addCycle(vDate, cycle as RepeatCycle, 1)}</b>
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
                 <p className="text-xs text-muted-foreground">
-                  Hệ thống sẽ tự động sinh phiếu con đến ngày hôm nay theo chu kỳ.
-                  Bạn có thể chạy thủ công bằng nút <b>Sinh phiếu lặp lại</b>{' '}
-                  trên thanh công cụ.
+                  Phiếu hiện tại là kỳ đầu. Hệ thống <b>tự động</b> sinh các phiếu
+                  kỳ tiếp theo mỗi ngày lúc 01:00 theo chu kỳ. "Số lần lặp" = số
+                  phiếu sinh thêm ngoài phiếu này. Bấm{' '}
+                  <b>Sinh phiếu lặp lại</b> trên thanh công cụ để chạy ngay.
                 </p>
               </div>
 

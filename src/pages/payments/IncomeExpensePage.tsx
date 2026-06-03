@@ -44,6 +44,7 @@ import {
   useCancelIncomeExpense,
   useApproveVoucher,
   useGenerateRecurringVouchers,
+  useStopRecurring,
   useIncomeExpenseBatches,
   useCancelIncomeExpenseBatch,
   type IncomeExpenseWithRelations,
@@ -168,6 +169,7 @@ const IncomeExpensePage = () => {
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
   const generateRecurringMutation = useGenerateRecurringVouchers();
+  const stopRecurringMutation = useStopRecurring();
 
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
@@ -619,6 +621,7 @@ const IncomeExpensePage = () => {
             isLoading={isLoading}
             onView={handleView}
             onCancel={handleCancelVoucher}
+            onStopRecurring={(id) => stopRecurringMutation.mutate(id)}
             onEdit={handleEditVoucher}
             onQuickEdit={handleQuickEditVoucher}
             onApprove={handleApproveVoucher}
