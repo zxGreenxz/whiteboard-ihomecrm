@@ -219,12 +219,12 @@ stateDiagram-v2
 
 ### 4.3. RPC vòng đời (đường "thao tác tức thì" mà UI dùng)
 
-**Đúng 4 RPC được bọc wrapper kiểm quyền** (migration [20260601000100](../../supabase/migrations/20260601000100_sec_contract_rpc_authz_and_anon_revoke.sql)): `renew_contract`, `transfer_contract`, `terminate_contract_forfeit`, `terminate_contract_move_out`. Với mỗi hàm: hàm public `<tên>` kiểm `auth.uid()` + `is_super_admin()` OR `can_do_on_building('contracts','edit', building_of_room)`, rồi gọi `<tên>_impl` chứa logic gốc. `anon` bị revoke; chỉ `authenticated` được EXECUTE. (`transfer_room` **không** thuộc nhóm này — xem ghi chú riêng bên dưới.)
+**Đúng 4 RPC được bọc wrapper kiểm quyền** (migration [20260601000100](../../supabase/migrations/20260601000100_sec_contract_rpc_authz_and_anon_revoke.sql)): `renew_contract`, `transfer_contract`, `terminate_contract_forfeit`, `terminate_contract_move_out`. Với mỗi hàm: hàm public `<tên>` kiểm `auth.uid()` + `is_super_admin()` OR `can_do_on_building('contracts','edit', building_of_room)`, rồi gọi `<tên>_impl` chứa logic gốc. `anon` bị revoke; chỉ `authenticated` được EXECUTE. (`transfer_room` không dùng pattern `_impl` mà **tự kiểm quyền ngay trong thân hàm** với cùng điều kiện — xem dòng riêng bên dưới.)
 
 | RPC (impl) | Hook gọi | Việc làm |
 |---|---|---|
 | `renew_contract_impl` ([action_rpcs](../../supabase/migrations/20260510000012_contract_action_rpcs.sql)) | `useRenewContract` | Chỉ gia hạn HĐ `ACTIVE/EXTENDED`. Validate `new_end_date > end_date`. UPDATE `end_date`/giá/cọc + set `EXTENDED` + nối ghi chú. Ghi audit `contract_extensions` (type `UPDATE_EXISTING`, status `COMPLETED`). |
-| `transfer_room` — **đã bị DROP, chưa tạo lại** ([drop_beds](../../supabase/migrations/20260528000005_drop_beds.sql)) | `useTransferRoom` | ⚠️ RPC này đã bị `DROP FUNCTION` ở [drop_beds (28/05)](../../supabase/migrations/20260528000005_drop_beds.sql) và **chưa được tạo lại** (không có trong schema). FE [`useTransferRoom`](../../src/hooks/useContractOperations.ts) vẫn gọi `rpc('transfer_room', …)` nên nút "Chuyển phòng" hiện sẽ **lỗi runtime** ("function not found"). Logic dự kiến (chưa tồn tại): đổi `room_id` của chính HĐ, chặn nếu phòng đích bận, tự free phòng cũ / chiếm phòng mới. |
+| `transfer_room` ([recreate_transfer_room](../../supabase/migrations/20260603000100_recreate_transfer_room_no_bed.sql)) | `useTransferRoom` | **Chuyển phòng** HĐ đang hiệu lực sang phòng khác. Hàm **tự kiểm quyền** (`auth.uid()` + `is_super_admin()` OR `can_do_on_building('contracts','edit', building_of_room)`). Validate HĐ `ACTIVE/EXTENDED`, phòng đích ≠ phòng hiện tại và không bị HĐ hiệu lực khác chiếm. UPDATE `room_id` + `rent_price` (COALESCE) + nối ghi chú; **giữ nguyên status** (KHÔNG sang TRANSFERRED); free phòng cũ → `AVAILABLE`, phòng mới → `OCCUPIED`. Audit `contract_transfers` (`ROOM_CHANGE`, `status='COMPLETED'` ⇒ không kích trigger `apply_contract_transfer`). _Lịch sử: bản 6-tham-số (có bed) bị DROP ở [drop_beds 28/05](../../supabase/migrations/20260528000005_drop_beds.sql), tạo lại 5-tham-số (bỏ bed) ở migration 20260603000100._ |
 | `transfer_contract_impl` ([action_rpcs](../../supabase/migrations/20260510000012_contract_action_rpcs.sql)) | `useTransferContract` | **Đổi khách đại diện**: hạ cờ mọi khách, promote/insert khách mới làm đại diện; cập nhật giá/cọc. **Không** đổi status (HĐ vẫn ACTIVE/EXTENDED). Audit `contract_transfers` (`TENANT_CHANGE`). |
 | `terminate_contract_forfeit_impl` ([forfeit_keep_partial_paid](../../supabase/migrations/20260530000001_forfeit_keep_partial_paid_revenue.sql)) | `useTerminateForfeit` | **Khách bỏ cọc**: tạo hoá đơn thanh lý status `APPROVED` (không phải PAID), `subtotal = total_amount = total_deposit`, **không** prepaid, 1 line `PENALTY` = `total_deposit` (ghi nhận cọc thành doanh thu, không có tiền mới đổi tay). Ngoài ra **huỷ các hoá đơn của tháng thanh lý**: hoá đơn đã thu một phần/đủ → `CANCELLED` nhưng **giữ payment**, hạ `total_amount = paid_amount` (phần đã thu thành doanh thu, huỷ phần nợ); hoá đơn chưa thu → `CANCELLED`, `total_amount = 0`. Set HĐ `TERMINATED` + `actual_end_date`. Audit `contract_terminations` (`FORFEIT`). Hook còn **tiêu hết credit dư** của HĐ. |
 | `terminate_contract_move_out_impl` ([move_out_drop_bed_id](../../supabase/migrations/20260601000200_termination_move_out_drop_bed_id.sql)) | `useTerminateMoveOut` | **Khách rời phòng**: (1) chỉ tạo hoá đơn **phạt** khi `penalty > 0` — status `APPROVED` cố định, `subtotal = total_amount = penalty`, **không** prepaid, line `PENALTY`, `previous_debt = outstanding_debt`; (2) hoàn cọc và tiền phòng thừa là **2 phiếu chi `income_expenses` (EXPENSE)** riêng: hoàn cọc `is_deposit=TRUE` (loại khỏi KQKD), hoàn phòng thừa `is_deposit=FALSE` (giảm doanh thu). Set HĐ `TERMINATED`. Audit `contract_terminations` (`NORMAL`, `refund_amount = deposit + excess` — **không** trừ debt/penalty). Hook tiêu credit dư. |
@@ -242,7 +242,7 @@ stateDiagram-v2
 
 ### 4.5. Bất biến quan trọng (invariant)
 
-1. **Một phòng — một HĐ hiệu lực**: kiểm ở `useCreateContract` (chặn tạo nếu phòng có HĐ `ACTIVE/EXTENDED`). Lưu ý: lớp chặn ở `transfer_room` hiện **không còn hiệu lực** vì RPC `transfer_room` đã bị DROP và chưa tạo lại (xem §4.3).
+1. **Một phòng — một HĐ hiệu lực**: kiểm ở `useCreateContract` (chặn tạo nếu phòng có HĐ `ACTIVE/EXTENDED`); RPC `transfer_room` cũng tự chặn nếu phòng đích đang có HĐ hiệu lực khác (xem §4.3).
 2. **EXTENDED = đang hiệu lực**: mọi gate thao tác dùng `isContractInEffect()` / `.in('status',['ACTIVE','EXTENDED'])`.
 3. **Một đại diện/HĐ**: trigger `check_contract_representative`.
 4. **Không xoá HĐ đã có hoá đơn / biên bản thanh lý**: `useDeleteContract` chặn; nếu được phép → soft-delete (`deleted_at`).
@@ -270,7 +270,7 @@ stateDiagram-v2
 |---|---|---|---|
 | Sửa | `status ≠ TERMINATED` | `ContractFormDialog` | `useUpdateContract` + sync customers/services |
 | Gia hạn | inEffect / EXPIRED / EXPIRING | `RenewDialog` | `useRenewContract` → `renew_contract` |
-| Chuyển phòng | inEffect | `TransferRoomDialog` | `useTransferRoom` → `transfer_room` ⚠️ RPC **đã bị xoá, chưa tạo lại** → thao tác này hiện lỗi runtime (xem §4.3) |
+| Chuyển phòng | inEffect | `TransferRoomDialog` | `useTransferRoom` → `transfer_room` (đổi `room_id`, giữ status, đồng bộ phòng cũ/mới — xem §4.3) |
 | Đăng ký chuyển đi | inEffect | `MoveOutDialog` | `useRegisterMoveOut` (UPDATE `expected_move_out_date`) |
 | Nhượng HĐ | inEffect | `TransferContractDialog` | `useTransferContract` → `transfer_contract` |
 | Thanh lý | inEffect / EXPIRED / EXPIRING | `TerminateDialog` | `useTerminateForfeit` / `useTerminateMoveOut` |
@@ -339,7 +339,7 @@ flowchart TD
 4. **Thanh toán** — gom payments từ mọi hoá đơn.
 5. **Lịch sử** — timeline gia hạn / chuyển / thanh lý kèm badge status; nếu thanh lý còn `DRAFT/PENDING_APPROVAL` → nút "Đi đến duyệt thanh lý".
 
-**Thao tác (header)**: Cập nhật (nếu ≠ TERMINATED), In HĐ, QR (nếu ≠ TERMINATED/DRAFT), và khi `isContractInEffect`: Gia hạn / Chuyển phòng / Nhượng HĐ / Đăng ký chuyển đi / Thanh lý. `DRAFT` → nút Xoá. ⚠️ Nút **Chuyển phòng** gọi `useTransferRoom` → RPC `transfer_room` **đã bị xoá, chưa tạo lại** nên hiện lỗi runtime (xem §4.3).
+**Thao tác (header)**: Cập nhật (nếu ≠ TERMINATED), In HĐ, QR (nếu ≠ TERMINATED/DRAFT), và khi `isContractInEffect`: Gia hạn / Chuyển phòng / Nhượng HĐ / Đăng ký chuyển đi / Thanh lý. `DRAFT` → nút Xoá.
 
 **Alert**: sắp hết hạn ≤30 ngày (nếu đang hiệu lực); đã đăng ký chuyển đi (`expected_move_out_date`).
 
