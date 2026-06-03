@@ -204,6 +204,56 @@ export const useUpsertBuildingShare = () => {
   });
 };
 
+// Đồng bộ toàn bộ tỷ lệ tòa cho 1 cổ đông = danh sách rows truyền vào
+// (xoá tòa không còn, upsert tòa mới/đổi %).
+export const useSyncShareholderBuildings = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      shareholder_id: string;
+      rows: Array<{ building_id: string; percent: number }>;
+    }) => {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) throw new Error("User not authenticated");
+
+      const { data: existing } = await (supabase
+        .from("building_shareholders" as any)
+        .select("id, building_id") as any)
+        .eq("shareholder_id", input.shareholder_id);
+
+      const keep = new Set(input.rows.map((r) => r.building_id));
+      const toDelete = ((existing || []) as any[])
+        .filter((e) => !keep.has(e.building_id))
+        .map((e) => e.id);
+      if (toDelete.length > 0) {
+        const { error } = await (supabase
+          .from("building_shareholders" as any)
+          .delete() as any)
+          .in("id", toDelete);
+        if (error) throw error;
+      }
+
+      if (input.rows.length > 0) {
+        const { error } = await supabase
+          .from("building_shareholders" as any)
+          .upsert(
+            input.rows.map((r) => ({
+              user_id: auth.user!.id,
+              shareholder_id: input.shareholder_id,
+              building_id: r.building_id,
+              percent: r.percent,
+            })),
+            { onConflict: "building_id,shareholder_id" }
+          );
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["building-shareholders"] });
+    },
+  });
+};
+
 export const useDeleteBuildingShare = () => {
   const qc = useQueryClient();
   return useMutation({
