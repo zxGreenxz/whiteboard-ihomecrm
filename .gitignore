@@ -44,3 +44,6 @@ dataexcel/
 # Local scratch + RBAC refactor backups (KHÔNG commit - chứa data dump)
 .scratch/
 .backups/
+
+# Draft — file dư thừa gom lại để review trước khi xoá (KHÔNG commit)
+draft/
