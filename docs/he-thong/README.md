@@ -3,8 +3,8 @@
 Bộ tài liệu **cấu trúc dữ liệu + quy trình nghiệp vụ** của toàn bộ ứng dụng (production: <https://ptcrm.vercel.app>).
 Mỗi file mô tả một **domain** theo cùng một bố cục: *Tổng quan → Cấu trúc dữ liệu → Sơ đồ quan hệ → Quy tắc nghiệp vụ & tự động hoá → Quy trình từng trang (page) → Liên kết domain khác*.
 
-> **Sơ đồ**: tất cả vẽ bằng [Mermaid](https://mermaid.js.org) (```mermaid fenced code). Xem trực tiếp trên GitHub, VS Code (ext *Markdown Preview Mermaid*), hoặc <https://mermaid.live>.
-> **Phạm vi dữ liệu**: 95 bảng · 5 view · 30 enum · ~80 RPC/function nghiệp vụ · 59 sơ đồ. Trích từ schema thật của Supabase (project `tryymsxyyckgbrmmvozx`) tại thời điểm lập tài liệu.
+> **Sơ đồ**: tất cả vẽ bằng [Mermaid](https://mermaid.js.org) trong các khối mã `mermaid`. Xem trực tiếp trên GitHub, VS Code (ext *Markdown Preview Mermaid*), hoặc <https://mermaid.live>.
+> **Phạm vi dữ liệu**: 95 bảng · 5 view · 30 enum · ~80 RPC/function nghiệp vụ · 60 sơ đồ. Trích từ schema thật của Supabase (project `tryymsxyyckgbrmmvozx`) tại thời điểm lập tài liệu.
 
 ---
 
