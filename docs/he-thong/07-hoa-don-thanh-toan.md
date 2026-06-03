@@ -100,7 +100,7 @@ FK: `invoice_id → invoices` (ON DELETE CASCADE).
 
 ### 2.6. `invoice_generation_settings` — Cấu hình sinh hoá đơn tự động
 
-Mục đích: cấu hình per-user cho sinh hoá đơn định kỳ. Cột: `auto_generate_enabled`, `generation_day` (ngày trong tháng), `due_days` (số ngày hạn thanh toán), `include_previous_debt`, `auto_approve`. (Bảng cấu hình, hiện chủ yếu là khung — luồng sinh thực tế dùng RPC `generate_invoices_for_building_v2`.)
+Mục đích: cấu hình per-user cho sinh hoá đơn định kỳ. Cột: `auto_generate_enabled`, `generation_day` (ngày trong tháng), `due_days` (số ngày hạn thanh toán), `include_previous_debt`, `auto_approve`. (Bảng cấu hình, hiện chủ yếu là khung — luồng sinh HĐ thực tế ở FE đi qua [useCreateInvoice](src/hooks/useInvoices.ts) (tạo thủ công 1 HĐ hoặc lặp hàng loạt trong `ExcelInvoiceDialog`); RPC `generate_invoices_for_building_v2` tồn tại nhưng FE chưa gọi.)
 
 ---
 
@@ -225,13 +225,15 @@ Chữ ký: `(p_invoice_id, p_amount, p_payment_method, p_payment_date, p_notes, 
 
 > **Lưu ý song trùng với trigger**: RPC tự UPDATE status, NHƯNG trigger `trg_payments_recompute_invoice` cũng chạy sau INSERT payment và sẽ tính lại theo logic net (gồm tiền thối). Kết quả cuối cùng do trigger quyết định (chạy sau).
 
-Bản v1 `record_invoice_payment(p_user_id, ...)` GIỮ NGUYÊN nhưng check `WHERE user_id = p_user_id` (chỉ owner gọi được) — vì vậy luồng **bulk** ([useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts)) **không** dùng RPC mà insert thẳng `payments` + `income_expenses`, để staff (được RLS cho phép) vẫn ghi nhận được, rồi dựa vào trigger recompute.
+Bản v1 `record_invoice_payment(p_user_id, ...)` đã được nâng quyền (migration `20260512000002:63-69`): cho gọi khi `user_id = p_user_id` **HOẶC** `is_super_admin()` / `is_admin()` / `staff_can('invoices','edit', user_id)` — tức owner / super_admin / admin / staff có quyền edit đều ghi nhận được. Luồng **bulk** ([useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts)) vẫn **không** dùng RPC mà insert thẳng `payments` + `income_expenses` rồi dựa vào trigger recompute — lý do còn lại theo **comment lịch sử** trong `useBulkRecordPayment.ts` (khi đó RPC còn check `WHERE user_id = p_user_id` chỉ owner); comment chưa cập nhật theo bản RPC mới đã mở quyền.
 
 ### 4.5. RPC sinh hoá đơn hàng loạt — `generate_invoices_for_building_v2`
 
 Chữ ký: `(p_building_id, p_billing_month, p_invoice_type='RENT') → json`. Kiểm `can_do_on_building('invoices','create', building_id)` rồi **delegate v1** `generate_invoices_for_building(owner_id, ...)`.
 
-V1 lặp qua mọi hợp đồng `ACTIVE` của toà, **bỏ qua** hợp đồng đã có HĐ cùng kỳ, tạo HĐ `DRAFT` + item RENT (và item SERVICE từ `contract_services` nếu `invoice_type` gồm service), cập nhật `subtotal/total_amount`. Trả `{created_count, skipped_contracts[]}`.
+> **Lưu ý lệch tham số**: v1 chỉ chấp nhận `p_invoice_type` thuộc `{rent_only, service_only, both}` và **RAISE EXCEPTION** nếu khác (`20260530000000:175-177`) — item RENT khi `rent_only`/`both`, item SERVICE khi `service_only`/`both`. Trong khi đó v2 mặc định `p_invoice_type='RENT'` (giá trị KHÔNG nằm trong tập hợp lệ của v1) ⇒ gọi v2 với default sẽ làm v1 raise. Cần truyền đúng `rent_only/service_only/both` khi delegate (khả năng lỗi nếu để default).
+
+V1 lặp qua mọi hợp đồng `ACTIVE` của toà, **bỏ qua** hợp đồng đã có HĐ cùng kỳ, tạo HĐ `status='APPROVED'` (set luôn `approved_at = NOW()`, `approved_by = p_user_id` — sửa bởi `20260510000003_invoice_default_approved.sql`) + item RENT (và item SERVICE từ `contract_services` khi `invoice_type` gồm service), cập nhật `subtotal/total_amount`. Trả `{created_count, skipped_contracts[]}`.
 
 ### 4.6. RPC thống kê — `get_invoice_statistics_v2`
 
@@ -279,7 +281,7 @@ Bản gốc (`20250601`) là policy `auth.uid() = user_id`. Đã được nâng 
   1. **Mở trang** → `useCheckOverdueInvoices` chạy 1 lần (ref guard) → set HĐ quá hạn thành `OVERDUE` → invalidate list/stats.
   2. **Lọc / tìm** → cập nhật `filters`, reset về page 1, clear selection.
   3. **Tạo hoá đơn** (nút Add, cần quyền `create`) → mở `GenerateInvoiceDialog` (xem 5.5).
-  4. **Excel / hàng loạt** → `ExcelInvoiceDialog` (dùng RPC `generate_invoices_for_building_v2`).
+  4. **Excel / hàng loạt** → `ExcelInvoiceDialog`: tạo HĐ hàng loạt bằng cách lặp [useCreateInvoice](src/hooks/useInvoices.ts) (insert từng HĐ + items, đọc/đối chiếu qua `.from('invoices')`) — **không** gọi RPC bulk. RPC `generate_invoices_for_building_v2` hiện không được FE gọi ở đâu (chỉ khai báo trong `types.ts`).
   5. **Ghi nhận thanh toán** từng dòng → `handleRecordPayment` → mở `RecordPaymentDialog` **hoặc** `RecordRefundDialog` (chọn theo dấu: nếu `total < 0` hoặc `paid > total` → refund).
   6. **Thu hàng loạt** → `BulkRecordPaymentDialog` → [useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts). Chỉ chọn được HĐ `paid_amount === 0`.
   7. **Sửa** (`canEdit` + `canEditInvoice`) → `EditInvoiceDialog` → [useUpdateInvoice](src/hooks/useInvoices.ts) (chặn nếu trạng thái không cho sửa).
@@ -306,7 +308,7 @@ Bản gốc (`20250601`) là policy `auth.uid() = user_id`. Đã được nâng 
 
 ### 5.3. `InvoicePrintPage` — Bản in hoá đơn
 
-- **Route**: `/invoices/:id/print` (mở từ `PrintInvoiceDialog`). File [InvoicePrintPage.tsx](src/pages/invoices/InvoicePrintPage.tsx).
+- **Route**: `/invoices/print/:id` (App.tsx:237). File [InvoicePrintPage.tsx](src/pages/invoices/InvoicePrintPage.tsx). (Lưu ý: `PrintInvoiceDialog` render HTML in inline qua `window.open`, **không** điều hướng route này.)
 - **Mục đích**: render layout in/PDF theo `template_id` (mẫu `document_templates` loại `INVOICE`). Dữ liệu lấy từ cùng hook invoice + relations.
 
 ### 5.4. `PublicContractInvoicePage` — Trang công khai (khách quét QR)
@@ -358,7 +360,9 @@ Mỗi sub-line (TM/TK/TT) gọi `record_invoice_payment_v2` rồi insert kèm **
 - **Giữ credit** (`keep_as_credit`): không khấu trừ, insert `excess_amounts` dương cho contract.
 - **Làm tròn thiếu** (`rounding_amount` + `rounding_account_id`): residual < 10K, gắn lên line cuối; trigger DB tự mark `PAID`.
 
-`RecordRefundDialog` ([useRecordRefundRPC](src/hooks/useInvoicePayments.ts)) dùng cho HĐ thanh lý **total âm**: tạo phiếu chi EXPENSE loại "Hoàn trả thanh lý" với marker `[Hoàn trả thanh lý]` trong notes → `recompute_invoice_for_id` nhận diện và cộng vào `paid_amount` → flip `PAID`.
+`RecordRefundDialog` ([useRecordRefundRPC](src/hooks/useInvoicePayments.ts)) dùng cho HĐ thanh lý **total âm**: tạo phiếu chi EXPENSE loại "Hoàn trả thanh lý" với marker `[Hoàn trả thanh lý]` trong notes.
+
+> **Khác biệt cần lưu ý (có thể là regression)**: bản `recompute_invoice_for_id` hiện hành (`20260530000002:41-50`) chỉ trừ refund qua phiếu chi EXPENSE có `income_expense_type.name = 'Tiền thối'`; nó **KHÔNG còn nhận diện marker `[Hoàn trả thanh lý]`** (logic đọc marker cũ ở `20260510000014` đã bị bỏ ở `20260527000061`). Trong khi đó FE `useRecordRefundRPC` vẫn ghi marker `[Hoàn trả thanh lý]` theo logic cũ (loại phiếu chi tên `'Hoàn trả thanh lý'`, không phải `'Tiền thối'`) ⇒ với recompute hiện tại, refund kiểu này sẽ **không** được cộng/trừ vào `paid_amount`. Chưa rõ là cố ý — cần đối chiếu lại FE/DB.
 
 ### 5.7. `InvoiceHistoryDialog` — Lịch sử audit
 
@@ -370,7 +374,7 @@ Mỗi sub-line (TM/TK/TT) gọi `record_invoice_payment_v2` rồi insert kèm **
 
 **Đi RA (domain này phụ thuộc / ghi sang):**
 
-- → **Thu chi (income_expenses)**: liên kết mạnh nhất. Mỗi payment ⇒ 1 phiếu thu INCOME (`income_expenses.invoice_id` + `payment_id`). Phiếu chi "Tiền thối" / "Hoàn trả thanh lý" cũng gắn `invoice_id` và được trigger recompute đọc ngược để tính `paid_amount` net. Sổ quỹ (`accounts`) nhận tiền qua `account_id` của phiếu thu.
+- → **Thu chi (income_expenses)**: liên kết mạnh nhất. Mỗi payment ⇒ 1 phiếu thu INCOME (`income_expenses.invoice_id` + `payment_id`). Phiếu chi loại **"Tiền thối"** gắn `invoice_id` được trigger recompute đọc ngược để trừ vào `paid_amount` net (xem §4.3 — bản recompute hiện chỉ đọc loại `'Tiền thối'`; phiếu chi marker `[Hoàn trả thanh lý]` mà FE vẫn ghi thì recompute hiện KHÔNG còn nhận diện — xem ghi chú §5.6). Sổ quỹ (`accounts`) nhận tiền qua `account_id` của phiếu thu.
 - → **Hợp đồng (contracts)**: hoá đơn luôn gắn `contract_id`; tạo HĐ chỉ cho hợp đồng đang hiệu lực; `previous_debt_sources` truy nguồn nợ từ HĐ cũ / cọc. `contracts.public_code` cấp link QR công khai.
 - → **Toà nhà / Phòng (buildings/rooms)**: scope RBAC (`can_do_on_building`, `area_id`), `default_account_id_tt/tk` của toà gợi ý sổ quỹ khi thu.
 - → **Chỉ số công tơ (meter_readings) & Dịch vụ (services/contract_services)**: nguồn dữ liệu auto-fill khoản điện/nước/dịch vụ khi tạo HĐ; `invoice_items.service_id → services`.

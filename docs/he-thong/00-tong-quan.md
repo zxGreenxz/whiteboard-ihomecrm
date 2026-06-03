@@ -121,7 +121,7 @@ flowchart TD
 
 ## 4. Sơ đồ quan hệ dữ liệu CỐT LÕI (spine)
 
-Chỉ vẽ **xương sống** dòng giao dịch. 95 bảng còn lại được gom nhóm và chú thích bên dưới — KHÔNG vẽ hết vào một sơ đồ.
+Chỉ vẽ **xương sống** dòng giao dịch. ~79 bảng còn lại (trong tổng ~94 bảng) được gom nhóm và chú thích bên dưới — KHÔNG vẽ hết vào một sơ đồ.
 
 ```mermaid
 erDiagram

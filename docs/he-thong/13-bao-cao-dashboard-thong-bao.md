@@ -193,7 +193,7 @@ flowchart TD
     payments --> useDash
     issues --> useDash
     leads --> useDash
-    deposits --> useRep
+    deposits --> useRep & useDash
     terms --> useRep
     ie --> useCash & useAcc & useRep
 
@@ -202,6 +202,11 @@ flowchart TD
     useCash --> reFIN
     useAcc --> reFIN
 ```
+
+> Lưu ý cạnh `deposits → useDash`: Dashboard đọc `deposits` **gián tiếp** qua
+> `<OperationsSummary>` (`useDeposits`, [OperationsSummary.tsx](src/components/dashboard/OperationsSummary.tsx)
+> dòng 7, 85). Riêng cảnh báo thiếu cọc lại đọc `contracts.deposit_remaining`
+> ([useDashboard.ts](src/hooks/useDashboard.ts) ~dòng 377), không phải bảng `deposits`.
 
 ## 4. Quy tắc nghiệp vụ & tự động hoá
 
@@ -386,7 +391,7 @@ Báo cáo con:
 | Sổ quỹ theo ngày | `/reports/finance/daily-cashbook` (+ `/cash-book`) | `useCashFlowByDay` + `useCashBookSummary` | `income_expenses` APPROVED (số dư đầu/cuối ngày) |
 | Dòng tiền | `/reports/finance/cash-flow` | `useCashFlowByDay` | `income_expenses` APPROVED → gom 12 tháng + 4 quý |
 | Phân bổ lợi nhuận | `/reports/finance/profit-distribution` | `useAccrualMonthReport` | `income_expense_items` + vouchers (accrual theo kỳ) |
-| Chia LN cổ đông | `/finance/shareholder-profit` (redirect) | (domain cổ đông) | → domain Cổ đông |
+| Chia LN cổ đông | `/finance/shareholder-profit` (thẻ link thẳng; redirect chỉ từ `/reports/finance/shareholder-profit`) | (domain cổ đông) | → domain Cổ đông |
 | Công nợ HĐ mới | `/reports/finance/new-contract-debt` (+ `/debt`) | `useDebtReport` | `invoices` APPROVED/PARTIAL_PAID/OVERDUE + aging |
 | Khách nợ tiền | `/reports/finance/customer-debt` | `useCustomerDebtReport` | `invoices` gom theo khách (đại diện HĐ) |
 | Lịch thanh toán | `/reports/finance/payment-schedule` | `usePaymentScheduleReport(365)` | `invoices` `due_date ≤ today+N` |

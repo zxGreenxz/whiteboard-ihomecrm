@@ -284,10 +284,10 @@ Edge case: nếu hệ thống chưa có service "Điện/Nước/Gas" tương �
 - **RBAC/Phân quyền** (`staff_assignments`, `can_access_building`, `is_super_admin`): RPC v2 `get_meters_without_readings_v2` dùng để xác định owner & quyền truy cập building cho staff.
 
 **Ra (meters/readings cung cấp cho domain khác):**
-- **Hoá đơn** (`invoices`/`invoice_items`): đây là liên kết quan trọng nhất. Khi dựng dòng hoá đơn cho dịch vụ `pricing_type = DON_GIA_CO_DINH_DONG_HO` (đơn giá cố định theo đồng hồ), người dùng chọn **chỉ số đã duyệt** của phòng+tháng qua `MeterReadingSelector` ([`MeterReadingSelector.tsx`](src/components/invoices/MeterReadingSelector.tsx)):
-  - Query `useMeterReadingsList({room_id, month, status:'APPROVED', meter_type})` → lọc bằng `getApprovedReadingsForInvoice`.
-  - Số tiền dòng = `calculateInvoiceAmount(consumption, unit_price)` = `consumption × unit_price`; mô tả dòng dạng `"Điện (prev → curr): {consumption} kWh"`.
-  - Nếu **chưa có chỉ số đã duyệt** cho phòng/tháng → hiện nút "Chốt công tơ" điều hướng về `/meter-readings`.
+- **Hoá đơn** (`invoices`/`invoice_items`): đây là liên kết quan trọng nhất. Khi dựng dòng hoá đơn cho dịch vụ tính theo đồng hồ (`pricing_type = DON_GIA_CO_DINH_DONG_HO` / `DON_GIA_BIEN_DONG`), người dùng **nhập trực tiếp** chỉ số cũ/mới ngay trên bảng dòng hoá đơn qua `InvoiceItemsTable` ([`InvoiceItemsTable.tsx`](src/components/invoices/InvoiceItemsTable.tsx)):
+  - Dòng `SERVICE` có nhập "Chỉ số cũ"/"Chỉ số mới" (`previous_reading`/`current_reading`); khi đổi giá trị, `handleReadingChange` tự suy `quantity = current_reading − previous_reading` (ô số lượng khoá `readOnly`). Chỉ hiện ô chỉ số khi dòng là `SERVICE` và có ít nhất một trong hai chỉ số (`hasMeterReading`).
+  - Số tiền dòng = `computeAmount` = `unit_price × quantity × coefficient` (metered pricing nhân thêm hệ số).
   - `firstInvoiceBuilder.ts` đánh dấu `DON_GIA_CO_DINH_DONG_HO` (và `DON_GIA_BIEN_DONG`) là `METERED_PRICING` để biết dòng nào cần dữ liệu đồng hồ.
+  - *Ghi chú:* helper `getApprovedReadingsForInvoice`/`calculateInvoiceAmount` (trong [`useMeterReadingsHelpers.ts`](src/hooks/useMeterReadingsHelpers.ts)) cùng query `useMeterReadingsList({room_id, month, status:'APPROVED'})` mô tả một luồng "chọn chỉ số APPROVED của phòng+tháng" để lên hoá đơn, nhưng hiện **không** được wire vào UI hoá đơn — chỉ dùng trong `__tests__`. Đường chạy thật là nhập tay như trên.
 
 > Tóm tắt vị trí trong end-to-end: **HĐ ký xong → hằng tháng ghi chỉ số (domain này) → consumption đã duyệt → lên hoá đơn điện/nước → thu tiền → báo cáo doanh thu**.

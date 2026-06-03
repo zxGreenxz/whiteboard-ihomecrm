@@ -162,13 +162,15 @@ erDiagram
 
 ### 4.3 Trigger gán `user_id` (audit) khi INSERT
 
-Migration RBAC phase 5 ([`20260527000009_rbac_phase5_misc.sql`](supabase/migrations/20260527000009_rbac_phase5_misc.sql)) thêm các trigger `*_set_user_id_audit BEFORE INSERT` cho `asset_maintenance`, `asset_movements`, `asset_categories` — tự điền `user_id = auth.uid()` cho audit (dù hook FE cũng đã set `user_id` thủ công).
+Migration RBAC phase 5 ([`20260527000009_rbac_phase5_misc.sql`](supabase/migrations/20260527000009_rbac_phase5_misc.sql)) thêm các trigger `*_set_user_id_audit BEFORE INSERT` cho cả 6 bảng asset-domain — `assets`, `asset_warehouses`, `asset_handovers`, `asset_maintenance`, `asset_movements`, `asset_categories` — tự điền `user_id = auth.uid()` cho audit (dù hook FE cũng đã set `user_id` thủ công).
 
 ### 4.4 RLS — phân quyền theo RBAC (building-level vs org-level)
 
 Bộ policy gốc ("Users can manage own…", chỉ `auth.uid() = user_id`) đã bị **drop** ở [`20260528000003_rbac_batch_f_drop_legacy.sql`](supabase/migrations/20260528000003_rbac_batch_f_drop_legacy.sql) và thay bằng policy RBAC trong phase 5:
 
-- **`assets`** — quyền **lai building + org**: cho phép nếu super-admin/admin, hoặc (có `building_id` và `can_do_on_building('assets', <action>, building_id)`), hoặc (`building_id IS NULL` và `can_access_org_entity('assets', <action>)`). Áp dụng cho cả 4 hành động view/create/edit/delete; SELECT thêm điều kiện `deleted_at IS NULL` ở tầng hook.
+- **`assets`** — quyền **lai building + org**, nhưng SELECT và write **khác nhau**:
+  - **SELECT (view)**: super-admin **hoặc admin**, hoặc (có `building_id` và `can_access_building(building_id)` — chỉ cần quyền truy cập toà, không phải `can_do_on_building`), hoặc (`building_id IS NULL` và `can_access_org_entity('assets', 'view')`). SELECT thêm điều kiện `deleted_at IS NULL` ở tầng hook.
+  - **INSERT/UPDATE/DELETE**: **chỉ super-admin** (KHÔNG có `is_admin()`), hoặc (có `building_id` và `can_do_on_building('assets', <action>, building_id)`), hoặc (`building_id IS NULL` và `can_access_org_entity('assets', <action>)`).
 - **`asset_categories` / `asset_maintenance` / `asset_movements`** — thuần **org-level**: `can_access_org_entity('assets', <action>)` (dùng chung "entity" `assets`).
 - **`asset_warehouses`** — lai building + org nhưng dùng entity `'warehouses'` (`can_access_building` / `can_access_org_entity('warehouses', …)`).
 - **`asset_handovers`** — phân quyền **theo toà của HĐ**: `can_do_on_building('assets', <action>, building_of_contract(contract_id))`.

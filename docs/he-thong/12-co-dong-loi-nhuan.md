@@ -244,7 +244,7 @@ FE helper `can(perms, module, action)` ([useMyPermissions.ts](src/hooks/useMyPer
 
 ### 4.7. Tổng hợp client — `computeShareholderSummary`
 
-[shareholderProfit.ts](src/lib/shareholderProfit.ts) (pure, test được): với danh sách `allocations` (accrued) và `distributions` (paid), trả mỗi cổ đông `{ accrued, paid, remaining = accrued − paid }`. Đây là công thức công nợ cổ đông dùng chung cho cả tab Tổng quan, SelfView và banner Ví cá nhân.
+[shareholderProfit.ts](src/lib/shareholderProfit.ts) (pure, test được): với `shareholderIds` (ds id cần báo cáo), `allocations` (accrued) và `distributions` (paid), trả map theo cổ đông `{ accrued, paid, remaining = accrued − paid }`; mọi id trong `shareholderIds` luôn có row (mặc định 0, kể cả cổ đông chưa có allocation). Đây là công thức công nợ cổ đông dùng chung cho cả tab Tổng quan, SelfView và banner Ví cá nhân.
 
 ---
 

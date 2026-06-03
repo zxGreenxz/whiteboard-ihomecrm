@@ -40,7 +40,7 @@ Cột chủ chốt:
 - `status` (text, DEFAULT `IN_PROGRESS`, CHECK ∈ {`IN_PROGRESS`,`COMPLETED`}) — chỉ 2 trạng thái sau khi [đơn giản hoá vòng đời](supabase/migrations/20260516000053_jobs_simplify_status.sql).
 - `started_at` — set = now() lúc tạo; `completion_time` — set khi bấm Hoàn thành.
 - `visible_to_customer` (bool) — có cho khách thấy không.
-- `attachments`, `completion_attachments` (jsonb) — ảnh trước/sau.
+- `attachments` (jsonb) — ảnh đính kèm; khi tạo lưu ảnh ban đầu, khi Hoàn thành ảnh "đã làm" được GỘP vào chính cột này (`useCompleteJob` ghi merged vào `attachments`). `completion_attachments`/`completion_description` là cột **di sản** của flow nghiệm thu cũ, hiện KHÔNG được create/complete flow ghi.
 - Các cột `acceptance_result`, `customer_evaluation`, `customer_comments`, `accepted_at` — **di sản** của flow nghiệm thu cũ, hiện không còn dùng trên UI.
 - id/user_id/created_at/updated_at: chuẩn (user_id = owner tenant).
 

@@ -100,7 +100,7 @@ Bật/tắt dịch vụ cho từng toà + **override giá riêng** từng toà.
 - `building_id` → `buildings.id`, `service_id` → `services.id` (cặp duy nhất; vi phạm → 23505 "Dịch vụ này đã được thêm cho toà nhà").
 - `is_active` boolean (NOT NULL, default true) — dịch vụ có áp cho toà này không.
 - `unit_price_override` numeric (nullable) — nếu set, **giá toà này dùng số này thay vì `services.unit_price`** (logic định giá hoá đơn đọc tại đây).
-- Đây là **nguồn sự thật** cho liên kết dịch vụ–toà ở runtime. (Bảng cũ `service_buildings` đã bị hợp nhất vào đây từ migration `unify_service_building_links` và còn lại như legacy.)
+- Đây là **nguồn sự thật** cho liên kết dịch vụ–toà ở runtime. (Bảng cũ `service_buildings` đã hợp nhất vào `building_services` qua migration `unify_service_building_links` rồi DROP hẳn ở `20260510000005_drop_service_buildings.sql` — hiện không còn tồn tại.)
 
 ### 2.7. `service_quotas` + `service_quota_tiers` — Định mức bậc thang
 
@@ -228,7 +228,7 @@ erDiagram
 ### 4.3. `generate_code` / `generate_next_code` — sinh mã tuần tự
 
 - **Nguồn:** `generate_code` ([008_triggers_functions.sql](supabase/migrations/008_triggers_functions.sql)); `generate_next_code` ([029_missing_features.sql](supabase/migrations/029_missing_features.sql)).
-- **Cơ chế chung:** lấy/khoá (`FOR UPDATE`) dòng `code_sequences` theo `(user_id, object_type)`; nếu tới kỳ reset (DAILY/MONTHLY/YEARLY so với `last_reset_at`) thì `next = 1`, ngược lại `current_sequence + 1`; ghép `prefix [+ sep + date(date_format)] + sep + LPAD(seq, sequence_length, '0')`; cập nhật `current_sequence`/`last_reset_at`.
+- **Cơ chế chung:** lấy dòng `code_sequences` theo `(user_id, object_type)` — `generate_next_code` khoá dòng `FOR UPDATE`, còn `generate_code` chỉ `SELECT` thường (không khoá hàng); nếu tới kỳ reset (DAILY/MONTHLY/YEARLY so với `last_reset_at`) thì `next = 1`, ngược lại `current_sequence + 1`; ghép `prefix [+ sep + date(date_format)] + sep + LPAD(seq, sequence_length, '0')`; cập nhật `current_sequence`/`last_reset_at`.
 - **Khác biệt:** `generate_next_code` **tự tạo dòng cấu hình mặc định** nếu chưa có (prefix = 2 ký tự đầu object_type, format YYMM, reset MONTHLY); `generate_code` **raise exception** nếu chưa cấu hình.
 - **Trong domain này:** không trang nào của khu vực/toà/phòng/dịch vụ gọi 2 hàm này — mã do người dùng nhập tay. Chúng phục vụ các domain khác (HĐ, hoá đơn, phiếu thu chi, công việc…) qua các trigger `generate_*_number` / `*_set_code`.
 
@@ -302,7 +302,7 @@ flowchart TD
 - **Tạo hàng loạt:** `useBulkCreateRooms` (insert mảng `rooms`).
 - **Edge case:** mã phòng trùng → 23505; `building_id` sai → 23503 ("Tòa nhà không tồn tại").
 
-### 5.5. `/rooms/:id` (chi tiết) — `RoomDetailPage`
+### 5.5. `/apartments/:id` (route chi tiết; `/rooms/:id` redirect) — `RoomDetailPage`
 
 [RoomDetailPage.tsx](src/pages/rooms/RoomDetailPage.tsx)
 
@@ -314,7 +314,7 @@ flowchart TD
 
 - **Mục đích:** xem trực quan tình trạng phòng theo toà & tầng (mỗi phòng là `RoomCard` tô màu theo trạng thái).
 - **Bộ lọc:** Khu vực → Toà (auto chọn toà đầu tiên nếu chưa chọn) → Tầng → Trạng thái + ô tìm phòng/khách. Tất cả dùng `SearchableSelect`.
-- **Trạng thái hiển thị (6 loại):** Đang thuê / Đã đặt cọc / Trống / Sắp trống / Ngừng hoạt động, suy từ `getRoomDisplayStatus` + `useRoomsWithActiveContracts(buildingId)`. Có thẻ thống kê + chú thích màu.
+- **Trạng thái hiển thị (5 loại):** Đang thuê / Đã đặt cọc / Trống / Sắp trống / Ngừng hoạt động, suy từ `getRoomDisplayStatus` + `useRoomsWithActiveContracts(buildingId)`. Có thẻ thống kê + chú thích màu.
 - **Bố cục:** chọn 1 tầng → lưới phẳng; chọn "tất cả tầng" → nhóm theo `floor` (dùng `floors` để đặt tên tầng). Click phòng → `RoomDetailDialog`.
 
 ### 5.7. `/services` — Danh mục Dịch vụ

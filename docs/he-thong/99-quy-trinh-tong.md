@@ -140,7 +140,7 @@ Lặp lại mỗi kỳ `billing_month` (YYYY-MM):
 2. **6b · Duyệt** ([06]): `approve_meter_reading(p_reading_id)` hoặc `bulk_approve_meter_readings(p_reading_ids[])` đặt `status = APPROVED` (thực tế FE thường tạo thẳng APPROVED). Chỉ chỉ số APPROVED mới được chọn lên hoá đơn.
 3. **6c · Sinh hoá đơn kỳ** ([07]): `generate_invoices_for_building_v2(p_building_id, p_billing_month, p_invoice_type)` (RBAC, delegate xuống v1). Dòng điện/nước = `consumption × unit_price`; tiền thuê + dịch vụ cố định từ `contract_services`/`building_services` + bậc thang `service_quota_tiers`; cộng `previous_debt` (nợ kỳ trước, lưu `previous_debt_sources`). Trigger `recompute_invoice_for_id` suy `status` + `paid_amount` net.
 4. **6d · Thu tiền** ([07]): `record_invoice_payment_v2(p_invoice_id, p_amount, p_payment_method, p_payment_date, …)` — kiểm `can_do_on_building`, tạo dòng `payments` (TM/TK/TT). Nếu khách trả thừa → tạo `excess_amounts` (credit theo HĐ).
-5. **6e · Vào sổ quỹ** ([08]): **mỗi `payment` được mirror thành 1 phiếu thu `income_expenses` (INCOME)** gắn `invoice_id + payment_id`, `account_id` đẩy tiền vào sổ quỹ tương ứng (gợi ý `buildings.default_account_id_tt/tk`). Trigger item recompute số dư `accounts_with_balance`. Trigger trên invoice đọc ngược các phiếu IE (kể cả phiếu chi "Tiền thối"/"Hoàn trả") để tính `paid_amount` **net**, suy `status` = PAID/PARTIAL_PAID/OVERDUE và làm tròn dư < 10K.
+5. **6e · Vào sổ quỹ** ([08]): RPC `record_invoice_payment_v2` **không** chèn `income_expenses` — phiếu thu INCOME do **hook FE `useRecordPaymentRPC`** ([useInvoicePayments.ts](../../src/hooks/useInvoicePayments.ts)) tạo **sau** khi RPC trả `payment_id`, và **chỉ khi có `account_id`**. Phiếu INCOME gắn `invoice_id + payment_id`, `account_id` đẩy tiền vào sổ quỹ tương ứng (gợi ý `buildings.default_account_id_tt/tk`). Trigger item recompute số dư `accounts_with_balance`. Trigger `recompute_invoice_for_id` trên `payments` đọc Σ payments (trừ phiếu chi "Tiền thối" trong IE) để tính `paid_amount` **net**, suy `status` = PAID/PARTIAL_PAID/APPROVED và làm tròn dư < 10K (OVERDUE suy ở tầng hiển thị theo `due_date`, không do trigger set).
 
 > **Vận hành phụ song song** ([09]/[10]/[11]): khách/staff báo **sự cố** (`issues`, có SLA + workflow) hoặc lập **công việc** (`jobs`, mã `JOB-YYYYMMDD-NNNN`). Khi xử lý có thể **xuất vật tư** (`material_usages.job_id`, snapshot `unit_cost_at_usage`) hoặc bàn giao **tài sản** (`asset_handovers.contract_id`). Chi phí này hiện chưa tự sinh phiếu IE nhưng là dữ liệu chi phí cho phân tích.
 
@@ -152,21 +152,21 @@ Lặp lại mỗi kỳ `billing_month` (YYYY-MM):
 ### Giai đoạn 8 — CHỐT LỢI NHUẬN THÁNG / TOÀ · [12]
 
 - **Ai:** owner. **Page:** [ShareholderProfitPage](../../src/pages/finance/ShareholderProfitPage.tsx) (`/finance/shareholder-profit`).
-- **Bước:** chọn tháng + toà → `monthly_building_profit(p_start, p_end, p_building_id)` tính **LN = thu KQKD − chi KQKD** trên dữ liệu owner (chỉ `counts_in_business_result = true` + IE APPROVED). Khoá tháng qua `useLockProfitMonth` → upsert `profit_monthly` status `DRAFT → LOCKED` và **snapshot** phân bổ vào `profit_allocations` theo tỷ lệ `building_shareholders`.
+- **Bước:** chọn tháng + toà → `monthly_building_profit(p_start, p_end, p_building_id)` tính **LN = thu KQKD − chi KQKD** trên dữ liệu owner (chỉ `counts_in_business_result = true` + IE APPROVED, và chỉ tòa thật `is_virtual = false`). Khoá tháng qua `useLockProfitMonth` → upsert `profit_monthly` status `DRAFT → LOCKED` và **snapshot** phân bổ vào `profit_allocations` theo tỷ lệ `building_shareholders`.
 - **Chứng từ:** dòng chốt LN (`profit_monthly`) + snapshot phân bổ.
 
 ### Giai đoạn 9 — CHIA LỢI NHUẬN CỔ ĐÔNG · [12]
 
-- **Bước:** `useCreateProfitDistribution` sinh **phiếu chi** `income_expenses` (EXPENSE) gắn `shareholder_id`, đặt trên **toà ảo "Chung"** (`is_virtual`), `business_result_accounting = false` (KHÔNG tính lại vào P&L), chọn `account_id` để trừ số dư sổ quỹ. Cổ đông có `auth_user_id` link → đăng nhập xem read-only theo toà có cổ phần (nhánh cổ đông trong `get_my_permissions` / `can_access_building`).
+- **Bước:** `useCreateProfitDistribution` sinh **phiếu chi** `income_expenses` (EXPENSE) gắn `shareholder_id`, đặt trên **toà ảo "Chung"** (`is_virtual = true`) và set `business_result_accounting = false`, chọn `account_id` để trừ số dư sổ quỹ. Phiếu này bị loại khỏi P&L **vì nằm trên tòa ảo** (`monthly_building_profit` chỉ tính `is_virtual = false`), không phải nhờ `counts_in_business_result` (giữ mặc định `true`). Cổ đông có `auth_user_id` link → đăng nhập xem read-only theo toà có cổ phần (nhánh cổ đông trong `get_my_permissions` / `can_access_building`).
 - **Kết quả:** lợi nhuận biến thành **dòng tiền phân phối** thực cho người góp vốn — khép vòng đời.
 
 ### Nhánh biến động HĐ (có thể xảy ra bất cứ lúc nào ở Giai đoạn 6)
 
-- **Gia hạn:** `renew_contract → renew_contract_impl` — gia hạn tại chỗ, `ACTIVE/EXTENDED → EXTENDED` (vẫn coi như đang hiệu lực), gia hạn tạo-mới (`CREATE_NEW(RENEWAL)`) trỏ `parent_contract_id`.
+- **Gia hạn:** `renew_contract → renew_contract_impl` — chỉ gia hạn **TẠI CHỖ** (UPDATE `end_date`/`rent_price`/`total_deposit`, `status → EXTENDED`, ghi `contract_extensions` với `extension_type = UPDATE_EXISTING`); `ACTIVE/EXTENDED → EXTENDED` (vẫn coi như đang hiệu lực). KHÔNG tạo HĐ mới / `parent_contract_id` — 'tạo-mới' chỉ ở RPC dead-code `create_new_contract_extension` (đã REVOKE client).
 - **Chuyển phòng:** `transfer_room` — đổi `room_id` chính HĐ, chặn phòng bận, tự free phòng cũ / chiếm phòng mới.
-- **Nhượng HĐ:** `transfer_contract → transfer_contract_impl` — đổi khách đại diện.
+- **Nhượng HĐ:** `transfer_contract → transfer_contract_impl` — đổi khách đại diện (`contract_customers`) + `rent_price`/`total_deposit`/`notes`; **GIỮ status ACTIVE/EXTENDED**, KHÔNG sang TRANSFERRED. Status TRANSFERRED chỉ do RPC legacy `create_tenant_transfer`/`create_room_transfer` (đã REVOKE client, dead-code).
 - **Thanh lý move-out:** `terminate_contract_move_out` — rời phòng, hoá đơn thanh lý cấn trừ cọc / phòng thừa / phạt; **hoàn cọc** ghi vào `contract_terminations` (hạng mục `is_deposit=TRUE`).
-- **Bỏ cọc:** `terminate_contract_forfeit` — `termination_type = FORFEIT`, hoá đơn PAID ghi **cọc = doanh thu**, HĐ có thể CANCELLED nhưng giữ payment.
+- **Bỏ cọc:** `terminate_contract_forfeit` — `termination_type = FORFEIT`, ghi **cọc = doanh thu**, HĐ thành **TERMINATED** (giữ payment đã thu); hoá đơn tháng trùng kỳ có thể bị CANCELLED nhưng HĐ vẫn TERMINATED. (Enum `contract_status` không có CANCELLED — CANCELLED chỉ thuộc `invoice_status`.)
 - Tất cả đặt `actual_end_date`, đổi `status → TERMINATED`, trigger đồng bộ `rooms.status → AVAILABLE`.
 
 ---
@@ -202,15 +202,18 @@ sequenceDiagram
 
     Staff->>UI: Khách trả tiền (TM/TK/TT)
     UI->>RPCpay: record_invoice_payment_v2(invoice, amount, method, date)
-    RPCpay->>RPCpay: check can_do_on_building('invoices','record_payment')
+    RPCpay->>RPCpay: check can_do_on_building('invoices','edit')
+    Note over RPCpay: backend gate bằng 'edit'<br/>(dù UI có quyền record_payment riêng)
     RPCpay->>PAY: INSERT payments → RETURNING payment_id
     alt trả thừa
-        RPCpay->>IE: tạo excess_amounts (credit theo HĐ)
+        RPCpay->>PAY: tạo excess_amounts (credit theo HĐ)
     end
-    RPCpay->>IE: INSERT phiếu thu INCOME (invoice_id + payment_id, account_id)
-    IE-->>ACC: trigger item recompute số dư sổ quỹ
-    IE-->>INV: trigger recompute_invoice_for_id đọc Σ payments − tiền thối<br/>→ paid_amount net → status PAID / PARTIAL_PAID / OVERDUE
     RPCpay-->>UI: { payment_id, ... }
+    opt có account_id (hook FE sau khi nhận payment_id)
+        UI->>IE: INSERT phiếu thu INCOME (invoice_id + payment_id, account_id)
+        IE-->>ACC: trigger item recompute số dư sổ quỹ
+    end
+    PAY-->>INV: trigger recompute_invoice_for_id đọc Σ payments − tiền thối<br/>→ paid_amount net → status PAID / PARTIAL_PAID / APPROVED
 ```
 
 ### 3b. Ký HĐ có kiểm tra cọc (chặn ký thiếu cọc)
@@ -264,10 +267,16 @@ stateDiagram-v2
     EXTENDED --> EXTENDED: renew_contract (gia hạn tiếp)
     note right of EXTENDED
         EXTENDED = ĐANG HIỆU LỰC
-        (đối xử như ACTIVE ở mọi check)
+        (đối xử như ACTIVE ở mọi check).
+        transfer_contract (nhượng HĐ) chỉ đổi đại diện
+        contract_customers + rent_price/total_deposit/notes,
+        GIỮ status ACTIVE/EXTENDED — KHÔNG sang TRANSFERRED.
+        TRANSFERRED chỉ do trigger apply_contract_transfer()
+        khi dùng RPC legacy create_tenant_transfer/
+        create_room_transfer (đã REVOKE client — dead-code).
     end note
-    ACTIVE --> TRANSFERRED: transfer_contract (gia hạn tạo-mới / nhượng)
-    EXTENDED --> TRANSFERRED: transfer_contract
+    ACTIVE --> TRANSFERRED: chỉ qua RPC legacy (đã ngừng dùng)
+    EXTENDED --> TRANSFERRED: chỉ qua RPC legacy (đã ngừng dùng)
     ACTIVE --> TERMINATED: terminate_contract_move_out / _forfeit
     EXTENDED --> TERMINATED: terminate_contract_move_out / _forfeit
     ACTIVE --> EXPIRED: hết hạn không gia hạn
@@ -296,8 +305,12 @@ stateDiagram-v2
     CANCELLED --> APPROVED: restore
     PAID --> [*]
     note right of PAID
-        status do trigger recompute_invoice_for_id
-        suy ra từ paid_amount net (Σ payments − tiền thối)
+        trigger recompute_invoice_for_id suy ra
+        PAID / PARTIAL_PAID / APPROVED (giữ CANCELLED)
+        từ paid_amount net (Σ payments − tiền thối).
+        OVERDUE KHÔNG do trigger set — là trạng thái
+        SUY DIỄN ở tầng hiển thị theo due_date
+        (src/lib/invoiceUtils.ts → isOverdue).
     end note
 ```
 
@@ -362,23 +375,23 @@ stateDiagram-v2
 | 4 | Chốt chỉ số đầu (staff) | form HĐ / MeterReadings | `contracts.initial_*_reading`, `meter_readings` | (mốc cho hoá đơn điện/nước) |
 | 5 | Ghi + duyệt chỉ số (staff) | MeterReadings / `approve_meter_reading` | `meter_readings` (APPROVED, consumption generated) | Thống kê chỉ số, đầu vào hoá đơn |
 | 6 | Sinh hoá đơn kỳ (staff) | `generate_invoices_for_building_v2` | `invoices`, `invoice_items` (trg số HĐ + recompute) | Doanh thu, công nợ (CustomerDebtReport), Dashboard |
-| 7 | Khách thanh toán (staff) | `record_invoice_payment_v2` | `payments`, `income_expenses` INCOME, (thừa→`excess_amounts`); trg recompute invoice → status | Dòng tiền (CashFlow/DailyCashbook), công nợ, doanh thu, số dư sổ quỹ |
+| 7 | Khách thanh toán (staff) | `record_invoice_payment_v2` + hook FE | `payments`, (thừa→`excess_amounts`); `income_expenses` INCOME do **hook FE tạo sau RPC** khi có `account_id`; trg recompute invoice → status | Dòng tiền (CashFlow/DailyCashbook), công nợ, doanh thu, số dư sổ quỹ |
 | 8 | Chi phí vận hành (staff) | IncomeExpensePage | `income_expenses` EXPENSE (+ items) | Dòng tiền, tỉ lệ chi phí (ExpenseRatio), P&L |
 | 9 | Sự cố / công việc (staff) | TaskManagement | `issues` (SLA), `jobs` (JOB-…); (tuỳ) `material_usages` trừ kho | Dashboard sự cố, chi phí vật tư |
 | 10 | Gia hạn (staff) | `renew_contract` | `contracts` (EXTENDED), `contract_extensions` | Renewals-transfers, expiring |
-| 11 | Chuyển phòng/Nhượng (staff) | `transfer_room` / `transfer_contract` | `contracts` (room_id / TRANSFERRED), `contract_transfers`; trg `rooms.status` | Renewals-transfers, occupancy |
+| 11 | Chuyển phòng/Nhượng (staff) | `transfer_room` / `transfer_contract` | `contracts` (room_id; status GIỮ ACTIVE/EXTENDED — `transfer_contract` chỉ đổi đại diện `contract_customers`), `contract_transfers`; trg `rooms.status` | Renewals-transfers, occupancy |
 | 12 | Thanh lý move-out (staff) | `terminate_contract_move_out` | `contracts` (TERMINATED, actual_end_date), `contract_terminations`, hoá đơn thanh lý, IE hoàn cọc is_deposit; trg `rooms.status=AVAILABLE` | Terminations, phòng trống (Vacant), cọc, dòng tiền |
 | 13 | Bỏ cọc (staff) | `terminate_contract_forfeit` | `contracts` (TERMINATED), `contract_terminations` (FORFEIT), hoá đơn PAID cọc=doanh thu | Terminations, doanh thu, cọc |
 | 14 | Phiếu lặp tự sinh (cron) | `run_recurring_vouchers_job` | `income_expenses` con | Dòng tiền, P&L |
 | 15 | Cảnh báo định kỳ (client) | `runScheduledNotifications` | `notifications` | Trung tâm thông báo, badge Dashboard |
 | 16 | Chốt LN tháng (owner) | ShareholderProfit / `monthly_building_profit` | `profit_monthly` (LOCKED), `profit_allocations` | Báo cáo chia LN (ProfitDistribution) |
-| 17 | Chia LN cổ đông (owner) | `useCreateProfitDistribution` | `income_expenses` EXPENSE shareholder_id (toà ảo Chung, không-KQKD); trg trừ số dư sổ quỹ | Số dư sổ quỹ, ProfitDistribution; **KHÔNG** vào P&L (business_result=false) |
+| 17 | Chia LN cổ đông (owner) | `useCreateProfitDistribution` | `income_expenses` EXPENSE shareholder_id (toà ảo Chung, `business_result_accounting=false`); trg trừ số dư sổ quỹ | Số dư sổ quỹ, ProfitDistribution; **KHÔNG** vào P&L vì nằm trên tòa ảo (`monthly_building_profit` lọc `is_virtual=false`) |
 
 ---
 
 ### Phụ lục — quy ước trạng thái "tiền có thật"
 
 - **Số dư sổ quỹ & dòng tiền** chỉ tính `income_expenses` có `approval_status = APPROVED` và `deleted_at IS NULL`.
-- **P&L / lợi nhuận** lọc thêm `counts_in_business_result = true` (phiếu cọc `is_deposit` và phiếu chia LN bị loại khỏi P&L).
+- **P&L / lợi nhuận** (`monthly_building_profit`) lọc `counts_in_business_result = true` **VÀ** chỉ tính tòa thật (`is_virtual = false`). Phiếu cọc `is_deposit` bị loại (mặc định `counts_in_business_result = false`); phiếu chia LN bị loại vì nằm trên **tòa ảo "Chung"** (`is_virtual = true`) — KHÔNG phải nhờ `counts_in_business_result` (phiếu chia LN giữ mặc định `counts_in_business_result = true`, chỉ đặt `business_result_accounting = false`). Tránh gộp hai cờ này.
 - **`contracts.deposit_paid`** chỉ bị `recompute_contract_deposit_paid` ghi đè khi có **≥ 1** phiếu IE cọc APPROVED đã link (`v_count > 0`); ngược lại giữ giá trị auto cũ.
 - **`invoice.status` và `paid_amount`** luôn là **kết quả suy diễn** của trigger `recompute_invoice_for_id` (Σ payments − tiền thối, làm tròn < 10K), không set tay.
