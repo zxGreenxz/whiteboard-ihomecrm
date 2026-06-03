@@ -24,7 +24,9 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -48,8 +50,10 @@ import {
   useUpdateIncomeExpense,
   type IncomeExpenseWithRelations,
 } from '@/hooks/useIncomeExpenses';
-import { useBuildings } from '@/hooks/useBuildings';
-import { useRooms } from '@/hooks/useRooms';
+import {
+  useIncomeExpenseFormBuildings,
+  useIncomeExpenseFormRooms,
+} from '@/hooks/useIncomeExpenseFormScope';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useContractsLegacy } from '@/hooks/useContracts';
 import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
@@ -123,9 +127,17 @@ const IncomeExpenseForm = ({
   // Item rows with type_name for display (not part of Zod schema)
   const [itemRows, setItemRows] = useState<FormItemRow[]>([]);
 
-  // Cascade data hooks — includeVirtual để hiển thị tòa "Chung" cho chi/thu chung công ty
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
-  const { data: rooms = [] } = useRooms(selectedBuildingId);
+  // Cascade data hooks — RPC riêng cho form thu chi: mặc định chỉ toà quản lý,
+  // có quyền income_expenses.all_buildings → mọi toà của chủ (managed xếp đầu).
+  // Tòa "Chung" (ảo) cho chi/thu chung công ty cũng nằm trong kết quả.
+  const { data: buildings = [] } = useIncomeExpenseFormBuildings();
+  const { data: rooms = [] } = useIncomeExpenseFormRooms(selectedBuildingId);
+
+  // Tách toà quản lý (xếp lên đầu) vs toà mở rộng (qua quyền all_buildings).
+  // Chỉ chia nhóm khi có cả hai → tránh hiện nhãn nhóm thừa cho user thường.
+  const managedBuildings = buildings.filter((b) => b.managed);
+  const otherBuildings = buildings.filter((b) => !b.managed);
+  const showBuildingGroups = managedBuildings.length > 0 && otherBuildings.length > 0;
   const { data: accounts = [] } = useAccounts();
   // Danh sách HĐ trên phòng đã chọn — để link phiếu cọc đúng HĐ.
   const { data: roomContracts = [] } = useContractsLegacy(
@@ -535,11 +547,32 @@ const IncomeExpenseForm = ({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {buildings.map((b) => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.name}
-                            </SelectItem>
-                          ))}
+                          {showBuildingGroups ? (
+                            <>
+                              <SelectGroup>
+                                <SelectLabel>Toà quản lý</SelectLabel>
+                                {managedBuildings.map((b) => (
+                                  <SelectItem key={b.id} value={b.id}>
+                                    {b.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                              <SelectGroup>
+                                <SelectLabel>Toà khác</SelectLabel>
+                                {otherBuildings.map((b) => (
+                                  <SelectItem key={b.id} value={b.id}>
+                                    {b.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </>
+                          ) : (
+                            buildings.map((b) => (
+                              <SelectItem key={b.id} value={b.id}>
+                                {b.name}
+                              </SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />

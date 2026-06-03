@@ -23,8 +23,10 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useBuildings } from "@/hooks/useBuildings";
-import { useRooms } from "@/hooks/useRooms";
+import {
+  useIncomeExpenseFormBuildings,
+  useIncomeExpenseFormRooms,
+} from "@/hooks/useIncomeExpenseFormScope";
 import { useAccounts } from "@/hooks/useAccounts";
 import {
   useIncomeExpenseTypes,
@@ -75,8 +77,8 @@ const IncomeExpenseQuickCreateDialog = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const caretToEndRef = useRef(false);
 
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
-  const { data: allRooms = [] } = useRooms();
+  const { data: buildings = [] } = useIncomeExpenseFormBuildings();
+  const { data: allRooms = [] } = useIncomeExpenseFormRooms(undefined, { allWhenEmpty: true });
   const { data: accounts = [] } = useAccounts();
   const modeLower = mode === "INCOME" ? "income" : "expense";
   const { data: typeRows = [] } = useIncomeExpenseTypes(modeLower);

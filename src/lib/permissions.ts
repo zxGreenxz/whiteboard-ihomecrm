@@ -14,7 +14,11 @@ export type ActionKey =
   | "record_payment"
   | "approve"
   | "print"
-  | "export";
+  | "export"
+  // Cờ phạm vi (không phải action chuẩn): cho phép thấy + ghi thu chi cho MỌI
+  // toà của chủ ngay trong form thu chi, vượt giới hạn toà quản lý. Chỉ gắn cho
+  // module income_expenses.
+  | "all_buildings";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -69,7 +73,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "cashbooks",       label: "Sổ quỹ" },
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
       { key: "invoices",        label: "Hoá đơn",    extra: ["record_payment", "print", "export"] },
-      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "print", "export"] },
+      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "print", "export", "all_buildings"] },
       { key: "excess_amounts",  label: "Tiền thừa" },
     ],
   },
@@ -142,6 +146,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   approve:        "Duyệt",
   print:          "In",
   export:         "Xuất",
+  all_buildings:  "Mọi toà nhà",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */

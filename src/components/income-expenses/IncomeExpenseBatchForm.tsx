@@ -23,7 +23,9 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -42,8 +44,11 @@ import {
   monthToEndDate,
   currentMonth,
 } from '@/lib/monthPeriod';
-import { useBuildings } from '@/hooks/useBuildings';
-import { useRooms } from '@/hooks/useRooms';
+import {
+  useIncomeExpenseFormBuildings,
+  useIncomeExpenseFormRooms,
+  type IeFormBuilding,
+} from '@/hooks/useIncomeExpenseFormScope';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
@@ -81,9 +86,14 @@ const ItemRow = ({
   item: BatchItemRow;
   onChange: (idx: number, patch: Partial<BatchItemRow>) => void;
   onRemove: (idx: number) => void;
-  buildings: Array<{ id: string; name: string }>;
+  buildings: IeFormBuilding[];
 }) => {
-  const { data: rooms = [] } = useRooms(item.building_id || undefined);
+  const { data: rooms = [] } = useIncomeExpenseFormRooms(item.building_id || undefined);
+
+  // Toà quản lý xếp đầu; chia nhóm khi có cả toà mở rộng (quyền all_buildings).
+  const managedBuildings = buildings.filter((b) => b.managed);
+  const otherBuildings = buildings.filter((b) => !b.managed);
+  const showBuildingGroups = managedBuildings.length > 0 && otherBuildings.length > 0;
 
   return (
     <div className="rounded-lg border p-3 space-y-2 bg-zinc-50/50">
@@ -120,11 +130,32 @@ const ItemRow = ({
               <SelectValue placeholder="Chọn tòa" />
             </SelectTrigger>
             <SelectContent>
-              {buildings.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
+              {showBuildingGroups ? (
+                <>
+                  <SelectGroup>
+                    <SelectLabel>Toà quản lý</SelectLabel>
+                    {managedBuildings.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Toà khác</SelectLabel>
+                    {otherBuildings.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              ) : (
+                buildings.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -205,7 +236,7 @@ const IncomeExpenseBatchForm = ({
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
   const [itemRows, setItemRows] = useState<BatchItemRow[]>([]);
 
-  const { data: buildings = [] } = useBuildings({ includeVirtual: true });
+  const { data: buildings = [] } = useIncomeExpenseFormBuildings();
   const { data: accounts = [] } = useAccounts();
   const { data: incomeTypes = [] } = useIncomeExpenseTypes('income');
   const { data: expenseTypes = [] } = useIncomeExpenseTypes('expense');
@@ -564,7 +595,7 @@ const IncomeExpenseBatchForm = ({
                         item={item}
                         onChange={handleRowChange}
                         onRemove={handleRowRemove}
-                        buildings={buildings as any}
+                        buildings={buildings}
                       />
                     ))}
 
