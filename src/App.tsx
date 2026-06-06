@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -133,6 +134,11 @@ import PublicRoute from "./components/auth/PublicRoute";
 import { AdminOnlyRoute } from "./components/auth/AdminOnlyRoute";
 import { RequirePermission } from "./components/auth/RequirePermission";
 
+// Trang công khai "Phòng trống" (share link) — lazy để CSS toàn cục của nó
+// (phongTrong.css đặt style body ngoài @layer) chỉ nạp khi mở /r/:token,
+// không rò font/nền sang phần còn lại của CRM.
+const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -181,6 +187,17 @@ const App = () => (
               Link ngắn: /c/<public_code 6 ký tự>
               ======================================== */}
           <Route path="/c/:code" element={<PublicContractInvoicePage />} />
+
+          {/* Trang công khai "Phòng trống" (Sale view, share link). Lazy + Suspense
+              để cô lập phongTrong.css. KHÔNG bọc ProtectedRoute. */}
+          <Route
+            path="/r/:token"
+            element={
+              <Suspense fallback={null}>
+                <PhongTrongPage />
+              </Suspense>
+            }
+          />
 
           {/* ========================================
               PROTECTED ROUTES - Require authentication
