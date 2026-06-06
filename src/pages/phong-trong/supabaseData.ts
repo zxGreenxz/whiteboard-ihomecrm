@@ -17,10 +17,11 @@ import {
   type Room,
   type RoomStatus,
 } from "./sampleData";
+import { applyStoredLayout, type StoredFloorLayout } from "./floorLayoutShared";
 
-/** Bucket Storage cho ảnh phòng — chỉ dùng khi images là storage PATH (không phải
- *  URL đầy đủ). Hiện rooms.images rỗng nên gallery dùng placeholder; để sẵn cho mai sau. */
-const IMAGES_BUCKET = "room-images";
+/** Bucket Storage PUBLIC cho ảnh sale (phòng + tòa). Ảnh thường lưu dạng URL đầy đủ
+ *  (imageUrl pass-through); bucket dùng khi giá trị là storage PATH. */
+const IMAGES_BUCKET = "room-sale-images";
 
 /* ---- Shape payload (khớp RPC get_public_available_rooms) ---- */
 export interface RpcBuilding {
@@ -33,6 +34,8 @@ export interface RpcBuilding {
   ward: string | null;
   address: string | null;       // RPC đã ghép địa chỉ đầy đủ
   total_floors: number | null;
+  floor_layouts?: Record<string, StoredFloorLayout> | null; // sơ đồ tọa độ thủ công
+  images?: unknown;             // jsonb: ảnh tòa (URL/path) | []
 }
 export interface RpcRoom {
   id: string;
@@ -144,11 +147,15 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
       };
     });
 
-    // Nhóm theo tầng (cao -> thấp); trong tầng sắp theo số phòng tăng dần -> sinh sơ đồ.
+    // Nhóm theo tầng (cao -> thấp). Có sơ đồ thủ công cho tầng -> dùng (applyStoredLayout),
+    // không thì tự sinh layoutFloor (fallback). Phòng chưa đặt được applyStoredLayout xếp tạm.
+    const stored = b.floor_layouts ?? null;
     const floorNums = Array.from(new Set(rooms.map((r) => r.floor))).sort((a, z) => z - a);
-    const floors = floorNums.map((f) =>
-      layoutFloor(f, rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no)),
-    );
+    const floors = floorNums.map((f) => {
+      const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);
+      const sl = stored?.[String(f)];
+      return sl ? applyStoredLayout(f, floorRooms, sl) : layoutFloor(f, floorRooms);
+    });
 
     return {
       id: b.id,
@@ -161,6 +168,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
       phone: contactPhone,
       lift: (b.total_floors ?? 0) > 1,
       policy: "",
+      images: toImages(b.images),
       floors,
       rooms,
       freeCount: rooms.filter((r) => r.status === "free").length,

@@ -32,6 +32,7 @@ import BuildingDetailPage from "./pages/buildings/BuildingDetailPage";
 import RoomsPage from "./pages/rooms/RoomsPage";
 import RoomDetailPage from "./pages/rooms/RoomDetailPage";
 import ServicesPage from "./pages/services/ServicesPage";
+import SalePhongPage from "./pages/sale-phong/SalePhongPage";
 
 // Customer Pages
 import LeadsPage from "./pages/leads/LeadsPage";
@@ -225,6 +226,7 @@ const App = () => (
           <Route path="/rooms" element={<Navigate to="/apartments" replace />} />
           <Route path="/rooms/:id" element={<Navigate to="/apartments" replace />} />
           <Route path="/services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
+          <Route path="/sale-phong" element={<ProtectedRoute><RequirePermission module="sale_phong" action="view"><SalePhongPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/assets" element={<ProtectedRoute><AssetsPage /></ProtectedRoute>} />
           <Route path="/materials" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
           <Route path="/materials/purchases" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />

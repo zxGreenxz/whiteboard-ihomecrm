@@ -159,6 +159,14 @@ export function OverviewView({
         const isOpen = !!open[b.id];
         return (
           <div className="ov-bld" key={b.id}>
+            {b.images && b.images.length > 0 && (
+              <img
+                src={b.images[0]}
+                alt={b.name}
+                loading="lazy"
+                style={{ width: "100%", height: 116, objectFit: "cover", display: "block" }}
+              />
+            )}
             <div className={"ov-bld-head" + (isOpen ? "" : " closed")} onClick={() => toggle(b.id)}>
               <div className="ovh-top">
                 <span className="ovh-name">{b.name}</span>

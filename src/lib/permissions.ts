@@ -53,6 +53,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "buildings", label: "Toà nhà" },
       { key: "rooms",     label: "Căn hộ / Phòng" },
       { key: "services",  label: "Dịch vụ" },
+      { key: "sale_phong", label: "Sale Phòng" },
     ],
   },
   {

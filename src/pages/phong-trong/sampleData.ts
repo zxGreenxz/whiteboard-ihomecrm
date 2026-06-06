@@ -52,6 +52,7 @@ export interface Building {
   phone: string;
   lift: boolean;
   policy: string;
+  images?: string[];   // ảnh sale của tòa (hero ở header); rỗng -> không hiện
   floors: FloorPlan[];
   rooms: Room[];
   freeCount: number;

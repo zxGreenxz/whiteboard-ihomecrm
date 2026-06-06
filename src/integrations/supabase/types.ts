@@ -69,6 +69,7 @@ export type Database = {
           is_default: boolean
           lock_date: string | null
           name: string
+          quick_default_building_id: string | null
           updated_at: string
           user_id: string
         }
@@ -87,6 +88,7 @@ export type Database = {
           is_default?: boolean
           lock_date?: string | null
           name: string
+          quick_default_building_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -105,10 +107,19 @@ export type Database = {
           is_default?: boolean
           lock_date?: string | null
           name?: string
+          quick_default_building_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "accounts_quick_default_building_id_fkey"
+            columns: ["quick_default_building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_conversations: {
         Row: {
@@ -754,6 +765,51 @@ export type Database = {
           },
         ]
       }
+      building_shareholders: {
+        Row: {
+          building_id: string
+          created_at: string
+          id: string
+          percent: number
+          shareholder_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          id?: string
+          percent?: number
+          shareholder_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          id?: string
+          percent?: number
+          shareholder_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "building_shareholders_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "building_shareholders_shareholder_id_fkey"
+            columns: ["shareholder_id"]
+            isOneToOne: false
+            referencedRelation: "shareholders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       buildings: {
         Row: {
           amenities: Json | null
@@ -767,6 +823,7 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           district: string
+          floor_layouts: Json | null
           id: string
           images: Json | null
           invoice_template_id: string | null
@@ -794,6 +851,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           district: string
+          floor_layouts?: Json | null
           id?: string
           images?: Json | null
           invoice_template_id?: string | null
@@ -821,6 +879,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           district?: string
+          floor_layouts?: Json | null
           id?: string
           images?: Json | null
           invoice_template_id?: string | null
@@ -1417,8 +1476,12 @@ export type Database = {
           contract_template_id: string | null
           created_at: string
           deleted_at: string | null
+          deposit_debt_acknowledged: boolean
+          deposit_debt_mode: string | null
+          deposit_debt_reason: string | null
           deposit_paid: number | null
           deposit_remaining: number | null
+          deposit_topup_due_date: string | null
           discounts: Json | null
           end_billing_date: string | null
           end_date: string
@@ -1449,8 +1512,12 @@ export type Database = {
           contract_template_id?: string | null
           created_at?: string
           deleted_at?: string | null
+          deposit_debt_acknowledged?: boolean
+          deposit_debt_mode?: string | null
+          deposit_debt_reason?: string | null
           deposit_paid?: number | null
           deposit_remaining?: number | null
+          deposit_topup_due_date?: string | null
           discounts?: Json | null
           end_billing_date?: string | null
           end_date: string
@@ -1462,7 +1529,7 @@ export type Database = {
           notes?: string | null
           parent_contract_id?: string | null
           payment_cycle?: Database["public"]["Enums"]["payment_cycle"] | null
-          public_code?: string
+          public_code: string
           rent_price: number
           room_id?: string | null
           signed_date: string
@@ -1481,8 +1548,12 @@ export type Database = {
           contract_template_id?: string | null
           created_at?: string
           deleted_at?: string | null
+          deposit_debt_acknowledged?: boolean
+          deposit_debt_mode?: string | null
+          deposit_debt_reason?: string | null
           deposit_paid?: number | null
           deposit_remaining?: number | null
+          deposit_topup_due_date?: string | null
           discounts?: Json | null
           end_billing_date?: string | null
           end_date?: string
@@ -2377,11 +2448,11 @@ export type Database = {
           attachments: Json
           building_id: string
           business_result_accounting: boolean | null
-          counts_in_business_result: boolean
           change_account_id: string | null
           change_amount: number
           code: string | null
           contract_id: string | null
+          counts_in_business_result: boolean
           created_at: string
           creator_name: string | null
           deleted_at: string | null
@@ -2402,6 +2473,7 @@ export type Database = {
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
+          shareholder_id: string | null
           tenant_id: string | null
           total_amount: number
           type: string
@@ -2421,11 +2493,11 @@ export type Database = {
           attachments?: Json
           building_id: string
           business_result_accounting?: boolean | null
-          counts_in_business_result?: boolean
           change_account_id?: string | null
           change_amount?: number
           code?: string | null
           contract_id?: string | null
+          counts_in_business_result?: boolean
           created_at?: string
           creator_name?: string | null
           deleted_at?: string | null
@@ -2446,6 +2518,7 @@ export type Database = {
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
+          shareholder_id?: string | null
           tenant_id?: string | null
           total_amount?: number
           type: string
@@ -2465,11 +2538,11 @@ export type Database = {
           attachments?: Json
           building_id?: string
           business_result_accounting?: boolean | null
-          counts_in_business_result?: boolean
           change_account_id?: string | null
           change_amount?: number
           code?: string | null
           contract_id?: string | null
+          counts_in_business_result?: boolean
           created_at?: string
           creator_name?: string | null
           deleted_at?: string | null
@@ -2490,6 +2563,7 @@ export type Database = {
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
+          shareholder_id?: string | null
           tenant_id?: string | null
           total_amount?: number
           type?: string
@@ -2584,6 +2658,13 @@ export type Database = {
             columns: ["rounding_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_shareholder_id_fkey"
+            columns: ["shareholder_id"]
+            isOneToOne: false
+            referencedRelation: "shareholders"
             referencedColumns: ["id"]
           },
           {
@@ -4404,6 +4485,45 @@ export type Database = {
           },
         ]
       }
+      personal_transactions: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          id: string
+          txn_date: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          txn_date?: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          id?: string
+          txn_date?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       phase_transitions: {
         Row: {
           actions: Json | null
@@ -4521,6 +4641,152 @@ export type Database = {
           subscription_plan?: string | null
           timezone?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      profit_allocations: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          percent: number
+          profit_monthly_id: string
+          shareholder_id: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          percent?: number
+          profit_monthly_id: string
+          shareholder_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          percent?: number
+          profit_monthly_id?: string
+          shareholder_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_allocations_profit_monthly_id_fkey"
+            columns: ["profit_monthly_id"]
+            isOneToOne: false
+            referencedRelation: "profit_monthly"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_allocations_shareholder_id_fkey"
+            columns: ["shareholder_id"]
+            isOneToOne: false
+            referencedRelation: "shareholders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_monthly: {
+        Row: {
+          adjusted_profit: number
+          building_id: string
+          computed_profit: number
+          created_at: string
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          note: string | null
+          period_month: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          adjusted_profit?: number
+          building_id: string
+          computed_profit?: number
+          created_at?: string
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          note?: string | null
+          period_month: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          adjusted_profit?: number
+          building_id?: string
+          computed_profit?: number
+          created_at?: string
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          note?: string | null
+          period_month?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_monthly_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      public_room_settings: {
+        Row: {
+          hotline_id: string | null
+          owner_id: string
+          show_rented: boolean
+          soon_days: number
+          updated_at: string
+        }
+        Insert: {
+          hotline_id?: string | null
+          owner_id: string
+          show_rented?: boolean
+          soon_days?: number
+          updated_at?: string
+        }
+        Update: {
+          hotline_id?: string | null
+          owner_id?: string
+          show_rented?: boolean
+          soon_days?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      public_room_share_tokens: {
+        Row: {
+          created_at: string
+          label: string | null
+          owner_id: string
+          revoked: boolean
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          label?: string | null
+          owner_id: string
+          revoked?: boolean
+          token: string
+        }
+        Update: {
+          created_at?: string
+          label?: string | null
+          owner_id?: string
+          revoked?: boolean
+          token?: string
         }
         Relationships: []
       }
@@ -4838,6 +5104,42 @@ export type Database = {
           updated_at?: string
           user_id?: string
           value?: Json
+        }
+        Relationships: []
+      }
+      shareholders: {
+        Row: {
+          auth_user_id: string | null
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          note: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auth_user_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          note?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auth_user_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          note?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -5724,16 +6026,29 @@ export type Database = {
       }
     }
     Functions: {
+      _deposit_account: { Args: { p_user_id: string }; Returns: string }
       _diff_changed_fields: {
         Args: { p_after: Json; p_before: Json; p_ignore?: string[] }
         Returns: string[]
+      }
+      _ensure_initial_deposit_voucher: {
+        Args: { p_contract_id: string }
+        Returns: string
       }
       _termination_ensure_type: {
         Args: { p_name: string; p_type: string; p_user_id: string }
         Returns: string
       }
+      _termination_offset_account: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
       _termination_pick_account: {
         Args: { p_building_id: string; p_user_id: string }
+        Returns: string
+      }
+      add_cycle: {
+        Args: { anchor: string; cycle: string; k: number }
         Returns: string
       }
       approve_meter_reading: {
@@ -5759,6 +6074,10 @@ export type Database = {
         Args: { _action: string; _building_id: string; _table: string }
         Returns: boolean
       }
+      can_ie_all_buildings: {
+        Args: { _action: string; _building_id: string }
+        Returns: boolean
+      }
       create_new_contract_extension: {
         Args: {
           p_contract_id: string
@@ -5768,6 +6087,22 @@ export type Database = {
           p_notes?: string
         }
         Returns: string
+      }
+      create_public_room_token: {
+        Args: { p_label?: string }
+        Returns: {
+          created_at: string
+          label: string | null
+          owner_id: string
+          revoked: boolean
+          token: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "public_room_share_tokens"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_simple_extension: {
         Args: {
@@ -5788,6 +6123,7 @@ export type Database = {
         }
         Returns: string
       }
+      current_shareholder_id: { Args: never; Returns: string }
       current_visible_owner_ids: { Args: never; Returns: string[] }
       customer_in_my_scope: {
         Args: { _customer_id: string; _owner: string }
@@ -5811,6 +6147,7 @@ export type Database = {
           total_fees: number
         }[]
       }
+      gen_contract_public_code: { Args: { len?: number }; Returns: string }
       generate_code: {
         Args: { p_object_type: string; p_user_id: string }
         Returns: string
@@ -5933,9 +6270,59 @@ export type Database = {
       }
       get_my_context: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
+      get_or_create_deposit_account: { Args: never; Returns: string }
+      get_public_available_rooms: { Args: { p_token: string }; Returns: Json }
+      get_public_latest_invoice_by_code: {
+        Args: { p_code: string }
+        Returns: Json
+      }
       get_public_latest_invoice_by_contract: {
         Args: { p_contract_id: string }
         Returns: Json
+      }
+      ie_all_buildings_scope: {
+        Args: { _building_id: string }
+        Returns: boolean
+      }
+      ie_form_buildings: {
+        Args: never
+        Returns: {
+          code: string
+          id: string
+          is_virtual: boolean
+          managed: boolean
+          name: string
+          user_id: string
+        }[]
+      }
+      ie_form_rooms: {
+        Args: { _building_id?: string }
+        Returns: {
+          amenities: Json | null
+          area: number | null
+          building_id: string
+          code: string | null
+          created_at: string
+          deleted_at: string | null
+          deposit_amount: number
+          description: string | null
+          floor: number
+          id: string
+          images: Json | null
+          invoice_template_id: string | null
+          lease_template_id: string | null
+          max_occupants: number | null
+          name: string
+          rent_price: number
+          status: Database["public"]["Enums"]["room_status"]
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "rooms"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       ie_has_deposit_item: { Args: { p_ie_id: string }; Returns: boolean }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
@@ -5946,8 +6333,22 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      monthly_building_profit: {
+        Args: { p_building_id?: string; p_end: string; p_start: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          net_profit: number
+          total_expense: number
+          total_income: number
+        }[]
+      }
       recompute_contract_deposit_paid: {
         Args: { p_contract_id: string }
+        Returns: undefined
+      }
+      recompute_ie_business_result: {
+        Args: { p_ie_id: string }
         Returns: undefined
       }
       recompute_invoice_for_id: {
@@ -5979,6 +6380,17 @@ export type Database = {
         }
         Returns: string
       }
+      renew_contract_impl: {
+        Args: {
+          p_contract_id: string
+          p_new_deposit?: number
+          p_new_end_date: string
+          p_new_rent_price?: number
+          p_notes?: string
+        }
+        Returns: string
+      }
+      run_recurring_vouchers_job: { Args: never; Returns: undefined }
       search_similar_memories: {
         Args: {
           p_limit?: number
@@ -6025,7 +6437,23 @@ export type Database = {
         Args: { p_contract_id: string; p_forfeit_date: string }
         Returns: Json
       }
+      terminate_contract_forfeit_impl: {
+        Args: { p_contract_id: string; p_forfeit_date: string }
+        Returns: Json
+      }
       terminate_contract_move_out: {
+        Args: {
+          p_contract_id: string
+          p_deposit_refund?: number
+          p_excess_rent?: number
+          p_move_out_date: string
+          p_notes?: string
+          p_outstanding_debt?: number
+          p_penalty_fee?: number
+        }
+        Returns: Json
+      }
+      terminate_contract_move_out_impl: {
         Args: {
           p_contract_id: string
           p_deposit_refund?: number
@@ -6048,6 +6476,27 @@ export type Database = {
         }
         Returns: string
       }
+      transfer_contract_impl: {
+        Args: {
+          p_contract_id: string
+          p_new_customer_id: string
+          p_new_deposit?: number
+          p_new_rent_price?: number
+          p_notes?: string
+          p_transfer_date?: string
+        }
+        Returns: string
+      }
+      transfer_room: {
+        Args: {
+          p_contract_id: string
+          p_new_rent_price?: number
+          p_new_room_id: string
+          p_notes?: string
+          p_transfer_date?: string
+        }
+        Returns: string
+      }
       unapprove_voucher: { Args: { voucher_id: string }; Returns: undefined }
       update_income_expense_quick: {
         Args: {
@@ -6064,11 +6513,11 @@ export type Database = {
           attachments: Json
           building_id: string
           business_result_accounting: boolean | null
-          counts_in_business_result: boolean
           change_account_id: string | null
           change_amount: number
           code: string | null
           contract_id: string | null
+          counts_in_business_result: boolean
           created_at: string
           creator_name: string | null
           deleted_at: string | null
@@ -6089,6 +6538,7 @@ export type Database = {
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
+          shareholder_id: string | null
           tenant_id: string | null
           total_amount: number
           type: string
@@ -6195,6 +6645,7 @@ export type Database = {
         | "ISSUE_RESOLVED"
         | "GENERAL_ANNOUNCEMENT"
         | "CUSTOM"
+        | "DEPOSIT_SHORTFALL"
       payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
       payment_method: "TM" | "TK" | "TT"
       pricing_type:
@@ -6443,6 +6894,7 @@ export const Constants = {
         "ISSUE_RESOLVED",
         "GENERAL_ANNOUNCEMENT",
         "CUSTOM",
+        "DEPOSIT_SHORTFALL",
       ],
       payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
       payment_method: ["TM", "TK", "TT"],

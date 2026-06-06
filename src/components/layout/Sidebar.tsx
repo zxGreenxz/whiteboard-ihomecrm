@@ -42,6 +42,7 @@ import {
   PieChart,
   Calendar,
   Coins,
+  Share2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -81,6 +82,7 @@ const navigationGroups: NavGroup[] = [
           { title: 'Toà nhà', href: '/buildings', icon: Building2 },
           { title: 'Căn hộ', href: '/apartments', icon: Home },
           { title: 'Dịch vụ', href: '/services', icon: Wrench },
+          { title: 'Sale Phòng', href: '/sale-phong', icon: Share2 },
           { title: 'Tài sản', href: '/assets', icon: Package },
           { title: 'Kho vật tư', href: '/materials', icon: Package },
         ],
