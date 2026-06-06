@@ -29,8 +29,8 @@ export default function RenewalsTransfersReport() {
     startDate || undefined, endDate || undefined, buildingId
   );
 
-  const renewals = contracts?.filter((c) => c.status === "EXTENDED") || [];
-  const transfers = contracts?.filter((c) => c.status === "TRANSFERRED") || [];
+  const renewals = contracts?.filter((c) => c.type === "RENEWAL") || [];
+  const transfers = contracts?.filter((c) => c.type === "TRANSFER") || [];
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -59,12 +59,12 @@ export default function RenewalsTransfersReport() {
   );
 
   const exportData = contracts?.map((c) => ({
-    "Mã HĐ": c.contract_number || "N/A",
-    "Khách hàng": c.tenants?.full_name || "N/A",
-    "Toà nhà": c.rooms?.buildings?.name || "N/A",
-    "Căn hộ": c.rooms?.name || "N/A",
-    "Loại": c.status === "EXTENDED" ? "Gia hạn" : "Chuyển nhượng",
-    "Ngày": format(new Date(c.updated_at), "dd/MM/yyyy", { locale: vi }),
+    "Mã HĐ": c.contract_number,
+    "Khách hàng": c.customer,
+    "Toà nhà": c.building,
+    "Căn hộ": c.room,
+    "Loại": c.type === "RENEWAL" ? "Gia hạn" : "Chuyển nhượng",
+    "Ngày": format(new Date(c.date), "dd/MM/yyyy", { locale: vi }),
     "Giá thuê mới": c.rent_price,
   })) || [];
 
@@ -141,20 +141,20 @@ export default function RenewalsTransfersReport() {
                     {contracts.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="font-medium">
-                          {c.contract_number || "N/A"}
+                          {c.contract_number}
                         </TableCell>
-                        <TableCell>{c.tenants?.full_name || "N/A"}</TableCell>
-                        <TableCell>{c.rooms?.buildings?.name || "N/A"}</TableCell>
-                        <TableCell>{c.rooms?.name || "N/A"}</TableCell>
+                        <TableCell>{c.customer}</TableCell>
+                        <TableCell>{c.building}</TableCell>
+                        <TableCell>{c.room}</TableCell>
                         <TableCell>
-                          {c.status === "EXTENDED" ? (
+                          {c.type === "RENEWAL" ? (
                             <Badge variant="default">Gia hạn</Badge>
                           ) : (
                             <Badge variant="secondary">Chuyển nhượng</Badge>
                           )}
                         </TableCell>
                         <TableCell>
-                          {format(new Date(c.updated_at), "dd/MM/yyyy", { locale: vi })}
+                          {format(new Date(c.date), "dd/MM/yyyy", { locale: vi })}
                         </TableCell>
                         <TableCell>{formatCurrency(c.rent_price)}</TableCell>
                       </TableRow>

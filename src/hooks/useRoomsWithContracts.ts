@@ -27,7 +27,7 @@ interface SupabaseContractRow {
 }
 
 /**
- * Lấy danh sách phòng kèm hợp đồng ĐANG HIỆU LỰC (ACTIVE/EXTENDED). Join:
+ * Lấy danh sách phòng kèm hợp đồng ĐANG HIỆU LỰC (ACTIVE). Join:
  *   rooms ⟵ contracts ⟵ contract_customers ⟵ customers
  * Khách đại diện được chọn làm "tenant"; nếu không có thì lấy khách đầu tiên.
  *
@@ -51,7 +51,7 @@ export const useRoomsWithActiveContracts = (buildingId?: string) => {
            )`
         )
         .is("deleted_at", null)
-        .in("contracts.status", ["ACTIVE", "EXTENDED"]) as any;
+        .in("contracts.status", ["ACTIVE"]) as any;
 
       if (buildingId) {
         query = query.eq("building_id", buildingId);

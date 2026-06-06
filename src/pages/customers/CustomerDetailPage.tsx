@@ -67,7 +67,6 @@ function formatCurrency(amount: number | null | undefined): string {
 
 const CONTRACT_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   ACTIVE: { label: 'Đang hoạt động', cls: 'bg-green-500 hover:bg-green-600 text-white' },
-  EXTENDED: { label: 'Đã gia hạn', cls: 'bg-blue-500 hover:bg-blue-600 text-white' },
   TRANSFERRED: { label: 'Đã chuyển nhượng', cls: 'bg-purple-500 hover:bg-purple-600 text-white' },
   TERMINATED: { label: 'Đã thanh lý', cls: 'bg-red-500 hover:bg-red-600 text-white' },
   EXPIRED: { label: 'Hết hạn', cls: 'bg-gray-400 hover:bg-gray-500 text-white' },

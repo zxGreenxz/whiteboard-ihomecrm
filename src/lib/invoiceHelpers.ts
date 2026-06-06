@@ -561,7 +561,7 @@ export async function getActiveContractsForInvoicing(
       )
     `)
     .eq('user_id', userId)
-    .in('status', ['ACTIVE', 'EXTENDED'])
+    .in('status', ['ACTIVE'])
     .is('deleted_at', null);
 
   const { data, error } = await query;

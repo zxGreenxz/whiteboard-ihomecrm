@@ -179,7 +179,6 @@ export function exportContracts(contracts: Array<{
       const statusMap: Record<string, string> = {
         DRAFT: 'Nháp',
         ACTIVE: 'Đang hoạt động',
-        EXTENDED: 'Đã gia hạn',
         TRANSFERRED: 'Đã chuyển nhượng',
         TERMINATED: 'Đã thanh lý',
         EXPIRED: 'Hết hạn',

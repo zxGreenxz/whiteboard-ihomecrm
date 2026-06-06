@@ -308,12 +308,12 @@ const IncomeExpenseForm = ({
   // Auto-prefill contract_id khi:
   //  • Đang tạo mới (chưa có voucher)
   //  • Đã pick room
-  //  • Có đúng 1 HĐ ACTIVE/EXTENDED trên phòng đó
+  //  • Có đúng 1 HĐ ACTIVE trên phòng đó
   // Tránh ghi đè khi user đang edit phiếu cũ hoặc đã chọn HĐ rồi.
   useEffect(() => {
     if (voucher) return; // edit mode → giữ value cũ
     const activeContracts = roomContracts.filter(
-      (c: any) => c.status === 'ACTIVE' || c.status === 'EXTENDED',
+      (c: any) => c.status === 'ACTIVE',
     );
     if (activeContracts.length === 1) {
       const currentValue = form.getValues('contract_id');

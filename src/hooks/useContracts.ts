@@ -320,7 +320,7 @@ export const useCreateContract = () => {
           .from("contracts")
           .select("id")
           .eq("room_id", contractData.room_id)
-          .in("status", ["ACTIVE", "EXTENDED"])
+          .in("status", ["ACTIVE"])
           .is("deleted_at", null)
           .limit(1);
         if (activeErr) throw activeErr;

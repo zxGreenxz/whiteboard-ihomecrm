@@ -84,7 +84,7 @@ export const useDashboardStats = (buildingId?: string | null) => {
       let occupiedRoomsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .not("room_id", "is", null);
 
       if (buildingIds.length > 0) {
@@ -216,7 +216,7 @@ export const useOccupancyChart = (buildingId?: string | null) => {
       let contractsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .not("room_id", "is", null);
 
       if (buildingIds.length > 0) {
@@ -301,7 +301,7 @@ export const useAlerts = (buildingId?: string | null) => {
              customer:customers!contract_customers_customer_id_fkey(full_name)
            )`
         )
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .lte("end_date", thirtyDaysFromNow.toISOString())
         .gte("end_date", new Date().toISOString())
         .order("end_date", { ascending: true })
@@ -358,7 +358,7 @@ export const useAlerts = (buildingId?: string | null) => {
              customer:customers!contract_customers_customer_id_fkey(full_name)
            )`
         )
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .is("deleted_at", null)
         .gte("deposit_remaining", 10000)
         .or("deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT")

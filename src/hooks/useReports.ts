@@ -49,7 +49,7 @@ export function useVacantRoomsReport(buildingId?: string, floorId?: string) {
       const { data: activeContracts, error: contractsError } = await supabase
         .from("contracts")
         .select("room_id")
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .is("deleted_at", null);
 
       if (contractsError) throw contractsError;
@@ -134,7 +134,7 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
             buildings (id, name)
           )
         `)
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .is("deleted_at", null)
         .gte("end_date", today.toISOString())
         .lte("end_date", futureDate.toISOString())
@@ -163,9 +163,28 @@ export function useExpiringContractsReport(daysAhead: number = 30, buildingId?: 
   });
 }
 
+export interface RenewalTransferRow {
+  id: string;
+  type: "RENEWAL" | "TRANSFER";
+  contract_number: string;
+  customer: string;
+  building: string;
+  building_id: string | null;
+  room: string;
+  date: string;
+  rent_price: number;
+}
+
+type EmbeddedRoom = { name: string | null; building_id: string | null; buildings: { name: string | null } | null } | null;
+type EmbeddedCustomers = Array<{ is_representative?: boolean; customers?: { full_name?: string } | null }> | null;
+type RenewalExtRow = { id: string; extension_date: string; new_rent_price: number | null; contracts: { contract_number: string | null; rent_price: number | null; deleted_at: string | null; rooms: EmbeddedRoom; contract_customers: EmbeddedCustomers } | null };
+type TransferContractRow = { id: string; contract_number: string | null; rent_price: number | null; updated_at: string; rooms: EmbeddedRoom; contract_customers: EmbeddedCustomers };
+
 /**
- * Get renewals and transfers report
- * Returns contracts with EXTENDED or TRANSFERRED status within a date range
+ * Báo cáo Gia hạn & Chuyển nhượng.
+ * - Gia hạn (RENEWAL): từ bảng contract_extensions (sự kiện gia hạn đã hoàn tất) —
+ *   KHÔNG còn dựa vào status='EXTENDED' (đã ngưng dùng).
+ * - Chuyển nhượng (TRANSFER): HĐ status='TRANSFERRED'.
  */
 export function useRenewalsTransfersReport(
   startDate?: string,
@@ -174,39 +193,77 @@ export function useRenewalsTransfersReport(
 ) {
   return useQuery({
     queryKey: ["reports", "renewals-transfers", startDate, endDate, buildingId],
-    queryFn: async () => {
-      let query = supabase
+    queryFn: async (): Promise<RenewalTransferRow[]> => {
+      const repName = (ccs: EmbeddedCustomers | undefined): string => {
+        const arr = ccs ?? [];
+        const rep = arr.find((x) => x.is_representative) ?? arr[0];
+        return rep?.customers?.full_name ?? "N/A";
+      };
+
+      // Renewals từ contract_extensions
+      let extQ = supabase
+        .from("contract_extensions")
+        .select(`
+          id, extension_date, new_rent_price, status,
+          contracts!contract_extensions_contract_id_fkey!inner (
+            contract_number, rent_price, deleted_at,
+            rooms ( name, building_id, buildings ( name ) ),
+            contract_customers ( is_representative, customers ( full_name ) )
+          )
+        `)
+        .in("status", ["APPROVED", "COMPLETED"]);
+      if (startDate) extQ = extQ.gte("extension_date", startDate);
+      if (endDate) extQ = extQ.lte("extension_date", endDate);
+      const { data: extData, error: extErr } = await extQ;
+      if (extErr) throw extErr;
+
+      // Transfers từ HĐ status TRANSFERRED
+      let trQ = supabase
         .from("contracts")
         .select(`
-          id,
-          contract_number,
-          rent_price,
-          status,
-          updated_at,
-          start_date,
-          tenants (id, full_name),
-          rooms (id, name, building_id, buildings (id, name))
+          id, contract_number, rent_price, updated_at, start_date,
+          rooms ( name, building_id, buildings ( name ) ),
+          contract_customers ( is_representative, customers ( full_name ) )
         `)
-        .in("status", ["EXTENDED", "TRANSFERRED"])
-        .is("deleted_at", null)
-        .order("start_date", { ascending: false });
+        .eq("status", "TRANSFERRED")
+        .is("deleted_at", null);
+      if (startDate) trQ = trQ.gte("start_date", startDate);
+      if (endDate) trQ = trQ.lte("start_date", endDate);
+      const { data: trData, error: trErr } = await trQ;
+      if (trErr) throw trErr;
 
-      if (startDate) {
-        query = query.gte("start_date", startDate);
-      }
-      if (endDate) {
-        query = query.lte("start_date", endDate);
-      }
+      const renewals: RenewalTransferRow[] = ((extData as unknown[]) ?? [])
+        .map((e) => e as RenewalExtRow)
+        .filter((e) => e.contracts && !e.contracts.deleted_at)
+        .map((e) => ({
+          id: `ext-${e.id}`,
+          type: "RENEWAL",
+          contract_number: e.contracts.contract_number ?? "N/A",
+          customer: repName(e.contracts.contract_customers),
+          building: e.contracts.rooms?.buildings?.name ?? "N/A",
+          building_id: e.contracts.rooms?.building_id ?? null,
+          room: e.contracts.rooms?.name ?? "N/A",
+          date: e.extension_date,
+          rent_price: e.new_rent_price ?? e.contracts.rent_price ?? 0,
+        }));
 
-      const { data, error } = await query;
-      if (error) throw error;
+      const transfers: RenewalTransferRow[] = ((trData as unknown[]) ?? [])
+        .map((c) => c as TransferContractRow)
+        .map((c) => ({
+          id: `tr-${c.id}`,
+          type: "TRANSFER",
+          contract_number: c.contract_number ?? "N/A",
+          customer: repName(c.contract_customers),
+          building: c.rooms?.buildings?.name ?? "N/A",
+          building_id: c.rooms?.building_id ?? null,
+          room: c.rooms?.name ?? "N/A",
+          date: c.updated_at,
+          rent_price: c.rent_price ?? 0,
+        }));
 
-      let results = data || [];
-
-      if (buildingId) {
-        results = results.filter((c) => c.rooms?.building_id === buildingId);
-      }
-
+      let results = [...renewals, ...transfers];
+      if (buildingId) results = results.filter((r) => r.building_id === buildingId);
+      results.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
       return results;
     },
   });
@@ -235,7 +292,7 @@ export function useOccupancyReport(buildingId?: string) {
       const { data: activeContracts, error: contractsError } = await supabase
         .from("contracts")
         .select("room_id")
-        .in("status", ["ACTIVE", "EXTENDED"])
+        .in("status", ["ACTIVE"])
         .is("deleted_at", null);
       if (contractsError) throw contractsError;
 
@@ -309,7 +366,7 @@ export function useOccupancyTrend(buildingId?: string) {
       const { data: contracts, error: contractsError } = await supabase
         .from("contracts")
         .select("room_id, start_date, end_date, status")
-        .in("status", ["ACTIVE", "EXTENDED", "TERMINATED", "EXPIRED"])
+        .in("status", ["ACTIVE", "TERMINATED", "EXPIRED"])
         .is("deleted_at", null);
       if (contractsError) throw contractsError;
 

@@ -81,15 +81,15 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
  * that match the following rules based on contract.status (dbStatus) and
  * getContractDisplayStatus (displayStatus):
  *
- * A renewed contract has dbStatus === 'EXTENDED' but is still in effect, so it
- * must allow the same management actions as 'ACTIVE'.
+ * "Còn hiệu lực" giờ CHỈ là dbStatus === 'ACTIVE' (HĐ gia hạn vẫn giữ ACTIVE;
+ * 'EXTENDED' đã ngưng dùng → coi như KHÔNG còn hiệu lực).
  *
  * - editDisabled: true only when dbStatus === 'TERMINATED'
- * - renewDisabled: true unless dbStatus is ACTIVE/EXTENDED OR displayStatus is 'EXPIRED'/'EXPIRING'
- * - transferRoomDisabled: true unless dbStatus is ACTIVE/EXTENDED
- * - moveOutDisabled: true unless dbStatus is ACTIVE/EXTENDED
- * - transferContractDisabled: true unless dbStatus is ACTIVE/EXTENDED
- * - terminateDisabled: true unless dbStatus is ACTIVE/EXTENDED OR displayStatus is 'EXPIRED'/'EXPIRING'
+ * - renewDisabled: true unless dbStatus is ACTIVE OR displayStatus is 'EXPIRED'/'EXPIRING'
+ * - transferRoomDisabled: true unless dbStatus is ACTIVE
+ * - moveOutDisabled: true unless dbStatus is ACTIVE
+ * - transferContractDisabled: true unless dbStatus is ACTIVE
+ * - terminateDisabled: true unless dbStatus is ACTIVE OR displayStatus is 'EXPIRED'/'EXPIRING'
  * - deleteDisabled: true unless dbStatus === 'DRAFT'
  *
  * **Validates: Requirements 3.4, 4.4, 5.5, 6.4, 7.4, 10.4**
@@ -109,8 +109,8 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
     );
   });
 
-  // Renewed contracts (EXTENDED) are still in effect → treated like ACTIVE.
-  const inEffect = (s: ContractStatus) => s === 'ACTIVE' || s === 'EXTENDED';
+  // "Còn hiệu lực" giờ chỉ là ACTIVE (EXTENDED đã ngưng dùng).
+  const inEffect = (s: ContractStatus) => s === 'ACTIVE';
 
   it('renewDisabled is false only when dbStatus is ACTIVE/EXTENDED or displayStatus is EXPIRED/EXPIRING', () => {
     fc.assert(

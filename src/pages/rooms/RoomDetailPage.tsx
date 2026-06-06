@@ -130,7 +130,7 @@ const RoomDetailPage = () => {
             tenant:tenants(id, full_name, phone, email, status)
           `)
           .eq('room_id', id)
-          .in('status', ['ACTIVE', 'EXTENDED'])
+          .in('status', ['ACTIVE'])
           .is('deleted_at', null);
 
         if (error) throw error;
@@ -269,7 +269,6 @@ const RoomDetailPage = () => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       DRAFT: 'outline',
       ACTIVE: 'default',
-      EXTENDED: 'secondary',
       TRANSFERRED: 'secondary',
       TERMINATED: 'destructive',
       EXPIRED: 'destructive',
@@ -278,7 +277,6 @@ const RoomDetailPage = () => {
     const labels: Record<string, string> = {
       DRAFT: 'Nháp',
       ACTIVE: 'Đang hoạt động',
-      EXTENDED: 'Đã gia hạn',
       TRANSFERRED: 'Đã chuyển nhượng',
       TERMINATED: 'Đã thanh lý',
       EXPIRED: 'Hết hạn',

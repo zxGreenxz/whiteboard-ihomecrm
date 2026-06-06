@@ -59,6 +59,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Import contract action dialogs
 import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
+import { RenewedBadge } from '@/components/contracts/RenewedBadge';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
 import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
@@ -313,7 +314,6 @@ const ContractDetailPage = () => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; className?: string }> = {
       DRAFT: { variant: 'outline', label: 'Nháp' },
       ACTIVE: { variant: 'default', label: 'Đang hoạt động', className: 'bg-green-500 hover:bg-green-600' },
-      EXTENDED: { variant: 'secondary', label: 'Đã gia hạn', className: 'bg-blue-500 hover:bg-blue-600 text-white' },
       TRANSFERRED: { variant: 'secondary', label: 'Đã chuyển nhượng', className: 'bg-purple-500 hover:bg-purple-600 text-white' },
       TERMINATED: { variant: 'destructive', label: 'Đã thanh lý' },
       EXPIRED: { variant: 'outline', label: 'Hết hạn' },
@@ -594,7 +594,10 @@ const ContractDetailPage = () => {
                       <FileText className="h-5 w-5" />
                       Thông tin hợp đồng
                     </CardTitle>
-                    {getStatusBadge(contract.status)}
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(contract.status)}
+                      <RenewedBadge contractId={contract.id} />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">

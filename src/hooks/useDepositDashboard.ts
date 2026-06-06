@@ -63,7 +63,7 @@ function repName(contractCustomers: any[] | undefined | null): string {
 }
 
 /**
- * Cọc đang giữ theo HĐ đang hiệu lực (ACTIVE/EXTENDED) — nguồn sự thật đủ/thiếu cọc.
+ * Cọc đang giữ theo HĐ đang hiệu lực (ACTIVE) — nguồn sự thật đủ/thiếu cọc.
  * Trả về từng dòng HĐ; trang tự gộp theo toà nhà.
  */
 export function useHeldDeposits() {
@@ -84,7 +84,7 @@ export function useHeldDeposits() {
             customer:customers!contract_customers_customer_id_fkey ( full_name )
           )
         `)
-        .in('status', ['ACTIVE', 'EXTENDED'])
+        .in('status', ['ACTIVE'])
         .is('deleted_at', null);
 
       if (error) throw error;

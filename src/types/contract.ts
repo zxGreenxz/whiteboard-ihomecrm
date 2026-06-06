@@ -3,6 +3,9 @@
 // =============================================
 
 // Enums
+// Lưu ý: 'EXTENDED' là giá trị NGƯNG DÙNG (deprecated) — không còn gán cho HĐ nữa.
+// "Đã gia hạn" giờ suy từ bảng contract_extensions (xem useRenewedContractIds), KHÔNG từ status.
+// Giữ trong union để tương thích enum DB; mọi check "còn hiệu lực" chỉ xét 'ACTIVE'.
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'EXTENDED' | 'TRANSFERRED' | 'TERMINATED' | 'EXPIRED';
 export type PaymentCycle = 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL';
 export type ContractStatFilter = 'ALL' | 'EXPIRING' | 'EXPIRED' | 'TERMINATED';
@@ -153,13 +156,13 @@ export interface ContractFormData {
 }
 
 // Trạng thái hợp đồng "đang hiệu lực" (đang ở / còn tính tiền / còn thao tác được).
-// Gia hạn (renew_contract) chuyển ACTIVE → EXTENDED, nên EXTENDED cũng là đang hiệu lực.
-// Dùng helper này thay cho mọi chỗ check `status === 'ACTIVE'` mang nghĩa "còn hiệu lực".
-export const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ['ACTIVE', 'EXTENDED'];
+// CHỈ là 'ACTIVE'. HĐ gia hạn vẫn giữ 'ACTIVE' (không chuyển EXTENDED nữa) — "đã gia
+// hạn" là dấu hiệu RIÊNG suy từ contract_extensions, không liên quan tới "còn hiệu lực".
+export const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ['ACTIVE'];
 
-/** True nếu hợp đồng đang hiệu lực (ACTIVE hoặc EXTENDED — đã gia hạn). */
+/** True nếu hợp đồng đang hiệu lực (chỉ 'ACTIVE'). */
 export function isContractInEffect(status?: string | null): boolean {
-  return status === 'ACTIVE' || status === 'EXTENDED';
+  return status === 'ACTIVE';
 }
 
 // Helper: compute display status

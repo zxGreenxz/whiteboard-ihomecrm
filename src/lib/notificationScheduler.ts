@@ -44,7 +44,7 @@ export async function checkContractExpiryReminders(userId: string): Promise<void
       room:rooms(name)
     `)
     .eq('user_id', userId)
-    .in('status', ['ACTIVE', 'EXTENDED']);
+    .in('status', ['ACTIVE']);
 
   if (!contracts) return;
 
@@ -257,7 +257,7 @@ export async function checkDepositTopupReminders(userId: string): Promise<void> 
       )
     `)
     .eq('user_id', userId)
-    .in('status', ['ACTIVE', 'EXTENDED'])
+    .in('status', ['ACTIVE'])
     .is('deleted_at', null)
     .gte('deposit_remaining', SHORTFALL_THRESHOLD)
     .or('deposit_debt_mode.is.null,deposit_debt_mode.eq.DEBT');

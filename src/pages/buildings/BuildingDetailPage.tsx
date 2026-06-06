@@ -221,7 +221,6 @@ const BuildingDetailPage = () => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
       DRAFT: 'outline',
       ACTIVE: 'default',
-      EXTENDED: 'secondary',
       TRANSFERRED: 'secondary',
       TERMINATED: 'destructive',
       EXPIRED: 'destructive',
@@ -230,7 +229,6 @@ const BuildingDetailPage = () => {
     const labels: Record<string, string> = {
       DRAFT: 'Nháp',
       ACTIVE: 'Đang hoạt động',
-      EXTENDED: 'Đã gia hạn',
       TRANSFERRED: 'Đã chuyển nhượng',
       TERMINATED: 'Đã thanh lý',
       EXPIRED: 'Hết hạn',
