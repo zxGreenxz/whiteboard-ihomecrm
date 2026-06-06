@@ -5,11 +5,12 @@
 --   trên URL là ngẫu nhiên, không chứa thông tin chủ, không gửi owner_id ra client.
 -- - RPC SECURITY DEFINER get_public_available_rooms(p_token) trả jsonb
 --   { areas, buildings, rooms, contact } cho anon. Trả NULL nếu token sai/thu hồi.
--- - status_public mỗi phòng:
---     'free'   = rooms.status = AVAILABLE
---     'soon'   = OCCUPIED và có HĐ đang hiệu lực (ACTIVE/EXTENDED, chưa xoá)
---                hết hạn trong ≤30 ngày tới (COALESCE(actual_end_date, end_date))
---     'rented' = còn lại (OCCUPIED không sắp trống / RESERVED / MAINTENANCE / UNAVAILABLE)
+-- - status_public mỗi phòng — HỢP ĐỒNG là nguồn sự thật (cờ rooms.status có thể
+--   stale: phòng đang có HĐ nhưng vẫn để AVAILABLE):
+--     'soon'   = có HĐ đang hiệu lực (ACTIVE/EXTENDED, chưa xoá) hết hạn ≤30 ngày tới
+--     'rented' = có HĐ đang hiệu lực (không sắp hết) — KỂ CẢ khi rooms.status=AVAILABLE
+--     'free'   = KHÔNG có HĐ đang hiệu lực VÀ rooms.status = AVAILABLE
+--     'rented' = còn lại (không HĐ nhưng OCCUPIED/RESERVED/MAINTENANCE/UNAVAILABLE)
 -- - Chỉ trả toà có ≥1 phòng free/soon (nhưng trả ĐỦ phòng của toà đó để vẽ sơ đồ).
 -- - KHÔNG expose dữ liệu nhạy cảm (user_id, hợp đồng, khách thuê, công nợ).
 -- =============================================
@@ -75,8 +76,7 @@ BEGIN
       COALESCE(rm.images,    '[]'::jsonb) AS images,
       rm.description,
       CASE
-        WHEN rm.status = 'AVAILABLE' THEN 'free'
-        WHEN rm.status = 'OCCUPIED' AND EXISTS (
+        WHEN EXISTS (
           SELECT 1 FROM public.contracts c
           WHERE c.room_id = rm.id
             AND c.deleted_at IS NULL
@@ -84,6 +84,13 @@ BEGIN
             AND COALESCE(c.actual_end_date, c.end_date)
                 BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
         ) THEN 'soon'
+        WHEN EXISTS (
+          SELECT 1 FROM public.contracts c
+          WHERE c.room_id = rm.id
+            AND c.deleted_at IS NULL
+            AND c.status IN ('ACTIVE','EXTENDED')
+        ) THEN 'rented'
+        WHEN rm.status = 'AVAILABLE' THEN 'free'
         ELSE 'rented'
       END AS status_public,
       (
