@@ -2,64 +2,33 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./phongTrong.css";
 import { Icon } from "./icons";
-import { Summary, FilterBar, FloorPlan, ListView, PRICE_BANDS } from "./PhongTrongParts";
+import { FloorPlan, ListView, OverviewView } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
-import { buildingsFromRpc, MANAGER, SAMPLE_BUILDINGS, type Room } from "./sampleData";
-import { usePhongTrong } from "@/hooks/usePhongTrong";
-
-/** Token "xem giao diện": bỏ qua Supabase, render data mẫu ban đầu để gửi đối
- *  tác test UI (vd /r/abc). Mọi token khác → dữ liệu thật qua RPC. */
-const MOCK_TOKENS = new Set(["abc", "demo-ui", "mau"]);
+import { SAMPLE_BUILDINGS, type Room } from "./sampleData";
+import { usePhongTrong } from "./usePhongTrong";
 
 /**
- * Trang công khai "Phòng trống" cho Sale (/r/:token).
- * Dữ liệu thật qua RPC public get_public_available_rooms (xem usePhongTrong);
- * map sang type Building/Room bằng buildingsFromRpc — giữ NGUYÊN toàn bộ UI bên dưới.
+ * Trang công khai "Phòng trống" cho Sale — 100% giao diện mock, data mẫu.
+ * Route gợi ý: /r/:token (xem README). Khi nối Supabase: thay SAMPLE_BUILDINGS
+ * bằng dữ liệu thật map sang type Building/Room (giữ nguyên toàn bộ UI bên dưới).
  */
-
-/** Màn trạng thái (loading / lỗi token / rỗng) dùng chung khung điện thoại. */
-function StatusScreen({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
-  return (
-    <div id="stage">
-      <div className="app" style={{ justifyContent: "center", alignItems: "center" }}>
-        <div className="empty">
-          <div className="e-ic">{icon}</div>
-          <p>
-            <strong>{title}</strong>
-            {sub && <><br />{sub}</>}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function PhongTrongPage() {
   const { token } = useParams<{ token: string }>();
-  const isMock = !!token && MOCK_TOKENS.has(token);
-  // Mock: không gọi RPC (truyền token undefined → hook disabled).
-  const { data, isLoading, error } = usePhongTrong(isMock ? undefined : token);
+  const { data, isLoading, isError } = usePhongTrong(token);
+  // Có data thật -> dùng; chưa có token/data (xem thử) -> data mẫu.
+  const buildings = data && data.length ? data : SAMPLE_BUILDINGS;
 
-  const buildings = useMemo(
-    () => (isMock ? SAMPLE_BUILDINGS : buildingsFromRpc(data)),
-    [isMock, data],
-  );
-  const contact = useMemo(() => {
-    if (isMock) return MANAGER;
-    const c = data?.contact;
-    return c ? { name: c.name, phone: c.phone, zalo: c.phone.replace(/\D/g, "") } : MANAGER;
-  }, [isMock, data]);
-
-  const [propId, setPropId] = useState("");
-  const [view, setView] = useState<"map" | "list">("map");
-  const [showRented, setShowRented] = useState(false);
-  const [band, setBand] = useState("all");
+  const [propId, setPropId] = useState(buildings[0].id);
+  const [view, setView] = useState<"map" | "list" | "overview">("overview");
+  const [district, setDistrict] = useState("all");
+  const showRented = false;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [sheetShow, setSheetShow] = useState(false);
   const [toast, setToast] = useState({ msg: "", show: false });
   const toastTimer = useRef<number | undefined>(undefined);
   const propsRef = useRef<HTMLDivElement>(null);
+  const districtsRef = useRef<HTMLDivElement>(null);
 
   const [saved, setSaved] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("pt_saved") || "[]"); } catch { return []; }
@@ -68,47 +37,50 @@ export default function PhongTrongPage() {
   const toggleSave = (id: string) =>
     setSaved((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
-  // Chọn toà đầu khi data về / đổi; giữ lựa chọn nếu vẫn còn trong danh sách.
+  // Kéo ngang hàng quận + tòa nhà: vuốt trên mobile (native) + kéo chuột trên desktop.
   useEffect(() => {
-    if (!buildings.length) return;
-    if (!buildings.some((b) => b.id === propId)) setPropId(buildings[0].id);
-  }, [buildings, propId]);
+    const els = [propsRef.current, districtsRef.current].filter(Boolean) as HTMLDivElement[];
+    const cleanups = els.map((el) => {
+      let down = false, startX = 0, startScroll = 0, moved = false;
+      const onDown = (e: MouseEvent) => { down = true; moved = false; startX = e.pageX; startScroll = el.scrollLeft; el.classList.add("dragging"); };
+      const onMove = (e: MouseEvent) => { if (!down) return; const dx = e.pageX - startX; if (Math.abs(dx) > 4) moved = true; el.scrollLeft = startScroll - dx; };
+      const onUp = () => { down = false; el.classList.remove("dragging"); };
+      const onClick = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); } };
+      el.addEventListener("mousedown", onDown);
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      el.addEventListener("click", onClick, true);
+      return () => {
+        el.removeEventListener("mousedown", onDown);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        el.removeEventListener("click", onClick, true);
+      };
+    });
+    return () => cleanups.forEach((c) => c());
+  }, []);
 
-  // Kéo ngang hàng cơ sở: vuốt trên mobile (native) + kéo chuột trên desktop.
-  useEffect(() => {
-    const el = propsRef.current;
-    if (!el) return;
-    let down = false, startX = 0, startScroll = 0, moved = false;
-    const onDown = (e: MouseEvent) => { down = true; moved = false; startX = e.pageX; startScroll = el.scrollLeft; el.classList.add("dragging"); };
-    const onMove = (e: MouseEvent) => {
-      if (!down) return;
-      const dx = e.pageX - startX;
-      if (Math.abs(dx) > 4) moved = true;
-      el.scrollLeft = startScroll - dx;
-    };
-    const onUp = () => { down = false; el.classList.remove("dragging"); };
-    const onClick = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); } };
-    el.addEventListener("mousedown", onDown);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    el.addEventListener("click", onClick, true);
-    return () => {
-      el.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      el.removeEventListener("click", onClick, true);
-    };
-  }, [buildings.length, view]);
+  const districts = useMemo(
+    () => ["all", ...Array.from(new Set(buildings.map((p) => p.district)))],
+    [buildings],
+  );
+  const visibleBuildings = useMemo(
+    () => buildings.filter((p) => district === "all" || p.district === district),
+    [buildings, district],
+  );
+  const building = buildings.find((p) => p.id === propId) || buildings[0];
 
-  const building = buildings.find((p) => p.id === propId) ?? buildings[0];
-  const bandTest = PRICE_BANDS.find((b) => b.id === band)!.test as (p: number) => boolean;
+  const pickDistrict = (d: string) => {
+    setDistrict(d);
+    const first = buildings.find((p) => d === "all" || p.district === d);
+    if (first) setPropId(first.id);
+  };
 
   const listRooms = useMemo(() => {
-    if (!building) return [];
     return building.rooms
-      .filter((r) => (showRented || r.status !== "rented") && bandTest(r.price))
+      .filter((r) => showRented || r.status !== "rented")
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
-  }, [building, showRented, band]);
+  }, [building]);
 
   const openRoom = (r: Room) => { setRoom(r); requestAnimationFrame(() => setSheetShow(true)); };
   const closeSheet = () => { setSheetShow(false); window.setTimeout(() => setRoom(null), 300); };
@@ -121,17 +93,21 @@ export default function PhongTrongPage() {
 
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  const alwaysTrue = () => true;
 
-  // ----- Trạng thái tải / lỗi / rỗng (sau khi mọi hook đã chạy) -----
-  // Mock bỏ qua loading/lỗi (luôn có data mẫu).
-  if (!isMock && isLoading) {
-    return <StatusScreen icon="⏳" title="Đang tải bảng phòng…" />;
+  if (token && isLoading && !(data && data.length)) {
+    return (
+      <div id="stage"><div className="app"><div className="empty" style={{ marginTop: 80 }}>
+        <div className="e-ic">⏳</div><p>Đang tải danh sách phòng…</p>
+      </div></div></div>
+    );
   }
-  if (!isMock && (error || data === null)) {
-    return <StatusScreen icon="🔗" title="Liên kết không hợp lệ" sub="Link chia sẻ đã bị thu hồi hoặc không tồn tại." />;
-  }
-  if (!building) {
-    return <StatusScreen icon="🏠" title="Hiện chưa có phòng trống" sub="Vui lòng quay lại sau hoặc liên hệ để được tư vấn." />;
+  if (token && isError) {
+    return (
+      <div id="stage"><div className="app"><div className="empty" style={{ marginTop: 80 }}>
+        <div className="e-ic">🔒</div><p>Liên kết không hợp lệ hoặc đã hết hạn.<br/>Vui lòng liên hệ quản lý để lấy link mới.</p>
+      </div></div></div>
+    );
   }
 
   return (
@@ -147,36 +123,47 @@ export default function PhongTrongPage() {
             <div className="live"><i className="dot" />Live · {hh}</div>
           </div>
 
+          <div className="seg">
+            <button className={view === "overview" ? "on" : ""} onClick={() => setView("overview")}>
+              <Icon.List />Bảng nhanh
+            </button>
+            <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>
+              <Icon.Photo />Danh sách
+            </button>
+            <button className={view === "map" ? "on" : ""} onClick={() => setView("map")}>
+              <Icon.Grid />Sơ đồ
+            </button>
+          </div>
+
+          <div className="sel-lbl">Quận</div>
+          <div className="districts" ref={districtsRef}>
+            {districts.map((d) => (
+              <button key={d} className={"dist-chip" + (district === d ? " on" : "")} onClick={() => pickDistrict(d)}>
+                {d === "all" ? "Tất cả" : d}
+              </button>
+            ))}
+          </div>
+
+          <div className="sel-lbl">Tòa nhà</div>
           <div className="props" ref={propsRef}>
-            {buildings.map((p) => (
+            {visibleBuildings.map((p) => (
               <button key={p.id} className={"prop-chip" + (p.id === propId ? " on" : "")} onClick={() => setPropId(p.id)}>
                 <span className="pc-name">{p.name}</span>
                 <span className="pc-meta">{p.area} · {p.freeCount} trống</span>
               </button>
             ))}
           </div>
-
-          <div className="seg">
-            <button className={view === "map" ? "on" : ""} onClick={() => setView("map")}>
-              <Icon.Grid />Sơ đồ tòa nhà
-            </button>
-            <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>
-              <Icon.List />Danh sách
-            </button>
-          </div>
-
-          <FilterBar showRented={showRented} setShowRented={setShowRented} band={band} setBand={setBand} />
         </div>
-
-        <Summary rooms={building.rooms} />
 
         <div className="scroll">
           {view === "map"
-            ? <FloorPlan building={building} showRented={showRented} bandTest={bandTest} onOpen={openRoom} />
+            ? <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
+            : view === "overview"
+            ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onToast={showToast} />
             : <ListView rooms={listRooms} onOpen={openRoom} />}
         </div>
 
-        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} contact={contact} />
+        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={setRoom} buildings={buildings} />
         <Toast msg={toast.msg} show={toast.show} />
       </div>
     </div>

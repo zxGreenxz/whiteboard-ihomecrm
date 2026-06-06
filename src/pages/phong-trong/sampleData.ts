@@ -24,6 +24,7 @@ export interface Room extends Box {
   availDate: string | null;
   imgCount: number;
   phClass: string;
+  images?: string[];   // ảnh thật từ Supabase (nếu có); rỗng -> dùng placeholder picsum
 }
 
 export interface Fixture extends Box {
@@ -45,12 +46,26 @@ export interface Building {
   code: string;
   name: string;
   area: string;
+  district: string;    // nhóm lọc "Quận" ở header (map từ buildings.district khi nối Supabase)
   address: string;
+  manager: string;
+  phone: string;
+  lift: boolean;
+  policy: string;
   floors: FloorPlan[];
   rooms: Room[];
   freeCount: number;
   total: number;
 }
+
+export const GENERAL_POLICY = {
+  items: [
+    "Điện: 3.800đ/kw (thang máy) · 3.500đ/kw (thang bộ)",
+    "Nước: 100k/người · Phí dịch vụ: 150k/phòng",
+    "Xe Free · Wifi Free · Máy giặt chung · Sân phơi",
+    "Tối đa 3 người · 2 xe · Không nhận xe điện · Nhận nuôi mèo (phòng ban công)",
+  ],
+};
 
 export const STATUS_META: Record<RoomStatus, { label: string; short: string }> = {
   free:   { label: "Trống sẵn", short: "Trống" },
@@ -79,10 +94,10 @@ const AMENITIES = [
   "Cửa sổ lớn", "Tủ lạnh", "Full nội thất", "Wifi", "Nóng lạnh", "View thành phố",
 ];
 const DEFS = [
-  { id: "p1", code: "ORC", name: "The Orchard",      area: "Thảo Điền, Q.2", floors: 9,  perFloor: 7, address: "12 Nguyễn Văn Hưởng, Thảo Điền" },
-  { id: "p2", code: "LAV", name: "Lavender House",   area: "Bình Thạnh",     floors: 7,  perFloor: 6, address: "88 Điện Biên Phủ, P.25, Bình Thạnh" },
-  { id: "p3", code: "SUN", name: "Sunwah Court",     area: "Quận 1",         floors: 12, perFloor: 6, address: "37 Tôn Đức Thắng, Bến Nghé, Q.1" },
-  { id: "p4", code: "MAI", name: "Maison Riverside", area: "Quận 4",         floors: 8,  perFloor: 8, address: "5 Bến Vân Đồn, P.12, Q.4" },
+  { id: "p1", code: "ORC", name: "The Orchard",      area: "Thảo Điền, Q.2", floors: 9,  perFloor: 7, address: "12 Nguyễn Văn Hưởng, Thảo Điền, Q.2", manager: "A. Hiển", phone: "0357 758 719", lift: true,  policy: "HĐ 12 tháng giảm 200k suốt hợp đồng" },
+  { id: "p2", code: "LAV", name: "Lavender House",   area: "Bình Thạnh",     floors: 7,  perFloor: 6, address: "88 Điện Biên Phủ, P.25, Bình Thạnh", manager: "A. Hiệp", phone: "0708 882 357", lift: true,  policy: "HĐ 12 tháng giảm 300k suốt hợp đồng" },
+  { id: "p3", code: "SUN", name: "Sunwah Court",     area: "Quận 1",         floors: 12, perFloor: 6, address: "37 Tôn Đức Thắng, Bến Nghé, Q.1", manager: "C. Lan", phone: "0901 234 567", lift: true,  policy: "Giảm 500k tháng đầu" },
+  { id: "p4", code: "MAI", name: "Maison Riverside", area: "Quận 4",         floors: 8,  perFloor: 8, address: "5 Bến Vân Đồn, P.12, Q.4", manager: "A. Nam", phone: "0938 111 222", lift: false, policy: "Thưởng sale 500k / hợp đồng" },
 ];
 
 function seeded(seed: number) {
@@ -94,7 +109,7 @@ function fmtDate(d: Date) {
   return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
 }
 
-function layoutFloor(floor: number, rooms: Room[]): FloorPlan {
+export function layoutFloor(floor: number, rooms: Room[]): FloorPlan {
   const n = rooms.length;
   const perRow = Math.ceil(n / 2);
   const cols = perRow + 1;            // +1 cột lõi (thang máy/cầu thang) ở giữa
@@ -156,7 +171,8 @@ function build(): Building[] {
       floors.push(layoutFloor(f, rooms));
     }
     return {
-      id: p.id, code: p.code, name: p.name, area: p.area, address: p.address,
+      id: p.id, code: p.code, name: p.name, area: p.area, district: p.area, address: p.address,
+      manager: p.manager, phone: p.phone, lift: p.lift, policy: p.policy,
       floors, rooms: all,
       freeCount: all.filter((r) => r.status === "free").length,
       total: all.length,
@@ -166,139 +182,5 @@ function build(): Building[] {
 
 export const SAMPLE_BUILDINGS: Building[] = build();
 
-/** SĐT/Zalo liên hệ mặc định cho nút Gọi/Zalo khi tài khoản chưa có hotline.
- *  RPC trả `contact` (từ bảng hotlines) sẽ override giá trị này nếu có. */
-export const MANAGER = { name: "Liên hệ thuê phòng", phone: "0772 207 574", zalo: "0772207574" };
-
-/* ===== Adapter: dữ liệu thật từ RPC get_public_available_rooms → Building[] =====
- * Giữ NGUYÊN type Building/Room + UI. "Loại phòng" để mặc định "Chờ cập nhật"
- * cho tới khi có data/logic thật (theo yêu cầu). */
-
-export interface RpcRoom {
-  id: string;
-  building_id: string;
-  floor: number;
-  name: string;
-  code: string | null;
-  area: number | null;
-  rent_price: number | null;
-  deposit_amount: number | null;
-  max_occupants: number | null;
-  amenities: unknown;
-  images: unknown;
-  description: string | null;
-  status_public: RoomStatus;
-  avail_date: string | null; // YYYY-MM-DD
-}
-
-export interface RpcBuilding {
-  id: string;
-  name: string;
-  code: string | null;
-  area_id: string | null;
-  area_name: string | null;
-  district: string | null;
-  ward: string | null;
-  address: string | null;
-  total_floors: number | null;
-}
-
-export interface RpcContact { name: string; phone: string }
-
-export interface RpcPayload {
-  areas: { id: string; name: string }[];
-  buildings: RpcBuilding[];
-  rooms: RpcRoom[];
-  contact: RpcContact | null;
-}
-
-const PH_CLASSES = ["ph-a", "ph-b", "ph-c", "ph-d"];
-const phFor = (id: string): string => {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % PH_CLASSES.length;
-  return PH_CLASSES[h];
-};
-
-/** Lấy số phòng từ name ("402" → 402); không có chữ số thì dùng fallback. */
-const numFromName = (name: string, fallback: number): number => {
-  const d = (name || "").replace(/\D/g, "");
-  return d ? parseInt(d, 10) : fallback;
-};
-
-/** amenities jsonb có thể là mảng string hoặc mảng object → chuẩn hoá về string[]. */
-const toAmenities = (raw: unknown): string[] => {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((a) =>
-      typeof a === "string"
-        ? a
-        : a && typeof a === "object"
-        ? String((a as Record<string, unknown>).name ?? (a as Record<string, unknown>).label ?? "")
-        : String(a),
-    )
-    .filter((s) => !!s);
-};
-
-const imgCountOf = (raw: unknown): number => (Array.isArray(raw) ? raw.length : 0);
-
-/** "2026-06-30" → "30/06" (đúng định dạng availDate của UI). */
-const fmtAvail = (d: string | null): string | null => {
-  if (!d) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
-  return m ? `${m[3]}/${m[2]}` : d;
-};
-
-export function buildingsFromRpc(payload: RpcPayload | null | undefined): Building[] {
-  if (!payload || !Array.isArray(payload.buildings)) return [];
-
-  const roomsByBuilding = new Map<string, RpcRoom[]>();
-  for (const r of payload.rooms ?? []) {
-    const arr = roomsByBuilding.get(r.building_id) ?? [];
-    arr.push(r);
-    roomsByBuilding.set(r.building_id, arr);
-  }
-
-  return payload.buildings.map((b) => {
-    const loc = b.district || b.area_name || b.ward || "";
-    const addr = b.address || loc;
-    const src = roomsByBuilding.get(b.id) ?? [];
-
-    const rooms: Room[] = src.map((r, i) => ({
-      id: r.id,
-      no: numFromName(r.name, i + 1),
-      code: r.code || r.name || "",
-      buildingId: b.id,
-      buildingName: b.name,
-      buildingArea: loc,
-      buildingAddr: addr,
-      floor: r.floor ?? 0,
-      type: "Chờ cập nhật",
-      price: (r.rent_price ?? 0) / 1_000_000,
-      area: Math.round(r.area ?? 0),
-      status: r.status_public,
-      amenities: toAmenities(r.amenities),
-      availDate: r.status_public === "soon" ? fmtAvail(r.avail_date) : null,
-      imgCount: imgCountOf(r.images),
-      phClass: phFor(r.id),
-      x: 0, y: 0, w: 0, h: 0,
-    }));
-
-    // Nhóm theo tầng (cao → thấp); trong tầng sắp theo số phòng tăng dần.
-    const floorNums = Array.from(new Set(rooms.map((r) => r.floor))).sort((a, z) => z - a);
-    const floors: FloorPlan[] = floorNums.map((f) =>
-      layoutFloor(f, rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no)),
-    );
-
-    return {
-      id: b.id,
-      code: b.code || "",
-      name: b.name,
-      area: loc,
-      address: addr,
-      floors,
-      rooms,
-      freeCount: rooms.filter((r) => r.status === "free").length,
-      total: rooms.length,
-    };
-  });
-}
+/** SĐT/Zalo quản lý mặc định cho nút liên hệ (đổi khi nối dữ liệu thật). */
+export const MANAGER = { name: "Quản lý hệ thống", phone: "0909 123 456", zalo: "0909123456" };

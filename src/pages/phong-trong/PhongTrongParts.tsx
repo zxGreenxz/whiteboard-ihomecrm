@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { Icon, amenIcon } from "./icons";
 import {
-  STATUS_META, fmtPrice,
+  STATUS_META, fmtPrice, GENERAL_POLICY,
   type Room, type Building, type FloorPlan as FloorPlanData, type RoomStatus,
 } from "./sampleData";
 
@@ -57,7 +57,7 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
   return (
     <div className="room-card" onClick={() => onOpen(r)}>
       <div className="rc-photo">
-        <div className={"ph " + r.phClass}><span>ẢNH PHÒNG · {r.type}</span></div>
+        <img className="rc-img" src={(r.images && r.images[0]) || `https://picsum.photos/seed/${r.code}/600/440`} alt={r.type} loading="lazy" />
         <span className="rc-badge">
           <i className="bd" style={{ background: stColor(r.status) }} />{SM[r.status].label}
         </span>
@@ -93,6 +93,122 @@ export function ListView({ rooms, onOpen }: { rooms: Room[]; onOpen: (r: Room) =
   return (
     <div className="list-wrap">
       {rooms.map((r) => <RoomCard key={r.id} r={r} onOpen={onOpen} />)}
+    </div>
+  );
+}
+
+/* ===== Overview (bảng nhanh tất cả tòa) ===== */
+function buildingCopyText(b: Building, rooms: Room[]): string {
+  const lines = [
+    `🏢 ${b.name} — ${b.address}`,
+    `📞 QL ${b.manager}: ${b.phone}`,
+  ];
+  if (b.policy) lines.push(`🎁 ${b.policy}`);
+  lines.push(`Phòng trống (${rooms.length}):`);
+  rooms.forEach((r) => {
+    lines.push(`• ${r.code} · ${r.type} · ${fmtPrice(r.price)}tr/th · ${r.area}m² — ${SM[r.status].label}`);
+  });
+  return lines.join("\n");
+}
+
+function priceTr(p: number): string {
+  const whole = Math.floor(p);
+  const dec = Math.round((p - whole) * 10);
+  return dec ? `${whole}tr${dec}` : `${whole}tr`;
+}
+
+export function OverviewView({
+  buildings, showRented, bandTest, onOpen, onToast,
+}: {
+  buildings: Building[];
+  showRented: boolean;
+  bandTest: (p: number) => boolean;
+  onOpen: (r: Room) => void;
+  onToast: (m: string) => void;
+}) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+
+  const groups = buildings
+    .map((b) => ({
+      b,
+      rooms: b.rooms
+        .filter((r) => (r.status === "free" || r.status === "soon" || (showRented && r.status === "rented")) && bandTest(r.price))
+        .sort((a, z) => z.floor - a.floor || a.no - z.no),
+    }))
+    .filter((g) => g.rooms.length);
+  const total = groups.reduce((n, g) => n + g.rooms.length, 0);
+
+  const doCopy = (b: Building, rooms: Room[]) => {
+    try { navigator.clipboard.writeText(buildingCopyText(b, rooms)); } catch { /* */ }
+    onToast(`Đã copy ${rooms.length} phòng · ${b.name}`);
+  };
+
+  const QUICK = 10;
+
+  return (
+    <div className="ov-wrap">
+      <div className="ov-policy">
+        <div className="ov-policy-lbl"><Icon.Info />Thông tin chung</div>
+        {GENERAL_POLICY.items.map((t, i) => (<div className="ov-policy-item" key={i}><i />{t}</div>))}
+      </div>
+
+      {!total ? (
+        <div className="empty"><div className="e-ic">🔍</div><p>Không có phòng nào khớp bộ lọc.</p></div>
+      ) : groups.map(({ b, rooms }) => {
+        const isOpen = !!open[b.id];
+        return (
+          <div className="ov-bld" key={b.id}>
+            <div className={"ov-bld-head" + (isOpen ? "" : " closed")} onClick={() => toggle(b.id)}>
+              <div className="ovh-top">
+                <span className="ovh-name">{b.name}</span>
+                <span className="ovh-count">{rooms.length} trống</span>
+                <button className="ovh-copy" onClick={(e) => { e.stopPropagation(); doCopy(b, rooms); }}><Icon.Copy />Copy</button>
+                <span className={"ovh-chev" + (isOpen ? " open" : "")}><Icon.Chevron /></span>
+              </div>
+              <div className="ovh-meta">
+                <div className="ovh-line"><Icon.Pin />{b.address}</div>
+                <a className="ovh-line" href={"tel:" + b.phone.replace(/\s/g, "")} onClick={(e) => e.stopPropagation()}>
+                  <Icon.Phone />QL {b.manager} · <span className="ovh-phone">{b.phone}</span>
+                </a>
+                {b.policy && <span className="ovh-policy"><Icon.Tag />{b.policy}</span>}
+              </div>
+              <div className="ov-quick">
+                {rooms.slice(0, QUICK).map((r) => (
+                  <span className="ovq" key={r.id}
+                    style={{ color: stColor(r.status), background: `var(--st-${r.status}-bg)`, borderColor: `var(--st-${r.status}-line)` }}>
+                    {r.no}·{priceTr(r.price)}
+                  </span>
+                ))}
+                {rooms.length > QUICK && <span className="ovq more">+{rooms.length - QUICK}</span>}
+              </div>
+            </div>
+            {isOpen && (
+              <div className="ov-rows">
+                {rooms.map((r) => (
+                  <div className="ov-row" key={r.id} onClick={() => onOpen(r)}>
+                    <span className="ovr-bar" style={{ background: stColor(r.status) }} />
+                    <div className="ovr-body">
+                      <div className="ovr-l1">
+                        <span className="ovr-code">{r.code}</span>
+                        <span className="ovr-type">{r.type} · {r.area}m²</span>
+                        <span className="ovr-price">{fmtPrice(r.price)}<small>tr</small></span>
+                      </div>
+                      <div className="ovr-l2">
+                        <span className="ovr-amen">{r.amenities.join(", ")}</span>
+                        <span className="ovr-status" style={{ color: stColor(r.status) }}>
+                          <i style={{ background: stColor(r.status) }} />{SM[r.status].label}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="ov-chevron"><Icon.Chevron /></span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

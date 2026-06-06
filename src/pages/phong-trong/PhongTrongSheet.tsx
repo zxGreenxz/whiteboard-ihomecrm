@@ -1,9 +1,67 @@
-import React from "react";
+import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
-import { STATUS_META, fmtPrice, MANAGER, type Room } from "./sampleData";
+import { STATUS_META, fmtPrice, MANAGER, type Room, type Building } from "./sampleData";
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
+
+function useDragScroll(ref: React.RefObject<HTMLDivElement>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let down = false, sx = 0, ss = 0, moved = false;
+    const d = (e: MouseEvent) => { down = true; moved = false; sx = e.pageX; ss = el.scrollLeft; el.classList.add("dragging"); };
+    const m = (e: MouseEvent) => { if (!down) return; const dx = e.pageX - sx; if (Math.abs(dx) > 4) moved = true; el.scrollLeft = ss - dx; };
+    const u = () => { down = false; el.classList.remove("dragging"); };
+    const c = (e: MouseEvent) => { if (moved) { e.preventDefault(); e.stopPropagation(); } };
+    el.addEventListener("mousedown", d);
+    window.addEventListener("mousemove", m);
+    window.addEventListener("mouseup", u);
+    el.addEventListener("click", c, true);
+    return () => {
+      el.removeEventListener("mousedown", d);
+      window.removeEventListener("mousemove", m);
+      window.removeEventListener("mouseup", u);
+      el.removeEventListener("click", c, true);
+    };
+  }, [ref]);
+}
+
+function Gallery({ images, onZoom }: { images: string[]; onZoom: (i: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDragScroll(ref);
+  return (
+    <div className="gallery" ref={ref}>
+      {images.map((src, i) => (
+        <div className="gimg" key={i} onClick={() => onZoom(i)}>
+          <img src={src} alt={"Anh " + (i + 1)} draggable={false} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Lightbox({ images, index, onClose }: { images: string[]; index: number | null; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDragScroll(ref);
+  const [cur, setCur] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && index != null) { el.scrollLeft = index * el.clientWidth; setCur(index); }
+  }, [index]);
+  const onScroll = () => { const el = ref.current; if (el) setCur(Math.round(el.scrollLeft / el.clientWidth)); };
+  return (
+    <div className={"lightbox" + (index != null ? " show" : "")} onClick={onClose}>
+      <button className="lb-close" onClick={onClose}><Icon.Close /></button>
+      <div className="lb-strip" ref={ref} onScroll={onScroll} onClick={(e) => e.stopPropagation()}>
+        {images.map((src, i) => (
+          <div className="lb-slide" key={i}><img src={src} alt={"Anh " + (i + 1)} /></div>
+        ))}
+      </div>
+      <div className="lb-count">{cur + 1}/{images.length}</div>
+    </div>
+  );
+}
 
 function buildShareText(r: Room): string {
   return [
@@ -17,7 +75,7 @@ function buildShareText(r: Room): string {
 }
 
 export function DetailSheet({
-  room, show, onClose, onToast, saved, toggleSave, contact = MANAGER,
+  room, show, onClose, onToast, saved, toggleSave, onGo, buildings,
 }: {
   room: Room | null;
   show: boolean;
@@ -25,24 +83,38 @@ export function DetailSheet({
   onToast: (m: string) => void;
   saved: string[];
   toggleSave: (id: string) => void;
-  /** SĐT/Zalo liên hệ thật (từ RPC hotlines); mặc định MANAGER nếu chưa có. */
-  contact?: { name: string; phone: string; zalo: string };
+  onGo: (r: Room) => void;
+  buildings: Building[];
 }) {
+  const [lb, setLb] = useState<number | null>(null);
+  const rid = room ? room.id : null;
+  useEffect(() => { setLb(null); }, [rid]);
   if (!room) return null;
   const r = room;
   const isSaved = saved.includes(r.id);
-  const phs = ["ph-a", "ph-b", "ph-c", "ph-d", "ph-a"];
+  const images = r.images && r.images.length
+    ? r.images
+    : Array.from({ length: r.imgCount }, (_, i) => `https://picsum.photos/seed/${r.code}-${i}/900/650`);
+
+  // Phong cung toa (con trong) de chuyen nhanh truoc/sau
+  const building = buildings.find((b) => b.id === r.buildingId);
+  const siblings = building
+    ? building.rooms.filter((x) => x.status !== "rented").sort((a, b) => b.floor - a.floor || a.no - b.no)
+    : [r];
+  const idx = siblings.findIndex((x) => x.id === r.id);
+  const prev = idx > 0 ? siblings[idx - 1] : null;
+  const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
 
   const doCopy = async () => {
     try { await navigator.clipboard.writeText(buildShareText(r)); } catch { /* ignore */ }
     onToast("Đã copy thông tin — dán gửi khách ngay");
   };
   const doCall = () => {
-    onToast("Đang gọi " + contact.name + " để giữ phòng…");
-    window.location.href = "tel:" + contact.phone.replace(/\s/g, "");
+    onToast("Đang gọi " + MANAGER.name + " để giữ phòng…");
+    window.location.href = "tel:" + MANAGER.phone.replace(/\s/g, "");
   };
   const doZalo = () => {
-    window.open("https://zalo.me/" + contact.zalo.replace(/\s/g, ""), "_blank");
+    window.open("https://zalo.me/" + MANAGER.zalo.replace(/\s/g, ""), "_blank");
   };
   const doRoute = () => {
     window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr), "_blank");
@@ -62,13 +134,7 @@ export function DetailSheet({
       <div className={"sheet" + (show ? " show" : "")}>
         <div className="sheet-grab" />
         <div className="sheet-scroll">
-          <div className="gallery">
-            {phs.map((c, i) => (
-              <div className={"gimg " + c} key={i}>
-                <div className={"ph " + c}><span>{i === 0 ? "ẢNH CHÍNH · " + r.type : "ẢNH " + (i + 1)}</span></div>
-              </div>
-            ))}
-          </div>
+          <Gallery images={images} onZoom={setLb} />
 
           <div className="sheet-body">
             <div className="sh-head">
@@ -112,19 +178,24 @@ export function DetailSheet({
             <button className="act2" onClick={doCopy}><Icon.Copy />Copy gửi khách</button>
             <button className="act2" onClick={doRoute}><Icon.Route />Chỉ đường</button>
             <button className="act2" onClick={doShare}><Icon.Share />Chia sẻ</button>
+            <button className="act2" onClick={doZalo} style={{ color: "#0068ff" }}><Icon.Bell />Zalo</button>
           </div>
         </div>
 
         <div className="sh-actions">
           <button className="btn btn-primary" onClick={doCall}><Icon.Phone />Gọi giữ phòng</button>
-          <button className="btn btn-ghost" onClick={doZalo} title="Nhắn Zalo" style={{ color: "#0068ff" }}>
-            <Icon.Bell />
+          <button className="btn btn-nav prev" disabled={!prev} onClick={() => prev && onGo(prev)} title="Phòng trước">
+            <Icon.Chevron />
+          </button>
+          <button className="btn btn-nav" disabled={!next} onClick={() => next && onGo(next)} title="Phòng sau">
+            <Icon.Chevron />
           </button>
           <button className="btn btn-ghost" onClick={() => { toggleSave(r.id); onToast(isSaved ? "Đã bỏ lưu" : "Đã lưu phòng quan tâm"); }}>
             {isSaved ? <Icon.HeartFill style={{ color: "var(--st-soon)" }} /> : <Icon.Heart />}
           </button>
         </div>
       </div>
+      <Lightbox images={images} index={lb} onClose={() => setLb(null)} />
     </>
   );
 }
