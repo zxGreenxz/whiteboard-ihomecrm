@@ -4,18 +4,43 @@ import "./phongTrong.css";
 import { Icon } from "./icons";
 import { Summary, FilterBar, FloorPlan, ListView, PRICE_BANDS } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
-import { SAMPLE_BUILDINGS, type Room } from "./sampleData";
+import { buildingsFromRpc, MANAGER, type Room } from "./sampleData";
+import { usePhongTrong } from "@/hooks/usePhongTrong";
 
 /**
- * Trang công khai "Phòng trống" cho Sale — 100% giao diện mock, data mẫu.
- * Route gợi ý: /r/:token (xem README). Khi nối Supabase: thay SAMPLE_BUILDINGS
- * bằng dữ liệu thật map sang type Building/Room (giữ nguyên toàn bộ UI bên dưới).
+ * Trang công khai "Phòng trống" cho Sale (/r/:token).
+ * Dữ liệu thật qua RPC public get_public_available_rooms (xem usePhongTrong);
+ * map sang type Building/Room bằng buildingsFromRpc — giữ NGUYÊN toàn bộ UI bên dưới.
  */
+
+/** Màn trạng thái (loading / lỗi token / rỗng) dùng chung khung điện thoại. */
+function StatusScreen({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
+  return (
+    <div id="stage">
+      <div className="app" style={{ justifyContent: "center", alignItems: "center" }}>
+        <div className="empty">
+          <div className="e-ic">{icon}</div>
+          <p>
+            <strong>{title}</strong>
+            {sub && <><br />{sub}</>}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PhongTrongPage() {
   const { token } = useParams<{ token: string }>();
-  const buildings = SAMPLE_BUILDINGS;
+  const { data, isLoading, error } = usePhongTrong(token);
 
-  const [propId, setPropId] = useState(buildings[0].id);
+  const buildings = useMemo(() => buildingsFromRpc(data), [data]);
+  const contact = useMemo(() => {
+    const c = data?.contact;
+    return c ? { name: c.name, phone: c.phone, zalo: c.phone.replace(/\D/g, "") } : MANAGER;
+  }, [data]);
+
+  const [propId, setPropId] = useState("");
   const [view, setView] = useState<"map" | "list">("map");
   const [showRented, setShowRented] = useState(false);
   const [band, setBand] = useState("all");
@@ -32,6 +57,12 @@ export default function PhongTrongPage() {
   useEffect(() => { localStorage.setItem("pt_saved", JSON.stringify(saved)); }, [saved]);
   const toggleSave = (id: string) =>
     setSaved((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  // Chọn toà đầu khi data về / đổi; giữ lựa chọn nếu vẫn còn trong danh sách.
+  useEffect(() => {
+    if (!buildings.length) return;
+    if (!buildings.some((b) => b.id === propId)) setPropId(buildings[0].id);
+  }, [buildings, propId]);
 
   // Kéo ngang hàng cơ sở: vuốt trên mobile (native) + kéo chuột trên desktop.
   useEffect(() => {
@@ -57,12 +88,13 @@ export default function PhongTrongPage() {
       window.removeEventListener("mouseup", onUp);
       el.removeEventListener("click", onClick, true);
     };
-  }, []);
+  }, [buildings.length, view]);
 
-  const building = buildings.find((p) => p.id === propId)!;
+  const building = buildings.find((p) => p.id === propId) ?? buildings[0];
   const bandTest = PRICE_BANDS.find((b) => b.id === band)!.test as (p: number) => boolean;
 
   const listRooms = useMemo(() => {
+    if (!building) return [];
     return building.rooms
       .filter((r) => (showRented || r.status !== "rented") && bandTest(r.price))
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
@@ -79,6 +111,17 @@ export default function PhongTrongPage() {
 
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+
+  // ----- Trạng thái tải / lỗi / rỗng (sau khi mọi hook đã chạy) -----
+  if (isLoading) {
+    return <StatusScreen icon="⏳" title="Đang tải bảng phòng…" />;
+  }
+  if (error || data === null) {
+    return <StatusScreen icon="🔗" title="Liên kết không hợp lệ" sub="Link chia sẻ đã bị thu hồi hoặc không tồn tại." />;
+  }
+  if (!building) {
+    return <StatusScreen icon="🏠" title="Hiện chưa có phòng trống" sub="Vui lòng quay lại sau hoặc liên hệ để được tư vấn." />;
+  }
 
   return (
     <div id="stage">
@@ -122,7 +165,7 @@ export default function PhongTrongPage() {
             : <ListView rooms={listRooms} onOpen={openRoom} />}
         </div>
 
-        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} />
+        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} contact={contact} />
         <Toast msg={toast.msg} show={toast.show} />
       </div>
     </div>

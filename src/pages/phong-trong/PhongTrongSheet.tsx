@@ -17,7 +17,7 @@ function buildShareText(r: Room): string {
 }
 
 export function DetailSheet({
-  room, show, onClose, onToast, saved, toggleSave,
+  room, show, onClose, onToast, saved, toggleSave, contact = MANAGER,
 }: {
   room: Room | null;
   show: boolean;
@@ -25,6 +25,8 @@ export function DetailSheet({
   onToast: (m: string) => void;
   saved: string[];
   toggleSave: (id: string) => void;
+  /** SĐT/Zalo liên hệ thật (từ RPC hotlines); mặc định MANAGER nếu chưa có. */
+  contact?: { name: string; phone: string; zalo: string };
 }) {
   if (!room) return null;
   const r = room;
@@ -36,11 +38,11 @@ export function DetailSheet({
     onToast("Đã copy thông tin — dán gửi khách ngay");
   };
   const doCall = () => {
-    onToast("Đang gọi " + MANAGER.name + " để giữ phòng…");
-    window.location.href = "tel:" + MANAGER.phone.replace(/\s/g, "");
+    onToast("Đang gọi " + contact.name + " để giữ phòng…");
+    window.location.href = "tel:" + contact.phone.replace(/\s/g, "");
   };
   const doZalo = () => {
-    window.open("https://zalo.me/" + MANAGER.zalo.replace(/\s/g, ""), "_blank");
+    window.open("https://zalo.me/" + contact.zalo.replace(/\s/g, ""), "_blank");
   };
   const doRoute = () => {
     window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr), "_blank");

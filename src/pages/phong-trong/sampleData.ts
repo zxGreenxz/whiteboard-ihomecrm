@@ -166,5 +166,139 @@ function build(): Building[] {
 
 export const SAMPLE_BUILDINGS: Building[] = build();
 
-/** SĐT/Zalo quản lý mặc định cho nút liên hệ (đổi khi nối dữ liệu thật). */
-export const MANAGER = { name: "Quản lý hệ thống", phone: "0909 123 456", zalo: "0909123456" };
+/** SĐT/Zalo liên hệ mặc định cho nút Gọi/Zalo khi tài khoản chưa có hotline.
+ *  RPC trả `contact` (từ bảng hotlines) sẽ override giá trị này nếu có. */
+export const MANAGER = { name: "Liên hệ thuê phòng", phone: "0772 207 574", zalo: "0772207574" };
+
+/* ===== Adapter: dữ liệu thật từ RPC get_public_available_rooms → Building[] =====
+ * Giữ NGUYÊN type Building/Room + UI. "Loại phòng" để mặc định "Chờ cập nhật"
+ * cho tới khi có data/logic thật (theo yêu cầu). */
+
+export interface RpcRoom {
+  id: string;
+  building_id: string;
+  floor: number;
+  name: string;
+  code: string | null;
+  area: number | null;
+  rent_price: number | null;
+  deposit_amount: number | null;
+  max_occupants: number | null;
+  amenities: unknown;
+  images: unknown;
+  description: string | null;
+  status_public: RoomStatus;
+  avail_date: string | null; // YYYY-MM-DD
+}
+
+export interface RpcBuilding {
+  id: string;
+  name: string;
+  code: string | null;
+  area_id: string | null;
+  area_name: string | null;
+  district: string | null;
+  ward: string | null;
+  address: string | null;
+  total_floors: number | null;
+}
+
+export interface RpcContact { name: string; phone: string }
+
+export interface RpcPayload {
+  areas: { id: string; name: string }[];
+  buildings: RpcBuilding[];
+  rooms: RpcRoom[];
+  contact: RpcContact | null;
+}
+
+const PH_CLASSES = ["ph-a", "ph-b", "ph-c", "ph-d"];
+const phFor = (id: string): string => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % PH_CLASSES.length;
+  return PH_CLASSES[h];
+};
+
+/** Lấy số phòng từ name ("402" → 402); không có chữ số thì dùng fallback. */
+const numFromName = (name: string, fallback: number): number => {
+  const d = (name || "").replace(/\D/g, "");
+  return d ? parseInt(d, 10) : fallback;
+};
+
+/** amenities jsonb có thể là mảng string hoặc mảng object → chuẩn hoá về string[]. */
+const toAmenities = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a) =>
+      typeof a === "string"
+        ? a
+        : a && typeof a === "object"
+        ? String((a as Record<string, unknown>).name ?? (a as Record<string, unknown>).label ?? "")
+        : String(a),
+    )
+    .filter((s) => !!s);
+};
+
+const imgCountOf = (raw: unknown): number => (Array.isArray(raw) ? raw.length : 0);
+
+/** "2026-06-30" → "30/06" (đúng định dạng availDate của UI). */
+const fmtAvail = (d: string | null): string | null => {
+  if (!d) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  return m ? `${m[3]}/${m[2]}` : d;
+};
+
+export function buildingsFromRpc(payload: RpcPayload | null | undefined): Building[] {
+  if (!payload || !Array.isArray(payload.buildings)) return [];
+
+  const roomsByBuilding = new Map<string, RpcRoom[]>();
+  for (const r of payload.rooms ?? []) {
+    const arr = roomsByBuilding.get(r.building_id) ?? [];
+    arr.push(r);
+    roomsByBuilding.set(r.building_id, arr);
+  }
+
+  return payload.buildings.map((b) => {
+    const loc = b.district || b.area_name || b.ward || "";
+    const addr = b.address || loc;
+    const src = roomsByBuilding.get(b.id) ?? [];
+
+    const rooms: Room[] = src.map((r, i) => ({
+      id: r.id,
+      no: numFromName(r.name, i + 1),
+      code: r.code || r.name || "",
+      buildingId: b.id,
+      buildingName: b.name,
+      buildingArea: loc,
+      buildingAddr: addr,
+      floor: r.floor ?? 0,
+      type: "Chờ cập nhật",
+      price: (r.rent_price ?? 0) / 1_000_000,
+      area: Math.round(r.area ?? 0),
+      status: r.status_public,
+      amenities: toAmenities(r.amenities),
+      availDate: r.status_public === "soon" ? fmtAvail(r.avail_date) : null,
+      imgCount: imgCountOf(r.images),
+      phClass: phFor(r.id),
+      x: 0, y: 0, w: 0, h: 0,
+    }));
+
+    // Nhóm theo tầng (cao → thấp); trong tầng sắp theo số phòng tăng dần.
+    const floorNums = Array.from(new Set(rooms.map((r) => r.floor))).sort((a, z) => z - a);
+    const floors: FloorPlan[] = floorNums.map((f) =>
+      layoutFloor(f, rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no)),
+    );
+
+    return {
+      id: b.id,
+      code: b.code || "",
+      name: b.name,
+      area: loc,
+      address: addr,
+      floors,
+      rooms,
+      freeCount: rooms.filter((r) => r.status === "free").length,
+      total: rooms.length,
+    };
+  });
+}
