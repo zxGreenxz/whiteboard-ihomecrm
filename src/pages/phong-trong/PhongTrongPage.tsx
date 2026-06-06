@@ -4,8 +4,12 @@ import "./phongTrong.css";
 import { Icon } from "./icons";
 import { Summary, FilterBar, FloorPlan, ListView, PRICE_BANDS } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
-import { buildingsFromRpc, MANAGER, type Room } from "./sampleData";
+import { buildingsFromRpc, MANAGER, SAMPLE_BUILDINGS, type Room } from "./sampleData";
 import { usePhongTrong } from "@/hooks/usePhongTrong";
+
+/** Token "xem giao diện": bỏ qua Supabase, render data mẫu ban đầu để gửi đối
+ *  tác test UI (vd /r/abc). Mọi token khác → dữ liệu thật qua RPC. */
+const MOCK_TOKENS = new Set(["abc", "demo-ui", "mau"]);
 
 /**
  * Trang công khai "Phòng trống" cho Sale (/r/:token).
@@ -32,13 +36,19 @@ function StatusScreen({ icon, title, sub }: { icon: string; title: string; sub?:
 
 export default function PhongTrongPage() {
   const { token } = useParams<{ token: string }>();
-  const { data, isLoading, error } = usePhongTrong(token);
+  const isMock = !!token && MOCK_TOKENS.has(token);
+  // Mock: không gọi RPC (truyền token undefined → hook disabled).
+  const { data, isLoading, error } = usePhongTrong(isMock ? undefined : token);
 
-  const buildings = useMemo(() => buildingsFromRpc(data), [data]);
+  const buildings = useMemo(
+    () => (isMock ? SAMPLE_BUILDINGS : buildingsFromRpc(data)),
+    [isMock, data],
+  );
   const contact = useMemo(() => {
+    if (isMock) return MANAGER;
     const c = data?.contact;
     return c ? { name: c.name, phone: c.phone, zalo: c.phone.replace(/\D/g, "") } : MANAGER;
-  }, [data]);
+  }, [isMock, data]);
 
   const [propId, setPropId] = useState("");
   const [view, setView] = useState<"map" | "list">("map");
@@ -113,10 +123,11 @@ export default function PhongTrongPage() {
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
 
   // ----- Trạng thái tải / lỗi / rỗng (sau khi mọi hook đã chạy) -----
-  if (isLoading) {
+  // Mock bỏ qua loading/lỗi (luôn có data mẫu).
+  if (!isMock && isLoading) {
     return <StatusScreen icon="⏳" title="Đang tải bảng phòng…" />;
   }
-  if (error || data === null) {
+  if (!isMock && (error || data === null)) {
     return <StatusScreen icon="🔗" title="Liên kết không hợp lệ" sub="Link chia sẻ đã bị thu hồi hoặc không tồn tại." />;
   }
   if (!building) {
