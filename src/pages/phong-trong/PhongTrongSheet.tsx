@@ -34,7 +34,9 @@ function Gallery({ images, onZoom }: { images: string[]; onZoom: (i: number) => 
     <div className="gallery" ref={ref}>
       {images.map((src, i) => (
         <div className="gimg" key={i} onClick={() => onZoom(i)}>
-          <img src={src} alt={"Anh " + (i + 1)} draggable={false} />
+          {/* Chỉ ảnh đầu tải ngay; còn lại lazy để không kéo 14 ảnh cùng lúc trên mobile. */}
+          <img src={src} alt={"Anh " + (i + 1)} draggable={false}
+               loading={i === 0 ? "eager" : "lazy"} decoding="async" />
         </div>
       ))}
     </div>
@@ -54,8 +56,11 @@ function Lightbox({ images, index, onClose }: { images: string[]; index: number 
     <div className={"lightbox" + (index != null ? " show" : "")} onClick={onClose}>
       <button className="lb-close" onClick={onClose}><Icon.Close /></button>
       <div className="lb-strip" ref={ref} onScroll={onScroll} onClick={(e) => e.stopPropagation()}>
-        {images.map((src, i) => (
-          <div className="lb-slide" key={i}><img src={src} alt={"Anh " + (i + 1)} /></div>
+        {/* Chỉ render ảnh KHI mở lightbox (opacity:0 vẫn tải) — tránh preload trùng cả bộ ảnh. */}
+        {index != null && images.map((src, i) => (
+          <div className="lb-slide" key={i}>
+            <img src={src} alt={"Anh " + (i + 1)} loading={i === index ? "eager" : "lazy"} decoding="async" />
+          </div>
         ))}
       </div>
       <div className="lb-count">{cur + 1}/{images.length}</div>
@@ -133,7 +138,8 @@ export function DetailSheet({
     <>
       <div className={"sheet-scrim" + (show ? " show" : "")} onClick={onClose} />
       <div className={"sheet" + (show ? " show" : "")}>
-        <div className="sheet-grab" />
+        <button className="sheet-close" onClick={onClose} aria-label="Đóng" title="Đóng"><Icon.Close /></button>
+        <div className="sheet-grab" onClick={onClose} />
         <div className="sheet-scroll">
           <Gallery images={images} onZoom={setLb} />
 

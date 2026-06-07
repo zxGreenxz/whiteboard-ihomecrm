@@ -57,7 +57,7 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
   return (
     <div className="room-card" onClick={() => onOpen(r)}>
       <div className="rc-photo">
-        <img className="rc-img" src={(r.images && r.images[0]) || `https://picsum.photos/seed/${r.code}/600/440`} alt={r.type} loading="lazy" />
+        <img className="rc-img" src={(r.images && r.images[0]) || `https://picsum.photos/seed/${r.code}/600/440`} alt={r.type} loading="lazy" decoding="async" />
         <span className="rc-badge">
           <i className="bd" style={{ background: stColor(r.status) }} />{SM[r.status].label}
         </span>
