@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
-import { STATUS_META, fmtPrice, MANAGER, GENERAL_POLICY, type Room, type Building } from "./sampleData";
+import { STATUS_META, fmtPrice, MANAGER, genInfoLines, type Room, type Building } from "./sampleData";
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
@@ -74,7 +74,7 @@ function buildShareText(r: Room): string {
     `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
     `• Diện tích: ${r.area}m²${r.type ? ` · ${r.type}` : ""} · Tầng ${r.floor}`,
     `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
-    `• Tiện ích: ${r.amenities.join(", ")}`,
+    `• Nội thất: ${r.amenities.join(", ")}`,
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
     `• Địa chỉ: ${r.buildingAddr}`,
   ].join("\n");
@@ -211,21 +211,18 @@ export function DetailSheet({
               </div>
             )}
 
-            <p className="sh-section-lbl">Tiện ích</p>
+            <p className="sh-section-lbl">Nội thất</p>
             <div className="amen-grid">
               {r.amenities.map((a) => (<span className="amen-pill" key={a}>{amenIcon(a)}{a}</span>))}
             </div>
 
             <p className="sh-section-lbl">Mô tả</p>
-            {/* Thông tin chung điện/nước/PDV + tiện ích — áp dụng cho TẤT CẢ phòng */}
+            {/* Thông tin chung: điện + thang máy/bộ lấy theo TÒA; nước/PDV/tiện ích chung */}
             <div className="gen-info">
-              {GENERAL_POLICY.items.map((t, i) => (
+              {genInfoLines(building).map((t, i) => (
                 <div className="gen-info-line" key={i}><i className="gi-dot" />{t}</div>
               ))}
             </div>
-            {r.description && (
-              <p style={{ margin: "8px 0 2px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.55 }}>{r.description}</p>
-            )}
 
             <p className="sh-section-lbl">Địa chỉ</p>
             <div className="amen-grid">

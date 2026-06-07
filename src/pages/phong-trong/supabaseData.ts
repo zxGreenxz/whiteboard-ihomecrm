@@ -39,6 +39,8 @@ export interface RpcBuilding {
   public_contact_name?: string | null;   // liên hệ QL riêng tòa (gọi/Zalo)
   public_contact_phone?: string | null;
   public_map_url?: string | null;        // link Google Maps "Chỉ đường" riêng tòa
+  elec_rate?: number | null;             // điện mặc định của tòa (đ/số) — RPC tính từ building_services
+  public_lift_type?: string | null;      // "Thang máy" | "Thang bộ"
 }
 export interface RpcRoom {
   id: string;
@@ -180,7 +182,9 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
       manager: b.public_contact_name?.trim() || contactName,
       phone: b.public_contact_phone?.trim() || contactPhone,
       mapUrl: b.public_map_url?.trim() || null,
-      lift: (b.total_floors ?? 0) > 1,
+      elecRate: typeof b.elec_rate === "number" ? b.elec_rate : (b.elec_rate ? Number(b.elec_rate) : null),
+      liftLabel: b.public_lift_type?.trim() || null,
+      lift: !!b.public_lift_type && /máy/i.test(b.public_lift_type),
       policy: "",
       images: toImages(b.images),
       floors,

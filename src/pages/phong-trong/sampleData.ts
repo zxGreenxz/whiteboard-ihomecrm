@@ -54,6 +54,8 @@ export interface Building {
   manager: string;
   phone: string;
   mapUrl?: string | null;   // link Google Maps "Chỉ đường" riêng từng tòa
+  elecRate?: number | null; // điện mặc định của tòa (đ/số) — lấy từ building_services
+  liftLabel?: string | null; // "Thang máy" | "Thang bộ" — đặc điểm tòa
   lift: boolean;
   policy: string;
   images?: string[];   // ảnh sale của tòa (hero ở header); rỗng -> không hiện
@@ -63,16 +65,21 @@ export interface Building {
   total: number;
 }
 
-// Thông tin chung điện/nước/PDV + tiện ích — áp dụng cho TẤT CẢ phòng (hiện ở
-// "Thông tin chung" trang tổng quan và mục "Mô tả" của từng phòng).
-export const GENERAL_POLICY = {
-  items: [
-    "Điện 3.800đ/số (thang máy) · 3.500đ/số (thang bộ)",
+// Thông tin chung điện/nước/PDV + tiện ích — hiện ở "Thông tin chung" trang tổng
+// quan (chung) và mục "Mô tả" từng phòng (điện + thang máy/bộ lấy theo TÒA).
+function fmtElec(rate?: number | null): string {
+  return rate ? `Điện ${Math.round(rate).toLocaleString("vi-VN")}đ/số` : "Điện theo định mức tòa nhà";
+}
+export function genInfoLines(b?: { elecRate?: number | null; liftLabel?: string | null }): string[] {
+  return [
+    fmtElec(b?.elecRate),
     "Nước 100k/người · Phí dịch vụ 150k/phòng",
-    "Free xe · Máy giặt chung · Sân phơi",
+    `Free xe${b?.liftLabel ? ` · ${b.liftLabel}` : ""} · Máy giặt chung · Sân phơi`,
     "Tối đa 3 người · 2 xe · Không nhận xe điện",
-  ],
-};
+  ];
+}
+// Bản chung (không gắn tòa) cho box "Thông tin chung" ở trang tổng quan.
+export const GENERAL_POLICY = { items: genInfoLines() };
 
 export const STATUS_META: Record<RoomStatus, { label: string; short: string }> = {
   free:   { label: "Trống sẵn", short: "Trống" },
