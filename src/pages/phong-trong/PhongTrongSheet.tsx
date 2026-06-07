@@ -92,6 +92,12 @@ function buildShareText(r: Room, building?: Building): string {
   ].join("\n");
 }
 
+// Web Share API level 2 (chia sẻ kèm File[]). iOS/Android hỗ trợ; desktop thường không.
+type ShareNav = Navigator & {
+  canShare?: (d: { files?: File[] }) => boolean;
+  share?: (d: { title?: string; text?: string; files?: File[] }) => Promise<void>;
+};
+
 export function DetailSheet({
   room, show, onClose, onToast, saved, toggleSave, onGo, buildings,
 }: {
@@ -141,24 +147,25 @@ export function DetailSheet({
       || "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr);
     window.open(url, "_blank");
   };
+  // Tải TOÀN BỘ ảnh phòng thành File[] (tên theo Tòa-Phòng-STT) để chia sẻ / tải về.
+  const fetchImageFiles = (): Promise<File[]> =>
+    Promise.all(images.map(async (src, i) => {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+      const name = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;
+      return new File([blob], name, { type: blob.type || "image/jpeg" });
+    }));
+
   // Gửi khách: KÈM TOÀN BỘ ảnh + text (Web Share API level 2). Dùng chung cho
   // "Copy gửi khách" và "Chia sẻ"; máy không hỗ trợ -> copy text vào clipboard.
   const shareRoom = async (copyFallbackMsg: string) => {
     const text = buildShareText(r, building);
     const title = r.buildingName + " · " + r.code;
-    type ShareNav = Navigator & {
-      canShare?: (d: { files?: File[] }) => boolean;
-      share?: (d: { title?: string; text?: string; files?: File[] }) => Promise<void>;
-    };
     const nav = navigator as ShareNav;
     try {
       onToast("Đang chuẩn bị ảnh + thông tin nhà…");
-      const files = await Promise.all(images.map(async (src, i) => {
-        const res = await fetch(src);
-        const blob = await res.blob();
-        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
-        return new File([blob], `${r.code}-${i + 1}.${ext}`, { type: blob.type || "image/jpeg" });
-      }));
+      const files = await fetchImageFiles();
       if (nav.share && nav.canShare && nav.canShare({ files })) {
         await nav.share({ title, text, files });
         return;
@@ -171,19 +178,35 @@ export function DetailSheet({
     onToast(copyFallbackMsg);
   };
   const doShare = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
-  // Tải TOÀN BỘ ảnh phòng về máy (fetch blob -> thẻ <a download>), tên theo phòng.
+
+  // "Tải ảnh": gom TOÀN BỘ ảnh rồi mở share sheet 1 lần → trên iOS/Android chọn
+  // "Lưu N ảnh" để lưu thẳng vào Thư viện ảnh (không còn tải đè từng tấm vào Files).
+  // Desktop / máy không hỗ trợ share file → tải từng ảnh bằng <a download>.
   const doDownload = async () => {
-    onToast("Đang tải ảnh về máy…");
-    let ok = 0;
-    for (let i = 0; i < images.length; i++) {
+    const nav = navigator as ShareNav;
+    onToast("Đang chuẩn bị ảnh…");
+    let files: File[] = [];
+    try { files = await fetchImageFiles(); } catch { /* */ }
+    if (!files.length) { onToast("Không tải được ảnh"); return; }
+
+    if (nav.share && nav.canShare && nav.canShare({ files })) {
       try {
-        const res = await fetch(images[i]);
-        const blob = await res.blob();
-        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
-        const url = URL.createObjectURL(blob);
+        await nav.share({ files }); // chỉ ảnh → share sheet nổi bật "Lưu N ảnh" vào Ảnh
+        return;
+      } catch (e) {
+        // Người dùng bấm Huỷ trên share sheet → dừng, không tải đè hàng loạt.
+        if ((e as DOMException)?.name === "AbortError") { onToast("Đã huỷ tải ảnh"); return; }
+        // Lỗi khác → rơi xuống tải <a download> bên dưới.
+      }
+    }
+
+    let ok = 0;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const url = URL.createObjectURL(files[i]);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;
+        a.download = files[i].name;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -192,7 +215,7 @@ export function DetailSheet({
         await new Promise((rs) => setTimeout(rs, 350)); // né trình duyệt chặn tải hàng loạt
       } catch { /* bỏ qua ảnh lỗi */ }
     }
-    onToast(ok ? `Đã tải ${ok}/${images.length} ảnh về máy` : "Không tải được ảnh");
+    onToast(ok ? `Đã tải ${ok}/${files.length} ảnh về máy` : "Không tải được ảnh");
   };
 
   return (
