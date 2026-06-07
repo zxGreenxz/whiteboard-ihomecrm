@@ -127,11 +127,31 @@ export function DetailSheet({
   };
   const doShare = async () => {
     const text = buildShareText(r);
-    if (navigator.share) {
-      try { await navigator.share({ title: r.buildingName + " · " + r.code, text }); return; } catch { /* */ }
+    const title = r.buildingName + " · " + r.code;
+    type ShareNav = Navigator & {
+      canShare?: (d: { files?: File[] }) => boolean;
+      share?: (d: { title?: string; text?: string; files?: File[] }) => Promise<void>;
+    };
+    const nav = navigator as ShareNav;
+    // Đính kèm TOÀN BỘ ảnh phòng + thông tin text (Web Share API level 2).
+    try {
+      onToast("Đang chuẩn bị ảnh để chia sẻ…");
+      const files = await Promise.all(images.map(async (src, i) => {
+        const res = await fetch(src);
+        const blob = await res.blob();
+        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+        return new File([blob], `${r.code}-${i + 1}.${ext}`, { type: blob.type || "image/jpeg" });
+      }));
+      if (nav.share && nav.canShare && nav.canShare({ files })) {
+        await nav.share({ title, text, files });
+        return;
+      }
+    } catch { /* ảnh lỗi / thiết bị không hỗ trợ -> rơi xuống chia sẻ text */ }
+    if (nav.share) {
+      try { await nav.share({ title, text }); return; } catch { /* */ }
     }
     try { await navigator.clipboard.writeText(text); } catch { /* */ }
-    onToast("Đã copy link & thông tin phòng");
+    onToast("Đã copy thông tin phòng — ảnh vui lòng gửi thủ công");
   };
 
   return (
@@ -199,12 +219,12 @@ export function DetailSheet({
             <button className="act2" onClick={doCopy}><Icon.Copy />Copy gửi khách</button>
             <button className="act2" onClick={doRoute}><Icon.Route />Chỉ đường</button>
             <button className="act2" onClick={doShare}><Icon.Share />Chia sẻ</button>
-            <button className="act2" onClick={doZalo} style={{ color: "#0068ff" }}><Icon.Bell />Zalo</button>
           </div>
         </div>
 
         <div className="sh-actions">
-          <button className="btn btn-primary" onClick={doCall}><Icon.Phone />Gọi giữ phòng</button>
+          <button className="btn btn-primary btn-half" onClick={doCall}><Icon.Phone />Gọi Quản Lý</button>
+          <button className="btn btn-zalo btn-half" onClick={doZalo}><Icon.Chat />Zalo</button>
           <button className="btn btn-nav prev" disabled={!prev} onClick={() => prev && onGo(prev)} title="Phòng trước">
             <Icon.Chevron />
           </button>

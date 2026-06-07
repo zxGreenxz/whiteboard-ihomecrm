@@ -27,6 +27,7 @@ export const Icon = {
   Layers: (p: P) => <Svg {...p}><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></Svg>,
   Snow:  (p: P) => <Svg {...p}><path d="M12 2v20M4 6l16 12M20 6 4 18M2 12h20"/></Svg>,
   Bell:  (p: P) => <Svg {...p}><path d="M18 8a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 14 18 8ZM10 19a2 2 0 0 0 4 0"/></Svg>,
+  Chat:  (p: P) => <Svg {...p}><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z"/></Svg>,
   Sun:   (p: P) => <Svg {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></Svg>,
   Refresh: (p: P) => <Svg {...p}><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v4h-4"/></Svg>,
   Dot:   (p: P) => <Svg {...p}><circle cx="12" cy="12" r="9"/></Svg>,

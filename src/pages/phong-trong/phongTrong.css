@@ -425,6 +425,10 @@ body {
 .btn svg { width: 17px; height: 17px; }
 .btn-primary { background: var(--brand); color: #fff; box-shadow: var(--sh-1); }
 .btn-primary:active { background: var(--brand-600); }
+/* Gọi Quản Lý + Zalo chia đôi không gian → mỗi nút còn ~một nửa bề rộng cũ */
+.btn-half { flex: 1 1 0; min-width: 0; padding-left: 4px; padding-right: 4px; font-size: 13.5px; }
+.btn-zalo { background: #0068ff; color: #fff; box-shadow: var(--sh-1); }
+.btn-zalo:active { background: #0055d4; }
 .btn-ghost {
   flex: 0 0 auto; width: 48px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line);
 }
