@@ -70,6 +70,7 @@ function buildShareText(r: Room): string {
     `• Diện tích: ${r.area}m² · ${r.type} · Tầng ${r.floor}`,
     `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
     `• Tiện ích: ${r.amenities.join(", ")}`,
+    ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
     `• Địa chỉ: ${r.buildingAddr}`,
   ].join("\n");
 }
@@ -163,10 +164,24 @@ export function DetailSheet({
               </div>
             )}
 
+            {r.saleNote && (
+              <div className="note-box" style={{ background: "var(--st-free-bg)", borderColor: "var(--st-free-line)", color: "var(--st-free)" }}>
+                <Icon.Money />
+                <span><b>Khuyến mãi:</b> {r.saleNote}</span>
+              </div>
+            )}
+
             <p className="sh-section-lbl">Tiện ích</p>
             <div className="amen-grid">
               {r.amenities.map((a) => (<span className="amen-pill" key={a}>{amenIcon(a)}{a}</span>))}
             </div>
+
+            {r.description && (
+              <>
+                <p className="sh-section-lbl">Mô tả</p>
+                <p style={{ margin: "0 0 2px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.55 }}>{r.description}</p>
+              </>
+            )}
 
             <p className="sh-section-lbl">Địa chỉ</p>
             <div className="amen-grid">

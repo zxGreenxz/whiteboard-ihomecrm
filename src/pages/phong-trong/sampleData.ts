@@ -25,6 +25,8 @@ export interface Room extends Box {
   imgCount: number;
   phClass: string;
   images?: string[];   // ảnh thật từ Supabase (nếu có); rỗng -> dùng placeholder picsum
+  description?: string | null; // mô tả/ghi chú phòng (vd "cửa sổ hành lang", "ban công")
+  saleNote?: string | null;    // ô "Khuyến mãi" (promo riêng của phòng)
 }
 
 export interface Fixture extends Box {

@@ -50,6 +50,7 @@ export interface RpcRoom {
   amenities: unknown;           // jsonb: string[] | {k:bool} | []
   images: unknown;              // jsonb: string[] (storage path hoặc URL) | []
   description: string | null;
+  sale_note?: string | null;    // ô "Khuyến mãi" (promo riêng phòng)
   status_public: RoomStatus;    // 'free' | 'soon' | 'rented' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
 }
@@ -143,6 +144,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         imgCount: imgs.length || 1,
         phClass: "",
         images: imgs,
+        description: rr.description || null,
+        saleNote: rr.sale_note || null,
         x: 0, y: 0, w: 0, h: 0,
       };
     });
