@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
-import { STATUS_META, fmtPrice, MANAGER, type Room, type Building } from "./sampleData";
+import { STATUS_META, fmtPrice, MANAGER, GENERAL_POLICY, type Room, type Building } from "./sampleData";
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
@@ -111,21 +111,27 @@ export function DetailSheet({
   const prev = idx > 0 ? siblings[idx - 1] : null;
   const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
 
-  const doCopy = async () => {
-    try { await navigator.clipboard.writeText(buildShareText(r)); } catch { /* ignore */ }
-    onToast("Đã copy thông tin — dán gửi khách ngay");
-  };
+  // Liên hệ riêng từng tòa (đã map ở supabaseData); chưa có -> hotline/owner chung.
+  const contactName = building?.manager || MANAGER.name;
+  const contactPhone = building?.phone || MANAGER.phone;
+  const contactDigits = contactPhone.replace(/\D/g, "") || MANAGER.zalo;
+
   const doCall = () => {
-    onToast("Đang gọi " + MANAGER.name + " để giữ phòng…");
-    window.location.href = "tel:" + MANAGER.phone.replace(/\s/g, "");
+    onToast("Đang gọi " + contactName + " để giữ phòng…");
+    window.location.href = "tel:" + contactDigits;
   };
   const doZalo = () => {
-    window.open("https://zalo.me/" + MANAGER.zalo.replace(/\s/g, ""), "_blank");
+    window.open("https://zalo.me/" + contactDigits, "_blank");
   };
   const doRoute = () => {
-    window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr), "_blank");
+    // Link Chỉ đường riêng từng tòa nếu đã set; chưa có -> tìm theo địa chỉ.
+    const url = building?.mapUrl
+      || "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr);
+    window.open(url, "_blank");
   };
-  const doShare = async () => {
+  // Gửi khách: KÈM TOÀN BỘ ảnh + text (Web Share API level 2). Dùng chung cho
+  // "Copy gửi khách" và "Chia sẻ"; máy không hỗ trợ -> copy text vào clipboard.
+  const shareRoom = async (copyFallbackMsg: string) => {
     const text = buildShareText(r);
     const title = r.buildingName + " · " + r.code;
     type ShareNav = Navigator & {
@@ -133,9 +139,8 @@ export function DetailSheet({
       share?: (d: { title?: string; text?: string; files?: File[] }) => Promise<void>;
     };
     const nav = navigator as ShareNav;
-    // Đính kèm TOÀN BỘ ảnh phòng + thông tin text (Web Share API level 2).
     try {
-      onToast("Đang chuẩn bị ảnh để chia sẻ…");
+      onToast("Đang chuẩn bị ảnh + thông tin nhà…");
       const files = await Promise.all(images.map(async (src, i) => {
         const res = await fetch(src);
         const blob = await res.blob();
@@ -146,13 +151,15 @@ export function DetailSheet({
         await nav.share({ title, text, files });
         return;
       }
-    } catch { /* ảnh lỗi / thiết bị không hỗ trợ -> rơi xuống chia sẻ text */ }
+    } catch { /* ảnh lỗi / thiết bị không hỗ trợ -> rơi xuống text */ }
     if (nav.share) {
       try { await nav.share({ title, text }); return; } catch { /* */ }
     }
     try { await navigator.clipboard.writeText(text); } catch { /* */ }
-    onToast("Đã copy thông tin phòng — ảnh vui lòng gửi thủ công");
+    onToast(copyFallbackMsg);
   };
+  const doCopy = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
+  const doShare = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
 
   return (
     <>
@@ -197,16 +204,27 @@ export function DetailSheet({
               </div>
             )}
 
+            {r.saleBonus && (
+              <div className="note-box" style={{ background: "var(--st-soon-bg)", borderColor: "var(--st-soon-line)", color: "var(--st-soon)" }}>
+                <Icon.Tag />
+                <span><b>Thưởng sale:</b> {r.saleBonus}</span>
+              </div>
+            )}
+
             <p className="sh-section-lbl">Tiện ích</p>
             <div className="amen-grid">
               {r.amenities.map((a) => (<span className="amen-pill" key={a}>{amenIcon(a)}{a}</span>))}
             </div>
 
+            <p className="sh-section-lbl">Mô tả</p>
+            {/* Thông tin chung điện/nước/PDV + tiện ích — áp dụng cho TẤT CẢ phòng */}
+            <div className="gen-info">
+              {GENERAL_POLICY.items.map((t, i) => (
+                <div className="gen-info-line" key={i}><i className="gi-dot" />{t}</div>
+              ))}
+            </div>
             {r.description && (
-              <>
-                <p className="sh-section-lbl">Mô tả</p>
-                <p style={{ margin: "0 0 2px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.55 }}>{r.description}</p>
-              </>
+              <p style={{ margin: "8px 0 2px", color: "var(--ink-2)", fontSize: 14, lineHeight: 1.55 }}>{r.description}</p>
             )}
 
             <p className="sh-section-lbl">Địa chỉ</p>

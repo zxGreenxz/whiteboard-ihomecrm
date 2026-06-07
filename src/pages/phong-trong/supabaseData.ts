@@ -36,6 +36,9 @@ export interface RpcBuilding {
   total_floors: number | null;
   floor_layouts?: Record<string, StoredFloorLayout> | null; // sơ đồ tọa độ thủ công
   images?: unknown;             // jsonb: ảnh tòa (URL/path) | []
+  public_contact_name?: string | null;   // liên hệ QL riêng tòa (gọi/Zalo)
+  public_contact_phone?: string | null;
+  public_map_url?: string | null;        // link Google Maps "Chỉ đường" riêng tòa
 }
 export interface RpcRoom {
   id: string;
@@ -50,7 +53,8 @@ export interface RpcRoom {
   amenities: unknown;           // jsonb: string[] | {k:bool} | []
   images: unknown;              // jsonb: string[] (storage path hoặc URL) | []
   description: string | null;
-  sale_note?: string | null;    // ô "Khuyến mãi" (promo riêng phòng)
+  sale_note?: string | null;        // ô "Khuyến mãi" (promo riêng phòng, gửi khách được)
+  sale_bonus_note?: string | null;  // ô "Thưởng sale" (nội bộ — KHÔNG gửi khách)
   room_type?: string | null;    // "Loại phòng" (Gác, Cửa kính, Ban công, Studio…)
   status_public: RoomStatus;    // 'free' | 'soon' | 'rented' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
@@ -147,6 +151,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         images: imgs,
         description: rr.description || null,
         saleNote: rr.sale_note || null,
+        saleBonus: rr.sale_bonus_note || null,
         x: 0, y: 0, w: 0, h: 0,
       };
     });
@@ -171,8 +176,10 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
       area: district,
       district,
       address,
-      manager: contactName,
-      phone: contactPhone,
+      // Liên hệ riêng từng tòa nếu có; chưa set -> dùng hotline/owner chung.
+      manager: b.public_contact_name?.trim() || contactName,
+      phone: b.public_contact_phone?.trim() || contactPhone,
+      mapUrl: b.public_map_url?.trim() || null,
       lift: (b.total_floors ?? 0) > 1,
       policy: "",
       images: toImages(b.images),

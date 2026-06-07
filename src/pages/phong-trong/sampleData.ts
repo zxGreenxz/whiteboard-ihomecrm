@@ -26,7 +26,8 @@ export interface Room extends Box {
   phClass: string;
   images?: string[];   // ảnh thật từ Supabase (nếu có); rỗng -> dùng placeholder picsum
   description?: string | null; // mô tả/ghi chú phòng (vd "cửa sổ hành lang", "ban công")
-  saleNote?: string | null;    // ô "Khuyến mãi" (promo riêng của phòng)
+  saleNote?: string | null;    // ô "Khuyến mãi" (promo riêng của phòng, gửi khách được)
+  saleBonus?: string | null;   // ô "Thưởng sale" (nội bộ — KHÔNG đưa vào text gửi khách)
 }
 
 export interface Fixture extends Box {
@@ -52,6 +53,7 @@ export interface Building {
   address: string;
   manager: string;
   phone: string;
+  mapUrl?: string | null;   // link Google Maps "Chỉ đường" riêng từng tòa
   lift: boolean;
   policy: string;
   images?: string[];   // ảnh sale của tòa (hero ở header); rỗng -> không hiện
@@ -61,12 +63,14 @@ export interface Building {
   total: number;
 }
 
+// Thông tin chung điện/nước/PDV + tiện ích — áp dụng cho TẤT CẢ phòng (hiện ở
+// "Thông tin chung" trang tổng quan và mục "Mô tả" của từng phòng).
 export const GENERAL_POLICY = {
   items: [
-    "Điện: 3.800đ/kw (thang máy) · 3.500đ/kw (thang bộ)",
-    "Nước: 100k/người · Phí dịch vụ: 150k/phòng",
-    "Xe Free · Wifi Free · Máy giặt chung · Sân phơi",
-    "Tối đa 3 người · 2 xe · Không nhận xe điện · Nhận nuôi mèo (phòng ban công)",
+    "Điện 3.800đ/số (thang máy) · 3.500đ/số (thang bộ)",
+    "Nước 100k/người · Phí dịch vụ 150k/phòng",
+    "Free xe · Máy giặt chung · Sân phơi",
+    "Tối đa 3 người · 2 xe · Không nhận xe điện",
   ],
 };
 
