@@ -67,7 +67,7 @@ export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) 
       <div className="rc-body">
         <div className="rc-top">
           <span className="rc-price">{fmtPrice(r.price)}<small> tr/th</small></span>
-          <span className="rc-loc"><Icon.Pin />Tầng {r.floor} · {r.type} · {r.area}m²</span>
+          <span className="rc-loc"><Icon.Pin />Tầng {r.floor}{r.type ? ` · ${r.type}` : ""} · {r.area}m²</span>
         </div>
         <div className="rc-amen">
           {r.amenities.slice(0, 4).map((a) => (<span className="amen" key={a}>{amenIcon(a)}{a}</span>))}
@@ -106,7 +106,7 @@ function buildingCopyText(b: Building, rooms: Room[]): string {
   if (b.policy) lines.push(`🎁 ${b.policy}`);
   lines.push(`Phòng trống (${rooms.length}):`);
   rooms.forEach((r) => {
-    lines.push(`• ${r.code} · ${r.type} · ${fmtPrice(r.price)}tr/th · ${r.area}m² — ${SM[r.status].label}`);
+    lines.push(`• ${r.code}${r.type ? ` · ${r.type}` : ""} · ${fmtPrice(r.price)}tr/th · ${r.area}m² — ${SM[r.status].label}`);
   });
   return lines.join("\n");
 }
@@ -199,7 +199,7 @@ export function OverviewView({
                     <div className="ovr-body">
                       <div className="ovr-l1">
                         <span className="ovr-code">{r.code}</span>
-                        <span className="ovr-type">{r.type} · {r.area}m²</span>
+                        <span className="ovr-type">{r.type ? `${r.type} · ` : ""}{r.area}m²</span>
                         <span className="ovr-price">{fmtPrice(r.price)}<small>tr</small></span>
                       </div>
                       <div className="ovr-l2">
@@ -268,7 +268,7 @@ function FloorCanvas({
               >
                 <span className="fr-no">{r.no}</span>
                 {r.status !== "rented" && <span className="fr-pr">{fmtPrice(r.price)}tr</span>}
-                <span className="fr-ar">{r.area}m² · {r.type}</span>
+                <span className="fr-ar">{r.area}m²{r.type ? ` · ${r.type}` : ""}</span>
               </button>
             );
           })}

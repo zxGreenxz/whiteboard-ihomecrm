@@ -67,7 +67,7 @@ function buildShareText(r: Room): string {
   return [
     `🏠 ${r.buildingName} — Phòng ${r.code}`,
     `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
-    `• Diện tích: ${r.area}m² · ${r.type} · Tầng ${r.floor}`,
+    `• Diện tích: ${r.area}m²${r.type ? ` · ${r.type}` : ""} · Tầng ${r.floor}`,
     `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
     `• Tiện ích: ${r.amenities.join(", ")}`,
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
@@ -153,7 +153,7 @@ export function DetailSheet({
 
             <div className="specs">
               <div className="spec"><div className="sp-lbl">Diện tích</div><div className="sp-val">{r.area}<small>m²</small></div></div>
-              <div className="spec"><div className="sp-lbl">Loại phòng</div><div className="sp-val">{r.type}</div></div>
+              <div className="spec"><div className="sp-lbl">Loại phòng</div><div className="sp-val">{r.type || "—"}</div></div>
               <div className="spec"><div className="sp-lbl">Vị trí</div><div className="sp-val">T{r.floor}</div></div>
             </div>
 

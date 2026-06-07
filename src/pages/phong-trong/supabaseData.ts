@@ -134,7 +134,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         buildingArea: district,
         buildingAddr: address,
         floor: rr.floor ?? 1,
-        type: rr.room_type || (rr.max_occupants ? `Tối đa ${rr.max_occupants} người` : "Chờ cập nhật"),
+        type: rr.room_type?.trim() || "",   // chưa có loại phòng -> để trống
         price: (rr.rent_price ?? 0) / 1_000_000,                 // VND -> triệu/tháng
         area: Math.round(rr.area ?? 0),
         status,
