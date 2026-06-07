@@ -51,6 +51,7 @@ export interface RpcRoom {
   images: unknown;              // jsonb: string[] (storage path hoặc URL) | []
   description: string | null;
   sale_note?: string | null;    // ô "Khuyến mãi" (promo riêng phòng)
+  room_type?: string | null;    // "Loại phòng" (Gác, Cửa kính, Ban công, Studio…)
   status_public: RoomStatus;    // 'free' | 'soon' | 'rented' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
 }
@@ -133,7 +134,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         buildingArea: district,
         buildingAddr: address,
         floor: rr.floor ?? 1,
-        type: rr.max_occupants ? `Tối đa ${rr.max_occupants} người` : "Chờ cập nhật",
+        type: rr.room_type || (rr.max_occupants ? `Tối đa ${rr.max_occupants} người` : "Chờ cập nhật"),
         price: (rr.rent_price ?? 0) / 1_000_000,                 // VND -> triệu/tháng
         area: Math.round(rr.area ?? 0),
         status,
@@ -153,7 +154,10 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
     // Nhóm theo tầng (cao -> thấp). Có sơ đồ thủ công cho tầng -> dùng (applyStoredLayout),
     // không thì tự sinh layoutFloor (fallback). Phòng chưa đặt được applyStoredLayout xếp tạm.
     const stored = b.floor_layouts ?? null;
-    const floorNums = Array.from(new Set(rooms.map((r) => r.floor))).sort((a, z) => z - a);
+    // Chỉ giữ tầng có ≥1 phòng trống/sắp trống (ẩn tầng đã full khỏi Sơ đồ).
+    const floorNums = Array.from(new Set(rooms.map((r) => r.floor)))
+      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon")))
+      .sort((a, z) => z - a);
     const floors = floorNums.map((f) => {
       const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);
       const sl = stored?.[String(f)];
