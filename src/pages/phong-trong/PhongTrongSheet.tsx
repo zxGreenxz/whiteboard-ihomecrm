@@ -68,15 +68,24 @@ function Lightbox({ images, index, onClose }: { images: string[]; index: number 
   );
 }
 
+/** Rút gọn địa chỉ gửi khách: số nhà "102/30…"/"331/70/101G…" -> giữ phần trước "/" đầu ("102","331");
+ *  bỏ đuôi tỉnh/thành "… Hồ Chí Minh" / "TP.HCM" / "HCM". */
+function shortAddr(addr: string): string {
+  const s = addr.replace(/^(\d+)\/\S*/, "$1");
+  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+  const isCity = (p: string) =>
+    /^(thành phố\s+)?hồ chí minh$/i.test(p) || /^tp\.?\s*hcm$/i.test(p) || /^hcm$/i.test(p);
+  while (parts.length && isCity(parts[parts.length - 1])) parts.pop();
+  return parts.join(", ");
+}
 function buildShareText(r: Room, building?: Building): string {
   return [
-    `🏠 ${r.buildingName} — Phòng ${r.code}`,
+    `🏠 ${r.buildingName} — Phòng ${r.code}${r.type ? ` · ${r.type}` : ""}`,
     `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
-    `• Diện tích: ${r.area}m²${r.type ? ` · ${r.type}` : ""} · Tầng ${r.floor}`,
     `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
     `• Nội thất: ${r.amenities.join(", ")}`,
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
-    `• Địa chỉ: ${r.buildingAddr}`,
+    `• Địa chỉ: ${shortAddr(r.buildingAddr)}`,
     "",
     "📋 Thông tin chung:",
     ...genInfoLines(building).map((t) => `• ${t}`),
