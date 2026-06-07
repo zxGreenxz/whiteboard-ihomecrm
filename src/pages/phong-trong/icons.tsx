@@ -18,6 +18,7 @@ export const Icon = {
   Photo: (p: P) => <Svg {...p}><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="m4 18 5-5 3 3 3-4 5 6"/></Svg>,
   Calendar: (p: P) => <Svg {...p}><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></Svg>,
   Copy:  (p: P) => <Svg {...p}><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></Svg>,
+  Download: (p: P) => <Svg {...p}><path d="M12 4v10m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></Svg>,
   Phone: (p: P) => <Svg {...p}><path d="M5 3.5h3.5l1.6 4.2-2.1 1.5a13 13 0 0 0 5.8 5.8l1.5-2.1 4.2 1.6V18a2.5 2.5 0 0 1-2.7 2.5A16.5 16.5 0 0 1 4.5 6.2 2.5 2.5 0 0 1 5 3.5Z"/></Svg>,
   Share: (p: P) => <Svg {...p}><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="m8.1 11 7.8-3.8M8.1 13l7.8 3.8"/></Svg>,
   Route: (p: P) => <Svg {...p}><circle cx="6.5" cy="18" r="2.2"/><circle cx="17.5" cy="6" r="2.2"/><path d="M9 18h6.5a2.5 2.5 0 0 0 0-5h-7a2.5 2.5 0 0 1 0-5H15"/></Svg>,

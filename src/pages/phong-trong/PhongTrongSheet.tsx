@@ -158,8 +158,30 @@ export function DetailSheet({
     try { await navigator.clipboard.writeText(text); } catch { /* */ }
     onToast(copyFallbackMsg);
   };
-  const doCopy = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
   const doShare = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
+  // Tải TOÀN BỘ ảnh phòng về máy (fetch blob -> thẻ <a download>), tên theo phòng.
+  const doDownload = async () => {
+    onToast("Đang tải ảnh về máy…");
+    let ok = 0;
+    for (let i = 0; i < images.length; i++) {
+      try {
+        const res = await fetch(images[i]);
+        const blob = await res.blob();
+        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        ok++;
+        await new Promise((rs) => setTimeout(rs, 350)); // né trình duyệt chặn tải hàng loạt
+      } catch { /* bỏ qua ảnh lỗi */ }
+    }
+    onToast(ok ? `Đã tải ${ok}/${images.length} ảnh về máy` : "Không tải được ảnh");
+  };
 
   return (
     <>
@@ -231,7 +253,7 @@ export function DetailSheet({
           </div>
 
           <div className="sh-actions2">
-            <button className="act2" onClick={doCopy}><Icon.Copy />Copy gửi khách</button>
+            <button className="act2" onClick={doDownload}><Icon.Download />Tải ảnh</button>
             <button className="act2" onClick={doRoute}><Icon.Route />Chỉ đường</button>
             <button className="act2" onClick={doShare}><Icon.Share />Chia sẻ</button>
           </div>
