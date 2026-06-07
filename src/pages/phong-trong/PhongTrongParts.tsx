@@ -98,19 +98,6 @@ export function ListView({ rooms, onOpen }: { rooms: Room[]; onOpen: (r: Room) =
 }
 
 /* ===== Overview (bảng nhanh tất cả tòa) ===== */
-function buildingCopyText(b: Building, rooms: Room[]): string {
-  const lines = [
-    `🏢 ${b.name} — ${b.address}`,
-    `📞 QL ${b.manager}: ${b.phone}`,
-  ];
-  if (b.policy) lines.push(`🎁 ${b.policy}`);
-  lines.push(`Phòng trống (${rooms.length}):`);
-  rooms.forEach((r) => {
-    lines.push(`• ${r.code}${r.type ? ` · ${r.type}` : ""} · ${fmtPrice(r.price)}tr/th · ${r.area}m² — ${SM[r.status].label}`);
-  });
-  return lines.join("\n");
-}
-
 function priceTr(p: number): string {
   const whole = Math.floor(p);
   const dec = Math.round((p - whole) * 10);
@@ -118,13 +105,12 @@ function priceTr(p: number): string {
 }
 
 export function OverviewView({
-  buildings, showRented, bandTest, onOpen, onToast,
+  buildings, showRented, bandTest, onOpen,
 }: {
   buildings: Building[];
   showRented: boolean;
   bandTest: (p: number) => boolean;
   onOpen: (r: Room) => void;
-  onToast: (m: string) => void;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
@@ -138,11 +124,6 @@ export function OverviewView({
     }))
     .filter((g) => g.rooms.length);
   const total = groups.reduce((n, g) => n + g.rooms.length, 0);
-
-  const doCopy = (b: Building, rooms: Room[]) => {
-    try { navigator.clipboard.writeText(buildingCopyText(b, rooms)); } catch { /* */ }
-    onToast(`Đã copy ${rooms.length} phòng · ${b.name}`);
-  };
 
   const QUICK = 10;
 
@@ -171,7 +152,6 @@ export function OverviewView({
               <div className="ovh-top">
                 <span className="ovh-name">{b.name}</span>
                 <span className="ovh-count">{rooms.length} trống</span>
-                <button className="ovh-copy" onClick={(e) => { e.stopPropagation(); doCopy(b, rooms); }}><Icon.Copy />Copy</button>
                 <span className={"ovh-chev" + (isOpen ? " open" : "")}><Icon.Chevron /></span>
               </div>
               <div className="ovh-meta">

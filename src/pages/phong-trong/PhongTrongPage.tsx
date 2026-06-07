@@ -173,7 +173,7 @@ export default function PhongTrongPage() {
                   ))
                 : <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />)
             : (isOverview
-                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onToast={showToast} />
+                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 

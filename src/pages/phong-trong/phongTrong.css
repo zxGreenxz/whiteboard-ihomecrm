@@ -553,7 +553,7 @@ body {
   border: 1px solid var(--line); border-radius: var(--r) var(--r) 0 0; padding: 12px 14px 11px;
 }
 .ov-bld-head.closed { border-radius: var(--r); }
-.ovh-chev { margin-left: 8px; display: flex; color: var(--ink-faint); transition: transform .2s; flex-shrink: 0; }
+.ovh-chev { margin-left: auto; display: flex; color: var(--ink-faint); transition: transform .2s; flex-shrink: 0; }
 .ovh-chev svg { width: 17px; height: 17px; }
 .ovh-chev.open { transform: rotate(90deg); }
 .ov-quick { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -568,13 +568,6 @@ body {
   font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--brand-600);
   background: var(--brand-50); border: 1px solid var(--brand-100); padding: 2px 8px; border-radius: 999px;
 }
-.ovh-copy {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
-  font-family: var(--font); font-size: 11.5px; font-weight: 600; color: var(--ink-2);
-  background: var(--surface-2); border: 1px solid var(--line); padding: 6px 10px; border-radius: 9px;
-}
-.ovh-copy:active { background: var(--line-2); }
-.ovh-copy svg { width: 13px; height: 13px; }
 .ovh-meta { display: flex; flex-direction: column; gap: 4px; }
 .ovh-line { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); font-weight: 500; text-decoration: none; }
 .ovh-line svg { width: 12px; height: 12px; opacity: .7; flex-shrink: 0; }
