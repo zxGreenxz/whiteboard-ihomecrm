@@ -156,9 +156,21 @@ export function OverviewView({
               </div>
               <div className="ovh-meta">
                 <div className="ovh-line"><Icon.Pin />{b.address}</div>
-                <a className="ovh-line" href={"tel:" + b.phone.replace(/\s/g, "")} onClick={(e) => e.stopPropagation()}>
-                  <Icon.Phone />QL {b.manager} · <span className="ovh-phone">{b.phone}</span>
-                </a>
+                <div className="ovh-line ovh-contact">
+                  <span className="ovh-ql">QL {b.manager}</span>
+                  <a
+                    className="ovh-zalo"
+                    href={"https://zalo.me/" + b.phone.replace(/\D/g, "")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Icon.Chat />Zalo
+                  </a>
+                  <a className="ovh-call" href={"tel:" + b.phone.replace(/\s/g, "")} onClick={(e) => e.stopPropagation()}>
+                    <Icon.Phone /><span className="ovh-phone">{b.phone}</span>
+                  </a>
+                </div>
                 {b.policy && <span className="ovh-policy"><Icon.Tag />{b.policy}</span>}
               </div>
               <div className="ov-quick">
