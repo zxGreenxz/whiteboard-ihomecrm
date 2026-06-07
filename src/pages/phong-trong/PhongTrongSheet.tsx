@@ -68,7 +68,7 @@ function Lightbox({ images, index, onClose }: { images: string[]; index: number 
   );
 }
 
-function buildShareText(r: Room): string {
+function buildShareText(r: Room, building?: Building): string {
   return [
     `🏠 ${r.buildingName} — Phòng ${r.code}`,
     `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
@@ -77,6 +77,9 @@ function buildShareText(r: Room): string {
     `• Nội thất: ${r.amenities.join(", ")}`,
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
     `• Địa chỉ: ${r.buildingAddr}`,
+    "",
+    "📋 Thông tin chung:",
+    ...genInfoLines(building).map((t) => `• ${t}`),
   ].join("\n");
 }
 
@@ -132,7 +135,7 @@ export function DetailSheet({
   // Gửi khách: KÈM TOÀN BỘ ảnh + text (Web Share API level 2). Dùng chung cho
   // "Copy gửi khách" và "Chia sẻ"; máy không hỗ trợ -> copy text vào clipboard.
   const shareRoom = async (copyFallbackMsg: string) => {
-    const text = buildShareText(r);
+    const text = buildShareText(r, building);
     const title = r.buildingName + " · " + r.code;
     type ShareNav = Navigator & {
       canShare?: (d: { files?: File[] }) => boolean;
