@@ -283,6 +283,7 @@ const BuildingDetailPage = () => {
     total: rooms?.length || 0,
     available: rooms?.filter(r => r.status === 'AVAILABLE').length || 0,
     occupied: rooms?.filter(r => r.status === 'OCCUPIED').length || 0,
+    reserved: rooms?.filter(r => r.status === 'RESERVED').length || 0,
     maintenance: rooms?.filter(r => r.status === 'MAINTENANCE').length || 0,
   };
 
@@ -391,7 +392,7 @@ const BuildingDetailPage = () => {
           </div>
 
           {/* Room Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Tổng số căn hộ</div>
@@ -402,6 +403,12 @@ const BuildingDetailPage = () => {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Còn trống</div>
                 <div className="text-2xl font-bold text-green-600">{roomStats.available}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground">Đã đặt cọc</div>
+                <div className="text-2xl font-bold text-orange-500">{roomStats.reserved}</div>
               </CardContent>
             </Card>
             <Card>

@@ -98,6 +98,7 @@ export default function RoomListFilters({
         options={[
           { value: 'all', label: 'Tất cả' },
           { value: 'ACTIVE', label: 'Đang hoạt động' },
+          { value: 'RESERVED', label: 'Đã đặt cọc' },
           { value: 'INACTIVE', label: 'Ngừng hoạt động' },
         ]}
       />

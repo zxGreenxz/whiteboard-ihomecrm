@@ -943,9 +943,12 @@ export function ContractFormDialog({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            {/* Phòng RESERVED (đã cọc giữ chỗ) VẪN chọn được để ký HĐ cho
+                                người đã cọc — chỉ gắn nhãn "Đã cọc" để nhận biết. */}
                             {filteredRooms.map((r: any) => (
                               <SelectItem key={r.id} value={r.id}>
                                 {r.name}
+                                {r.status === "RESERVED" ? " · Đã cọc" : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>

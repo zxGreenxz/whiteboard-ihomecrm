@@ -381,7 +381,11 @@ export function EditRoomDialog({
                         <SelectContent>
                           <SelectItem value="AVAILABLE">Trống</SelectItem>
                           <SelectItem value="OCCUPIED">Đã thuê</SelectItem>
-                          <SelectItem value="RESERVED">Đã đặt</SelectItem>
+                          {/* "Đã đặt cọc" (RESERVED) tự suy từ phiếu cọc — không chọn tay.
+                              Vẫn hiển thị nếu phòng đang RESERVED để không mất giá trị. */}
+                          {field.value === "RESERVED" && (
+                            <SelectItem value="RESERVED">Đã đặt cọc (tự động)</SelectItem>
+                          )}
                           <SelectItem value="MAINTENANCE">Bảo trì</SelectItem>
                           <SelectItem value="UNAVAILABLE">Không khả dụng</SelectItem>
                         </SelectContent>

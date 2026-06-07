@@ -8,6 +8,7 @@ export interface DashboardStats {
   totalRooms: number;
   occupiedRooms: number;
   availableRooms: number;
+  reservedRooms: number;
   occupancyRate: number;
   revenueThisMonth: number;
   totalDebt: number;
@@ -93,8 +94,20 @@ export const useDashboardStats = (buildingId?: string | null) => {
 
       const { data: activeContracts } = await occupiedRoomsQuery;
 
+      // Phòng "cọc giữ chỗ" (rooms.status='RESERVED') — KHÔNG tính là trống.
+      let reservedRooms = 0;
+      if (buildingIds.length > 0) {
+        const { count: rc } = await supabase
+          .from("rooms")
+          .select("*", { count: "exact", head: true })
+          .in("building_id", buildingIds)
+          .is("deleted_at", null)
+          .eq("status", "RESERVED");
+        reservedRooms = rc || 0;
+      }
+
       const occupiedRooms = activeContracts?.length || 0;
-      const availableRooms = (totalRooms || 0) - occupiedRooms;
+      const availableRooms = Math.max(0, (totalRooms || 0) - occupiedRooms - reservedRooms);
       const occupancyRate = totalRooms ? (occupiedRooms / totalRooms) * 100 : 0;
 
       // Get revenue this month
@@ -143,6 +156,7 @@ export const useDashboardStats = (buildingId?: string | null) => {
         totalDebt,
         newContractsThisMonth: newContracts || 0,
         unresolvedIssues: unresolvedIssues || 0,
+        reservedRooms,
       };
     },
     refetchInterval: 60000,
@@ -225,12 +239,24 @@ export const useOccupancyChart = (buildingId?: string | null) => {
 
       const { data: activeContracts } = await contractsQuery;
 
+      // Phòng "cọc giữ chỗ" (RESERVED) — tách riêng, không gộp vào "Còn trống".
+      let reservedRooms = 0;
+      if (buildingIds.length > 0) {
+        const { count: rc } = await supabase
+          .from("rooms")
+          .select("*", { count: "exact", head: true })
+          .in("building_id", buildingIds)
+          .is("deleted_at", null)
+          .eq("status", "RESERVED");
+        reservedRooms = rc || 0;
+      }
+
       const occupiedRooms = activeContracts?.length || 0;
-      const availableRooms = totalRooms - occupiedRooms;
+      const availableRooms = Math.max(0, totalRooms - occupiedRooms - reservedRooms);
 
       const total = totalRooms || 1;
 
-      return [
+      const result: OccupancyData[] = [
         {
           status: "Đã thuê",
           count: occupiedRooms,
@@ -242,6 +268,14 @@ export const useOccupancyChart = (buildingId?: string | null) => {
           percentage: (availableRooms / total) * 100,
         },
       ];
+      if (reservedRooms > 0) {
+        result.push({
+          status: "Đã cọc",
+          count: reservedRooms,
+          percentage: (reservedRooms / total) * 100,
+        });
+      }
+      return result;
     },
   });
 };

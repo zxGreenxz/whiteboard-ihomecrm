@@ -116,12 +116,14 @@ export default function RoomsPage() {
       const matchesFloor =
         floorFilter === 'all' || room.floor === parseInt(floorFilter);
 
-      // Status filter (ACTIVE = AVAILABLE, INACTIVE = UNAVAILABLE)
+      // Status filter (ACTIVE = AVAILABLE, INACTIVE = UNAVAILABLE, RESERVED = cọc giữ chỗ)
       let matchesStatus = true;
       if (statusFilter === 'ACTIVE') {
         matchesStatus = room.status === 'AVAILABLE';
       } else if (statusFilter === 'INACTIVE') {
         matchesStatus = room.status === 'UNAVAILABLE';
+      } else if (statusFilter === 'RESERVED') {
+        matchesStatus = room.status === 'RESERVED';
       }
 
       return matchesSearch && matchesArea && matchesBuilding && matchesFloor && matchesStatus;
@@ -141,12 +143,14 @@ export default function RoomsPage() {
   const roomStats = useMemo(() => {
     let available = 0;
     let expiring = 0;
+    let reserved = 0;
     for (const room of filteredRooms) {
       const status = getRoomDisplayStatus(room.status, endDateByRoomId.get(room.id));
       if (status === 'AVAILABLE') available += 1;
       else if (status === 'EXPIRING_SOON') expiring += 1;
+      else if (status === 'RESERVED') reserved += 1;
     }
-    return { total: filteredRooms.length, available, expiring };
+    return { total: filteredRooms.length, available, expiring, reserved };
   }, [filteredRooms, endDateByRoomId]);
 
   // Handlers
@@ -201,7 +205,7 @@ export default function RoomsPage() {
         />
 
         {/* Stat cards */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardContent className="pt-6">
               <div className="text-2xl font-bold">{roomStats.total}</div>
@@ -212,6 +216,12 @@ export default function RoomsPage() {
             <CardContent className="pt-6">
               <div className="text-2xl font-bold text-red-700">{roomStats.available}</div>
               <p className="text-xs text-muted-foreground">Tổng phòng trống</p>
+            </CardContent>
+          </Card>
+          <Card className="border-l-4 border-l-orange-500">
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-orange-700">{roomStats.reserved}</div>
+              <p className="text-xs text-muted-foreground">Đã đặt cọc</p>
             </CardContent>
           </Card>
           <Card className="border-l-4 border-l-purple-500">

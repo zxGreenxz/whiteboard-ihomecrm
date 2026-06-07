@@ -73,9 +73,9 @@ export function useVacantRoomsReport(buildingId?: string, floorId?: string) {
         }
       }
 
-      // Filter vacant rooms (not occupied)
+      // Filter vacant rooms (not occupied, không tính phòng đã cọc giữ chỗ).
       let vacantRooms = (rooms || [])
-        .filter(room => !occupiedRoomIds.has(room.id))
+        .filter(room => !occupiedRoomIds.has(room.id) && room.status !== "RESERVED")
         .map(room => {
           const lastEndDate = lastEndByRoom.get(room.id) ?? null;
           const daysVacant = lastEndDate
@@ -298,16 +298,18 @@ export function useOccupancyReport(buildingId?: string) {
 
       const occupiedRoomIds = new Set(activeContracts?.map(c => c.room_id) || []);
 
-      const buildingMap: Record<string, { building: string; total: number; occupied: number; available: number; maintenance: number }> = {};
+      const buildingMap: Record<string, { building: string; total: number; occupied: number; available: number; reserved: number; maintenance: number }> = {};
 
       (rooms || []).forEach(room => {
         const bName = room.buildings?.name || "Không xác định";
         if (!buildingMap[bName]) {
-          buildingMap[bName] = { building: bName, total: 0, occupied: 0, available: 0, maintenance: 0 };
+          buildingMap[bName] = { building: bName, total: 0, occupied: 0, available: 0, reserved: 0, maintenance: 0 };
         }
         buildingMap[bName].total++;
         if (occupiedRoomIds.has(room.id)) {
           buildingMap[bName].occupied++;
+        } else if (room.status === "RESERVED") {
+          buildingMap[bName].reserved++;          // cọc giữ chỗ — không tính trống
         } else if (room.status === "MAINTENANCE") {
           buildingMap[bName].maintenance++;
         } else {
@@ -323,6 +325,7 @@ export function useOccupancyReport(buildingId?: string) {
       const totalRooms = (rooms || []).length;
       const totalOccupied = byBuilding.reduce((s, b) => s + b.occupied, 0);
       const totalAvailable = byBuilding.reduce((s, b) => s + b.available, 0);
+      const totalReserved = byBuilding.reduce((s, b) => s + b.reserved, 0);
       const totalMaintenance = byBuilding.reduce((s, b) => s + b.maintenance, 0);
 
       return {
@@ -330,6 +333,7 @@ export function useOccupancyReport(buildingId?: string) {
           total: totalRooms,
           occupied: totalOccupied,
           available: totalAvailable,
+          reserved: totalReserved,
           maintenance: totalMaintenance,
           occupancyRate: totalRooms > 0 ? Number(((totalOccupied / totalRooms) * 100).toFixed(1)) : 0,
         },
