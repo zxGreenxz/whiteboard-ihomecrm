@@ -7,6 +7,9 @@ import { DetailSheet, Toast } from "./PhongTrongSheet";
 import { SAMPLE_BUILDINGS, type Room } from "./sampleData";
 import { usePhongTrong } from "./usePhongTrong";
 
+/** Giá trị đặc biệt cho chip "Tổng hợp" trong hàng chọn tòa nhà (xem tất cả tòa). */
+const OVERVIEW = "__overview__";
+
 /**
  * Trang công khai "Phòng trống" cho Sale — 100% giao diện mock, data mẫu.
  * Route gợi ý: /r/:token (xem README). Khi nối Supabase: thay SAMPLE_BUILDINGS
@@ -18,10 +21,11 @@ export default function PhongTrongPage() {
   // Có data thật -> dùng; chưa có token/data (xem thử) -> data mẫu.
   const buildings = data && data.length ? data : SAMPLE_BUILDINGS;
 
-  const [propId, setPropId] = useState(buildings[0].id);
-  const [view, setView] = useState<"map" | "list" | "overview">("overview");
+  const [propId, setPropId] = useState<string>(OVERVIEW);
+  const [view, setView] = useState<"map" | "list">("list");
   const [district, setDistrict] = useState("all");
   const showRented = false;
+  const isOverview = propId === OVERVIEW;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [sheetShow, setSheetShow] = useState(false);
@@ -68,10 +72,15 @@ export default function PhongTrongPage() {
     () => buildings.filter((p) => district === "all" || p.district === district),
     [buildings, district],
   );
+  const totalFree = useMemo(
+    () => visibleBuildings.reduce((n, p) => n + p.freeCount, 0),
+    [visibleBuildings],
+  );
   const building = buildings.find((p) => p.id === propId) || buildings[0];
 
   const pickDistrict = (d: string) => {
     setDistrict(d);
+    if (isOverview) return; // giữ chế độ "Tổng hợp" khi đổi quận
     const first = buildings.find((p) => d === "all" || p.district === d);
     if (first) setPropId(first.id);
   };
@@ -124,9 +133,6 @@ export default function PhongTrongPage() {
           </div>
 
           <div className="seg">
-            <button className={view === "overview" ? "on" : ""} onClick={() => setView("overview")}>
-              <Icon.List />Bảng nhanh
-            </button>
             <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>
               <Icon.Photo />Danh sách
             </button>
@@ -146,6 +152,10 @@ export default function PhongTrongPage() {
 
           <div className="sel-lbl">Tòa nhà</div>
           <div className="props" ref={propsRef}>
+            <button className={"prop-chip" + (isOverview ? " on" : "")} onClick={() => setPropId(OVERVIEW)}>
+              <span className="pc-name">Tổng hợp</span>
+              <span className="pc-meta">{visibleBuildings.length} tòa · {totalFree} trống</span>
+            </button>
             {visibleBuildings.map((p) => (
               <button key={p.id} className={"prop-chip" + (p.id === propId ? " on" : "")} onClick={() => setPropId(p.id)}>
                 <span className="pc-name">{p.name}</span>
@@ -157,10 +167,14 @@ export default function PhongTrongPage() {
 
         <div className="scroll">
           {view === "map"
-            ? <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
-            : view === "overview"
-            ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onToast={showToast} />
-            : <ListView rooms={listRooms} onOpen={openRoom} />}
+            ? (isOverview
+                ? visibleBuildings.map((b) => (
+                    <FloorPlan key={b.id} building={b} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
+                  ))
+                : <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />)
+            : (isOverview
+                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onToast={showToast} />
+                : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
         <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={setRoom} buildings={buildings} />
