@@ -49,6 +49,7 @@ import CT01FormPage from "./pages/customers/CT01FormPage";
 // Finance Pages
 import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
 import InvoicesPage from "./pages/invoices/InvoicesPage";
+import ThuTien from "./pages/ThuTien";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import InvoicePrintPage from "./pages/invoices/InvoicePrintPage";
 import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
@@ -252,6 +253,7 @@ const App = () => (
 
           {/* === TÀI CHÍNH === */}
           <Route path="/meter-readings" element={<ProtectedRoute><MeterReadingsPage /></ProtectedRoute>} />
+          <Route path="/thu-tien" element={<ProtectedRoute><ThuTien /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
           <Route path="/invoices/print/:id" element={<ProtectedRoute><InvoicePrintPage /></ProtectedRoute>} />
           <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />

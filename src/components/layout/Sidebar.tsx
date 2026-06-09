@@ -21,6 +21,7 @@ import {
   Car,
   Gauge,
   Receipt,
+  HandCoins,
   CreditCard,
   Package,
   BarChart3,
@@ -104,6 +105,7 @@ const navigationGroups: NavGroup[] = [
         items: [
           { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge },
           { title: 'Hoá đơn', href: '/invoices', icon: Receipt },
+          { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins },
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet },
           { title: 'Chia lợi nhuận', href: '/finance/shareholder-profit', icon: PieChart },
