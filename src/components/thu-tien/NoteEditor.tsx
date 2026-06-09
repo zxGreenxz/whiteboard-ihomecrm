@@ -1,5 +1,3 @@
-import { cn } from '@/lib/utils';
-
 interface Props {
   value: string;
   onChange: (v: string) => void;
@@ -19,33 +17,27 @@ export function NoteEditor({ value, onChange, onBlur }: Props) {
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
+    <>
+      <div className="note-chips">
         {QUICK_NOTES.map((q) => (
-          <button
+          <span
             key={q}
-            type="button"
+            className={'note-chip' + (parts.includes(q) ? ' on' : '')}
             onClick={() => toggleQuick(q)}
-            className={cn(
-              'rounded-full border px-2.5 py-1 text-xs',
-              parts.includes(q)
-                ? 'bg-zinc-900 text-white border-zinc-900'
-                : 'bg-white text-zinc-600 border-zinc-200',
-            )}
           >
             {q}
-          </button>
+          </span>
         ))}
       </div>
       <textarea
+        className="note-input"
         rows={2}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         placeholder="Ghi chú khi thu (vd: thiếu 500k, hẹn mai bù)…"
-        className="w-full resize-none rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-emerald-400"
       />
-    </div>
+    </>
   );
 }
 

@@ -12,7 +12,7 @@ interface Props {
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-/** Bàn phím nhập tiền theo nghìn đồng + preset. Dùng chung cho 2 mode drawer. */
+/** Bàn phím nhập tiền theo nghìn đồng + preset. Dùng chung cho 2 mode sheet. */
 export function CollectKeypad({ remaining, entered, onEntered, onConfirm, confirming }: Props) {
   const enteredVal = (parseInt(entered, 10) || 0) * 1000;
   const press = (d: string) => onEntered((entered + d).replace(/^0+(?=\d)/, '').slice(0, 7));
@@ -20,80 +20,37 @@ export function CollectKeypad({ remaining, entered, onEntered, onConfirm, confir
   const preset = (vDong: number) => onEntered(Math.round(vDong / 1000).toString());
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-baseline justify-between rounded-xl bg-zinc-50 px-4 py-3">
-        <span className="text-sm text-zinc-500">Thu thêm</span>
-        <span className="font-mono text-2xl font-bold tabular-nums text-zinc-900">
-          {fmtFull(enteredVal)}
-        </span>
+    <div className="keypad">
+      <div className="kp-display">
+        <span className="kp-cur">Thu thêm</span>
+        <span className="kp-amt">{fmtFull(enteredVal)}</span>
       </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => preset(remaining)}
-          className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
-        >
+      <div className="kp-presets">
+        <span className="kp-preset due" onClick={() => preset(remaining)}>
           Còn lại {fmtShort(remaining)}
-        </button>
-        {[500_000, 1_000_000, 2_000_000].map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => preset(v)}
-            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-600"
-          >
-            {fmtShort(v)}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => onEntered('')}
-          className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-500"
-        >
-          Xóa
-        </button>
+        </span>
+        <span className="kp-preset" onClick={() => preset(500_000)}>500k</span>
+        <span className="kp-preset" onClick={() => preset(1_000_000)}>1tr</span>
+        <span className="kp-preset" onClick={() => preset(2_000_000)}>2tr</span>
+        <span className="kp-preset" onClick={() => onEntered('')}>Xóa</span>
       </div>
-
-      <div className="grid grid-cols-3 gap-2">
+      <div className="kp-keys">
         {KEYS.map((d) => (
-          <button
-            key={d}
-            type="button"
-            onClick={() => press(d)}
-            className="rounded-xl border border-zinc-200 bg-white py-3 text-lg font-semibold text-zinc-800 active:bg-zinc-100"
-          >
+          <button key={d} type="button" className="kp-key" onClick={() => press(d)}>
             {d}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => press('000')}
-          className="rounded-xl border border-zinc-200 bg-white py-3 text-lg font-semibold text-zinc-800 active:bg-zinc-100"
-        >
-          000
-        </button>
-        <button
-          type="button"
-          onClick={() => press('0')}
-          className="rounded-xl border border-zinc-200 bg-white py-3 text-lg font-semibold text-zinc-800 active:bg-zinc-100"
-        >
-          0
-        </button>
-        <button
-          type="button"
-          onClick={back}
-          className="flex items-center justify-center rounded-xl border border-zinc-200 bg-white py-3 text-zinc-600 active:bg-zinc-100"
-        >
-          <Delete className="h-5 w-5" />
+        <button type="button" className="kp-key" onClick={() => press('000')}>000</button>
+        <button type="button" className="kp-key" onClick={() => press('0')}>0</button>
+        <button type="button" className="kp-key" onClick={back}>
+          <Delete />
         </button>
       </div>
-
       <button
         type="button"
+        className="kp-confirm"
         disabled={enteredVal <= 0 || confirming}
         onClick={onConfirm}
-        className="min-h-[48px] w-full rounded-xl bg-emerald-600 text-base font-semibold text-white disabled:opacity-40 active:bg-emerald-700"
       >
         Xác nhận thu {enteredVal > 0 ? fmtShort(enteredVal) : ''}
       </button>

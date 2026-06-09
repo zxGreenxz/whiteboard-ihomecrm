@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
 
 interface BuildingLite {
   id: string;
@@ -26,6 +25,7 @@ function useDragScroll(ref: React.RefObject<HTMLElement>) {
       moved = false;
       startX = e.pageX;
       startScroll = el.scrollLeft;
+      el.classList.add('dragging');
     };
     const onMove = (e: MouseEvent) => {
       if (!down) return;
@@ -35,8 +35,8 @@ function useDragScroll(ref: React.RefObject<HTMLElement>) {
     };
     const onUp = () => {
       down = false;
+      el.classList.remove('dragging');
     };
-    // Chặn click khi vừa kéo (tránh chọn nhầm pill).
     const onClick = (e: MouseEvent) => {
       if (moved) {
         e.preventDefault();
@@ -61,24 +61,15 @@ export function BuildingPills({ buildings, value, onChange }: Props) {
   useDragScroll(ref);
 
   return (
-    <div
-      ref={ref}
-      className="flex gap-2 overflow-x-auto px-4 py-3 cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
-      style={{ scrollbarWidth: 'none' }}
-    >
+    <div className="bld-row" ref={ref}>
       {buildings.map((b) => (
         <button
           key={b.id}
           type="button"
+          className={'bld-chip' + (b.id === value ? ' on' : '')}
           onClick={() => onChange(b.id)}
-          className={cn(
-            'shrink-0 select-none rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors',
-            b.id === value
-              ? 'bg-emerald-600 text-white border-emerald-600'
-              : 'bg-white text-zinc-700 border-zinc-200',
-          )}
         >
-          {b.name}
+          <span className="bc-code">{b.name}</span>
         </button>
       ))}
     </div>

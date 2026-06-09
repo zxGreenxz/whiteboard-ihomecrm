@@ -49,7 +49,6 @@ import CT01FormPage from "./pages/customers/CT01FormPage";
 // Finance Pages
 import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
 import InvoicesPage from "./pages/invoices/InvoicesPage";
-import ThuTien from "./pages/ThuTien";
 import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
 import InvoicePrintPage from "./pages/invoices/InvoicePrintPage";
 import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
@@ -140,6 +139,11 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 // (phongTrong.css đặt style body ngoài @layer) chỉ nạp khi mở /r/:token,
 // không rò font/nền sang phần còn lại của CRM.
 const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
+
+// Trang "Thu tiền" (mobile, đi thu tiền mặt) — page phụ độc lập có bộ style
+// riêng (thu-tien.css scope dưới .tt-page). Lazy để CSS + font Be Vietnam Pro /
+// Space Mono chỉ nạp khi mở /thu-tien, không kế thừa/đụng theme site.
+const ThuTien = lazy(() => import("./pages/ThuTien"));
 
 const queryClient = new QueryClient();
 
@@ -253,7 +257,7 @@ const App = () => (
 
           {/* === TÀI CHÍNH === */}
           <Route path="/meter-readings" element={<ProtectedRoute><MeterReadingsPage /></ProtectedRoute>} />
-          <Route path="/thu-tien" element={<ProtectedRoute><ThuTien /></ProtectedRoute>} />
+          <Route path="/thu-tien" element={<ProtectedRoute><Suspense fallback={null}><ThuTien /></Suspense></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>} />
           <Route path="/invoices/print/:id" element={<ProtectedRoute><InvoicePrintPage /></ProtectedRoute>} />
           <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
