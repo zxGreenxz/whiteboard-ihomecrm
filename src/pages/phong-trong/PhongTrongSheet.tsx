@@ -98,50 +98,6 @@ type ShareNav = Navigator & {
   share?: (d: { title?: string; text?: string; files?: File[] }) => Promise<void>;
 };
 
-// Nén ảnh TRƯỚC khi chia sẻ/tải: thu nhỏ cạnh dài ≤ 1600px, mã hoá lại JPEG ~0.82.
-// Vì sao: ảnh upload full-res HD (tới ~5MB/tấm) → 10 tấm ~25-40MB nhồi vào share sheet
-// iOS khiến Zalo "Có lỗi xảy ra" / rớt bớt ảnh (vượt ngân sách bộ nhớ extension ~120MB).
-// Nén xuống ~200-300KB/tấm → tổng ~2-4MB, gửi ổn định. Xử lý TUẦN TỰ + nhả canvas mỗi
-// ảnh để không sập bộ nhớ canvas của Safari mobile (~224-384MB toàn tiến trình).
-const SHARE_MAX_DIM = 1600;   // cạnh dài tối đa (chuẩn chat/Zalo)
-const SHARE_JPEG_Q = 0.82;    // chất lượng JPEG (0.78-0.85 là điểm ngọt)
-
-/** Nén 1 blob ảnh dùng chung 1 canvas. Mọi nhánh lỗi/biên đều TRẢ VỀ blob gốc
- *  (không bao giờ ném/trả null) để không làm rớt ảnh khỏi bộ chia sẻ. */
-async function compressBlob(blob: Blob, canvas: HTMLCanvasElement): Promise<Blob> {
-  let bmp: ImageBitmap | null = null;
-  try {
-    // 'from-image' = áp EXIF orientation (Safari 16+ mặc định) → ảnh không bị xoay.
-    // Giải mã từ BLOB (không phải URL từ xa) nên canvas không bị "taint".
-    try { bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }); }
-    catch { bmp = await createImageBitmap(blob); }
-    const { width: w, height: h } = bmp;
-    const longest = Math.max(w, h);
-    // Ảnh đã nhỏ sẵn & đã là JPEG → giữ gốc (tránh tái nén mất nét, phình ngược).
-    if (longest <= SHARE_MAX_DIM && /jpe?g/i.test(blob.type)) return blob;
-    const scale = Math.min(1, SHARE_MAX_DIM / longest);
-    const tw = Math.max(1, Math.round(w * scale));
-    const th = Math.max(1, Math.round(h * scale));
-    canvas.width = tw; canvas.height = th;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return blob;
-    // Nền trắng trước khi vẽ: PNG/WebP trong suốt mã hoá JPEG sẽ không bị nền đen.
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, tw, th);
-    ctx.drawImage(bmp, 0, 0, tw, th);
-    const out = await new Promise<Blob | null>((res) => {
-      try { canvas.toBlob((b) => res(b), "image/jpeg", SHARE_JPEG_Q); }
-      catch { res(null); }
-    });
-    // toBlob null (iOS cũ) hoặc nén ra TO hơn gốc → giữ gốc.
-    if (!out || out.size >= blob.size) return blob;
-    return out;
-  } catch {
-    return blob;
-  } finally {
-    bmp?.close?.();
-  }
-}
-
 export function DetailSheet({
   room, show, onClose, onToast, saved, toggleSave, onGo, buildings,
 }: {
@@ -192,57 +148,33 @@ export function DetailSheet({
     window.open(url, "_blank");
   };
   // Tải TOÀN BỘ ảnh phòng thành File[] (tên theo Tòa-Phòng-STT) để chia sẻ / tải về.
-  // TUẦN TỰ (không Promise.all): vừa né sập bộ nhớ khi giải mã nhiều ảnh HD cùng lúc
-  // trên Safari mobile, vừa để 1 ảnh lỗi (404/CORS) chỉ bị BỎ QUA thay vì rớt cả batch.
-  // compress=true → nén từng tấm (chia sẻ/gửi Zalo); dùng lại 1 canvas, nhả ở cuối.
-  const fetchImageFiles = async (compress: boolean): Promise<File[]> => {
-    const out: File[] = [];
-    const canvas = compress ? document.createElement("canvas") : null;
-    for (const src of images) {
-      try {
-        const res = await fetch(src);
-        let blob = await res.blob();
-        if (canvas) blob = await compressBlob(blob, canvas);
-        const isJpeg = !blob.type || /jpe?g/i.test(blob.type);
-        const ext = isJpeg ? "jpg" : (blob.type.split("/")[1] || "jpg").split("+")[0];
-        const name = `${r.buildingName}-${r.code}-${String(out.length + 1).padStart(2, "0")}.${ext}`;
-        out.push(new File([blob], name, { type: blob.type || "image/jpeg" }));
-      } catch { /* 1 ảnh hỏng → bỏ qua, không làm rớt cả bộ */ }
-    }
-    if (canvas) { canvas.width = 1; canvas.height = 1; } // nhả backing store (Safari giữ bộ nhớ canvas)
-    return out;
-  };
+  const fetchImageFiles = (): Promise<File[]> =>
+    Promise.all(images.map(async (src, i) => {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+      const name = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;
+      return new File([blob], name, { type: blob.type || "image/jpeg" });
+    }));
 
-  // Gửi khách: chia sẻ CHỈ ẢNH (files-only) — đáng tin nhất trên iOS/Zalo, KHÔNG bị rớt
-  // ảnh. Lý do: kiện "vừa-chữ-vừa-nhiều-ảnh" hay bị bộ nhận của Zalo lấy thiếu ảnh. Phần
-  // mô tả được chép sẵn vào clipboard để dán kèm. Máy không hỗ trợ share file -> share text.
+  // Gửi khách: KÈM TOÀN BỘ ảnh + text (Web Share API level 2). Dùng chung cho
+  // "Copy gửi khách" và "Chia sẻ"; máy không hỗ trợ -> copy text vào clipboard.
   const shareRoom = async (copyFallbackMsg: string) => {
     const text = buildShareText(r, building);
+    const title = r.buildingName + " · " + r.code;
     const nav = navigator as ShareNav;
-    // Chép mô tả NGAY (còn trong user-gesture) để dán vào ô chat khi gửi ảnh.
-    let copied = false;
-    try { await navigator.clipboard.writeText(text); copied = true; } catch { /* */ }
-    onToast(copied ? "Đã chép mô tả — mở ảnh để gửi, nhớ dán mô tả vào Zalo" : "Đang chuẩn bị ảnh…");
-
-    let files: File[] = [];
-    try { files = await fetchImageFiles(true); } catch { /* nén/tải lỗi -> rơi xuống share text */ }
-
-    // canShare phải kiểm trên ĐÚNG bộ file (đã nén) sẽ gửi.
-    if (files.length && nav.share && nav.canShare && nav.canShare({ files })) {
-      try {
-        await nav.share({ files });   // CHỈ ảnh, không kèm text/title
+    try {
+      onToast("Đang chuẩn bị ảnh + thông tin nhà…");
+      const files = await fetchImageFiles();
+      if (nav.share && nav.canShare && nav.canShare({ files })) {
+        await nav.share({ title, text, files });
         return;
-      } catch (e) {
-        if ((e as DOMException)?.name === "AbortError") { onToast("Đã huỷ chia sẻ"); return; }
-        /* lỗi khác -> thử share text / clipboard bên dưới */
       }
-    }
-    // Không share được file (desktop / máy cũ) -> share text, rồi mới đến clipboard.
+    } catch { /* ảnh lỗi / thiết bị không hỗ trợ -> rơi xuống text */ }
     if (nav.share) {
-      try { await nav.share({ text }); return; }
-      catch (e) { if ((e as DOMException)?.name === "AbortError") { onToast("Đã huỷ chia sẻ"); return; } }
+      try { await nav.share({ title, text }); return; } catch { /* */ }
     }
-    if (!copied) { try { await navigator.clipboard.writeText(text); } catch { /* */ } }
+    try { await navigator.clipboard.writeText(text); } catch { /* */ }
     onToast(copyFallbackMsg);
   };
   const doShare = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
@@ -252,9 +184,9 @@ export function DetailSheet({
   // Desktop / máy không hỗ trợ share file → tải từng ảnh bằng <a download>.
   const doDownload = async () => {
     const nav = navigator as ShareNav;
-    onToast("Đang nén ảnh…");
+    onToast("Đang chuẩn bị ảnh…");
     let files: File[] = [];
-    try { files = await fetchImageFiles(true); } catch { /* */ }
+    try { files = await fetchImageFiles(); } catch { /* */ }
     if (!files.length) { onToast("Không tải được ảnh"); return; }
 
     if (nav.share && nav.canShare && nav.canShare({ files })) {
