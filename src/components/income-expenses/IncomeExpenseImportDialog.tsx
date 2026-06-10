@@ -32,7 +32,12 @@ import {
   XCircle,
   AlertCircle,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+
+// xlsx ~430 kB min — dynamic import để không vào bundle đầu; chỉ tải khi
+// user bấm tải file mẫu (parseExcelFile cũng đã lazy-load bên trong).
+type XLSXModule = typeof import('xlsx');
+let xlsxPromise: Promise<XLSXModule> | null = null;
+const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import('xlsx'));
 
 interface IncomeExpenseImportDialogProps {
   open: boolean;
@@ -65,7 +70,9 @@ const HEADER_MAPPING: Record<string, keyof ExcelImportRow> = {
   'Số tiền (*)': 'amount',
 };
 
-function downloadIncomeExpenseImportTemplate(): void {
+async function downloadIncomeExpenseImportTemplate(): Promise<void> {
+  const XLSX = await getXLSX();
+
   const sampleData = [
     {
       'Loại phiếu (*)': 'Thu',

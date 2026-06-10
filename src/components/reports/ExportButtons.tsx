@@ -10,7 +10,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
+
+// xlsx ~430 kB min — dynamic import để không vào bundle đầu; chỉ tải khi
+// user bấm Xuất báo cáo.
+type XLSXModule = typeof import("xlsx");
+let xlsxPromise: Promise<XLSXModule> | null = null;
+const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import("xlsx"));
 
 interface ExportButtonsProps {
   data: any[];
@@ -31,7 +36,7 @@ export function ExportButtons({ data, filename, onExport }: ExportButtonsProps) 
         if (format === "csv") {
           exportToCSV(data, filename);
         } else if (format === "excel") {
-          exportToExcel(data, filename);
+          await exportToExcel(data, filename);
         } else if (format === "pdf") {
           toast.info(`Export PDF sẽ được triển khai trong tương lai`);
           return; // Don't show success toast for unimplemented features
@@ -75,11 +80,13 @@ export function ExportButtons({ data, filename, onExport }: ExportButtonsProps) 
 }
 
 // Excel export helper using xlsx library
-function exportToExcel(data: any[], filename: string) {
+async function exportToExcel(data: any[], filename: string): Promise<void> {
   if (!data || data.length === 0) {
     toast.error("Không có dữ liệu để xuất");
     return;
   }
+
+  const XLSX = await getXLSX();
 
   try {
     // Create worksheet from data

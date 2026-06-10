@@ -3,7 +3,11 @@
  * Uses XLSX library for Excel file operations
  */
 
-import * as XLSX from 'xlsx';
+// xlsx ~430 kB min — dynamic import để không vào bundle đầu; chỉ tải khi
+// user bấm Import/Export.
+type XLSXModule = typeof import('xlsx');
+let xlsxPromise: Promise<XLSXModule> | null = null;
+const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import('xlsx'));
 
 // =============================================
 // EXPORT FUNCTIONS
@@ -18,12 +22,14 @@ export interface ExportColumn<T> {
 /**
  * Export data to Excel file
  */
-export function exportToExcel<T>(
+export async function exportToExcel<T>(
   data: T[],
   columns: ExportColumn<T>[],
   filename: string,
   sheetName: string = 'Sheet1'
-): void {
+): Promise<void> {
+  const XLSX = await getXLSX();
+
   // Transform data to worksheet format
   const worksheetData = data.map(item => {
     const row: Record<string, any> = {};
@@ -56,7 +62,7 @@ export function exportToExcel<T>(
 /**
  * Export Buildings to Excel
  */
-export function exportBuildings(buildings: Array<{
+export async function exportBuildings(buildings: Array<{
   id: string;
   code: string | null;
   name: string;
@@ -69,7 +75,7 @@ export function exportBuildings(buildings: Array<{
   total_rooms: number | null;
   status: string;
   created_at: string;
-}>): void {
+}>): Promise<void> {
   const columns: ExportColumn<typeof buildings[0]>[] = [
     { header: 'Mã tòa nhà', key: 'code', width: 15 },
     { header: 'Tên tòa nhà', key: 'name', width: 25 },
@@ -83,13 +89,13 @@ export function exportBuildings(buildings: Array<{
     { header: 'Trạng thái', key: item => item.status === 'ACTIVE' ? 'Hoạt động' : 'Không hoạt động', width: 15 },
   ];
 
-  exportToExcel(buildings, columns, 'danh-sach-toa-nha', 'Tòa nhà');
+  await exportToExcel(buildings, columns, 'danh-sach-toa-nha', 'Tòa nhà');
 }
 
 /**
  * Export Rooms to Excel
  */
-export function exportRooms(rooms: Array<{
+export async function exportRooms(rooms: Array<{
   id: string;
   code: string | null;
   name: string;
@@ -100,7 +106,7 @@ export function exportRooms(rooms: Array<{
   max_occupants: number | null;
   status: string;
   building?: { name: string };
-}>): void {
+}>): Promise<void> {
   const columns: ExportColumn<typeof rooms[0]>[] = [
     { header: 'Tòa nhà', key: item => item.building?.name || '', width: 25 },
     { header: 'Mã căn hộ', key: 'code', width: 15 },
@@ -121,13 +127,13 @@ export function exportRooms(rooms: Array<{
     }, width: 15 },
   ];
 
-  exportToExcel(rooms, columns, 'danh-sach-can-ho', 'Căn hộ');
+  await exportToExcel(rooms, columns, 'danh-sach-can-ho', 'Căn hộ');
 }
 
 /**
  * Export Tenants to Excel
  */
-export function exportTenants(tenants: Array<{
+export async function exportTenants(tenants: Array<{
   id: string;
   full_name: string;
   phone: string;
@@ -137,7 +143,7 @@ export function exportTenants(tenants: Array<{
   gender: string | null;
   permanent_address: string | null;
   created_at: string;
-}>): void {
+}>): Promise<void> {
   const columns: ExportColumn<typeof tenants[0]>[] = [
     { header: 'Họ tên', key: 'full_name', width: 25 },
     { header: 'Số điện thoại', key: 'phone', width: 15 },
@@ -148,13 +154,13 @@ export function exportTenants(tenants: Array<{
     { header: 'Địa chỉ thường trú', key: 'permanent_address', width: 40 },
   ];
 
-  exportToExcel(tenants, columns, 'danh-sach-khach-hang', 'Khách hàng');
+  await exportToExcel(tenants, columns, 'danh-sach-khach-hang', 'Khách hàng');
 }
 
 /**
  * Export Contracts to Excel
  */
-export function exportContracts(contracts: Array<{
+export async function exportContracts(contracts: Array<{
   id: string;
   contract_number: string | null;
   start_date: string;
@@ -164,7 +170,7 @@ export function exportContracts(contracts: Array<{
   status: string;
   tenant?: { full_name: string; phone: string };
   room?: { name: string; building?: { name: string } };
-}>): void {
+}>): Promise<void> {
   const columns: ExportColumn<typeof contracts[0]>[] = [
     { header: 'Mã hợp đồng', key: 'contract_number', width: 20 },
     { header: 'Khách hàng', key: item => item.tenant?.full_name || '', width: 25 },
@@ -187,13 +193,13 @@ export function exportContracts(contracts: Array<{
     }, width: 15 },
   ];
 
-  exportToExcel(contracts, columns, 'danh-sach-hop-dong', 'Hợp đồng');
+  await exportToExcel(contracts, columns, 'danh-sach-hop-dong', 'Hợp đồng');
 }
 
 /**
  * Export Invoices to Excel
  */
-export function exportInvoices(invoices: Array<{
+export async function exportInvoices(invoices: Array<{
   id: string;
   invoice_number: string;
   billing_period_from: string;
@@ -205,7 +211,7 @@ export function exportInvoices(invoices: Array<{
   due_date: string;
   room?: { name: string };
   tenant?: { full_name: string };
-}>): void {
+}>): Promise<void> {
   const columns: ExportColumn<typeof invoices[0]>[] = [
     { header: 'Số hóa đơn', key: 'invoice_number', width: 20 },
     { header: 'Khách hàng', key: item => item.tenant?.full_name || '', width: 25 },
@@ -230,13 +236,13 @@ export function exportInvoices(invoices: Array<{
     }, width: 18 },
   ];
 
-  exportToExcel(invoices, columns, 'danh-sach-hoa-don', 'Hóa đơn');
+  await exportToExcel(invoices, columns, 'danh-sach-hoa-don', 'Hóa đơn');
 }
 
 /**
  * Export Leads to Excel
  */
-export function exportLeads(leads: Array<{
+export async function exportLeads(leads: Array<{
   id: string;
   customer_name: string;
   phone: string | null;
@@ -247,7 +253,7 @@ export function exportLeads(leads: Array<{
   notes: string | null;
   created_at: string;
   room?: { name: string; building?: { name: string } };
-}>): void {
+}>): Promise<void> {
   const sourceMap: Record<string, string> = {
     WEBSITE: 'Website',
     FACEBOOK: 'Facebook',
@@ -280,13 +286,13 @@ export function exportLeads(leads: Array<{
     { header: 'Ngày tạo', key: item => new Date(item.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }), width: 15 },
   ];
 
-  exportToExcel(leads, columns, 'danh-sach-khach-hen', 'Khách hẹn');
+  await exportToExcel(leads, columns, 'danh-sach-khach-hen', 'Khách hẹn');
 }
 
 /**
  * Export Payments to Excel
  */
-export function exportPayments(payments: Array<{
+export async function exportPayments(payments: Array<{
   id: string;
   amount: number;
   payment_date: string;
@@ -303,7 +309,7 @@ export function exportPayments(payments: Array<{
       };
     };
   };
-}>): void {
+}>): Promise<void> {
   const methodMap: Record<string, string> = {
     TM: 'TM',
     TK: 'TK',
@@ -321,7 +327,7 @@ export function exportPayments(payments: Array<{
     { header: 'Ghi chú', key: 'notes', width: 30 },
   ];
 
-  exportToExcel(payments, columns, 'danh-sach-thanh-toan', 'Thanh toán');
+  await exportToExcel(payments, columns, 'danh-sach-thanh-toan', 'Thanh toán');
 }
 
 // =============================================
@@ -340,6 +346,9 @@ export async function parseExcelFile<T>(
   file: File,
   headerMapping: Record<string, keyof T>
 ): Promise<T[]> {
+  // Load xlsx trước khi tạo FileReader — callback closure dùng biến này.
+  const XLSX = await getXLSX();
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -525,10 +534,12 @@ export async function importRooms(
 /**
  * Download Contract Import Template (building-specific)
  */
-export function downloadContractImportTemplate(
+export async function downloadContractImportTemplate(
   buildingName: string,
   rooms: Array<{ name: string }>
-): void {
+): Promise<void> {
+  const XLSX = await getXLSX();
+
   const headers = [
     'Căn hộ (*)', 'Họ tên khách hàng (*)', 'SĐT khách hàng (*)',
     'Ngày ký (*)', 'Ngày bắt đầu (*)', 'Hạn hợp đồng (*)',
@@ -733,7 +744,9 @@ export async function importContracts(
 /**
  * Generate sample Excel template for import
  */
-export function downloadImportTemplate(type: 'buildings' | 'rooms' | 'tenants'): void {
+export async function downloadImportTemplate(type: 'buildings' | 'rooms' | 'tenants'): Promise<void> {
+  const XLSX = await getXLSX();
+
   let headers: string[] = [];
   let sampleData: any[] = [];
 
@@ -772,7 +785,9 @@ export function downloadImportTemplate(type: 'buildings' | 'rooms' | 'tenants'):
  * Download Meter Reading Import Template
  * Columns: Mã công tơ, Ngày chốt, Chỉ số mới, Ghi chú
  */
-export function downloadMeterReadingImportTemplate(): void {
+export async function downloadMeterReadingImportTemplate(): Promise<void> {
+  const XLSX = await getXLSX();
+
   const sampleData = [
     {
       'Mã công tơ (*)': 'CTD-201',

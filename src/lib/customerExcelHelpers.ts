@@ -4,9 +4,14 @@
  * Uses XLSX (SheetJS) for Excel operations
  */
 
-import * as XLSX from 'xlsx';
 import { supabase } from '@/integrations/supabase/client';
 import type { Customer, CustomerFilters } from '@/types/customer';
+
+// xlsx ~430 kB min — dynamic import để không vào bundle đầu; chỉ tải khi
+// user bấm Import/Export.
+type XLSXModule = typeof import('xlsx');
+let xlsxPromise: Promise<XLSXModule> | null = null;
+const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import('xlsx'));
 
 // =============================================
 // Types
@@ -147,15 +152,17 @@ export function parseDateToISO(raw: string | number | undefined | null): string 
 
   // XLSX may give us a numeric serial date
   if (typeof raw === 'number') {
-    // Excel serial: days since 1900-01-01 (with leap year bug)
-    const date = XLSX.SSF.parse_date_code(raw);
-    if (date) {
-      const y = date.y;
-      const m = String(date.m).padStart(2, '0');
-      const d = String(date.d).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    }
-    return undefined;
+    // Excel serial: số ngày tính từ 1899-12-30 (UTC). Tự quy đổi thay vì
+    // XLSX.SSF.parse_date_code để hàm này giữ sync (xlsx đã chuyển sang
+    // dynamic import) — kết quả khớp SSF cho mọi ngày từ 01/03/1900 trở đi.
+    if (!Number.isFinite(raw) || raw <= 0) return undefined;
+    const days = Math.floor(raw);
+    const date = new Date((days - 25569) * 86400 * 1000);
+    if (isNaN(date.getTime())) return undefined;
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   const s = String(raw).trim();
@@ -189,10 +196,12 @@ export interface CustomerWithLocation extends Customer {
   room_name?: string;
 }
 
-export function exportCustomers(
+export async function exportCustomers(
   customers: CustomerWithLocation[],
   _filters?: CustomerFilters
-): void {
+): Promise<void> {
+  const XLSX = await getXLSX();
+
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([]);
 
@@ -253,7 +262,9 @@ export function exportCustomers(
 // Template download
 // =============================================
 
-export function downloadCustomerImportTemplate(): void {
+export async function downloadCustomerImportTemplate(): Promise<void> {
+  const XLSX = await getXLSX();
+
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([]);
 
@@ -334,6 +345,9 @@ const PHONE_REGEX = /^[0-9]{10,11}$/;
  *   - Simple format: header at row 1
  */
 export async function parseCustomerExcel(file: File): Promise<CustomerImportResult> {
+  // Load xlsx trước khi tạo FileReader — callback closure dùng biến này.
+  const XLSX = await getXLSX();
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 

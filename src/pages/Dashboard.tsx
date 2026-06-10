@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -7,9 +7,17 @@ import { useDashboardStats } from '@/hooks/useDashboard';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useVacantRoomsReport } from '@/hooks/useReports';
 import { OperationsSummary } from '@/components/dashboard/OperationsSummary';
-import { RevenueChart } from '@/components/dashboard/RevenueChart';
-import { OccupancyChart } from '@/components/dashboard/OccupancyChart';
-import { DebtChart } from '@/components/dashboard/DebtChart';
+// 3 chart kéo theo recharts (~400 kB) — lazy để first paint Dashboard không
+// chờ parse recharts; chart hiện sau với skeleton.
+const RevenueChart = lazy(() =>
+  import('@/components/dashboard/RevenueChart').then((m) => ({ default: m.RevenueChart })),
+);
+const OccupancyChart = lazy(() =>
+  import('@/components/dashboard/OccupancyChart').then((m) => ({ default: m.OccupancyChart })),
+);
+const DebtChart = lazy(() =>
+  import('@/components/dashboard/DebtChart').then((m) => ({ default: m.DebtChart })),
+);
 import { AlertsList } from '@/components/dashboard/AlertsList';
 import { RecentActivities } from '@/components/dashboard/RecentActivities';
 import { formatCurrency } from '@/lib/utils';
@@ -197,9 +205,19 @@ const Dashboard = () => {
 
         {/* Charts Row */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <RevenueChart buildingId={buildingId} />
-          <OccupancyChart buildingId={buildingId} />
-          <DebtChart />
+          <Suspense
+            fallback={
+              <>
+                <Skeleton className="h-[350px]" />
+                <Skeleton className="h-[350px]" />
+                <Skeleton className="h-[350px]" />
+              </>
+            }
+          >
+            <RevenueChart buildingId={buildingId} />
+            <OccupancyChart buildingId={buildingId} />
+            <DebtChart />
+          </Suspense>
         </div>
 
         {/* Reports Section */}

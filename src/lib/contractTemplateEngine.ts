@@ -4,8 +4,6 @@
 // `{NAME}` (scalar) and `{#NAME}...{/NAME}` (loop), matching the spec
 // shipped with CRM contract code reference.
 
-import Docxtemplater from "docxtemplater";
-import PizZip from "pizzip";
 import { format, parseISO, isValid, addDays, addMonths } from "date-fns";
 
 import type { ContractWithRelations } from "@/types/contract";
@@ -14,6 +12,17 @@ import {
   numberToVietnameseWords,
 } from "@/lib/invoiceTemplateEngine";
 import { supabase } from "@/integrations/supabase/client";
+
+// docxtemplater + pizzip khá nặng và chỉ chạy khi in hợp đồng — dynamic
+// import để không vào bundle đầu.
+type DocxtemplaterModule = typeof import("docxtemplater");
+type PizZipModule = typeof import("pizzip");
+let docxtemplaterPromise: Promise<DocxtemplaterModule> | null = null;
+let pizzipPromise: Promise<PizZipModule> | null = null;
+const getDocxtemplater = (): Promise<DocxtemplaterModule> =>
+  (docxtemplaterPromise ??= import("docxtemplater"));
+const getPizZip = (): Promise<PizZipModule> =>
+  (pizzipPromise ??= import("pizzip"));
 
 const TEMPLATE_BUCKET = "document-templates";
 
@@ -518,7 +527,12 @@ export async function renderContractDocx(
   templateUrl: string,
   data: ContractTemplateData,
 ): Promise<Blob> {
-  const buffer = await fetchTemplateBuffer(templateUrl);
+  const [{ default: Docxtemplater }, { default: PizZip }, buffer] =
+    await Promise.all([
+      getDocxtemplater(),
+      getPizZip(),
+      fetchTemplateBuffer(templateUrl),
+    ]);
 
   const zip = new PizZip(buffer);
   const doc = new Docxtemplater(zip, {

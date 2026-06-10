@@ -13,127 +13,117 @@ function TenantToCustomerRedirect() {
   return <Navigate to={`/customers/${id ?? ''}`} replace />;
 }
 
-// Auth Pages
+// ===== Eager imports — cần cho first paint / luôn dùng =====
+// Auth Pages (màn đầu tiên user thấy)
 import Register from "./pages/auth/Register";
 import Login from "./pages/auth/Login";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
-
-// Main Pages
 import Dashboard from "./pages/Dashboard";
-import BuildingMapPage from "./pages/building-map/BuildingMapPage";
-import NotificationsPage from "./pages/NotificationsPage";
 import NotFound from "./pages/NotFound";
-
-// Danh mục dữ liệu Pages
-import AreasPage from "./pages/areas/AreasPage";
-import BuildingsPage from "./pages/buildings/BuildingsPage";
-import BuildingDetailPage from "./pages/buildings/BuildingDetailPage";
-import RoomsPage from "./pages/rooms/RoomsPage";
-import RoomDetailPage from "./pages/rooms/RoomDetailPage";
-import ServicesPage from "./pages/services/ServicesPage";
-import SalePhongPage from "./pages/sale-phong/SalePhongPage";
-
-// Customer Pages
-import LeadsPage from "./pages/leads/LeadsPage";
-import DepositsPage from "./pages/deposits/DepositsPage";
-import ContractsPage from "./pages/contracts/ContractsPage";
-import ContractDetailPage from "./pages/contracts/ContractDetailPage";
-import TenantsPage from "./pages/tenants/TenantsPage";
-import VehiclesPage from "./pages/vehicles/VehiclesPage";
-import CustomersPage from "./pages/customers/CustomersPage";
-import CustomerFormPage from "./pages/customers/CustomerFormPage";
-import CustomerDetailPage from "./pages/customers/CustomerDetailPage";
-import CT01FormPage from "./pages/customers/CT01FormPage";
-
-// Finance Pages
-import MeterReadingsPage from "./pages/meter-readings/MeterReadingsPage";
-import InvoicesPage from "./pages/invoices/InvoicesPage";
-import InvoiceDetailPage from "./pages/invoices/InvoiceDetailPage";
-import InvoicePrintPage from "./pages/invoices/InvoicePrintPage";
-import IncomeExpensePage from "./pages/payments/IncomeExpensePage";
-import IncomeExpensePrintPage from "./pages/payments/IncomeExpensePrintPage";
-import RefundLogPage from "./pages/payments/RefundLogPage";
-// CashBookPage moved to reports/finance/DailyCashbookReport - redirect via /cash-book route below
-
-// Assets Pages
-import AssetsPage from "./pages/assets/AssetsPage";
-
-// Materials (kho vật tư tiêu hao) — hub page với 3 tab
-import MaterialsPage from "./pages/materials/MaterialsPage";
-
-// Reports Pages
-import RealEstateReportsPage from "./pages/reports/RealEstateReportsPage";
-import FinanceReportsPage from "./pages/reports/FinanceReportsPage";
-
-// Real Estate Reports
-import VacantRoomsReport from "./pages/reports/real-estate/VacantRoomsReport";
-import ExpiringContractsReport from "./pages/reports/real-estate/ExpiringContractsReport";
-import OccupancyReport from "./pages/reports/real-estate/OccupancyReport";
-import OccupancyNewReport from "./pages/reports/real-estate/OccupancyNewReport";
-import RenewalsTransfersReport from "./pages/reports/real-estate/RenewalsTransfersReport";
-import PromotionsReport from "./pages/reports/real-estate/PromotionsReport";
-import NewLeasesReport from "./pages/reports/real-estate/NewLeasesReport";
-import TerminationsReport from "./pages/reports/real-estate/TerminationsReport";
-import ExpenseRatioReport from "./pages/reports/real-estate/ExpenseRatioReport";
-
-// Finance Reports
-import DailyCashbookReport from "./pages/reports/finance/DailyCashbookReport";
-import CashFlowReport from "./pages/reports/finance/CashFlowReport";
-import DebtReport from "./pages/reports/finance/DebtReport";
-import CustomerDebtReport from "./pages/reports/finance/CustomerDebtReport";
-import PaymentScheduleReport from "./pages/reports/finance/PaymentScheduleReport";
-import OverpaymentReport from "./pages/reports/finance/OverpaymentReport";
-import DepositsReport from "./pages/reports/finance/DepositsReport";
-import ProfitDistributionReport from "./pages/reports/finance/ProfitDistributionReport";
-
-// Settings Pages
-import GeneralSettingsPage from "./pages/settings/GeneralSettingsPage";
-import CategoriesPage from "./pages/settings/CategoriesPage";
-import TemplatesPage from "./pages/settings/TemplatesPage";
-import SignaturesPage from "./pages/settings/SignaturesPage";
-import StaffPage from "./pages/settings/StaffPage";
-import AdminUsersPage from "./pages/admin/UsersPage";
-
-// Categories Sub-Pages
-import BankAccountsPage from "./pages/settings/categories/BankAccountsPage";
-import AutoDebtPage from "./pages/settings/categories/AutoDebtPage";
-import ServiceQuotasPage from "./pages/settings/categories/ServiceQuotasPage";
-import MetersPage from "./pages/settings/MetersPage";
-import IncomeExpenseTypesNewPage from "./pages/settings/IncomeExpenseTypesPage";
-import IncomeExpenseTemplatesPage from "./pages/settings/IncomeExpenseTemplatesPage";
-import CashbooksPage from "./pages/settings/finance/CashbooksPage";
-import ShareholderProfitPage from "./pages/finance/ShareholderProfitPage";
-import PersonalWalletPage from "./pages/finance/PersonalWalletPage";
-
-import SuppliersPage from "./pages/settings/categories/SuppliersPage";
-import WarehousesPage from "./pages/settings/categories/WarehousesPage";
-import AssetTypesPage from "./pages/settings/categories/AssetTypesPage";
-import AssetMovementsPage from "./pages/settings/categories/AssetMovementsPage";
-import AssetMaintenancePage from "./pages/settings/categories/AssetMaintenancePage";
-import HotlinesPage from "./pages/settings/categories/HotlinesPage";
-import GeneralCategoriesPage from "./pages/settings/categories/GeneralCategoriesPage";
-import FloorsPage from "./pages/settings/categories/FloorsPage";
-import TaskTypesPage from "./pages/settings/categories/TaskTypesPage";
-import TaskManagementPage from "./pages/TaskManagementPage";
-
-// Account Pages
-import ProfilePage from "./pages/account/ProfilePage";
-import SubscriptionPage from "./pages/account/SubscriptionPage";
-
-// Public Pages (không cần đăng nhập, dùng cho QR hợp đồng)
-import PublicContractInvoicePage from "./pages/public/PublicContractInvoicePage";
-
-// Info Pages
-import FaqPage from "./pages/FaqPage";
-import ChangelogPage from "./pages/ChangelogPage";
-import AppGuidePage from "./pages/AppGuidePage";
 
 // Route Guards
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PublicRoute from "./components/auth/PublicRoute";
 import { AdminOnlyRoute } from "./components/auth/AdminOnlyRoute";
 import { RequirePermission } from "./components/auth/RequirePermission";
+
+// ===== Lazy imports — code-split theo route =====
+// Bundle chính từng là 3.8 MB (1.05 MB gzip) vì ~80 page import tĩnh kéo theo
+// xlsx/docxtemplater/recharts. Mỗi page lazy thành chunk riêng; <Suspense>
+// bọc chung quanh <Routes> (riêng /r/:token và /thu-tien giữ Suspense cục bộ
+// vì có CSS toàn cục cần cô lập).
+const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+
+// Danh mục dữ liệu
+const AreasPage = lazy(() => import("./pages/areas/AreasPage"));
+const BuildingsPage = lazy(() => import("./pages/buildings/BuildingsPage"));
+const BuildingDetailPage = lazy(() => import("./pages/buildings/BuildingDetailPage"));
+const RoomsPage = lazy(() => import("./pages/rooms/RoomsPage"));
+const RoomDetailPage = lazy(() => import("./pages/rooms/RoomDetailPage"));
+const ServicesPage = lazy(() => import("./pages/services/ServicesPage"));
+const SalePhongPage = lazy(() => import("./pages/sale-phong/SalePhongPage"));
+
+// Khách hàng
+const LeadsPage = lazy(() => import("./pages/leads/LeadsPage"));
+const DepositsPage = lazy(() => import("./pages/deposits/DepositsPage"));
+const ContractsPage = lazy(() => import("./pages/contracts/ContractsPage"));
+const ContractDetailPage = lazy(() => import("./pages/contracts/ContractDetailPage"));
+const VehiclesPage = lazy(() => import("./pages/vehicles/VehiclesPage"));
+const CustomersPage = lazy(() => import("./pages/customers/CustomersPage"));
+const CustomerFormPage = lazy(() => import("./pages/customers/CustomerFormPage"));
+const CustomerDetailPage = lazy(() => import("./pages/customers/CustomerDetailPage"));
+const CT01FormPage = lazy(() => import("./pages/customers/CT01FormPage"));
+
+// Tài chính
+const MeterReadingsPage = lazy(() => import("./pages/meter-readings/MeterReadingsPage"));
+const InvoicesPage = lazy(() => import("./pages/invoices/InvoicesPage"));
+const InvoiceDetailPage = lazy(() => import("./pages/invoices/InvoiceDetailPage"));
+const InvoicePrintPage = lazy(() => import("./pages/invoices/InvoicePrintPage"));
+const IncomeExpensePage = lazy(() => import("./pages/payments/IncomeExpensePage"));
+const IncomeExpensePrintPage = lazy(() => import("./pages/payments/IncomeExpensePrintPage"));
+const RefundLogPage = lazy(() => import("./pages/payments/RefundLogPage"));
+
+// Tài sản & vật tư
+const AssetsPage = lazy(() => import("./pages/assets/AssetsPage"));
+const MaterialsPage = lazy(() => import("./pages/materials/MaterialsPage"));
+
+// Báo cáo
+const RealEstateReportsPage = lazy(() => import("./pages/reports/RealEstateReportsPage"));
+const FinanceReportsPage = lazy(() => import("./pages/reports/FinanceReportsPage"));
+const VacantRoomsReport = lazy(() => import("./pages/reports/real-estate/VacantRoomsReport"));
+const ExpiringContractsReport = lazy(() => import("./pages/reports/real-estate/ExpiringContractsReport"));
+const OccupancyReport = lazy(() => import("./pages/reports/real-estate/OccupancyReport"));
+const OccupancyNewReport = lazy(() => import("./pages/reports/real-estate/OccupancyNewReport"));
+const RenewalsTransfersReport = lazy(() => import("./pages/reports/real-estate/RenewalsTransfersReport"));
+const PromotionsReport = lazy(() => import("./pages/reports/real-estate/PromotionsReport"));
+const NewLeasesReport = lazy(() => import("./pages/reports/real-estate/NewLeasesReport"));
+const TerminationsReport = lazy(() => import("./pages/reports/real-estate/TerminationsReport"));
+const ExpenseRatioReport = lazy(() => import("./pages/reports/real-estate/ExpenseRatioReport"));
+const DailyCashbookReport = lazy(() => import("./pages/reports/finance/DailyCashbookReport"));
+const CashFlowReport = lazy(() => import("./pages/reports/finance/CashFlowReport"));
+const DebtReport = lazy(() => import("./pages/reports/finance/DebtReport"));
+const CustomerDebtReport = lazy(() => import("./pages/reports/finance/CustomerDebtReport"));
+const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/PaymentScheduleReport"));
+const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
+const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
+const ProfitDistributionReport = lazy(() => import("./pages/reports/finance/ProfitDistributionReport"));
+
+// Cài đặt
+const GeneralSettingsPage = lazy(() => import("./pages/settings/GeneralSettingsPage"));
+const CategoriesPage = lazy(() => import("./pages/settings/CategoriesPage"));
+const TemplatesPage = lazy(() => import("./pages/settings/TemplatesPage"));
+const SignaturesPage = lazy(() => import("./pages/settings/SignaturesPage"));
+const StaffPage = lazy(() => import("./pages/settings/StaffPage"));
+const AdminUsersPage = lazy(() => import("./pages/admin/UsersPage"));
+const BankAccountsPage = lazy(() => import("./pages/settings/categories/BankAccountsPage"));
+const AutoDebtPage = lazy(() => import("./pages/settings/categories/AutoDebtPage"));
+const ServiceQuotasPage = lazy(() => import("./pages/settings/categories/ServiceQuotasPage"));
+const MetersPage = lazy(() => import("./pages/settings/MetersPage"));
+const IncomeExpenseTypesNewPage = lazy(() => import("./pages/settings/IncomeExpenseTypesPage"));
+const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExpenseTemplatesPage"));
+const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
+const ShareholderProfitPage = lazy(() => import("./pages/finance/ShareholderProfitPage"));
+const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
+const SuppliersPage = lazy(() => import("./pages/settings/categories/SuppliersPage"));
+const WarehousesPage = lazy(() => import("./pages/settings/categories/WarehousesPage"));
+const AssetTypesPage = lazy(() => import("./pages/settings/categories/AssetTypesPage"));
+const AssetMovementsPage = lazy(() => import("./pages/settings/categories/AssetMovementsPage"));
+const AssetMaintenancePage = lazy(() => import("./pages/settings/categories/AssetMaintenancePage"));
+const HotlinesPage = lazy(() => import("./pages/settings/categories/HotlinesPage"));
+const GeneralCategoriesPage = lazy(() => import("./pages/settings/categories/GeneralCategoriesPage"));
+const FloorsPage = lazy(() => import("./pages/settings/categories/FloorsPage"));
+const TaskTypesPage = lazy(() => import("./pages/settings/categories/TaskTypesPage"));
+const TaskManagementPage = lazy(() => import("./pages/TaskManagementPage"));
+
+// Tài khoản + Info + Public
+const ProfilePage = lazy(() => import("./pages/account/ProfilePage"));
+const SubscriptionPage = lazy(() => import("./pages/account/SubscriptionPage"));
+const PublicContractInvoicePage = lazy(() => import("./pages/public/PublicContractInvoicePage"));
+const FaqPage = lazy(() => import("./pages/FaqPage"));
+const ChangelogPage = lazy(() => import("./pages/ChangelogPage"));
+const AppGuidePage = lazy(() => import("./pages/AppGuidePage"));
 
 // Trang công khai "Phòng trống" (share link) — lazy để CSS toàn cục của nó
 // (phongTrong.css đặt style body ngoài @layer) chỉ nạp khi mở /r/:token,
@@ -145,7 +135,28 @@ const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
 // Space Mono chỉ nạp khi mở /thu-tien, không kế thừa/đụng theme site.
 const ThuTien = lazy(() => import("./pages/ThuTien"));
 
-const queryClient = new QueryClient();
+// Fallback khi đang tải chunk của route lazy
+const RouteFallback = () => (
+  <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">
+    Đang tải…
+  </div>
+);
+
+// CRM nội bộ: dữ liệu 1 phút tuổi chấp nhận được. staleTime=0 +
+// refetchOnWindowFocus mặc định của TanStack Query khiến MỌI query đang mount
+// refetch lại mỗi lần Alt-Tab — nhân 3-5 lần số request không cần thiết.
+// Hook cần tươi hơn (notifications, dashboard-stats) tự khai staleTime/
+// refetchInterval riêng nên không bị ảnh hưởng; mutation vẫn cập nhật đúng
+// vì toàn repo dùng invalidateQueries sau mutation.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -154,6 +165,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
           {/* ========================================
               PUBLIC ROUTES - Only for unauthenticated users
@@ -370,6 +382,7 @@ const App = () => (
           {/* 404 Not Found - Catch all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
       </ErrorBoundary>
     </TooltipProvider>

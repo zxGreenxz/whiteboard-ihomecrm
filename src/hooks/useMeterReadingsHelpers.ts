@@ -164,7 +164,11 @@ const METER_TYPE_LABELS: Record<string, string> = {
  * Requirement: 1.3, 8.4
  */
 export function generateMeterName(roomName: string, meterType: string): string {
-  const typeLabel = METER_TYPE_LABELS[meterType] ?? meterType;
+  // Chỉ nhận own property — tránh key kế thừa từ Object.prototype
+  // (vd meterType = "toString" sẽ trả về function thay vì undefined).
+  const typeLabel = Object.prototype.hasOwnProperty.call(METER_TYPE_LABELS, meterType)
+    ? METER_TYPE_LABELS[meterType]
+    : meterType;
   return `${roomName} - ${typeLabel}`;
 }
 

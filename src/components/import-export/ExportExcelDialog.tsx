@@ -170,25 +170,25 @@ const ExportExcelDialog = ({
 
       switch (exportType) {
         case 'buildings':
-          exportBuildings(data);
+          await exportBuildings(data);
           break;
         case 'rooms':
-          exportRooms(data);
+          await exportRooms(data);
           break;
         case 'tenants':
-          exportTenants(data);
+          await exportTenants(data);
           break;
         case 'contracts':
-          exportContracts(data);
+          await exportContracts(data);
           break;
         case 'invoices':
-          exportInvoices(data);
+          await exportInvoices(data);
           break;
         case 'leads':
-          exportLeads(data);
+          await exportLeads(data);
           break;
         case 'payments':
-          exportPayments(data);
+          await exportPayments(data);
           break;
       }
 

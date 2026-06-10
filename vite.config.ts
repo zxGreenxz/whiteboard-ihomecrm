@@ -15,4 +15,32 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Tách vendor ổn định để cache lâu dài giữa các lần deploy.
+        // DÙNG DẠNG FUNCTION + match đúng thư mục package: dạng object kéo cả
+        // deps dùng chung (clsx của recharts trùng với cn() toàn app) vào
+        // vendor-charts → mọi page chunk import vendor-charts tĩnh và bị
+        // modulepreload ngay từ đầu, phá tác dụng lazy.
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          if (id.includes(`${"node_modules"}/@supabase/`) || /[\\/]node_modules[\\/]@supabase[\\/]/.test(id)) {
+            return "vendor-supabase";
+          }
+          if (/[\\/]node_modules[\\/]@tanstack[\\/]react-query/.test(id)) {
+            return "vendor-query";
+          }
+          // recharts KHÔNG đưa vào manualChunks: mọi consumer của nó đều lazy
+          // nên Rollup tự tách thành chunk chia sẻ chỉ tải khi mở chart;
+          // ép vào vendor-charts từng khiến entry import tĩnh + modulepreload
+          // 433 kB ngay từ đầu (dep chung bị gộp nhầm).
+          return undefined;
+        },
+      },
+    },
+  },
 }));

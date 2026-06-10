@@ -4,12 +4,17 @@
  * Requirements: 11.2, 11.3, 11.4, 11.5, 12.1, 12.2
  */
 
-import * as XLSX from 'xlsx';
 import type { ContractWithRelations, ContractFilters } from '@/types/contract';
 import { getContractDisplayStatus, CONTRACT_STATUS_CONFIG, PAYMENT_CYCLE_LABELS } from '@/types/contract';
 import type { PaymentCycle } from '@/types/contract';
 import type { ImportResult } from '@/lib/excelHelpers';
 import { parseDateToISO } from '@/lib/customerExcelHelpers';
+
+// xlsx ~430 kB min — dynamic import để không vào bundle đầu; chỉ tải khi
+// user bấm Import/Export.
+type XLSXModule = typeof import('xlsx');
+let xlsxPromise: Promise<XLSXModule> | null = null;
+const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import('xlsx'));
 
 // =============================================
 // Types
@@ -236,10 +241,12 @@ export function validateContractImportRow(
  * Export contracts to Excel file.
  * Requirement 12.1, 12.2
  */
-export function exportContracts(
+export async function exportContracts(
   contracts: ContractWithRelations[],
   _filters?: ContractFilters
-): void {
+): Promise<void> {
+  const XLSX = await getXLSX();
+
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([]);
 
@@ -299,7 +306,9 @@ export function exportContracts(
  * Download blank import template with required columns marked (*).
  * Requirement 11.2
  */
-export function downloadContractImportTemplate(): void {
+export async function downloadContractImportTemplate(): Promise<void> {
+  const XLSX = await getXLSX();
+
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([]);
 
@@ -366,6 +375,9 @@ export async function parseContractExcel(
   file: File,
   _buildingId: string
 ): Promise<ImportResult<ContractImportRow>> {
+  // Load xlsx trước khi tạo FileReader — callback closure dùng biến này.
+  const XLSX = await getXLSX();
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 

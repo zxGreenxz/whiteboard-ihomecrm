@@ -4,8 +4,13 @@
  * Requirements: 10.1, 10.2, 10.3, 10.4, 10.5
  */
 
-import * as XLSX from 'xlsx';
 import type { VehicleWithRelations, VehicleImportRow } from '@/types/vehicle';
+
+// xlsx ~430 kB min — dynamic import để không vào bundle đầu; chỉ tải khi
+// user bấm Import/Export.
+type XLSXModule = typeof import('xlsx');
+let xlsxPromise: Promise<XLSXModule> | null = null;
+const getXLSX = (): Promise<XLSXModule> => (xlsxPromise ??= import('xlsx'));
 
 // =============================================
 // Types
@@ -78,7 +83,9 @@ function formatVehicleType(type: string): string {
  * Export vehicles to Excel file.
  * Requirement 10.1
  */
-export function exportVehicles(vehicles: VehicleWithRelations[]): void {
+export async function exportVehicles(vehicles: VehicleWithRelations[]): Promise<void> {
+  const XLSX = await getXLSX();
+
   const rows = vehicles.map(v => ({
     'Mã PT': v.id.slice(0, 8).toUpperCase(),
     'Loại xe': formatVehicleType(v.vehicle_type),
@@ -123,7 +130,9 @@ export function exportVehicles(vehicles: VehicleWithRelations[]): void {
  * Download blank import template with required columns marked (*).
  * Requirement 10.2
  */
-export function downloadVehicleImportTemplate(): void {
+export async function downloadVehicleImportTemplate(): Promise<void> {
+  const XLSX = await getXLSX();
+
   const exampleRow: Record<string, string> = {
     'Loại xe (*) [Xe máy/Ô tô/Xe đạp/Xe đạp điện]': 'Xe máy',
     'Tên dòng xe (*)': 'Honda Wave',
@@ -160,6 +169,9 @@ export function downloadVehicleImportTemplate(): void {
  * Requirements 10.3, 10.4, 10.5
  */
 export async function parseVehicleExcel(file: File): Promise<VehicleImportResult> {
+  // Load xlsx trước khi tạo FileReader — callback closure dùng biến này.
+  const XLSX = await getXLSX();
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
