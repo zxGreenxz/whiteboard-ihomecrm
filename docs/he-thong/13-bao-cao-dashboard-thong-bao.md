@@ -311,16 +311,21 @@ quá hạn riêng, tránh nhắc 2 lần cùng 1 khoản. Điều kiện `.or('d
 
 - **Sổ quỹ / dòng tiền — 1 nguồn `income_expenses`** ([useCashBook.ts](src/hooks/useCashBook.ts)):
   chỉ cộng `income_expenses` với `approval_status='APPROVED'` và `deleted_at IS NULL`.
-  Số dư đầu kỳ = `Σ(INCOME) − Σ(EXPENSE)` của mọi phiếu `voucher_date < start_date`.
-  `useCashBookSummary`/`useCashFlowByDay` nhận thêm `options.building_id` và
-  `options.account_id` — lọc server-side cả kỳ hiện tại lẫn số dư đầu kỳ.
+  Số dư đầu kỳ = `Σ(INCOME) − Σ(EXPENSE)` của mọi phiếu `voucher_date < start_date`
+  — từ 849fdc5 (2026-06-10) tính bằng RPC aggregate
+  **`cashbook_opening_balance(p_before_date, p_building_id, p_account_id)`**
+  ([20260610110000](supabase/migrations/20260610110000_perf_indexes_cashbook_rpc.sql),
+  `SECURITY INVOKER` — qua RLS y hệt; trả 1 số thay vì kéo toàn bộ lịch sử phiếu
+  về client). `useCashBookSummary`/`useCashFlowByDay` nhận thêm `options.building_id`
+  và `options.account_id` — lọc server-side cả kỳ hiện tại lẫn số dư đầu kỳ.
   **Không** đọc `payments`/`expenses` (đã mirror → double-count).
-- **Doanh thu Dashboard** ([useDashboard.ts](src/hooks/useDashboard.ts) dòng 113–123)
+- **Doanh thu Dashboard** ([useDashboard.ts](src/hooks/useDashboard.ts))
   lấy từ `payments.amount` theo `payment_date` trong tháng. (Khác với sổ quỹ —
-  đây là số liệu nhanh cho card, có thể lệch với ledger.) Lưu ý: số này **không
-  lọc theo tòa nhà** đã chọn (xem §5.1).
+  đây là số liệu nhanh cho card, có thể lệch với ledger.) Từ 849fdc5 **đã respect
+  bộ lọc toà** (join `invoice:invoices!inner(building_id)` khi có `buildingId`).
 - **Công nợ** = `Σ(total_amount − paid_amount)` của hoá đơn `APPROVED`/`PARTIAL_PAID`,
-  `deleted_at IS NULL` — cũng toàn hệ thống, không theo tòa.
+  `deleted_at IS NULL` — từ 849fdc5 lọc `.in('building_id', buildingIds)` theo
+  bộ lọc toà (trước đây toàn hệ thống).
 - **Lấp đầy**: phòng "đã thuê" = phòng có HĐ `ACTIVE` (chỉ ACTIVE, đếm
   `room_id`); phòng `RESERVED` (cọc giữ chỗ) tách thành bucket riêng
   `reservedRooms`; `availableRooms = totalRooms − occupied − reserved`.
@@ -334,8 +339,11 @@ quá hạn riêng, tránh nhắc 2 lần cùng 1 khoản. Điều kiện `.or('d
   hạng mục có kỳ áp dụng `[start,end]` nhiều tháng → **chia đều** ra các tháng
   (`allocateAmountByMonth`); hạng mục null-period → ghi trọn vào tháng
   `voucher_date`. Invariant: `Σ` mọi phần qua mọi tháng của mọi item ==
-  `Σ total_amount` của voucher. Filter `area_id` lọc thật: map khu vực →
-  danh sách `buildings.area_id` → `.in('building_id', ids)` (dòng 124–133).
+  `Σ total_amount` của voucher. Filter toà: **`building_ids: string[]`** (từ
+  `BuildingMultiSelect`) `.in('building_id', ids)` trực tiếp — không round-trip;
+  `area_id` legacy (map khu → `buildings.area_id` → `.in`) vẫn còn nhánh nhưng
+  UI không set nữa. `building_ids` nằm trong queryKey — đổi chọn toà không trả
+  cache cũ.
 - **Tỉ lệ chi phí/doanh thu** ([useReports.ts](src/hooks/useReports.ts) `useExpenseRatioReport`):
   tử số = `Σ income_expense_items.amount` của phiếu `EXPENSE` `APPROVED` theo
   nhóm `income_expense_types.category`; mẫu số = `Σ income_expenses.total_amount`
@@ -394,21 +402,30 @@ Dữ liệu hiển thị (hook trong [useDashboard.ts](src/hooks/useDashboard.ts
 - `useScheduledNotifications()` → kích hoạt bộ sinh thông báo (xem §4.2).
 - `OnboardingWizard` hiển thị nếu chưa hoàn tất onboarding.
 
-**Phạm vi thật của bộ lọc tòa nhà — lưu ý quan trọng:** `buildingId` được truyền
-vào hầu hết hook (nằm trong queryKey) nhưng chỉ một phần **thực sự lọc**:
+**Phạm vi thật của bộ lọc tòa nhà** (cập nhật 849fdc5, 2026-06-10 — doanh thu /
+công nợ / revenue chart đã lọc thật):
 
 | Widget | Lọc theo tòa? | Ghi chú |
 |--------|---------------|---------|
 | `useDashboardStats` — tổng căn / đang thuê / trống / đã cọc / % lấp đầy | ✅ server-side | `rooms.building_id` + join `rooms!inner` cho contracts |
-| `useDashboardStats` — doanh thu tháng, công nợ tổng, HĐ mới, việc chưa xử lý | ❌ | Số **toàn hệ thống** dù đã chọn 1 tòa (dòng 113–148) |
+| `useDashboardStats` — doanh thu tháng | ✅ (mới) | join `invoice:invoices!inner(building_id)` khi chọn tòa |
+| `useDashboardStats` — công nợ tổng | ✅ (mới) | `.in('building_id', buildingIds)` |
+| `useDashboardStats` — HĐ mới tháng, việc chưa xử lý | ❌ | vẫn **toàn hệ thống** dù đã chọn 1 tòa |
+| `useRevenueChart` | ✅ (mới) | join `invoices!inner` lọc `building_id` |
 | `useOccupancyChart` | ✅ | cùng pattern stats |
 | `<OperationsSummary>` | một phần | chỉ HĐ lọc client-side; lead/cọc toàn hệ thống |
 | `useVacantRoomsReport` (dialog Trống) | ✅ | `rooms .eq building_id` |
-| `useRevenueChart`, `useAlerts`, `useRecentActivities` | ❌ | nhận param nhưng **không dùng** trong queryFn |
+| `useAlerts`, `useRecentActivities` | ❌ | nhận param nhưng **không dùng** trong queryFn |
 | `<DebtChart>` | ❌ | component không nhận `buildingId` ([DebtChart.tsx](src/components/dashboard/DebtChart.tsx)) |
 
-→ KPI tiền (doanh thu/công nợ) và các danh sách cảnh báo/hoạt động **không đổi**
-khi đổi bộ lọc tòa — dễ gây hiểu nhầm, cần lưu ý khi đọc số.
+→ Còn lệch: HĐ mới / việc chưa xử lý / cảnh báo / hoạt động gần đây **không đổi**
+khi đổi bộ lọc tòa.
+
+**Hiệu năng (849fdc5 + e4bea2f):** `useDashboardStats` chạy 7 truy vấn độc lập
+bằng `Promise.all` (bản cũ await tuần tự — dồn ~7 round-trip latency mỗi chu kỳ
+60s); `useRevenueChart` gom **1 query payments cả kỳ** rồi group tháng ở client
+(bản cũ 12 query tuần tự, 1.5–2.5s mỗi lần mở Dashboard); 3 chart lazy-load để
+first paint không chờ recharts (~340kB).
 
 Thao tác chính: đổi bộ lọc tòa nhà → re-query các widget phần phòng (xem bảng
 trên). Bấm card Trống → mở dialog → bấm dòng → điều hướng `/apartments/:roomId`.
@@ -494,15 +511,15 @@ Báo cáo con:
 
 | Báo cáo | Route | Hook | Nguồn dữ liệu & bộ lọc |
 |---------|-------|------|------------------------|
-| Sổ quỹ theo ngày | `/reports/finance/daily-cashbook` (+ `/cash-book`, alias legacy `/report/finance/cashbook`) | `useCashFlowByDay` + `useCashBookSummary` | `income_expenses` APPROVED (số dư đầu/cuối ngày). Filter: tòa (gồm tòa ảo) + **tài khoản** (`account_id`, dropdown từ `useAccounts`) — cả hai lọc server-side; ô "Chọn khu vực" là **dead filter** (state không được dùng) |
+| Sổ quỹ theo ngày | `/reports/finance/daily-cashbook` (+ `/cash-book`, alias legacy `/report/finance/cashbook`) | `useCashFlowByDay` + `useCashBookSummary` | `income_expenses` APPROVED (số dư đầu/cuối ngày; đầu kỳ qua RPC `cashbook_opening_balance`). Filter: tòa **đơn** (gồm tòa ảo — hook chưa hỗ trợ `building_ids`) + **tài khoản** (`account_id`, dropdown từ `useAccounts`) — cả hai lọc server-side; ô "Chọn khu vực" chết đã **gỡ** (9ad626d) |
 | Dòng tiền | `/reports/finance/cash-flow` (+ alias legacy `/report/finance/cash-flow`) | `useCashFlowByDay` | `income_expenses` APPROVED → gom 12 tháng + 4 quý. Filter: năm + tòa (gồm tòa ảo); không có ô khu vực |
-| Phân bổ lợi nhuận | `/reports/finance/profit-distribution` | Mặc định **`useIncomeExpenses` + `useIncomeExpenseStats`** (theo **ngày phiếu**, `accrualMode=false`); bật toggle "Phân bổ theo kỳ áp dụng" mới chạy `useAccrualMonthReport` | `income_expenses` (+items). Toggle KQKD (`pnlOnly` mặc định true — loại khoản không hạch toán KQKD như tiền cọc); filter **khu vực hoạt động thật** (`area_id` → `buildings.area_id` → `.in building_id`), tòa (gồm tòa ảo), phòng (dropdown hiện chỉ có 1 option "Tất cả phòng" — control chết), loại Thu/Chi; phân trang 10/20/50/100 |
+| Phân bổ lợi nhuận | `/reports/finance/profit-distribution` | Mặc định **`useIncomeExpenses` + `useIncomeExpenseStats`** (theo **ngày phiếu**, `accrualMode=false`); bật toggle "Phân bổ theo kỳ áp dụng" mới chạy `useAccrualMonthReport` | `income_expenses` (+items). Toggle KQKD (`pnlOnly` mặc định true — loại khoản không hạch toán KQKD như tiền cọc); filter tòa = **`BuildingMultiSelect`** (nhiều toà nhóm theo khu, gồm tòa ảo — trang fetch `useBuildings({includeVirtual:true})` truyền vào component) → `building_ids` lọc thật ở cả 2 hook; phòng (dropdown hiện chỉ có 1 option "Tất cả phòng" — control chết), loại Thu/Chi; phân trang 10/20/50/100 |
 | Chia LN cổ đông | `/finance/shareholder-profit` (thẻ link thẳng; redirect chỉ từ `/reports/finance/shareholder-profit`) | (domain cổ đông) | → domain Cổ đông |
 | Công nợ HĐ mới | `/reports/finance/new-contract-debt` (+ `/debt`) | `useDebtReport` | `invoices` APPROVED/PARTIAL_PAID/OVERDUE + aging. **Không** có filter tòa/khu vực nào — chỉ dựa RLS |
-| Khách nợ tiền | `/reports/finance/customer-debt` (+ alias legacy `/report/finance/debt` — ⚠️ KHÁC `/reports/finance/debt` vốn trỏ `DebtReport`, xem [App.tsx:294](src/App.tsx#L294) vs [:305](src/App.tsx#L305)) | `useCustomerDebtReport` | `invoices` gom theo khách (đại diện HĐ). Khu vực = dead filter; cột "Khu vực" trong bảng luôn "—" (hook chỉ select `buildings(id,name)`, không có area) |
-| Lịch thanh toán | `/reports/finance/payment-schedule` (+ alias legacy `/report/finance/billing-calendar`) | `usePaymentScheduleReport(365)` | **Gom theo PHÒNG**, không phải danh sách hoá đơn: mỗi phòng 1 dòng với "Đã lên hóa đơn đến ngày" = max(`billing_period_end ?? due_date`) của mọi hoá đơn từng phòng — nhưng cột `billing_period_end` **không tồn tại** trong schema `invoices` hiện tại nên thực tế luôn là `due_date` muộn nhất. Hook chỉ có `.lte('due_date', today+365)` — **không lọc status/deleted_at, không cận dưới** → tính cả hoá đơn nháp/huỷ/xoá mềm. Khu vực = dead filter; dropdown phòng chỉ 1 option |
-| Tiền thừa | `/reports/finance/overpayment` (+ alias legacy `/report/finance/prepaid`) | `useOverpaymentReport` | `invoices` `paid_amount > total_amount` (lọc overpaid ở JS sau khi tải mọi invoice `paid_amount>0`; **không** lọc `deleted_at`/status). Khu vực = dead filter |
-| Danh sách cọc | `/reports/finance/deposits` | `useDepositsReport` | `deposits` (+tenant +room). Khu vực = dead filter; xem caveat kiến trúc cọc ở §5.6 |
+| Khách nợ tiền | `/reports/finance/customer-debt` (+ alias legacy `/report/finance/debt` — ⚠️ KHÁC `/reports/finance/debt` vốn trỏ `DebtReport`) | `useCustomerDebtReport` | `invoices` gom theo khách (đại diện HĐ). Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` (ô khu vực chết đã gỡ); cột "Khu vực" trong bảng vẫn luôn "—" (hook chỉ select `buildings(id,name)`, không có area) |
+| Lịch thanh toán | `/reports/finance/payment-schedule` (+ alias legacy `/report/finance/billing-calendar`) | `usePaymentScheduleReport(365)` | **Gom theo PHÒNG**, không phải danh sách hoá đơn: mỗi phòng 1 dòng với "Đã lên hóa đơn đến ngày" = max(`billing_period_end ?? due_date`) của mọi hoá đơn từng phòng — nhưng cột `billing_period_end` **không tồn tại** trong schema `invoices` hiện tại nên thực tế luôn là `due_date` muộn nhất. Hook chỉ có `.lte('due_date', today+365)` — **không lọc status/deleted_at, không cận dưới** → tính cả hoá đơn nháp/huỷ/xoá mềm. Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` TRƯỚC khi gộp phòng (ô khu vực chết đã gỡ); dropdown phòng chỉ 1 option |
+| Tiền thừa | `/reports/finance/overpayment` (+ alias legacy `/report/finance/prepaid`) | `useOverpaymentReport` | `invoices` `paid_amount > total_amount` (lọc overpaid ở JS sau khi tải mọi invoice `paid_amount>0`; **không** lọc `deleted_at`/status). Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` (ô khu vực chết đã gỡ) |
+| Danh sách cọc | `/reports/finance/deposits` | `useDepositsReport` | `deposits` (+tenant +room). Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` (ô khu vực chết đã gỡ); xem caveat kiến trúc cọc ở §5.6 |
 
 Lưu ý: hub ghi nhãn "9 loại báo cáo" và route `/debt` ≡ `/new-contract-debt` cùng
 trỏ `DebtReport` (aging 0-30/31-60/61-90/>90). `CashFlowReport` dùng
@@ -528,12 +545,12 @@ flowchart TD
 - **DepositsReport** ([DepositsReport.tsx](src/pages/reports/finance/DepositsReport.tsx)):
   map `deposit_status` (PENDING/CONFIRMED/CONVERTED/REFUNDED/FORFEITED) sang nhãn
   Việt; nhóm "đang giữ" = PENDING+CONFIRMED, "đã vào HĐ" = CONVERTED. Lọc tòa
-  theo **tên** tòa (so `rooms.buildings.name`). **Caveat kiến trúc:** báo cáo
-  này phân loại theo `deposits.status` trong khi kiến trúc cọc hiện hành quy
-  định nguồn sự thật = phiếu thu chi `is_deposit` (`deposit_remaining`) và
-  hoàn/bỏ cọc đọc từ `contract_terminations`, **không** dùng `deposits.status`
-  → số liệu có thể lệch với trang `/deposits`. (`<OperationsSummary>` trên
-  Dashboard cũng đọc `deposits.status` tương tự.)
+  bằng `BuildingMultiSelect` theo `rooms.buildings.id` (hết lọc theo **tên** tòa).
+  **Caveat kiến trúc:** báo cáo này phân loại theo `deposits.status` trong khi
+  kiến trúc cọc hiện hành quy định nguồn sự thật = phiếu thu chi `is_deposit`
+  (`deposit_remaining`) và hoàn/bỏ cọc đọc từ `contract_terminations`, **không**
+  dùng `deposits.status` → số liệu có thể lệch với trang `/deposits`.
+  (`<OperationsSummary>` trên Dashboard cũng đọc `deposits.status` tương tự.)
 - **TerminationsReport** (`useTerminationsReport`): ghép `contract_terminations`
   để hiển thị lý do/loại chấm dứt; lọc khoảng ngày client-side với fallback
   `actual_end_date ?? end_date`.
@@ -543,16 +560,15 @@ flowchart TD
 Hiện trạng chung của bộ lọc trên các trang báo cáo (đặc biệt nhóm tài chính) —
 ghi lại để tránh hiểu nhầm khi đọc số / để biết chỗ cần sửa:
 
-- **Ô "Chọn khu vực" (areas)**: 6 trang tài chính render SearchableSelect khu
-  vực từ `useAreas()`, nhưng chỉ **ProfitDistributionReport lọc thật**
-  (`area_id` → `buildings.area_id` → `.in building_id`, áp cho cả
-  `useIncomeExpenses` lẫn `useAccrualMonthReport`). 5 trang còn lại
-  (DailyCashbook, PaymentSchedule, CustomerDebt, Overpayment, Deposits) là
-  **dead filter** — chọn khu vực dữ liệu không đổi, không có cảnh báo.
-- **Lọc tòa theo TÊN**: Deposits/Overpayment/CustomerDebt/PaymentSchedule lọc
-  client-side bằng so sánh **tên** tòa (`rooms.buildings.name ===
-  buildings.find(id).name`) thay vì id → 2 tòa trùng tên (khác khu vực) sẽ lọc
-  sai.
+- **Ô "Chọn khu vực" đã GỠ SẠCH** (9ad626d, 2026-06-10): 5 ô khu vực **chết**
+  (DailyCashbook, PaymentSchedule, CustomerDebt, Overpayment, Deposits) đã bị
+  xoá; CustomerDebt/PaymentSchedule/Overpayment/Deposits chuyển sang
+  **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu) lọc client-side
+  theo `buildings.id`; ProfitDistribution lọc thật bằng `building_ids` xuống
+  hook (server-side). DailyCashbook giữ ô tòa **đơn** + tài khoản (hooks
+  `useCashFlowByDay`/`useCashBookSummary` chưa hỗ trợ `building_ids`).
+- **Lọc tòa theo TÊN — đã sửa**: 4 trang trên giờ so sánh `buildings.id`,
+  hết rủi ro 2 tòa trùng tên lẫn dữ liệu.
 - **Dropdown "Chọn phòng" chết**: PaymentSchedule/CustomerDebt/ProfitDistribution
   chỉ có đúng 1 option "Tất cả phòng" (ProfitDistribution có truyền `room_id`
   vào hook nhưng không bao giờ có giá trị khác `all`).
@@ -560,19 +576,22 @@ ghi lại để tránh hiểu nhầm khi đọc số / để biết chỗ cần 
   ProfitDistribution có page/pageSize (10/20/50/100) nhưng cắt mảng ở JS sau
   khi fetch-all — không phải phân trang DB.
 - **Tòa ảo trong dropdown**: ExpenseRatio, CashFlow, DailyCashbook,
-  ProfitDistribution gọi `useBuildings({ includeVirtual: true })` → gồm tòa ảo
-  "Chung" của module Cổ đông; các trang invoice-based dùng `useBuildings()`
-  thường (không có tòa ảo).
+  ProfitDistribution gồm tòa ảo "Chung" (`useBuildings({ includeVirtual: true })`
+  — ProfitDistribution map kết quả này vào `BuildingMultiSelect`); các trang
+  invoice-based dùng nguồn mặc định của component (không có tòa ảo).
 - **Hook thiếu điều kiện vệ sinh dữ liệu**: `usePaymentScheduleReport` không lọc
   `deleted_at`/status và không có cận dưới ngày (tải toàn bộ hoá đơn lịch sử);
   `useOverpaymentReport` không lọc `deleted_at`/CANCELLED → hoá đơn huỷ/xoá mềm
   có `paid_amount > total_amount` vẫn báo "tiền thừa cần hoàn".
-- **Hiệu năng đáng chú ý**: `useRevenueChart` bắn 12 query `payments` tuần tự
-  (1/tháng) mỗi lần load Dashboard; `DebtChart` bắn 6 query `invoices` tuần tự;
-  `useDashboardStats` refetch mỗi 60s với 7–8 query/chu kỳ (7 query chính + 1
-  query `buildings` khi chưa chọn tòa); `useNotifications`
-  select toàn bộ không limit. Hướng tối ưu: gộp 1 query khoảng rồi group
-  client-side hoặc RPC aggregate.
+- **Hiệu năng**: 849fdc5 đã sửa 2 điểm nóng — `useRevenueChart` 12 query tuần tự
+  → **1 query cả kỳ** group tháng client-side; `useDashboardStats` 7 query
+  tuần tự → **`Promise.all`**. Còn lại: `DebtChart` vẫn bắn 6 query `invoices`
+  tuần tự; `useNotifications` select toàn bộ không limit. Migration
+  [20260610110000](supabase/migrations/20260610110000_perf_indexes_cashbook_rpc.sql)
+  thêm 6 index hỗ trợ pattern truy vấn list/report (created_at DESC cho
+  invoices/contracts/customers, `ie_items(start_date,end_date)` partial,
+  `invoices(building_id,billing_month)` partial, `income_expenses(voucher_date
+  DESC)` partial) + RPC `cashbook_opening_balance`.
 
 ## 6. Liên kết sang domain khác (vào / ra)
 

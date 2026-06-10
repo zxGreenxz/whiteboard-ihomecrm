@@ -288,7 +288,7 @@ flowchart TD
 
 **Dữ liệu:**
 - `useCustomers(effectiveFilters, {page,pageSize})` — lọc `status_v2` theo tab; `statFilter` (ALL/INDIVIDUAL/ORGANIZATION/FOREIGN); search `full_name/phone/email/id_number`; lọc building/room qua `contract_customers`; phân trang `range`. Sau khi lấy trang, **enrich** thêm `current_building_id/_name` + `current_room_name` từ HĐ còn-hiệu-lực (`isContractInEffect`, query `contract_customers` theo chunk 80 id) — vừa hiển thị "Căn hộ đang ở" vừa phục vụ per-row scope check (xem 4.4). Lỗi query bị **nuốt** (trả mảng rỗng thay vì throw) ⇒ lỗi RLS/network hiển thị như "Chưa có khách hàng nào".
-- Ô lọc vị trí ([CustomerListFilters.tsx](src/components/customers/CustomerListFilters.tsx)): 3 `SearchableSelect` — **Khu vực** (desktop-only `hidden md:block`, options gom từ embed `area:areas` của `useBuildings` — không phải cột trên bảng `buildings`) → **Toà nhà** (lọc theo khu vực client-side) → **Phòng** (`useRooms(building_id)`, disabled khi chưa chọn toà). `area_id` **chỉ thu hẹp dropdown toà phía client, hoàn toàn không vào query khách**.
+- Ô lọc vị trí ([CustomerListFilters.tsx](src/components/customers/CustomerListFilters.tsx)) — đổi ở 9ad626d (2026-06-10): **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu vực — thay cặp dropdown Khu vực + Toà cũ) + **Phòng** (`useRooms(singleBuildingId)`, chỉ bật khi chọn đúng 1 toà; đổi phạm vi toà reset `room_id`). Bộ lọc toà chạy **client-side trên trang dữ liệu hiện tại**: so `buildingIds.includes(customer.current_building_id)` (toà của HĐ còn-hiệu-lực enrich sẵn) — KHÔNG vào query server.
 - `useCustomerStats(statsFilters)` — đếm total/individual/organization/foreign (kéo toàn bộ rows khớp filter rồi đếm client-side; chạy lại mỗi keystroke vì ô search không debounce).
 
 **Thao tác:**
@@ -299,7 +299,7 @@ flowchart TD
 5. **Import** → `CustomerImportExportDialog`; mỗi dòng `useCreateCustomer.mutateAsync` (mặc định INDIVIDUAL), tải ảnh CCCD từ URL cột L (`uploadIdImagesFromUrls`) rồi update `id_images`; gom kết quả thành công/thất bại; map mã lỗi PG (`23505`→trùng SĐT/CCCD, `23514`→SĐT sai định dạng, `22008`→ngày sai).
 6. **Export** → `exportCustomers`.
 
-> **Lưu ý lọc vị trí bị vô hiệu:** `resolveCustomerIdsByLocation` hiện trả `[]` ngay (biến `contractIds` hard-code rỗng) ⇒ chọn building/room sẽ ra **0 khách**; còn chọn riêng **Khu vực** thì không có tác dụng gì lên query (`area_id` bị ignore hoàn toàn). Toggle grid/list trên toolbar cũng là nút chết — đổi state nhưng luôn render bảng list. Đây là các điểm cần biết khi đọc/đối chiếu hành vi.
+> **Lưu ý lọc PHÒNG vẫn vô hiệu:** chọn phòng đặt `filters.room_id` đi vào `useCustomers` → `resolveCustomerIdsByLocation` hiện trả `[]` ngay (biến `contractIds` hard-code rỗng) ⇒ chọn phòng ra **0 khách**. (Lọc TOÀ đã hoạt động — nhưng client-side theo `current_building_id` như mô tả trên, không qua hàm này; cảnh báo "khu vực bị ignore" cũ hết hiệu lực vì ô khu vực đã gỡ.) Toggle grid/list trên toolbar vẫn là nút chết — đổi state nhưng luôn render bảng list.
 
 ### 5.3. `/customers/new` & `/customers/:id/edit` — [CustomerFormPage.tsx](src/pages/customers/CustomerFormPage.tsx)
 

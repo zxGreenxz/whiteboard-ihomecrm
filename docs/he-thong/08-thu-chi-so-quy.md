@@ -277,16 +277,16 @@ File: [IncomeExpensePage.tsx](src/pages/payments/IncomeExpensePage.tsx). Mục �
 
 **Deep-link**: trang nhận query `?account_id=xxx` (từ trang Sổ quỹ → "xem thu chi") → preload filter sổ quỹ rồi xoá query khỏi URL (`replace: true`) — filter chip vẫn hiển thị.
 
-**Filter** (`IncomeExpenseFiltersBar` desktop / `IncomeExpenseFilterPanel` drawer): khu vực/toà/phòng, sổ quỹ, type, khoảng `voucher_date`, `approval_status` (mặc định `ALL_ACTIVE` = APPROVED+UNAPPROVED, ẩn CANCELLED), loại hạng mục thu/chi (expand sibling), người tạo, `verified_status`, **kỳ áp dụng theo tháng** (`period_start/end_month` → overlap với item start/end), `amount_target`. Chi tiết:
+**Filter** (`IncomeExpenseFiltersBar` desktop / `IncomeExpenseFilterPanel` drawer): toà (nhiều)/phòng, sổ quỹ, type, khoảng `voucher_date`, `approval_status` (mặc định `ALL_ACTIVE` = APPROVED+UNAPPROVED, ẩn CANCELLED), loại hạng mục thu/chi (expand sibling), người tạo, `verified_status`, **kỳ áp dụng theo tháng** (`period_start/end_month` → overlap với item start/end), `amount_target`. Chi tiết:
 
-- **Khu vực → toà → phòng cascade**: areas từ `useAreas()`; buildings từ `useBuildings({includeVirtual:true})` (RLS thường — staff all_buildings KHÔNG thấy toà mở rộng ở đây, xem §4.13) rồi filter client-side theo `area_id`; chọn khu reset toà+phòng. Khu vực không có cột trên `income_expenses` — query suy qua `buildings.area_id` → `.in('building_id', ids)` (khu không có toà → trả rỗng ngay).
+- **Toà = `BuildingMultiSelect`** (commit 9ad626d — thay cascade Khu vực → Toà cũ): chọn nhiều toà nhóm theo khu vực, set `filters.building_ids: string[]` → hook `.in('building_id', ids)` **trực tiếp** (hết round-trip suy khu → toà; `area_id` legacy vẫn còn nhánh trong hook nhưng UI không set nữa). Nguồn toà của bar/panel/chips vẫn theo RLS thường — staff all_buildings KHÔNG thấy toà mở rộng ở đây (xem §4.13). `building_ids` nằm trong queryKey của `useIncomeExpenses` list/stats/batches → đổi chọn toà không trả cache cũ; batches cũng lọc theo `building_ids` (ở mức batch). Chip filter ([IncomeExpenseFilterChips](src/components/income-expenses/IncomeExpenseFilterChips.tsx)) hiện nhãn tóm tắt qua `summarizeSelection` ("Khu A (3 toà) + 2 toà khác").
 - **Phòng lọc gộp theo TÊN**: chọn 1 tên phòng → `room_ids` = mọi id phòng cùng tên xuyên toà.
 - **Sổ quỹ**: OR `account_id` / `change_account_id` (bắt sổ Thối) — **KHÔNG OR `rounding_account_id`** → chọn sổ "Làm tròn tiền thiếu" ở ô lọc ra rỗng dù policy fund_member cho thấy phiếu; xem log làm tròn phải qua `/finance/refund-log` (§5.4).
 - Drawer FilterPanel giữ draft local, chỉ commit khi bấm "Áp dụng".
 
 **Lưu ý 3 card thống kê**: mặc định lọc `ALL_ACTIVE` nên **gồm cả phiếu NHÁP** (UNAPPROVED), trong khi tồn quỹ `accounts_with_balance` chỉ tính APPROVED → tổng thu/chi trên trang có thể lệch số dư sổ quỹ (không phải sai sót).
 
-**Ô tìm kiếm thông minh** (`parseSearchInput`): gõ toàn số → lọc theo `total_amount` ±5.000đ; gõ chữ → search client-side trên name/code/tenant_name.
+**Ô tìm kiếm thông minh** (`parseSearchInput`): gõ toàn số → lọc theo `total_amount` ±5.000đ; gõ chữ → search **server-side** trên name/code/tenant_name (xem Edge case bên dưới).
 
 **Thao tác chính**:
 
@@ -311,7 +311,7 @@ File: [IncomeExpensePage.tsx](src/pages/payments/IncomeExpensePage.tsx). Mục �
 
 **Mobile** (`useIsMobile`): layout riêng — `IncomeExpenseStatsMobile`, `IncomeExpenseListMobile` (card, chỉ tap mở chi tiết), `IncomeExpenseFilterChips` (chip filter đang bật), `IncomeExpenseFilterPanel` dạng bottom-sheet, phân trang "Xem thêm", và [IncomeExpenseFAB](src/components/income-expenses/IncomeExpenseFAB.tsx) 4 hành động: tạo nhanh / phiếu thu / phiếu chi / phiếu tổng. Mobile **không render** `IncomeExpenseVerifyDialog` (verify chỉ desktop).
 
-**Edge case**: filter loại hạng mục phải expand sibling (per-user types) nếu không bỏ sót; khi search chữ bật → bỏ server-side pagination, **fetch toàn bộ phiếu khớp filter** rồi search/paginate client-side (vì tenant_name từ join) — chịu row-cap PostgREST (mặc định 1000) nên kết quả search có thể thiếu phiếu cũ. Sổ bị khoá → INSERT/UPDATE ném lỗi từ trigger.
+**Edge case**: filter loại hạng mục phải expand sibling (per-user types) nếu không bỏ sót. **Search chữ giờ chạy SERVER-SIDE** (commit 9ad626d): `name`/`code` qua `ilike` trực tiếp; tên khách (bảng join) resolve trước `tenants.full_name ilike` → lấy `tenant_id` (limit 200) rồi OR `tenant_id.in.(...)` vào query; ký tự phá cú pháp `or()` của PostgREST (phẩy/ngoặc) bị strip. **`.range()` phân trang LUÔN áp dụng kể cả khi search** — hết cảnh "gõ 1 ký tự tải toàn bộ lịch sử về browser + đụng trần max-rows 1000". Sổ bị khoá → INSERT/UPDATE ném lỗi từ trigger.
 
 ```mermaid
 sequenceDiagram
@@ -401,7 +401,7 @@ File: [ThuTien.tsx](src/pages/ThuTien.tsx) + [src/components/thu-tien/](src/comp
 
 **Ra domain khác (thu chi cấp dữ liệu cho):**
 
-- **Báo cáo dòng tiền** (`useCashBook`/`useCashBookSummary`/`useCashFlowByDay`): đọc CANONICAL từ `income_expenses` APPROVED (KHÔNG cộng thêm payments/expenses để tránh double-count).
+- **Báo cáo dòng tiền** (`useCashBook`/`useCashBookSummary`/`useCashFlowByDay`): đọc CANONICAL từ `income_expenses` APPROVED (KHÔNG cộng thêm payments/expenses để tránh double-count). **Số dư đầu kỳ** của `useCashBookSummary` từ 849fdc5 (2026-06-10) lấy qua RPC aggregate **`cashbook_opening_balance(p_before_date, p_building_id, p_account_id)`** ([20260610110000](supabase/migrations/20260610110000_perf_indexes_cashbook_rpc.sql)) — `SECURITY INVOKER` (đi qua RLS y hệt query FE cũ), trả 1 số thay vì kéo toàn bộ lịch sử phiếu trước `start_date` về client cộng tay; REVOKE anon, GRANT authenticated.
 - **Báo cáo Lợi nhuận (P&L)**: lọc `counts_in_business_result = TRUE` (loại cọc & khoản override không-KQKD).
 - **Cổ đông / chia lợi nhuận**: phiếu EXPENSE không-KQKD gắn `shareholder_id`.
 - **Sổ quỹ → Tồn quỹ**: view `accounts_with_balance` là nguồn số dư cho dashboard tài chính — view chạy quyền owner (bỏ RLS, §4.4) nên mọi user authenticated thấy số dư mọi sổ (by-design).

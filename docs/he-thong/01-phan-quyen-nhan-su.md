@@ -428,8 +428,15 @@ không tự query được context/permissions của chính mình. Cả hai `SEC
   - super admin → `is_super=true, owner_id=mình`.
   - staff → `is_staff=true, owner_id=owner`; **`default_area_id`** = area của owner
     có `name` (lowercase) khớp username staff (phần trước `@`, hoặc
-    `raw_user_meta_data.username`) → FE auto-lock filter khu vực.
+    `raw_user_meta_data.username`).
   - owner thường → `owner_id=mình`, các cờ false.
+  - ⚠️ **`default_area_id` đã DEPRECATED phía FE** (2026-06-10, commit 9ad626d):
+    cơ chế "khoá filter khu vực theo quy ước ngầm username = tên khu"
+    (`lockedAreaId` ở trang Hoá đơn) đã **gỡ** — scope staff vốn do RLS
+    per-building quyết định, `BuildingMultiSelect` (nguồn `useBuildings` bị RLS
+    cắt) tự nhiên chỉ hiện toà staff được quản. RPC vẫn trả field nhưng
+    [useMyContext](src/hooks/useMyContext.ts) map ra `defaultAreaId` **không nơi
+    nào dùng** nữa.
 
 - **`get_my_permissions()`** (phiên bản mới nhất:
   [20260603000002_shareholder_access_and_perms.sql](supabase/migrations/20260603000002_shareholder_access_and_perms.sql),
@@ -576,7 +583,7 @@ này (xem cảnh báo 4.8).
 flowchart TD
     F1["① Thông tin NV<br/>username/password (khi tạo)<br/>full_name/phone/email/job_title/is_active"] --> F2
     F2["② Cài đặt nhanh — chọn 1 mẫu<br/>applyTemplateToDraft: copy role.permissions vào draft"] --> F3
-    F3["③ Phạm vi toà<br/>all_buildings? hay tick N toà (lọc theo khu vực)"] --> F4
+    F3["③ Phạm vi toà<br/>all_buildings? hay chọn N toà<br/>(BuildingMultiSelect — click khu = cả nhóm)"] --> F4
     F4["④ Tinh chỉnh từng quyền<br/>PermissionMatrix, baseline=role.permissions<br/>đếm diff vs mẫu"] --> SAVE{"Lưu"}
     SAVE -- "Tạo mới" --> P["useProvisionStaff"]
     SAVE -- "Sửa" --> U["useUpdateStaffMember"]
@@ -600,10 +607,16 @@ flowchart TD
    buộc, nếu không "tất cả toà" phải chọn ≥ 1 toà, phone `10-11` số / email đúng
    regex.
 
-**Bước ③ Phạm vi toà**: chips khu vực (`useAreas`) chỉ là **bộ lọc UI** — click
-toggle `form.area_ids` để lọc client-side danh sách toà (`useBuildings`) theo
-`b.area_id` + ô tìm kiếm. Khi lưu chỉ `building_ids` (hoặc `null` = tất cả toà)
-được ghi vào `staff_assignments`; `area_ids` **không persist**.
+**Bước ③ Phạm vi toà** (đổi 2026-06-10, commit 9ad626d): chọn toà bằng
+[BuildingMultiSelect](src/components/buildings/BuildingMultiSelect.tsx) — click
+**tên khu vực** trong dropdown = chọn/bỏ **cả nhóm toà của khu TẠI THỜI ĐIỂM
+gán** (snapshot). Khi lưu chỉ `building_ids` (hoặc `null` = tất cả toà) ghi vào
+`staff_assignments` per-building (RLS giữ nguyên) — khu vực **không persist**,
+thêm toà mới vào khu sau này **không tự cấp quyền**. Bù lại form có **cảnh báo
+lệch khu**: khu nào đang chọn một phần hiện banner vàng "`<Khu>`: đang chọn
+m/n toà" + nút **"Chọn đủ theo khu"** (toggle cả nhóm qua
+`toggleGroupSelection`/`groupSelectionState` của
+[buildingGroups.ts](src/lib/buildingGroups.ts)).
 
 **Sửa — `useUpdateStaffMember`**: (1) update `profiles` (RLS `profiles_admin_update`
 cho phép owner sửa profile staff mình quản lý); (2) **diff** assignments hiện có
@@ -632,12 +645,11 @@ admin thấy nút Xoá nhưng RPC trả 42501 — chỉ owner trực tiếp xoá
 
 **Áp mẫu trong Sheet — `applyTemplateToDraft`**: copy `role.permissions` vào
 **draft client-side**; thay đổi chỉ được ghi khi bấm Lưu (qua flow ở trên).
-⚠️ Hook `useApplyTemplate` trong
-[useStaffAssignments.ts](src/hooks/useStaffAssignments.ts) (copy thẳng vào DB +
-đổi `role_id`) được khởi tạo trong StaffPage nhưng **không nơi nào gọi** — dead
-code, đừng nhầm là flow áp mẫu chính. Tương tự, `useCreateStaffAssignment` /
+Hook chết `useApplyTemplate` đã bị **xoá hẳn** khỏi
+[useStaffAssignments.ts](src/hooks/useStaffAssignments.ts) (commit 9ad626d —
+file còn để lại comment ghi chú). Các hook `useCreateStaffAssignment` /
 `useUpdateStaffAssignment` / `useDeleteStaffAssignment` /
-`useStaffAssignmentsByStaff` còn export nhưng không trang nào import — legacy.
+`useStaffAssignmentsByStaff` vẫn export nhưng không trang nào import — legacy.
 
 Card nhân viên hiển thị badge: phạm vi toà ("Tất cả toà" / "N toà (…)"), và trạng
 thái quyền: "Bypass toàn quyền" (super), "Khớp mẫu" (diff=0), hoặc "N thay đổi so
@@ -696,9 +708,10 @@ thông tin của mình.
   `can_do_on_building('contracts','edit', room→building)` rồi mới gọi `*_impl`,
   REVOKE anon (`20260601000100`).
 - → **Bất động sản**: `staff_assignments.building_id → buildings.id` là chiều
-  scope toà; `default_area_id` trong `get_my_context` khoá filter khu vực — ⚠️
-  dựa trên quy ước ngầm "tên khu vực (lowercase) = username staff": đổi tên khu
-  vực sẽ làm mất auto-lock mà không có cảnh báo nào.
+  scope toà. Khu vực (areas) chỉ là **nhãn nhóm toà** trong UI chọn phạm vi
+  (`BuildingMultiSelect` — snapshot tại thời điểm gán, xem 5.2);
+  `default_area_id` trong `get_my_context` đã **deprecated** — FE không còn
+  auto-lock filter theo khu (xem 4.7).
 - → **Vận hành / Công việc**: `profiles.id` được tham chiếu làm "người phụ trách"
   (`issues.assigned_to`, `jobs.assignee_id`, `leads.assigned_staff_id`,
   `asset_maintenance.assigned_to`); `departments` gắn vào `issues`/`job_types`;
@@ -728,7 +741,7 @@ thông tin của mình.
 
 - **Supabase `auth.users`** — gốc của `profiles.id`, `staff_assignments.staff_id/
   user_id`, `super_admins.user_id` (cascade xoá khi xoá auth user).
-- **Bất động sản** — `staff_assignments.building_id` và `areas` (cho default area).
+- **Bất động sản** — `staff_assignments.building_id`; `areas` chỉ phục vụ nhóm toà trong UI gán phạm vi (`BuildingMultiSelect`).
 - **Sổ quỹ** — `account_shared_users.account_id` trỏ tới `accounts`.
 - **Cổ đông** — `get_my_permissions`/`can_access_building` đọc `shareholders` +
   `building_shareholders` (định nghĩa ở domain Cổ đông).

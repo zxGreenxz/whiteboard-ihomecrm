@@ -8,6 +8,8 @@
 
 **Frontend.** React + TypeScript + Vite, deploy thẳng lên Vercel từ nhánh `main` (production: <https://ptcrm.vercel.app>). UI dùng shadcn/ui + Tailwind. Form theo `react-hook-form` + `zod` (schema validate đặt ở `src/lib/*Validation.ts`). Data layer là React Query: mọi truy vấn/ghi đi qua hook trong `src/hooks/use*.ts`, gọi Supabase JS client. Trang đặt ở `src/pages/<domain>/`, UI theo domain ở `src/components/<domain>/`, util thuần + zod ở `src/lib/`.
 
+**Code-split & cache mặc định** (e4bea2f, 2026-06-10): [App.tsx](src/App.tsx) `lazy()` toàn bộ ~75 page (giữ eager: auth, Dashboard, NotFound, guards) với một `<Suspense>` bọc quanh `<Routes>` — initial bundle 3.8MB → **~246kB gzip**. Thư viện nặng import động tại điểm gọi: `xlsx` (~430kB, mọi helper export/import Excel chuyển sang async), `docxtemplater`/`pizzip` (~187kB, engine mẫu HĐ), `recharts` (~340kB — 3 chart Dashboard lazy), `@zxing` (QR decoder); `vite.config.ts` dùng `manualChunks` function-form (react/supabase/query) — cố ý KHÔNG ép recharts vào vendor-chunk để khỏi bị preload ở mọi trang. `QueryClient` defaults: `staleTime: 60s`, `refetchOnWindowFocus: false`, `retry: 1` — hết "bão refetch" mỗi lần Alt-Tab (số request giảm 3–5 lần).
+
 **Backend.** Supabase = Postgres + Auth + Storage + RLS + RPC. Không có server tự viết: logic nghiệp vụ nặng nằm trong Postgres dưới dạng:
 
 - **RPC** (`SECURITY DEFINER` / `INVOKER`) — ví dụ `renew_contract`, `record_invoice_payment_v2`, `generate_invoices_for_building_v2`, `monthly_building_profit`. Pattern phổ biến: RPC public bọc một `*_impl` chứa logic gốc, lớp ngoài lo kiểm quyền (xem `project_contract_rpc_authz`). Một số ít RPC `SECURITY DEFINER` được GRANT cho `anon` phục vụ kênh công khai (`get_public_available_rooms` của trang `/r/:token`, tra cứu hoá đơn/HĐ theo mã public `/c/:code`) — tự lọc theo token/mã, role `anon` không có quyền trực tiếp trên bảng nào (xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md)).
@@ -53,7 +55,7 @@ Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo
 | # | Domain | Mục đích | Bảng chính | Route chính | Tài liệu |
 |---|--------|----------|------------|-------------|----------|
 | 01 | Phân quyền & Nhân sự | Xác định caller (super admin / owner / staff / cổ đông) + quyền; lõi RLS mọi domain gọi xuống | `profiles`, `roles`, `user_roles`, `staff_assignments`, `super_admins` | `/admin/users`, `/settings/staff`, `/account/profile` | [01-phan-quyen-nhan-su.md](01-phan-quyen-nhan-su.md) |
-| 02 | Cơ cấu BĐS | Khu vực→toà→tầng→phòng + danh mục dịch vụ/định mức; gốc neo `building_id`/`room_id` | `areas`, `buildings`, `floors`, `rooms`, `services`, `building_services`, `service_quotas` | `/areas`, `/buildings`, `/apartments`, `/services`, `/building-map` | [02-co-cau-toa-nha-phong-dich-vu.md](02-co-cau-toa-nha-phong-dich-vu.md) |
+| 02 | Cơ cấu BĐS | Khu vực (nhãn nhóm toà)→toà→tầng→phòng + danh mục dịch vụ/định mức; gốc neo `building_id`/`room_id` | `areas`, `buildings`, `floors`, `rooms`, `services`, `building_services`, `service_quotas` | `/buildings` (kèm dialog Quản lý khu vực; `/areas` redirect về đây), `/apartments`, `/services`, `/building-map` | [02-co-cau-toa-nha-phong-dich-vu.md](02-co-cau-toa-nha-phong-dich-vu.md) |
 | 03 | Khách hàng · Lead · Hồ sơ | Phễu sale (lead) → người thuê → customer đứng tên HĐ; CT01 cư trú; phương tiện | `leads`, `customers`, `tenants`, `vehicles`, `ct01_declarations`, `contract_customers` | `/leads`, `/customers`, `/vehicles` | [03-khach-hang-lead-ho-so.md](03-khach-hang-lead-ho-so.md) |
 | 04 | Cọc giữ chỗ & theo dõi cọc | Phiếu giữ chỗ trước HĐ; theo dõi đủ/thiếu cọc; chặn ký thiếu cọc; hoàn/bỏ cọc | `deposits`, `excess_amounts`, `contract_terminations`, `income_expenses` (is_deposit) | `/deposits` | [04-coc-giu-cho.md](04-coc-giu-cho.md) |
 | 05 | Hợp đồng | Trụ cột nối phòng↔khách↔dịch vụ↔cọc; gia hạn/chuyển nhượng/thanh lý | `contracts`, `contract_customers`, `contract_services`, `contract_extensions`, `contract_transfers`, `contract_terminations` | `/contracts`, `/contracts/:id`, `/c/:code` | [05-hop-dong.md](05-hop-dong.md) |
@@ -337,7 +339,7 @@ flowchart TD
 | `jobs.priority` | NORMAL, LOW, URGENT | Khác `issue_priority` |
 | `deposit_debt_mode` | DEBT, FIRST_INVOICE, NULL | Chế độ nợ cọc (`contracts`) |
 | `contract_terminations.status` | DRAFT, PENDING_APPROVAL, APPROVED, COMPLETED | Legacy flow; RPC tức thì ghi thẳng COMPLETED |
-| `contract_extensions.extension_type` | UPDATE_EXISTING, CREATE_NEW | CHECK chỉ 2 giá trị; ⚠️ hook legacy `useExtendContract` còn ghi `'SIMPLE'` vi phạm CHECK (xem [05 §2.5](05-hop-dong.md)) |
+| `contract_extensions.extension_type` | UPDATE_EXISTING, CREATE_NEW | CHECK chỉ 2 giá trị (hook legacy `useExtendContract` từng ghi `'SIMPLE'` vi phạm CHECK — đã xoá 2026-06-10, xem [05 §2.5](05-hop-dong.md)) |
 | `termination_type` | NORMAL, FORFEIT, EARLY_*, BREACH | Loại thanh lý (FORFEIT = bỏ cọc) |
 | `profit_monthly.status` | DRAFT, LOCKED | Chốt-khoá LN tháng (mở khoá quay lại DRAFT) |
 | `material_adjustments.type` | IN, OUT | Kiểm kê cộng/trừ tồn |
@@ -362,6 +364,8 @@ flowchart TD
 **Cọc giữ chỗ tự khoá phòng (`RESERVED`).** Nguồn sự thật số cọc = tổng phiếu thu chi `is_deposit` (đáp xuống cột suy `contracts.deposit_remaining`); hoàn/bỏ cọc đọc từ `contract_terminations`, **không** dùng `deposits.status`. Hàm `recompute_room_reservation` (trigger trên `deposits` / `income_expenses` / `income_expense_items` / `rooms`, migration `20260608000000`) tự chuyển `rooms.status` AVAILABLE↔RESERVED khi phòng có cọc chưa gắn HĐ — **kể cả phiếu chưa duyệt** (chỉ loại CANCELLED/đã xoá) → phòng ẩn khỏi danh sách trống nội bộ lẫn trang công khai (xem [04 §4.11](04-coc-giu-cho.md)).
 
 **Kỳ tháng dạng `YYYY-MM`.** Hoá đơn (`billing_month`), chỉ số (`settlement_month`), chốt LN (`profit_monthly`) đều dùng chuỗi `YYYY-MM` làm khoá chốt tháng — tiện so sánh/nhóm mà không lệ thuộc timezone.
+
+**Khu vực = nhãn nhóm toà (bộ lọc), không phải đơn vị quyền.** Từ 2026-06-10 (commit 099102f + 9ad626d): `areas` chỉ còn là nhãn gom toà nhà — không status, không trang riêng (`/areas` redirect `/buildings`, quản lý qua dialog), không tham gia RLS (RLS 100% theo `building_id`). Mọi ô lọc Khu vực + Toà (đơn) toàn app gộp thành **`BuildingMultiSelect`** ([src/components/buildings/BuildingMultiSelect.tsx](src/components/buildings/BuildingMultiSelect.tsx) + logic thuần [buildingGroups.ts](src/lib/buildingGroups.ts)): chọn nhiều toà, click tên khu = chọn cả nhóm, `[]` = tất cả; filter hook nhận `building_ids: string[]` (RPC `get_invoice_statistics_v2` nhận `p_building_ids uuid[]`; `area_id` deprecated). Gán phạm vi staff cũng chọn theo khu kiểu **snapshot** (xem [01 §5.2](01-phan-quyen-nhan-su.md)).
 
 **Tòa ảo `is_virtual` ("Chung").** Mỗi owner có thể có toà ảo (`buildings.is_virtual = true`, tên "Chung") để hạch toán chi phí dùng chung không thuộc toà thật nào (vd phiếu chia LN cổ đông ghi vào toà ảo này). RPC tính LN/báo cáo theo toà thật loại trừ toà ảo khi cần.
 

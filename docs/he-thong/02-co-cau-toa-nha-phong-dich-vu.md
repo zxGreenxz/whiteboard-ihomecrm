@@ -24,6 +24,7 @@ services (định nghĩa dịch vụ + cách tính tiền pricing_type)
 Vai trò nghiệp vụ chính:
 
 - **Toà nhà là đơn vị phân quyền (multi-tenant + RBAC).** Nhân viên (staff) được gán vào toà qua `staff_assignments`; RLS dùng `can_access_building(building_id)` để lọc dữ liệu. Khu vực được "thấy" gián tiếp nếu staff có quyền trên ít nhất 1 toà thuộc khu vực đó.
+- **Khu vực chỉ là NHÃN NHÓM toà nhà** (từ 2026-06-10, commit 099102f + 9ad626d): không tham gia RLS/phân quyền, không còn trang riêng (`/areas` redirect về `/buildings`), không còn status trong UI. Mọi ô lọc "Khu vực + Toà nhà" trên toàn app đã gộp thành **một** component [BuildingMultiSelect](src/components/buildings/BuildingMultiSelect.tsx) (chọn NHIỀU toà, nhóm theo khu, click tên khu = chọn/bỏ cả nhóm, gõ tìm không dấu, `[]` = tất cả); logic thuần ở [buildingGroups.ts](src/lib/buildingGroups.ts) (có property test fast-check). Filter của hook nhận `building_ids: string[]` (ưu tiên hơn `area_id` legacy).
 - **Toà nhà mang cấu hình mặc định** áp xuống các nghiệp vụ con: sổ quỹ mặc định (`default_account_id_tt/tk`), mẫu hợp đồng (`contract_template_id`), mẫu hoá đơn (`invoice_template_id`), bậc hoa hồng môi giới (`commission_tiers`).
 - **Phòng (room) là đơn vị cho thuê.** Hợp đồng, hoá đơn, đồng hồ, tài sản, vehicle… đều gắn `room_id`. Trạng thái phòng (`room_status`) được trigger tự cập nhật theo vòng đời hợp đồng (4.2) **và theo cọc giữ chỗ** (AVAILABLE↔RESERVED tự động, 4.6).
 - **Dịch vụ + định mức** quyết định cách tính tiền trên hoá đơn (cố định theo tháng, theo đồng hồ, theo người, theo phòng, hoặc bậc thang theo định mức).
@@ -33,10 +34,10 @@ Vai trò nghiệp vụ chính:
 
 ### 2.1. `areas` — Khu vực
 
-Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà.
+Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà. **Vai trò hiện hành: nhãn nhóm cho bộ lọc/scope** — UI quản lý chỉ còn đặt tên + gán toà (xem §5.1).
 
 - `name` (NOT NULL), `code` (mã tuỳ chọn, không sinh tự động), `description`.
-- `status` text mặc định `'ACTIVE'` (UI chỉ dùng `ACTIVE` / `INACTIVE`).
+- `status` text mặc định `'ACTIVE'` — **cột vẫn còn trong DB nhưng UI đã bỏ** (dialog quản lý khu vực mới không hiển thị/sửa status; các form `code`/`description` cũng không còn chỗ nhập).
 - `user_id` (NOT NULL) — owner (multi-tenant).
 - Soft delete qua `deleted_at`; `id/created_at/updated_at` chuẩn.
 - **FK ra:** không. **Được tham chiếu bởi:** `buildings.area_id` (1 area → N building).
@@ -281,22 +282,25 @@ erDiagram
 
 ## 5. Quy trình theo từng trang
 
-### 5.1. `/areas` — Quản lý Khu vực
+### 5.1. Quản lý Khu vực — dialog trong `/buildings` (trang `/areas` ĐÃ GỠ)
 
-[AreasPage.tsx](src/pages/areas/AreasPage.tsx) · hook [useAreas.ts](src/hooks/useAreas.ts)
+[ManageAreasDialog.tsx](src/components/areas/ManageAreasDialog.tsx) · hook [useAreas.ts](src/hooks/useAreas.ts)
 
-- **Hiển thị:** `useAreas` select `areas` + `buildings:buildings(count)` (đếm toà nhà mỗi khu vực), lọc `deleted_at IS NULL`. Bảng: Mã, Tên, Mô tả, Số toà nhà (badge), Trạng thái.
-- **Lọc client-side:** ô tìm theo tên/mã (Input) + dropdown trạng thái dùng `SearchableSelect` (theo MEMORY: filter phải là combobox gõ-để-tìm).
-- **Tạo / sửa:** `CreateAreaDialog` / `EditAreaDialog` → `useCreateArea` (tự gắn `user_id`) / `useUpdateArea`. Hook có handler `23505` → toast "Mã khu vực đã tồn tại", nhưng đây chỉ là **phòng hờ FE**: DB không có UNIQUE nào trên `areas.code` ([20260222135029_recreate_areas_table.sql](supabase/migrations/20260222135029_recreate_areas_table.sql)) → mã trùng vẫn lưu được, nhánh 23505 này thực tế không kích hoạt từ mã trùng.
-- **Xoá (soft):** `useDeleteArea` **chặn** nếu khu vực còn toà nhà chưa xoá → toast "Không thể xóa khu vực đang có N tòa nhà"; ngược lại set `deleted_at`.
-- **Gán toà vào khu vực:** `useAssignBuildingsToArea` (nhận 2 mảng `toAddIds`/`toRemoveIds` → update `buildings.area_id` set/null) — chỉ được dùng bên trong `EditAreaDialog` ([EditAreaDialog.tsx](src/components/areas/EditAreaDialog.tsx)): danh sách checkbox toàn bộ toà nhà ngay trong form sửa khu vực, diff với tập toà hiện thuộc khu vực. **Không có dialog gán nhanh riêng.**
+Từ 2026-06-10 (commit 9ad626d): **trang `/areas` + mục Sidebar "Khu vực" đã gỡ** — route `/areas` chỉ còn `<Navigate to="/buildings" replace />` ([App.tsx](src/App.tsx)); `AreasPage` + 3 dialog cũ (`CreateAreaDialog`/`EditAreaDialog`/`DeleteAreaDialog`) đã xoá khỏi codebase. Quản lý khu vực = nút **"Quản lý khu vực"** trên `/buildings` mở `ManageAreasDialog`:
+
+- **Hiển thị:** `useAreas` (select `areas` + `buildings(count)`, lọc `deleted_at IS NULL`) + `useBuildings` để dựng map `membersByArea` từ `buildings.area_id`. Mỗi khu là 1 card: tên + badge "N toà" + 1 `BuildingMultiSelect` hiển thị/sửa danh sách toà của khu. **Không còn** cột Mã / Mô tả / Trạng thái.
+- **Tạo:** ô input "Tên khu vực mới" + nút Thêm → `useCreateArea({name})` (tự gắn `user_id`). **Đổi tên:** icon bút chì → `useUpdateArea({id, updates:{name}})`. (Hook vẫn giữ handler `23505` → toast "Mã khu vực đã tồn tại" — phòng hờ chết: DB không có UNIQUE trên `areas.code` và form mới cũng không nhập code.)
+- **Gán/bỏ toà:** đổi selection trong `BuildingMultiSelect` của card → diff với `membersByArea` → `useAssignBuildingsToArea({areaId, toAddIds, toRemoveIds})` (update `buildings.area_id` set/null). Mỗi toà thuộc tối đa 1 khu (gán vào khu mới = ghi đè `area_id`).
+- **Xoá (soft):** icon thùng rác → `confirm()` (message nói toà trong khu "sẽ về Chưa phân khu") → `useDeleteArea`. ⚠️ **Lệch message vs hook:** `useDeleteArea` vẫn **chặn** khi khu còn toà chưa xoá (toast "Không thể xóa khu vực đang có N tòa nhà") — thực tế phải bỏ hết toà khỏi khu trước rồi mới xoá được, message confirm hứa "tự về Chưa phân khu" không đúng hành vi.
+- Toà không thuộc khu nào hiển thị trong nhóm **"Chưa phân khu"** (cuối danh sách) của mọi `BuildingMultiSelect` (`UNGROUPED_LABEL` trong [buildingGroups.ts](src/lib/buildingGroups.ts)).
 
 ### 5.2. `/buildings` — Danh sách Toà nhà
 
 [BuildingsPage.tsx](src/pages/buildings/BuildingsPage.tsx) · hook [useBuildings.ts](src/hooks/useBuildings.ts)
 
-- **Hiển thị:** `useBuildings()` (mặc định **ẩn tòa ảo** `is_virtual=true`) join `area:areas(...)` + `rooms:rooms(count)` (chỉ phòng chưa xoá). Stats cards (Tổng / Đang hoạt động / Ngừng) tính theo **phạm vi tìm kiếm + khu vực** (cố ý KHÔNG áp bộ lọc trạng thái để 3 thẻ vẫn phân tích đủ).
-- **Lọc:** tìm theo tên/mã/địa chỉ + lọc trạng thái + lọc khu vực (`BuildingListFilters`).
+- **Hiển thị:** `useBuildings()` (mặc định **ẩn tòa ảo** `is_virtual=true`) join `area:areas(...)` + `rooms:rooms(count)` (chỉ phòng chưa xoá). Stats cards (Tổng / Đang hoạt động / Ngừng) tính theo **phạm vi tìm kiếm + bộ lọc toà** (cố ý KHÔNG áp bộ lọc trạng thái để 3 thẻ vẫn phân tích đủ).
+- **Lọc** ([BuildingListFilters](src/components/buildings/BuildingListFilters.tsx)): tìm theo tên/mã/địa chỉ + lọc trạng thái (`SearchableSelect`) + **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu — thay cặp dropdown Khu vực/Toà cũ; lọc client-side `buildingIds.includes(b.id)`).
+- **Nút "Quản lý khu vực"** trên toolbar mở `ManageAreasDialog` (§5.1).
 - **Toggle trạng thái nhanh:** `useUpdateBuildingStatus` với **optimistic update** (snapshot cache, revert nếu lỗi) — bật/tắt ACTIVE/INACTIVE ngay trên bảng.
 - **Tạo / sửa:** `BuildingFormDialog` ([BuildingFormDialog.tsx](src/components/buildings/BuildingFormDialog.tsx)) — form đa section: Thông tin cơ bản (tên + mã, switch trạng thái), Địa chỉ (province/district/ward + street), **Dịch vụ toà** (chọn dịch vụ + override giá), Cấu hình (sổ quỹ TT/TK mặc định — **chỉ super admin thấy**, mẫu hoá đơn, mẫu HĐ), Hoa hồng môi giới (`commission_tiers`). Validate bằng `buildingSchema` ([buildingValidation.ts](src/lib/buildingValidation.ts)).
 - **Quy trình submit:**
@@ -332,7 +336,7 @@ flowchart TD
 [RoomsPage.tsx](src/pages/rooms/RoomsPage.tsx) · hooks [useRooms.ts](src/hooks/useRooms.ts), [useRoomsWithContracts.ts](src/hooks/useRoomsWithContracts.ts)
 
 - **Hiển thị:** `useRooms()` (toàn bộ phòng chưa xoá, join `building`), sắp xếp theo toà rồi tên phòng bằng `compareBuildingThenRoom`. `useRoomsWithActiveContracts()` (toàn bộ) cung cấp ngày hết hạn để tính trạng thái.
-- **Bộ lọc liên hoàn:** Khu vực → Toà → Tầng (đổi khu vực reset toà+tầng; dropdown toà giới hạn theo khu vực; tầng lấy từ `useFloors(buildingId)` — lọc server-side `.eq('building_id', …)`). Ô lọc trạng thái ([RoomListFilters.tsx](src/components/rooms/RoomListFilters.tsx)) có 3 lựa chọn `ACTIVE` ("Đang hoạt động") / `RESERVED` ("Đã đặt cọc") / `INACTIVE` ("Ngừng hoạt động") map sang `AVAILABLE` / `RESERVED` / `UNAVAILABLE`. Có pre-filter từ query `?building_id=`.
+- **Bộ lọc** ([RoomListFilters.tsx](src/components/rooms/RoomListFilters.tsx)): ô tìm + **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu — thay cặp Khu vực → Toà cũ; lọc client-side `buildingIds.includes(room.building_id)`) + Tầng + Trạng thái. **Tầng chỉ bật khi chọn ĐÚNG 1 toà** (`floorEnabled = buildingIds.length === 1`; tầng lấy từ `useFloors(singleBuildingId)` — lọc server-side `.eq('building_id', …)`); chọn 0 hoặc ≥2 toà thì ô Tầng disabled "Tầng (chọn 1 toà)". Ô lọc trạng thái có 3 lựa chọn `ACTIVE` ("Đang hoạt động") / `RESERVED` ("Đã đặt cọc") / `INACTIVE` ("Ngừng hoạt động") map sang `AVAILABLE` / `RESERVED` / `UNAVAILABLE`. Pre-filter từ query `?building_id=` → khởi tạo `buildingIds = [id]`.
 - **Stat cards** (4 thẻ, theo danh sách đang lọc): Tổng phòng, Tổng phòng trống, **Đã đặt cọc** (RESERVED), Sắp hết hạn — tính qua `getRoomDisplayStatus`.
 - **Tạo / sửa:** `RoomFormDialog` (validate `roomSchema` [roomValidation.ts](src/lib/roomValidation.ts): bắt buộc `building_id`, `floor` dương, `name`, `rent_price/deposit_amount ≥ 0`). Dropdown Toà **chỉ liệt kê toà `status='ACTIVE'`**; Tầng cascade theo toà đã chọn (đổi toà reset floor). Trong 2 dropdown có mục **tạo nhanh inline**:
   - "+ Thêm toà nhà" → `QuickCreateBuildingDialog` ([QuickCreateBuildingDialog.tsx](src/components/rooms/QuickCreateBuildingDialog.tsx)): insert toà tối thiểu (tên + mã) với `province/district/ward` = **chuỗi rỗng** để lách NOT NULL — toà tạo nhanh không có địa chỉ, các màn khác hiện `-`, và `buildingSchema` (bắt buộc địa chỉ) sẽ chặn khi sửa lại nếu không điền đủ.
@@ -355,10 +359,11 @@ flowchart TD
 [BuildingMapPage.tsx](src/pages/building-map/BuildingMapPage.tsx)
 
 - **Mục đích:** xem trực quan tình trạng phòng theo toà & tầng (mỗi phòng là `RoomCard` tô màu theo trạng thái).
-- **Bộ lọc:** Khu vực → Toà (auto chọn toà đầu tiên nếu chưa chọn) → Tầng → Trạng thái + ô tìm phòng/khách. Tất cả dùng `SearchableSelect`.
+- **Bộ lọc:** Toà (đơn-chọn `SearchableSelect` vì bản đồ vẽ 1 toà; **gõ được TÊN KHU VỰC** để thu hẹp nhanh — option có `keywords: [area.name]`, thay cho dropdown "Khu vực" riêng trước đây; auto chọn toà đầu tiên nếu chưa chọn) → Tầng → Trạng thái + ô tìm phòng/khách.
 - **Trạng thái hiển thị (5 loại):** Đang thuê / Đã đặt cọc / Trống / Sắp trống / Ngừng hoạt động, suy từ `getRoomDisplayStatus` + `useRoomsWithActiveContracts(buildingId)`. Có thẻ thống kê + chú thích màu.
 - **Bố cục:** chọn 1 tầng → lưới phẳng; chọn "tất cả tầng" → nhóm theo `floor` (dùng `floors` để đặt tên tầng). Click phòng → `RoomDetailDialog`.
-- **Lưu ý hiện trạng:** trang gọi `useRooms()` KHÔNG truyền `buildingId` (tải mọi phòng của mọi toà rồi lọc client theo toà đang xem — hook đã hỗ trợ lọc server nhưng chưa dùng); việc auto-chọn toà đầu tiên làm bằng `setState` **ngay trong thân render** (`if (!selectedBuildingId && …) setSelectedBuildingId(…)`) — pattern render-phase update, khó lường khi danh sách toà đổi theo khu vực.
+- **Lưu ý hiện trạng:** trang gọi `useRooms()` KHÔNG truyền `buildingId` (tải mọi phòng của mọi toà rồi lọc client theo toà đang xem — hook đã hỗ trợ lọc server nhưng chưa dùng); việc auto-chọn toà đầu tiên làm bằng `setState` **ngay trong thân render** (`if (!selectedBuildingId && …) setSelectedBuildingId(…)`) — pattern render-phase update, khó lường khi danh sách toà thay đổi.
+- **`RoomDetailDialog`** (dialog chi tiết phòng trên bản đồ, [RoomDetailDialog.tsx](src/components/building-map/RoomDetailDialog.tsx)) — từ commit df24746: nút "Tạo hợp đồng" mở thẳng `ContractFormDialog` prefill toà/phòng (trước đây navigate route chết `/contracts/new`); nút "Báo cáo công việc" trỏ về `/tasks` (trước đây `/issues/create` không tồn tại).
 
 ### 5.7. `/services` — Danh mục Dịch vụ
 

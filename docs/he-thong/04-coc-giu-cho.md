@@ -39,12 +39,12 @@ Cột chủ chốt:
 | `hold_until` | Giữ căn hộ đến ngày nào (date). **Lưu ý bug**: form FE dùng key `hold_until_date` (xem §5.4). |
 | `status` | enum `deposit_status` (default `PENDING`). **KHÔNG** phải nguồn sự thật đủ/thiếu cọc. |
 | `room_id` | Căn hộ được giữ (FK→`rooms`). Nullable. |
-| `contract_id` | HĐ mà phiếu này được chuyển thành (FK→`contracts`). Set khi flow cũ convert. |
+| `contract_id` | HĐ mà phiếu này được chuyển thành (FK→`contracts`). Được set khi flow Cọc→HĐ flip `CONVERTED` (ContractFormDialog, sau khi HĐ tạo thành công — §5.4). |
 | `tenant_id` | Khách đặt cọc (FK→`tenants`, NOT NULL). |
 | `ctv_name` | Tên cộng tác viên giới thiệu. |
 | `notes`, `receipt_image_url` | Ghi chú + ảnh biên nhận. **Lưu ý**: hiện **không có UI nào** upload/hiển thị `receipt_image_url` (cột tồn tại nhưng chưa dùng — nếu dùng lại phải qua StorageImage/signed URL vì bucket private). |
 | `user_id` | Owner. Trigger BEFORE INSERT `deposits_set_user_id_audit` (`set_user_id_from_auth`) tự điền. Quyền truy cập thực tế scope **theo toà nhà** qua RLS RBAC (§4.16), không chỉ theo owner. |
-| id / created_at / updated_at / deleted_at | Khoá + audit + soft delete. **Lưu ý**: FE hiện **hard-delete** (`useDeleteDeposit`) và `useDeposits` **không lọc** `deleted_at`; cột này chỉ được xét DB-side — `recompute_room_reservation` (§4.11) và bản live của `auto_calculate_deposit_paid` (§4.6) đều lọc `deleted_at IS NULL`. |
+| id / created_at / updated_at / deleted_at | Khoá + audit + soft delete. **Lưu ý**: FE hiện **hard-delete** (`useDeleteDeposit`) và `useDeposits` **không lọc** `deleted_at`; cột này chỉ được xét DB-side — `recompute_room_reservation` (§4.11) lọc `deleted_at IS NULL`. |
 
 Enum dùng: **`deposit_status`** = `PENDING, CONFIRMED, CONVERTED, REFUNDED, FORFEITED`.
 
@@ -173,9 +173,9 @@ flowchart TD
     DR --> NOTIF["notificationScheduler<br/>nhắc thiếu cọc"]
     DR --> PREV["computePreviousDebt<br/>nợ cũ 'Cọc còn thiếu' trên hoá đơn mới"]
     TERM["contract_terminations<br/>(FORFEIT / hoàn)"] --> DASH
-    DEP["deposits (phiếu giữ chỗ)"] -.->|flow cũ INSERT HĐ - gần như chết, xem 4.6| AUTO["auto_calculate_deposit_paid()"]
-    AUTO -.-> DP
 ```
+
+> Trigger legacy `trigger_auto_calculate_deposit_paid` (`deposits` → `contracts.deposit_paid` khi INSERT HĐ) đã bị **DROP hẳn** 2026-06-10 — xem §4.6.
 
 Luồng cọc giữ chỗ → khoá phòng `RESERVED` (§4.11):
 
@@ -198,7 +198,7 @@ flowchart TD
 [20260529000003_deposit_unify.sql](supabase/migrations/20260529000003_deposit_unify.sql)
 
 - Tính `deposit_paid = SUM(income_expenses.total_amount)` của các phiếu thoả: `type='INCOME'`, `approval_status='APPROVED'`, `deleted_at IS NULL`, đã link `contract_id`, và **EXISTS item có `income_expense_types.is_deposit = TRUE`**.
-- **Invariant quan trọng**: chỉ ghi đè `deposit_paid` khi `v_count > 0` (có ít nhất 1 IE cọc). Nếu HĐ chưa có IE cọc nào thì **giữ nguyên** giá trị cũ → tránh đè 0 lên giá trị set từ flow cũ (`deposits` → `auto_calculate_deposit_paid`).
+- **Invariant quan trọng**: chỉ ghi đè `deposit_paid` khi `v_count > 0` (có ít nhất 1 IE cọc). Nếu HĐ chưa có IE cọc nào thì **giữ nguyên** giá trị cũ → tránh đè 0 lên giá trị legacy do flow cũ (`deposits` → `auto_calculate_deposit_paid`, đã DROP — §4.6) từng set.
 
 ### 4.2. `ie_has_deposit_item(p_ie_id)` — helper
 
@@ -230,15 +230,15 @@ Sau khi link → gọi `recompute_contract_deposit_paid(NEW.id)`. → Hỗ trợ
 
 BEFORE INSERT trên `deposits`: nếu `code` rỗng → `'DC' || LPAD(nextval('deposits_code_seq'),6,'0')`. Unique index trên `code`.
 
-### 4.6. `auto_calculate_deposit_paid` — flow cũ deposits → contract
+### 4.6. `auto_calculate_deposit_paid` — flow cũ deposits → contract (ĐÃ GỠ HẲN)
 
-[012_auto_deposit_calculation.sql](supabase/migrations/012_auto_deposit_calculation.sql)
+[012_auto_deposit_calculation.sql](supabase/migrations/012_auto_deposit_calculation.sql) (tạo) → **DROP** tại [20260610110000_perf_indexes_cashbook_rpc.sql](supabase/migrations/20260610110000_perf_indexes_cashbook_rpc.sql) (2026-06-10).
 
-BEFORE INSERT trên `contracts`:
-- Tính `SUM(deposits.amount)` của tenant + room với `status IN ('CONFIRMED','CONVERTED')` → nếu `NEW.deposit_paid` rỗng thì điền vào.
-- UPDATE các `deposits` `status='CONFIRMED'` cùng tenant+room → `status='CONVERTED'`, gắn `contract_id`.
+Trigger legacy `trigger_auto_calculate_deposit_paid` (BEFORE INSERT `contracts`) từng: tính `SUM(deposits.amount)` của tenant+room (`status IN ('CONFIRMED','CONVERTED')`) điền vào `NEW.deposit_paid` nếu rỗng, và flip các phiếu `CONFIRMED` cùng tenant+room sang `CONVERTED` + gắn `contract_id`.
 
-> **Lưu ý kỹ thuật (flow cũ gần như CHẾT trên thực tế)**: bản live của hàm đã được redefine **bỏ hẳn `bed_id`** tại [20260528000006_drop_beds_fix_triggers.sql](supabase/migrations/20260528000006_drop_beds_fix_triggers.sql) — không còn nợ kỹ thuật `bed_id`. Vấn đề tồn đọng thật sự nằm chỗ khác: `useCreateContract` ([useContracts.ts](src/hooks/useContracts.ts)) — đường tạo HĐ chính qua form — insert HĐ mới với `tenant_id = null` (cột legacy — khách thật nằm ở `contract_customers`), nên điều kiện `WHERE tenant_id = NEW.tenant_id` (so sánh với NULL) **không match** → SUM luôn rỗng và `deposits` **không** tự chuyển `CONVERTED`/gắn `contract_id` khi ký HĐ qua form. **Ngoại lệ**: `useBulkCreateContracts` (import HĐ hàng loạt từ Excel, cùng file) vẫn insert `tenant_id` thật → flow cũ vẫn có thể chạy ở đường import. Nguồn IE (§4.1, qua `trg_contract_link_orphan_deposits` §4.4 — trigger này match được vì `NEW.tenant_id IS NULL` coi như khớp mọi tenant) vẫn là đường chính; hệ quả phụ: phiếu giữ chỗ cũ không được dọn tự động ở luồng form → xem cảnh báo tái-RESERVED ở §4.11.
+- **Lý do gỡ**: trigger "chết lâm sàng" từ 2026-05 — `useCreateContract` luôn insert `tenant_id = NULL` (khách thật nằm ở `contract_customers`) nên `WHERE tenant_id = NEW.tenant_id` không bao giờ match. Giữ lại chỉ gây hiểu nhầm + rủi ro 2 nguồn cùng ghi đè `deposit_paid` nếu sau này có flow set `tenant_id` (vd `useBulkCreateContracts` import Excel vẫn insert `tenant_id` thật).
+- **Nguồn sự thật hiện hành**: phiếu IE `is_deposit` → `recompute_contract_deposit_paid` (§4.1) qua `trg_contract_link_orphan_deposits` (§4.4).
+- **Việc flip `deposits.status='CONVERTED'`** giờ do FE đảm nhận trong flow Cọc→HĐ: `ContractFormDialog` flip + gắn `contract_id` **SAU khi HĐ tạo thành công** (qua `prefill.depositId` — §5.4). Phiếu giữ chỗ không đi qua nút "Tạo HĐ" (ký HĐ thẳng từ trang HĐ) vẫn **không** tự đóng → xem cảnh báo tái-RESERVED ở §4.11.
 
 ### 4.7. Chặn ký HĐ khi thiếu cọc (acknowledge)
 
@@ -303,7 +303,7 @@ Touchpoint FE (bucket "Đã cọc" tách riêng toàn hệ):
 - [roomStatus.ts](src/lib/roomStatus.ts) — `getRoomDisplayStatus`: không HĐ hiệu lực + `room.status='RESERVED'` → hiển thị `RESERVED`.
 - Trang công khai `/r/:token` ([README](src/pages/phong-trong/README.md)) — map `RESERVED` → `rented` (ẩn khỏi danh sách phòng trống).
 
-> **Cảnh báo (lỗ hổng vòng đời)**: predicate **không xét `hold_until`** → phiếu giữ chỗ quá hạn vẫn giữ phòng `RESERVED` vô hạn. Kết hợp với flow auto-convert đã chết (§4.6): phiếu `PENDING/CONFIRMED` không tự đóng khi phòng ký HĐ — lúc ký không lộ (reconcile skip vì có HĐ hiệu lực), nhưng khi HĐ đó thanh lý và phòng về `AVAILABLE`, trigger `trg_room_status_reconcile` sẽ **tái-RESERVED** phòng bởi phiếu giữ chỗ cổ chưa dọn. Cần dọn phiếu cũ thủ công hoặc bổ sung điều kiện `hold_until`/auto-convert khi sửa.
+> **Cảnh báo (lỗ hổng vòng đời)**: predicate **không xét `hold_until`** → phiếu giữ chỗ quá hạn vẫn giữ phòng `RESERVED` vô hạn. Flow Cọc→HĐ qua nút "Tạo HĐ" (§5.4) giờ flip `CONVERTED` + gắn `contract_id` đúng cách (df24746), nhưng phiếu `PENDING/CONFIRMED` của phòng **ký HĐ thẳng** (không qua nút convert) vẫn không tự đóng (trigger auto-convert cũ đã DROP — §4.6) — lúc ký không lộ (reconcile skip vì có HĐ hiệu lực), nhưng khi HĐ đó thanh lý và phòng về `AVAILABLE`, trigger `trg_room_status_reconcile` sẽ **tái-RESERVED** phòng bởi phiếu giữ chỗ cổ chưa dọn. Cần dọn phiếu cũ thủ công hoặc bổ sung điều kiện `hold_until` khi sửa.
 
 ### 4.12. Sổ quỹ "CỌC (giữ hộ khách)" + auto-tạo phiếu thu cọc khi ký HĐ
 
@@ -312,7 +312,9 @@ Touchpoint FE (bucket "Đã cọc" tách riêng toàn hệ):
 Đây là **nguồn chính sinh ra phiếu IE `is_deposit`** mà §4.1 dựa vào:
 
 - Helper DB `_deposit_account(p_user_id)` — get-or-create sổ quỹ tên `'CỌC (giữ hộ khách)'` **theo owner** (1 sổ chung mọi toà, khớp MEMORY `feedback_system_account_single`). RPC `get_or_create_deposit_account()` bọc cho FE (authenticated-only).
-- Khi tạo HĐ có `deposit_paid > 0` và tồn tại loại thu "Tiền cọc" (`is_deposit`): form HĐ **auto-tạo phiếu thu** `INCOME` tên `"Cọc giữ phòng {phòng} Toà nhà {toà}"` vào sổ CỌC, `contract_id` gắn HĐ vừa tạo, `business_result_accounting: null` (hạng mục cọc tự loại khỏi KQKD), kèm attachments upload tại form. Thiếu sổ CỌC hoặc thiếu loại thu "Tiền cọc" → toast cảnh báo "Đã lưu HĐ nhưng chưa tạo phiếu thu cọc...".
+- Khi tạo HĐ và tồn tại loại thu "Tiền cọc" (`is_deposit`): form HĐ **auto-tạo phiếu thu** `INCOME` tên `"Cọc giữ phòng {phòng} Toà nhà {toà}"` vào sổ CỌC, `contract_id` gắn HĐ vừa tạo, `business_result_accounting: null` (hạng mục cọc tự loại khỏi KQKD), kèm attachments upload tại form.
+- **Chống double-count (df24746)**: phiếu auto chỉ ghi **PHẦN CHÊNH** `max(0, deposit_paid_nhập − Σ phiếu cọc mồ côi của phòng)`. Form dùng hook mới [useOrphanDepositVouchers](src/hooks/useDeposits.ts) (cùng predicate với trigger `trg_contract_link_orphan_deposits` §4.4: cùng phòng, `contract_id IS NULL`, INCOME có item `is_deposit`, APPROVED/UNAPPROVED, `voucher_date ≤ start_date + 7 ngày`) để (1) hiện **cảnh báo "cọc giữ chỗ đã thu"** kèm danh sách phiếu sẽ tự gắn vào HĐ, (2) auto-bump "Đã đặt cọc" tối thiểu bằng tổng orphan. Trước đây phiếu auto ghi toàn bộ `deposit_paid` → trigger link orphan + phiếu mới làm `deposit_paid` đếm đúp.
+- Thiếu sổ CỌC / thiếu loại thu "Tiền cọc" / insert phiếu **fail** → `toast.error` rõ ràng (15s) "HĐ đã lưu nhưng phiếu thu cọc TẠO THẤT BẠI..." kèm hướng xử lý tay — không còn `toast.warning` im lặng.
 - DB còn helper `_ensure_initial_deposit_voucher(p_contract_id)` dùng cho RPC thanh lý: nếu HĐ đã có phiếu thu cọc → trả `account_id` của phiếu đó; chưa có và `deposit_paid > 0` → tạo bù trên sổ CỌC. Chuỗi chuyển khoản nội bộ sổ CỌC ↔ sổ vận hành khi thanh lý xem doc 05 (Hợp đồng/Thanh lý, MEMORY `project_termination_net_settlement`).
 
 ### 4.13. Thiếu cọc chảy vào "Nợ cũ" của hoá đơn — cơ chế thu nốt cọc thực tế
@@ -329,7 +331,7 @@ Khoản `FIRST_INVOICE`/`DEBT` được **thu thật** qua hoá đơn:
 
 [20260529000003_deposit_unify.sql](supabase/migrations/20260529000003_deposit_unify.sql)
 
-`get_invoice_statistics` (v1) và `get_invoice_statistics_v2` (RPC FE thực gọi) trả thêm trường `deposit_collected` = `SUM(ie.total_amount)` các phiếu IE `INCOME` `APPROVED` chưa xoá có item `is_deposit`, lọc theo `p_area_id` (qua `buildings.area_id`), `p_building_id`, `p_room_id`, `voucher_date` (start/end), `p_billing_month`. v2 scope quyền qua `can_access_building(ie.building_id)`; v1 qua mảng `staff_assignments`. → touchpoint thống kê cọc nằm ở domain hoá đơn.
+`get_invoice_statistics` (v1) và `get_invoice_statistics_v2` (RPC FE thực gọi) trả thêm trường `deposit_collected` = `SUM(ie.total_amount)` các phiếu IE `INCOME` `APPROVED` chưa xoá có item `is_deposit`, lọc theo `p_building_ids uuid[]` (lọc nhiều toà — thêm ở [20260610100000](supabase/migrations/20260610100000_invoice_stats_building_ids.sql), FE gửi từ `BuildingMultiSelect`), `p_building_id`, `p_area_id` (**deprecated**, qua `buildings.area_id`), `p_room_id`, `voucher_date` (start/end), `p_billing_month`. v2 scope quyền qua `can_access_building(ie.building_id)`; v1 qua mảng `staff_assignments`. → touchpoint thống kê cọc nằm ở domain hoá đơn.
 
 ### 4.15. Guard chặn thiếu cọc tầng hook + badge cọc ở danh sách HĐ
 
@@ -348,11 +350,9 @@ Khoản `FIRST_INVOICE`/`DEBT` được **thu thật** qua hoá đơn:
 
 ## 5. Quy trình theo từng trang
 
-Trang chính của domain: **`/deposits`** ([DepositsPage.tsx](src/pages/deposits/DepositsPage.tsx)). Ngoài ra còn trang báo cáo **`/reports/finance/deposits`** (§5.6), 2 redirect legacy `/reservations`, `/reservations/all` → `/deposits`, và nút "Tạo cọc giữ phòng" (quyền nhãn "Tạo cọc nhanh") trên trang công khai `/r/:token` (§5.7 — WIP). Bộ lọc Khu vực/Toà nhà (SearchableSelect, theo MEMORY) dùng chung cho mọi tab; lọc toà nhà chạy **client-side**.
+Trang chính của domain: **`/deposits`** ([DepositsPage.tsx](src/pages/deposits/DepositsPage.tsx)). Ngoài ra còn trang báo cáo **`/reports/finance/deposits`** (§5.6), 2 redirect legacy `/reservations`, `/reservations/all` → `/deposits`, và nút "Tạo cọc giữ phòng" (quyền nhãn "Tạo cọc nhanh") trên trang công khai `/r/:token` (§5.7 — WIP). Bộ lọc toà = **một `BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu vực — thay cặp dropdown Khu vực/Toà cũ, commit 9ad626d) dùng chung cho cả 4 tab; lọc **client-side theo `building.id`** (`held`/`refunds` so `r.building_id`, phiếu giữ chỗ so `d.room?.building?.id`). Cảnh báo "areaId dead filter" trước đây đã hết hiệu lực.
 
-> **Cảnh báo bộ lọc Khu vực**: `areaId` hiện **chỉ thu hẹp options của dropdown Toà nhà** (`b.area_id === areaId`), **không lọc dữ liệu** — chọn khu vực + "Tất cả toà nhà" thì bảng vẫn hiện mọi khu vực; đổi khu vực cũng không reset `buildingId` (giá trị toà của khu vực cũ vẫn âm thầm áp).
-
-Hook dữ liệu (cả 3 fetch ngay khi mount, không scope toà/khu vực server-side — chỉ dựa RLS, không phân trang):
+Hook dữ liệu (cả 3 fetch ngay khi mount, không scope toà server-side — chỉ dựa RLS, không phân trang):
 - `useHeldDeposits` ([useDepositDashboard.ts](src/hooks/useDepositDashboard.ts)) — HĐ `ACTIVE` chưa xoá (EXTENDED đã ngưng dùng — HĐ gia hạn giữ `ACTIVE`), map ra `HeldDepositRow` với `state`:
   - `FULL` nếu `deposit_remaining < DEPOSIT_SHORTFALL_THRESHOLD` (10.000đ — ngưỡng làm tròn);
   - ngược lại `FIRST_INVOICE` nếu `deposit_debt_mode='FIRST_INVOICE'`, else `SHORT` (nợ cọc).
@@ -387,18 +387,18 @@ flowchart TD
     C --> D["trg_deposits_set_code → DCxxxxxx"]
     C --> E["invalidate ['deposits'],['rooms']"]
     F["Bấm Sửa"] --> G["EditDepositDialog → useUpdateDeposit"]
-    H["Phiếu CONFIRMED → Tạo HĐ"] --> I["ConvertToContractDialog"]
-    I -->|"set status=CONVERTED TRƯỚC"| J["navigate /contracts/create<br/>(state: depositId, tenantId, roomId, depositAmount)"]
-    J -.->|"route KHÔNG TỒN TẠI<br/>match nhầm /contracts/:id"| K["DEAD-END: trang detail<br/>với id='create' không hợp lệ"]
+    H["Phiếu CONFIRMED → Tạo HĐ"] --> I["ConvertToContractDialog<br/>(màn xác nhận thông tin cọc)"]
+    I -->|"Xác nhận"| J["ContractFormDialog mở với prefill<br/>(buildingId, roomId, depositId, depositAmount)"]
+    J -->|"HĐ tạo THÀNH CÔNG"| K["UPDATE deposits: status=CONVERTED<br/>+ contract_id = HĐ mới"]
+    J -.->|"HĐ fail / đóng form"| L["Phiếu GIỮ NGUYÊN CONFIRMED<br/>phòng vẫn RESERVED"]
 ```
 
 Các thao tác:
 - **Tạo** ([CreateDepositDialog.tsx](src/components/deposits/CreateDepositDialog.tsx)): chọn tenant có sẵn hoặc tạo mới (tenant mới `status='DEPOSITED'`); validate zod (`room_id` bắt buộc, `amount>=0`, `deposit_date`, `hold_until_date`, `status`). `useCreateDeposit` tự gắn `user_id`.
 - **Sửa / Xoá** ([EditDepositDialog.tsx](src/components/deposits/EditDepositDialog.tsx)): `useUpdateDeposit` / `useDeleteDeposit` (hard delete).
-- **Chuyển sang HĐ** ([ConvertToContractDialog.tsx](src/components/deposits/ConvertToContractDialog.tsx)): chỉ hiện khi `status='CONFIRMED'`. Set `status='CONVERTED'` rồi điều hướng sang `/contracts/create` mang theo `depositId/tenantId/roomId/depositAmount`.
+- **Chuyển sang HĐ** ([ConvertToContractDialog.tsx](src/components/deposits/ConvertToContractDialog.tsx)) — **viết lại ở df24746 (2026-06-10)**: chỉ hiện khi `status='CONFIRMED'`. Dialog xác nhận thông tin cọc → mở thẳng **`ContractFormDialog`** với `prefill` stable (`buildingId`/`roomId` từ phòng của phiếu, `depositId`, `depositAmount` điền sẵn "Tổng cọc"/"Đã đặt cọc"). Phiếu **CHỈ flip `CONVERTED` + gắn `contract_id` SAU khi HĐ tạo thành công** (`ContractFormDialog` xử lý qua `prefill.depositId` trong `onSuccess`; flip fail → `toast.warning` nhắc cập nhật tay). HĐ fail/đóng form → phiếu giữ nguyên `CONFIRMED`, phòng vẫn `RESERVED`.
+  - *(Lịch sử)*: bản cũ set `CONVERTED` **trước** rồi `navigate('/contracts/create')` — route không tồn tại → trang lỗi + phiếu kẹt CONVERTED không HĐ + phòng mất `RESERVED` lộ ra trang Phòng trống công khai. Đã sửa triệt để.
 - **Entry-point thứ 2 (ngoài trang này)**: [ConvertLeadDialog.tsx](src/components/leads/ConvertLeadDialog.tsx) — "Chuyển sang Đặt cọc" từ pipeline `/leads` (§5.1 doc 03): INSERT `deposits` `status='PENDING'` (có thể tạo tenant mới `status='DEPOSITED'`), rồi `useConvertLeadToDeposit` update `leads.status='CONVERTED'` — **không** ghi `leads.deposit_id` (FK mồ côi, §2.1). Dính cùng bug `hold_until_date` bên dưới.
-
-> **BUG dead-end phá dữ liệu (Chuyển sang HĐ)**: route `/contracts/create` **không tồn tại** trong [App.tsx](src/App.tsx) (chỉ có `/contracts` và `/contracts/:id` → `'create'` bị match làm `:id`, vào ContractDetailPage với id không hợp lệ); cũng **không file nào** trong `src/pages/contracts` đọc `location.state` để prefill form. Hậu quả kép vì deposit đã bị set `CONVERTED` **trước** khi navigate: (1) phiếu kẹt `CONVERTED` không có HĐ, nút "Tạo HĐ" biến mất; (2) `CONVERTED` rời predicate `PENDING/CONFIRMED` của `recompute_room_reservation` (§4.11) → phòng đang `RESERVED` bị nhả về `AVAILABLE` dù chưa hề ký HĐ. Hướng sửa: mở ContractFormDialog prefill từ state (hoặc thêm route thật) và chỉ set `CONVERTED` sau khi HĐ tạo thành công.
 
 > **BUG `hold_until_date` (Tạo/Sửa phiếu hỏng hoàn toàn)**: cột thực tế là `deposits.hold_until` ([types.ts](src/integrations/supabase/types.ts) — Insert type chỉ có `hold_until`), nhưng cả 3 form đều gửi key **`hold_until_date`**: [CreateDepositDialog.tsx](src/components/deposits/CreateDepositDialog.tsx) (insert trực tiếp), [EditDepositDialog.tsx](src/components/deposits/EditDepositDialog.tsx) (spread `...data` chứa field này), và [ConvertLeadDialog.tsx](src/components/leads/ConvertLeadDialog.tsx) (entry-point Lead → Đặt cọc, §5.1 doc 03). PostgREST **từ chối toàn bộ INSERT/UPDATE** khi payload chứa cột không tồn tại (lỗi PGRST204) → tạo/sửa phiếu giữ chỗ từ UI **fail hoàn toàn**, không phải chỉ mất 1 field. Cần map `hold_until_date` (form) → `hold_until` (payload) ở cả 3 chỗ.
 
@@ -426,11 +426,9 @@ stateDiagram-v2
 
 - Đọc **toàn bộ bảng `deposits`** (`select('*')` + join tenant, room→building, sort `deposit_date` desc) — không limit, không lọc `deleted_at`/status server-side; "phân trang" chỉ là `slice` client trên mảng full.
 - Cột: Toà nhà / Căn hộ / Khách hàng / Số tiền cọc / "Số tiền cọc (giữ chỗ)" (chỉ điền khi `status ∈ {PENDING, CONFIRMED}`) / "Số tiền cọc (trong hoá đơn)" (chỉ điền khi `CONVERTED`) / Phân loại (map nhãn tiếng Việt từ `deposit_status`). Dòng "Tổng" = Σ `amount` của rows sau lọc.
-- 3 ô lọc SearchableSelect: Loại cọc (status), Khu vực, Toà nhà — lọc client-side.
+- 2 ô lọc: Loại cọc (status, SearchableSelect) + **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu) — lọc client-side **theo `buildings.id`** (`d.rooms?.buildings?.id`). Cảnh báo cũ "areaId dead filter + lọc toà theo TÊN" đã hết hiệu lực (sửa ở 9ad626d).
 
-> **Cảnh báo bộ lọc (tệ hơn cả /deposits)**: `areaId` hoàn toàn **không được dùng** trong `filtered()` (dead filter — chọn khu vực không đổi gì); dropdown Toà **không thu hẹp theo khu vực**; lọc toà so sánh theo **TÊN toà** (`d.rooms?.buildings?.name === b.name`) thay vì id — 2 toà trùng tên sẽ lẫn dữ liệu. Hướng sửa: lọc theo `building.id` + áp `area_id`.
-
-> Vì cột Phân loại đọc từ `deposits.status` nên báo cáo này kế thừa hạn chế "status không phải nguồn sự thật" (§1): `REFUNDED/FORFEITED` gần như không bao giờ được set tự động (§4.10), và `CONVERTED` không được set khi ký HĐ vì flow cũ đã chết (§4.6).
+> Vì cột Phân loại đọc từ `deposits.status` nên báo cáo này kế thừa hạn chế "status không phải nguồn sự thật" (§1): `REFUNDED/FORFEITED` gần như không bao giờ được set tự động (§4.10); `CONVERTED` chỉ được set khi đi qua nút "Tạo HĐ" của flow Cọc→HĐ (§5.4) — ký HĐ thẳng không flip.
 
 ### 5.7. "Tạo cọc nhanh" trên trang công khai `/r/:token` — **WIP, chưa commit**
 
@@ -456,4 +454,4 @@ stateDiagram-v2
 | `invoices` (`previous_debt_sources` `type='deposit'`) + RPC `get_invoice_statistics(_v2)` | **Ra** | Thiếu cọc chảy vào "Nợ cũ" của hoá đơn mới qua `computePreviousDebt` (§4.13); KPI `deposit_collected` trong thống kê hoá đơn (§4.14). |
 | `leads` (ConvertLeadDialog) | **Vào** | Lead "Chuyển sang Đặt cọc" tạo phiếu giữ chỗ `PENDING` (§5.4). **Lưu ý**: FK `leads.deposit_id → deposits.id` là FK mồ côi — code chỉ update `leads.status='CONVERTED'`, không bao giờ ghi `deposit_id` (§2.1). |
 | `notifications` (`type='DEPOSIT_SHORTFALL'`) | **Ra** | notificationScheduler nhắc bổ sung cọc theo `deposit_topup_due_date`. |
-| `/contracts/create` | **Ra** | ConvertToContractDialog điều hướng kèm state phiếu cọc — **route không tồn tại, dead-end phá dữ liệu** (xem BUG §5.4). |
+| `ContractFormDialog` (domain 05) | **Ra** | ConvertToContractDialog mở form HĐ với `prefill` (toà/phòng/tiền cọc/depositId); HĐ tạo xong mới flip phiếu `CONVERTED` + gắn `contract_id` (§5.4 — dead-end `/contracts/create` cũ đã sửa ở df24746). |

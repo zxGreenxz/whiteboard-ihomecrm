@@ -20,7 +20,7 @@ Mỗi file mô tả một **domain** theo cùng một bố cục: *Tổng quan �
 | # | Domain | Bảng chính | Route chính |
 |---|--------|-----------|-------------|
 | [01](01-phan-quyen-nhan-su.md) | **Phân quyền & Nhân sự** (Auth · Roles · Staff · RLS) | `profiles, roles, staff_assignments, super_admins, departments` | `/login`, `/settings/staff`, `/admin/users` |
-| [02](02-co-cau-toa-nha-phong-dich-vu.md) | **Cơ cấu BĐS** (Khu vực · Toà · Tầng · Phòng · Dịch vụ) | `areas, buildings, floors, rooms, services, building_services, service_quotas` | `/areas`, `/buildings`, `/apartments`, `/services`, `/building-map` |
+| [02](02-co-cau-toa-nha-phong-dich-vu.md) | **Cơ cấu BĐS** (Khu vực · Toà · Tầng · Phòng · Dịch vụ) | `areas, buildings, floors, rooms, services, building_services, service_quotas` | `/buildings` (dialog Quản lý khu vực; `/areas` redirect về đây), `/apartments`, `/services`, `/building-map` |
 | [14](14-cai-dat-danh-muc-tai-lieu.md) | **Cài đặt · Danh mục · Tài liệu mẫu · Gói cước** | `settings, document_templates, signature_templates, code_sequences, subscription_plans` | `/settings/*`, `/account/subscription` |
 
 ### Vòng khách hàng → hợp đồng
@@ -106,5 +106,6 @@ flowchart LR
 - **Mã trạng thái** giữ nguyên enum DB (vd `ACTIVE`, `TM/TK/TT`) — xem bảng tra cứu enum ở [00 §6](00-tong-quan.md).
 - **Gia hạn giữ nguyên `ACTIVE`** (từ 2026-06-06): status `EXTENDED` đã **ngưng ghi** — hợp đồng gia hạn vẫn là `ACTIVE`, `isContractInEffect()` chỉ tính `ACTIVE`; "đã gia hạn" suy từ bảng `contract_extensions` (hook `useRenewedContracts` + `RenewedBadge`). Một số trigger DB còn nhận `EXTENDED` chỉ là lớp tương thích — xem [05](05-hop-dong.md).
 - **Nguồn sự thật số cọc** = tổng phiếu thu chi `is_deposit` (→ `contracts.deposit_paid`), **không** phải `deposits.status` — xem [04](04-coc-giu-cho.md).
+- **Khu vực = nhãn nhóm toà, không phải đơn vị quyền** (từ 2026-06-10): trang `/areas` đã gỡ (quản lý qua dialog trong `/buildings`); mọi ô lọc Khu vực + Toà gộp thành `BuildingMultiSelect` (chọn nhiều toà, click tên khu = chọn cả nhóm) với filter `building_ids: string[]` — xem [00 §7](00-tong-quan.md) và [02 §5.1](02-co-cau-toa-nha-phong-dich-vu.md).
 - Các trang nội dung tĩnh `/faq`, `/changelog`, `/app-guide` không có nghiệp vụ dữ liệu — **ngoài phạm vi** bộ tài liệu (bỏ qua có chủ ý).
 - Tài liệu phản ánh schema tại thời điểm lập; khi đổi migration nên cập nhật lại domain tương ứng.
