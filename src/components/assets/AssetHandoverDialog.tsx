@@ -27,7 +27,9 @@ interface AssetHandoverDialogProps {
 
 export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogProps) {
   const createHandover = useCreateAssetHandover();
-  const { data: contractsData } = useContracts();
+  // Bàn giao tài sản (nhận/trả) thao tác trên HĐ đang hiệu lực → chỉ kéo
+  // HĐ ACTIVE server-side thay vì full bảng.
+  const { data: contractsData } = useContracts({ statuses: ["ACTIVE"] });
   const contracts = contractsData ?? [];
 
   const form = useForm<HandoverFormValues>({

@@ -91,6 +91,8 @@ export interface IncomeExpenseWithRelations {
   account_id: string | null;
   account_name: string | null;
   contract_id: string | null;
+  // Hoá đơn liên quan — phiếu thu sinh từ thanh toán hoá đơn (deep-link 2 chiều).
+  invoice_id: string | null;
   attachments: string[];
   // NULL = tự động (suy theo hạng mục cọc); TRUE/FALSE = override tay.
   business_result_accounting: boolean | null;
@@ -473,6 +475,7 @@ export const useIncomeExpenses = (
           account_id: v.account_id ?? null,
           account_name: v.account?.name ?? null,
           contract_id: v.contract_id ?? null,
+          invoice_id: v.invoice_id ?? null,
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? null,
           counts_in_business_result: v.counts_in_business_result ?? true,
@@ -1544,6 +1547,7 @@ export const useIncomeExpenseBatches = (
           account_id: v.account_id ?? null,
           account_name: v.account?.name ?? null,
           contract_id: v.contract_id ?? null,
+          invoice_id: v.invoice_id ?? null,
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? null,
           counts_in_business_result: v.counts_in_business_result ?? true,

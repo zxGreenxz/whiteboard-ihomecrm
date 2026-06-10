@@ -5,9 +5,7 @@ import { ArrowRight, UserPlus, Wallet, FileSignature } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
 import { useDeposits } from "@/hooks/useDeposits";
-import { useContracts } from "@/hooks/useContracts";
-import { isContractInEffect } from "@/types/contract";
-import { differenceInDays } from "date-fns";
+import { useContractDashboardCounts } from "@/hooks/useContracts";
 
 interface MiniStat {
   label: string;
@@ -83,11 +81,10 @@ function StatBlock({
 export function OperationsSummary({ buildingId }: { buildingId?: string | null }) {
   const { data: leads = [], isLoading: leadsLoading } = useLeads();
   const { data: deposits = [], isLoading: depositsLoading } = useDeposits();
-  const contractsResult = useContracts();
-  const contracts = (contractsResult.data ?? []).filter((c: any) =>
-    !buildingId || c.room?.building_id === buildingId,
-  );
-  const contractsLoading = contractsResult.isLoading;
+  // HĐ: chỉ cần 4 con số → HEAD count server-side, không kéo cả bảng contracts
+  // (full-fetch cũ bị PostgREST max-rows cắt ngầm khi quá 1.000 HĐ).
+  const { data: contractCounts, isLoading: contractsLoading } =
+    useContractDashboardCounts(buildingId);
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -112,22 +109,11 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
     ? `${Math.round((movedIn / deposits.length) * 100)}%`
     : "0%";
 
-  // Contracts
-  const activeContracts = contracts.filter((c: any) => isContractInEffect(c.status)).length;
-  const newThisMonth = contracts.filter((c: any) => {
-    const start = c.start_date ? new Date(c.start_date) : null;
-    return start && start >= startOfMonth;
-  }).length;
-  const expiringSoon = contracts.filter((c: any) => {
-    if (!isContractInEffect(c.status) || !c.end_date) return false;
-    const days = differenceInDays(new Date(c.end_date), now);
-    return days >= 0 && days <= 30;
-  }).length;
-  const terminatedThisMonth = contracts.filter((c: any) => {
-    if (c.status !== "TERMINATED" && c.status !== "ENDED") return false;
-    const ended = c.end_date ? new Date(c.end_date) : null;
-    return ended && ended >= startOfMonth;
-  }).length;
+  // Contracts — đếm server-side (useContractDashboardCounts).
+  const activeContracts = contractCounts?.active ?? 0;
+  const newThisMonth = contractCounts?.newThisMonth ?? 0;
+  const expiringSoon = contractCounts?.expiringSoon ?? 0;
+  const terminatedThisMonth = contractCounts?.terminatedThisMonth ?? 0;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

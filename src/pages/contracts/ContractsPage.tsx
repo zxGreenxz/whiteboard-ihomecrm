@@ -19,19 +19,24 @@ import { PrintContractDialog } from '@/components/contracts/PrintContractDialog'
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import { exportContracts } from '@/lib/contractExcelHelpers';
 
-import { useContracts } from '@/hooks/useContracts';
+import {
+  useContractsPaged,
+  useContractStats,
+  useContract,
+  fetchContractsForExport,
+  type ContractPagedFilters,
+} from '@/hooks/useContracts';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
-import { getContractDisplayStatus } from '@/types/contract';
 import { compareBuildingThenRoom } from '@/lib/roomSort';
+import { toast } from 'sonner';
 import type {
   ContractWithRelations,
   ContractStatFilter,
   ContractLifecycleFilter,
   ContractStats,
-  ContractDisplayStatus,
 } from '@/types/contract';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
@@ -46,13 +51,21 @@ export default function ContractsPage() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  // Search đẩy xuống server → debounce để không bắn query mỗi phím gõ.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
   const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomFilter, setRoomFilter] = useState('all');
   const [lifecycleFilter, setLifecycleFilter] = useState<ContractLifecycleFilter>('ACTIVE');
   const [monthFilter, setMonthFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const areaDefaultAppliedRef = useRef(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -75,14 +88,39 @@ export default function ContractsPage() {
   const [selectedContractIds, setSelectedContractIds] = useState<string[]>([]);
 
   // =============================================
-  // Data fetching
+  // Data fetching — phân trang + lọc SERVER-SIDE (useContractsPaged)
   // =============================================
 
-  const { data: contractsData, isLoading } = useContracts();
-  const contracts = useMemo(
-    () => (Array.isArray(contractsData) ? contractsData : []) as ContractWithRelations[],
-    [contractsData]
+  const pagedFilters = useMemo<ContractPagedFilters>(
+    () => ({
+      search: debouncedSearch || undefined,
+      building_ids: buildingIds.length > 0 ? buildingIds : undefined,
+      room_name: roomFilter !== 'all' ? roomFilter : undefined,
+      lifecycle: lifecycleFilter,
+      stat: activeStatFilter,
+      month: monthFilter || undefined,
+    }),
+    [debouncedSearch, buildingIds, roomFilter, lifecycleFilter, activeStatFilter, monthFilter]
   );
+
+  const { data: pagedContracts, isLoading } = useContractsPaged(pagedFilters, {
+    page,
+    pageSize,
+  });
+  const contracts = useMemo(
+    () => (pagedContracts?.data ?? []) as ContractWithRelations[],
+    [pagedContracts]
+  );
+  const totalCount = pagedContracts?.count ?? 0;
+
+  // HĐ đang chọn cho dialog: dòng trong danh sách là bản RÚT GỌN (không có
+  // contract_services / CMND...), nên fetch bản đầy đủ qua useContract(id) —
+  // dialog Sửa/In cần đủ dữ liệu (form reset lại khi prop contract đổi).
+  const { data: selectedContractFull } = useContract(selectedContract?.id);
+  const dialogContract: ContractWithRelations | null =
+    selectedContract && selectedContractFull?.id === selectedContract.id
+      ? selectedContractFull
+      : selectedContract;
 
   const { data: buildingsData } = useBuildings();
   const allBuildings = useMemo(
@@ -141,103 +179,24 @@ export default function ContractsPage() {
   }, [allRooms, buildingIds]);
 
   // =============================================
-  // Compute stats from full contract list
+  // Stats 4 ô — 4 HEAD count song song server-side (useContractStats),
+  // không còn tính từ full list. Theo bộ lọc toà nhà đang chọn.
   // =============================================
 
-  const stats = useMemo<ContractStats>(() => {
-    const result: ContractStats = { total: 0, expiring: 0, expired: 0, terminated: 0 };
-    contracts.forEach((c) => {
-      result.total++;
-      const displayStatus = getContractDisplayStatus(c);
-      if (displayStatus === 'EXPIRING') result.expiring++;
-      else if (displayStatus === 'EXPIRED') result.expired++;
-      else if (displayStatus === 'TERMINATED') result.terminated++;
-    });
-    return result;
-  }, [contracts]);
+  const { data: statsData } = useContractStats(buildingIds);
+  const stats = useMemo<ContractStats>(
+    () => statsData ?? { total: 0, expiring: 0, expired: 0, terminated: 0 },
+    [statsData]
+  );
 
   // =============================================
-  // Client-side filtering
-  // =============================================
-
-  const filteredContracts = useMemo(() => {
-    return contracts.filter((contract) => {
-      // Lifecycle filter (Đang ở = tất cả trừ thanh lý, Thanh lý = chỉ thanh lý)
-      if (lifecycleFilter === 'ACTIVE' && contract.status === 'TERMINATED') return false;
-      if (lifecycleFilter === 'TERMINATED' && contract.status !== 'TERMINATED') return false;
-
-      // Stat filter
-      if (activeStatFilter !== 'ALL') {
-        const displayStatus = getContractDisplayStatus(contract);
-        const statusMap: Record<ContractStatFilter, ContractDisplayStatus[]> = {
-          ALL: [],
-          EXPIRING: ['EXPIRING'],
-          EXPIRED: ['EXPIRED'],
-          TERMINATED: ['TERMINATED'],
-        };
-        if (!statusMap[activeStatFilter]?.includes(displayStatus)) return false;
-      }
-
-      // Search filter: case-insensitive match on contract_number, customer name, phone, room name
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
-        const contractNumber = contract.contract_number?.toLowerCase() || '';
-        const roomName = contract.room?.name?.toLowerCase() || '';
-        const customerName = contract.contract_customers
-          ?.find((cc) => cc.is_representative)
-          ?.customer?.full_name?.toLowerCase() || '';
-        const customerPhone = contract.contract_customers
-          ?.find((cc) => cc.is_representative)
-          ?.customer?.phone || '';
-
-        const matchesSearch =
-          contractNumber.includes(term) ||
-          roomName.includes(term) ||
-          customerName.includes(term) ||
-          customerPhone.includes(term);
-
-        if (!matchesSearch) return false;
-      }
-
-      // Building filter (nhiều toà; [] = tất cả)
-      if (buildingIds.length > 0) {
-        if (!buildingIds.includes(contract.room?.building_id ?? '')) return false;
-      }
-
-      // Room filter — lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà)
-      if (roomFilter !== 'all') {
-        if ((contract.room?.name ?? '') !== roomFilter) return false;
-      }
-
-      // Month filter: contract's active period overlaps with selected month
-      if (monthFilter) {
-        const [year, month] = monthFilter.split('-').map(Number);
-        const monthStart = new Date(year, month - 1, 1);
-        const monthEnd = new Date(year, month, 0, 23, 59, 59);
-        const contractStart = new Date(contract.start_date);
-        const contractEnd = new Date(contract.end_date);
-        // Overlap check: contractStart <= monthEnd && contractEnd >= monthStart
-        if (contractStart > monthEnd || contractEnd < monthStart) return false;
-      }
-
-      return true;
-    });
-  }, [
-    contracts,
-    activeStatFilter,
-    lifecycleFilter,
-    searchTerm,
-    buildingIds,
-    roomFilter,
-    monthFilter,
-  ]);
-
-  // =============================================
-  // Sort: gom theo toà nhà rồi sắp theo tên phòng (MB* → G* → L* → 1,2,3,4...)
+  // Sort TRONG TRANG: gom theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3...)
+  // Thứ tự toàn cục giữa các trang là created_at desc (server); sort tuỳ biến
+  // này không đẩy xuống SQL được nên chỉ áp trong phạm vi 1 trang.
   // =============================================
 
   const sortedContracts = useMemo(() => {
-    return [...filteredContracts].sort((a, b) =>
+    return [...contracts].sort((a, b) =>
       compareBuildingThenRoom(
         a.room?.building?.name ?? '',
         a.room?.name ?? '',
@@ -245,17 +204,7 @@ export default function ContractsPage() {
         b.room?.name ?? '',
       ),
     );
-  }, [filteredContracts]);
-
-  // =============================================
-  // Pagination (client-side slice)
-  // =============================================
-
-  const totalCount = sortedContracts.length;
-  const paginatedContracts = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedContracts.slice(start, start + pageSize);
-  }, [sortedContracts, page, pageSize]);
+  }, [contracts]);
 
   // =============================================
   // Handlers
@@ -352,6 +301,32 @@ export default function ContractsPage() {
     setPrintDialogOpen(true);
   }, []);
 
+  // Xuất Excel: kéo TOÀN BỘ kết quả theo filter hiện tại (loop .range từng
+  // khúc 1000) — không chỉ trang đang xem.
+  const handleExport = useCallback(async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const all = await fetchContractsForExport(pagedFilters);
+      const sorted = [...all].sort((a, b) =>
+        compareBuildingThenRoom(
+          a.room?.building?.name ?? '',
+          a.room?.name ?? '',
+          b.room?.building?.name ?? '',
+          b.room?.name ?? '',
+        ),
+      );
+      await exportContracts(sorted);
+    } catch (e: any) {
+      console.error('Export contracts failed:', e);
+      toast.error('Không xuất được danh sách hợp đồng', {
+        description: e?.message,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting, pagedFilters]);
+
   const hasFilters =
     searchTerm ||
     buildingIds.length > 0 ||
@@ -415,7 +390,7 @@ export default function ContractsPage() {
                 <Upload className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => exportContracts(sortedContracts)} title="Xuất">
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleExport} disabled={isExporting} title="Xuất">
               <Download className="h-4 w-4" />
             </Button>
             <Button
@@ -434,7 +409,7 @@ export default function ContractsPage() {
         <div className="bg-white rounded-lg border">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : filteredContracts.length === 0 ? (
+          ) : contracts.length === 0 ? (
             hasFilters ? (
               <div className="p-8 text-center text-muted-foreground">
                 Không tìm thấy hợp đồng nào
@@ -450,7 +425,7 @@ export default function ContractsPage() {
             )
           ) : (
             <ContractListTable
-              contracts={paginatedContracts}
+              contracts={sortedContracts}
               selectedIds={selectedContractIds}
               onSelectionChange={setSelectedContractIds}
               onEdit={handleEdit}
@@ -471,73 +446,76 @@ export default function ContractsPage() {
           )}
         </div>
 
-        {/* Dialogs */}
+        {/* Dialogs — dùng dialogContract (bản FULL từ useContract(id), fallback
+            bản rút gọn của danh sách trong lúc đang fetch). Dialog Sửa/In cần
+            contract_services + thông tin khách đầy đủ vốn không còn trong
+            select rút gọn của danh sách. */}
         <ContractFormDialog
           open={formDialogOpen}
           onOpenChange={(open) => {
             setFormDialogOpen(open);
             if (!open) setSelectedContract(null);
           }}
-          contract={selectedContract ?? undefined}
+          contract={dialogContract ?? undefined}
         />
-        {selectedContract && (
+        {dialogContract && (
           <RenewDialog
             open={renewDialogOpen}
             onOpenChange={(open) => {
               setRenewDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contract={selectedContract}
+            contract={dialogContract}
           />
         )}
-        {selectedContract && (
+        {dialogContract && (
           <TransferRoomDialog
             open={transferRoomDialogOpen}
             onOpenChange={(open) => {
               setTransferRoomDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contract={selectedContract}
+            contract={dialogContract}
           />
         )}
-        {selectedContract && (
+        {dialogContract && (
           <MoveOutDialog
             open={moveOutDialogOpen}
             onOpenChange={(open) => {
               setMoveOutDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contract={selectedContract}
+            contract={dialogContract}
           />
         )}
-        {selectedContract && (
+        {dialogContract && (
           <TransferContractDialog
             open={transferContractDialogOpen}
             onOpenChange={(open) => {
               setTransferContractDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contract={selectedContract}
+            contract={dialogContract}
           />
         )}
-        {selectedContract && (
+        {dialogContract && (
           <TerminateDialog
             open={terminateDialogOpen}
             onOpenChange={(open) => {
               setTerminateDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contract={selectedContract}
+            contract={dialogContract}
           />
         )}
-        {selectedContract && (
+        {dialogContract && (
           <DeleteContractDialog
             open={deleteDialogOpen}
             onOpenChange={(open) => {
               setDeleteDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            contract={selectedContract}
+            contract={dialogContract}
           />
         )}
         <ContractImportExportDialog
@@ -551,22 +529,22 @@ export default function ContractsPage() {
             setPrintDialogOpen(open);
             if (!open) setSelectedContract(null);
           }}
-          contract={selectedContract}
+          contract={dialogContract}
         />
-        {selectedContract && (
+        {dialogContract && (
           <ContractQRDialog
             open={qrDialogOpen}
             onOpenChange={(open) => {
               setQrDialogOpen(open);
               if (!open) setSelectedContract(null);
             }}
-            publicCode={selectedContract.public_code}
+            publicCode={dialogContract.public_code}
             contractLabel={
-              selectedContract.contract_number ||
-              selectedContract.id.slice(0, 8)
+              dialogContract.contract_number ||
+              dialogContract.id.slice(0, 8)
             }
-            buildingName={selectedContract.room?.building?.name}
-            roomName={selectedContract.room?.name}
+            buildingName={dialogContract.room?.building?.name}
+            roomName={dialogContract.room?.name}
           />
         )}
       </div>

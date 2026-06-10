@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
@@ -6,6 +6,10 @@ import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
 import type {
   Contract,
   ContractWithRelations,
+  ContractStats,
+  ContractStatus,
+  ContractStatFilter,
+  ContractLifecycleFilter,
   PaymentCycle,
 } from "@/types/contract";
 
@@ -122,22 +126,35 @@ const CONTRACT_SELECT = `
 // =============================================
 // useContracts — Query all contracts with relations
 // Requirements: 2.11, 2.13, 3.1
+//
+// opts.statuses (optional, backward-compatible): lọc status server-side bằng
+// .in('status', ...) — các dialog chỉ cần HĐ ACTIVE (GenerateInvoiceDialog,
+// AssetHandoverDialog) nên truyền { statuses: ['ACTIVE'] } để không kéo cả
+// bảng. Không truyền → giữ nguyên hành vi cũ (fetch tất cả).
 // =============================================
 
-export const useContracts = () => {
+export const useContracts = (opts?: { statuses?: ContractStatus[] }) => {
   return useQuery({
-    queryKey: ["contracts"],
+    queryKey: opts?.statuses?.length
+      ? ["contracts", { statuses: opts.statuses }]
+      : ["contracts"],
     queryFn: async (): Promise<ContractWithRelations[]> => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from("contracts")
         .select(CONTRACT_SELECT)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
+
+      if (opts?.statuses?.length) {
+        query = query.in("status", opts.statuses);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error("useContracts error:", error);
@@ -145,6 +162,367 @@ export const useContracts = () => {
       }
 
       return (data || []) as ContractWithRelations[];
+    },
+  });
+};
+
+// =============================================
+// useContractsPaged — danh sách HĐ phân trang SERVER-SIDE cho ContractsPage.
+//
+// Khác useContracts():
+// - SELECT rút gọn (CONTRACT_LIST_SELECT): KHÔNG kéo CMND/STK/nghề nghiệp/
+//   địa chỉ khách, KHÔNG kéo contract_services. Màn danh sách chỉ cần tên
+//   khách + SĐT + phòng/toà. Chi tiết/sửa/in dùng useContract(id) (select đủ).
+// - .range() + count: 'exact' → không bị PostgREST max-rows (1000) cắt ngầm.
+// - Filters đẩy xuống server (xem ContractPagedFilters).
+// =============================================
+
+export interface ContractPagedFilters {
+  /** Tìm theo mã HĐ / tên khách / SĐT / tên phòng (resolve id trước, xem resolveContractSearchOr). */
+  search?: string;
+  /** Lọc nhiều toà nhà; rỗng/undefined = tất cả. */
+  building_ids?: string[];
+  /** Lọc theo TÊN phòng (gộp phòng cùng tên mọi toà — giữ hành vi cũ của trang). */
+  room_name?: string;
+  /** ALL | ACTIVE (tất cả trừ TERMINATED) | TERMINATED. */
+  lifecycle?: ContractLifecycleFilter;
+  /** Ô stat đang chọn: ALL | EXPIRING | EXPIRED | TERMINATED (map display-status sang điều kiện ngày/status). */
+  stat?: ContractStatFilter;
+  /** 'YYYY-MM' — HĐ có khoảng hiệu lực giao với tháng này. */
+  month?: string;
+}
+
+export interface ContractPagedParams {
+  page: number;
+  pageSize: number;
+}
+
+/** Select rút gọn cho danh sách. innerRoom=true khi cần lọc theo toà/tên phòng
+ *  (rooms!inner để điều kiện trên bảng con lọc được dòng cha). */
+const buildContractListSelect = (innerRoom: boolean) => `
+  *,
+  room:rooms!contracts_room_id_fkey${innerRoom ? "!inner" : ""} (
+    id, name, building_id,
+    building:buildings!rooms_building_id_fkey ( id, name )
+  ),
+  contract_customers!contract_customers_contract_id_fkey (
+    id, contract_id, customer_id, is_representative,
+    customer:customers!contract_customers_customer_id_fkey ( id, full_name, phone )
+  )
+`;
+
+const toLocalISODate = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Bỏ ký tự phá cú pháp or() của PostgREST (dấu phẩy, ngoặc, nháy, %, \). */
+const sanitizeSearchTerm = (term: string): string =>
+  term.replace(/[,()"'\\%]/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Search server-side: PostgREST không or() được giữa cột bảng cha và bảng
+ * con, nên resolve trước: tên/SĐT khách → customer ids → contract ids (qua
+ * contract_customers), tên phòng → room ids; rồi gộp thành 1 biểu thức
+ * or(contract_number.ilike, id.in, room_id.in) cho query chính.
+ * Giới hạn 200 khách / 200 phòng / 500 dòng contract_customers mỗi lần —
+ * term quá chung chung (vd "a") có thể thiếu kết quả ngoài cap.
+ */
+async function resolveContractSearchOr(rawTerm: string): Promise<string | null> {
+  const safe = sanitizeSearchTerm(rawTerm);
+  if (!safe) return null;
+  const star = `*${safe}*`;
+  const pattern = `%${safe}%`;
+  const orParts: string[] = [`contract_number.ilike.${star}`];
+
+  // Tên khách / SĐT → contract ids.
+  const { data: custs } = await (supabase as any)
+    .from("customers")
+    .select("id")
+    .or(`full_name.ilike.${star},phone.ilike.${star}`)
+    .limit(200);
+  const custIds = (custs || []).map((c: any) => c.id);
+  if (custIds.length > 0) {
+    const { data: ccs } = await (supabase as any)
+      .from("contract_customers")
+      .select("contract_id")
+      .in("customer_id", custIds)
+      .limit(500);
+    const contractIds = Array.from(
+      new Set((ccs || []).map((r: any) => r.contract_id).filter(Boolean)),
+    );
+    if (contractIds.length > 0) {
+      orParts.push(`id.in.(${contractIds.join(",")})`);
+    }
+  }
+
+  // Tên phòng → room ids.
+  const { data: rms } = await (supabase as any)
+    .from("rooms")
+    .select("id")
+    .ilike("name", pattern)
+    .limit(200);
+  const roomIds = (rms || []).map((r: any) => r.id);
+  if (roomIds.length > 0) {
+    orParts.push(`room_id.in.(${roomIds.join(",")})`);
+  }
+
+  return orParts.join(",");
+}
+
+/** Query 1 trang (hoặc 1 khúc .range cho export). Dùng chung bởi
+ *  useContractsPaged + fetchContractsForExport để filter luôn nhất quán. */
+async function fetchContractsPagedOnce(
+  filters: ContractPagedFilters | undefined,
+  range: { from: number; to: number } | null,
+): Promise<PaginatedData<ContractWithRelations>> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const needInnerRoom = !!(
+    filters?.building_ids?.length ||
+    (filters?.room_name && filters.room_name !== "all")
+  );
+
+  let query = (supabase as any)
+    .from("contracts")
+    .select(buildContractListSelect(needInnerRoom), { count: "exact" })
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  // Vòng đời: ACTIVE = "đang ở" = tất cả trừ thanh lý.
+  if (filters?.lifecycle === "ACTIVE") {
+    query = query.neq("status", "TERMINATED");
+  } else if (filters?.lifecycle === "TERMINATED") {
+    query = query.eq("status", "TERMINATED");
+  }
+
+  // Stat filter — map getContractDisplayStatus sang điều kiện server:
+  // EXPIRING/EXPIRED yêu cầu không TERMINATED/TRANSFERRED/DRAFT và không có
+  // expected_move_out_date (MOVING_OUT ưu tiên hơn trong display status).
+  const today = toLocalISODate(new Date());
+  if (filters?.stat === "TERMINATED") {
+    query = query.eq("status", "TERMINATED");
+  } else if (filters?.stat === "EXPIRING" || filters?.stat === "EXPIRED") {
+    query = query
+      .not("status", "in", "(TERMINATED,TRANSFERRED,DRAFT)")
+      .is("expected_move_out_date", null);
+    if (filters.stat === "EXPIRED") {
+      query = query.lt("end_date", today);
+    } else {
+      const in30 = new Date();
+      in30.setDate(in30.getDate() + 30);
+      query = query.gte("end_date", today).lte("end_date", toLocalISODate(in30));
+    }
+  }
+
+  if (filters?.building_ids?.length) {
+    query = query.in("room.building_id", filters.building_ids);
+  }
+  if (filters?.room_name && filters.room_name !== "all") {
+    query = query.eq("room.name", filters.room_name);
+  }
+
+  // Tháng: khoảng [start_date, end_date] giao với tháng được chọn.
+  if (filters?.month && /^\d{4}-\d{2}$/.test(filters.month)) {
+    const [y, m] = filters.month.split("-").map(Number);
+    const monthStart = `${filters.month}-01`;
+    const monthEnd = toLocalISODate(new Date(y, m, 0));
+    query = query.lte("start_date", monthEnd).gte("end_date", monthStart);
+  }
+
+  if (filters?.search?.trim()) {
+    const orFilter = await resolveContractSearchOr(filters.search);
+    if (orFilter) query = query.or(orFilter);
+  }
+
+  if (range) {
+    query = query.range(range.from, range.to);
+  }
+
+  const { data, error, count } = await query;
+  if (error) {
+    console.error("useContractsPaged error:", error);
+    throw error;
+  }
+
+  return {
+    data: (data || []) as ContractWithRelations[],
+    count: count || 0,
+  };
+}
+
+export const useContractsPaged = (
+  filters?: ContractPagedFilters,
+  pagination?: ContractPagedParams,
+) => {
+  return useQuery({
+    queryKey: ["contracts", "paged", filters ?? null, pagination ?? null],
+    // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về "Đang tải".
+    placeholderData: keepPreviousData,
+    queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
+      const range = pagination
+        ? {
+            from: (pagination.page - 1) * pagination.pageSize,
+            to: (pagination.page - 1) * pagination.pageSize + pagination.pageSize - 1,
+          }
+        : null;
+      return fetchContractsPagedOnce(filters, range);
+    },
+  });
+};
+
+/**
+ * Export Excel cần TOÀN BỘ kết quả theo filter (không chỉ trang hiện tại):
+ * loop .range() từng khúc 1000 (trần max-rows của PostgREST) tới khi đủ count.
+ * maxRows chặn trên để không kéo vô hạn nếu dữ liệu quá lớn.
+ */
+export async function fetchContractsForExport(
+  filters?: ContractPagedFilters,
+  maxRows = 10000,
+): Promise<ContractWithRelations[]> {
+  const chunk = 1000;
+  const all: ContractWithRelations[] = [];
+  for (let from = 0; from < maxRows; from += chunk) {
+    const { data, count } = await fetchContractsPagedOnce(filters, {
+      from,
+      to: from + chunk - 1,
+    });
+    all.push(...data);
+    if (data.length < chunk || all.length >= count) break;
+  }
+  return all;
+}
+
+// =============================================
+// useContractStats — 4 ô thống kê đầu trang Hợp đồng bằng 4 HEAD count song
+// song (không kéo dữ liệu). Điều kiện khớp getContractDisplayStatus:
+// - expiring: không TERMINATED/TRANSFERRED/DRAFT, không expected_move_out_date,
+//   end_date trong [hôm nay, hôm nay+30].
+// - expired: như trên nhưng end_date < hôm nay.
+// - terminated: status = TERMINATED.
+// buildingIds (tuỳ chọn) lọc theo toà qua rooms!inner.
+// =============================================
+
+const contractHeadCountBase = (buildingIds?: string[]) => {
+  const scoped = !!buildingIds?.length;
+  let q = (supabase as any)
+    .from("contracts")
+    .select(
+      scoped ? "id, room:rooms!contracts_room_id_fkey!inner(building_id)" : "id",
+      { count: "exact", head: true },
+    )
+    .is("deleted_at", null);
+  if (scoped) q = q.in("room.building_id", buildingIds);
+  return q;
+};
+
+export const useContractStats = (buildingIds?: string[]) => {
+  return useQuery({
+    queryKey: ["contracts", "stats", buildingIds ?? []],
+    placeholderData: keepPreviousData,
+    queryFn: async (): Promise<ContractStats> => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const today = toLocalISODate(new Date());
+      const in30d = new Date();
+      in30d.setDate(in30d.getDate() + 30);
+      const in30 = toLocalISODate(in30d);
+
+      const results = await Promise.all([
+        contractHeadCountBase(buildingIds),
+        contractHeadCountBase(buildingIds)
+          .not("status", "in", "(TERMINATED,TRANSFERRED,DRAFT)")
+          .is("expected_move_out_date", null)
+          .gte("end_date", today)
+          .lte("end_date", in30),
+        contractHeadCountBase(buildingIds)
+          .not("status", "in", "(TERMINATED,TRANSFERRED,DRAFT)")
+          .is("expected_move_out_date", null)
+          .lt("end_date", today),
+        contractHeadCountBase(buildingIds).eq("status", "TERMINATED"),
+      ]);
+
+      for (const r of results) {
+        if (r.error) {
+          console.error("useContractStats error:", r.error);
+          throw r.error;
+        }
+      }
+
+      const [total, expiring, expired, terminated] = results;
+      return {
+        total: total.count ?? 0,
+        expiring: expiring.count ?? 0,
+        expired: expired.count ?? 0,
+        terminated: terminated.count ?? 0,
+      };
+    },
+  });
+};
+
+// =============================================
+// useContractDashboardCounts — số liệu khối "Tổng quan hợp đồng" trên trang
+// chủ (OperationsSummary) bằng HEAD count, thay cho việc kéo cả bảng contracts.
+// Lưu ý: bộ đếm "Thanh lý (tháng)" chỉ xét status TERMINATED ('ENDED' cũ
+// không phải giá trị hợp lệ của enum contract_status nên bỏ).
+// =============================================
+
+export interface ContractDashboardCounts {
+  active: number;
+  newThisMonth: number;
+  expiringSoon: number;
+  terminatedThisMonth: number;
+}
+
+export const useContractDashboardCounts = (buildingId?: string | null) => {
+  return useQuery({
+    queryKey: ["contracts", "dashboard-counts", buildingId ?? null],
+    queryFn: async (): Promise<ContractDashboardCounts> => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const buildingIds = buildingId ? [buildingId] : undefined;
+      const now = new Date();
+      const today = toLocalISODate(now);
+      const monthStart = toLocalISODate(
+        new Date(now.getFullYear(), now.getMonth(), 1),
+      );
+      const in30d = new Date();
+      in30d.setDate(in30d.getDate() + 30);
+      const in30 = toLocalISODate(in30d);
+
+      const results = await Promise.all([
+        contractHeadCountBase(buildingIds).eq("status", "ACTIVE"),
+        contractHeadCountBase(buildingIds).gte("start_date", monthStart),
+        contractHeadCountBase(buildingIds)
+          .eq("status", "ACTIVE")
+          .gte("end_date", today)
+          .lte("end_date", in30),
+        contractHeadCountBase(buildingIds)
+          .eq("status", "TERMINATED")
+          .gte("end_date", monthStart),
+      ]);
+
+      for (const r of results) {
+        if (r.error) {
+          console.error("useContractDashboardCounts error:", r.error);
+          throw r.error;
+        }
+      }
+
+      const [active, newThisMonth, expiringSoon, terminatedThisMonth] = results;
+      return {
+        active: active.count ?? 0,
+        newThisMonth: newThisMonth.count ?? 0,
+        expiringSoon: expiringSoon.count ?? 0,
+        terminatedThisMonth: terminatedThisMonth.count ?? 0,
+      };
     },
   });
 };

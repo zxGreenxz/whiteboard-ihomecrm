@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +17,9 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,6 +42,11 @@ interface Props {
 }
 
 const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
+// "2026-05" → "05/2026" (nhãn kỳ hoá đơn)
+const fmtBillingMonth = (m: string | null | undefined) => {
+  const match = /^(\d{4})-(\d{2})$/.exec(m ?? "");
+  return match ? `${match[2]}/${match[1]}` : m ?? "";
+};
 const isPdf = (url: string) =>
   url.toLowerCase().endsWith(".pdf") || url.includes(".pdf");
 
@@ -70,6 +79,27 @@ export function IncomeExpenseDetailDialog({
   const { data: isAdmin = false } = useIsAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
+
+  // Deep-link sang hoá đơn liên quan (phiếu thu sinh từ thanh toán hoá đơn).
+  // Query nhỏ chỉ chạy khi mở dialog và phiếu có invoice_id.
+  const invoiceId = voucher?.invoice_id ?? null;
+  const { data: relatedInvoice } = useQuery({
+    queryKey: ["ie-related-invoice", invoiceId],
+    enabled: open && !!invoiceId,
+    queryFn: async (): Promise<{
+      id: string;
+      invoice_number: string | null;
+      billing_month: string | null;
+    } | null> => {
+      const { data, error } = await (supabase as any)
+        .from("invoices")
+        .select("id, invoice_number, billing_month")
+        .eq("id", invoiceId)
+        .maybeSingle();
+      if (error) throw error;
+      return data ?? null;
+    },
+  });
 
   const attachments = voucher?.attachments ?? [];
   const lightboxUrl =
@@ -281,6 +311,27 @@ export function IncomeExpenseDetailDialog({
                   : "—"
               }
             />
+            {voucher.invoice_id && (
+              <Row
+                label="Hoá đơn liên quan"
+                value={
+                  <Link
+                    to={`/invoices/${voucher.invoice_id}`}
+                    onClick={() => onOpenChange(false)}
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline font-medium"
+                    title="Mở trang chi tiết hoá đơn"
+                  >
+                    {relatedInvoice
+                      ? relatedInvoice.invoice_number ||
+                        (relatedInvoice.billing_month
+                          ? `Hoá đơn kỳ ${fmtBillingMonth(relatedInvoice.billing_month)}`
+                          : "Xem hoá đơn")
+                      : "Xem hoá đơn"}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                }
+              />
+            )}
             <Row
               label={isExpense ? "Người nhận" : "Người nộp"}
               value={voucher.payer_name}

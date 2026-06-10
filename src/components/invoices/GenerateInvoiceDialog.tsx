@@ -107,7 +107,9 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const [meterId, setMeterId] = useState<string | null>(null);
 
   const createMutation = useCreateInvoice();
-  const { data: contractsData } = useContracts();
+  // Chỉ kéo HĐ ACTIVE server-side — dialog lập hoá đơn không cần HĐ đã thanh
+  // lý/nháp (filter client giữ lại như chốt chặn phụ).
+  const { data: contractsData } = useContracts({ statuses: ['ACTIVE'] });
   const allActiveContracts = (contractsData ?? []).filter((c: any) => isContractInEffect(c.status));
   const contracts = allActiveContracts.filter((c: any) => {
     if (filterBuildingId && c.room?.building_id !== filterBuildingId) return false;

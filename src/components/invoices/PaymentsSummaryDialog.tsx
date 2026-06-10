@@ -40,7 +40,7 @@ import { useDeletePayment } from '@/hooks/useDeletePayment';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
-import { Image as ImageIcon, Calendar, Clock, Loader2, Check, Upload, Trash2 } from 'lucide-react';
+import { Image as ImageIcon, Calendar, Clock, Loader2, Check, Upload, Trash2, Receipt } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -135,6 +135,32 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
     },
   });
 
+  // Phiếu thu sổ quỹ liên kết với từng payment (income_expenses.payment_id).
+  // 1 query .in() cho cả danh sách payment — không N+1. Payment KHÔNG có phiếu
+  // thu liên kết là dấu hiệu lệch sổ → hiện badge cảnh báo.
+  const paymentIds = (payments ?? []).map((p) => p.id);
+  const { data: ieByPayment } = useQuery({
+    queryKey: ['invoice-payments-ie-links', invoiceId, paymentIds],
+    enabled: open && paymentIds.length > 0,
+    queryFn: async (): Promise<Map<string, { id: string; code: string }>> => {
+      const { data, error } = await (supabase as any)
+        .from('income_expenses')
+        .select('id, code, payment_id')
+        .in('payment_id', paymentIds)
+        .is('deleted_at', null);
+      if (error) throw error;
+      const map = new Map<string, { id: string; code: string }>();
+      for (const row of (data ?? []) as Array<{
+        id: string;
+        code: string;
+        payment_id: string;
+      }>) {
+        map.set(row.payment_id, { id: row.id, code: row.code });
+      }
+      return map;
+    },
+  });
+
   const updateMethod = useUpdatePaymentMethod();
   const deletePayment = useDeletePayment();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -211,6 +237,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 const timeStr = p.created_at
                   ? format(new Date(p.created_at), 'HH:mm')
                   : '';
+                const ieLink = ieByPayment?.get(p.id);
 
                 return (
                   <li
@@ -275,6 +302,30 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                           </span>
                         )}
                       </div>
+                      {/* Deep-link sang phiếu thu sổ quỹ liên kết — chỉ render
+                          sau khi query link đã có kết quả để tránh chớp badge
+                          "không có phiếu thu" lúc đang tải. */}
+                      {ieByPayment &&
+                        (ieLink ? (
+                          <a
+                            href={`/income-expense/print/${ieLink.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition"
+                            title="Mở phiếu thu trong sổ Thu/Chi (trang in — xem chi tiết)"
+                          >
+                            <Receipt className="h-3 w-3" />
+                            Phiếu thu {ieLink.code}
+                          </a>
+                        ) : (
+                          <span
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                            title="Payment này chưa có phiếu thu trong sổ Thu/Chi — có thể lệch sổ"
+                          >
+                            <Receipt className="h-3 w-3" />
+                            Không có phiếu thu
+                          </span>
+                        ))}
                     </div>
 
                     {/* Chứng từ */}
