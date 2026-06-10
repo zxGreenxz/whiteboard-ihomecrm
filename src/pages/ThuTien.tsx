@@ -27,6 +27,7 @@ import { RoomCellGrid } from '@/components/thu-tien/RoomCellGrid';
 import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
 import { ConfirmCollectDialog } from '@/components/thu-tien/ConfirmCollectDialog';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
+import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 
 const currentMonth = () => {
   const d = new Date();
@@ -214,7 +215,18 @@ const ThuTien = () => {
 
   return (
     <div className="tt-stage">
-      <div className="tt-page">
+      {/* Desktop ≥1024px: cột trái 75% là panel quản lý/báo cáo; CSS ẩn trên mobile.
+          Dùng chung billingMonth, click toà trong bảng → đổi toà khung demo. */}
+      <ManagePanel
+        buildings={buildingOpts}
+        billingMonth={billingMonth}
+        onBillingMonthChange={setBillingMonth}
+        phoneBuildingId={buildingId}
+        onPickBuilding={setBuildingId}
+        onBack={() => navigate(-1)}
+      />
+      <div className="tt-phone-col">
+        <div className="tt-page">
         <div className="hdr">
           <div className="hdr-bar">
             <button type="button" className="tt-back" title="Quay lại" onClick={() => navigate(-1)}>
@@ -303,6 +315,7 @@ const ThuTien = () => {
             billingMonth={billingMonth}
           />
         )}
+        </div>
       </div>
     </div>
   );

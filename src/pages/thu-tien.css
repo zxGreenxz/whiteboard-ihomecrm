@@ -7,17 +7,10 @@
    ============================================================= */
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
-/* ===== Outer stage: nền "bàn", canh giữa khung điện thoại trên desktop ===== */
+/* ===== Outer stage: nền "bàn", canh giữa khung điện thoại trên desktop =====
+   Token đặt ở .tt-stage để cả khung điện thoại (.tt-page) lẫn panel quản lý
+   desktop (.tt-manage) cùng kế thừa. */
 .tt-stage {
-  position: fixed; inset: 0; z-index: 0; overflow: auto;
-  display: flex; justify-content: center; align-items: stretch;
-  background:
-    radial-gradient(120% 60% at 50% -10%, #ece8df 0%, transparent 60%),
-    #e9e5dc;
-}
-
-/* ===== Khung điện thoại + token (thay cho .app của prototype) ===== */
-.tt-page {
   /* Surfaces & ink (warm neutral) */
   --bg: #f5f3ee; --surface: #ffffff; --surface-2: #faf8f4;
   --line: #e7e3da; --line-2: #efece4;
@@ -41,6 +34,18 @@
   --sh-3: 0 12px 38px rgba(27,24,19,.16), 0 4px 12px rgba(27,24,19,.10);
   --app-w: 432px;
 
+  position: fixed; inset: 0; z-index: 0; overflow: auto;
+  display: flex; justify-content: center; align-items: stretch;
+  background:
+    radial-gradient(120% 60% at 50% -10%, #ece8df 0%, transparent 60%),
+    #e9e5dc;
+}
+
+/* Cột chứa khung điện thoại (mobile: chiếm trọn; desktop ≥1024px: cột phải 25%). */
+.tt-phone-col { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: stretch; }
+
+/* ===== Khung điện thoại (thay cho .app của prototype) ===== */
+.tt-page {
   width: 100%; max-width: var(--app-w);
   background: var(--bg); color: var(--ink);
   position: relative; height: 100vh; height: 100dvh;
@@ -51,7 +56,8 @@
 .tt-page * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 @media (min-width: 480px) {
-  .tt-stage { padding: 26px 0 40px; align-items: flex-start; }
+  .tt-stage { padding: 26px 0 40px; }
+  .tt-phone-col { align-items: flex-start; }
   .tt-page {
     min-height: min(880px, calc(100vh - 66px));
     height: min(880px, calc(100vh - 66px));
@@ -72,7 +78,7 @@
 .tt-page .tt-back svg { width: 18px; height: 18px; }
 .tt-page .tt-back:active { background: var(--line-2); }
 .tt-page .hdr-period { margin-left: auto; }
-.tt-page .ky-input { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--brand-600); background: var(--brand-50); border: 1px solid var(--brand-100); padding: 6px 10px; border-radius: 999px; outline: none; }
+.tt-page .ky-input, .tt-manage .ky-input { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--brand-600); background: var(--brand-50); border: 1px solid var(--brand-100); padding: 6px 10px; border-radius: 999px; outline: none; }
 
 /* ===== Building swipe row ===== */
 .tt-page .bld-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 11px; scrollbar-width: none; cursor: grab; user-select: none; scroll-behavior: smooth; }
@@ -301,20 +307,107 @@
 .tt-page .rp-group-s { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
 .tt-page .rp-rl { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; flex-wrap: wrap; }
 .tt-page .rp-code { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: -.3px; }
-.tt-page .rp-tag { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
-.tt-page .rp-tag.full { background: var(--c-paid-bg); color: var(--c-paid); }
-.tt-page .rp-tag.part { background: var(--c-partial-bg); color: var(--c-partial); }
+.tt-page .rp-tag, .tt-manage .rp-tag { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.tt-page .rp-tag.full, .tt-manage .rp-tag.full { background: var(--c-paid-bg); color: var(--c-paid); }
+.tt-page .rp-tag.part, .tt-manage .rp-tag.part { background: var(--c-partial-bg); color: var(--c-partial); }
 .tt-page .rp-note { font-size: 11px; font-weight: 600; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
 .tt-page .rp-amt { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink); flex-shrink: 0; letter-spacing: -.3px; }
 .tt-page .rp-due { margin: 16px 18px 0; }
 .tt-page .rp-due-head { font-size: 11.5px; font-weight: 700; color: var(--c-unpaid); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 9px; }
-.tt-page .rp-due-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tt-page .rp-due-chips, .tt-manage .rp-due-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tt-page .rp-due-grp { margin-top: 11px; }
 .tt-page .rp-due-gb { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--ink-2); margin-bottom: 7px; }
-.tt-page .rp-due-chip { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--c-unpaid); background: var(--c-unpaid-bg); border: 1px solid var(--c-unpaid-line); padding: 5px 9px; border-radius: 8px; }
+.tt-page .rp-due-chip, .tt-manage .rp-due-chip { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--c-unpaid); background: var(--c-unpaid-bg); border: 1px solid var(--c-unpaid-line); padding: 5px 9px; border-radius: 8px; }
 .tt-page .rp-foot { padding: 18px 18px calc(16px + env(safe-area-inset-bottom)); }
 .tt-page .rp-close { width: 100%; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); font-family: var(--font); font-weight: 700; font-size: 14px; padding: 13px 0; border-radius: 13px; cursor: pointer; }
 .tt-page .rp-close:active { background: var(--line-2); }
+
+/* =============================================================
+   Panel quản lý DESKTOP (.tt-manage) — cột trái 75%, chỉ hiện ≥1024px.
+   Mobile/tablet hẹp: ẩn hoàn toàn, giữ nguyên trải nghiệm khung điện thoại.
+   ============================================================= */
+.tt-manage { display: none; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+.tt-manage * { box-sizing: border-box; }
+
+@media (min-width: 1024px) {
+  .tt-stage { display: grid; grid-template-columns: minmax(0, 3fr) minmax(400px, 1fr); padding: 0; overflow: hidden; align-items: stretch; }
+  .tt-manage { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow-y: auto; background: var(--bg); border-right: 1px solid var(--line); }
+  .tt-phone-col { overflow-y: auto; padding: 26px 20px 40px; align-items: flex-start; }
+}
+
+/* Header */
+.tt-manage .tm-head { display: flex; align-items: center; gap: 14px; padding: 22px 28px 0; }
+.tt-manage .tm-back { width: 36px; height: 36px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-manage .tm-back svg { width: 18px; height: 18px; }
+.tt-manage .tm-back:active { background: var(--line-2); }
+.tt-manage .tm-title { flex: 1; min-width: 0; }
+.tt-manage .tm-title h1 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.3px; }
+.tt-manage .tm-title p { margin: 3px 0 0; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.tt-manage .ky-input { font-size: 13px; padding: 8px 14px; cursor: pointer; }
+
+/* Toolbar lọc */
+.tt-manage .tm-toolbar { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 18px 28px 0; }
+.tt-manage .tm-dd { display: flex; flex-direction: column; gap: 5px; }
+.tt-manage .tm-dd > span { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; padding-left: 2px; }
+.tt-manage .tm-dd select,
+.tt-manage .tm-dd input[type="date"] { font-family: var(--font); font-size: 13.5px; font-weight: 700; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 9px 13px; cursor: pointer; outline: none; min-width: 180px; }
+.tt-manage .tm-dd select:focus,
+.tt-manage .tm-dd input[type="date"]:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-manage .tm-seg { display: flex; gap: 6px; }
+.tt-manage .tm-seg button { font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 9px 14px; border-radius: 11px; cursor: pointer; transition: .14s; white-space: nowrap; }
+.tt-manage .tm-seg button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+/* KPI cards */
+.tt-manage .tm-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 18px 28px 0; }
+.tt-manage .tm-kpi { display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; box-shadow: var(--sh-1); min-width: 0; }
+.tt-manage .tm-kpi-l { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-manage .tm-kpi-v { font-family: var(--mono); font-size: 23px; font-weight: 700; letter-spacing: -.6px; line-height: 1.1; white-space: nowrap; }
+.tt-manage .tm-kpi-v.paid { color: var(--c-paid); }
+.tt-manage .tm-kpi-v.due { color: var(--c-unpaid); }
+.tt-manage .tm-kpi-s { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+
+/* Progress bar dùng chung (KPI + bảng toà) */
+.tt-manage .tm-bar { display: block; flex: 1; height: 6px; min-width: 60px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+.tt-manage .tm-bar i { display: block; height: 100%; border-radius: 99px; background: var(--c-paid); transition: width .3s; }
+
+/* Body sections */
+.tt-manage .tm-body { display: flex; flex-direction: column; gap: 16px; padding: 18px 28px 34px; }
+.tt-manage .tm-sec { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); overflow: hidden; }
+.tt-manage .tm-sec-head { display: flex; align-items: baseline; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line-2); }
+.tt-manage .tm-sec-title { font-size: 13.5px; font-weight: 800; letter-spacing: -.1px; }
+.tt-manage .tm-sec-title.due { color: var(--c-unpaid); }
+.tt-manage .tm-sec-sub { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-left: auto; text-align: right; }
+.tt-manage .tm-cols { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; align-items: start; }
+@media (max-width: 1380px) { .tt-manage .tm-cols { grid-template-columns: 1fr; } }
+
+/* Bảng */
+.tt-manage .tm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tt-manage .tm-table th { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; text-align: left; padding: 8px 16px; background: var(--surface-2); white-space: nowrap; }
+.tt-manage .tm-table td { padding: 10px 16px; border-top: 1px solid var(--line-2); vertical-align: middle; }
+.tt-manage .tm-table th.num, .tt-manage .tm-table td.num { text-align: right; font-family: var(--mono); font-weight: 700; letter-spacing: -.2px; white-space: nowrap; }
+.tt-manage .tm-table td.num.paid { color: var(--c-paid); }
+.tt-manage .tm-table td.num.due { color: var(--c-unpaid); }
+.tt-manage .tm-table th.bar { width: 180px; }
+.tt-manage .tm-table td.bar { width: 180px; }
+.tt-manage .tm-table td.bar .tm-bar { display: inline-block; vertical-align: middle; width: 110px; }
+.tt-manage .tm-pct { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--ink-3); margin-left: 8px; vertical-align: middle; }
+.tt-manage .tm-bname { font-family: var(--mono); font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; }
+.tt-manage .tm-room { font-family: var(--mono); font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; }
+.tt-manage .tm-bcell { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.tt-manage .tm-phone-ic { width: 14px; height: 14px; color: var(--brand); margin-left: 7px; vertical-align: -2px; }
+
+/* Bảng toà: row click được */
+.tt-manage .tm-table tbody tr.tm-brow { cursor: pointer; transition: background .12s; }
+.tt-manage .tm-table tbody tr.tm-brow:hover { background: var(--surface-2); }
+.tt-manage .tm-table tbody tr.tm-brow.on { background: var(--brand-50); }
+
+/* Chưa thu */
+.tt-manage .tm-due { padding: 13px 16px 16px; }
+.tt-manage .tm-due-grp + .tm-due-grp { margin-top: 13px; }
+.tt-manage .tm-due-gb { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--ink-2); margin-bottom: 7px; }
+
+/* Empty / loading */
+.tt-manage .tm-empty { padding: 34px 24px; text-align: center; font-size: 13px; font-weight: 600; color: var(--ink-3); }
 
 /* ===== Toast ===== */
 .tt-page .toast { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; padding: 11px 18px; border-radius: 999px; z-index: 90; box-shadow: var(--sh-3); opacity: 0; transition: .24s; pointer-events: none; display: flex; align-items: center; gap: 8px; }
