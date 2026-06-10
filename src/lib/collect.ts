@@ -126,4 +126,37 @@ export const latestPaymentId = (inv: InvoiceWithRelations): string | null => {
   return best.id;
 };
 
-export const todayISO = (): string => new Date().toISOString().slice(0, 10);
+// ── Snapshot theo ngày (tái dựng "chưa thu của ngày D" từ lịch sử payments) ──
+
+/** Tổng tiền đã thu TÍNH ĐẾN HẾT ngày `date` (DATE, inclusive). */
+export const paidUpTo = (inv: InvoiceWithRelations, date: string): number => {
+  let sum = 0;
+  for (const p of inv.payments ?? []) {
+    if (p.payment_date <= date) sum += Number(p.amount) || 0;
+  }
+  return sum;
+};
+
+/**
+ * HĐ đã thu xong TÍNH ĐẾN HẾT ngày `date` chưa?
+ *  - Σ phiếu thu ≤ date đủ total_amount → true
+ *  - HĐ hiện đã settled (PAID/remaining ≤ 0, gồm cả làm tròn <10K) và
+ *    KHÔNG còn phiếu thu nào sau `date` → true (phiếu cuối đã chốt từ trước đó)
+ */
+export const paidAsOf = (inv: InvoiceWithRelations, date: string): boolean => {
+  if (paidUpTo(inv, date) >= (Number(inv.total_amount) || 0)) return true;
+  if (collectStatus(inv) !== 'paid') return false;
+  return (inv.payments ?? []).every((p) => p.payment_date <= date);
+};
+
+/** Còn phải thu tính đến hết ngày `date` (0 nếu đã settle, kể cả làm tròn). */
+export const remainingAsOf = (inv: InvoiceWithRelations, date: string): number =>
+  paidAsOf(inv, date) ? 0 : Math.max(0, (Number(inv.total_amount) || 0) - paidUpTo(inv, date));
+
+/** Ngày hiện tại theo GIỜ LOCAL (không dùng toISOString — UTC làm lệch ngày trước 7h sáng VN). */
+export const todayISO = (): string => {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+};
