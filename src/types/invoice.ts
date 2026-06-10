@@ -130,10 +130,8 @@ export interface ExcessAmount {
 
 /** Filter parameters for querying invoices */
 export interface InvoiceFilters {
-  /** @deprecated dùng building_ids (khu vực = phím tắt chọn nhóm toà trong UI) */
-  area_id?: string;
   building_id?: string;
-  /** Lọc nhiều toà (BuildingMultiSelect). undefined/[] = tất cả. Ưu tiên hơn area_id. */
+  /** Lọc nhiều toà (BuildingMultiSelect — khu vực = phím tắt chọn nhóm toà). undefined/[] = tất cả. */
   building_ids?: string[];
   room_id?: string;
   /** Lọc nhiều phòng cùng tên (gộp mọi toà). Ưu tiên hơn room_id. */

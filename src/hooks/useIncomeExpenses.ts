@@ -12,10 +12,8 @@ import { addCycle, type RepeatCycle } from "@/lib/recurring";
 // --- Types ---
 
 export interface IncomeExpenseFilters {
-  /** @deprecated dùng building_ids (khu vực = phím tắt chọn nhóm toà trong UI) */
-  area_id?: string | null;
   building_id?: string | null;
-  /** Lọc nhiều toà (BuildingMultiSelect). undefined/[] = tất cả. Ưu tiên hơn area_id. */
+  /** Lọc nhiều toà (BuildingMultiSelect). undefined/[] = tất cả. */
   building_ids?: string[] | null;
   room_id?: string | null;
   /** Lọc nhiều phòng cùng tên (gộp mọi toà). Ưu tiên hơn room_id. */
@@ -253,7 +251,6 @@ export const useIncomeExpenses = (
     queryKey: [
       "income-expenses",
       "list",
-      filters.area_id,
       filters.building_id,
       filters.building_ids,
       filters.room_id,
@@ -306,23 +303,10 @@ export const useIncomeExpenses = (
       }
 
       // Apply filters
-      // building_ids (mới): mảng toà từ BuildingMultiSelect — lọc thẳng, không
-      // cần round-trip. area_id (legacy) giữ tạm cho code chưa chuyển đổi.
+      // building_ids: mảng toà từ BuildingMultiSelect (khu vực = phím tắt chọn
+      // nhóm toà ở UI, đã bung sẵn thành building_ids)
       if (filters.building_ids?.length) {
         query = query.in("building_id", filters.building_ids);
-      } else if (filters.area_id) {
-        const { data: areaBuildings } = await supabase
-          .from("buildings" as any)
-          .select("id")
-          .eq("area_id", filters.area_id)
-          .is("deleted_at", null);
-        const areaBuildingIds = (areaBuildings || []).map((b: any) => b.id);
-        if (areaBuildingIds.length > 0) {
-          query = query.in("building_id", areaBuildingIds);
-        } else {
-          // No buildings in this area, return empty
-          return { data: [], totalCount: 0 };
-        }
       }
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
@@ -516,7 +500,6 @@ export const useIncomeExpenseStats = (
     queryKey: [
       "income-expenses",
       "stats",
-      filters.area_id,
       filters.building_id,
       filters.building_ids,
       filters.room_id,
@@ -555,21 +538,8 @@ export const useIncomeExpenseStats = (
       }
 
       // Apply same filters as useIncomeExpenses
-      // building_ids (mới) ưu tiên; area_id (legacy) giữ tạm.
       if (filters.building_ids?.length) {
         query = query.in("building_id", filters.building_ids);
-      } else if (filters.area_id) {
-        const { data: areaBuildings } = await supabase
-          .from("buildings" as any)
-          .select("id")
-          .eq("area_id", filters.area_id)
-          .is("deleted_at", null);
-        const areaBuildingIds = (areaBuildings || []).map((b: any) => b.id);
-        if (areaBuildingIds.length > 0) {
-          query = query.in("building_id", areaBuildingIds);
-        } else {
-          return { totalIncome: 0, totalExpense: 0, difference: 0 };
-        }
       }
       if (filters.building_id) {
         query = query.eq("building_id", filters.building_id);
@@ -1366,7 +1336,6 @@ export const useIncomeExpenseBatches = (
     queryKey: [
       "income-expense-batches",
       "list",
-      filters.area_id,
       filters.building_id,
       filters.building_ids,
       filters.account_id,
@@ -1393,20 +1362,6 @@ export const useIncomeExpenseBatches = (
       const itemFilterIds = await resolveItemVoucherIds(filters);
       if (itemFilterIds !== null && itemFilterIds.length === 0) {
         return { data: [], totalCount: 0 };
-      }
-
-      // Lấy area → buildings nếu cần (dùng cho filter)
-      let areaBuildingIds: string[] | null = null;
-      if (filters.area_id) {
-        const { data: areaBuildings } = await supabase
-          .from("buildings" as any)
-          .select("id")
-          .eq("area_id", filters.area_id)
-          .is("deleted_at", null);
-        areaBuildingIds = (areaBuildings || []).map((b: any) => b.id);
-        if (areaBuildingIds.length === 0) {
-          return { data: [], totalCount: 0 };
-        }
       }
 
       // 1. Lấy batches (kèm filter type nếu có)
@@ -1463,7 +1418,6 @@ export const useIncomeExpenseBatches = (
       if (filters.building_ids?.length) {
         voucherQuery = voucherQuery.in("building_id", filters.building_ids);
       }
-      if (areaBuildingIds) voucherQuery = voucherQuery.in("building_id", areaBuildingIds);
       if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
       if (filters.account_id) voucherQuery = voucherQuery.or(
         `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`

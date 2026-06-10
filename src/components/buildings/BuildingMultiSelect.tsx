@@ -61,6 +61,8 @@ const triggerBaseClass =
  *   SearchableSelect).
  * - [] = "Tất cả toà nhà". Khu vực chỉ là phím tắt chọn nhanh — sau khi chọn,
  *   bên ngoài chỉ biết tới danh sách building_id (RLS/quyền đều theo toà).
+ * - N-N: 1 toà có thể thuộc nhiều khu → hiện lặp lại dưới MỖI khu chứa nó;
+ *   tick ở đâu cũng đồng bộ (checked tính theo value.includes(building_id)).
  */
 export function BuildingMultiSelect({
   value,
@@ -86,7 +88,7 @@ export function BuildingMultiSelect({
       (fetchedBuildings as any[]).map((b) => ({
         id: b.id,
         name: b.name,
-        area_id: b.area_id ?? null,
+        area_ids: b.area_ids ?? [],
       })),
     [buildingsProp, fetchedBuildings],
   );
@@ -211,10 +213,13 @@ export function BuildingMultiSelect({
                   </CommandItem>
                   {g.buildings.map((b) => {
                     const checked = value.includes(b.id);
+                    // value phải unique theo (khu, toà) — toà thuộc nhiều khu
+                    // hiện ở nhiều nhóm, value trùng làm cmdk loạn highlight.
+                    const itemValue = `${g.areaId ?? "none"}:${b.id}`;
                     return (
                       <CommandItem
-                        key={b.id}
-                        value={b.id}
+                        key={itemValue}
+                        value={itemValue}
                         keywords={[b.name, g.areaName]}
                         onSelect={() =>
                           onChange(toggleBuildingSelection(value, b.id))

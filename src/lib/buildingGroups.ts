@@ -2,9 +2,12 @@
  * Logic thuần cho bộ chọn nhiều toà nhà nhóm theo Khu vực.
  *
  * Khu vực (areas) trong hệ thống chỉ là NHÃN NHÓM toà nhà — không tham gia
- * RLS/phân quyền (RLS 100% theo building_id). Mọi nơi cần "nhiều toà"
- * (ô lọc, gán quyền staff, scope) thao tác trên danh sách building_id;
- * khu vực là phím tắt chọn nhanh cả nhóm trong UI.
+ * RLS theo khu (RLS theo building_id; scope nhân viên có thể gán theo khu
+ * nhưng được DB bung LIVE thành building_id). Quan hệ là N-N: MỘT TOÀ CÓ THỂ
+ * THUỘC NHIỀU KHU (vd "Nhà cũ" và "Thang bộ" cùng chứa toà A) — nên một toà
+ * có thể xuất hiện trong nhiều nhóm của dropdown. Mọi nơi cần "nhiều toà"
+ * (ô lọc, scope) vẫn thao tác trên danh sách building_id; khu vực là phím
+ * tắt chọn nhanh cả nhóm trong UI.
  *
  * Tách thuần để test bằng fast-check: src/lib/__tests__/buildingGroups.property.test.ts
  */
@@ -12,7 +15,8 @@
 export interface BuildingLite {
   id: string;
   name: string;
-  area_id?: string | null;
+  /** Các khu chứa toà này (N-N). Rỗng/undefined = "Chưa phân khu". */
+  area_ids?: readonly string[] | null;
 }
 
 export interface AreaLite {
@@ -31,8 +35,12 @@ export const UNGROUPED_LABEL = "Chưa phân khu";
 
 /**
  * Gom toà nhà theo khu vực. Thứ tự nhóm theo thứ tự mảng `areas`;
- * toà không thuộc khu nào (hoặc khu đã xoá) dồn vào nhóm "Chưa phân khu"
+ * toà thuộc nhiều khu xuất hiện trong MỖI nhóm tương ứng; toà không thuộc
+ * khu sống nào (kể cả chỉ trỏ tới khu đã xoá) dồn vào nhóm "Chưa phân khu"
  * ở cuối. Khu không có toà nào bị bỏ qua.
+ *
+ * Bất biến: mỗi toà xuất hiện ≥1 lần; trong MỘT nhóm không trùng id;
+ * union các nhóm = toàn bộ toà.
  */
 export function groupBuildingsByArea(
   buildings: BuildingLite[],
@@ -43,12 +51,15 @@ export function groupBuildingsByArea(
   const areaIds = new Set(areas.map((a) => a.id));
 
   for (const b of buildings) {
-    if (b.area_id && areaIds.has(b.area_id)) {
-      const list = byArea.get(b.area_id);
-      if (list) list.push(b);
-      else byArea.set(b.area_id, [b]);
-    } else {
+    const valid = (b.area_ids ?? []).filter((id) => areaIds.has(id));
+    if (valid.length === 0) {
       ungrouped.push(b);
+      continue;
+    }
+    for (const id of valid) {
+      const list = byArea.get(id);
+      if (list) list.push(b);
+      else byArea.set(id, [b]);
     }
   }
 
@@ -85,6 +96,10 @@ export function groupSelectionState(
 /**
  * Click tên khu = toggle cả nhóm: đang chọn đủ → bỏ cả nhóm;
  * thiếu/chưa chọn → chọn đủ cả nhóm (union). Không đụng toà ngoài nhóm.
+ *
+ * Với nhóm chồng lấn (toà thuộc nhiều khu): bỏ chọn Khu A sẽ bỏ cả toà
+ * chung với Khu B → Khu B chuyển "some". Đây là chủ ý — selection cuối
+ * cùng vẫn chỉ là danh sách building_id.
  */
 export function toggleGroupSelection(
   selection: readonly string[],
@@ -120,6 +135,10 @@ export function toggleBuildingSelection(
  * - "Khu A (3 toà)" khi chọn đúng trọn 1+ khu — nối "Khu A (3) + Khu B (2)"
  * - "... + N toà khác" khi lẫn toà lẻ ngoài các khu trọn vẹn
  * - "N toà" khi không khớp khu trọn nào
+ *
+ * Nhóm chồng lấn: nhận diện khu trọn theo kiểu GREEDY theo thứ tự nhóm —
+ * một khu chỉ được tính "trọn" nếu đóng góp ≥1 toà chưa được các khu trọn
+ * trước đó cover (tránh nhãn liệt kê trùng lặp các khu con/khu chồng nhau).
  */
 export function summarizeSelection(
   selection: readonly string[],
@@ -136,13 +155,15 @@ export function summarizeSelection(
   }
 
   const sel = new Set(selection);
-  const fullGroups = groups.filter(
-    (g) =>
-      g.buildings.length > 0 && g.buildings.every((b) => sel.has(b.id)),
-  );
-  const coveredByFull = new Set(
-    fullGroups.flatMap((g) => g.buildings.map((b) => b.id)),
-  );
+  const coveredByFull = new Set<string>();
+  const fullGroups: BuildingGroup[] = [];
+  for (const g of groups) {
+    if (g.buildings.length === 0) continue;
+    if (!g.buildings.every((b) => sel.has(b.id))) continue;
+    if (g.buildings.every((b) => coveredByFull.has(b.id))) continue; // đã cover trọn — bỏ qua
+    fullGroups.push(g);
+    for (const b of g.buildings) coveredByFull.add(b.id);
+  }
   const leftover = selection.filter((id) => !coveredByFull.has(id));
 
   if (fullGroups.length === 0) return `${selection.length} toà`;

@@ -354,7 +354,11 @@ const BuildingDetailPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Khu vực:</span>
-                  <span className="font-medium">{(building as any).area?.name || '-'}</span>
+                  <span className="font-medium">
+                    {((building as any).areas ?? [])
+                      .map((a: { name: string }) => a.name)
+                      .join(', ') || '-'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Số tầng:</span>

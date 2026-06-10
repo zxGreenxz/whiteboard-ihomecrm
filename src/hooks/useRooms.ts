@@ -18,7 +18,7 @@ export const useRooms = (buildingId?: string) => {
         .from("rooms")
         .select(`
           *,
-          building:buildings(id, name, code, area_id)
+          building:buildings(id, name, code)
         `)
         .is("deleted_at", null)
         .order("building_id", { ascending: true })
@@ -60,7 +60,7 @@ export const useRoom = (id: string) => {
         .from("rooms")
         .select(`
           *,
-          building:buildings(id, name, code, area_id)
+          building:buildings(id, name, code)
         `)
         .eq("id", id)
         .is("deleted_at", null)

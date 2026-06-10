@@ -79,7 +79,7 @@ export default function ProfitDistributionReport() {
       (buildings as any[]).map((b) => ({
         id: b.id,
         name: b.name,
-        area_id: b.area_id ?? null,
+        area_ids: b.area_ids ?? [],
       })),
     [buildings]
   );

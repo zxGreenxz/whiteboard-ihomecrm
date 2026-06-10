@@ -28,8 +28,7 @@ export interface RpcBuilding {
   id: string;
   name: string;
   code: string | null;
-  area_id: string | null;
-  area_name: string | null;     // tên khu vực (join areas)
+  area_ids?: string[] | null;   // các khu chứa toà (N-N) — tên tra từ payload.areas
   district: string | null;      // "Quận …" — dùng cho bộ lọc Quận ở header
   ward: string | null;
   address: string | null;       // RPC đã ghép địa chỉ đầy đủ
@@ -123,8 +122,16 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
     roomsByB.set(r.building_id, arr);
   }
 
+  // Tra tên khu từ payload.areas (RPC chỉ trả area_ids per toà — N-N)
+  const areaNameById = new Map(
+    (payload.areas ?? []).map((a) => [a.id, a.name] as const),
+  );
+
   return payload.buildings.map((b) => {
-    const district = b.district || b.area_name || b.ward || "Khác";
+    const firstAreaName = (b.area_ids ?? [])
+      .map((id) => areaNameById.get(id))
+      .find(Boolean);
+    const district = b.district || firstAreaName || b.ward || "Khác";
     const address = b.address || district;
     const rawRooms = roomsByB.get(b.id) ?? [];
 

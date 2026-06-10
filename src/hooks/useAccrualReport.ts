@@ -44,7 +44,6 @@ export interface AccrualReportResult {
 
 type AccrualFilters = Pick<
   IncomeExpenseFilters,
-  | "area_id"
   | "building_id"
   | "building_ids"
   | "room_id"
@@ -75,7 +74,6 @@ export const useAccrualMonthReport = (
       "income-expenses",
       "accrual-month",
       month,
-      filters.area_id,
       filters.building_id,
       filters.building_ids,
       filters.room_id,
@@ -124,17 +122,8 @@ export const useAccrualMonthReport = (
         .in("id", voucherIds);
 
       if (filters.building_ids?.length) {
-        // building_ids (mới): mảng toà từ BuildingMultiSelect — không round-trip.
+        // building_ids: mảng toà từ BuildingMultiSelect — không round-trip.
         vQuery = vQuery.in("building_id", filters.building_ids);
-      } else if (filters.area_id) {
-        const { data: areaBuildings } = await supabase
-          .from("buildings" as any)
-          .select("id")
-          .eq("area_id", filters.area_id)
-          .is("deleted_at", null);
-        const areaBuildingIds = (areaBuildings || []).map((b: any) => b.id);
-        if (areaBuildingIds.length === 0) return EMPTY;
-        vQuery = vQuery.in("building_id", areaBuildingIds);
       }
       if (filters.building_id) vQuery = vQuery.eq("building_id", filters.building_id);
       if (filters.room_ids?.length) {

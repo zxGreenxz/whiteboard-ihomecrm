@@ -124,7 +124,7 @@ export default function ContractsPage() {
 
   const { data: buildingsData } = useBuildings();
   const allBuildings = useMemo(
-    () => (Array.isArray(buildingsData) ? buildingsData : []) as BuildingWithRelations[],
+    () => (Array.isArray(buildingsData) ? buildingsData : []) as unknown as BuildingWithRelations[],
     [buildingsData]
   );
 
@@ -144,9 +144,11 @@ export default function ContractsPage() {
   const areas = useMemo(() => {
     const areaMap = new Map<string, { id: string; name: string; code: string | null; status: string }>();
     allBuildings.forEach((b) => {
-      if (b.area && !areaMap.has(b.area.id)) {
-        areaMap.set(b.area.id, { id: b.area.id, name: b.area.name, code: b.area.code, status: 'ACTIVE' });
-      }
+      (b.areas ?? []).forEach((a) => {
+        if (!areaMap.has(a.id)) {
+          areaMap.set(a.id, { id: a.id, name: a.name, code: a.code, status: 'ACTIVE' });
+        }
+      });
     });
     return Array.from(areaMap.values());
   }, [allBuildings]);
@@ -161,7 +163,9 @@ export default function ContractsPage() {
       const matched = areas.find((a) => a.name.trim().toLowerCase() === name);
       if (matched) {
         setBuildingIds(
-          allBuildings.filter((b) => b.area_id === matched.id).map((b) => b.id)
+          allBuildings
+            .filter((b) => (b.area_ids ?? []).includes(matched.id))
+            .map((b) => b.id)
         );
       }
     }

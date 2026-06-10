@@ -324,6 +324,42 @@ export type Database = {
         }
         Relationships: []
       }
+      area_buildings: {
+        Row: {
+          area_id: string
+          building_id: string
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          area_id: string
+          building_id: string
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          area_id?: string
+          building_id?: string
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "area_buildings_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "area_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       areas: {
         Row: {
           code: string | null
@@ -813,7 +849,6 @@ export type Database = {
       buildings: {
         Row: {
           amenities: Json | null
-          area_id: string | null
           code: string | null
           commission_tiers: Json
           contract_template_id: string | null
@@ -830,6 +865,10 @@ export type Database = {
           is_virtual: boolean
           name: string
           province: string
+          public_contact_name: string | null
+          public_contact_phone: string | null
+          public_lift_type: string | null
+          public_map_url: string | null
           status: Database["public"]["Enums"]["building_status"]
           street_address: string | null
           total_floors: number | null
@@ -841,7 +880,6 @@ export type Database = {
         }
         Insert: {
           amenities?: Json | null
-          area_id?: string | null
           code?: string | null
           commission_tiers?: Json
           contract_template_id?: string | null
@@ -858,6 +896,10 @@ export type Database = {
           is_virtual?: boolean
           name: string
           province: string
+          public_contact_name?: string | null
+          public_contact_phone?: string | null
+          public_lift_type?: string | null
+          public_map_url?: string | null
           status?: Database["public"]["Enums"]["building_status"]
           street_address?: string | null
           total_floors?: number | null
@@ -869,7 +911,6 @@ export type Database = {
         }
         Update: {
           amenities?: Json | null
-          area_id?: string | null
           code?: string | null
           commission_tiers?: Json
           contract_template_id?: string | null
@@ -886,6 +927,10 @@ export type Database = {
           is_virtual?: boolean
           name?: string
           province?: string
+          public_contact_name?: string | null
+          public_contact_phone?: string | null
+          public_lift_type?: string | null
+          public_map_url?: string | null
           status?: Database["public"]["Enums"]["building_status"]
           street_address?: string | null
           total_floors?: number | null
@@ -896,13 +941,6 @@ export type Database = {
           ward?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "buildings_area_id_fkey"
-            columns: ["area_id"]
-            isOneToOne: false
-            referencedRelation: "areas"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "buildings_contract_template_id_fkey"
             columns: ["contract_template_id"]
@@ -943,6 +981,172 @@ export type Database = {
             columns: ["invoice_template_id"]
             isOneToOne: false
             referencedRelation: "document_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_handover_items: {
+        Row: {
+          amount: number
+          building_name: string | null
+          handover_id: string
+          id: string
+          room_name: string | null
+          voucher_code: string | null
+          voucher_date: string | null
+          voucher_id: string
+        }
+        Insert: {
+          amount: number
+          building_name?: string | null
+          handover_id: string
+          id?: string
+          room_name?: string | null
+          voucher_code?: string | null
+          voucher_date?: string | null
+          voucher_id: string
+        }
+        Update: {
+          amount?: number
+          building_name?: string | null
+          handover_id?: string
+          id?: string
+          room_name?: string | null
+          voucher_code?: string | null
+          voucher_date?: string | null
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_handover_items_handover_id_fkey"
+            columns: ["handover_id"]
+            isOneToOne: false
+            referencedRelation: "cash_handovers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handover_items_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_handovers: {
+        Row: {
+          cancel_reason: string | null
+          cancel_requested_at: string | null
+          cancel_requested_by: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          code: string | null
+          confirmed_at: string | null
+          created_at: string
+          from_account_id: string
+          giver_id: string
+          giver_name: string | null
+          id: string
+          note: string | null
+          receiver_id: string
+          receiver_name: string | null
+          status: string
+          to_account_id: string | null
+          total_amount: number
+          transfer_expense_id: string | null
+          transfer_income_id: string | null
+          updated_at: string
+          voucher_count: number
+        }
+        Insert: {
+          cancel_reason?: string | null
+          cancel_requested_at?: string | null
+          cancel_requested_by?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          code?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          from_account_id: string
+          giver_id: string
+          giver_name?: string | null
+          id?: string
+          note?: string | null
+          receiver_id: string
+          receiver_name?: string | null
+          status?: string
+          to_account_id?: string | null
+          total_amount: number
+          transfer_expense_id?: string | null
+          transfer_income_id?: string | null
+          updated_at?: string
+          voucher_count: number
+        }
+        Update: {
+          cancel_reason?: string | null
+          cancel_requested_at?: string | null
+          cancel_requested_by?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          code?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          from_account_id?: string
+          giver_id?: string
+          giver_name?: string | null
+          id?: string
+          note?: string | null
+          receiver_id?: string
+          receiver_name?: string | null
+          status?: string
+          to_account_id?: string | null
+          total_amount?: number
+          transfer_expense_id?: string | null
+          transfer_income_id?: string | null
+          updated_at?: string
+          voucher_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_handovers_from_account_id_fkey"
+            columns: ["from_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_from_account_id_fkey"
+            columns: ["from_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_transfer_expense_id_fkey"
+            columns: ["transfer_expense_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_transfer_income_id_fkey"
+            columns: ["transfer_income_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
             referencedColumns: ["id"]
           },
         ]
@@ -2456,6 +2660,7 @@ export type Database = {
           created_at: string
           creator_name: string | null
           deleted_at: string | null
+          handover_id: string | null
           id: string
           invoice_id: string | null
           name: string
@@ -2501,6 +2706,7 @@ export type Database = {
           created_at?: string
           creator_name?: string | null
           deleted_at?: string | null
+          handover_id?: string | null
           id?: string
           invoice_id?: string | null
           name: string
@@ -2546,6 +2752,7 @@ export type Database = {
           created_at?: string
           creator_name?: string | null
           deleted_at?: string | null
+          handover_id?: string | null
           id?: string
           invoice_id?: string | null
           name?: string
@@ -2616,6 +2823,13 @@ export type Database = {
             columns: ["contract_id"]
             isOneToOne: false
             referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_handover_id_fkey"
+            columns: ["handover_id"]
+            isOneToOne: false
+            referencedRelation: "cash_handovers"
             referencedColumns: ["id"]
           },
           {
@@ -4841,6 +5055,9 @@ export type Database = {
           max_occupants: number | null
           name: string
           rent_price: number
+          room_type: string | null
+          sale_bonus_note: string | null
+          sale_note: string | null
           status: Database["public"]["Enums"]["room_status"]
           updated_at: string
         }
@@ -4861,6 +5078,9 @@ export type Database = {
           max_occupants?: number | null
           name: string
           rent_price: number
+          room_type?: string | null
+          sale_bonus_note?: string | null
+          sale_note?: string | null
           status?: Database["public"]["Enums"]["room_status"]
           updated_at?: string
         }
@@ -4881,6 +5101,9 @@ export type Database = {
           max_occupants?: number | null
           name?: string
           rent_price?: number
+          room_type?: string | null
+          sale_bonus_note?: string | null
+          sale_note?: string | null
           status?: Database["public"]["Enums"]["room_status"]
           updated_at?: string
         }
@@ -5223,6 +5446,7 @@ export type Database = {
       }
       staff_assignments: {
         Row: {
+          area_id: string | null
           building_id: string | null
           created_at: string
           id: string
@@ -5233,6 +5457,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          area_id?: string | null
           building_id?: string | null
           created_at?: string
           id?: string
@@ -5243,6 +5468,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          area_id?: string | null
           building_id?: string | null
           created_at?: string
           id?: string
@@ -5253,6 +5479,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "staff_assignments_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "staff_assignments_building_id_fkey"
             columns: ["building_id"]
@@ -6026,6 +6259,7 @@ export type Database = {
       }
     }
     Functions: {
+      _chung_building: { Args: { p_user_id: string }; Returns: string }
       _deposit_account: { Args: { p_user_id: string }; Returns: string }
       _diff_changed_fields: {
         Args: { p_after: Json; p_before: Json; p_ignore?: string[] }
@@ -6077,6 +6311,30 @@ export type Database = {
       can_ie_all_buildings: {
         Args: { _action: string; _building_id: string }
         Returns: boolean
+      }
+      cashbook_opening_balance: {
+        Args: {
+          p_account_id?: string
+          p_before_date: string
+          p_building_id?: string
+        }
+        Returns: number
+      }
+      confirm_cancel_handover: {
+        Args: { p_handover_id: string }
+        Returns: Json
+      }
+      confirm_cash_handover: {
+        Args: { p_handover_id: string; p_to_account_id?: string }
+        Returns: Json
+      }
+      create_cash_handover: {
+        Args: {
+          p_note?: string
+          p_receiver_id: string
+          p_voucher_ids: string[]
+        }
+        Returns: Json
       }
       create_new_contract_extension: {
         Args: {
@@ -6130,6 +6388,7 @@ export type Database = {
         Returns: boolean
       }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
+      ensure_room_deposit_type: { Args: never; Returns: string }
       estimate_termination_costs: {
         Args: {
           p_cleaning_fee?: number
@@ -6204,9 +6463,9 @@ export type Database = {
       }
       get_invoice_statistics_v2: {
         Args: {
-          p_area_id?: string
           p_billing_month?: string
           p_building_id?: string
+          p_building_ids?: string[]
           p_end_date?: string
           p_payment_status?: string
           p_room_id?: string
@@ -6314,6 +6573,9 @@ export type Database = {
           max_occupants: number | null
           name: string
           rent_price: number
+          room_type: string | null
+          sale_bonus_note: string | null
+          sale_note: string | null
           status: Database["public"]["Enums"]["room_status"]
           updated_at: string
         }[]
@@ -6359,6 +6621,10 @@ export type Database = {
         Args: { _material_id: string }
         Returns: undefined
       }
+      recompute_room_reservation: {
+        Args: { p_room_id: string }
+        Returns: undefined
+      }
       record_invoice_payment_v2: {
         Args: {
           p_amount: number
@@ -6370,6 +6636,7 @@ export type Database = {
         }
         Returns: Json
       }
+      reject_cancel_handover: { Args: { p_handover_id: string }; Returns: Json }
       renew_contract: {
         Args: {
           p_contract_id: string
@@ -6389,6 +6656,10 @@ export type Database = {
           p_notes?: string
         }
         Returns: string
+      }
+      request_cancel_handover: {
+        Args: { p_handover_id: string; p_reason: string }
+        Returns: Json
       }
       run_recurring_vouchers_job: { Args: never; Returns: undefined }
       search_similar_memories: {
@@ -6521,6 +6792,7 @@ export type Database = {
           created_at: string
           creator_name: string | null
           deleted_at: string | null
+          handover_id: string | null
           id: string
           invoice_id: string | null
           name: string

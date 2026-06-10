@@ -16,7 +16,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useProvinces, useDistricts, useWards } from '@/hooks/useAddressData';
-import { useAreas } from '@/hooks/useAreas';
 import type { BuildingFormData } from '@/types/building';
 
 interface BuildingAddressSectionProps {
@@ -28,7 +27,8 @@ interface BuildingAddressSectionProps {
 /**
  * BuildingAddressSection
  * Cascading dropdowns: Tỉnh/Thành phố → Quận/Huyện → Xã/Phường
- * Plus Khu vực (areas) dropdown and Địa chỉ chi tiết text input.
+ * Plus Địa chỉ chi tiết text input. (Khu vực gán ở dialog "Quản lý khu vực" —
+ * N-N, không còn ô chọn khu trong form toà.)
  *
  * The address API uses codes for cascading but the form stores NAMEs.
  * Local state tracks selected province/district codes for fetching children.
@@ -48,8 +48,6 @@ export default function BuildingAddressSection({
   const { provinces, isLoading: loadingProvinces } = useProvinces();
   const { districts, isLoading: loadingDistricts } = useDistricts(provinceCode);
   const { wards, isLoading: loadingWards } = useWards(districtCode);
-  const { data: areasData } = useAreas();
-  const areas = Array.isArray(areasData) ? areasData : [];
 
   // Watch form values for edit mode initialization
   const provinceName = watch('province');
@@ -173,8 +171,8 @@ export default function BuildingAddressSection({
         />
       </div>
 
-      {/* Row 2: Xã/Phường | Khu vực */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Row 2: Xã/Phường */}
+      <div className="grid grid-cols-1 gap-4">
         <FormField
           control={control}
           name="ward"
@@ -206,34 +204,6 @@ export default function BuildingAddressSection({
           )}
         />
 
-        <FormField
-          control={control}
-          name="area_id"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Khu vực</FormLabel>
-              <Select
-                value={field.value || '__none__'}
-                onValueChange={(val) => field.onChange(val === '__none__' ? '' : val)}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn khu vực" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="__none__">Không chọn</SelectItem>
-                  {areas.map((area) => (
-                    <SelectItem key={area.id} value={area.id}>
-                      {area.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
       </div>
 
       {/* Row 3: Địa chỉ chi tiết */}

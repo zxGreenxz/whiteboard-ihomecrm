@@ -69,7 +69,6 @@ export interface Customer {
 export interface CustomerFilters {
   status?: CustomerStatus;
   statFilter?: StatFilterType;
-  area_id?: string;
   building_id?: string;
   room_id?: string;
   search?: string;

@@ -16,7 +16,10 @@ import {
 // Arbitraries
 // =============================================
 
-/** Sinh bộ dữ liệu (areas, buildings) nhất quán: building.area_id ∈ areas hoặc null. */
+/**
+ * Sinh bộ dữ liệu (areas, buildings) nhất quán cho mô hình N-N:
+ * mỗi building thuộc 0..n khu (area_ids ⊆ areas, không trùng).
+ */
 const datasetArb = fc
   .record({
     areaCount: fc.integer({ min: 0, max: 5 }),
@@ -27,16 +30,19 @@ const datasetArb = fc
       id: `area-${i}`,
       name: `Khu ${i}`,
     }));
-    const buildingArb = fc.tuple(
-      fc.integer({ min: -1, max: areaCount - 1 }), // -1 = không thuộc khu
-    );
+    const buildingArb =
+      areaCount === 0
+        ? fc.constant([] as number[])
+        : fc.uniqueArray(fc.integer({ min: 0, max: areaCount - 1 }), {
+            maxLength: areaCount,
+          });
     return fc
       .array(buildingArb, { minLength: buildingCount, maxLength: buildingCount })
       .map((assignments) => {
-        const buildings: BuildingLite[] = assignments.map(([areaIdx], i) => ({
+        const buildings: BuildingLite[] = assignments.map((areaIdxs, i) => ({
           id: `b-${i}`,
           name: `Toà ${i}`,
-          area_id: areaIdx >= 0 ? `area-${areaIdx}` : null,
+          area_ids: areaIdxs.map((idx) => `area-${idx}`),
         }));
         return { areas, buildings };
       });
@@ -54,22 +60,35 @@ const selectionOf = (buildings: BuildingLite[]) =>
 // =============================================
 
 describe('groupBuildingsByArea', () => {
-  it('mọi toà xuất hiện đúng 1 lần trong đúng nhóm của nó', () => {
+  it('mỗi toà xuất hiện đúng 1 lần TRONG MỖI nhóm chứa nó; union = toàn bộ toà', () => {
     fc.assert(
       fc.property(datasetArb, ({ areas, buildings }) => {
         const groups = groupBuildingsByArea(buildings, areas);
-        const seen = groups.flatMap((g) => g.buildings.map((b) => b.id));
-        // không mất toà, không trùng toà
-        expect(seen.sort()).toEqual(buildings.map((b) => b.id).sort());
-        // toà nằm đúng nhóm
+        const areaIds = new Set(areas.map((a) => a.id));
+        // union các nhóm = toàn bộ toà (không mất toà nào)
+        const union = new Set(groups.flatMap((g) => g.buildings.map((b) => b.id)));
+        expect([...union].sort()).toEqual(buildings.map((b) => b.id).sort());
         for (const g of groups) {
+          // không trùng id TRONG một nhóm
+          const ids = g.buildings.map((b) => b.id);
+          expect(new Set(ids).size).toBe(ids.length);
+          // toà nằm đúng nhóm
           for (const b of g.buildings) {
+            const valid = (b.area_ids ?? []).filter((id) => areaIds.has(id));
             if (g.areaId === null) {
-              expect(b.area_id ?? null).toBeNull();
+              expect(valid).toHaveLength(0);
             } else {
-              expect(b.area_id).toBe(g.areaId);
+              expect(valid).toContain(g.areaId);
             }
           }
+        }
+        // toà thuộc k khu sống → xuất hiện đúng k lần (hoặc 1 lần ở Chưa phân khu)
+        for (const b of buildings) {
+          const valid = (b.area_ids ?? []).filter((id) => areaIds.has(id));
+          const appearances = groups.filter((g) =>
+            g.buildings.some((x) => x.id === b.id),
+          ).length;
+          expect(appearances).toBe(valid.length === 0 ? 1 : valid.length);
         }
       }),
     );
@@ -89,13 +108,28 @@ describe('groupBuildingsByArea', () => {
     );
   });
 
-  it('toà trỏ tới khu không tồn tại → vào nhóm Chưa phân khu', () => {
+  it('toà chỉ trỏ tới khu không tồn tại → vào nhóm Chưa phân khu', () => {
     const groups = groupBuildingsByArea(
-      [{ id: 'b1', name: 'B1', area_id: 'ghost' }],
+      [{ id: 'b1', name: 'B1', area_ids: ['ghost'] }],
       [{ id: 'a1', name: 'Khu 1' }],
     );
     expect(groups).toHaveLength(1);
     expect(groups[0].areaId).toBeNull();
+  });
+
+  it('toà thuộc 2 khu xuất hiện trong cả 2 nhóm', () => {
+    const areas: AreaLite[] = [
+      { id: 'cu', name: 'Nhà cũ' },
+      { id: 'thangbo', name: 'Thang bộ' },
+    ];
+    const buildings: BuildingLite[] = [
+      { id: 'A', name: 'Toà A', area_ids: ['cu', 'thangbo'] },
+      { id: 'B', name: 'Toà B', area_ids: ['cu'] },
+    ];
+    const groups = groupBuildingsByArea(buildings, areas);
+    expect(groups.map((g) => g.areaId)).toEqual(['cu', 'thangbo']);
+    expect(groups[0].buildings.map((b) => b.id)).toEqual(['A', 'B']);
+    expect(groups[1].buildings.map((b) => b.id)).toEqual(['A']);
   });
 });
 
@@ -153,13 +187,33 @@ describe('toggleGroupSelection', () => {
       ),
     );
   });
+
+  it('nhóm chồng lấn: bỏ chọn Khu A kéo toà chung ra khỏi selection → Khu B thành "some"', () => {
+    const areas: AreaLite[] = [
+      { id: 'a', name: 'Khu A' },
+      { id: 'b', name: 'Khu B' },
+    ];
+    const buildings: BuildingLite[] = [
+      { id: 'shared', name: 'Toà chung', area_ids: ['a', 'b'] },
+      { id: 'onlyA', name: 'Toà A1', area_ids: ['a'] },
+      { id: 'onlyB', name: 'Toà B1', area_ids: ['b'] },
+    ];
+    const groups = groupBuildingsByArea(buildings, areas);
+    const idsA = groups[0].buildings.map((b) => b.id); // shared + onlyA
+    const idsB = groups[1].buildings.map((b) => b.id); // shared + onlyB
+    // chọn hết cả 2 khu rồi bỏ Khu A
+    const all = ['shared', 'onlyA', 'onlyB'];
+    const afterToggleA = toggleGroupSelection(all, idsA);
+    expect(afterToggleA.sort()).toEqual(['onlyB']);
+    expect(groupSelectionState(afterToggleA, idsB)).toBe('some');
+  });
 });
 
 describe('toggleBuildingSelection', () => {
   it('toggle 2 lần = ban đầu; selection không bao giờ trùng phần tử', () => {
     fc.assert(
       fc.property(
-        datasetArb.chain(({ buildings, areas }) =>
+        datasetArb.chain(({ buildings }) =>
           fc.tuple(fc.constant(buildings), selectionOf(buildings)),
         ),
         ([buildings, selection]) => {
@@ -181,7 +235,7 @@ describe('toggleBuildingSelection', () => {
 // =============================================
 
 describe('summarizeSelection', () => {
-  it('rỗng → chuỗi rỗng; 1 toà → tên toà; trọn 1 khu → "Tên khu (N toà)"', () => {
+  it('rỗng → chuỗi rỗng; 1 toà → tên toà; trọn đúng 1 khu (không kéo trọn khu khác) → "Tên khu (N toà)"', () => {
     fc.assert(
       fc.property(datasetArb, ({ areas, buildings }) => {
         const groups = groupBuildingsByArea(buildings, areas);
@@ -193,10 +247,18 @@ describe('summarizeSelection', () => {
         }
         for (const g of groups) {
           if (g.buildings.length < 2) continue;
-          const label = summarizeSelection(
-            g.buildings.map((b) => b.id),
-            groups,
+          const selection = g.buildings.map((b) => b.id);
+          const sel = new Set(selection);
+          // Nhóm chồng lấn: nếu selection này cũng vô tình trọn khu khác
+          // thì nhãn theo greedy có thể khác — chỉ assert khi g là khu trọn duy nhất.
+          const otherFull = groups.some(
+            (g2) =>
+              g2 !== g &&
+              g2.buildings.length > 0 &&
+              g2.buildings.every((b) => sel.has(b.id)),
           );
+          if (otherFull) continue;
+          const label = summarizeSelection(selection, groups);
           expect(label).toBe(`${g.areaName} (${g.buildings.length} toà)`);
         }
       }),
@@ -206,12 +268,29 @@ describe('summarizeSelection', () => {
   it('không khớp khu trọn nào (≥2 toà) → "N toà"', () => {
     const areas: AreaLite[] = [{ id: 'a', name: 'Khu A' }];
     const buildings: BuildingLite[] = [
-      { id: 'b1', name: 'B1', area_id: 'a' },
-      { id: 'b2', name: 'B2', area_id: 'a' },
-      { id: 'b3', name: 'B3', area_id: 'a' },
+      { id: 'b1', name: 'B1', area_ids: ['a'] },
+      { id: 'b2', name: 'B2', area_ids: ['a'] },
+      { id: 'b3', name: 'B3', area_ids: ['a'] },
     ];
     const groups = groupBuildingsByArea(buildings, areas);
     expect(summarizeSelection(['b1', 'b2'], groups)).toBe('2 toà');
+  });
+
+  it('greedy: khu con bị khu trước cover trọn thì không liệt kê lặp', () => {
+    const areas: AreaLite[] = [
+      { id: 'big', name: 'Khu lớn' },
+      { id: 'sub', name: 'Khu con' },
+    ];
+    const buildings: BuildingLite[] = [
+      { id: 'x', name: 'X', area_ids: ['big', 'sub'] },
+      { id: 'y', name: 'Y', area_ids: ['big', 'sub'] },
+      { id: 'z', name: 'Z', area_ids: ['big'] },
+    ];
+    const groups = groupBuildingsByArea(buildings, areas);
+    // chọn cả 3 → trọn "Khu lớn"; "Khu con" (x,y) đã được cover trọn → bỏ qua
+    expect(summarizeSelection(['x', 'y', 'z'], groups)).toBe('Khu lớn (3 toà)');
+    // chọn x,y → "Khu lớn" thiếu z nên không trọn; chỉ "Khu con" trọn
+    expect(summarizeSelection(['x', 'y'], groups)).toBe('Khu con (2 toà)');
   });
 });
 
@@ -220,7 +299,7 @@ describe('summarizeSelection', () => {
 // =============================================
 
 describe('pruneSelection', () => {
-  it('kết quả luôn ⊆ danh sách toà hiện có và ⊆ selection gốc', () => {
+  it('kết quả luôn ⊆ danh sách toà hiện có và ⊆ selection gốc; toà thuộc 2 khu chỉ tính 1 lần', () => {
     fc.assert(
       fc.property(
         datasetArb,
@@ -236,5 +315,12 @@ describe('pruneSelection', () => {
         },
       ),
     );
+  });
+
+  it('toà thuộc 2 khu vẫn chỉ là 1 id trong selection', () => {
+    const buildings: BuildingLite[] = [
+      { id: 'A', name: 'Toà A', area_ids: ['k1', 'k2'] },
+    ];
+    expect(pruneSelection(['A', 'ghost'], buildings)).toEqual(['A']);
   });
 });

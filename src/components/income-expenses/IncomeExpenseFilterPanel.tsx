@@ -236,7 +236,6 @@ export function IncomeExpenseFilterPanel({
                 patch({
                   building_ids: ids,
                   // Legacy single-select — null để không sót filter cũ
-                  area_id: null,
                   building_id: null,
                   // Đổi toà thì reset phòng (danh sách phòng phụ thuộc toà)
                   room_id: null,

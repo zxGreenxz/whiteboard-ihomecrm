@@ -118,8 +118,6 @@ function dateStringArb(minYear = 2023, maxYear = 2026): fc.Arbitrary<string> {
   });
 }
 
-/** Generate a small pool of area IDs to increase filter hit rate */
-const areaIdPoolArb = fc.constantFrom('area-1', 'area-2', 'area-3', null);
 const buildingIdPoolArb = fc.constantFrom('bld-1', 'bld-2', 'bld-3');
 const roomIdPoolArb = fc.constantFrom('room-1', 'room-2', 'room-3');
 
@@ -150,13 +148,12 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
     contract_number: fc.option(fc.constantFrom('HD-001', 'HD-002', 'HD-003', 'HD-100', 'HD-200', null), { nil: null }),
     room_id: roomIdPoolArb,
     building_id: buildingIdPoolArb,
-    area_id: areaIdPoolArb,
     building_type: buildingTypeArb,
     room_name: fc.constantFrom('P101', 'P102', 'P201', 'P202', 'P301'),
     start_date: dateStringArb(),
     end_date: dateStringArb(),
     repCustomer: contractCustomerArb(true),
-  }).map(({ id, status, contract_number, room_id, building_id, area_id, building_type, room_name, start_date, end_date, repCustomer }) => ({
+  }).map(({ id, status, contract_number, room_id, building_id, building_type, room_name, start_date, end_date, repCustomer }) => ({
     id,
     user_id: '00000000-0000-0000-0000-000000000000',
     room_id,
@@ -193,7 +190,6 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
         id: building_id,
         name: `Building ${building_id}`,
         type: building_type,
-        area_id,
       },
     },
     contract_customers: [repCustomer],

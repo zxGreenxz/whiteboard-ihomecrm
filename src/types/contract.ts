@@ -68,7 +68,6 @@ export interface ContractWithRelations extends Contract {
       id: string;
       name: string;
       type: string;
-      area_id: string | null;
       street_address?: string | null;
       ward?: string | null;
       district?: string | null;
@@ -127,7 +126,6 @@ export interface ContractStats {
 export interface ContractFilters {
   statFilter?: ContractStatFilter;
   search?: string;
-  area_id?: string;
   building_id?: string;
   room_id?: string;
   rental_type?: string;  // building type

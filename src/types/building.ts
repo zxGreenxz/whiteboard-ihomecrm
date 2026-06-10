@@ -34,7 +34,6 @@ export const DEFAULT_COMMISSION_TIERS: CommissionTier[] = [
 export interface Building {
   id: string;
   user_id: string;
-  area_id: string | null;
   name: string;
   code: string | null;
   type: string;
@@ -58,9 +57,11 @@ export interface Building {
   deleted_at: string | null;
 }
 
-/** Building with joined area and computed rooms count */
+/** Building with joined areas (N-N qua area_buildings) and computed rooms count */
 export interface BuildingWithRelations extends Building {
-  area?: { id: string; name: string; code: string | null } | null;
+  /** Các khu vực chứa toà này — 1 toà có thể thuộc nhiều khu */
+  areas?: { id: string; name: string; code: string | null }[];
+  area_ids?: string[];
   rooms_count?: number;
 }
 
@@ -103,7 +104,6 @@ export interface BuildingFormData {
   district: string;
   ward: string;
   street_address: string;
-  area_id?: string;
   status: BuildingStatus;
   contract_template_id?: string | null;
   invoice_template_id?: string | null;

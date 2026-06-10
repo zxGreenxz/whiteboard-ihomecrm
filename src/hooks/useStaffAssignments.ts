@@ -16,7 +16,8 @@ export const useStaffAssignments = () => {
         .select(`
           *,
           role:roles(id, name, permissions),
-          building:buildings(id, name)
+          building:buildings(id, name),
+          area:areas(id, name)
         `)
         .order("created_at", { ascending: false });
 
@@ -67,7 +68,8 @@ export const useStaffAssignmentsByStaff = (staffId: string) => {
         .select(`
           *,
           role:roles(id, name, permissions),
-          building:buildings(id, name)
+          building:buildings(id, name),
+          area:areas(id, name)
         `)
         .eq("staff_id", staffId)
         .order("created_at", { ascending: false });
@@ -167,9 +169,12 @@ export interface ProvisionStaffInput {
   username: string;
   password: string;
   role_id: string;
-  /** null/undefined = quản lý tất cả toà nhà (1 row, building_id=null).
-   *  Empty array = same as null. Otherwise insert one row per id. */
+  /** Toà lẻ (snapshot): 1 row / toà. Cùng rỗng với area_ids → full scope
+   *  (1 row, building_id=null, area_id=null). */
   building_ids?: string[] | null;
+  /** Khu vực (LIVE): 1 row / khu — toà thêm vào khu sau này TỰ ĐỘNG thuộc
+   *  phạm vi của nhân viên (DB resolve qua area_buildings). */
+  area_ids?: string[] | null;
   // All identity fields below are OPTIONAL.
   full_name?: string;
   phone?: string;
@@ -260,15 +265,23 @@ export const useProvisionStaff = () => {
         .eq("id", input.role_id)
         .single();
 
-      const buildingIds = (input.building_ids && input.building_ids.length > 0)
-        ? input.building_ids
-        : [null]; // null = "tất cả toà nhà"
+      // Scope rows: toà lẻ (building_id) + khu live (area_id). Cả hai rỗng →
+      // 1 row global (building_id=null, area_id=null) = "tất cả toà nhà".
+      const buildingIds = input.building_ids ?? [];
+      const areaIds = input.area_ids ?? [];
+      const scopeRows: { building_id: string | null; area_id: string | null }[] =
+        buildingIds.length === 0 && areaIds.length === 0
+          ? [{ building_id: null, area_id: null }]
+          : [
+              ...buildingIds.map((bid) => ({ building_id: bid, area_id: null })),
+              ...areaIds.map((aid) => ({ building_id: null, area_id: aid })),
+            ];
 
-      const rowsToInsert = buildingIds.map((bid) => ({
+      const rowsToInsert = scopeRows.map((scope) => ({
         user_id: owner.id,
         staff_id: newUserId,
         role_id: input.role_id,
-        building_id: bid,
+        ...scope,
         permissions: roleRow?.permissions ?? null,
       }));
 
@@ -299,7 +312,10 @@ export const useProvisionStaff = () => {
 export interface UpdateStaffMemberInput {
   staff_id: string;
   role_id: string;
-  building_ids?: string[] | null; // null/empty → all buildings (single row, building_id=null)
+  /** Toà lẻ (snapshot). Cùng rỗng với area_ids → full scope (1 row global). */
+  building_ids?: string[] | null;
+  /** Khu vực (LIVE) — phạm vi tự cập nhật theo membership của khu. */
+  area_ids?: string[] | null;
   profile_patch?: {
     full_name?: string;
     phone?: string | null;
@@ -333,21 +349,30 @@ export const useUpdateStaffMember = () => {
       // 2) Fetch existing assignments for this staff
       const { data: existing, error: fetchErr } = await supabase
         .from("staff_assignments")
-        .select("id, building_id, role_id")
+        .select("id, building_id, area_id, role_id")
         .eq("staff_id", input.staff_id);
       if (fetchErr) throw fetchErr;
 
-      const wantBuildings: (string | null)[] = (input.building_ids && input.building_ids.length > 0)
-        ? input.building_ids
-        : [null];
+      // Scope mong muốn: toà lẻ + khu live; cả hai rỗng → 1 row global.
+      const buildingIds = input.building_ids ?? [];
+      const areaIds = input.area_ids ?? [];
+      const wantScopes: { building_id: string | null; area_id: string | null }[] =
+        buildingIds.length === 0 && areaIds.length === 0
+          ? [{ building_id: null, area_id: null }]
+          : [
+              ...buildingIds.map((bid) => ({ building_id: bid, area_id: null })),
+              ...areaIds.map((aid) => ({ building_id: null, area_id: aid })),
+            ];
+
+      // Key phân biệt 3 loại row: toà lẻ / khu live / global
+      const keyOf = (r: { building_id: string | null; area_id: string | null }) =>
+        r.building_id ? `b:${r.building_id}` : r.area_id ? `a:${r.area_id}` : "__global__";
 
       const have = new Map<string, { id: string; role_id: string }>();
       for (const r of existing || []) {
-        // Use a sentinel for null building_id
-        const key = r.building_id ?? "__null__";
-        have.set(key, { id: r.id, role_id: r.role_id });
+        have.set(keyOf(r as any), { id: r.id, role_id: r.role_id });
       }
-      const want = new Set(wantBuildings.map((b) => b ?? "__null__"));
+      const want = new Set(wantScopes.map(keyOf));
 
       // 3) Delete rows whose building is no longer in `want`
       const toDelete: string[] = [];
@@ -383,14 +408,14 @@ export const useUpdateStaffMember = () => {
         if (error) throw error;
       }
 
-      // 5) Insert missing rows (cho buildings mới được thêm)
-      const toInsert = wantBuildings
-        .filter((b) => !have.has(b ?? "__null__"))
-        .map((b) => ({
+      // 5) Insert missing rows (toà/khu mới được thêm)
+      const toInsert = wantScopes
+        .filter((scope) => !have.has(keyOf(scope)))
+        .map((scope) => ({
           user_id: owner.id,
           staff_id: input.staff_id,
           role_id: input.role_id,
-          building_id: b,
+          ...scope,
           permissions: roleRow?.permissions ?? null,
         }));
       if (toInsert.length > 0) {

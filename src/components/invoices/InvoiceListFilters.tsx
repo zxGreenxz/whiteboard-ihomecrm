@@ -51,7 +51,6 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
   const handleBuildingIdsChange = (ids: string[]) => {
     update({
       building_ids: ids.length ? ids : undefined,
-      area_id: undefined,
       building_id: undefined,
       room_id: undefined,
       room_ids: undefined,

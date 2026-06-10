@@ -85,12 +85,11 @@ import { useAreas } from "@/hooks/useAreas";
 import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import {
   groupBuildingsByArea,
-  groupSelectionState,
-  toggleGroupSelection,
   summarizeSelection,
   type BuildingLite,
   type AreaLite,
 } from "@/lib/buildingGroups";
+import { AreaMultiSelect } from "@/components/areas/AreaMultiSelect";
 import { PermissionMatrix } from "@/components/staff/PermissionMatrix";
 import {
   ALL_MODULES,
@@ -468,6 +467,9 @@ type StaffMember = {
   current_permissions: PermissionsMap | null;
   building_ids: string[];
   buildings: { id: string; name: string }[];
+  /** Khu vực gán LIVE (staff_assignments.area_id) — phạm vi tự cập nhật theo khu */
+  area_ids: string[];
+  areas: { id: string; name: string }[];
   has_global: boolean;
 };
 
@@ -483,11 +485,16 @@ function groupByStaff(assignments: any[]): StaffMember[] {
         current_permissions: a.permissions ? parsePermissions(a.permissions) : null,
         building_ids: [],
         buildings: [],
+        area_ids: [],
+        areas: [],
         has_global: false,
       });
     }
     const m = map.get(a.staff_id)!;
-    if (a.building_id) {
+    if (a.area_id) {
+      m.area_ids.push(a.area_id);
+      if (a.area) m.areas.push({ id: a.area.id, name: a.area.name });
+    } else if (a.building_id) {
       m.building_ids.push(a.building_id);
       if (a.building) m.buildings.push({ id: a.building.id, name: a.building.name });
     } else {
@@ -508,6 +515,8 @@ type StaffFormState = {
   is_active: boolean;
   all_buildings: boolean;
   building_ids: string[];
+  /** Khu vực gán LIVE — toà thêm vào khu sau này tự thuộc phạm vi */
+  area_ids: string[];
   /** Permissions tinh chỉnh — null = dùng default từ role (chưa override) */
   permissions: PermissionsMap;
   /** Password (chỉ dùng khi tạo mới) */
@@ -525,6 +534,7 @@ const emptyForm = (): StaffFormState => ({
   is_active: true,
   all_buildings: true,
   building_ids: [],
+  area_ids: [],
   permissions: buildEmptyPermissions(),
   password: "",
   confirmPassword: "",
@@ -551,12 +561,12 @@ function StaffTab() {
 
   const staffMembers = useMemo(() => groupByStaff(assignments || []), [assignments]);
 
-  // Nhóm toà theo khu vực cho form gán phạm vi (snapshot) + cảnh báo lệch khu.
+  // Nhóm toà theo khu vực cho phần chọn toà lẻ (label tóm tắt).
   const staffFormGroups = useMemo(() => {
     const blds: BuildingLite[] = ((buildings || []) as any[]).map((b) => ({
       id: b.id,
       name: b.name,
-      area_id: b.area_id ?? null,
+      area_ids: b.area_ids ?? [],
     }));
     const ars: AreaLite[] = ((areas || []) as any[]).map((a) => ({
       id: a.id,
@@ -601,6 +611,7 @@ function StaffTab() {
       is_active: p.is_active ?? true,
       all_buildings: m.has_global,
       building_ids: m.building_ids,
+      area_ids: m.area_ids,
       permissions: m.current_permissions ?? parsePermissions(m.role?.permissions),
       password: "",
       confirmPassword: "",
@@ -629,8 +640,12 @@ function StaffTab() {
       toast.error("Chọn mẫu phân quyền");
       return;
     }
-    if (!form.all_buildings && form.building_ids.length === 0) {
-      toast.error("Chọn ít nhất 1 toà nhà");
+    if (
+      !form.all_buildings &&
+      form.building_ids.length === 0 &&
+      form.area_ids.length === 0
+    ) {
+      toast.error("Chọn ít nhất 1 khu vực hoặc toà nhà");
       return;
     }
     if (!phoneIsValid(form.phone.trim())) {
@@ -648,6 +663,7 @@ function StaffTab() {
         staff_id: form.staff_id,
         role_id: form.role_id,
         building_ids: form.all_buildings ? null : form.building_ids,
+        area_ids: form.all_buildings ? null : form.area_ids,
         profile_patch: {
           full_name: form.full_name.trim() || undefined,
           phone: form.phone.trim() || null,
@@ -683,6 +699,7 @@ function StaffTab() {
         password: form.password,
         role_id: form.role_id,
         building_ids: form.all_buildings ? null : form.building_ids,
+        area_ids: form.all_buildings ? null : form.area_ids,
         full_name: form.full_name.trim() || form.username.trim(),
         phone: form.phone.trim() || undefined,
         email: form.email.trim() || undefined,
@@ -777,7 +794,14 @@ function StaffTab() {
             const diffCount = diffs.length;
             const scopeLabel = m.has_global
               ? "Tất cả toà"
-              : `${m.buildings.length} toà${m.buildings.length > 0 ? ` (${m.buildings.slice(0,3).map((b) => b.name).join(", ")}${m.buildings.length > 3 ? "…" : ""})` : ""}`;
+              : [
+                  m.areas.length > 0 &&
+                    `${m.areas.map((a) => a.name).join(", ")} (live)`,
+                  m.buildings.length > 0 &&
+                    `${m.buildings.length} toà lẻ (${m.buildings.slice(0, 3).map((b) => b.name).join(", ")}${m.buildings.length > 3 ? "…" : ""})`,
+                ]
+                  .filter(Boolean)
+                  .join(" + ") || "—";
 
             return (
               <Card key={m.staff_id} className={cn("border-l-4 group", meta.accent)}>
@@ -988,20 +1012,33 @@ function StaffTab() {
                   <span className="text-sm">Áp dụng cho <strong>tất cả toà nhà</strong></span>
                 </label>
                 {!form.all_buildings && (
-                  <div className="space-y-2 pl-6">
-                    {/* Chọn theo khu vực = SNAPSHOT: click tên khu trong dropdown
-                        chọn cả nhóm toà TẠI THỜI ĐIỂM NÀY. Quyền lưu per-building
-                        (staff_assignments) — thêm toà mới vào khu sau này KHÔNG
-                        tự cấp quyền; cảnh báo lệch bên dưới + nút chọn đủ. */}
+                  <div className="space-y-3 pl-6">
+                    {/* A. Khu vực = LIVE: lưu area_id trong staff_assignments,
+                        DB bung ra toà qua area_buildings lúc query — thêm/bớt
+                        toà trong khu là phạm vi nhân viên tự đổi theo. */}
                     <div className="space-y-1.5">
                       <Label className="text-xs">
-                        Chọn toà — click tên khu vực để chọn cả nhóm (
-                        {form.building_ids.length} toà)
+                        Theo khu vực — tự cập nhật ({form.area_ids.length} khu)
+                      </Label>
+                      <AreaMultiSelect
+                        value={form.area_ids}
+                        onChange={(ids) => setForm({ ...form, area_ids: ids })}
+                        placeholder="Chọn khu vực (phạm vi sống theo nhóm)..."
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Toà thêm vào khu sau này <strong>TỰ ĐỘNG</strong> thuộc
+                        phạm vi của nhân viên (bớt toà khỏi khu thì mất theo).
+                      </p>
+                    </div>
+                    {/* B. Toà lẻ = SNAPSHOT: lưu cứng từng building_id. */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">
+                        Toà lẻ bổ sung — cố định ({form.building_ids.length} toà)
                       </Label>
                       <BuildingMultiSelect
                         value={form.building_ids}
                         onChange={(ids) => setForm({ ...form, building_ids: ids })}
-                        placeholder="Chọn toà / khu vực..."
+                        placeholder="Chọn thêm toà lẻ ngoài các khu..."
                       />
                       {form.building_ids.length > 0 && (
                         <p className="text-xs text-muted-foreground">
@@ -1009,54 +1046,12 @@ function StaffTab() {
                           {summarizeSelection(form.building_ids, staffFormGroups)}
                         </p>
                       )}
-                      {form.building_ids.length === 0 && (
-                        <p className="text-xs text-red-600">Chọn ít nhất 1 toà nhà</p>
-                      )}
                     </div>
-                    {/* Cảnh báo lệch khu: khu được chọn một phần (vd toà mới
-                        thêm vào khu sau khi đã gán quyền) → 1 click chọn đủ. */}
-                    {staffFormGroups
-                      .filter(
-                        (g) =>
-                          g.areaId !== null &&
-                          groupSelectionState(
-                            form.building_ids,
-                            g.buildings.map((b) => b.id),
-                          ) === "some",
-                      )
-                      .map((g) => {
-                        const ids = g.buildings.map((b) => b.id);
-                        const selectedCount = ids.filter((id) =>
-                          form.building_ids.includes(id),
-                        ).length;
-                        return (
-                          <div
-                            key={g.areaId}
-                            className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                          >
-                            <span>
-                              {g.areaName}: đang chọn {selectedCount}/{ids.length} toà
-                            </span>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-6 px-2 text-xs"
-                              onClick={() =>
-                                setForm({
-                                  ...form,
-                                  building_ids: toggleGroupSelection(
-                                    form.building_ids,
-                                    ids,
-                                  ),
-                                })
-                              }
-                            >
-                              Chọn đủ theo khu
-                            </Button>
-                          </div>
-                        );
-                      })}
+                    {form.building_ids.length === 0 && form.area_ids.length === 0 && (
+                      <p className="text-xs text-red-600">
+                        Chọn ít nhất 1 khu vực hoặc toà nhà
+                      </p>
+                    )}
                   </div>
                 )}
               </section>

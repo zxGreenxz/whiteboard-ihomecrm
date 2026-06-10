@@ -54,8 +54,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
-  // Lọc nhiều toà (BuildingMultiSelect) — [] = tất cả toà. Thay cặp
-  // area_id + building_id đơn cũ.
+  // Lọc nhiều toà (BuildingMultiSelect) — [] = tất cả toà.
   building_ids: [],
   room_id: null,
   room_ids: null,
@@ -140,7 +139,6 @@ const IncomeExpensePage = () => {
   const effectiveFilters: IncomeExpenseFilters = {
     ...filters,
     building_ids: buildingIds.length ? buildingIds : undefined,
-    area_id: null,
     // Tương thích: useIncomeExpenseBatches (Phiếu tổng) chưa đọc building_ids —
     // chọn đúng 1 toà thì truyền kèm building_id đơn để view đó vẫn lọc được
     // (với list/stats, building_ids ưu tiên nên không đổi kết quả).

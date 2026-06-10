@@ -15,7 +15,7 @@ export const useAreas = () => {
         .from("areas")
         .select(`
           *,
-          buildings:buildings(count)
+          members:area_buildings(count)
         `)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
@@ -27,7 +27,7 @@ export const useAreas = () => {
 
       return (data || []).map(area => ({
         ...area,
-        buildings_count: area.buildings?.[0]?.count || 0
+        buildings_count: area.members?.[0]?.count || 0
       }));
     },
   });
@@ -141,7 +141,8 @@ export const useUpdateArea = () => {
   });
 };
 
-// Assign/unassign buildings to an area
+// Assign/unassign buildings to an area — N-N qua area_buildings:
+// 1 toà có thể thuộc nhiều khu, gán/gỡ chỉ chạm join rows của khu đang sửa.
 export const useAssignBuildingsToArea = () => {
   const queryClient = useQueryClient();
 
@@ -157,19 +158,27 @@ export const useAssignBuildingsToArea = () => {
     }) => {
       if (toRemoveIds.length > 0) {
         const { error } = await supabase
-          .from("buildings")
-          .update({ area_id: null })
-          .in("id", toRemoveIds);
+          .from("area_buildings")
+          .delete()
+          .eq("area_id", areaId)
+          .in("building_id", toRemoveIds);
         if (error) {
           toast.error("Không thể bỏ tòa nhà khỏi khu vực");
           throw error;
         }
       }
       if (toAddIds.length > 0) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const rows = toAddIds.map((building_id) => ({
+          area_id: areaId,
+          building_id,
+          user_id: user!.id,
+        }));
         const { error } = await supabase
-          .from("buildings")
-          .update({ area_id: areaId })
-          .in("id", toAddIds);
+          .from("area_buildings")
+          .upsert(rows, { onConflict: "area_id,building_id", ignoreDuplicates: true });
         if (error) {
           toast.error("Không thể gán tòa nhà vào khu vực");
           throw error;
@@ -179,6 +188,8 @@ export const useAssignBuildingsToArea = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
       queryClient.invalidateQueries({ queryKey: ["areas"] });
+      // Scope nhân viên gán theo khu là LIVE → membership đổi ảnh hưởng hiển thị phạm vi
+      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
     },
     onError: (error) => {
       console.error("Error assigning buildings to area:", error);
@@ -187,37 +198,47 @@ export const useAssignBuildingsToArea = () => {
 };
 
 // Soft delete area — khu vực chỉ là NHÃN NHÓM toà: xoá khu thì gỡ nhãn khỏi
-// các toà (về "Chưa phân khu"), không chặn như trước (khớp message confirm
-// trong ManageAreasDialog). Không ảnh hưởng dữ liệu/quyền của toà.
+// các toà (toà vẫn giữ các khu khác). Riêng khu đang được dùng làm PHẠM VI
+// phân quyền nhân viên (staff_assignments.area_id) thì DB chặn (trigger
+// AREA_IN_STAFF_SCOPE) — phải gỡ phân quyền trước, tránh nâng quyền nhầm.
 export const useDeleteArea = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error: unassignError } = await supabase
-        .from("buildings")
-        .update({ area_id: null })
-        .eq("area_id", id);
-
-      if (unassignError) {
-        toast.error("Không thể gỡ toà nhà khỏi khu vực");
-        throw unassignError;
-      }
-
-      // Soft delete
+      // Soft delete trước — nếu khu đang là phạm vi phân quyền thì trigger DB
+      // chặn ngay tại đây, membership chưa bị gỡ (không mất dữ liệu nhóm).
       const { error } = await supabase
         .from("areas")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", id);
 
       if (error) {
-        toast.error("Không thể xóa khu vực");
+        if (error.message?.includes("AREA_IN_STAFF_SCOPE")) {
+          toast.error(
+            "Khu vực đang được dùng làm phạm vi phân quyền nhân viên — gỡ phân quyền trước khi xoá."
+          );
+        } else {
+          toast.error("Không thể xóa khu vực");
+        }
         throw error;
+      }
+
+      // Gỡ membership (join rows) — toà về "Chưa phân khu" nếu không còn khu khác
+      const { error: unassignError } = await supabase
+        .from("area_buildings")
+        .delete()
+        .eq("area_id", id);
+
+      if (unassignError) {
+        toast.error("Không thể gỡ toà nhà khỏi khu vực");
+        throw unassignError;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["areas"] });
       queryClient.invalidateQueries({ queryKey: ["buildings"] });
+      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
       toast.success("Khu vực đã được xóa thành công");
     },
     onError: (error) => {

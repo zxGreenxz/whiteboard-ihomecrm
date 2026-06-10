@@ -113,7 +113,6 @@ const InvoicesPage = () => {
   // để stats cập nhật cùng với bảng khi user đổi bộ lọc.
   const statsFilters = useMemo(
     () => ({
-      area_id: filters.area_id,
       building_id: filters.building_id,
       building_ids: filters.building_ids,
       room_id:

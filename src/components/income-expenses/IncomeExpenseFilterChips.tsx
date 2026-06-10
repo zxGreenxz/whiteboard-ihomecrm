@@ -95,7 +95,7 @@ export function IncomeExpenseFilterChips({
       (buildings || []).map((b) => ({
         id: b.id,
         name: b.name,
-        area_id: b.area_id ?? null,
+        area_ids: b.area_ids ?? [],
       })),
       (areas || []).map((a) => ({ id: a.id, name: a.name })),
     );

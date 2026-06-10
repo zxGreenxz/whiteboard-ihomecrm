@@ -46,14 +46,15 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  // building_ids hiện tại của từng khu (từ buildings.area_id).
+  // building_ids hiện tại của từng khu (N-N: từ buildings.area_ids).
   const membersByArea = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const b of buildings) {
-      if (!b.area_id) continue;
-      const list = map.get(b.area_id);
-      if (list) list.push(b.id);
-      else map.set(b.area_id, [b.id]);
+      for (const areaId of b.area_ids ?? []) {
+        const list = map.get(areaId);
+        if (list) list.push(b.id);
+        else map.set(areaId, [b.id]);
+      }
     }
     return map;
   }, [buildings]);
@@ -80,7 +81,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
     const count = membersByArea.get(area.id)?.length ?? 0;
     const msg =
       count > 0
-        ? `Xoá khu vực "${area.name}"? ${count} toà trong khu sẽ về "Chưa phân khu" (không ảnh hưởng dữ liệu toà).`
+        ? `Xoá khu vực "${area.name}"? Khu sẽ bị gỡ khỏi ${count} toà (toà vẫn giữ các khu khác, không ảnh hưởng dữ liệu toà).`
         : `Xoá khu vực "${area.name}"?`;
     if (confirm(msg)) deleteArea.mutate(area.id);
   };
@@ -102,7 +103,7 @@ export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps
           <DialogTitle>Quản lý khu vực</DialogTitle>
           <DialogDescription>
             Khu vực là nhãn nhóm toà nhà — dùng để chọn nhanh cả nhóm trong các
-            ô lọc và khi gán phạm vi cho nhân viên. Mỗi toà thuộc tối đa 1 khu.
+            ô lọc và khi gán phạm vi cho nhân viên. Một toà có thể thuộc nhiều khu.
           </DialogDescription>
         </DialogHeader>
 

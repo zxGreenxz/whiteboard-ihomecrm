@@ -26,7 +26,6 @@ export interface RoomWithRelations extends Room {
     id: string;
     name: string;
     code: string | null;
-    area_id: string | null;
   } | null;
 }
 

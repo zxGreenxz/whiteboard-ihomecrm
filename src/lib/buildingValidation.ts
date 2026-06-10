@@ -20,7 +20,6 @@ export const buildingSchema = z.object({
   district: z.string().min(1, 'Quận/Huyện không được để trống'),
   ward: z.string().min(1, 'Xã/Phường không được để trống'),
   street_address: z.string().min(1, 'Địa chỉ chi tiết không được để trống'),
-  area_id: z.string().uuid().optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),

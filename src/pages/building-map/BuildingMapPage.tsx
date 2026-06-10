@@ -40,11 +40,13 @@ const BuildingMapPage = () => {
   const buildingOptions = useMemo(
     () =>
       buildings.map((building) => {
-        const areaName: string | undefined = (building as any).area?.name;
+        const areaNames: string[] = ((building as any).areas ?? []).map(
+          (a: { name: string }) => a.name,
+        );
         return {
           value: building.id,
           label: building.name,
-          keywords: areaName ? [areaName] : undefined,
+          keywords: areaNames.length ? areaNames : undefined,
         };
       }),
     [buildings]

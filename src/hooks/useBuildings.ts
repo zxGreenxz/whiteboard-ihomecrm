@@ -8,7 +8,7 @@ type Building = Database["public"]["Tables"]["buildings"]["Row"];
 type BuildingInsert = Database["public"]["Tables"]["buildings"]["Insert"];
 type BuildingUpdate = Database["public"]["Tables"]["buildings"]["Update"];
 
-// Fetch all buildings with area info and non-deleted rooms count.
+// Fetch all buildings with areas (N-N qua area_buildings) and non-deleted rooms count.
 // Mặc định ẩn tòa ảo (is_virtual=true) — chỉ form thu/chi mới truyền { includeVirtual: true }
 // để cho phép chọn mục "Chung" (tòa ảo đại diện chi phí không thuộc tòa thật).
 export const useBuildings = (options?: { includeVirtual?: boolean }) => {
@@ -16,17 +16,17 @@ export const useBuildings = (options?: { includeVirtual?: boolean }) => {
   return useQuery({
     queryKey: ["buildings", { includeVirtual }],
     queryFn: async () => {
-      let q = supabase
+      let q = (supabase
         .from("buildings")
         .select(`
           *,
-          area:areas(id, name, code),
+          area_links:area_buildings(area_id, area:areas(id, name, code)),
           rooms:rooms(count)
-        `)
+        `) as any)
         .is("deleted_at", null)
         .is("rooms.deleted_at", null);
       if (!includeVirtual) {
-        q = q.eq("is_virtual" as any, false);
+        q = q.eq("is_virtual", false);
       }
       const { data, error } = await q.order("created_at", { ascending: false });
 
@@ -35,10 +35,12 @@ export const useBuildings = (options?: { includeVirtual?: boolean }) => {
         return [];
       }
 
-      // Transform data to include rooms count
-      return (data || []).map(building => ({
+      // Transform: rooms count + bung membership khu vực thành area_ids/areas
+      return ((data || []) as any[]).map(building => ({
         ...building,
-        rooms_count: building.rooms?.[0]?.count || 0
+        rooms_count: building.rooms?.[0]?.count || 0,
+        area_ids: (building.area_links || []).map((l: any) => l.area_id),
+        areas: (building.area_links || []).map((l: any) => l.area).filter(Boolean),
       }));
     },
   });
@@ -53,7 +55,7 @@ export const useBuilding = (id: string) => {
         .from("buildings")
         .select(`
           *,
-          area:areas(id, name, code)
+          area_links:area_buildings(area_id, area:areas(id, name, code))
         `)
         .eq("id", id)
         .is("deleted_at", null)
@@ -64,7 +66,13 @@ export const useBuilding = (id: string) => {
         return null;
       }
 
-      return data;
+      return data
+        ? {
+            ...data,
+            area_ids: (data.area_links || []).map((l: any) => l.area_id),
+            areas: (data.area_links || []).map((l: any) => l.area).filter(Boolean),
+          }
+        : null;
     },
     enabled: !!id,
   });
