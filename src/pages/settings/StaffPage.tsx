@@ -1089,7 +1089,9 @@ function StaffTab() {
               onClick={handleSave}
               disabled={
                 !form?.role_id ||
-                (!form?.all_buildings && (form?.building_ids?.length || 0) === 0) ||
+                (!form?.all_buildings &&
+                  (form?.building_ids?.length || 0) === 0 &&
+                  (form?.area_ids?.length || 0) === 0) ||
                 (!isEdit && (!form?.username?.trim() || !form?.password || form.password.length < 6 || form.password !== form.confirmPassword)) ||
                 provisionStaff.isPending || updateStaff.isPending || updatePerms.isPending
               }
