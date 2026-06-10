@@ -186,29 +186,22 @@ export const useAssignBuildingsToArea = () => {
   });
 };
 
-// Soft delete area
+// Soft delete area — khu vực chỉ là NHÃN NHÓM toà: xoá khu thì gỡ nhãn khỏi
+// các toà (về "Chưa phân khu"), không chặn như trước (khớp message confirm
+// trong ManageAreasDialog). Không ảnh hưởng dữ liệu/quyền của toà.
 export const useDeleteArea = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // First check if area has buildings
-      const { data: buildings, error: checkError } = await supabase
+      const { error: unassignError } = await supabase
         .from("buildings")
-        .select("id")
-        .eq("area_id", id)
-        .is("deleted_at", null);
+        .update({ area_id: null })
+        .eq("area_id", id);
 
-      if (checkError) {
-        toast.error("Không thể kiểm tra khu vực");
-        throw checkError;
-      }
-
-      if (buildings && buildings.length > 0) {
-        toast.error(
-          `Không thể xóa khu vực đang có ${buildings.length} tòa nhà`
-        );
-        throw new Error("Area has buildings");
+      if (unassignError) {
+        toast.error("Không thể gỡ toà nhà khỏi khu vực");
+        throw unassignError;
       }
 
       // Soft delete
@@ -224,6 +217,7 @@ export const useDeleteArea = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["areas"] });
+      queryClient.invalidateQueries({ queryKey: ["buildings"] });
       toast.success("Khu vực đã được xóa thành công");
     },
     onError: (error) => {
