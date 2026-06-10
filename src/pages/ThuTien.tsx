@@ -30,6 +30,7 @@ import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
+import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
 
 const currentMonth = () => {
   const d = new Date();
@@ -73,6 +74,17 @@ const ThuTien = () => {
     billing_month: billingMonth,
   });
   const allRooms = useMemo(() => invoicesData?.data ?? [], [invoicesData]);
+
+  // Ai thu bao nhiêu (creator_name phiếu thu theo payment) cho ô phòng + drawer.
+  const invoiceIds = useMemo(() => allRooms.map((i) => i.id), [allRooms]);
+  const { data: collectorsMap = {} } = useInvoiceCollectors(invoiceIds);
+  const collectorNames = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const [id, entries] of Object.entries(collectorsMap)) {
+      out[id] = entries.map((e) => e.creator_name ?? '');
+    }
+    return out;
+  }, [collectorsMap]);
 
   const [lo, hi] = useMemo<[string, string]>(() => {
     if (timeFilter === 'today') return [todayISO(), todayISO()];
@@ -302,6 +314,7 @@ const ThuTien = () => {
             ) : (
               <RoomCellGrid
                 list={list}
+                collectorsByInvoice={collectorNames}
                 canRecordPayment={canRecordPayment}
                 emptyIcon={emptyIcon}
                 emptyMessage={emptyMessage}
@@ -317,6 +330,7 @@ const ThuTien = () => {
           invoice={openInvoice}
           show={drawer.show}
           mode={drawer.mode}
+          collectors={openInvoice ? collectorsMap[openInvoice.id] ?? [] : []}
           canRecordPayment={canRecordPayment}
           prev={prev}
           next={next}

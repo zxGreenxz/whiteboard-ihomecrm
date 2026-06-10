@@ -70,6 +70,64 @@ export const cellSubText = (inv: InvoiceWithRelations): string => {
   return 'Chưa thu';
 };
 
+// ── Người thu (creator_name trên phiếu thu liên kết payment) ──
+
+/** Chữ cái đại diện: chữ đầu của TỪ CUỐI trong tên ("nguyễn tâm" → "T", "Nathan" → "N"). */
+export const collectorInitial = (name?: string | null): string => {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '?';
+  return words[words.length - 1].charAt(0).toLocaleUpperCase('vi-VN');
+};
+
+/** Bỏ trùng tên (case-insensitive), giữ thứ tự thu trước → sau. */
+const dedupeNames = (names: Array<string | null | undefined>): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of names) {
+    const t = (n ?? '').trim();
+    if (!t) continue;
+    const key = t.toLocaleLowerCase('vi-VN');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+};
+
+/** "T" / "T+N" — chữ cái các người thu, '' nếu không có dữ liệu. */
+export const collectorInitials = (names: Array<string | null | undefined>): string =>
+  dedupeNames(names).map(collectorInitial).join('+');
+
+/** Nhãn trên ô Thu đủ: 1 người → tên đầy đủ; nhiều người → "T+N"; '' nếu trống. */
+export const collectorLabel = (names: Array<string | null | undefined>): string => {
+  const list = dedupeNames(names);
+  if (!list.length) return '';
+  return list.length === 1 ? list[0] : list.map(collectorInitial).join('+');
+};
+
+/**
+ * Chú thích ô phòng KÈM người thu:
+ *  - paid    : "{tên} Thu đủ" (nhiều người → "T+N Thu đủ")
+ *  - partial : "Thu thêm {K}(T)" / "(T+N)" — ai đã thu phần trước đó
+ *  - unpaid  : "Chưa thu"
+ * Không có dữ liệu người thu (phiếu cũ/đã xoá) → rơi về cellSubText thường.
+ */
+export const cellSubTextNamed = (
+  inv: InvoiceWithRelations,
+  collectorNames: Array<string | null | undefined>,
+): string => {
+  const st = collectStatus(inv);
+  if (st === 'paid') {
+    const label = collectorLabel(collectorNames);
+    return label ? `${label} Thu đủ` : 'Thu đủ';
+  }
+  if (st === 'partial') {
+    const ini = collectorInitials(collectorNames);
+    return `Thu thêm ${fmtK(remainingOf(inv))}${ini ? `(${ini})` : ''}`;
+  }
+  return 'Chưa thu';
+};
+
 // ── Khách đại diện (cho Zalo / Gọi) ──
 export const repCustomer = (
   inv: InvoiceWithRelations,

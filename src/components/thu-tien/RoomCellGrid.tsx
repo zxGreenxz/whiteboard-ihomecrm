@@ -3,6 +3,8 @@ import type { InvoiceWithRelations } from '@/types/invoice';
 
 interface Props {
   list: InvoiceWithRelations[];
+  /** invoice_id → tên người thu theo thứ tự thu. */
+  collectorsByInvoice?: Record<string, string[]>;
   canRecordPayment: boolean;
   emptyIcon: string;
   emptyMessage: string;
@@ -13,6 +15,7 @@ interface Props {
 
 export function RoomCellGrid({
   list,
+  collectorsByInvoice = {},
   canRecordPayment,
   emptyIcon,
   emptyMessage,
@@ -33,6 +36,7 @@ export function RoomCellGrid({
             <RoomCell
               key={inv.id}
               inv={inv}
+              collectors={collectorsByInvoice[inv.id]}
               canRecordPayment={canRecordPayment}
               onOpen={onOpen}
               onFull={onFull}

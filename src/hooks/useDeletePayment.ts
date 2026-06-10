@@ -72,6 +72,8 @@ export const useDeletePayment = () => {
       queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['accounts-with-balance'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-collectors'] });
+      queryClient.invalidateQueries({ queryKey: ['handover-vouchers'] });
 
       toast({
         title: 'Đã xoá phiếu thanh toán',

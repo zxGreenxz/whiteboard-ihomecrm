@@ -1,9 +1,11 @@
 import { Check, MessageCircle } from 'lucide-react';
-import { collectStatus, cellSubText, fmtK, repCustomer, zaloUrl } from '@/lib/collect';
+import { collectStatus, cellSubTextNamed, fmtK, repCustomer, zaloUrl } from '@/lib/collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 interface Props {
   inv: InvoiceWithRelations;
+  /** Tên người thu theo thứ tự thu (creator_name phiếu thu) — [] nếu chưa có dữ liệu. */
+  collectors?: string[];
   canRecordPayment: boolean;
   onOpen: (inv: InvoiceWithRelations) => void;
   onFull: (inv: InvoiceWithRelations) => void;
@@ -11,7 +13,7 @@ interface Props {
 }
 
 /** Ô phòng = 1 hoá đơn (layout "Ô vừa" — .icell). Nền tô theo trạng thái thu. */
-export function RoomCell({ inv, canRecordPayment, onOpen, onFull, onPart }: Props) {
+export function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onFull, onPart }: Props) {
   const st = collectStatus(inv);
   const rep = repCustomer(inv);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
@@ -37,7 +39,7 @@ export function RoomCell({ inv, canRecordPayment, onOpen, onFull, onPart }: Prop
       <div className="it-main">
         <div className="it-amtwrap">
           <div className="ic-amt">{fmtK(inv.total_amount)}</div>
-          <div className="ic-sub">{cellSubText(inv)}</div>
+          <div className="ic-sub">{cellSubTextNamed(inv, collectors)}</div>
         </div>
         {st === 'paid' ? (
           <span className="cell-done">

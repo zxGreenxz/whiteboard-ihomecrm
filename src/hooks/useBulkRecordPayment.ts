@@ -304,6 +304,8 @@ export const useBulkRecordPayment = () => {
       queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['accounts-with-balance'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-collectors'] });
+      queryClient.invalidateQueries({ queryKey: ['handover-vouchers'] });
     },
     onSuccess: (result) => {
       const okCount = result.ok.length;

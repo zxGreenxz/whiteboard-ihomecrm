@@ -155,7 +155,7 @@
 .tt-page .cells.tiles .it-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tt-page .cells.tiles .it-amtwrap { min-width: 0; }
 .tt-page .cells.tiles .ic-amt { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: -.4px; line-height: 1; color: var(--ink); }
-.tt-page .cells.tiles .ic-sub { font-size: 11px; font-weight: 600; margin-top: 5px; }
+.tt-page .cells.tiles .ic-sub { font-size: 11px; font-weight: 600; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .tt-page .cells.tiles .icell.unpaid .ic-sub { color: var(--c-unpaid); }
 .tt-page .cells.tiles .icell.partial .ic-sub { color: var(--c-partial); }
 .tt-page .cells.tiles .icell.paid .ic-sub { color: var(--c-paid); }
@@ -197,6 +197,8 @@
 .tt-page .ib-item:first-child { border-top: 0; }
 .tt-page .ib-item .ib-name { color: var(--ink-2); font-weight: 600; }
 .tt-page .ib-item .ib-val { margin-left: auto; font-family: var(--mono); font-weight: 700; color: var(--ink); }
+.tt-page .ib-item .ib-val.paid { color: var(--c-paid); }
+.tt-page .ib-item .ib-when { font-size: 11px; font-weight: 600; color: var(--ink-faint); }
 .tt-page .ib-item.total { background: var(--surface-2); }
 .tt-page .ib-item.total .ib-name { font-weight: 700; color: var(--ink); }
 .tt-page .ib-item.total .ib-val { font-size: 14px; }

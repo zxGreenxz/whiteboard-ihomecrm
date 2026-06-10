@@ -18,6 +18,7 @@ import { useUpdateInvoiceNote } from '@/hooks/useUpdateInvoiceNote';
 import { InvoiceDetailCard } from './InvoiceDetailCard';
 import { CollectKeypad } from './CollectKeypad';
 import { NoteEditor } from './NoteEditor';
+import type { CollectorEntry } from '@/hooks/useInvoiceCollectors';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 interface Props {
@@ -25,6 +26,8 @@ interface Props {
   show: boolean;
   /** keypad = mở từ nút "Thu 1P" (sheet gọn); view = tap ô (sheet đầy đủ). */
   mode: 'view' | 'keypad';
+  /** Lịch sử ai thu bao nhiêu của hoá đơn đang mở. */
+  collectors?: CollectorEntry[];
   canRecordPayment: boolean;
   prev: InvoiceWithRelations | null;
   next: InvoiceWithRelations | null;
@@ -36,6 +39,7 @@ export function CollectDrawer({
   invoice,
   show,
   mode,
+  collectors = [],
   canRecordPayment,
   prev,
   next,
@@ -165,7 +169,7 @@ export function CollectDrawer({
             </span>
           </div>
 
-          <InvoiceDetailCard invoice={invoice} />
+          <InvoiceDetailCard invoice={invoice} collectors={collectors} />
 
           {(noteOpen || noteDraft) && (
             <div className="is-note">

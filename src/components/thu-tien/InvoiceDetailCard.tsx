@@ -1,8 +1,18 @@
 import { fmtFull, remainingOf } from '@/lib/collect';
+import type { CollectorEntry } from '@/hooks/useInvoiceCollectors';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
-/** Thẻ số tiền (.is-amount) + chi tiết invoice_items (.is-break). */
-export function InvoiceDetailCard({ invoice }: { invoice: InvoiceWithRelations }) {
+const fmtDate = (d?: string | null) =>
+  d ? d.slice(0, 10).split('-').reverse().slice(0, 2).join('/') : '';
+
+interface Props {
+  invoice: InvoiceWithRelations;
+  /** Lịch sử ai thu bao nhiêu (phiếu thu theo payment) — [] nếu chưa thu/không có dữ liệu. */
+  collectors?: CollectorEntry[];
+}
+
+/** Thẻ số tiền (.is-amount) + chi tiết invoice_items (.is-break) + ai thu bao nhiêu. */
+export function InvoiceDetailCard({ invoice, collectors = [] }: Props) {
   const items = invoice.invoice_items ?? [];
   const remaining = remainingOf(invoice);
 
@@ -24,6 +34,31 @@ export function InvoiceDetailCard({ invoice }: { invoice: InvoiceWithRelations }
           </div>
         </div>
       </div>
+
+      {collectors.length > 0 && (
+        <div className="is-break">
+          <div className="ib-lbl">Ai thu bao nhiêu</div>
+          <div className="ib-list">
+            {collectors.map((c, i) => (
+              <div className="ib-item" key={c.payment_id ?? i}>
+                <span className="ib-name">
+                  {(c.creator_name ?? '').trim() || '—'}
+                  <span className="ib-when"> · {fmtDate(c.date)}</span>
+                </span>
+                <span className="ib-val paid">{fmtFull(c.amount)}</span>
+              </div>
+            ))}
+            {collectors.length > 1 && (
+              <div className="ib-item total">
+                <span className="ib-name">Tổng đã thu</span>
+                <span className="ib-val">
+                  {fmtFull(collectors.reduce((s, c) => s + c.amount, 0))}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {items.length > 0 && (
         <div className="is-break">

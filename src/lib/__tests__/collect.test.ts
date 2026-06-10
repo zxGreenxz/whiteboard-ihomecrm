@@ -8,6 +8,10 @@ import {
   remainingOf,
   collectStatus,
   cellSubText,
+  cellSubTextNamed,
+  collectorInitial,
+  collectorInitials,
+  collectorLabel,
   repCustomer,
   zaloUrl,
   collectedAt,
@@ -52,6 +56,42 @@ describe('formatters', () => {
   it('fmtBillingMonth: YYYY-MM → ThM/YYYY', () => {
     expect(fmtBillingMonth('2026-06')).toBe('Th6/2026');
     expect(fmtBillingMonth(null)).toBe('');
+  });
+});
+
+describe('người thu (collector*)', () => {
+  it('collectorInitial: chữ đầu TỪ CUỐI, hoa', () => {
+    expect(collectorInitial('nguyễn tâm')).toBe('T');
+    expect(collectorInitial('Nathan')).toBe('N');
+    expect(collectorInitial('Trần Bảo Hiệp')).toBe('H');
+    expect(collectorInitial('  ')).toBe('?');
+    expect(collectorInitial(null)).toBe('?');
+  });
+
+  it('collectorInitials: bỏ trùng, giữ thứ tự, nối "+"', () => {
+    expect(collectorInitials(['nguyễn tâm', 'Nathan'])).toBe('T+N');
+    expect(collectorInitials(['nguyễn tâm', 'Nguyễn Tâm', 'Nathan'])).toBe('T+N');
+    expect(collectorInitials(['', null, undefined])).toBe('');
+  });
+
+  it('collectorLabel: 1 người → tên đầy đủ, nhiều → chữ cái', () => {
+    expect(collectorLabel(['nguyễn tâm'])).toBe('nguyễn tâm');
+    expect(collectorLabel(['nguyễn tâm', 'Nathan'])).toBe('T+N');
+    expect(collectorLabel([])).toBe('');
+  });
+
+  it('cellSubTextNamed: paid → "{tên} Thu đủ", partial → "Thu thêm K(T+N)"', () => {
+    const paid = inv({ status: 'PAID', paid_amount: 1_000_000, remaining_amount: 0 });
+    expect(cellSubTextNamed(paid, ['nguyễn tâm'])).toBe('nguyễn tâm Thu đủ');
+    expect(cellSubTextNamed(paid, ['nguyễn tâm', 'Nathan'])).toBe('T+N Thu đủ');
+    expect(cellSubTextNamed(paid, [])).toBe('Thu đủ');
+
+    const part = inv({ status: 'PARTIAL_PAID', paid_amount: 400_000, remaining_amount: 600_000 });
+    expect(cellSubTextNamed(part, ['nguyễn tâm'])).toBe('Thu thêm 600K(T)');
+    expect(cellSubTextNamed(part, ['nguyễn tâm', 'Nathan'])).toBe('Thu thêm 600K(T+N)');
+    expect(cellSubTextNamed(part, [])).toBe('Thu thêm 600K');
+
+    expect(cellSubTextNamed(inv({}), ['nguyễn tâm'])).toBe('Chưa thu');
   });
 });
 
