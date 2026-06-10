@@ -1,6 +1,8 @@
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import BuildingMultiSelect from '@/components/buildings/BuildingMultiSelect';
 import { Search } from 'lucide-react';
+import type { BuildingWithRelations } from '@/types/building';
 
 interface Area {
   id: string;
@@ -13,9 +15,11 @@ interface BuildingListFiltersProps {
   onSearchChange: (value: string) => void;
   statusFilter: string;
   onStatusChange: (value: string) => void;
-  areaFilter: string;
-  onAreaChange: (value: string) => void;
+  /** Danh sách building_id đang lọc. [] = tất cả toà nhà. */
+  buildingIds: string[];
+  onBuildingIdsChange: (ids: string[]) => void;
   areas: Area[];
+  buildings: BuildingWithRelations[];
 }
 
 export default function BuildingListFilters({
@@ -23,9 +27,10 @@ export default function BuildingListFilters({
   onSearchChange,
   statusFilter,
   onStatusChange,
-  areaFilter,
-  onAreaChange,
+  buildingIds,
+  onBuildingIdsChange,
   areas,
+  buildings,
 }: BuildingListFiltersProps) {
   return (
     <div className="flex flex-col sm:flex-row gap-3">
@@ -49,15 +54,13 @@ export default function BuildingListFilters({
           { value: 'INACTIVE', label: 'Ngừng hoạt động' },
         ]}
       />
-      <SearchableSelect
-        value={areaFilter}
-        onValueChange={onAreaChange}
-        className="w-full sm:w-[200px]"
-        placeholder="Khu vực"
-        options={[
-          { value: 'all', label: 'Tất cả khu vực' },
-          ...areas.map((area) => ({ value: area.id, label: area.name })),
-        ]}
+      {/* Khu vực + Toà nhà — chọn nhiều toà, nhóm theo khu */}
+      <BuildingMultiSelect
+        value={buildingIds}
+        onChange={onBuildingIdsChange}
+        buildings={buildings}
+        areas={areas}
+        className="w-full sm:w-[260px]"
       />
     </div>
   );

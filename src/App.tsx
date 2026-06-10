@@ -37,7 +37,6 @@ const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 
 // Danh mục dữ liệu
-const AreasPage = lazy(() => import("./pages/areas/AreasPage"));
 const BuildingsPage = lazy(() => import("./pages/buildings/BuildingsPage"));
 const BuildingDetailPage = lazy(() => import("./pages/buildings/BuildingDetailPage"));
 const RoomsPage = lazy(() => import("./pages/rooms/RoomsPage"));
@@ -234,7 +233,8 @@ const App = () => (
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
           {/* === DANH MỤC DỮ LIỆU === */}
-          <Route path="/areas" element={<ProtectedRoute><AreasPage /></ProtectedRoute>} />
+          {/* /areas đã gỡ: khu vực = nhãn nhóm toà, quản lý bằng dialog trong /buildings */}
+          <Route path="/areas" element={<Navigate to="/buildings" replace />} />
           <Route path="/buildings" element={<ProtectedRoute><BuildingsPage /></ProtectedRoute>} />
           <Route path="/buildings/:id" element={<ProtectedRoute><BuildingDetailPage /></ProtectedRoute>} />
           {/* Primary route: /apartments, redirect /rooms → /apartments */}

@@ -1,12 +1,10 @@
-import { useState, useMemo } from 'react';
-import { useAreas } from '@/hooks/useAreas';
-import { useBuildings } from '@/hooks/useBuildings';
+import { useState } from 'react';
 import { useRooms } from '@/hooks/useRooms';
-import { useMyContext } from '@/hooks/useMyContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { BuildingMultiSelect } from '@/components/buildings/BuildingMultiSelect';
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from '@/lib/roomSort';
 import type { InvoiceFilters } from '@/types/invoice';
 
@@ -22,19 +20,15 @@ const ALL_VALUE = '__all__';
 const MONTHS = ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'];
 
 const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: InvoiceListFiltersProps) => {
-  const { data: areas = [] } = useAreas();
-  const { data: allBuildings = [] } = useBuildings();
-  const { data: rooms = [] } = useRooms(filters.building_id);
-  const { data: ctx } = useMyContext();
-  // Staff không được chọn khu vực — scope đã được RPC/RLS giới hạn theo
-  // building được gán. Ẩn ô lọc để tránh hiểu nhầm.
-  const showAreaFilter = ctx?.isStaff !== true;
-
-  // Cascade khu vực → toà nhà: chỉ list các toà thuộc khu vực đang chọn
-  const buildings = useMemo(() => {
-    if (!filters.area_id) return allBuildings;
-    return (allBuildings as any[]).filter((b) => b.area_id === filters.area_id);
-  }, [allBuildings, filters.area_id]);
+  // Khu vực + Toà nhà gộp thành BuildingMultiSelect (click tên khu = chọn cả
+  // nhóm toà). Staff không cần ẩn/khoá gì: useBuildings đã bị RLS cắt theo
+  // scope nên dropdown tự nhiên chỉ hiện toà được quản.
+  const buildingIds = filters.building_ids ?? [];
+  // Nguồn phòng: 1 toà được chọn → phòng của toà đó; ngược lại mọi phòng
+  // (lọc phòng theo TÊN, query .in(room_ids) giao với building_ids nên đúng).
+  const { data: rooms = [] } = useRooms(
+    buildingIds.length === 1 ? buildingIds[0] : filters.building_id,
+  );
 
   // Month Picker state
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
@@ -54,14 +48,14 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     onFiltersChange({ ...filters, ...patch });
   };
 
-  const handleAreaChange = (value: string) => {
-    const areaId = value === ALL_VALUE ? undefined : value;
-    update({ area_id: areaId, building_id: undefined, room_id: undefined, room_ids: undefined });
-  };
-
-  const handleBuildingChange = (value: string) => {
-    const buildingId = value === ALL_VALUE ? undefined : value;
-    update({ building_id: buildingId, room_id: undefined, room_ids: undefined });
+  const handleBuildingIdsChange = (ids: string[]) => {
+    update({
+      building_ids: ids.length ? ids : undefined,
+      area_id: undefined,
+      building_id: undefined,
+      room_id: undefined,
+      room_ids: undefined,
+    });
   };
 
   // Lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà → 1 lựa chọn).
@@ -100,7 +94,6 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     setMonthPickerOpen(false);
   };
 
-  const triggerClass = compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[150px]';
   const roomTriggerClass = compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[140px]';
   const monthTriggerClass = compact
     ? 'h-9 text-sm flex-1 min-w-0 justify-start font-normal px-2'
@@ -108,30 +101,12 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
 
   return (
     <div className={compact ? 'flex flex-nowrap items-center gap-2 px-3 pt-3' : 'flex flex-wrap items-center gap-2 mb-4'}>
-      {/* Chọn khu vực — ẩn cho staff */}
-      {!compact && showAreaFilter && (
-        <SearchableSelect
-          value={filters.area_id ?? ALL_VALUE}
-          onValueChange={handleAreaChange}
-          className="h-9 text-sm w-[150px]"
-          placeholder="Chọn khu vực"
-          options={[
-            { value: ALL_VALUE, label: 'Tất cả khu vực' },
-            ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
-          ]}
-        />
-      )}
-
-      {/* Chọn toà nhà */}
-      <SearchableSelect
-        value={filters.building_id ?? ALL_VALUE}
-        onValueChange={handleBuildingChange}
-        className={triggerClass}
-        placeholder="Chọn toà nhà"
-        options={[
-          { value: ALL_VALUE, label: compact ? 'Tất cả' : 'Tất cả toà nhà' },
-          ...buildings.map((b: any) => ({ value: b.id, label: b.name })),
-        ]}
+      {/* Chọn toà nhà — nhiều toà, nhóm theo khu vực (click khu = cả nhóm) */}
+      <BuildingMultiSelect
+        value={buildingIds}
+        onChange={handleBuildingIdsChange}
+        className={compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[220px]'}
+        placeholder={compact ? 'Tất cả' : 'Tất cả toà nhà'}
       />
 
       {/* Chọn phòng — gộp theo tên (nhiều toà cùng "101" → 1 mục) */}

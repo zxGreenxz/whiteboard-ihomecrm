@@ -3,8 +3,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useOverpaymentReport } from "@/hooks/useReports";
-import { useAreas } from "@/hooks/useAreas";
-import { useBuildings } from "@/hooks/useBuildings";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -18,24 +17,22 @@ const formatCurrency = (n: number) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
 
 export default function OverpaymentReport() {
-  const [areaId, setAreaId] = useState<string>("all");
-  const [buildingId, setBuildingId] = useState<string>("all");
+  // Lọc nhiều toà (nhóm theo khu vực trong BuildingMultiSelect). [] = tất cả.
+  // Lọc client-side theo buildings.id trên rows đã fetch (hook không nhận filter).
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  const { data: areas = [] } = useAreas();
-  const { data: buildings = [] } = useBuildings();
   const { data: overpayments = [], isLoading } = useOverpaymentReport();
 
   const filtered = useMemo(() => {
     let arr = [...(overpayments as any[])];
-    if (buildingId !== "all") {
-      const b = (buildings || []).find((x) => x.id === buildingId);
-      if (b) arr = arr.filter((o) => o.rooms?.buildings?.name === b.name);
+    if (buildingIds.length > 0) {
+      arr = arr.filter((o) => buildingIds.includes(o.rooms?.buildings?.id));
     }
     return arr;
-  }, [overpayments, buildingId, buildings]);
+  }, [overpayments, buildingIds]);
 
   const total = filtered.reduce((s, o: any) => s + (o.overpaid_amount || 0), 0);
   const totalCount = filtered.length;
@@ -53,26 +50,14 @@ export default function OverpaymentReport() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <SearchableSelect
-            value={areaId}
-            onValueChange={setAreaId}
-            className="w-[200px]"
-            placeholder="Chọn khu vực"
-            options={[
-              { value: "all", label: "Tất cả khu vực" },
-              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-
-          <SearchableSelect
-            value={buildingId}
-            onValueChange={setBuildingId}
-            className="w-[200px]"
-            placeholder="Chọn tòa nhà"
-            options={[
-              { value: "all", label: "Tất cả tòa nhà" },
-              ...buildings.map((b) => ({ value: b.id, label: b.name })),
-            ]}
+          <BuildingMultiSelect
+            value={buildingIds}
+            onChange={(ids) => {
+              setBuildingIds(ids);
+              setPage(1);
+            }}
+            className="w-[260px]"
+            placeholder="Tất cả toà nhà"
           />
 
           <SearchableSelect

@@ -10,9 +10,8 @@ import { DateInput } from "@/components/ui/date-input";
 import { MonthInput } from "@/components/ui/month-input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
-import { useAreas } from "@/hooks/useAreas";
-import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
@@ -69,17 +68,17 @@ export function IncomeExpenseFilterPanel({
     if (open) setDraft(filters);
   }, [open, filters]);
 
-  const { data: areas } = useAreas();
-  const { data: allBuildings } = useBuildings({ includeVirtual: true });
-  const { data: rooms } = useRooms(draft.building_id ?? undefined);
+  // Lọc nhiều toà (BuildingMultiSelect). [] = tất cả toà.
+  const draftBuildingIds = draft.building_ids ?? [];
+  // Phòng chỉ lọc được khi chọn đúng 1 toà (cascade phòng theo toà đơn).
+  const draftSingleBuildingId =
+    draftBuildingIds.length === 1 ? draftBuildingIds[0] : undefined;
+
+  const { data: rooms } = useRooms(draftSingleBuildingId);
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
   const { data: expenseTypes } = useIncomeExpenseTypes("expense");
   const { data: staffUsers } = useStaffUsers();
-
-  const filteredBuildings = draft.area_id
-    ? (allBuildings || []).filter((b) => b.area_id === draft.area_id)
-    : allBuildings || [];
 
   const patch = (p: Partial<IncomeExpenseFilters>) =>
     setDraft((d) => ({ ...d, ...p }));
@@ -228,57 +227,37 @@ export function IncomeExpenseFilterPanel({
             </div>
           </div>
 
-          {/* Khu vực */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Khu vực</Label>
-            <SearchableSelect
-              value={draft.area_id ?? "ALL"}
-              onValueChange={(v) =>
-                patch({
-                  area_id: v === "ALL" ? null : v,
-                  building_id: null,
-                  room_id: null,
-                  room_ids: null,
-                })
-              }
-              placeholder="Chọn khu vực"
-              options={[
-                { value: "ALL", label: "Tất cả khu vực" },
-                ...(areas || []).map((a) => ({ value: a.id, label: a.name })),
-              ]}
-            />
-          </div>
-
-          {/* Tòa nhà */}
+          {/* Tòa nhà — chọn nhiều, nhóm theo khu vực (click tên khu = chọn cả nhóm) */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Tòa nhà</Label>
-            <SearchableSelect
-              value={draft.building_id ?? "ALL"}
-              onValueChange={(v) =>
+            <BuildingMultiSelect
+              value={draftBuildingIds}
+              onChange={(ids) =>
                 patch({
-                  building_id: v === "ALL" ? null : v,
+                  building_ids: ids,
+                  // Legacy single-select — null để không sót filter cũ
+                  area_id: null,
+                  building_id: null,
+                  // Đổi toà thì reset phòng (danh sách phòng phụ thuộc toà)
                   room_id: null,
                   room_ids: null,
                 })
               }
-              placeholder="Chọn tòa nhà"
-              options={[
-                { value: "ALL", label: "Tất cả tòa nhà" },
-                ...filteredBuildings.map((b) => ({ value: b.id, label: b.name })),
-              ]}
             />
           </div>
 
-          {/* Phòng — gộp theo tên (nhiều toà cùng "101" → 1 mục) */}
+          {/* Phòng — chỉ enable khi chọn đúng 1 toà */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Phòng</Label>
             <SearchableSelect
               value={
-                roomNameFromIds(rooms || [], draft.room_ids) ??
-                (draft.room_id
-                  ? (rooms || []).find((r) => r.id === draft.room_id)?.name
-                  : undefined) ??
-                "ALL"
+                draftSingleBuildingId
+                  ? (roomNameFromIds(rooms || [], draft.room_ids) ??
+                    (draft.room_id
+                      ? (rooms || []).find((r) => r.id === draft.room_id)?.name
+                      : undefined) ??
+                    "ALL")
+                  : undefined
               }
               onValueChange={(name) =>
                 patch({
@@ -287,7 +266,8 @@ export function IncomeExpenseFilterPanel({
                     name === "ALL" ? null : roomIdsByName(rooms || [], name),
                 })
               }
-              placeholder="Chọn phòng"
+              disabled={!draftSingleBuildingId}
+              placeholder="Chọn đúng 1 tòa để lọc phòng"
               options={[
                 { value: "ALL", label: "Tất cả phòng" },
                 ...uniqueRoomNames(rooms || []).map((n) => ({

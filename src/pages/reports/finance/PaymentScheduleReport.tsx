@@ -3,8 +3,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { usePaymentScheduleReport } from "@/hooks/useReports";
-import { useAreas } from "@/hooks/useAreas";
-import { useBuildings } from "@/hooks/useBuildings";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -19,22 +18,26 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 export default function PaymentScheduleReport() {
-  const [areaId, setAreaId] = useState<string>("all");
-  const [buildingId, setBuildingId] = useState<string>("all");
+  // Lọc nhiều toà (nhóm theo khu vực trong BuildingMultiSelect). [] = tất cả.
+  // Lọc client-side theo buildings.id trên invoices đã fetch, TRƯỚC khi gộp phòng.
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState<string>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
-  const { data: areas = [] } = useAreas();
-  const { data: buildings = [] } = useBuildings();
   const { data: invoices = [], isLoading } = usePaymentScheduleReport(365);
 
   // Group invoices by room → "đã lên hóa đơn đến ngày" = latest billing_period_end per room
   const rows = useMemo(() => {
+    let list = invoices as any[];
+    if (buildingIds.length > 0) {
+      list = list.filter((inv) => buildingIds.includes(inv.rooms?.buildings?.id));
+    }
+
     const byRoom = new Map<string, any>();
-    (invoices as any[]).forEach((inv) => {
+    list.forEach((inv) => {
       const roomKey = inv.rooms?.room_number ? `${inv.rooms?.buildings?.name || ""}|${inv.rooms?.room_number}` : inv.id;
       const billedThrough = inv.billing_period_end || inv.due_date;
       if (!byRoom.has(roomKey)) {
@@ -54,17 +57,13 @@ export default function PaymentScheduleReport() {
 
     let arr = Array.from(byRoom.values());
 
-    if (buildingId !== "all") {
-      const b = (buildings || []).find((x) => x.id === buildingId);
-      if (b) arr = arr.filter((r) => r.building === b.name);
-    }
     if (startDate) arr = arr.filter((r) => new Date(r.billedThrough) >= new Date(startDate));
     if (endDate) arr = arr.filter((r) => new Date(r.billedThrough) <= new Date(endDate));
 
     return arr.sort((a, b) =>
       new Date(b.billedThrough).getTime() - new Date(a.billedThrough).getTime()
     );
-  }, [invoices, buildingId, buildings, startDate, endDate]);
+  }, [invoices, buildingIds, startDate, endDate]);
 
   const totalCount = rows.length;
   const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
@@ -81,26 +80,14 @@ export default function PaymentScheduleReport() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <SearchableSelect
-            value={areaId}
-            onValueChange={setAreaId}
-            className="w-[180px]"
-            placeholder="Chọn khu vực"
-            options={[
-              { value: "all", label: "Tất cả khu vực" },
-              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-
-          <SearchableSelect
-            value={buildingId}
-            onValueChange={setBuildingId}
-            className="w-[180px]"
-            placeholder="Chọn tòa nhà"
-            options={[
-              { value: "all", label: "Tất cả tòa nhà" },
-              ...buildings.map((b) => ({ value: b.id, label: b.name })),
-            ]}
+          <BuildingMultiSelect
+            value={buildingIds}
+            onChange={(ids) => {
+              setBuildingIds(ids);
+              setPage(1);
+            }}
+            className="w-[260px]"
+            placeholder="Tất cả toà nhà"
           />
 
           <SearchableSelect

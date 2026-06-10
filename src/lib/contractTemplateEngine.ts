@@ -14,14 +14,13 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 
 // docxtemplater + pizzip khá nặng và chỉ chạy khi in hợp đồng — dynamic
-// import để không vào bundle đầu.
-type DocxtemplaterModule = typeof import("docxtemplater");
-type PizZipModule = typeof import("pizzip");
-let docxtemplaterPromise: Promise<DocxtemplaterModule> | null = null;
-let pizzipPromise: Promise<PizZipModule> | null = null;
-const getDocxtemplater = (): Promise<DocxtemplaterModule> =>
+// import để không vào bundle đầu. Cả 2 là CJS (export =) nên import() trả
+// namespace { default } — dùng kiểu namespace thay vì typeof module để khớp.
+let docxtemplaterPromise: Promise<{ default: any }> | null = null;
+let pizzipPromise: Promise<{ default: any }> | null = null;
+const getDocxtemplater = (): Promise<{ default: any }> =>
   (docxtemplaterPromise ??= import("docxtemplater"));
-const getPizZip = (): Promise<PizZipModule> =>
+const getPizZip = (): Promise<{ default: any }> =>
   (pizzipPromise ??= import("pizzip"));
 
 const TEMPLATE_BUCKET = "document-templates";

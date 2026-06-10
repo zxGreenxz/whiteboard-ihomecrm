@@ -433,37 +433,9 @@ export const useRemoveStaffMember = () => {
   });
 };
 
-// =============================================================
-// Áp template (Tier 1 → Tier 2): copy role.permissions vào
-// staff_assignments.permissions cho mọi row của staff. Đồng thời
-// cập nhật role_id để badge UI hiển thị mẫu hiện hành.
-// =============================================================
-export const useApplyTemplate = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ staffId, roleId }: { staffId: string; roleId: string }) => {
-      const { data: role, error: roleErr } = await supabase
-        .from("roles")
-        .select("permissions")
-        .eq("id", roleId)
-        .single();
-      if (roleErr) throw roleErr;
-
-      const { error: updErr } = await supabase
-        .from("staff_assignments")
-        .update({ role_id: roleId, permissions: role!.permissions })
-        .eq("staff_id", staffId);
-      if (updErr) throw updErr;
-
-      return { staffId, roleId };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["staff_assignments"] });
-      toast.success("Đã áp mẫu phân quyền");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-};
+// LƯU Ý: useApplyTemplate đã bị XOÁ — dead code chưa từng được gọi (flow áp
+// mẫu thực tế: applyTemplateToDraft copy vào draft client-side → handleSave
+// → useUpdateStaffMember re-snapshot + useUpdateStaffPermissions).
 
 // =============================================================
 // Lưu permissions tinh chỉnh per staff. UPDATE mọi row của staff

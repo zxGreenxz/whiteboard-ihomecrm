@@ -34,8 +34,7 @@ import {
   summarizeByBuilding,
   type HeldDepositRow,
 } from "@/hooks/useDepositDashboard";
-import { useAreas } from "@/hooks/useAreas";
-import { useBuildings } from "@/hooks/useBuildings";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
 import { EditDepositDialog } from "@/components/deposits/EditDepositDialog";
 import { ConvertToContractDialog } from "@/components/deposits/ConvertToContractDialog";
@@ -87,9 +86,8 @@ function KpiCard({
 const DepositsPage = () => {
   const [tab, setTab] = useState("overview");
 
-  // Bộ lọc dùng chung cho các tab dashboard.
-  const [areaId, setAreaId] = useState<string>("all");
-  const [buildingId, setBuildingId] = useState<string>("all");
+  // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
 
   // Tab "Phiếu giữ chỗ" (CRUD).
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -101,8 +99,6 @@ const DepositsPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [onlyShort, setOnlyShort] = useState(false);
 
-  const { data: areas = [] } = useAreas();
-  const { data: buildings = [] } = useBuildings();
   const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
   const { data: refunds = [], isLoading: refundsLoading } =
     useDepositRefundsForfeits();
@@ -113,17 +109,17 @@ const DepositsPage = () => {
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
     () =>
-      buildingId === "all"
+      buildingIds.length === 0
         ? held
-        : held.filter((r) => r.building_id === buildingId),
-    [held, buildingId],
+        : held.filter((r) => buildingIds.includes(r.building_id)),
+    [held, buildingIds],
   );
   const refundsFiltered = useMemo(
     () =>
-      buildingId === "all"
+      buildingIds.length === 0
         ? refunds
-        : refunds.filter((r) => r.building_id === buildingId),
-    [refunds, buildingId],
+        : refunds.filter((r) => buildingIds.includes(r.building_id)),
+    [refunds, buildingIds],
   );
 
   const byBuilding = useMemo(
@@ -166,11 +162,13 @@ const DepositsPage = () => {
   const holdingAmount = useMemo(() => {
     return deposits
       .filter((d) => HOLDING_STATUSES.has(d.status as string))
-      .filter((d) =>
-        buildingId === "all" ? true : d.room?.building?.id === buildingId,
+      .filter(
+        (d) =>
+          buildingIds.length === 0 ||
+          buildingIds.includes(d.room?.building?.id ?? ""),
       )
       .reduce((s, d) => s + (d.amount || 0), 0);
-  }, [deposits, buildingId]);
+  }, [deposits, buildingIds]);
 
   const shortfallRows = useMemo(() => {
     const rows = heldFiltered.filter((r) => r.state !== "FULL");
@@ -179,7 +177,10 @@ const DepositsPage = () => {
 
   // Tab giữ chỗ — lọc theo search + toà nhà.
   const filteredDeposits = deposits.filter((deposit) => {
-    if (buildingId !== "all" && deposit.room?.building?.id !== buildingId)
+    if (
+      buildingIds.length > 0 &&
+      !buildingIds.includes(deposit.room?.building?.id ?? "")
+    )
       return false;
     if (!searchQuery) return true;
     const search = searchQuery.toLowerCase();
@@ -217,29 +218,13 @@ const DepositsPage = () => {
           </Button>
         </div>
 
-        {/* Bộ lọc khu vực / toà nhà — dùng chung */}
+        {/* Bộ lọc toà nhà (gom theo khu vực) — dùng chung mọi tab */}
         <div className="flex flex-wrap items-end gap-3">
-          <SearchableSelect
-            value={areaId}
-            onValueChange={setAreaId}
-            className="w-[200px]"
-            placeholder="Chọn khu vực"
-            options={[
-              { value: "all", label: "Tất cả khu vực" },
-              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-          <SearchableSelect
-            value={buildingId}
-            onValueChange={setBuildingId}
-            className="w-[200px]"
-            placeholder="Chọn toà nhà"
-            options={[
-              { value: "all", label: "Tất cả toà nhà" },
-              ...(buildings as any[])
-                .filter((b) => areaId === "all" || b.area_id === areaId)
-                .map((b) => ({ value: b.id, label: b.name })),
-            ]}
+          <BuildingMultiSelect
+            value={buildingIds}
+            onChange={setBuildingIds}
+            className="w-[280px]"
+            aria-label="Lọc theo toà nhà"
           />
         </div>
 

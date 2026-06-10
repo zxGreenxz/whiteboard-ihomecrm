@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import BuildingMultiSelect from '@/components/buildings/BuildingMultiSelect';
 import { Search } from 'lucide-react';
 import type { BuildingWithRelations } from '@/types/building';
 
@@ -18,10 +19,9 @@ interface Area {
 interface RoomListFiltersProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
-  areaFilter: string;
-  onAreaChange: (value: string) => void;
-  buildingFilter: string;
-  onBuildingChange: (value: string) => void;
+  /** Danh sách building_id đang lọc. [] = tất cả toà nhà. */
+  buildingIds: string[];
+  onBuildingIdsChange: (ids: string[]) => void;
   floorFilter: string;
   onFloorChange: (value: string) => void;
   statusFilter: string;
@@ -34,10 +34,8 @@ interface RoomListFiltersProps {
 export default function RoomListFilters({
   searchTerm,
   onSearchChange,
-  areaFilter,
-  onAreaChange,
-  buildingFilter,
-  onBuildingChange,
+  buildingIds,
+  onBuildingIdsChange,
   floorFilter,
   onFloorChange,
   statusFilter,
@@ -46,6 +44,9 @@ export default function RoomListFilters({
   buildings,
   floors,
 }: RoomListFiltersProps) {
+  // Tầng chỉ lọc được khi đang chọn ĐÚNG 1 toà (tầng thuộc toà cụ thể)
+  const floorEnabled = buildingIds.length === 1;
+
   return (
     <div className="flex flex-col sm:flex-row gap-3">
       <div className="relative flex-1">
@@ -57,31 +58,20 @@ export default function RoomListFilters({
           className="pl-9"
         />
       </div>
-      <SearchableSelect
-        value={areaFilter}
-        onValueChange={onAreaChange}
-        className="w-full sm:w-[200px]"
-        placeholder="Khu vực"
-        options={[
-          { value: 'all', label: 'Tất cả khu vực' },
-          ...areas.map((area) => ({ value: area.id, label: area.name })),
-        ]}
+      {/* Khu vực + Toà nhà — chọn nhiều toà, nhóm theo khu */}
+      <BuildingMultiSelect
+        value={buildingIds}
+        onChange={onBuildingIdsChange}
+        buildings={buildings}
+        areas={areas}
+        className="w-full sm:w-[260px]"
       />
       <SearchableSelect
-        value={buildingFilter}
-        onValueChange={(val) => { onBuildingChange(val); onFloorChange('all'); }}
-        className="w-full sm:w-[200px]"
-        placeholder="Toà nhà"
-        options={[
-          { value: 'all', label: 'Tất cả toà nhà' },
-          ...buildings.map((building) => ({ value: building.id, label: building.name })),
-        ]}
-      />
-      <SearchableSelect
-        value={floorFilter}
+        value={floorEnabled ? floorFilter : undefined}
         onValueChange={onFloorChange}
+        disabled={!floorEnabled}
         className="w-full sm:w-[180px]"
-        placeholder="Tầng"
+        placeholder={floorEnabled ? 'Tầng' : 'Tầng (chọn 1 toà)'}
         options={[
           { value: 'all', label: 'Tất cả tầng' },
           ...floors.map((floor) => ({

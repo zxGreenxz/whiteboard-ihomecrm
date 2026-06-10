@@ -18,8 +18,8 @@ export function filterContracts(
   contracts: ContractWithRelations[],
   filters: {
     search?: string;
-    areaFilter?: string;
-    buildingFilter?: string;
+    /** Lọc theo nhiều toà nhà. [] / undefined = tất cả (không lọc). */
+    buildingIds?: string[];
     roomFilter?: string;
     rentalTypeFilter?: string;
     monthFilter?: string;
@@ -49,14 +49,9 @@ export function filterContracts(
       if (!matchesSearch) return false;
     }
 
-    // Area filter
-    if (filters.areaFilter && filters.areaFilter !== 'all') {
-      if (contract.room?.building?.area_id !== filters.areaFilter) return false;
-    }
-
-    // Building filter
-    if (filters.buildingFilter && filters.buildingFilter !== 'all') {
-      if (contract.room?.building_id !== filters.buildingFilter) return false;
+    // Building filter (nhiều toà; [] = tất cả)
+    if (filters.buildingIds && filters.buildingIds.length > 0) {
+      if (!filters.buildingIds.includes(contract.room?.building_id ?? '')) return false;
     }
 
     // Room filter
@@ -85,22 +80,15 @@ export function filterContracts(
 
 /**
  * Cascading dropdown filter logic.
- * Given a parent selection, returns the filtered child items.
+ * Dropdown phòng chỉ hiện phòng thuộc các toà đang chọn ([] = mọi toà).
+ * Replicates the `filteredRooms` memo from ContractsPage.tsx.
  */
-export function filterBuildingsByArea(
-  buildings: { id: string; area_id: string | null }[],
-  areaFilter: string,
-): { id: string; area_id: string | null }[] {
-  if (areaFilter === 'all') return buildings;
-  return buildings.filter((b) => b.area_id === areaFilter);
-}
-
-export function filterRoomsByBuilding(
+export function filterRoomsByBuildings(
   rooms: { id: string; building_id: string }[],
-  buildingFilter: string,
+  buildingIds: string[],
 ): { id: string; building_id: string }[] {
-  if (buildingFilter === 'all') return rooms;
-  return rooms.filter((r) => r.building_id === buildingFilter);
+  if (buildingIds.length === 0) return rooms;
+  return rooms.filter((r) => buildingIds.includes(r.building_id));
 }
 
 // =============================================
@@ -215,8 +203,7 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
 /** Generate a filter combination from the same small pool */
 function filtersArb(): fc.Arbitrary<{
   search?: string;
-  areaFilter?: string;
-  buildingFilter?: string;
+  buildingIds?: string[];
   roomFilter?: string;
   rentalTypeFilter?: string;
   monthFilter?: string;
@@ -226,12 +213,8 @@ function filtersArb(): fc.Arbitrary<{
       fc.constantFrom('P101', 'P202', 'HD', 'abc', '0123456789', ''),
       { nil: undefined },
     ),
-    areaFilter: fc.option(
-      fc.constantFrom('all', 'area-1', 'area-2', 'area-3'),
-      { nil: undefined },
-    ),
-    buildingFilter: fc.option(
-      fc.constantFrom('all', 'bld-1', 'bld-2', 'bld-3'),
+    buildingIds: fc.option(
+      fc.subarray(['bld-1', 'bld-2', 'bld-3']),
       { nil: undefined },
     ),
     roomFilter: fc.option(
@@ -288,14 +271,9 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
             expect(matches).toBe(true);
           }
 
-          // Area filter check
-          if (filters.areaFilter && filters.areaFilter !== 'all') {
-            expect(c.room?.building?.area_id).toBe(filters.areaFilter);
-          }
-
-          // Building filter check
-          if (filters.buildingFilter && filters.buildingFilter !== 'all') {
-            expect(c.room?.building_id).toBe(filters.buildingFilter);
+          // Building filter check (nhiều toà; [] = tất cả)
+          if (filters.buildingIds && filters.buildingIds.length > 0) {
+            expect(filters.buildingIds).toContain(c.room?.building_id);
           }
 
           // Room filter check
@@ -352,12 +330,8 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
             }
           }
 
-          if (allMatch && filters.areaFilter && filters.areaFilter !== 'all') {
-            if (c.room?.building?.area_id !== filters.areaFilter) allMatch = false;
-          }
-
-          if (allMatch && filters.buildingFilter && filters.buildingFilter !== 'all') {
-            if (c.room?.building_id !== filters.buildingFilter) allMatch = false;
+          if (allMatch && filters.buildingIds && filters.buildingIds.length > 0) {
+            if (!filters.buildingIds.includes(c.room?.building_id ?? '')) allMatch = false;
           }
 
           if (allMatch && filters.roomFilter && filters.roomFilter !== 'all') {
@@ -413,16 +387,16 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
       fc.property(contractListArb, filtersArb(), (contracts, filters) => {
         // Filter with just search
         const withSearch = filterContracts(contracts, { search: filters.search });
-        // Filter with search + area
-        const withSearchAndArea = filterContracts(contracts, {
+        // Filter with search + buildings
+        const withSearchAndBuildings = filterContracts(contracts, {
           search: filters.search,
-          areaFilter: filters.areaFilter,
+          buildingIds: filters.buildingIds,
         });
         // Filter with all
         const withAll = filterContracts(contracts, filters);
 
-        expect(withSearchAndArea.length).toBeLessThanOrEqual(withSearch.length);
-        expect(withAll.length).toBeLessThanOrEqual(withSearchAndArea.length);
+        expect(withSearchAndBuildings.length).toBeLessThanOrEqual(withSearch.length);
+        expect(withAll.length).toBeLessThanOrEqual(withSearchAndBuildings.length);
       }),
       { numRuns: 100 },
     );
@@ -438,136 +412,77 @@ describe('Feature: lease-contract-management, Property 3: Contract filter correc
  * Feature: lease-contract-management
  * Property 4: Cascading dropdown filtering
  *
- * For any building selection, the rooms dropdown should only contain rooms
- * belonging to that building.
+ * For any multi-building selection, the rooms dropdown should only contain
+ * rooms belonging to the selected buildings ([] = no filter, all rooms).
  *
  * **Validates: Requirements 1.5, 1.6, 2.3**
  */
 describe('Feature: lease-contract-management, Property 4: Cascading dropdown filtering', () => {
-  /** Generate a hierarchy of buildings and rooms */
-  const buildingArb = fc.record({
-    id: buildingIdPoolArb,
-    area_id: areaIdPoolArb,
-  });
-
   const roomArb = fc.record({
     id: roomIdPoolArb,
     building_id: buildingIdPoolArb,
   });
 
-  const buildingListArb = fc.array(buildingArb, { minLength: 1, maxLength: 10 });
   const roomListArb = fc.array(roomArb, { minLength: 1, maxLength: 15 });
+  const buildingIdsArb = fc.subarray(['bld-1', 'bld-2', 'bld-3']);
 
-  it('filtering buildings by area returns only buildings with matching area_id', () => {
+  it('filtering rooms by buildings returns exactly the rooms with matching building_id', () => {
     fc.assert(
-      fc.property(
-        buildingListArb,
-        fc.constantFrom('all', 'area-1', 'area-2', 'area-3'),
-        (buildings, areaFilter) => {
-          const result = filterBuildingsByArea(buildings, areaFilter);
+      fc.property(roomListArb, buildingIdsArb, (rooms, buildingIds) => {
+        const result = filterRoomsByBuildings(rooms, buildingIds);
 
-          if (areaFilter === 'all') {
-            expect(result.length).toBe(buildings.length);
-          } else {
-            for (const b of result) {
-              expect(b.area_id).toBe(areaFilter);
-            }
-            // All matching buildings are included
-            const expected = buildings.filter((b) => b.area_id === areaFilter);
-            expect(result.length).toBe(expected.length);
+        if (buildingIds.length === 0) {
+          expect(result.length).toBe(rooms.length);
+        } else {
+          for (const r of result) {
+            expect(buildingIds).toContain(r.building_id);
           }
-        },
-      ),
+          // All matching rooms are included
+          const expected = rooms.filter((r) => buildingIds.includes(r.building_id));
+          expect(result.length).toBe(expected.length);
+        }
+      }),
       { numRuns: 100 },
     );
   });
 
-  it('filtering rooms by building returns only rooms with matching building_id', () => {
+  it('empty selection ([] = all) returns the full room list', () => {
     fc.assert(
-      fc.property(
-        roomListArb,
-        fc.constantFrom('all', 'bld-1', 'bld-2', 'bld-3'),
-        (rooms, buildingFilter) => {
-          const result = filterRoomsByBuilding(rooms, buildingFilter);
-
-          if (buildingFilter === 'all') {
-            expect(result.length).toBe(rooms.length);
-          } else {
-            for (const r of result) {
-              expect(r.building_id).toBe(buildingFilter);
-            }
-            const expected = rooms.filter((r) => r.building_id === buildingFilter);
-            expect(result.length).toBe(expected.length);
-          }
-        },
-      ),
+      fc.property(roomListArb, (rooms) => {
+        expect(filterRoomsByBuildings(rooms, []).length).toBe(rooms.length);
+      }),
       { numRuns: 100 },
     );
   });
 
-  it('cascading: rooms from filtered buildings are a subset of all rooms for those buildings', () => {
+  it('selecting more buildings never shrinks the room list (monotonic in selection)', () => {
     fc.assert(
-      fc.property(
-        buildingListArb,
-        roomListArb,
-        fc.constantFrom('all', 'area-1', 'area-2', 'area-3'),
-        (buildings, rooms, areaFilter) => {
-          const filteredBuildings = filterBuildingsByArea(buildings, areaFilter);
-          const filteredBuildingIds = new Set(filteredBuildings.map((b) => b.id));
+      fc.property(roomListArb, buildingIdsArb, buildingIdsArb, (rooms, idsA, idsB) => {
+        // Bỏ qua case [] vì [] = "tất cả" (không phải tập con của selection khác)
+        fc.pre(idsA.length > 0);
+        const union = [...new Set([...idsA, ...idsB])];
+        const subsetResult = filterRoomsByBuildings(rooms, idsA);
+        const unionResult = filterRoomsByBuildings(rooms, union);
 
-          // Rooms that belong to filtered buildings
-          const cascadedRooms = rooms.filter((r) => filteredBuildingIds.has(r.building_id));
-
-          // Every cascaded room must belong to a filtered building
-          for (const r of cascadedRooms) {
-            expect(filteredBuildingIds.has(r.building_id)).toBe(true);
-          }
-
-          // Cascaded rooms should be a subset of all rooms
-          expect(cascadedRooms.length).toBeLessThanOrEqual(rooms.length);
-        },
-      ),
+        expect(subsetResult.length).toBeLessThanOrEqual(unionResult.length);
+        const unionIds = new Set(unionResult.map((r) => r.id));
+        for (const r of subsetResult) {
+          expect(unionIds.has(r.id)).toBe(true);
+        }
+      }),
       { numRuns: 100 },
     );
   });
 
-  it('full cascade: area → building → room produces correct subsets', () => {
+  it('filtered rooms are always a subset of the original list', () => {
     fc.assert(
-      fc.property(
-        buildingListArb,
-        roomListArb,
-        fc.constantFrom('all', 'area-1', 'area-2'),
-        (buildings, rooms, areaFilter) => {
-          // Step 1: Filter buildings by area
-          const filteredBuildings = filterBuildingsByArea(buildings, areaFilter);
-
-          // Step 2: Pick a building from filtered list (or 'all')
-          const buildingFilter = filteredBuildings.length > 0
-            ? filteredBuildings[0].id
-            : 'all';
-          const filteredRooms = filterRoomsByBuilding(rooms, buildingFilter);
-
-          // Verify: all filtered rooms belong to the selected building
-          if (buildingFilter !== 'all') {
-            for (const r of filteredRooms) {
-              expect(r.building_id).toBe(buildingFilter);
-            }
-          }
-
-          // Verify: cascade monotonicity
-          expect(filteredBuildings.length).toBeLessThanOrEqual(buildings.length);
-          expect(filteredRooms.length).toBeLessThanOrEqual(rooms.length);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
-
-  it('selecting "all" at any level returns the full list for that level', () => {
-    fc.assert(
-      fc.property(buildingListArb, roomListArb, (buildings, rooms) => {
-        expect(filterBuildingsByArea(buildings, 'all').length).toBe(buildings.length);
-        expect(filterRoomsByBuilding(rooms, 'all').length).toBe(rooms.length);
+      fc.property(roomListArb, buildingIdsArb, (rooms, buildingIds) => {
+        const result = filterRoomsByBuildings(rooms, buildingIds);
+        expect(result.length).toBeLessThanOrEqual(rooms.length);
+        const originalIds = new Set<string>(rooms.map((r) => r.id));
+        for (const r of result) {
+          expect(originalIds.has(r.id)).toBe(true);
+        }
       }),
       { numRuns: 100 },
     );

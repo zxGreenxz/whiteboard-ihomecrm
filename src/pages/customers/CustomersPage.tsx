@@ -35,6 +35,9 @@ export default function CustomersPage() {
   const [activeTab, setActiveTab] = useState<CustomerStatus>('RENTING');
   const [activeStatFilter, setActiveStatFilter] = useState<StatFilterType>('ALL');
   const [filters, setFilters] = useState<CustomerFilters>({});
+  // Lọc toà nhà client-side ([] = tất cả) — khớp qua current_building_id
+  // (toà của HĐ đang hiệu lực, enrich sẵn trong useCustomers).
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -81,6 +84,19 @@ export default function CustomersPage() {
   const totalCount = customersData?.count ?? 0;
   const customerStats = stats ?? { total: 0, individual: 0, organization: 0, foreign: 0 };
 
+  // Lọc theo toà nhà (client-side) trên trang dữ liệu hiện tại.
+  const visibleCustomers = useMemo(
+    () =>
+      buildingIds.length === 0
+        ? customers
+        : customers.filter((c) =>
+            buildingIds.includes(
+              ((c as any).current_building_id as string | null) ?? ''
+            )
+          ),
+    [customers, buildingIds]
+  );
+
   // Pagination info
   const paginationInfo = useMemo(
     () => calculatePaginationInfo(page, pageSize, totalCount),
@@ -113,6 +129,14 @@ export default function CustomersPage() {
     [setPage]
   );
 
+  const handleBuildingIdsChange = useCallback(
+    (ids: string[]) => {
+      setBuildingIds(ids);
+      setPage(1);
+    },
+    [setPage]
+  );
+
   const handleSearch = useCallback(
     (query: string) => {
       setSearchQuery(query);
@@ -126,8 +150,8 @@ export default function CustomersPage() {
   }, [navigate]);
 
   const handleExport = useCallback(() => {
-    exportCustomers(customers, effectiveFilters);
-  }, [customers, effectiveFilters]);
+    exportCustomers(visibleCustomers, effectiveFilters);
+  }, [visibleCustomers, effectiveFilters]);
 
   const handleImport = useCallback(() => {
     setImportDialogOpen(true);
@@ -220,7 +244,12 @@ export default function CustomersPage() {
         />
 
         {/* Location Filters */}
-        <CustomerListFilters filters={filters} onFiltersChange={handleFiltersChange} />
+        <CustomerListFilters
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          buildingIds={buildingIds}
+          onBuildingIdsChange={handleBuildingIdsChange}
+        />
 
         {/* Toolbar */}
         <CustomerListToolbar
@@ -238,7 +267,7 @@ export default function CustomersPage() {
         <div className="bg-white rounded-lg border">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : customers.length === 0 ? (
+          ) : visibleCustomers.length === 0 ? (
             <EmptyState
               icon={Users}
               title="Chưa có khách hàng nào"
@@ -247,7 +276,7 @@ export default function CustomersPage() {
           ) : (
             <>
               <CustomerListTable
-                customers={customers}
+                customers={visibleCustomers}
                 onView={handleView}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

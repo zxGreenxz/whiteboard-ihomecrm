@@ -8,7 +8,6 @@ import { RoomDetailDialog } from "@/components/building-map/RoomDetailDialog";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useFloors } from "@/hooks/useFloors";
-import { useAreas } from "@/hooks/useAreas";
 import { useRoomsWithActiveContracts } from "@/hooks/useRoomsWithContracts";
 import { getRoomDisplayStatus } from "@/lib/roomStatus";
 import { Building2, Layers, Search, Filter } from "lucide-react";
@@ -25,7 +24,6 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const BuildingMapPage = () => {
-  const [selectedAreaId, setSelectedAreaId] = useState<string>("all");
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
   const [selectedFloor, setSelectedFloor] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -33,18 +31,23 @@ const BuildingMapPage = () => {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
-  const { data: areas = [] } = useAreas();
   const { data: buildings = [], isLoading: buildingsLoading } = useBuildings();
   const { data: allRooms = [], isLoading: roomsLoading } = useRooms();
   const { data: floors = [], isLoading: floorsLoading } = useFloors(selectedBuildingId || undefined);
 
-  // Toà nhà thuộc khu vực đang lọc (để giới hạn dropdown toà nhà cho khớp)
-  const buildingsInArea = useMemo(
+  // Dropdown toà nhà (đơn-chọn vì bản đồ vẽ 1 toà): gõ được cả TÊN KHU VỰC
+  // để thu hẹp nhanh — thay cho dropdown "Khu vực" riêng trước đây.
+  const buildingOptions = useMemo(
     () =>
-      selectedAreaId === "all"
-        ? buildings
-        : buildings.filter((b) => b.area_id === selectedAreaId),
-    [buildings, selectedAreaId]
+      buildings.map((building) => {
+        const areaName: string | undefined = (building as any).area?.name;
+        return {
+          value: building.id,
+          label: building.name,
+          keywords: areaName ? [areaName] : undefined,
+        };
+      }),
+    [buildings]
   );
 
   // Phòng kèm hợp đồng đang hiệu lực (ACTIVE/EXTENDED) của toà đang chọn
@@ -150,9 +153,9 @@ const BuildingMapPage = () => {
     setDetailDialogOpen(true);
   };
 
-  // Auto-select first building in the current area scope if none selected
-  if (!selectedBuildingId && buildingsInArea.length > 0) {
-    setSelectedBuildingId(buildingsInArea[0].id);
+  // Auto-select first building if none selected
+  if (!selectedBuildingId && buildings.length > 0) {
+    setSelectedBuildingId(buildings[0].id);
   }
 
   return (
@@ -175,23 +178,8 @@ const BuildingMapPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-              {/* Area (khu vực) filter */}
-              <SearchableSelect
-                value={selectedAreaId}
-                onValueChange={(val) => {
-                  setSelectedAreaId(val);
-                  setSelectedBuildingId("");
-                  setSelectedFloor("all");
-                }}
-                placeholder="Khu vực"
-                options={[
-                  { value: "all", label: "Tất cả khu vực" },
-                  ...areas.map((area) => ({ value: area.id, label: area.name })),
-                ]}
-              />
-
-              {/* Building filter */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {/* Building filter — gõ tên toà hoặc tên khu vực để tìm */}
               {buildingsLoading ? (
                 <Skeleton className="h-10 w-full" />
               ) : (
@@ -202,10 +190,8 @@ const BuildingMapPage = () => {
                     setSelectedFloor("all");
                   }}
                   placeholder="Chọn tòa nhà"
-                  options={buildingsInArea.map((building) => ({
-                    value: building.id,
-                    label: building.name,
-                  }))}
+                  searchPlaceholder="Tìm tòa / khu vực..."
+                  options={buildingOptions}
                 />
               )}
 

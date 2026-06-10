@@ -46,8 +46,8 @@ export default function ContractsPage() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [areaFilter, setAreaFilter] = useState('all');
-  const [buildingFilter, setBuildingFilter] = useState('all');
+  // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomFilter, setRoomFilter] = useState('all');
   const [lifecycleFilter, setLifecycleFilter] = useState<ContractLifecycleFilter>('ACTIVE');
   const [monthFilter, setMonthFilter] = useState('');
@@ -114,30 +114,31 @@ export default function ContractsPage() {
   }, [allBuildings]);
 
   // Mặc định khu vực theo user: Joey → JOEY, Nathan → NATHAN, còn lại → Tất cả
+  // (khu vực = chọn sẵn toàn bộ toà nhà thuộc khu đó)
   useEffect(() => {
     if (areaDefaultAppliedRef.current) return;
     if (!profile || areas.length === 0) return;
     const name = (profile.full_name || '').trim().toLowerCase();
     if (name === 'joey' || name === 'nathan') {
       const matched = areas.find((a) => a.name.trim().toLowerCase() === name);
-      if (matched) setAreaFilter(matched.id);
+      if (matched) {
+        setBuildingIds(
+          allBuildings.filter((b) => b.area_id === matched.id).map((b) => b.id)
+        );
+      }
     }
     areaDefaultAppliedRef.current = true;
-  }, [profile, areas]);
+  }, [profile, areas, allBuildings]);
 
   // =============================================
   // Cascading filter data
   // =============================================
 
-  const filteredBuildings = useMemo(() => {
-    if (areaFilter === 'all') return allBuildings;
-    return allBuildings.filter((b) => b.area_id === areaFilter);
-  }, [allBuildings, areaFilter]);
-
+  // Phòng hiện trong dropdown = phòng thuộc các toà đang chọn ([] = mọi toà)
   const filteredRooms = useMemo(() => {
-    if (buildingFilter === 'all') return allRooms;
-    return allRooms.filter((r) => r.building_id === buildingFilter);
-  }, [allRooms, buildingFilter]);
+    if (buildingIds.length === 0) return allRooms;
+    return allRooms.filter((r) => buildingIds.includes(r.building_id));
+  }, [allRooms, buildingIds]);
 
   // =============================================
   // Compute stats from full contract list
@@ -198,14 +199,9 @@ export default function ContractsPage() {
         if (!matchesSearch) return false;
       }
 
-      // Area filter
-      if (areaFilter !== 'all') {
-        if (contract.room?.building?.area_id !== areaFilter) return false;
-      }
-
-      // Building filter
-      if (buildingFilter !== 'all') {
-        if (contract.room?.building_id !== buildingFilter) return false;
+      // Building filter (nhiều toà; [] = tất cả)
+      if (buildingIds.length > 0) {
+        if (!buildingIds.includes(contract.room?.building_id ?? '')) return false;
       }
 
       // Room filter — lọc theo TÊN phòng (gộp phòng cùng tên ở mọi toà nhà)
@@ -231,8 +227,7 @@ export default function ContractsPage() {
     activeStatFilter,
     lifecycleFilter,
     searchTerm,
-    areaFilter,
-    buildingFilter,
+    buildingIds,
     roomFilter,
     monthFilter,
   ]);
@@ -285,13 +280,10 @@ export default function ContractsPage() {
     setPage(1);
   }, []);
 
-  const handleAreaChange = useCallback((value: string) => {
-    setAreaFilter(value);
-    setPage(1);
-  }, []);
-
-  const handleBuildingChange = useCallback((value: string) => {
-    setBuildingFilter(value);
+  // Đổi toà nhà → reset phòng (phòng cũ có thể không thuộc các toà mới)
+  const handleBuildingIdsChange = useCallback((ids: string[]) => {
+    setBuildingIds(ids);
+    setRoomFilter('all');
     setPage(1);
   }, []);
 
@@ -362,8 +354,7 @@ export default function ContractsPage() {
 
   const hasFilters =
     searchTerm ||
-    areaFilter !== 'all' ||
-    buildingFilter !== 'all' ||
+    buildingIds.length > 0 ||
     roomFilter !== 'all' ||
     lifecycleFilter !== 'ALL' ||
     monthFilter ||
@@ -388,10 +379,8 @@ export default function ContractsPage() {
           <ContractListFilters
             searchTerm={searchTerm}
             onSearchChange={handleSearchChange}
-            areaFilter={areaFilter}
-            onAreaChange={handleAreaChange}
-            buildingFilter={buildingFilter}
-            onBuildingChange={handleBuildingChange}
+            buildingIds={buildingIds}
+            onBuildingIdsChange={handleBuildingIdsChange}
             roomFilter={roomFilter}
             onRoomChange={handleRoomChange}
             lifecycleFilter={lifecycleFilter}
@@ -399,7 +388,7 @@ export default function ContractsPage() {
             monthFilter={monthFilter}
             onMonthChange={handleMonthChange}
             areas={areas}
-            buildings={filteredBuildings}
+            buildings={allBuildings}
             rooms={filteredRooms}
           />
         )}

@@ -1,8 +1,7 @@
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { DateInput } from "@/components/ui/date-input";
-import { useAreas } from "@/hooks/useAreas";
-import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
@@ -18,37 +17,29 @@ export function IncomeExpenseFiltersBar({
   filters,
   onChange,
 }: IncomeExpenseFiltersProps) {
-  const { data: areas } = useAreas();
-  const { data: allBuildings } = useBuildings({ includeVirtual: true });
-  const { data: rooms } = useRooms(filters.building_id ?? undefined);
+  // Lọc nhiều toà (BuildingMultiSelect). [] = tất cả toà.
+  const buildingIds = filters.building_ids ?? [];
+  // Phòng chỉ lọc được khi chọn đúng 1 toà (cascade phòng theo toà đơn).
+  const singleBuildingId =
+    buildingIds.length === 1 ? buildingIds[0] : undefined;
+
+  const { data: rooms } = useRooms(singleBuildingId);
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
   const { data: expenseTypes } = useIncomeExpenseTypes("expense");
   const { data: staffUsers } = useStaffUsers();
 
-  // Filter buildings by selected area
-  const filteredBuildings = filters.area_id
-    ? (allBuildings || []).filter((b) => b.area_id === filters.area_id)
-    : allBuildings || [];
-
   const handleChange = (patch: Partial<IncomeExpenseFilters>) => {
     onChange({ ...filters, ...patch });
   };
 
-  const handleAreaChange = (value: string) => {
-    const areaId = value === "ALL" ? null : value;
+  const handleBuildingIdsChange = (ids: string[]) => {
     handleChange({
-      area_id: areaId,
+      building_ids: ids,
+      // Legacy single-select — null để không sót filter cũ
+      area_id: null,
       building_id: null,
-      room_id: null,
-      room_ids: null,
-    });
-  };
-
-  const handleBuildingChange = (value: string) => {
-    const buildingId = value === "ALL" ? null : value;
-    handleChange({
-      building_id: buildingId,
+      // Đổi toà thì reset phòng (danh sách phòng phụ thuộc toà)
       room_id: null,
       room_ids: null,
     });
@@ -131,36 +122,22 @@ export function IncomeExpenseFiltersBar({
         placeholder="Đến ngày"
       />
 
-      {/* Khu vực */}
-      <SearchableSelect
-        value={filters.area_id ?? "ALL"}
-        onValueChange={handleAreaChange}
-        className="w-[150px] h-9 text-sm"
-        placeholder="Chọn khu vực"
-        options={[
-          { value: "ALL", label: "Chọn khu vực" },
-          ...(areas || []).map((a) => ({ value: a.id, label: a.name })),
-        ]}
+      {/* Tòa nhà — chọn nhiều, nhóm theo khu vực (click tên khu = chọn cả nhóm) */}
+      <BuildingMultiSelect
+        value={buildingIds}
+        onChange={handleBuildingIdsChange}
+        className="w-full sm:w-[260px] h-9 text-sm"
       />
 
-      {/* Tòa nhà */}
+      {/* Phòng — chỉ enable khi chọn đúng 1 toà */}
       <SearchableSelect
-        value={filters.building_id ?? "ALL"}
-        onValueChange={handleBuildingChange}
-        className="w-[150px] h-9 text-sm"
-        placeholder="Chọn tòa nhà"
-        options={[
-          { value: "ALL", label: "Chọn tòa nhà" },
-          ...filteredBuildings.map((b) => ({ value: b.id, label: b.name })),
-        ]}
-      />
-
-      {/* Phòng */}
-      <SearchableSelect
-        value={roomValue}
+        value={singleBuildingId ? roomValue : undefined}
         onValueChange={handleRoomChange}
+        disabled={!singleBuildingId}
         className="w-[140px] h-9 text-sm"
-        placeholder="Chọn phòng"
+        placeholder={
+          singleBuildingId ? "Chọn phòng" : "Chọn đúng 1 tòa để lọc phòng"
+        }
         options={[
           { value: "ALL", label: "Chọn phòng" },
           ...uniqueRoomNames(rooms || []).map((n) => ({ value: n, label: n })),

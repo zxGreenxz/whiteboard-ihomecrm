@@ -54,9 +54,11 @@ import { usePagination } from "@/hooks/usePagination";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
-  area_id: null,
-  building_id: null,
+  // Lọc nhiều toà (BuildingMultiSelect) — [] = tất cả toà. Thay cặp
+  // area_id + building_id đơn cũ.
+  building_ids: [],
   room_id: null,
+  room_ids: null,
   account_id: null,
   cash_book_id: null,
   type: null,
@@ -134,8 +136,15 @@ const IncomeExpensePage = () => {
 
   // Parse search input: số → amount filter (±5.000đ), chữ → text search
   const parsedSearch = parseSearchInput(searchQuery);
+  const buildingIds = filters.building_ids ?? [];
   const effectiveFilters: IncomeExpenseFilters = {
     ...filters,
+    building_ids: buildingIds.length ? buildingIds : undefined,
+    area_id: null,
+    // Tương thích: useIncomeExpenseBatches (Phiếu tổng) chưa đọc building_ids —
+    // chọn đúng 1 toà thì truyền kèm building_id đơn để view đó vẫn lọc được
+    // (với list/stats, building_ids ưu tiên nên không đổi kết quả).
+    building_id: buildingIds.length === 1 ? buildingIds[0] : null,
     amount_target: parsedSearch.amount ?? null,
   };
 

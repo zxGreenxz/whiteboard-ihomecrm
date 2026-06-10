@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
+import { groupBuildingsByArea, summarizeSelection } from "@/lib/buildingGroups";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
@@ -86,28 +87,24 @@ export function IncomeExpenseFilterChips({
     });
   }
 
-  if (filters.area_id && areas) {
-    const a = areas.find((x) => x.id === filters.area_id);
-    if (a)
-      chips.push({
-        key: "area_id",
-        label: `KV: ${a.name}`,
-        patch: {
-          area_id: null,
-          building_id: null,
-          room_id: null,
-        },
-      });
-  }
-
-  if (filters.building_id && buildings) {
-    const b = buildings.find((x) => x.id === filters.building_id);
-    if (b)
-      chips.push({
-        key: "building_id",
-        label: b.name,
-        patch: { building_id: null, room_id: null },
-      });
+  // 1 chip cho bộ chọn nhiều toà: tên toà khi chọn 1, "Khu A (3 toà)" khi
+  // chọn trọn khu, "N toà" khi lẫn lộn (summarizeSelection).
+  const buildingIds = filters.building_ids ?? [];
+  if (buildingIds.length > 0) {
+    const groups = groupBuildingsByArea(
+      (buildings || []).map((b) => ({
+        id: b.id,
+        name: b.name,
+        area_id: b.area_id ?? null,
+      })),
+      (areas || []).map((a) => ({ id: a.id, name: a.name })),
+    );
+    chips.push({
+      key: "building_ids",
+      label:
+        summarizeSelection(buildingIds, groups) || `${buildingIds.length} toà`,
+      patch: { building_ids: [], room_id: null, room_ids: null },
+    });
   }
 
   if (filters.income_type_id && incomeTypes) {

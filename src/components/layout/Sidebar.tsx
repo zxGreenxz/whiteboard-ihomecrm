@@ -29,7 +29,6 @@ import {
   UserCog,
   ChevronDown,
   Map,
-  MapPin,
   Bell,
   List,
   ClipboardList,
@@ -79,7 +78,9 @@ const navigationGroups: NavGroup[] = [
         title: 'Danh mục dữ liệu',
         icon: Building2,
         items: [
-          { title: 'Khu vực', href: '/areas', icon: MapPin },
+          // "Khu vực" không còn trang riêng — chỉ là nhãn nhóm toà nhà, quản lý
+          // bằng dialog trong trang Toà nhà; mọi ô lọc chọn theo khu vực qua
+          // BuildingMultiSelect (click tên khu = chọn cả nhóm toà).
           { title: 'Toà nhà', href: '/buildings', icon: Building2 },
           { title: 'Căn hộ', href: '/apartments', icon: Home },
           { title: 'Dịch vụ', href: '/services', icon: Wrench },

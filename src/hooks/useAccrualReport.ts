@@ -46,6 +46,7 @@ type AccrualFilters = Pick<
   IncomeExpenseFilters,
   | "area_id"
   | "building_id"
+  | "building_ids"
   | "room_id"
   | "room_ids"
   | "type"
@@ -76,6 +77,7 @@ export const useAccrualMonthReport = (
       month,
       filters.area_id,
       filters.building_id,
+      filters.building_ids,
       filters.room_id,
       filters.room_ids,
       filters.type,

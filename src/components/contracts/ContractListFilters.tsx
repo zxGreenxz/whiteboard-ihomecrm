@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import BuildingMultiSelect from '@/components/buildings/BuildingMultiSelect';
 import { uniqueRoomNames } from '@/lib/roomSort';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
@@ -15,10 +16,9 @@ interface Area {
 interface ContractListFiltersProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
-  areaFilter: string;
-  onAreaChange: (value: string) => void;
-  buildingFilter: string;
-  onBuildingChange: (value: string) => void;
+  /** Danh sách building_id đang lọc. [] = tất cả toà nhà. */
+  buildingIds: string[];
+  onBuildingIdsChange: (ids: string[]) => void;
   roomFilter: string;
   onRoomChange: (value: string) => void;
   lifecycleFilter: ContractLifecycleFilter;
@@ -31,10 +31,8 @@ interface ContractListFiltersProps {
 }
 
 export default function ContractListFilters({
-  areaFilter,
-  onAreaChange,
-  buildingFilter,
-  onBuildingChange,
+  buildingIds,
+  onBuildingIdsChange,
   roomFilter,
   onRoomChange,
   lifecycleFilter,
@@ -60,37 +58,13 @@ export default function ContractListFilters({
         ]}
       />
 
-      {/* Khu vực — desktop only */}
-      <div className="hidden md:block">
-        <SearchableSelect
-          value={areaFilter}
-          onValueChange={(val) => {
-            onAreaChange(val);
-            onBuildingChange('all');
-            onRoomChange('all');
-          }}
-          className="md:w-[160px]"
-          placeholder="Chọn khu vực"
-          options={[
-            { value: 'all', label: 'Tất cả khu vực' },
-            ...areas.map((area) => ({ value: area.id, label: area.name })),
-          ]}
-        />
-      </div>
-
-      {/* Toà nhà */}
-      <SearchableSelect
-        value={buildingFilter}
-        onValueChange={(val) => {
-          onBuildingChange(val);
-          onRoomChange('all');
-        }}
-        className="md:w-[160px]"
-        placeholder="Chọn toà nhà"
-        options={[
-          { value: 'all', label: 'Tất cả toà nhà' },
-          ...buildings.map((building) => ({ value: building.id, label: building.name })),
-        ]}
+      {/* Khu vực + Toà nhà — chọn nhiều toà, nhóm theo khu */}
+      <BuildingMultiSelect
+        value={buildingIds}
+        onChange={onBuildingIdsChange}
+        buildings={buildings}
+        areas={areas}
+        className="md:w-[260px]"
       />
 
       {/* Phòng — gộp theo tên (vd nhiều toà cùng có "101" → 1 mục "101") */}

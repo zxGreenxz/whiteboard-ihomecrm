@@ -253,6 +253,7 @@ export const useIncomeExpenses = (
       "list",
       filters.area_id,
       filters.building_id,
+      filters.building_ids,
       filters.room_id,
       filters.room_ids,
       filters.account_id,
@@ -367,10 +368,30 @@ export const useIncomeExpenses = (
         query = query.eq("counts_in_business_result", true);
       }
 
-      // When searching, we need to fetch all filtered records and search client-side
-      // because tenant_name comes from a joined table and can't be searched server-side.
-      // When not searching, use server-side pagination for efficiency.
-      if (!hasSearch) {
+      // Search SERVER-SIDE: name/code ilike trực tiếp; tenant_name nằm ở bảng
+      // join nên resolve trước tenant_id khớp tên rồi OR vào. Trước đây khi
+      // search là fetch TOÀN BỘ lịch sử về client (chậm dần theo tuổi dữ liệu
+      // + đụng trần max-rows 1000 của PostgREST).
+      if (hasSearch) {
+        // Bỏ ký tự phá cú pháp or() của PostgREST (dấu phẩy / ngoặc).
+        const q = searchQuery!.trim().replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
+        if (q) {
+          const { data: tenantRows } = await (supabase as any)
+            .from("tenants")
+            .select("id")
+            .ilike("full_name", `%${q}%`)
+            .limit(200);
+          const tenantIds = (tenantRows || []).map((t: any) => t.id);
+          const ors = [`name.ilike.%${q}%`, `code.ilike.%${q}%`];
+          if (tenantIds.length > 0) {
+            ors.push(`tenant_id.in.(${tenantIds.join(",")})`);
+          }
+          query = query.or(ors.join(","));
+        }
+      }
+
+      // Server-side pagination LUÔN áp dụng (kể cả khi search).
+      {
         const from = (pagination.page - 1) * pagination.pageSize;
         const to = from + pagination.pageSize - 1;
         query = query.range(from, to);
@@ -474,27 +495,7 @@ export const useIncomeExpenses = (
         })
       );
 
-      // Apply client-side search (ilike on name, code, tenant_name)
-      if (hasSearch) {
-        const search = searchQuery!.trim().toLowerCase();
-        const filtered = mapped.filter(
-          (v) =>
-            v.name.toLowerCase().includes(search) ||
-            v.code.toLowerCase().includes(search) ||
-            (v.tenant_name && v.tenant_name.toLowerCase().includes(search))
-        );
-
-        // Client-side pagination after search
-        const totalCount = filtered.length;
-        const from = (pagination.page - 1) * pagination.pageSize;
-        const paginated = filtered.slice(from, from + pagination.pageSize);
-
-        return {
-          data: paginated,
-          totalCount,
-        };
-      }
-
+      // Search đã áp dụng server-side ở trên — count là tổng khớp thật.
       return {
         data: mapped,
         totalCount: count || 0,
@@ -514,6 +515,7 @@ export const useIncomeExpenseStats = (
       "stats",
       filters.area_id,
       filters.building_id,
+      filters.building_ids,
       filters.room_id,
       filters.room_ids,
       filters.account_id,
@@ -1363,6 +1365,7 @@ export const useIncomeExpenseBatches = (
       "list",
       filters.area_id,
       filters.building_id,
+      filters.building_ids,
       filters.account_id,
       filters.type,
       filters.start_date,
@@ -1454,6 +1457,9 @@ export const useIncomeExpenseBatches = (
         .in("id", voucherIds);
 
       if (itemFilterIds !== null) voucherQuery = voucherQuery.in("id", itemFilterIds);
+      if (filters.building_ids?.length) {
+        voucherQuery = voucherQuery.in("building_id", filters.building_ids);
+      }
       if (areaBuildingIds) voucherQuery = voucherQuery.in("building_id", areaBuildingIds);
       if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
       if (filters.account_id) voucherQuery = voucherQuery.or(

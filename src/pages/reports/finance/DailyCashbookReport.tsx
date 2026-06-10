@@ -4,7 +4,6 @@ import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useCashFlowByDay, useCashBookSummary } from "@/hooks/useCashBook";
 import { useBuildings } from "@/hooks/useBuildings";
-import { useAreas } from "@/hooks/useAreas";
 import { useAccounts } from "@/hooks/useAccounts";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -37,14 +36,14 @@ export default function DailyCashbookReport() {
     from: startOfMonth(new Date()),
     to: new Date(),
   });
-  const [areaId, setAreaId] = useState<string>("all");
+  // Toà nhà giữ ĐƠN-chọn: useCashFlowByDay/useCashBookSummary chỉ nhận
+  // building_id đơn (chưa hỗ trợ building_ids — không sửa hooks ở đây).
   const [buildingId, setBuildingId] = useState<string>("all");
   const [accountId, setAccountId] = useState<string>("all");
 
   const startDate = dateRange?.from ? toLocalDateStr(dateRange.from) : undefined;
   const endDate = dateRange?.to ? toLocalDateStr(dateRange.to) : undefined;
 
-  const { data: areas = [] } = useAreas();
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: accounts = [] } = useAccounts();
   const filterOpts = {
@@ -96,17 +95,6 @@ export default function DailyCashbookReport() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <SearchableSelect
-            value={areaId}
-            onValueChange={setAreaId}
-            className="w-[200px]"
-            placeholder="Chọn khu vực"
-            options={[
-              { value: "all", label: "Tất cả khu vực" },
-              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-
           <SearchableSelect
             value={buildingId}
             onValueChange={setBuildingId}

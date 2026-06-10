@@ -9,8 +9,8 @@ import {
 } from "@/hooks/useIncomeExpenses";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { formatPeriod } from "@/lib/monthPeriod";
-import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -51,8 +51,8 @@ const StatCard = ({
 export default function ProfitDistributionReport() {
   const now = new Date();
   const [monthStr, setMonthStr] = useState<string>(format(now, "MM-yyyy"));
-  const [areaId, setAreaId] = useState<string>("all");
-  const [buildingId, setBuildingId] = useState<string>("all");
+  // Lọc nhiều toà (nhóm theo khu vực trong BuildingMultiSelect). [] = tất cả.
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState<string>("all");
   const [voucherType, setVoucherType] = useState<string>("all");
   // Mặc định: chỉ tính khoản CÓ hạch toán KQKD (loại tiền cọc & khoản
@@ -71,12 +71,22 @@ export default function ProfitDistributionReport() {
   const endDate = format(endOfMonth(monthDate), "yyyy-MM-dd");
   const ym = `${yyyy}-${String(mm || 1).padStart(2, "0")}`;
 
-  const { data: areas = [] } = useAreas();
+  // Trang này cần cả toà ảo "Chung" (phiếu chia LN cổ đông) → tự fetch
+  // includeVirtual và truyền vào BuildingMultiSelect thay vì để nó tự fetch.
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
+  const buildingOptions = useMemo(
+    () =>
+      (buildings as any[]).map((b) => ({
+        id: b.id,
+        name: b.name,
+        area_id: b.area_id ?? null,
+      })),
+    [buildings]
+  );
 
+  const buildingFilter = buildingIds.length > 0 ? buildingIds : undefined;
   const filters: IncomeExpenseFilters = {
-    area_id: areaId === "all" ? undefined : areaId,
-    building_id: buildingId === "all" ? undefined : buildingId,
+    building_ids: buildingFilter,
     room_id: roomId === "all" ? undefined : roomId,
     type: voucherType === "all" ? undefined : (voucherType as any),
     start_date: startDate,
@@ -93,17 +103,12 @@ export default function ProfitDistributionReport() {
   });
 
   // Chế độ accrual: phân bổ số tiền item theo kỳ áp dụng (theo tháng).
-  // Truyền month='' khi tắt → hook trả rỗng, không query.
+  // Truyền month='' khi tắt → hook trả rỗng, không query. Dùng chung `filters`
+  // (hook tự bỏ qua start/end_date — kỳ lấy theo `month`); truyền BIẾN thay vì
+  // object literal để building_ids đi qua được dù AccrualFilters chưa khai báo.
   const { data: accrual, isLoading: accrualLoading } = useAccrualMonthReport(
     accrualMode ? ym : "",
-    {
-      area_id: areaId === "all" ? undefined : areaId,
-      building_id: buildingId === "all" ? undefined : buildingId,
-      room_id: roomId === "all" ? undefined : roomId,
-      type: voucherType === "all" ? undefined : (voucherType as any),
-      approval_status: "APPROVED",
-      business_result_only: pnlOnly,
-    },
+    filters,
     { businessResultOnly: pnlOnly }
   );
 
@@ -156,26 +161,15 @@ export default function ProfitDistributionReport() {
             options={monthOptions.map((m) => ({ value: m, label: m }))}
           />
 
-          <SearchableSelect
-            value={areaId}
-            onValueChange={setAreaId}
-            className="w-[180px]"
-            placeholder="Chọn khu vực"
-            options={[
-              { value: 'all', label: 'Tất cả khu vực' },
-              ...(areas as any[]).map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-
-          <SearchableSelect
-            value={buildingId}
-            onValueChange={setBuildingId}
-            className="w-[180px]"
-            placeholder="Chọn tòa nhà"
-            options={[
-              { value: 'all', label: 'Tất cả tòa nhà' },
-              ...buildings.map((b) => ({ value: b.id, label: b.name })),
-            ]}
+          <BuildingMultiSelect
+            value={buildingIds}
+            onChange={(ids) => {
+              setBuildingIds(ids);
+              setPage(1);
+            }}
+            buildings={buildingOptions}
+            className="w-[260px]"
+            placeholder="Tất cả toà nhà"
           />
 
           <SearchableSelect

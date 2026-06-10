@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, Search, RefreshCw, LayoutGrid, List } from 'lucide-react';
+import { Building2, MapPin, Plus, Search, RefreshCw, LayoutGrid, List } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import EmptyState from '@/components/ui/EmptyState';
@@ -9,6 +9,7 @@ import BuildingListFilters from '@/components/buildings/BuildingListFilters';
 import BuildingListTable from '@/components/buildings/BuildingListTable';
 import { DeleteBuildingDialog } from '@/components/buildings/DeleteBuildingDialog';
 import BuildingFormDialog from '@/components/buildings/BuildingFormDialog';
+import ManageAreasDialog from '@/components/areas/ManageAreasDialog';
 import { useBuildings, useUpdateBuildingStatus } from '@/hooks/useBuildings';
 import { useAreas } from '@/hooks/useAreas';
 import type { BuildingWithRelations } from '@/types/building';
@@ -33,15 +34,18 @@ export default function BuildingsPage() {
   // State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [areaFilter, setAreaFilter] = useState('all');
+  // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
+  const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingWithRelations | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editBuilding, setEditBuilding] = useState<BuildingWithRelations | undefined>(undefined);
+  // Dialog quản lý khu vực (nhãn nhóm toà) — thay thế trang /areas cũ.
+  const [manageAreasOpen, setManageAreasOpen] = useState(false);
 
-  // Phạm vi cho thẻ thống kê: lọc theo tìm kiếm + khu vực (KHÔNG theo bộ lọc trạng thái).
+  // Phạm vi cho thẻ thống kê: lọc theo tìm kiếm + toà nhà (KHÔNG theo bộ lọc trạng thái).
   // Nhờ vậy 3 thẻ vẫn là phân tích Đang/Ngừng hoạt động đầy đủ của phạm vi đang xem;
   // nếu áp luôn bộ lọc trạng thái thì thẻ còn lại sẽ luôn bằng 0.
   const scopedBuildings = useMemo(() => {
@@ -54,13 +58,13 @@ export default function BuildingsPage() {
         building.code?.toLowerCase().includes(term) ||
         building.street_address?.toLowerCase().includes(term);
 
-      // Area filter
-      const matchesArea =
-        areaFilter === 'all' || building.area_id === areaFilter;
+      // Building filter (nhiều toà; [] = tất cả)
+      const matchesBuilding =
+        buildingIds.length === 0 || buildingIds.includes(building.id);
 
-      return matchesSearch && matchesArea;
+      return matchesSearch && matchesBuilding;
     });
-  }, [buildings, searchTerm, areaFilter]);
+  }, [buildings, searchTerm, buildingIds]);
 
   // Stats theo phạm vi tìm kiếm + khu vực (cập nhật khi đổi bộ lọc)
   const stats = useMemo(() => {
@@ -116,9 +120,10 @@ export default function BuildingsPage() {
           onSearchChange={setSearchTerm}
           statusFilter={statusFilter}
           onStatusChange={setStatusFilter}
-          areaFilter={areaFilter}
-          onAreaChange={setAreaFilter}
+          buildingIds={buildingIds}
+          onBuildingIdsChange={setBuildingIds}
           areas={areas}
+          buildings={buildings}
         />
 
         {/* Toolbar */}
@@ -127,6 +132,15 @@ export default function BuildingsPage() {
             <Button onClick={() => setCreateDialogOpen(true)} size="sm">
               <Plus className="h-4 w-4 mr-1" />
               Thêm
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setManageAreasOpen(true)}
+              title="Đặt tên nhóm toà nhà + gán toà vào khu — dùng để chọn nhanh cả nhóm ở các ô lọc"
+            >
+              <MapPin className="h-4 w-4 mr-1" />
+              Quản lý khu vực
             </Button>
           </div>
           <div className="flex items-center gap-1">
@@ -168,7 +182,7 @@ export default function BuildingsPage() {
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
           ) : filteredBuildings.length === 0 ? (
-            searchTerm || statusFilter !== 'all' || areaFilter !== 'all' ? (
+            searchTerm || statusFilter !== 'all' || buildingIds.length > 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 Không tìm thấy toà nhà nào
               </div>
@@ -212,6 +226,12 @@ export default function BuildingsPage() {
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           building={editBuilding}
+        />
+
+        {/* Quản lý khu vực (nhãn nhóm toà) — thay trang /areas cũ */}
+        <ManageAreasDialog
+          open={manageAreasOpen}
+          onOpenChange={setManageAreasOpen}
         />
       </div>
     </MainLayout>

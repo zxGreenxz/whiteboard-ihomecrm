@@ -30,8 +30,10 @@ export default function RoomsPage() {
 
   // State
   const [searchTerm, setSearchTerm] = useState('');
-  const [areaFilter, setAreaFilter] = useState('all');
-  const [buildingFilter, setBuildingFilter] = useState(preselectedBuildingId || 'all');
+  // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
+  const [buildingIds, setBuildingIds] = useState<string[]>(
+    preselectedBuildingId ? [preselectedBuildingId] : []
+  );
   const [floorFilter, setFloorFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -43,7 +45,7 @@ export default function RoomsPage() {
   // Sync building filter with URL param on mount
   useEffect(() => {
     if (preselectedBuildingId) {
-      setBuildingFilter(preselectedBuildingId);
+      setBuildingIds([preselectedBuildingId]);
     }
   }, [preselectedBuildingId]);
 
@@ -60,16 +62,9 @@ export default function RoomsPage() {
     [buildingsData]
   );
 
-  // Toà nhà thuộc khu vực đang lọc (để giới hạn dropdown toà nhà cho khớp)
-  const buildingsInArea = useMemo(
-    () =>
-      areaFilter === 'all'
-        ? buildings
-        : buildings.filter((b) => b.area_id === areaFilter),
-    [buildings, areaFilter]
-  );
-
-  const { data: floorsData } = useFloors(buildingFilter !== 'all' ? buildingFilter : undefined);
+  // Tầng chỉ cascade được khi chọn ĐÚNG 1 toà (floors thuộc toà cụ thể)
+  const singleBuildingId = buildingIds.length === 1 ? buildingIds[0] : undefined;
+  const { data: floorsData } = useFloors(singleBuildingId);
   const floors = useMemo(
     () => (Array.isArray(floorsData) ? floorsData : []),
     [floorsData]
@@ -104,15 +99,11 @@ export default function RoomsPage() {
         room.name.toLowerCase().includes(term) ||
         room.code?.toLowerCase().includes(term);
 
-      // Area (khu vực) filter — khu vực nằm ở toà nhà của phòng
-      const matchesArea =
-        areaFilter === 'all' || room.building?.area_id === areaFilter;
-
-      // Building filter
+      // Building filter (nhiều toà; [] = tất cả)
       const matchesBuilding =
-        buildingFilter === 'all' || room.building_id === buildingFilter;
+        buildingIds.length === 0 || buildingIds.includes(room.building_id);
 
-      // Floor filter
+      // Floor filter — chỉ có hiệu lực khi đang chọn đúng 1 toà
       const matchesFloor =
         floorFilter === 'all' || room.floor === parseInt(floorFilter);
 
@@ -126,7 +117,7 @@ export default function RoomsPage() {
         matchesStatus = room.status === 'RESERVED';
       }
 
-      return matchesSearch && matchesArea && matchesBuilding && matchesFloor && matchesStatus;
+      return matchesSearch && matchesBuilding && matchesFloor && matchesStatus;
     });
 
     return result.sort((a, b) =>
@@ -137,7 +128,7 @@ export default function RoomsPage() {
         b.name ?? '',
       ),
     );
-  }, [rooms, searchTerm, areaFilter, buildingFilter, floorFilter, statusFilter]);
+  }, [rooms, searchTerm, buildingIds, floorFilter, statusFilter]);
 
   // Thống kê theo danh sách đang hiển thị: tổng phòng, phòng trống, sắp hết hạn
   const roomStats = useMemo(() => {
@@ -175,14 +166,13 @@ export default function RoomsPage() {
     queryClient.invalidateQueries({ queryKey: ['rooms'] });
   };
 
-  // Đổi khu vực → reset toà nhà + tầng (toà nhà cũ có thể không thuộc khu vực mới)
-  const handleAreaChange = (value: string) => {
-    setAreaFilter(value);
-    setBuildingFilter('all');
+  // Đổi toà nhà → reset tầng (tầng thuộc toà cụ thể; khác toà thì tầng cũ vô nghĩa)
+  const handleBuildingIdsChange = (ids: string[]) => {
+    setBuildingIds(ids);
     setFloorFilter('all');
   };
 
-  const hasFilters = searchTerm || areaFilter !== 'all' || buildingFilter !== 'all' || floorFilter !== 'all' || statusFilter !== 'all';
+  const hasFilters = searchTerm || buildingIds.length > 0 || floorFilter !== 'all' || statusFilter !== 'all';
 
   return (
     <MainLayout title="Căn hộ" subtitle="Danh mục dữ liệu > Căn hộ" icon={Home}>
@@ -191,16 +181,14 @@ export default function RoomsPage() {
         <RoomListFilters
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          areaFilter={areaFilter}
-          onAreaChange={handleAreaChange}
-          buildingFilter={buildingFilter}
-          onBuildingChange={setBuildingFilter}
+          buildingIds={buildingIds}
+          onBuildingIdsChange={handleBuildingIdsChange}
           floorFilter={floorFilter}
           onFloorChange={setFloorFilter}
           statusFilter={statusFilter}
           onStatusChange={setStatusFilter}
           areas={areas}
-          buildings={buildingsInArea}
+          buildings={buildings}
           floors={floors}
         />
 
@@ -306,7 +294,7 @@ export default function RoomsPage() {
         <RoomFormDialog
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
-          preselectedBuildingId={buildingFilter !== 'all' ? buildingFilter : undefined}
+          preselectedBuildingId={singleBuildingId}
         />
 
         {selectedRoom && (

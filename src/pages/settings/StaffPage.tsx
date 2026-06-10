@@ -78,11 +78,19 @@ import {
   useProvisionStaff,
   useUpdateStaffMember,
   useRemoveStaffMember,
-  useApplyTemplate,
   useUpdateStaffPermissions,
 } from "@/hooks/useStaffAssignments";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAreas } from "@/hooks/useAreas";
+import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import {
+  groupBuildingsByArea,
+  groupSelectionState,
+  toggleGroupSelection,
+  summarizeSelection,
+  type BuildingLite,
+  type AreaLite,
+} from "@/lib/buildingGroups";
 import { PermissionMatrix } from "@/components/staff/PermissionMatrix";
 import {
   ALL_MODULES,
@@ -500,8 +508,6 @@ type StaffFormState = {
   is_active: boolean;
   all_buildings: boolean;
   building_ids: string[];
-  area_ids: string[];
-  building_search: string;
   /** Permissions tinh chỉnh — null = dùng default từ role (chưa override) */
   permissions: PermissionsMap;
   /** Password (chỉ dùng khi tạo mới) */
@@ -519,8 +525,6 @@ const emptyForm = (): StaffFormState => ({
   is_active: true,
   all_buildings: true,
   building_ids: [],
-  area_ids: [],
-  building_search: "",
   permissions: buildEmptyPermissions(),
   password: "",
   confirmPassword: "",
@@ -534,7 +538,6 @@ function StaffTab() {
   const provisionStaff = useProvisionStaff();
   const updateStaff = useUpdateStaffMember();
   const removeStaff = useRemoveStaffMember();
-  const applyTemplate = useApplyTemplate();
   const updatePerms = useUpdateStaffPermissions();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -547,6 +550,20 @@ function StaffTab() {
   const isEdit = !!form?.staff_id;
 
   const staffMembers = useMemo(() => groupByStaff(assignments || []), [assignments]);
+
+  // Nhóm toà theo khu vực cho form gán phạm vi (snapshot) + cảnh báo lệch khu.
+  const staffFormGroups = useMemo(() => {
+    const blds: BuildingLite[] = ((buildings || []) as any[]).map((b) => ({
+      id: b.id,
+      name: b.name,
+      area_id: b.area_id ?? null,
+    }));
+    const ars: AreaLite[] = ((areas || []) as any[]).map((a) => ({
+      id: a.id,
+      name: a.name,
+    }));
+    return groupBuildingsByArea(blds, ars);
+  }, [buildings, areas]);
 
   const filtered = useMemo(() => {
     let list = staffMembers;
@@ -584,8 +601,6 @@ function StaffTab() {
       is_active: p.is_active ?? true,
       all_buildings: m.has_global,
       building_ids: m.building_ids,
-      area_ids: [],
-      building_search: "",
       permissions: m.current_permissions ?? parsePermissions(m.role?.permissions),
       password: "",
       confirmPassword: "",
@@ -974,76 +989,74 @@ function StaffTab() {
                 </label>
                 {!form.all_buildings && (
                   <div className="space-y-2 pl-6">
-                    {(areas || []).length > 0 && (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Lọc theo khu vực</Label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(areas || []).map((a: any) => {
-                            const active = form.area_ids.includes(a.id);
-                            return (
-                              <button
-                                key={a.id}
-                                type="button"
-                                onClick={() => {
-                                  const next = active ? form.area_ids.filter((x) => x !== a.id) : [...form.area_ids, a.id];
-                                  setForm({ ...form, area_ids: next });
-                                }}
-                                className={cn(
-                                  "px-2.5 py-1 text-xs rounded-full border transition-colors",
-                                  active ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" : "border-border hover:bg-muted",
-                                )}
-                              >
-                                {a.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {/* Chọn theo khu vực = SNAPSHOT: click tên khu trong dropdown
+                        chọn cả nhóm toà TẠI THỜI ĐIỂM NÀY. Quyền lưu per-building
+                        (staff_assignments) — thêm toà mới vào khu sau này KHÔNG
+                        tự cấp quyền; cảnh báo lệch bên dưới + nút chọn đủ. */}
                     <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Chọn toà ({form.building_ids.length})</Label>
-                        <Input
-                          value={form.building_search}
-                          onChange={(e) => setForm({ ...form, building_search: e.target.value })}
-                          placeholder="Tìm toà…"
-                          className="h-7 max-w-[180px] text-xs"
-                        />
-                      </div>
-                      <div className="border rounded-md p-2 max-h-48 overflow-y-auto">
-                        {(() => {
-                          const q = form.building_search.trim().toLowerCase();
-                          const list = (buildings || []).filter((b: any) => {
-                            if (form.area_ids.length > 0 && (!b.area_id || !form.area_ids.includes(b.area_id))) return false;
-                            if (q && !(b.name || "").toLowerCase().includes(q)) return false;
-                            return true;
-                          });
-                          if (list.length === 0) return <p className="text-xs text-muted-foreground italic px-1">Không có toà phù hợp.</p>;
-                          return (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                              {list.map((b: any) => {
-                                const checked = form.building_ids.includes(b.id);
-                                return (
-                                  <label key={b.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                                    <Checkbox
-                                      checked={checked}
-                                      onCheckedChange={(v) => {
-                                        const next = v ? [...form.building_ids, b.id] : form.building_ids.filter((x) => x !== b.id);
-                                        setForm({ ...form, building_ids: next });
-                                      }}
-                                    />
-                                    <span>{b.name}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          );
-                        })()}
-                      </div>
+                      <Label className="text-xs">
+                        Chọn toà — click tên khu vực để chọn cả nhóm (
+                        {form.building_ids.length} toà)
+                      </Label>
+                      <BuildingMultiSelect
+                        value={form.building_ids}
+                        onChange={(ids) => setForm({ ...form, building_ids: ids })}
+                        placeholder="Chọn toà / khu vực..."
+                      />
+                      {form.building_ids.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Đang chọn:{" "}
+                          {summarizeSelection(form.building_ids, staffFormGroups)}
+                        </p>
+                      )}
                       {form.building_ids.length === 0 && (
                         <p className="text-xs text-red-600">Chọn ít nhất 1 toà nhà</p>
                       )}
                     </div>
+                    {/* Cảnh báo lệch khu: khu được chọn một phần (vd toà mới
+                        thêm vào khu sau khi đã gán quyền) → 1 click chọn đủ. */}
+                    {staffFormGroups
+                      .filter(
+                        (g) =>
+                          g.areaId !== null &&
+                          groupSelectionState(
+                            form.building_ids,
+                            g.buildings.map((b) => b.id),
+                          ) === "some",
+                      )
+                      .map((g) => {
+                        const ids = g.buildings.map((b) => b.id);
+                        const selectedCount = ids.filter((id) =>
+                          form.building_ids.includes(id),
+                        ).length;
+                        return (
+                          <div
+                            key={g.areaId}
+                            className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                          >
+                            <span>
+                              {g.areaName}: đang chọn {selectedCount}/{ids.length} toà
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-xs"
+                              onClick={() =>
+                                setForm({
+                                  ...form,
+                                  building_ids: toggleGroupSelection(
+                                    form.building_ids,
+                                    ids,
+                                  ),
+                                })
+                              }
+                            >
+                              Chọn đủ theo khu
+                            </Button>
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
               </section>

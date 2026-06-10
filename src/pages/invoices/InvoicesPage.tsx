@@ -41,20 +41,16 @@ const InvoicesPage = () => {
   // Filters
   const [filters, setFilters] = useState<InvoiceFilters>({});
 
-  // Lock filters.area_id vào khu vực phụ trách cho staff (manager).
-  // Owner/super admin: defaultAreaId = NULL → không tác động.
+  // ctx chỉ còn dùng cho isSuper (restore/force-cancel). Cơ chế khoá staff vào
+  // khu vực theo quy ước ngầm username = area.name (lockedAreaId) đã GỠ:
+  // scope dữ liệu của staff vốn do RLS per-building quyết định; BuildingMultiSelect
+  // (nguồn useBuildings đã bị RLS cắt) tự nhiên chỉ hiện toà staff được quản.
   const { data: ctx } = useMyContext();
   const { data: perms } = useMyPermissions();
   const canCreate = can(perms, 'invoices', 'create');
   const canEdit = can(perms, 'invoices', 'edit');
   const canDelete = can(perms, 'invoices', 'delete');
   const canRecordPayment = can(perms, 'invoices', 'record_payment');
-  const lockedAreaId = ctx?.isStaff && ctx?.defaultAreaId ? ctx.defaultAreaId : null;
-  useEffect(() => {
-    if (lockedAreaId && filters.area_id !== lockedAreaId) {
-      setFilters((f) => ({ ...f, area_id: lockedAreaId, building_id: undefined, room_id: undefined, room_ids: undefined }));
-    }
-  }, [lockedAreaId, filters.area_id]);
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,6 +115,7 @@ const InvoicesPage = () => {
     () => ({
       area_id: filters.area_id,
       building_id: filters.building_id,
+      building_ids: filters.building_ids,
       room_id:
         filters.room_ids?.length === 1
           ? filters.room_ids[0]
