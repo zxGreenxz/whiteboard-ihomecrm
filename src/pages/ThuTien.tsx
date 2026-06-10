@@ -102,8 +102,15 @@ const ThuTien = () => {
       : owesInScope(inv) && !collectedInScope(inv);
   };
 
+  // Sort theo tên phòng (numeric: 205 < 209 < 302…) — query trả theo ngày
+  // tạo hoá đơn nên không sort thì lưới ô phòng lộn xộn.
   const list = useMemo(
-    () => allRooms.filter((i) => timeMatch(i) && statusMatch(i)),
+    () =>
+      allRooms
+        .filter((i) => timeMatch(i) && statusMatch(i))
+        .sort((a, b) =>
+          (a.room?.name ?? '').localeCompare(b.room?.name ?? '', 'vi', { numeric: true }),
+        ),
     [allRooms, timeFilter, lo, hi, statusFilter],
   );
 
