@@ -72,6 +72,7 @@ const posMoneyArb = fc.double({ min: 0.01, max: 100_000_000, noNaN: true, noDefa
 const dateArb = fc.date({
   min: new Date('2020-01-01'),
   max: new Date('2030-12-31'),
+  noInvalidDate: true,
 }).map((d) => d.toISOString().split('T')[0]);
 
 // =============================================

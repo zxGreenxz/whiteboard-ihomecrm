@@ -97,7 +97,8 @@ const CONTRACT_SELECT = `
       id, name, type, area_id,
       street_address, ward, district, province
     )
-  ),  contract_customers!contract_customers_contract_id_fkey (
+  ),
+  contract_customers!contract_customers_contract_id_fkey (
     id, contract_id, customer_id, is_representative, notes, created_at, updated_at,
     customer:customers!contract_customers_customer_id_fkey (
       id, full_name, phone, email, id_number,
@@ -237,7 +238,8 @@ async function createFirstInvoiceForContract(args: {
       user_id: userId,
       contract_id: contract.id,
       building_id,
-      room_id: contractData.room_id,      invoice_number,
+      room_id: contractData.room_id,
+      invoice_number,
       billing_month,
       issue_date,
       due_date,
@@ -775,42 +777,6 @@ export interface CreateContractData {
   tenants?: ContractTenantData[];
 }
 
-/** @deprecated */
-export interface ExtendContractData {
-  contract_id: string;
-  extension_months: number;
-  new_rent_price?: number;
-  notes?: string;
-}
-
-/** @deprecated */
-export interface TransferContractData {
-  contract_id: string;
-  transfer_type: "TENANT_CHANGE" | "ROOM_CHANGE" | "BOTH_CHANGE";
-  new_tenant_id?: string;
-  new_room_id?: string;
-  new_rent_price?: number;
-  transfer_fee?: number;
-  reason?: string;
-}
-
-/** @deprecated */
-export interface TerminateContractData {
-  contract_id: string;
-  termination_type:
-    | "NORMAL"
-    | "EARLY_TENANT"
-    | "EARLY_OWNER"
-    | "BREACH"
-    | "FORFEIT";
-  actual_move_out_date: string;
-  early_termination_fee?: number;
-  damage_fee?: number;
-  damage_description?: string;
-  cleaning_fee?: number;
-  notes?: string;
-}
-
 const LEGACY_CONTRACT_SELECT = `
   *,
   tenant:tenants!contracts_tenant_id_fkey (
@@ -867,156 +833,11 @@ export const useContractsLegacy = (filters?: {
   });
 };
 
-/** @deprecated */
-export const useExtendContract = () => {
-  const queryClient = useQueryClient();
-  const { toast: legacyToast } = useToast();
-
-  return useMutation({
-    mutationFn: async (data: ExtendContractData) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: extension, error } = await supabase
-        .from("contract_extensions")
-        .insert([
-          {
-            user_id: user.id,
-            contract_id: data.contract_id,
-            extension_months: data.extension_months,
-            extension_type: "SIMPLE",
-            old_end_date: new Date().toISOString(),
-            new_end_date: new Date().toISOString(),
-            new_rent_price: data.new_rent_price,
-            notes: data.notes,
-            status: "DRAFT",
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return extension;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contracts"] });
-      legacyToast({
-        title: "Yêu cầu gia hạn đã được tạo thành công",
-      });
-    },
-    onError: (error: Error) => {
-      legacyToast({
-        variant: "destructive",
-        title: "Có lỗi xảy ra khi gia hạn hợp đồng",
-        description: error.message,
-      });
-    },
-  });
-};
-
-/** @deprecated */
-export const useTransferContract = () => {
-  const queryClient = useQueryClient();
-  const { toast: legacyToast } = useToast();
-
-  return useMutation({
-    mutationFn: async (data: TransferContractData) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: transfer, error } = await supabase
-        .from("contract_transfers")
-        .insert([
-          {
-            user_id: user.id,
-            contract_id: data.contract_id,
-            transfer_type: data.transfer_type,
-            transfer_date: new Date().toISOString(),
-            new_tenant_id: data.new_tenant_id,
-            new_room_id: data.new_room_id,            new_rent_price: data.new_rent_price,
-            transfer_fee: data.transfer_fee || 0,
-            reason: data.reason,
-            status: "DRAFT",
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return transfer;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contracts"] });
-      legacyToast({
-        title: "Yêu cầu chuyển đổi đã được tạo thành công",
-      });
-    },
-    onError: (error: Error) => {
-      legacyToast({
-        variant: "destructive",
-        title: "Có lỗi xảy ra khi tạo yêu cầu chuyển đổi",
-        description: error.message,
-      });
-    },
-  });
-};
-
-/** @deprecated */
-export const useTerminateContract = () => {
-  const queryClient = useQueryClient();
-  const { toast: legacyToast } = useToast();
-
-  return useMutation({
-    mutationFn: async (data: TerminateContractData) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: termination, error } = await supabase
-        .from("contract_terminations")
-        .insert([
-          {
-            user_id: user.id,
-            contract_id: data.contract_id,
-            termination_type: data.termination_type,
-            termination_date: new Date().toISOString(),
-            total_deposit: 0,
-            actual_move_out_date: data.actual_move_out_date,
-            early_termination_fee: data.early_termination_fee || 0,
-            damage_fee: data.damage_fee || 0,
-            damage_description: data.damage_description,
-            cleaning_fee: data.cleaning_fee || 0,
-            notes: data.notes,
-            status: "PENDING_APPROVAL",
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return termination;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contracts"] });
-      queryClient.invalidateQueries({ queryKey: ["pending-terminations"] });
-      legacyToast({
-        title: "Yêu cầu thanh lý đã được tạo thành công",
-      });
-    },
-    onError: (error: Error) => {
-      legacyToast({
-        variant: "destructive",
-        title: "Có lỗi xảy ra khi tạo yêu cầu thanh lý",
-        description: error.message,
-      });
-    },
-  });
-};
+// LƯU Ý: useExtendContract / useTransferContract / useTerminateContract đã bị XOÁ.
+// Chúng tạo bản ghi contract_extensions DRAFT (extension_type SIMPLE, ngày bogus) /
+// contract_terminations PENDING_APPROVAL mà không UI nào duyệt được → gia hạn/thanh lý
+// từ trang chi tiết HĐ thành no-op âm thầm. Dùng RenewDialog/TerminateDialog (RPC
+// renew_contract / terminate_contract_*) trong src/hooks/useContractOperations.ts.
 
 /** @deprecated */
 export const useUnpaidInvoices = (contractId?: string) => {

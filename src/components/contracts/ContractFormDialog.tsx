@@ -68,15 +68,33 @@ import {
 } from "@/lib/firstInvoiceBuilder";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 
+/**
+ * Prefill khi mở form từ flow khác (Cọc giữ chỗ → HĐ, Building map → HĐ).
+ * Parent PHẢI memo object này (useMemo) để tránh reset form lặp vô hạn.
+ */
+export interface ContractPrefill {
+  buildingId?: string;
+  roomId?: string;
+  /** Phiếu giữ chỗ (bảng deposits) — flip CONVERTED + gắn contract_id SAU khi HĐ tạo thành công. */
+  depositId?: string;
+  /** Tiền cọc đã ghi trên phiếu giữ chỗ — prefill "Đã đặt cọc". */
+  depositAmount?: number;
+}
+
 interface ContractFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contract?: ContractWithRelations;
+  prefill?: ContractPrefill;
+  /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
+  onCreated?: (contractId: string) => void;
 }
 
 // ---- Local state types for customers & services ----
@@ -97,8 +115,11 @@ export function ContractFormDialog({
   open,
   onOpenChange,
   contract,
+  prefill,
+  onCreated,
 }: ContractFormDialogProps) {
   const isEditMode = !!contract;
+  const queryClient = useQueryClient();
 
   // Mutations
   const createContract = useCreateContract();
@@ -225,6 +246,41 @@ export function ContractFormDialog({
   const depositShortfall = depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD;
   const blockByDepositDebt = !isEditMode && depositShortfall && !depositDebtMode;
 
+  // ---- Cọc giữ chỗ đã thu (phiếu IE mồ côi của phòng) ----
+  // Trigger trg_contract_link_orphan_deposits sẽ TỰ GẮN các phiếu này vào HĐ
+  // khi INSERT, và recompute deposit_paid = Σ phiếu APPROVED. Vì vậy:
+  // - "Đã đặt cọc" phải là TỔNG cọc khách đã đưa (gồm cả giữ chỗ);
+  // - phiếu thu auto-tạo lúc lưu chỉ ghi PHẦN CHÊNH (typed − orphan) —
+  //   nếu ghi toàn bộ sẽ double-count deposit_paid (bug cũ).
+  const startDateWatch = form.watch("start_date");
+  const { data: orphanDepositVouchers = [] } = useOrphanDepositVouchers(
+    !isEditMode && open ? selectedRoomId || undefined : undefined,
+    startDateWatch || undefined,
+  );
+  const orphanDepositTotal = useMemo(
+    () =>
+      orphanDepositVouchers.reduce(
+        (sum, v) => sum + (Number(v.total_amount) || 0),
+        0,
+      ),
+    [orphanDepositVouchers],
+  );
+  // Khi phòng đã có cọc giữ chỗ mà user chưa nhập gì → tự điền tổng đã thu
+  // (user vẫn chỉnh tay được; nhập THÊM nếu thu thêm lúc ký).
+  useEffect(() => {
+    if (isEditMode || !open) return;
+    if (orphanDepositTotal <= 0) return;
+    const current = form.getValues("deposit_paid") ?? 0;
+    if (current < orphanDepositTotal) {
+      form.setValue("deposit_paid", orphanDepositTotal);
+      const total = form.getValues("total_deposit") ?? 0;
+      if (total < orphanDepositTotal) {
+        form.setValue("total_deposit", orphanDepositTotal);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orphanDepositTotal, isEditMode, open]);
+
   // ---- Reset form when dialog opens ----
   useEffect(() => {
     if (!open) return;
@@ -288,21 +344,21 @@ export function ContractFormDialog({
       // HĐ đã có dịch vụ riêng → bật nút gạt; chưa có → dùng mặc định toà.
       setUseCustomServices(services.length > 0);
     } else {
-      // Create mode: reset
-      setSelectedBuildingId("");
-      setSelectedRoomId("");
+      // Create mode: reset (áp prefill nếu mở từ flow Cọc giữ chỗ / Building map)
+      setSelectedBuildingId(prefill?.buildingId ?? "");
+      setSelectedRoomId(prefill?.roomId ?? "");
       setSelectedCustomers([]);
       setSelectedServices([]);
       setUseCustomServices(false);
       setDepositAttachments([]);
       form.reset({
-        room_id: "",
-          signed_date: new Date().toISOString().split("T")[0],
+        room_id: prefill?.roomId ?? "",
+        signed_date: new Date().toISOString().split("T")[0],
         start_date: "",
         end_date: "",
         rent_price: 0,
-        total_deposit: 0,
-        deposit_paid: 0,
+        total_deposit: prefill?.depositAmount ?? 0,
+        deposit_paid: prefill?.depositAmount ?? 0,
         deposit_account_id: null,
         payment_cycle: "MONTHLY",
         start_billing_date: "",
@@ -318,7 +374,7 @@ export function ContractFormDialog({
         deposit_topup_due_date: "",
       });
     }
-  }, [open, contract, form]);
+  }, [open, contract, form, prefill]);
 
   // Tiền cọc luôn ghi vào sổ "CỌC (giữ hộ khách)" chung (mọi toà) — không còn
   // cho chọn sổ thu cọc. Sổ CỌC được resolve qua RPC get_or_create_deposit_account
@@ -785,9 +841,14 @@ export function ContractFormDialog({
         {
           onSuccess: async (contract) => {
             // Auto-tạo phiếu thu cọc, LUÔN ghi vào sổ "CỌC (giữ hộ khách)"
-            // chung (resolve qua RPC get_or_create_deposit_account). Chỉ tạo
-            // khi có đặt cọc > 0 và có loại thu "Tiền cọc".
-            const depositAmount = data.deposit_paid ?? 0;
+            // chung (resolve qua RPC get_or_create_deposit_account).
+            // CHỈ tạo cho PHẦN CHÊNH so với cọc giữ chỗ đã thu: các phiếu IE
+            // mồ côi của phòng đã được trigger tự gắn vào HĐ và tính vào
+            // deposit_paid — tạo phiếu cho toàn bộ sẽ double-count (bug cũ).
+            const depositAmount = Math.max(
+              0,
+              (data.deposit_paid ?? 0) - orphanDepositTotal,
+            );
             const building = (buildings as any[])?.find(
               (b) => b.id === selectedBuildingId,
             );
@@ -811,48 +872,88 @@ export function ContractFormDialog({
                       ? `Cọc giữ phòng ${roomName}`
                       : "Cọc giữ phòng";
                 const today = new Date().toISOString().split("T")[0];
-                createDepositVoucher.mutate({
-                  type: "INCOME",
-                  name: voucherName,
-                  building_id: selectedBuildingId,
-                  room_id: selectedRoomId || null,
-                  tenant_id: null,
-                  contract_id: contract?.id ?? null,
-                  payer_name: null,
-                  account_id: depositAccountId,
-                  voucher_date: data.signed_date || today,
-                  // null = tự động; hạng mục "Tiền cọc" (is_deposit) đã tự loại
-                  // khoản này khỏi báo cáo Lợi nhuận.
-                  business_result_accounting: null,
-                  repeat_cycle: "NONE",
-                  repeat_infinity: false,
-                  repeat_count: 0,
-                  attachments: depositAttachments,
-                  items: [
+                try {
+                  await createDepositVoucher.mutateAsync({
+                    type: "INCOME",
+                    name: voucherName,
+                    building_id: selectedBuildingId,
+                    room_id: selectedRoomId || null,
+                    tenant_id: null,
+                    contract_id: contract?.id ?? null,
+                    payer_name: null,
+                    account_id: depositAccountId,
+                    voucher_date: data.signed_date || today,
+                    // null = tự động; hạng mục "Tiền cọc" (is_deposit) đã tự loại
+                    // khoản này khỏi báo cáo Lợi nhuận.
+                    business_result_accounting: null,
+                    repeat_cycle: "NONE",
+                    repeat_infinity: false,
+                    repeat_count: 0,
+                    attachments: depositAttachments,
+                    items: [
+                      {
+                        income_expense_type_id: depositIncomeType.id,
+                        description: null,
+                        quantity: 1,
+                        unit_price: depositAmount,
+                        start_date: data.signed_date || today,
+                        end_date: data.signed_date || today,
+                      },
+                    ],
+                  });
+                } catch (voucherErr) {
+                  console.error("Tạo phiếu thu cọc thất bại:", voucherErr);
+                  toast.error(
+                    "HĐ đã lưu nhưng phiếu thu cọc TẠO THẤT BẠI",
                     {
-                      income_expense_type_id: depositIncomeType.id,
-                      description: null,
-                      quantity: 1,
-                      unit_price: depositAmount,
-                      start_date: data.signed_date || today,
-                      end_date: data.signed_date || today,
+                      duration: 15000,
+                      description: `Số cọc ${formatCurrency(depositAmount)} đang KHÔNG có chứng từ trong sổ quỹ. Vào Thu chi tạo phiếu thu loại "Tiền cọc" cho phòng ${roomName}, hệ thống sẽ tự tính lại cọc của HĐ.`,
                     },
-                  ],
-                });
+                  );
+                }
               } else {
-                toast.warning(
-                  "Đã lưu HĐ nhưng chưa tạo phiếu thu cọc: không lấy được sổ CỌC.",
+                toast.error(
+                  "HĐ đã lưu nhưng chưa tạo phiếu thu cọc: không lấy được sổ CỌC.",
+                  {
+                    duration: 15000,
+                    description: `Số cọc ${formatCurrency(depositAmount)} đang KHÔNG có chứng từ. Vào Thu chi tạo phiếu thu loại "Tiền cọc" gắn phòng này.`,
+                  },
                 );
               }
             } else if (depositAmount > 0 && !depositIncomeType) {
-              toast.warning(
-                'Đã lưu HĐ nhưng chưa tạo phiếu thu cọc: thiếu loại thu "Tiền cọc".',
+              toast.error(
+                'HĐ đã lưu nhưng chưa tạo phiếu thu cọc: thiếu loại thu "Tiền cọc".',
+                {
+                  duration: 15000,
+                  description: `Tạo loại thu "Tiền cọc" trong Cài đặt rồi tạo phiếu thu ${formatCurrency(depositAmount)} gắn phòng này.`,
+                },
               );
+            }
+
+            // Flow Cọc giữ chỗ → HĐ: flip phiếu giữ chỗ SAU khi HĐ đã tạo
+            // thành công (trước đây flip TRƯỚC khi tạo → HĐ fail là phòng mất
+            // RESERVED + lộ ra trang Phòng trống công khai).
+            if (prefill?.depositId && contract?.id) {
+              const { error: depUpdateErr } = await supabase
+                .from("deposits")
+                .update({
+                  status: "CONVERTED",
+                  contract_id: contract.id,
+                } as any)
+                .eq("id", prefill.depositId);
+              if (depUpdateErr) {
+                console.error("Flip deposit CONVERTED thất bại:", depUpdateErr);
+                toast.warning(
+                  "HĐ đã tạo nhưng phiếu giữ chỗ chưa chuyển trạng thái — cập nhật tay trong trang Đặt cọc.",
+                );
+              }
+              queryClient.invalidateQueries({ queryKey: ["deposits"] });
             }
 
             // Đóng dialog HĐ trước rồi mở modal tạo phiếu chi hoa hồng
             onOpenChange(false);
             if (contract?.id) {
+              onCreated?.(contract.id);
               setCommissionContractId(contract.id);
             }
           },
@@ -1383,6 +1484,47 @@ export function ContractFormDialog({
                           />
                         </div>
                       )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Cọc giữ chỗ đã thu trước — các phiếu IE mồ côi của phòng sẽ
+                    TỰ GẮN vào HĐ khi lưu (trigger trg_contract_link_orphan_deposits).
+                    Báo rõ để user không nhập trùng; phiếu thu mới chỉ tạo cho
+                    phần chênh. */}
+                {!isEditMode && orphanDepositTotal > 0 && (
+                  <Alert className="border-amber-300 bg-amber-50">
+                    <AlertDescription className="text-amber-900 space-y-1">
+                      <p className="font-medium">
+                        Phòng này đã thu cọc giữ chỗ{" "}
+                        {formatCurrency(orphanDepositTotal)} (
+                        {orphanDepositVouchers.length} phiếu) — sẽ tự gắn vào
+                        HĐ khi lưu.
+                      </p>
+                      <ul className="text-xs list-disc pl-4">
+                        {orphanDepositVouchers.map((v) => (
+                          <li key={v.id}>
+                            {v.code ? `${v.code} — ` : ""}
+                            {v.name} ({formatCurrency(v.total_amount)},{" "}
+                            {v.approval_status === "APPROVED"
+                              ? "đã duyệt"
+                              : "chưa duyệt"}
+                            )
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs">
+                        Ô <strong>“Đã đặt cọc”</strong> = TỔNG cọc khách đã đưa
+                        (gồm cả giữ chỗ). Phiếu thu mới chỉ tạo cho phần thu
+                        thêm lúc ký:{" "}
+                        <strong>
+                          {formatCurrency(
+                            Math.max(0, depositPaid - orphanDepositTotal),
+                          )}
+                        </strong>
+                        . Nếu có phiếu cọc không thuộc khách này, hãy huỷ phiếu
+                        đó trong Thu chi trước khi lưu HĐ.
+                      </p>
                     </AlertDescription>
                   </Alert>
                 )}

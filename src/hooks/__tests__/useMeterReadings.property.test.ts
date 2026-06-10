@@ -104,7 +104,7 @@ describe('Property 1: Meter name generation follows pattern', () => {
 describe('Property 2: Active meters filter excludes soft-deleted', () => {
   const meterWithDeletedAtArb: fc.Arbitrary<MeterWithDeletedAt> = fc.record({
     id: fc.uuid(),
-    deleted_at: fc.option(fc.date().map((d) => d.toISOString()), { nil: null }),
+    deleted_at: fc.option(fc.date({ noInvalidDate: true }).map((d) => d.toISOString()), { nil: null }),
   });
 
   it('filterActiveMeters returns only meters with deleted_at === null', () => {
@@ -142,7 +142,7 @@ describe('Property 3: Meter filter by building and type', () => {
     id: fc.uuid(),
     building_id: fc.constantFrom(...buildingPool),
     meter_type: meterTypeArb,
-    deleted_at: fc.option(fc.date().map((d) => d.toISOString()), { nil: null }),
+    deleted_at: fc.option(fc.date({ noInvalidDate: true }).map((d) => d.toISOString()), { nil: null }),
     room_id: fc.uuid(),
   });
 
@@ -237,7 +237,7 @@ describe('Property 13: Approval round-trip', () => {
     fc.assert(
       fc.property(
         fc.uuid(),
-        fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+        fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31'), noInvalidDate: true }).map((d) => d.toISOString()),
         (approverId, approvedAt) => {
           const original = {
             status: 'UNAPPROVED' as const,

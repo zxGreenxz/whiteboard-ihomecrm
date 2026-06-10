@@ -35,7 +35,7 @@ describe('Property 2: Active meters filter excludes soft-deleted', () => {
   const meterWithDeletedAtArb = fc.record({
     id: fc.uuid(),
     deleted_at: fc.option(
-      fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+      fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31'), noInvalidDate: true }).map((d) => d.toISOString()),
       { nil: null },
     ),
   });

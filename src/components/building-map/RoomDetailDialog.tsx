@@ -18,6 +18,11 @@ import {
   Maximize2
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMemo, useState } from "react";
+import {
+  ContractFormDialog,
+  type ContractPrefill,
+} from "@/components/contracts/ContractFormDialog";
 
 interface RoomDetailDialogProps {
   open: boolean;
@@ -28,6 +33,17 @@ interface RoomDetailDialogProps {
 export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialogProps) {
   const navigate = useNavigate();
   const { data: room, isLoading: roomLoading } = useRoom(roomId || "");
+  const [contractFormOpen, setContractFormOpen] = useState(false);
+
+  // Prefill stable cho ContractFormDialog (route /contracts/create không tồn tại
+  // — mở dialog tạo HĐ trực tiếp với toà/phòng điền sẵn).
+  const contractPrefill = useMemo<ContractPrefill>(
+    () => ({
+      buildingId: (room as any)?.building_id ?? undefined,
+      roomId: roomId ?? undefined,
+    }),
+    [roomId, (room as any)?.building_id],
+  );
 
   // Get active contract for this room
   const { data: activeContract } = useQuery({
@@ -83,12 +99,13 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
 
   const handleCreateContract = () => {
     onOpenChange(false);
-    navigate(`/contracts/create?room_id=${roomId}`);
+    setContractFormOpen(true);
   };
 
   const handleReportIssue = () => {
     onOpenChange(false);
-    navigate(`/issues/create?room_id=${roomId}`);
+    // /issues/create không tồn tại — sự cố được tạo trong trang Công việc.
+    navigate(`/tasks`);
   };
 
   const handleViewContract = () => {
@@ -99,6 +116,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         {roomLoading ? (
@@ -265,5 +283,12 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
         )}
       </DialogContent>
     </Dialog>
+
+    <ContractFormDialog
+      open={contractFormOpen}
+      onOpenChange={setContractFormOpen}
+      prefill={contractPrefill}
+    />
+    </>
   );
 }

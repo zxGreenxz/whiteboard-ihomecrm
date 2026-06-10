@@ -117,7 +117,7 @@ describe('Property 1: Phiếu mới luôn có trạng thái UNAPPROVED và mã p
 describe('Property 5: Soft-delete ẩn khỏi danh sách', () => {
   const voucherWithDeletedArb = fc.record({
     id: fc.uuid(),
-    deleted_at: fc.option(fc.date().map(d => d.toISOString()), { nil: null }),
+    deleted_at: fc.option(fc.date({ noInvalidDate: true }).map(d => d.toISOString()), { nil: null }),
   });
 
   it('filterNonDeleted should exclude all items with non-null deleted_at', () => {

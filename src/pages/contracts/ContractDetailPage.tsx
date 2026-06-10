@@ -58,11 +58,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 // Import contract action dialogs
-import ExtendContractDialog from '@/components/contracts/ExtendContractDialog';
+import { RenewDialog } from '@/components/contracts/RenewDialog';
 import { RenewedBadge } from '@/components/contracts/RenewedBadge';
 import { TransferContractDialog } from '@/components/contracts/TransferContractDialog';
 import { TransferRoomDialog } from '@/components/contracts/TransferRoomDialog';
-import TerminateContractDialog from '@/components/contracts/TerminateContractDialog';
+import { TerminateDialog } from '@/components/contracts/TerminateDialog';
 import RegisterMoveOutDialog from '@/components/contracts/RegisterMoveOutDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
@@ -1360,8 +1360,11 @@ const ContractDetailPage = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Dialogs */}
-      <ExtendContractDialog
+      {/* Dialogs — Gia hạn/Thanh lý dùng chung RenewDialog/TerminateDialog
+          (RPC renew_contract / terminate_contract_*) với trang danh sách.
+          KHÔNG dùng ExtendContractDialog/TerminateContractDialog cũ: chúng chỉ
+          tạo bản ghi DRAFT/PENDING không có UI duyệt → no-op âm thầm. */}
+      <RenewDialog
         open={extendDialogOpen}
         onOpenChange={setExtendDialogOpen}
         contract={contract}
@@ -1373,7 +1376,7 @@ const ContractDetailPage = () => {
         contract={contract}
       />
 
-      <TerminateContractDialog
+      <TerminateDialog
         open={terminateDialogOpen}
         onOpenChange={setTerminateDialogOpen}
         contract={contract}

@@ -20,6 +20,65 @@ export interface DepositWithRelations extends Deposit {
   };
 }
 
+export interface OrphanDepositVoucher {
+  id: string;
+  code: string | null;
+  name: string;
+  total_amount: number;
+  voucher_date: string;
+  approval_status: 'UNAPPROVED' | 'APPROVED' | 'CANCELLED';
+}
+
+/**
+ * Phiếu thu CỌC mồ côi (chưa gắn HĐ) của một phòng — cùng predicate với
+ * trigger trg_contract_link_orphan_deposits (migration 20260529000003):
+ * cùng room, contract_id NULL, type INCOME, có item is_deposit,
+ * voucher_date <= start_date + 7 ngày. Khi HĐ được INSERT các phiếu này
+ * tự động gắn vào HĐ và recompute deposit_paid = Σ phiếu APPROVED.
+ * ContractFormDialog dùng để: (1) báo user số cọc giữ chỗ đã thu,
+ * (2) auto-voucher chỉ tạo cho PHẦN CHÊNH — tránh double-count deposit_paid.
+ */
+export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) => {
+  return useQuery({
+    queryKey: ['orphan-deposit-vouchers', roomId, startDate],
+    enabled: !!roomId,
+    queryFn: async (): Promise<OrphanDepositVoucher[]> => {
+      if (!roomId) return [];
+      let query = (supabase as any)
+        .from('income_expenses')
+        .select(
+          `id, code, name, total_amount, voucher_date, approval_status,
+           income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
+        )
+        .is('contract_id', null)
+        .is('deleted_at', null)
+        .eq('type', 'INCOME')
+        .eq('room_id', roomId)
+        .in('approval_status', ['APPROVED', 'UNAPPROVED'])
+        .eq('income_expense_items.income_expense_types.is_deposit', true);
+
+      if (startDate) {
+        const d = new Date(startDate);
+        if (!Number.isNaN(d.getTime())) {
+          d.setDate(d.getDate() + 7);
+          query = query.lte('voucher_date', d.toISOString().split('T')[0]);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return ((data ?? []) as any[]).map((v) => ({
+        id: v.id,
+        code: v.code ?? null,
+        name: v.name,
+        total_amount: Number(v.total_amount) || 0,
+        voucher_date: v.voucher_date,
+        approval_status: v.approval_status,
+      }));
+    },
+  });
+};
+
 export const useDeposits = (filters?: {
   status?: string;
   tenant_id?: string;
