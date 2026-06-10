@@ -112,21 +112,22 @@ export const useCashBookSummary = (
       if (ieError) throw ieError;
       const { income: totalIncome, expense: totalExpense } = sumByType(ieData as any);
 
-      // Số dư đầu kỳ — tổng net trước start_date
+      // Số dư đầu kỳ — RPC aggregate (migration 20260610110000): trả 1 số
+      // thay vì kéo TOÀN BỘ lịch sử phiếu trước start_date về client cộng
+      // tay (payload tăng vô hạn theo tuổi dữ liệu). SECURITY INVOKER nên
+      // phạm vi nhìn thấy y hệt query cũ (qua RLS).
       let openingBalance = 0;
       if (start_date) {
-        let prevIeq = supabase
-          .from("income_expenses")
-          .select("type, total_amount")
-          .eq('approval_status', 'APPROVED')
-          .is('deleted_at', null)
-          .lt("voucher_date", start_date);
-        if (buildingId) prevIeq = prevIeq.eq("building_id", buildingId);
-        if (accountId) prevIeq = prevIeq.eq("account_id", accountId);
-        const { data: prevIE, error: prevErr } = await prevIeq;
-        if (prevErr) throw prevErr;
-        const { income: prevIncome, expense: prevExpense } = sumByType(prevIE as any);
-        openingBalance = prevIncome - prevExpense;
+        const { data: ob, error: obErr } = await (supabase.rpc as any)(
+          "cashbook_opening_balance",
+          {
+            p_before_date: start_date,
+            p_building_id: buildingId ?? null,
+            p_account_id: accountId ?? null,
+          },
+        );
+        if (obErr) throw obErr;
+        openingBalance = Number(ob) || 0;
       }
 
       return {

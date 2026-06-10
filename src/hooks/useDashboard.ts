@@ -71,81 +71,103 @@ export const useDashboardStats = (buildingId?: string | null) => {
 
       const buildingIds = await getBuildingIds(user.id, buildingId);
 
-      let totalRooms = 0;
-      if (buildingIds.length > 0) {
-        const { count } = await supabase
-          .from("rooms")
-          .select("*", { count: "exact", head: true })
-          .in("building_id", buildingIds)
-          .is("deleted_at", null);
-        totalRooms = count || 0;
-      }
+      const monthStart = startOfMonth(new Date());
+      const monthEnd = endOfMonth(new Date());
 
-      // Get occupied rooms (active contracts) - filter by room's building
+      // Occupied rooms (active contracts) — filter theo toà của phòng.
       let occupiedRoomsQuery = supabase
         .from("contracts")
         .select("room_id, room:rooms!inner(building_id)")
         .in("status", ["ACTIVE"])
         .not("room_id", "is", null);
-
       if (buildingIds.length > 0) {
         occupiedRoomsQuery = occupiedRoomsQuery.in("rooms.building_id", buildingIds);
       }
 
-      const { data: activeContracts } = await occupiedRoomsQuery;
-
-      // Phòng "cọc giữ chỗ" (rooms.status='RESERVED') — KHÔNG tính là trống.
-      let reservedRooms = 0;
-      if (buildingIds.length > 0) {
-        const { count: rc } = await supabase
-          .from("rooms")
-          .select("*", { count: "exact", head: true })
-          .in("building_id", buildingIds)
-          .is("deleted_at", null)
-          .eq("status", "RESERVED");
-        reservedRooms = rc || 0;
+      // Doanh thu tháng — respect bộ lọc toà (bản cũ bỏ qua: chọn toà nhưng
+      // doanh thu vẫn là tổng mọi toà).
+      let paymentsQuery = supabase
+        .from("payments")
+        .select(
+          buildingId
+            ? "amount, invoice:invoices!inner(building_id)"
+            : "amount",
+        )
+        .gte("payment_date", monthStart.toISOString())
+        .lte("payment_date", monthEnd.toISOString());
+      if (buildingId) {
+        paymentsQuery = (paymentsQuery as any).eq("invoice.building_id", buildingId);
       }
+
+      // Công nợ — respect bộ lọc toà.
+      let debtQuery = supabase
+        .from("invoices")
+        .select("total_amount, paid_amount")
+        .in("status", ["APPROVED", "PARTIAL_PAID"])
+        .is("deleted_at", null);
+      if (buildingIds.length > 0) {
+        debtQuery = debtQuery.in("building_id", buildingIds);
+      }
+
+      // 7 truy vấn độc lập — chạy SONG SONG (bản cũ await tuần tự từng cái,
+      // cộng dồn ~7 round-trip latency mỗi 60s).
+      const [
+        totalRoomsRes,
+        activeContractsRes,
+        reservedRoomsRes,
+        paymentsRes,
+        unpaidInvoicesRes,
+        newContractsRes,
+        unresolvedIssuesRes,
+      ] = await Promise.all([
+        buildingIds.length > 0
+          ? supabase
+              .from("rooms")
+              .select("*", { count: "exact", head: true })
+              .in("building_id", buildingIds)
+              .is("deleted_at", null)
+          : Promise.resolve({ count: 0 } as any),
+        occupiedRoomsQuery,
+        buildingIds.length > 0
+          ? supabase
+              .from("rooms")
+              .select("*", { count: "exact", head: true })
+              .in("building_id", buildingIds)
+              .is("deleted_at", null)
+              .eq("status", "RESERVED")
+          : Promise.resolve({ count: 0 } as any),
+        paymentsQuery,
+        debtQuery,
+        supabase
+          .from("contracts")
+          .select("*", { count: "exact", head: true })
+          .gte("created_at", monthStart.toISOString())
+          .lte("created_at", monthEnd.toISOString()),
+        supabase
+          .from("issues")
+          .select("*", { count: "exact", head: true })
+          .not("status", "in", '("RESOLVED","CLOSED")'),
+      ]);
+
+      const totalRooms = totalRoomsRes.count || 0;
+      const activeContracts = activeContractsRes.data;
+      const reservedRooms = reservedRoomsRes.count || 0;
+      const payments = paymentsRes.data;
+      const unpaidInvoices = unpaidInvoicesRes.data;
+      const newContracts = newContractsRes.count;
+      const unresolvedIssues = unresolvedIssuesRes.count;
 
       const occupiedRooms = activeContracts?.length || 0;
       const availableRooms = Math.max(0, (totalRooms || 0) - occupiedRooms - reservedRooms);
       const occupancyRate = totalRooms ? (occupiedRooms / totalRooms) * 100 : 0;
 
-      // Get revenue this month
-      const monthStart = startOfMonth(new Date());
-      const monthEnd = endOfMonth(new Date());
-
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("amount")
-        .gte("payment_date", monthStart.toISOString())
-        .lte("payment_date", monthEnd.toISOString());
-
-      const revenueThisMonth = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-
-      // Get total debt (unpaid invoices - APPROVED or PARTIAL_PAID)
-      const { data: unpaidInvoices } = await supabase
-        .from("invoices")
-        .select("total_amount, paid_amount")
-        .in("status", ["APPROVED", "PARTIAL_PAID"])
-        .is("deleted_at", null);
+      const revenueThisMonth =
+        (payments as any[])?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0;
 
       const totalDebt = unpaidInvoices?.reduce((sum, inv) => {
         const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
         return sum + debt;
       }, 0) || 0;
-
-      // Get new contracts this month
-      const { count: newContracts } = await supabase
-        .from("contracts")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", monthStart.toISOString())
-        .lte("created_at", monthEnd.toISOString());
-
-      // Get unresolved issues
-      const { count: unresolvedIssues } = await supabase
-        .from("issues")
-        .select("*", { count: "exact", head: true })
-        .not("status", "in", '("RESOLVED","CLOSED")');
 
       return {
         totalRooms: totalRooms || 0,
@@ -164,6 +186,9 @@ export const useDashboardStats = (buildingId?: string | null) => {
 };
 
 // Revenue chart data (last 12 months)
+// 1 QUERY cho cả kỳ rồi group theo tháng ở client — bản cũ bắn 12 query
+// TUẦN TỰ (mỗi tháng 1 round-trip) khiến chart mất 1.5-2.5s mỗi lần mở
+// Dashboard. Đồng thời respect bộ lọc toà (bản cũ bỏ qua buildingId).
 export const useRevenueChart = (months: number = 12, buildingId?: string | null) => {
   return useQuery({
     queryKey: ["revenue-chart", months, buildingId],
@@ -171,25 +196,41 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const rangeStart = startOfMonth(subMonths(new Date(), months - 1));
+      const rangeEnd = endOfMonth(new Date());
+
+      let query = supabase
+        .from("payments")
+        .select(
+          buildingId
+            ? "amount, payment_date, invoice:invoices!inner(building_id)"
+            : "amount, payment_date",
+        )
+        .gte("payment_date", rangeStart.toISOString())
+        .lte("payment_date", rangeEnd.toISOString());
+      if (buildingId) {
+        query = query.eq("invoice.building_id", buildingId);
+      }
+      const { data: payments } = await query;
+
+      // Khởi tạo đủ 12 tháng (tháng không có payment vẫn hiện 0).
+      const byMonth = new Map<string, number>();
       const data: RevenueData[] = [];
-
       for (let i = months - 1; i >= 0; i--) {
-        const monthDate = subMonths(new Date(), i);
-        const monthStart = startOfMonth(monthDate);
-        const monthEnd = endOfMonth(monthDate);
-
-        const { data: payments } = await supabase
-          .from("payments")
-          .select("amount")
-          .gte("payment_date", monthStart.toISOString())
-          .lte("payment_date", monthEnd.toISOString());
-
-        const revenue = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-
-        data.push({
-          month: format(monthDate, "MM/yyyy"),
-          revenue,
-        });
+        const key = format(subMonths(new Date(), i), "MM/yyyy");
+        byMonth.set(key, 0);
+        data.push({ month: key, revenue: 0 });
+      }
+      for (const p of (payments as any[]) || []) {
+        const d = new Date(p.payment_date);
+        if (Number.isNaN(d.getTime())) continue;
+        const key = format(d, "MM/yyyy");
+        if (byMonth.has(key)) {
+          byMonth.set(key, (byMonth.get(key) || 0) + (Number(p.amount) || 0));
+        }
+      }
+      for (const row of data) {
+        row.revenue = byMonth.get(row.month) || 0;
       }
 
       // Calculate growth
