@@ -138,6 +138,7 @@
 .tt-page .cell-btn.full:active { background: var(--c-paid-d); }
 .tt-page .cell-btn.part { background: var(--surface); color: var(--ink-2); border-color: var(--line); }
 .tt-page .cell-btn.part:active { background: var(--surface-2); }
+.tt-page .cell-today { font-size: 10px; font-weight: 700; letter-spacing: -.2px; color: var(--c-paid); text-align: center; white-space: nowrap; }
 .tt-page .cell-done { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--c-paid); flex-shrink: 0; }
 .tt-page .cell-done svg { width: 15px; height: 15px; }
 

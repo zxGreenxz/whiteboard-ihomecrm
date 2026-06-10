@@ -1,5 +1,13 @@
 import { Check, MessageCircle } from 'lucide-react';
-import { collectStatus, cellSubText, fmtK, repCustomer, zaloUrl } from '@/lib/collect';
+import {
+  collectStatus,
+  cellSubText,
+  fmtK,
+  paymentsInRange,
+  repCustomer,
+  todayISO,
+  zaloUrl,
+} from '@/lib/collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 interface Props {
@@ -14,6 +22,8 @@ interface Props {
 export function RoomCell({ inv, canRecordPayment, onOpen, onFull, onPart }: Props) {
   const st = collectStatus(inv);
   const rep = repCustomer(inv);
+  // Phòng thu 1 phần: nhắc số tiền ĐÃ thu trong hôm nay phía trên nút Thu đủ.
+  const todaySum = paymentsInRange(inv, todayISO(), todayISO()).sum;
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
@@ -46,6 +56,7 @@ export function RoomCell({ inv, canRecordPayment, onOpen, onFull, onPart }: Prop
           </span>
         ) : canRecordPayment ? (
           <div className="cell-acts">
+            {todaySum > 0 && <span className="cell-today">Thu hnay {fmtK(todaySum)}</span>}
             <button
               type="button"
               className="cell-btn full"
