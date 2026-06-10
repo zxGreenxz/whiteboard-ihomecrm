@@ -5,8 +5,8 @@
 // mutation thanh toán: insert payments(TM) + income_expenses, trigger DB
 // recompute_invoice_for_id tự cập nhật paid_amount/remaining/status.
 //
-// Sổ quỹ nhận (account_id) resolve theo logic của RecordPaymentDialog:
-//   sổ "...Thu" của user đang đăng nhập → sổ "Chung" → sổ trùng tên toà.
+// Sổ quỹ nhận (account_id) resolve qua resolveTmAccountId (lib/cashAccount):
+//   sổ "…Thu" của user (ưu tiên is_default) → sổ "Chung" → sổ trùng tên toà.
 // Sổ "Làm tròn tiền thiếu" dùng khi residual sau thu < 10K (mark PAID).
 // =============================================
 
@@ -17,6 +17,7 @@ import {
   useBulkRecordPayment,
   type BulkPaymentItem,
 } from '@/hooks/useBulkRecordPayment';
+import { resolveTmAccountId } from '@/lib/cashAccount';
 import { remainingOf, todayISO } from '@/lib/collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
@@ -34,28 +35,6 @@ export const useQuickCollect = () => {
   const { data: currentUser } = useAuth();
   const bulkMutation = useBulkRecordPayment();
 
-  // Sổ quỹ TM: sổ "...Thu" của user → "Chung" → (resolve theo tên toà lúc thu).
-  const myCashAccountId = useMemo(() => {
-    if (!currentUser?.id || !accounts.length) return '';
-    return (
-      (accounts as any[]).find(
-        (a) =>
-          a.user_id === currentUser.id &&
-          typeof a.name === 'string' &&
-          a.name.trim().endsWith('Thu'),
-      )?.id ?? ''
-    );
-  }, [currentUser, accounts]);
-
-  const chungAccountId = useMemo(() => {
-    if (!accounts.length) return '';
-    return (
-      (accounts as any[]).find(
-        (a) => typeof a.name === 'string' && a.name.trim().toLowerCase() === 'chung',
-      )?.id ?? ''
-    );
-  }, [accounts]);
-
   const roundingAccountId = useMemo(() => {
     if (!accounts.length) return '';
     return (
@@ -65,18 +44,9 @@ export const useQuickCollect = () => {
     );
   }, [accounts]);
 
-  /** Sổ quỹ nhận tiền mặt cho 1 HĐ (fallback cuối: sổ trùng tên toà). */
-  const cashAccountIdFor = (invoice: InvoiceWithRelations): string => {
-    if (myCashAccountId) return myCashAccountId;
-    if (chungAccountId) return chungAccountId;
-    const buildingName = invoice.building?.name?.trim();
-    if (buildingName) {
-      return (
-        (accounts as any[]).find((a) => a.name?.trim() === buildingName)?.id ?? ''
-      );
-    }
-    return '';
-  };
+  /** Sổ quỹ nhận tiền mặt cho 1 HĐ. */
+  const cashAccountIdFor = (invoice: InvoiceWithRelations): string =>
+    resolveTmAccountId(accounts as any[], currentUser?.id, invoice.building?.name);
 
   /**
    * Thu tiền mặt. Trả về kết quả của bulk hook ({ ok, failures }).
@@ -123,6 +93,7 @@ export const useQuickCollect = () => {
     collect,
     isCollecting: bulkMutation.isPending,
     /** UI có thể cảnh báo khi thiếu sổ quỹ TM (chưa map được toà/user). */
-    hasCashAccount: !!(myCashAccountId || chungAccountId || accounts.length),
+    hasCashAccount:
+      !!resolveTmAccountId(accounts as any[], currentUser?.id) || accounts.length > 0,
   };
 };

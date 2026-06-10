@@ -180,12 +180,14 @@ export const useUpdateAccount = () => {
         description: input.values.description ?? null,
         initial_amount: input.values.initial_amount,
         initial_date: input.values.initial_date,
-        is_default: input.values.is_default ?? false,
         quick_default_building_id: input.values.quick_default_building_id ?? null,
       };
       // Chỉ gán user_id khi form thực sự đẩy lên (admin đổi người phụ trách).
       // Non-admin không gửi field này → giữ nguyên user_id cũ.
       if (input.values.user_id) patch.user_id = input.values.user_id;
+      // Chỉ đổi is_default khi form thực sự gửi (form sổ quỹ hiện chưa có ô này)
+      // → tránh sửa sổ làm mất cờ "sổ thu mặc định" đã set cho auto-pick TM.
+      if (input.values.is_default !== undefined) patch.is_default = input.values.is_default;
 
       const { data, error } = await supabase
         .from("accounts" as any)

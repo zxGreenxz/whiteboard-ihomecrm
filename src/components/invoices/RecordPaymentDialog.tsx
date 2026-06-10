@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import { changeAccountOptions, findOwnChangeAccount } from '@/lib/changeAccounts';
+import { ownCashAccountId } from '@/lib/cashAccount';
 import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
@@ -137,15 +138,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const hasBuildingTT = !!buildingDefaultTT;
   const hasBuildingTK = !!buildingDefaultTK;
 
-  const myCashAccountId = useMemo(() => {
-    if (!currentUser?.id || !accounts.length) return '';
-    return (accounts as any[]).find(
-      (a) =>
-        a.user_id === currentUser.id &&
-        typeof a.name === 'string' &&
-        a.name.trim().endsWith('Thu'),
-    )?.id ?? '';
-  }, [currentUser, accounts]);
+  // Sổ Thu của user đăng nhập — nếu user có nhiều sổ "…Thu" thì ưu tiên sổ
+  // đánh dấu is_default (xem lib/cashAccount), tránh phụ thuộc thứ tự A→Z.
+  const myCashAccountId = useMemo(
+    () => ownCashAccountId(accounts as any[], currentUser?.id),
+    [currentUser, accounts],
+  );
 
   // Sổ quỹ "Chung" — fallback cho TM khi user đăng nhập không phải joey/nathan
   // (và không sở hữu sổ "Thu" riêng).
