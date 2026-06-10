@@ -67,10 +67,11 @@ export const useInvoices = (
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Filter theo khu vực: fetch trước các building_id thuộc area để lọc
-      // bằng .in() (giữ select hiện tại không cần đổi sang inner-join).
+      // Filter theo khu vực (legacy): fetch trước các building_id thuộc area
+      // để lọc bằng .in(). Đường mới là filters.building_ids (BuildingMultiSelect
+      // — khu vực chỉ là phím tắt chọn nhóm toà ở UI, không cần round-trip này).
       let buildingIdsByArea: string[] | null = null;
-      if (filters?.area_id && !filters?.building_id) {
+      if (filters?.area_id && !filters?.building_id && !filters?.building_ids?.length) {
         const { data: bldgs } = await (supabase as any)
           .from('buildings')
           .select('id')
@@ -90,7 +91,9 @@ export const useInvoices = (
         .order('created_at', { ascending: false });
 
       // Apply filters
-      if (filters?.building_id) {
+      if (filters?.building_ids?.length) {
+        query = query.in('building_id', filters.building_ids);
+      } else if (filters?.building_id) {
         query = query.eq('building_id', filters.building_id);
       } else if (buildingIdsByArea) {
         query = query.in('building_id', buildingIdsByArea);
@@ -722,8 +725,11 @@ export const useBulkApproveInvoices = () => {
 // =============================================
 
 export interface InvoiceStatisticsFilters {
+  /** @deprecated dùng building_ids */
   area_id?: string;
   building_id?: string;
+  /** Lọc nhiều toà — RPC nhận p_building_ids (migration 20260610100000). */
+  building_ids?: string[];
   room_id?: string;
   status?: InvoiceStatus;
   start_date?: string;
@@ -770,7 +776,9 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
         p_start_date: filters?.start_date ?? null,
         p_end_date: filters?.end_date ?? null,
         p_billing_month: filters?.billing_month ?? null,
-        p_payment_status: filters?.payment_status ?? null,        p_area_id: filters?.area_id ?? null,
+        p_payment_status: filters?.payment_status ?? null,
+        p_area_id: filters?.area_id ?? null,
+        p_building_ids: filters?.building_ids?.length ? filters.building_ids : null,
       });
 
       if (error) throw error;

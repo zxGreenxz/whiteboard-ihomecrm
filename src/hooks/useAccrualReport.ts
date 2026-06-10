@@ -121,7 +121,10 @@ export const useAccrualMonthReport = (
         .is("deleted_at", null)
         .in("id", voucherIds);
 
-      if (filters.area_id) {
+      if (filters.building_ids?.length) {
+        // building_ids (mới): mảng toà từ BuildingMultiSelect — không round-trip.
+        vQuery = vQuery.in("building_id", filters.building_ids);
+      } else if (filters.area_id) {
         const { data: areaBuildings } = await supabase
           .from("buildings" as any)
           .select("id")

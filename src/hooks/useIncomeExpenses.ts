@@ -12,8 +12,11 @@ import { addCycle, type RepeatCycle } from "@/lib/recurring";
 // --- Types ---
 
 export interface IncomeExpenseFilters {
+  /** @deprecated dùng building_ids (khu vực = phím tắt chọn nhóm toà trong UI) */
   area_id?: string | null;
   building_id?: string | null;
+  /** Lọc nhiều toà (BuildingMultiSelect). undefined/[] = tất cả. Ưu tiên hơn area_id. */
+  building_ids?: string[] | null;
   room_id?: string | null;
   /** Lọc nhiều phòng cùng tên (gộp mọi toà). Ưu tiên hơn room_id. */
   room_ids?: string[] | null;
@@ -300,8 +303,11 @@ export const useIncomeExpenses = (
       }
 
       // Apply filters
-      // For area_id, we need to get building IDs belonging to the area first
-      if (filters.area_id) {
+      // building_ids (mới): mảng toà từ BuildingMultiSelect — lọc thẳng, không
+      // cần round-trip. area_id (legacy) giữ tạm cho code chưa chuyển đổi.
+      if (filters.building_ids?.length) {
+        query = query.in("building_id", filters.building_ids);
+      } else if (filters.area_id) {
         const { data: areaBuildings } = await supabase
           .from("buildings" as any)
           .select("id")
@@ -544,8 +550,10 @@ export const useIncomeExpenseStats = (
       }
 
       // Apply same filters as useIncomeExpenses
-      // For area_id, get building IDs belonging to the area first
-      if (filters.area_id) {
+      // building_ids (mới) ưu tiên; area_id (legacy) giữ tạm.
+      if (filters.building_ids?.length) {
+        query = query.in("building_id", filters.building_ids);
+      } else if (filters.area_id) {
         const { data: areaBuildings } = await supabase
           .from("buildings" as any)
           .select("id")
