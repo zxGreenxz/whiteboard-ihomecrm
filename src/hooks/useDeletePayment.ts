@@ -28,12 +28,21 @@ export const useDeletePayment = () => {
   return useMutation({
     mutationFn: async ({ payment_id }: DeletePaymentInput) => {
       // 1. Soft-delete voucher Thu/Chi liên kết (nếu có).
+      //    Trigger trg_ie_handover_guard chặn nếu phiếu đang nằm trong
+      //    phiên bàn giao tiền mặt chưa hủy ([HANDOVER_LOCKED]).
       const { error: vErr } = await (supabase as any)
         .from('income_expenses')
         .update({ deleted_at: new Date().toISOString() })
         .eq('payment_id', payment_id)
         .is('deleted_at', null);
-      if (vErr) throw vErr;
+      if (vErr) {
+        if (String(vErr.message ?? '').includes('[HANDOVER_LOCKED]')) {
+          throw new Error(
+            'Phiếu thu này đang nằm trong phiên bàn giao tiền mặt. Hãy hủy phiên bàn giao (cần cả 2 bên xác nhận) trước khi hoàn tác.',
+          );
+        }
+        throw vErr;
+      }
 
       // 2. Hard-delete excess_amounts (credit "Nợ kỳ sau") nếu có.
       const { error: eaErr } = await (supabase as any)

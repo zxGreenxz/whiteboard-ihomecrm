@@ -10,6 +10,8 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Smartphone } from 'lucide-react';
 import { useCollectionReport } from '@/hooks/useCollectionReport';
+import { useCashHandoverList } from '@/hooks/useCashHandovers';
+import { handoverStatusLabel } from '@/lib/handover';
 import {
   collectStatus,
   fmtBillingMonth,
@@ -52,6 +54,7 @@ export function ManagePanel({
   const [day, setDay] = useState(todayISO());
 
   const { invoices, isLoading } = useCollectionReport({ billing_month: billingMonth });
+  const { data: handoverList = [], myId } = useCashHandoverList();
 
   // Phạm vi thời gian — cùng ngữ nghĩa với CollectionReport trong khung mobile.
   const scopeDay = tSel === 'today' ? todayISO() : day;
@@ -304,6 +307,45 @@ export function ManagePanel({
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="tm-sec">
+            <div className="tm-sec-head">
+              <span className="tm-sec-title">Bàn giao tiền mặt</span>
+              <span className="tm-sec-sub">tạo / xác nhận trên khung demo — nút 🤝 cạnh ô kỳ</span>
+            </div>
+            {handoverList.length === 0 ? (
+              <div className="tm-empty">🤝 Chưa có phiên bàn giao nào.</div>
+            ) : (
+              <table className="tm-table">
+                <thead>
+                  <tr>
+                    <th>Mã</th>
+                    <th>Giao → Nhận</th>
+                    <th className="num">Phiếu</th>
+                    <th className="num">Tổng</th>
+                    <th>Trạng thái</th>
+                    <th>Ngày</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {handoverList.slice(0, 12).map((h) => (
+                    <tr key={h.id}>
+                      <td><span className="tm-room">{h.code}</span></td>
+                      <td className="tm-bcell">{h.giver_name || '—'} → {h.receiver_name || '—'}</td>
+                      <td className="num">{h.voucher_count}</td>
+                      <td className="num">{fmtFull(h.total_amount)}</td>
+                      <td>
+                        <span className={'rp-tag ' + (h.status === 'CONFIRMED' ? 'full' : 'part')}>
+                          {handoverStatusLabel(h, myId)}
+                        </span>
+                      </td>
+                      <td className="tm-bcell">{(h.created_at ?? '').slice(0, 10).split('-').reverse().join('/')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

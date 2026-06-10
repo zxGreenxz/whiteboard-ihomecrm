@@ -409,6 +409,58 @@
 /* Empty / loading */
 .tt-manage .tm-empty { padding: 34px 24px; text-align: center; font-size: 13px; font-weight: 600; color: var(--ink-3); }
 
+/* ===== Bàn giao tiền mặt (HandoverSheet, trong khung điện thoại) ===== */
+.tt-page .ho-tabs { display: flex; gap: 7px; padding: 12px 18px 0; }
+.tt-page .ho-tabs .cchip { position: relative; }
+.tt-page .ho-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--c-unpaid); border: 2px solid var(--surface); }
+.tt-page .ho-form { display: flex; flex-direction: column; gap: 10px; padding: 13px 18px 0; }
+.tt-page .ho-form .note-input { margin-top: 0; }
+.tt-page .ho-vlist { margin: 13px 18px 0; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
+.tt-page .ho-vrow { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-top: 1px solid var(--line-2); cursor: pointer; transition: background .12s; }
+.tt-page .ho-vrow:first-child { border-top: 0; }
+.tt-page .ho-vrow input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--c-paid); flex-shrink: 0; cursor: pointer; }
+.tt-page .ho-vrow.off { background: var(--surface-2); }
+.tt-page .ho-vrow.off .ho-vroom, .tt-page .ho-vrow.off .ho-vamt { color: var(--ink-faint); text-decoration: line-through; }
+.tt-page .ho-vmain { flex: 1; min-width: 0; }
+.tt-page .ho-vroom { display: block; font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.3px; color: var(--ink); }
+.tt-page .ho-vsub { display: block; font-size: 11px; font-weight: 600; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-page .ho-vamt { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--c-paid); flex-shrink: 0; letter-spacing: -.3px; }
+.tt-page .ho-submit { padding: 16px 18px 0; }
+.tt-page .ho-hint { font-size: 11.5px; font-weight: 500; color: var(--ink-3); margin: 9px 2px 0; line-height: 1.45; }
+.tt-page .ho-btn { font-family: var(--font); font-weight: 700; font-size: 13px; padding: 10px 14px; border-radius: 11px; cursor: pointer; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); transition: .12s; }
+.tt-page .ho-btn:active:not(:disabled) { transform: scale(.97); }
+.tt-page .ho-btn:disabled { opacity: .45; cursor: default; }
+.tt-page .ho-btn.primary { background: var(--c-paid); border-color: var(--c-paid); color: #fff; box-shadow: 0 1px 3px rgba(31,157,87,.3); }
+.tt-page .ho-btn.primary.big { width: 100%; font-size: 14.5px; padding: 13px 0; border-radius: 13px; }
+.tt-page .ho-btn.danger { background: var(--c-unpaid-bg); border-color: var(--c-unpaid-line); color: var(--c-unpaid); }
+.tt-page .ho-btn.ghost { background: var(--surface); }
+.tt-page .ho-cards { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 0; }
+.tt-page .ho-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 13px 14px; box-shadow: var(--sh-1); }
+.tt-page .ho-card.attention { border-color: var(--c-partial-line); background: var(--c-partial-bg); }
+.tt-page .ho-card-head { display: flex; align-items: center; gap: 8px; }
+.tt-page .ho-code { font-family: var(--mono); font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); }
+.tt-page .ho-tag { margin-left: auto; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.tt-page .ho-tag.wait { background: var(--brand-50); color: var(--brand-600); }
+.tt-page .ho-tag.ok { background: var(--c-paid-bg); color: var(--c-paid); }
+.tt-page .ho-tag.warn { background: var(--c-partial-bg); color: var(--c-partial); border: 1px solid var(--c-partial-line); }
+.tt-page .ho-tag.off { background: var(--line-2); color: var(--ink-3); }
+.tt-page .ho-line { display: flex; align-items: baseline; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+.tt-page .ho-who { font-size: 13px; font-weight: 700; color: var(--ink); }
+.tt-page .ho-arrow { color: var(--ink-3); font-weight: 700; }
+.tt-page .ho-sum { margin-left: auto; font-family: var(--mono); font-size: 16px; font-weight: 700; letter-spacing: -.4px; color: var(--ink); }
+.tt-page .ho-meta { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-top: 5px; }
+.tt-page .ho-items { margin-top: 11px; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.tt-page .ho-receive { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
+.tt-page .ho-acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.tt-page .ho-cancelbox { margin-top: 11px; background: var(--st-soon-bg); border: 1px solid var(--st-soon-line); border-radius: var(--r); padding: 10px 12px; font-size: 12.5px; font-weight: 600; color: #8a6111; }
+.tt-page .ho-cancelbox .note-input { margin-top: 0; background: var(--surface); }
+
+/* Nút mở Bàn giao trên header khung điện thoại */
+.tt-page .tt-handover { position: relative; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-page .tt-handover svg { width: 17px; height: 17px; }
+.tt-page .tt-handover:active { background: var(--line-2); }
+.tt-page .tt-handover .ho-badge { position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--c-unpaid); color: #fff; font-family: var(--mono); font-size: 10.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); line-height: 1; }
+
 /* ===== Toast ===== */
 .tt-page .toast { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; padding: 11px 18px; border-radius: 999px; z-index: 90; box-shadow: var(--sh-3); opacity: 0; transition: .24s; pointer-events: none; display: flex; align-items: center; gap: 8px; }
 .tt-page .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
