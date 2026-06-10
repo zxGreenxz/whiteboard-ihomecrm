@@ -108,9 +108,17 @@ tại đây.
   - `user_id` (NOT NULL) — owner thuê nhân viên này (chủ dữ liệu).
   - `role_id` (NOT NULL → `roles.id`) — template đang áp (chỉ để badge UI biết
     "mẫu hiện hành").
-  - `building_id` (nullable → `buildings.id`) — toà được giao. **`NULL` = quản lý
-    TẤT CẢ toà** của owner (full scope). Đây là quy ước quan trọng xuất hiện
-    trong mọi hàm RLS scope-theo-toà.
+  - `building_id` (nullable → `buildings.id`) — toà lẻ được giao (snapshot).
+  - `area_id` (nullable → `areas.id`, thêm 2026-06-11 [20260611110000](supabase/migrations/20260611110000_staff_assignments_area_scope.sql)) —
+    **scope theo KHU VỰC, LIVE**: row có `area_id` = nhân viên có quyền trên MỌI
+    toà thuộc khu **tại thời điểm query** (helper join `area_buildings`) — thêm/bớt
+    toà khỏi khu là phạm vi tự đổi, không snapshot. FK `ON DELETE RESTRICT` +
+    trigger `areas_guard_soft_delete` chặn xoá khu đang được dùng làm phạm vi.
+  - **Ngữ nghĩa row** (CHECK `building_id IS NULL OR area_id IS NULL`):
+    `building_id` set = toà lẻ; `area_id` set = khu live; **cả hai NULL = quản lý
+    TẤT CẢ toà** (full scope). ⚠️ Quy ước full-scope trong mọi hàm RLS từ
+    2026-06-11 là `(building_id IS NULL AND area_id IS NULL)` — nếu chỉ test
+    `building_id IS NULL` sẽ nhầm row khu thành full quyền.
   - `permissions` (jsonb, nullable) — **snapshot quyền per-staff** (Tier 2). Copy
     từ `role.permissions` khi áp template; `NULL` = chưa override → RPC fallback
     về `role.permissions`. Có GIN index `idx_staff_assignments_permissions`.
@@ -607,21 +615,27 @@ flowchart TD
    buộc, nếu không "tất cả toà" phải chọn ≥ 1 toà, phone `10-11` số / email đúng
    regex.
 
-**Bước ③ Phạm vi toà** (đổi 2026-06-10, commit 9ad626d): chọn toà bằng
-[BuildingMultiSelect](src/components/buildings/BuildingMultiSelect.tsx) — click
-**tên khu vực** trong dropdown = chọn/bỏ **cả nhóm toà của khu TẠI THỜI ĐIỂM
-gán** (snapshot). Khi lưu chỉ `building_ids` (hoặc `null` = tất cả toà) ghi vào
-`staff_assignments` per-building (RLS giữ nguyên) — khu vực **không persist**,
-thêm toà mới vào khu sau này **không tự cấp quyền**. Bù lại form có **cảnh báo
-lệch khu**: khu nào đang chọn một phần hiện banner vàng "`<Khu>`: đang chọn
-m/n toà" + nút **"Chọn đủ theo khu"** (toggle cả nhóm qua
-`toggleGroupSelection`/`groupSelectionState` của
-[buildingGroups.ts](src/lib/buildingGroups.ts)).
+**Bước ③ Phạm vi toà** (đổi 2026-06-11, commit 30aa175): khi không tick "tất cả
+toà nhà", form có **2 khối**:
+
+1. **"Theo khu vực — tự cập nhật"** ([AreaMultiSelect](src/components/areas/AreaMultiSelect.tsx)):
+   chọn khu → lưu row `{area_id, building_id: null}` — scope **LIVE**, toà
+   thêm vào khu sau này TỰ ĐỘNG thuộc phạm vi nhân viên (DB bung qua
+   `area_buildings`, không snapshot).
+2. **"Toà lẻ bổ sung — cố định"** ([BuildingMultiSelect](src/components/buildings/BuildingMultiSelect.tsx)):
+   tick từng toà → row `{building_id, area_id: null}` snapshot như cũ. Click tên
+   khu trong dropdown này vẫn chỉ là phím tắt chọn nhanh (bung thành toà lẻ).
+
+Trộn được cả hai; validate ≥1 khu hoặc ≥1 toà. Banner "cảnh báo lệch khu" cũ đã
+GỠ — scope live giải quyết gốc rễ. Card nhân viên hiển thị "`<Khu>` (live)" tách
+khỏi "N toà lẻ (...)". `get_my_assignments()` trả rows ĐÃ BUNG (row khu →
+từng building_id) nên contract FE `building_id === null` = ALL giữ nguyên.
 
 **Sửa — `useUpdateStaffMember`**: (1) update `profiles` (RLS `profiles_admin_update`
 cho phép owner sửa profile staff mình quản lý); (2) **diff** assignments hiện có
-vs `wantBuildings`: xoá row toà bị bỏ, insert row toà mới, update `role_id` +
-re-snapshot `permissions` khi đổi role. Sau đó nếu draft khác `role.permissions`
+vs scope mong muốn (key `b:<building_id>` / `a:<area_id>` / `__global__`): xoá
+row toà/khu bị bỏ, insert row mới, update `role_id` + re-snapshot `permissions`
+khi đổi role. Sau đó nếu draft khác `role.permissions`
 → `useUpdateStaffPermissions` (UPDATE cùng JSONB cho mọi row của staff).
 
 > ⚠️ Gotcha hiện có quanh handleSave / useUpdateStaffMember:
@@ -708,10 +722,11 @@ thông tin của mình.
   `can_do_on_building('contracts','edit', room→building)` rồi mới gọi `*_impl`,
   REVOKE anon (`20260601000100`).
 - → **Bất động sản**: `staff_assignments.building_id → buildings.id` là chiều
-  scope toà. Khu vực (areas) chỉ là **nhãn nhóm toà** trong UI chọn phạm vi
-  (`BuildingMultiSelect` — snapshot tại thời điểm gán, xem 5.2);
-  `default_area_id` trong `get_my_context` đã **deprecated** — FE không còn
-  auto-lock filter theo khu (xem 4.7).
+  scope toà lẻ (snapshot); `staff_assignments.area_id → areas.id` là chiều scope
+  **khu LIVE** (bung qua `area_buildings` lúc query — xem 2.3 và 5.2). Trong Ô
+  LỌC, khu vực vẫn chỉ là nhãn nhóm toà (`BuildingMultiSelect` bung thành
+  `building_ids[]`); `default_area_id` trong `get_my_context` đã **deprecated**
+  — FE không còn auto-lock filter theo khu (xem 4.7).
 - → **Vận hành / Công việc**: `profiles.id` được tham chiếu làm "người phụ trách"
   (`issues.assigned_to`, `jobs.assignee_id`, `leads.assigned_staff_id`,
   `asset_maintenance.assigned_to`); `departments` gắn vào `issues`/`job_types`;

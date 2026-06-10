@@ -457,6 +457,9 @@ Cho mỗi bảng: columns + FKs + RLS policies + triggers.
 
 - `areas_set_user_id_audit (BEFORE)` on INSERT
 - `set_areas_updated_at (BEFORE)` on UPDATE
+- `areas_guard_soft_delete (BEFORE UPDATE OF deleted_at)` — RAISE `AREA_IN_STAFF_SCOPE` nếu khu đang được dùng làm phạm vi phân quyền (`staff_assignments.area_id`)
+
+> **Cập nhật 2026-06-11 (commit 30aa175)**: khu vực ↔ toà nhà chuyển sang **N-N** qua bảng nối **`area_buildings`** `(area_id FK areas CASCADE, building_id FK buildings CASCADE, user_id, created_at, PK(area_id, building_id))` — một toà thuộc được nhiều khu. Cột `buildings.area_id` đã **DROP**. `staff_assignments` thêm cột **`area_id`** (scope khu LIVE, CHECK `building_id IS NULL OR area_id IS NULL`; full scope = cả hai NULL). Các helper `can_access_building` / `can_do_on_building` / `staff_in_building` / `customer_in_my_scope` / `get_my_assignments` / `get_my_permissions` đã cập nhật theo; `get_invoice_statistics_v2` bỏ `p_area_id`; legacy `get_invoice_statistics` đã DROP. Các bảng phía dưới chưa regen — đọc 4 migration `202606111*0000_*.sql` làm nguồn sự thật.
 
 
 #### `buildings`

@@ -23,8 +23,9 @@ services (định nghĩa dịch vụ + cách tính tiền pricing_type)
 
 Vai trò nghiệp vụ chính:
 
-- **Toà nhà là đơn vị phân quyền (multi-tenant + RBAC).** Nhân viên (staff) được gán vào toà qua `staff_assignments`; RLS dùng `can_access_building(building_id)` để lọc dữ liệu. Khu vực được "thấy" gián tiếp nếu staff có quyền trên ít nhất 1 toà thuộc khu vực đó.
-- **Khu vực chỉ là NHÃN NHÓM toà nhà** (từ 2026-06-10, commit 099102f + 9ad626d): không tham gia RLS/phân quyền, không còn trang riêng (`/areas` redirect về `/buildings`), không còn status trong UI. Mọi ô lọc "Khu vực + Toà nhà" trên toàn app đã gộp thành **một** component [BuildingMultiSelect](src/components/buildings/BuildingMultiSelect.tsx) (chọn NHIỀU toà, nhóm theo khu, click tên khu = chọn/bỏ cả nhóm, gõ tìm không dấu, `[]` = tất cả); logic thuần ở [buildingGroups.ts](src/lib/buildingGroups.ts) (có property test fast-check). Filter của hook nhận `building_ids: string[]` (ưu tiên hơn `area_id` legacy).
+- **Toà nhà là đơn vị phân quyền (multi-tenant + RBAC).** Nhân viên (staff) được gán vào toà qua `staff_assignments`; RLS dùng `can_access_building(building_id)` để lọc dữ liệu. Khu vực được "thấy" nếu staff có quyền trên ≥1 toà thuộc khu HOẶC được gán scope theo chính khu đó.
+- **Khu vực = NHÃN NHÓM toà nhà, quan hệ N-N** (2026-06-11, commit 30aa175 — thay mô hình 1-1 cũ): **một toà có thể thuộc NHIỀU khu** (vd "Nhà cũ"={A,B,C}, "Thang bộ"={A,B,D}) qua bảng nối `area_buildings(area_id, building_id)`; cột `buildings.area_id` đã **DROP**. Mọi ô lọc "Khu vực + Toà nhà" trên toàn app gộp thành **một** component [BuildingMultiSelect](src/components/buildings/BuildingMultiSelect.tsx) (chọn NHIỀU toà, nhóm theo khu — toà thuộc k khu hiện lặp dưới mỗi khu, click tên khu = chọn/bỏ cả nhóm, gõ tìm không dấu, `[]` = tất cả); logic thuần ở [buildingGroups.ts](src/lib/buildingGroups.ts) (property test fast-check). Filter của hook chỉ nhận `building_ids: string[]` (`area_id` legacy đã gỡ hẳn).
+- **Scope nhân viên theo khu = LIVE** (khác ô lọc): `staff_assignments.area_id` tham chiếu khu — toà thêm/bớt khỏi khu thì phạm vi nhân viên **tự đổi theo** (DB resolve qua `area_buildings` lúc query, không snapshot). Chi tiết ở [01-phan-quyen-nhan-su.md](01-phan-quyen-nhan-su.md).
 - **Toà nhà mang cấu hình mặc định** áp xuống các nghiệp vụ con: sổ quỹ mặc định (`default_account_id_tt/tk`), mẫu hợp đồng (`contract_template_id`), mẫu hoá đơn (`invoice_template_id`), bậc hoa hồng môi giới (`commission_tiers`).
 - **Phòng (room) là đơn vị cho thuê.** Hợp đồng, hoá đơn, đồng hồ, tài sản, vehicle… đều gắn `room_id`. Trạng thái phòng (`room_status`) được trigger tự cập nhật theo vòng đời hợp đồng (4.2) **và theo cọc giữ chỗ** (AVAILABLE↔RESERVED tự động, 4.6).
 - **Dịch vụ + định mức** quyết định cách tính tiền trên hoá đơn (cố định theo tháng, theo đồng hồ, theo người, theo phòng, hoặc bậc thang theo định mức).
@@ -39,8 +40,9 @@ Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà. **Vai trò 
 - `name` (NOT NULL), `code` (mã tuỳ chọn, không sinh tự động), `description`.
 - `status` text mặc định `'ACTIVE'` — **cột vẫn còn trong DB nhưng UI đã bỏ** (dialog quản lý khu vực mới không hiển thị/sửa status; các form `code`/`description` cũng không còn chỗ nhập).
 - `user_id` (NOT NULL) — owner (multi-tenant).
-- Soft delete qua `deleted_at`; `id/created_at/updated_at` chuẩn.
-- **FK ra:** không. **Được tham chiếu bởi:** `buildings.area_id` (1 area → N building).
+- Soft delete qua `deleted_at`; `id/created_at/updated_at` chuẩn. ⚠️ Khu đang được dùng làm **phạm vi phân quyền** (`staff_assignments.area_id`) thì bị CHẶN xoá (trigger `areas_guard_soft_delete` RAISE `AREA_IN_STAFF_SCOPE` + FK `ON DELETE RESTRICT`) — tránh nâng quyền nhầm khi staff hết row assignment.
+- **FK ra:** không. **Được tham chiếu bởi:** `area_buildings.area_id` (N-N với buildings, từ 2026-06-11) và `staff_assignments.area_id` (scope nhóm live).
+- **`area_buildings`** (bảng nối, [20260611100000](supabase/migrations/20260611100000_area_buildings_m2m.sql)): `(area_id FK CASCADE, building_id FK CASCADE, user_id, created_at)` PK kép + index chiều `building_id`. RLS: SELECT theo `can_access_building(building_id)`; WRITE = super admin / staff full-scope có `areas.edit`. Backfill từ `buildings.area_id` cũ trước khi drop cột.
 
 ### 2.2. `buildings` — Toà nhà
 
@@ -52,7 +54,7 @@ Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà. **Vai trò 
 - Thống kê: `total_floors` (mặc định 1), `total_rooms` (mặc định 0 — **được trigger tự tính**, không sửa tay).
 - Media/đặc điểm: `description`, `images` jsonb, `amenities` jsonb.
 - Liên kết cấu hình:
-  - `area_id` → `areas.id` (thuộc khu vực nào, nullable).
+  - Khu vực: qua bảng nối `area_buildings` (N-N — cột `area_id` cũ đã DROP 2026-06-11); form tạo/sửa toà **không còn ô khu vực**, gom nhóm chỉ làm ở dialog "Quản lý khu vực".
   - `contract_template_id`, `invoice_template_id` → `document_templates.id` (mẫu in mặc định cho HĐ/hoá đơn của toà).
   - `default_account_id_tt`, `default_account_id_tk` → `accounts.id` — **sổ quỹ mặc định** ghi nhận khi khách thanh toán hoá đơn phòng bằng TT (tiền mặt/thanh toán) / TK (chuyển khoản). Chỉ super admin được xem & sửa 2 field này (gate ở FE — RLS không chặn riêng cột).
   - `commission_tiers` jsonb (NOT NULL, có default) — bậc hoa hồng môi giới theo số tháng hợp đồng `[{min_months,max_months,rate_percent}]`.
@@ -288,17 +290,17 @@ erDiagram
 
 Từ 2026-06-10 (commit 9ad626d): **trang `/areas` + mục Sidebar "Khu vực" đã gỡ** — route `/areas` chỉ còn `<Navigate to="/buildings" replace />` ([App.tsx](src/App.tsx)); `AreasPage` + 3 dialog cũ (`CreateAreaDialog`/`EditAreaDialog`/`DeleteAreaDialog`) đã xoá khỏi codebase. Quản lý khu vực = nút **"Quản lý khu vực"** trên `/buildings` mở `ManageAreasDialog`:
 
-- **Hiển thị:** `useAreas` (select `areas` + `buildings(count)`, lọc `deleted_at IS NULL`) + `useBuildings` để dựng map `membersByArea` từ `buildings.area_id`. Mỗi khu là 1 card: tên + badge "N toà" + 1 `BuildingMultiSelect` hiển thị/sửa danh sách toà của khu. **Không còn** cột Mã / Mô tả / Trạng thái.
-- **Tạo:** ô input "Tên khu vực mới" + nút Thêm → `useCreateArea({name})` (tự gắn `user_id`). **Đổi tên:** icon bút chì → `useUpdateArea({id, updates:{name}})`. (Hook vẫn giữ handler `23505` → toast "Mã khu vực đã tồn tại" — phòng hờ chết: DB không có UNIQUE trên `areas.code` và form mới cũng không nhập code.)
-- **Gán/bỏ toà:** đổi selection trong `BuildingMultiSelect` của card → diff với `membersByArea` → `useAssignBuildingsToArea({areaId, toAddIds, toRemoveIds})` (update `buildings.area_id` set/null). Mỗi toà thuộc tối đa 1 khu (gán vào khu mới = ghi đè `area_id`).
-- **Xoá (soft):** icon thùng rác → `confirm()` (message nói toà trong khu "sẽ về Chưa phân khu") → `useDeleteArea`. ⚠️ **Lệch message vs hook:** `useDeleteArea` vẫn **chặn** khi khu còn toà chưa xoá (toast "Không thể xóa khu vực đang có N tòa nhà") — thực tế phải bỏ hết toà khỏi khu trước rồi mới xoá được, message confirm hứa "tự về Chưa phân khu" không đúng hành vi.
-- Toà không thuộc khu nào hiển thị trong nhóm **"Chưa phân khu"** (cuối danh sách) của mọi `BuildingMultiSelect` (`UNGROUPED_LABEL` trong [buildingGroups.ts](src/lib/buildingGroups.ts)).
+- **Hiển thị:** `useAreas` (select `areas` + `members:area_buildings(count)`, lọc `deleted_at IS NULL`) + `useBuildings` (embed `area_links:area_buildings(...)` → `area_ids[]`) để dựng map `membersByArea`. Mỗi khu là 1 card: tên + badge "N toà" + 1 `BuildingMultiSelect` hiển thị/sửa danh sách toà của khu. **Không còn** cột Mã / Mô tả / Trạng thái.
+- **Tạo:** ô input "Tên khu vực mới" + nút Thêm → `useCreateArea({name})` (tự gắn `user_id`). **Đổi tên:** icon bút chì → `useUpdateArea({id, updates:{name}})`.
+- **Gán/bỏ toà (N-N, từ 2026-06-11):** đổi selection trong `BuildingMultiSelect` của card → diff với `membersByArea` → `useAssignBuildingsToArea({areaId, toAddIds, toRemoveIds})` = **insert/delete join rows `area_buildings`** của đúng khu đang sửa. **Một toà thuộc được nhiều khu** — gán vào khu mới KHÔNG kéo toà khỏi khu cũ. Mutation invalidate thêm `staff_assignments` (membership đổi → scope live đổi).
+- **Xoá (soft):** icon thùng rác → `confirm()` ("khu sẽ bị gỡ khỏi N toà, toà vẫn giữ các khu khác") → `useDeleteArea`: soft-delete khu trước (khu đang là phạm vi phân quyền → DB chặn `AREA_IN_STAFF_SCOPE`, toast hướng dẫn gỡ phân quyền trước), rồi delete các join rows.
+- Toà không thuộc khu sống nào hiển thị trong nhóm **"Chưa phân khu"** (cuối danh sách) của mọi `BuildingMultiSelect`; toà thuộc k khu xuất hiện trong cả k nhóm (`UNGROUPED_LABEL` + invariants trong [buildingGroups.ts](src/lib/buildingGroups.ts)).
 
 ### 5.2. `/buildings` — Danh sách Toà nhà
 
 [BuildingsPage.tsx](src/pages/buildings/BuildingsPage.tsx) · hook [useBuildings.ts](src/hooks/useBuildings.ts)
 
-- **Hiển thị:** `useBuildings()` (mặc định **ẩn tòa ảo** `is_virtual=true`) join `area:areas(...)` + `rooms:rooms(count)` (chỉ phòng chưa xoá). Stats cards (Tổng / Đang hoạt động / Ngừng) tính theo **phạm vi tìm kiếm + bộ lọc toà** (cố ý KHÔNG áp bộ lọc trạng thái để 3 thẻ vẫn phân tích đủ).
+- **Hiển thị:** `useBuildings()` (mặc định **ẩn tòa ảo** `is_virtual=true`) join `area_links:area_buildings(area_id, area:areas(...))` → map ra `area_ids[]`/`areas[]` + `rooms:rooms(count)` (chỉ phòng chưa xoá). Stats cards (Tổng / Đang hoạt động / Ngừng) tính theo **phạm vi tìm kiếm + bộ lọc toà** (cố ý KHÔNG áp bộ lọc trạng thái để 3 thẻ vẫn phân tích đủ).
 - **Lọc** ([BuildingListFilters](src/components/buildings/BuildingListFilters.tsx)): tìm theo tên/mã/địa chỉ + lọc trạng thái (`SearchableSelect`) + **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu — thay cặp dropdown Khu vực/Toà cũ; lọc client-side `buildingIds.includes(b.id)`).
 - **Nút "Quản lý khu vực"** trên toolbar mở `ManageAreasDialog` (§5.1).
 - **Toggle trạng thái nhanh:** `useUpdateBuildingStatus` với **optimistic update** (snapshot cache, revert nếu lỗi) — bật/tắt ACTIVE/INACTIVE ngay trên bảng.
