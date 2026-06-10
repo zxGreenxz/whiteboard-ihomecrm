@@ -21,13 +21,13 @@ Luồng nghiệp vụ chính (3 lớp):
 
 2. **Chốt lợi nhuận tháng** — Hệ thống tự tính LN của mỗi toà trong tháng (RPC `monthly_building_profit` = thu KQKD − chi KQKD). Quản lý có thể **điều chỉnh** con số (trừ thêm chi phí ngoài sổ, "Sau khi Trừ TP") rồi **chốt-khoá** (`profit_monthly.status = LOCKED`). Tại thời điểm chốt, hệ thống **snapshot** phần của từng cổ đông vào `profit_allocations` — số đã chốt là bất biến (không đổi dù sau này sửa tỷ lệ).
 
-3. **Chi tiền & theo dõi công nợ** — Khi trả tiền cho cổ đông, quản lý lập **phiếu chi chia LN** (một bản ghi `income_expenses` loại `EXPENSE`, gắn `shareholder_id`, hạch toán vào **toà ảo "Chung"**, **không tính KQKD**). Bảng theo cổ đông luôn cho biết: **Được chia** (∑ allocations) − **Đã ứng** (∑ phiếu chi gắn cổ đông) = **Còn lại**.
+3. **Chi tiền & theo dõi công nợ** — Khi trả tiền cho cổ đông, quản lý lập **phiếu chi chia LN** (một bản ghi `income_expenses` loại `EXPENSE`, gắn `shareholder_id`, hạch toán vào **toà ảo "Chung"**, **không tính KQKD**). Bảng theo cổ đông luôn cho biết: **Được chia** (∑ allocations) − **Đã ứng** (∑ phiếu chi gắn cổ đông — điều kiện đếm ở mục 4.8) = **Còn lại**.
 
 4. **Ví cá nhân** (`personal_transactions`) — Một sổ thu/chi **riêng tư của từng user**, không liên quan đến sổ quỹ/báo cáo hệ thống. Dùng để cổ đông/nhân viên tự ghi chép chi tiêu cá nhân (gồm cả khoản "Ứng công ty"). Trên ví cá nhân, nếu user là cổ đông, có thêm banner "Từ công ty: Được chia / Đã ứng / Còn lại được nhận".
 
 **Mô hình quyền** (KHÔNG có role riêng cho cổ đông): module dùng 2 permission key `shareholder_profit` và `personal_finance` (xem [permissions.ts](src/lib/permissions.ts), nhóm "Cổ đông & Cá nhân"). Người có quyền `shareholder_profit:create/edit` là **quản lý** (thấy 3 tab quản trị); cổ đông thường chỉ có `view` → thấy **ShareholderSelfView** (chỉ phần của mình). RPC `get_my_permissions()` tự nhận diện cổ đông (`shareholders.auth_user_id = auth.uid()`) và cấp một **bộ quyền chỉ-xem cố định** + `shareholder_profit:view` + `personal_finance` full.
 
-**Multi-tenant**: tất cả bảng đều có `user_id` = owner. RLS cho owner/admin full quyền; cổ đông chỉ thấy đúng phần mình qua hàm `current_shareholder_id()`.
+**Multi-tenant**: tất cả bảng đều có cột `user_id`, nhưng code **không đảm bảo** `user_id` = owner — các hook ghi `user_id = auth.uid()` của **người thao tác**: [useLockProfitMonth](src/hooks/useShareholderProfit.ts) ghi `profit_monthly`/`profit_allocations` với uid người chốt; [useCreateShareholder / useSyncShareholderBuildings](src/hooks/useShareholders.ts) cũng vậy. Nếu một admin (không phải super_admin owner) thao tác, dòng dữ liệu mang `user_id` của admin đó — RLS `*_owner_all` (`user_id = uid` **hoặc** `is_admin()`/`is_super_admin()`) vẫn cho owner/admin thấy đủ nên thực tế single-org không lệch số, nhưng bất biến "user_id = owner" chỉ là quy ước, không được code ép. Cổ đông chỉ thấy đúng phần mình qua hàm `current_shareholder_id()`.
 
 ---
 
@@ -41,7 +41,7 @@ Cột chủ chốt:
 - `user_id` — owner sở hữu cổ đông này (FK `auth.users`). Là biên giới multi-tenant.
 - `auth_user_id` — tài khoản đăng nhập gắn với cổ đông. **UNIQUE** (một user chỉ làm cổ đông của đúng một record), `ON DELETE SET NULL`. Là chìa khoá cho `current_shareholder_id()` và RLS self-view. Nếu NULL → cổ đông **không đăng nhập được** (UI hiển thị cảnh báo vàng).
 - `name` — tên hiển thị (NOT NULL, CHECK độ dài > 0).
-- `note`, `is_active` — ghi chú & cờ đang hoạt động.
+- `note`, `is_active` — ghi chú & cờ đang hoạt động. **Lưu ý: `is_active` hiện không có hiệu lực nghiệp vụ** — chỉ là switch trong [ShareholderForm](src/components/shareholders/ShareholderForm.tsx), không query nào lọc theo nó: cổ đông inactive vẫn được snapshot allocations khi chốt, vẫn hiện trong bảng Tổng quan và vẫn chọn được trong dialog Chi LN.
 - `deleted_at` — xoá mềm. Mọi query lọc `deleted_at IS NULL`.
 - id / created_at / updated_at — chuẩn (trigger `set_shareholders_updated_at`).
 
@@ -181,11 +181,13 @@ flowchart TD
 [Migration L129-186](supabase/migrations/20260603000001_shareholder_profit_module.sql). `SECURITY DEFINER`, GRANT cho `authenticated`.
 
 - Xác định `v_owner` = user_id của super_admin đầu tiên (app single-org → mọi LN tính trên dữ liệu của owner).
-- Trả về mỗi toà **thật** (`is_virtual = false`, `deleted_at IS NULL`): `total_income`, `total_expense`, `net_profit = income − expense`.
+- Trả về **mọi toà thật** (`is_virtual = false`, `deleted_at IS NULL`) của owner: `total_income`, `total_expense`, `net_profit = income − expense`. Vì query `LEFT JOIN` từ `buildings` + `COALESCE(…, 0)`, toà **không có phiếu nào** trong khoảng vẫn ra dòng `0/0/0` — kết quả chỉ rỗng khi owner chưa có toà thật nào.
 - Chỉ cộng các phiếu `income_expenses` thoả: `user_id = owner`, `approval_status = 'APPROVED'`, `deleted_at IS NULL`, `counts_in_business_result = true` (**chỉ khoản KQKD** → loại tiền cọc và các khoản override không-KQKD, gồm cả phiếu chia LN), `voucher_date BETWEEN p_start AND p_end`.
-- `p_building_id` NULL → tất cả toà; có giá trị → lọc một toà.
+- `p_building_id` NULL → tất cả toà; có giá trị → lọc một toà. **UI hiện chưa dùng nhánh lọc 1 toà** — [ProfitLockTab](src/components/shareholders/ProfitLockTab.tsx) luôn gọi không truyền `p_building_id`.
 
 Đây là số "LN tự tính" hiển thị ở tab Chốt LN. Vì lọc theo `counts_in_business_result`, **phiếu chi chia LN không tự trừ ngược vào LN** (tránh vòng lặp).
+
+⚠️ **RPC không kiểm quyền**: `SECURITY DEFINER` + GRANT cho toàn bộ `authenticated`, thân hàm không check quyền `shareholder_profit` lẫn `can_access_building()` — bất kỳ user đăng nhập nào (staff thường, cổ đông) gọi trực tiếp qua PostgREST đều thấy doanh thu/chi phí/LN của **tất cả toà** của owner, vượt scope toà của họ; UI chỉ gate bằng `isManager` phía FE.
 
 ### 4.2. Chốt LN tháng — `useLockProfitMonth` (logic client-side)
 
@@ -198,6 +200,10 @@ flowchart TD
 
 Bất biến quan trọng: snapshot lấy **% tại thời điểm chốt**. Sau khi chốt, đổi `building_shareholders` **không** ảnh hưởng allocation đã chốt (trừ khi unlock + chốt lại).
 
+⚠️ Lưu ý vận hành (vì là chuỗi client, **không phải transaction**):
+- 4 round-trip tuần tự (upsert → select tỷ lệ → delete allocations → insert allocations). Nếu lỗi/mất mạng giữa chừng (sau delete, trước insert), tháng vẫn `LOCKED` nhưng **không còn allocation nào** — cổ đông mất số "Được chia", KPI sai, và tháng đó biến mất khỏi SelfView (RLS self-select của `profit_monthly` dựa trên tồn tại allocation) mà không có cảnh báo nào.
+- Nút Chốt luôn chốt **tất cả toà** trong bảng (rows = toàn bộ kết quả RPC) và re-snapshot allocations của **mọi toà** theo % live hiện tại — không có chốt theo từng toà. Mở khoá 1 toà để sửa rồi bấm chốt lại → các toà khác cũng bị xoá + snapshot lại; nếu `building_shareholders` đã đổi từ lần chốt trước, số "bất biến" của các toà không liên quan âm thầm thay đổi.
+
 ### 4.3. Mở khoá — `useUnlockProfitMonth`
 
 [L261-282](src/hooks/useShareholderProfit.ts): xoá toàn bộ `profit_allocations` của `profit_monthly_id` đó rồi set `status='DRAFT'`, `locked_at/by=NULL`. Đưa toà-tháng về nháp; cổ đông mất quyền thấy tháng này (vì RLS self-select của `profit_monthly` dựa trên tồn tại allocation).
@@ -207,9 +213,9 @@ Bất biến quan trọng: snapshot lấy **% tại thời điểm chốt**. Sau
 [useIncomeExpenses.ts L757-872](src/hooks/useIncomeExpenses.ts). Tạo **một phiếu chi `income_expenses`** đại diện khoản "đã ứng/đã chia":
 
 1. Tìm **toà ảo "Chung"** (`buildings.is_virtual=true, name='Chung'`) — nếu chưa có thì báo lỗi. Phiếu chia LN hạch toán vào toà ảo này (không gán cho toà thật → không méo báo cáo từng toà).
-2. Tìm/tạo hạng mục chi **"Chia lợi nhuận cổ đông"** (`income_expense_types`, `type='expense'`, `category='Chia lợi nhuận'`).
+2. Tìm/tạo hạng mục chi **"Chia lợi nhuận cổ đông"** (`income_expense_types`, `type='expense'`, `category='Chia lợi nhuận'`). Migration đã **seed sẵn** hạng mục này cho owner ([mục 9, migration 1](supabase/migrations/20260603000001_shareholder_profit_module.sql)) — nhánh tìm/tạo runtime chỉ là fallback.
 3. Insert `income_expenses`: `type='EXPENSE'`, `building_id = Chung`, `account_id = sổ quỹ nguồn`, **`shareholder_id = cổ đông`**, **`business_result_accounting=false`** (không tính KQKD), `voucher_date`, `repeat_*=NONE`.
-4. Insert 1 `income_expense_items` (qty=1, unit_price=amount) → trigger của domain Thu/Chi tự tính `total_amount` và trừ số dư sổ quỹ.
+4. Insert 1 `income_expense_items` (qty=1, unit_price=amount) → trigger `auto_recalc_total_amount` của domain Thu/Chi tính lại `income_expenses.total_amount`. **Không có trigger nào ghi/trừ số dư sổ quỹ** — tồn quỹ là cột suy diễn của view `accounts_with_balance` (aggregate `income_expenses` theo `account_id` lúc query); phiếu chia LN làm số dư hiển thị giảm vì view tính lại, không phải vì có bút toán ghi sổ.
 
 Vì `business_result_accounting=false`, phiếu này có `counts_in_business_result=false` → **không** bị RPC LN cộng lại → không tự trừ ngược lợi nhuận toà.
 
@@ -242,9 +248,18 @@ Bất biến: cổ đông **chỉ thấy số của mình**, không thấy số 
 
 FE helper `can(perms, module, action)` ([useMyPermissions.ts](src/hooks/useMyPermissions.ts)) chỉ gate UI; chia LN thành quản lý vs cổ đông qua `shareholder_profit:create|edit`.
 
+⚠️ **Lệch pha quyền FE ↔ RLS**: staff (không phải admin) được tick `shareholder_profit:create/edit` sẽ thấy 3 tab quản trị (`isManager = true`), nhưng RLS các bảng `profit_monthly`/`profit_allocations`/`shareholders`/`building_shareholders` chỉ cho ghi khi `user_id = uid` **hoặc** `is_admin()`/`is_super_admin()` — staff đó UPDATE dòng của owner bị RLS chặn (lỗi khó hiểu), còn INSERT mới lại pass `WITH CHECK` với `user_id` = chính họ → dữ liệu phân mảnh theo `user_id` của staff. Hiện chưa có policy `staff_can('shareholder_profit', …)` cho các bảng profit.
+
 ### 4.7. Tổng hợp client — `computeShareholderSummary`
 
-[shareholderProfit.ts](src/lib/shareholderProfit.ts) (pure, test được): với `shareholderIds` (ds id cần báo cáo), `allocations` (accrued) và `distributions` (paid), trả map theo cổ đông `{ accrued, paid, remaining = accrued − paid }`; mọi id trong `shareholderIds` luôn có row (mặc định 0, kể cả cổ đông chưa có allocation). Đây là công thức công nợ cổ đông dùng chung cho cả tab Tổng quan, SelfView và banner Ví cá nhân.
+[shareholderProfit.ts](src/lib/shareholderProfit.ts) (pure — test ở [shareholderProfit.test.ts](src/lib/__tests__/shareholderProfit.test.ts), 4 case: mặc định 0, cộng dồn/còn lại âm khi ứng vượt, id ngoài danh sách tự thêm row, NaN/undefined coi như 0): với `shareholderIds` (ds id cần báo cáo), `allocations` (accrued) và `distributions` (paid), trả map theo cổ đông `{ accrued, paid, remaining = accrued − paid }`; mọi id trong `shareholderIds` luôn có row (mặc định 0, kể cả cổ đông chưa có allocation). Đây là công thức công nợ cổ đông dùng chung cho cả tab Tổng quan, SelfView và banner Ví cá nhân.
+
+### 4.8. Điều kiện đếm "Đã ứng" — `useShareholderDistributions`
+
+[useShareholderProfit.ts L137-164](src/hooks/useShareholderProfit.ts): "Đã ứng" = ∑ `total_amount` của các phiếu `income_expenses` thoả **đủ 4 điều kiện**: `type = 'EXPENSE'`, `approval_status = 'APPROVED'`, `shareholder_id IS NOT NULL`, `deleted_at IS NULL`.
+
+- Vì `income_expenses` mặc định `APPROVED` ngay khi tạo ([migration 20260426000002](supabase/migrations/20260426000002_thu_chi_remove_approval_add_cancel.sql)), phiếu chia LN được tính vào "Đã ứng" **tức thì**.
+- Ngược lại, phiếu bị **huỷ duyệt (CANCELLED)** hoặc **xoá mềm** từ trang Thu chi sẽ **rơi khỏi "Đã ứng"** — module cổ đông không cảnh báo gì khi điều đó xảy ra (xem mục 6).
 
 ---
 
@@ -253,6 +268,10 @@ FE helper `can(perms, module, action)` ([useMyPermissions.ts](src/hooks/useMyPer
 ### 5.1. `/finance/shareholder-profit` — Chia lợi nhuận cổ đông
 
 [ShareholderProfitPage.tsx](src/pages/finance/ShareholderProfitPage.tsx). Route bọc `RequirePermission module="shareholder_profit" action="view"`. (Có redirect cũ `/reports/finance/shareholder-profit` → trang này.)
+
+Điểm vào UI: Sidebar nhóm **Tài chính** có 2 mục "Chia lợi nhuận" (`/finance/shareholder-profit`) và "Ví cá nhân" (`/finance/personal-wallet`) ([Sidebar.tsx](src/components/layout/Sidebar.tsx)); [FinanceReportsPage](src/pages/reports/FinanceReportsPage.tsx) cũng có card "Chia lợi nhuận cổ đông" trỏ về trang này. Lưu ý: Sidebar **không** dùng `useMyPermissions` để ẩn mục theo quyền — ai cũng thấy menu, chỉ `RequirePermission` ở route chặn truy cập.
+
+Giới hạn chọn năm: mọi tab (Tổng quan, Chốt LN, SelfView) và cả trang Ví cá nhân chỉ cho chọn 4 năm `[Y+1, Y, Y−1, Y−2]` quanh năm hiện tại — dữ liệu cũ hơn 2 năm vẫn trong DB nhưng không xem được **chi tiết theo năm** trên UI (các KPI/bảng luỹ kế vẫn cộng đủ toàn bộ lịch sử vì hook tải hết, xem ghi chú ở tab Tổng quan).
 
 Phân nhánh ngay đầu:
 - `isManager` = `__superadmin` **hoặc** `can(shareholder_profit, create|edit)` → render **3 tab quản trị**.
@@ -268,6 +287,9 @@ Hiển thị:
 - Biểu đồ LN theo tháng + cơ cấu LN theo nhà (lọc theo năm chọn, chỉ tháng LOCKED).
 - **Ma trận Nhà × Tháng** (12 tháng × các toà có chốt trong năm) — giá trị là `adjusted_profit`.
 - Bảng **Theo cổ đông (luỹ kế)**: Được chia / Đã ứng / Còn lại + nút **"Chi"** mở `ProfitDistributeDialog` với cổ đông đó.
+- Biểu đồ bar ngang **"Còn lại theo cổ đông"** (cạnh bảng Theo cổ đông): `remaining` **luỹ kế** của từng cổ đông, **không lọc theo năm chọn**; ẩn cổ đông có remaining = 0.
+
+Lưu ý lệch số: 4 KPI cộng trên **toàn bộ** allocations/distributions thô (kể cả phần của cổ đông đã **xoá mềm**), trong khi bảng "Theo cổ đông" chỉ liệt kê cổ đông `deleted_at IS NULL` — sau khi xoá mềm một cổ đông, tổng bảng có thể không khớp KPI. Về kỹ thuật, các hook nguồn (`useProfitMonthly` / `useProfitAllocations` / `useShareholderDistributions`) đều tải **toàn bộ lịch sử** (không filter năm server-side, không phân trang; 2 hook đầu `select *`, hook distributions select danh sách cột cụ thể) rồi lọc client theo năm.
 
 Thao tác **Chi lợi nhuận** (nút "Chi lợi nhuận" hoặc "Chi" trên dòng cổ đông):
 
@@ -284,11 +306,11 @@ sequenceDiagram
     H->>DB: tìm/tạo hạng mục "Chia lợi nhuận cổ đông"
     H->>DB: insert income_expenses (EXPENSE, shareholder_id, business_result_accounting=false)
     H->>DB: insert 1 item (qty=1, unit_price=amount)
-    DB-->>H: trigger tính total_amount + trừ sổ quỹ
+    DB-->>H: trigger tính total_amount (tồn quỹ trừ qua view accounts_with_balance)
     H-->>Dlg: success → đóng dialog, invalidate distributions
 ```
 
-Validate/edge: số tiền > 0, phải chọn sổ quỹ và ngày; nếu thiếu toà ảo "Chung" → ném lỗi (cần seed toà ảo trước).
+Validate/edge: số tiền > 0, phải chọn cổ đông, sổ quỹ và ngày; nếu thiếu toà ảo "Chung" → ném lỗi (cần seed toà ảo trước). Dialog **không hiển thị "Còn lại"** của cổ đông đang chọn và **không cảnh báo khi số chi vượt** phần được chia — ứng vượt chỉ lộ ra sau đó qua số âm đỏ ở bảng Theo cổ đông; danh sách chọn cũng là **toàn bộ cổ đông** chưa xoá (kể cả `is_active = false`).
 
 #### Tab "Chốt LN tháng" — [ProfitLockTab.tsx](src/components/shareholders/ProfitLockTab.tsx)
 
@@ -301,13 +323,18 @@ Các bước:
 4. Bấm **"Chốt tháng MM/YYYY"** → `useLockProfitMonth` (mục 4.2): upsert tất cả toà LOCKED + re-snapshot allocations.
 5. Nút **mở khoá** (icon Unlock) trên dòng đã chốt → `useUnlockProfitMonth`.
 
-Edge: nút Chốt disable khi đang chốt hoặc RPC trả rỗng (không có thu/chi tháng đó). Chốt lại tháng đã khoá là **idempotent** — xoá allocations cũ rồi tạo lại theo % và adjusted hiện tại.
+Edge:
+- Nút Chốt disable khi đang chốt hoặc `rpc.length === 0` — nhưng vì RPC `LEFT JOIN` từ `buildings` nên **luôn trả về mọi toà thật của owner** (thu/chi = 0 nếu tháng trống, xem 4.1); danh sách chỉ rỗng khi owner chưa có toà thật nào → empty-state "Chưa có dữ liệu thu/chi tháng này" gần như không bao giờ hiện, và **chốt được cả tháng tương lai/tháng hoàn toàn trống** (tạo `profit_monthly` LOCKED 0đ + allocations `amount = 0` cho mọi toà — không lọc bỏ amount 0).
+- Chốt lại tháng đã khoá xoá allocations cũ rồi tạo lại theo % và adjusted hiện tại — và vì nút Chốt áp cho **tất cả toà**, các toà khác đang LOCKED cũng bị re-snapshot theo % live (xem lưu ý mục 4.2).
+- `useEffect` seed lại **toàn bộ** map `adjusted` mỗi khi kết quả RPC hoặc trạng thái khoá đổi (refetch nền, sau khi mở khoá 1 toà…) → giá trị "LN sau điều chỉnh" đang gõ dở ở các ô khác bị ghi đè về mặc định mà không báo.
 
 #### Tab "Cổ đông & tỷ lệ" — [ShareConfigTab.tsx](src/components/shareholders/ShareConfigTab.tsx)
 
 Dữ liệu: `useShareholders`, `useBuildings`, `useBuildingShareholders`, `useAdminUsers`.
 
 Liệt kê thẻ mỗi cổ đông: tên, badge tài khoản gắn (xanh nếu có `auth_user_id` → hiện email/tên; vàng cảnh báo nếu chưa gán → không đăng nhập được), và các badge "Toà — %". Nút Sửa/Xoá. Xoá = soft-delete (`useDeleteShareholder`), cảnh báo giữ nguyên LN đã chốt & phiếu chi.
+
+Dữ liệu tỷ lệ: `useBuildingShareholders` tải **toàn bộ** bảng `building_shareholders` (`select *`) rồi group client theo `shareholder_id`; tên toà tra từ `useBuildings` (mặc định **ẩn toà ảo**). Email badge tra từ `useAdminUsers` (hook này tải toàn bộ profiles + super_admins + staff_assignments — khá nặng so với nhu cầu chỉ hiện email).
 
 Thêm/Sửa qua [ShareholderForm.tsx](src/components/shareholders/ShareholderForm.tsx):
 - Chọn **user** để gắn (`SearchableSelect`) — danh sách loại các user đã gắn cổ đông khác (vì `auth_user_id` UNIQUE). Khi chọn user, nếu tên trống → tự điền tên theo full_name/email.
@@ -316,7 +343,9 @@ Thêm/Sửa qua [ShareholderForm.tsx](src/components/shareholders/ShareholderFor
 - `canSave = name không rỗng && có authUserId`.
 - Lưu: nếu sửa → `useUpdateShareholder`; nếu thêm → `useCreateShareholder` (lấy `id` trả về); rồi luôn gọi `useSyncShareholderBuildings(id, validRows)` để đồng bộ tỷ lệ (xoá toà không còn, upsert toà mới/đổi %).
 
-Edge: form **bắt buộc gắn user** (`canSave` cần authUserId) — nghĩa là không tạo được cổ đông "thuần ghi nhận" không login; tỷ lệ không ràng buộc tổng = 100%.
+Edge: form **bắt buộc gắn user** (`canSave` cần authUserId) — nghĩa là không tạo được cổ đông "thuần ghi nhận" không login; tỷ lệ không ràng buộc tổng = 100% (DB chỉ CHECK 0..100 per-row, không ràng buộc tổng % một toà giữa nhiều cổ đông).
+
+Hook chết (dead code — liệt kê để tránh suy nhầm flow): [useShareholders.ts](src/hooks/useShareholders.ts) còn 3 hook **không component nào dùng** — `useUpsertBuildingShare` / `useDeleteBuildingShare` (upsert/xoá từng ô tỷ lệ; flow thật chỉ đi qua `useSyncShareholderBuildings`) và `useCreateShareholderLogin` (gọi edge function `admin-create-user` để tạo user mới rồi gán; flow thật là tạo user thủ công ở **Quản trị → Người dùng** rồi quay lại gắn qua SearchableSelect — form có dòng hướng dẫn đúng như vậy).
 
 #### ShareholderSelfView (cổ đông xem phần mình) — [ShareholderSelfView.tsx](src/components/shareholders/ShareholderSelfView.tsx)
 
@@ -324,11 +353,15 @@ Render khi user là cổ đông nhưng không phải quản lý. Dùng `useProfi
 
 Hiển thị: 4 KPI (Được chia luỹ kế / Đã ứng / Còn lại / LN năm chọn), biểu đồ LN theo tháng & theo nhà, bảng "LN từng tháng/nhà" (tháng, nhà, %, được chia), bảng "Lịch sử đã ứng/đã lấy" (các phiếu chi gắn mình). Không có nút thao tác — read-only.
 
+⚠️ Bảng "Lịch sử đã ứng/đã lấy" render **toàn bộ** kết quả `useShareholderDistributions`, không lọc `shareholder_id === me.id` phía client — bình thường RLS đã cắt còn phiếu của mình, nhưng user vừa là **staff có quyền xem thu chi** (policy staff/all_buildings trên `income_expenses`) vừa là cổ đông sẽ thấy lẫn cả phiếu chia LN của cổ đông **khác** trong bảng này (4 KPI không bị ảnh hưởng vì chỉ đọc `summary[me.id]`).
+
 ### 5.2. `/finance/personal-wallet` — Ví thu chi cá nhân
 
 [PersonalWalletPage.tsx](src/pages/finance/PersonalWalletPage.tsx). Route bọc `RequirePermission module="personal_finance" action="view"`.
 
 Dữ liệu: `usePersonalTransactions` (own-only). Nếu user là cổ đông, thêm banner "Từ công ty" dùng `useMyShareholder` + `useProfitAllocations` + `useShareholderDistributions` + `computeShareholderSummary` → Được chia / Đã ứng / **Còn lại được nhận**.
+
+Lưu ý kỹ thuật: 2 query `useProfitAllocations` + `useShareholderDistributions` được bắn cho **mọi user** vào trang (không gate `enabled` theo `me`) — user không phải cổ đông vẫn query (RLS trả rỗng), còn staff có quyền xem thu chi sẽ kéo về toàn bộ phiếu chia LN không dùng đến. `usePersonalTransactions` cũng tải toàn bộ lịch sử ví rồi lọc client theo năm (giới hạn chọn `[Y+1 .. Y−2]` như mục 5.1).
 
 Hiển thị: 3 StatCard (Tổng thu / Tổng chi / Số dư — toàn bộ, không theo năm), biểu đồ thu-chi theo tháng & cơ cấu chi theo danh mục (lọc theo năm), bảng giao dịch năm chọn.
 
@@ -346,7 +379,7 @@ Edge/đặc thù: ví **không ghi vào `income_expenses`**, không ảnh hưở
 > Lưu ý: dù tên file/route là "profit-distribution", trang này thực chất là **báo cáo KQKD theo tháng** (Doanh thu / Chi phí / **Lợi nhuận = chênh lệch**) dựa trên `useIncomeExpenses` + `useIncomeExpenseStats` + `useAccrualMonthReport`. Nó **không** đọc `profit_monthly`/`profit_allocations` — đây là lớp "LN thô theo phiếu", khác với LN đã-chốt-snapshot của module cổ đông.
 
 Bước:
-1. Chọn tháng (MM-yyyy), khu vực/toà/phòng (`SearchableSelect`), loại Thu/Chi.
+1. Chọn tháng (MM-yyyy), khu vực/toà (`SearchableSelect`), loại Thu/Chi. Ô toà dùng `useBuildings({ includeVirtual: true })` nên chọn được cả toà ảo "Chung" (để soi phiếu chia LN); khi lọc khu vực, hook thu chi query bảng `buildings` lấy danh sách id của khu trước rồi `.in("building_id", ids)` (1 round-trip phụ). **Ô lọc phòng là dropdown chết** — options chỉ có đúng 1 mục "Tất cả phòng", không load danh sách phòng nào ([ProfitDistributionReport.tsx L181-189](src/pages/reports/finance/ProfitDistributionReport.tsx)).
 2. Toggle **"Hiện cả khoản không hạch toán KQKD (cọc…)"** → `pnlOnly`/`business_result_only`. Mặc định chỉ KQKD (loại cọc & khoản không-KQKD, gồm phiếu chia LN).
 3. Toggle **"Phân bổ theo kỳ áp dụng"** (accrual) → chia đều tiền item ra các tháng trong kỳ áp dụng (`useAccrualMonthReport`); tắt thì ghi nhận theo `voucher_date`.
 4. 3 thẻ tổng (Doanh thu / Chi phí / Lợi nhuận) + bảng phân trang theo chế độ.
@@ -360,8 +393,9 @@ Vai trò trong domain: cung cấp **góc nhìn LN theo phiếu/kỳ** để qu�
 - **→ Thu/Chi (income_expenses)** — quan hệ cốt lõi 2 chiều:
   - *Ra (đọc)*: RPC `monthly_building_profit` đọc `income_expenses` (chỉ KQKD, APPROVED) để tính LN toà.
   - *Vào (ghi)*: phiếu chia LN là một `income_expenses` (`type=EXPENSE`, `shareholder_id`, `business_result_accounting=false`, toà ảo "Chung"). `income_expenses.shareholder_id` là FK trỏ về `shareholders`. Báo cáo Phân bổ LN cũng nằm trên `income_expenses`.
-- **→ Toà nhà (buildings)** — `building_shareholders.building_id`, `profit_monthly.building_id` trỏ buildings; phiếu chia LN dùng **toà ảo "Chung"** (`is_virtual=true`). RPC LN chỉ tính toà thật.
-- **→ Sổ quỹ / Accounts** — phiếu chia LN chọn `account_id` (sổ quỹ nguồn); insert item → trigger trừ số dư sổ quỹ (domain Sổ quỹ/Thu-Chi).
-- **→ Auth & Người dùng (admin-create-user)** — `shareholders.auth_user_id` gắn tài khoản đăng nhập; `useCreateShareholderLogin` gọi edge function `admin-create-user` để tạo user mới rồi gán. `ShareholderForm`/`ShareConfigTab` dùng `useAdminUsers`.
+  - *Hệ quả*: phiếu chia LN là phiếu thu chi bình thường → **xuất hiện và sửa/xoá được từ trang Thu chi**. `useUpdateIncomeExpense` không đụng `shareholder_id` nên sửa phiếu vẫn giữ gắn kết cổ đông; nhưng **xoá mềm/huỷ duyệt từ trang Thu chi làm "Đã ứng" của cổ đông tụt** (điều kiện đếm ở mục 4.8) mà module cổ đông không cảnh báo gì.
+- **→ Toà nhà (buildings)** — `building_shareholders.building_id`, `profit_monthly.building_id` trỏ buildings; phiếu chia LN dùng **toà ảo "Chung"** (`is_virtual=true`). RPC LN chỉ tính toà thật. Phụ thuộc **cứng** vào toà ảo `name='Chung'` — nếu domain Toà nhà đổi tên/xoá toà ảo này, chi LN gãy ngay (throw). `building_shareholders`/`profit_monthly` đều `ON DELETE CASCADE` theo `buildings` → xoá **cứng** một toà sẽ kéo sập cả lịch sử chốt (hiện toà chỉ soft-delete nên an toàn).
+- **→ Sổ quỹ / Accounts** — phiếu chia LN chọn `account_id` (sổ quỹ nguồn). **Không có trigger ghi sổ** — số dư giảm vì view `accounts_with_balance` aggregate `income_expenses` theo `account_id` lúc query (domain Sổ quỹ tính cả phiếu thuộc toà ảo "Chung").
+- **→ Auth & Người dùng** — `shareholders.auth_user_id` gắn tài khoản đăng nhập. Flow thực tế: tạo user ở trang **Quản trị → Người dùng**, rồi quay lại gắn trong `ShareholderForm` (SearchableSelect; `ShareholderForm`/`ShareConfigTab` dùng `useAdminUsers`). Hook `useCreateShareholderLogin` (gọi edge function `admin-create-user` để tạo user mới rồi gán) tồn tại trong [useShareholders.ts](src/hooks/useShareholders.ts) nhưng là **dead code** — không component nào dùng.
 - **→ Hệ thống quyền (permissions / RLS)** — module quyền `shareholder_profit` + `personal_finance` trong [permissions.ts](src/lib/permissions.ts); `get_my_permissions()` và `can_access_building()` mở rộng cho cổ đông (read-only + scope toà có cổ phần). Cổ đông nhờ đó thấy được dữ liệu vận hành (HĐ, phòng, chỉ số…) của đúng toà mình.
 - **Cô lập có chủ ý**: `personal_transactions` **không** nối sang bất kỳ domain nào — không vào sổ quỹ, không vào báo cáo. Chỉ banner "Từ công ty" trên Ví cá nhân là đọc-một-chiều từ allocations/distributions để cổ đông tự đối chiếu.

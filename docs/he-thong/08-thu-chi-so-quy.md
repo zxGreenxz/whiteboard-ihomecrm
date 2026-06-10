@@ -20,8 +20,11 @@ Các khái niệm phụ:
 
 - **Phiếu tổng (batch)**: gộp N phiếu lẻ (mỗi hạng mục → 1 phiếu con) cho cùng 1 đợt thu/chi nhiều toà — `income_expense_batches` + junction `income_expense_batch_items`.
 - **Phiếu lặp định kỳ (`repeat_*`)**: phiếu gốc tự đẻ phiếu con theo chu kỳ WEEK/MONTH/QUARTER/YEAR; có job pg_cron sinh hằng ngày.
-- **Loại thu chi (`income_expense_types`)**: danh mục hạng mục, **per-user** (mỗi owner có bộ riêng), có cờ `is_deposit` và nhóm `category`.
+- **Loại thu chi (`income_expense_types`)**: danh mục hạng mục, **per-user về dữ liệu** (mỗi owner có bộ riêng) nhưng **RLS đã mở cho mọi user authenticated** — xem §2.3. Có cờ `is_deposit` và nhóm `category`.
 - **Mẫu in (`income_expense_templates`)** + **trang in A5** (`/income-expense/print/:id`).
+- **Quyền "Mọi toà nhà"** (`income_expenses.all_buildings` trong JSONB permissions): cấp cho staff (vd kế toán) ghi thu chi cho MỌI toà của owner, gói gọn trong form thu chi — xem §4.13.
+- **Tạo phiếu nhanh**: dialog nhập 1 dòng `(phòng) (tòa) (hạng mục) (ghi chú) (số tiền)` — xem §5.1.
+- **Trang Thu tiền mặt mobile** (`/thu-tien`): lưới phòng theo toà + kỳ hoá đơn, thu đủ/thu một phần → tạo phiếu thu mirror vào domain này — xem §5.10.
 - **Tiền thối** (`change_amount`/`change_account_id`) và **làm tròn tiền thiếu** (`rounding_amount`/`rounding_account_id`): ledger ghi nhận, **đã NET trong phiếu Thu**, không trừ thật khỏi số dư.
 - **Gạch nợ tự động (`auto_debt_config`)**: cấu hình nhận diện chuyển khoản ngân hàng để tự gạch nợ (theo `bank_account` + `matching_rules`).
 - **Sổ chia sẻ (`account_shared_users`)**: cho user khác thấy/ghi phiếu trên sổ không thuộc phạm vi RBAC toà nhà của họ.
@@ -41,7 +44,7 @@ Các khái niệm phụ:
 
 Mục đích: chứng từ tiền vào/ra. Cột chủ chốt:
 
-- **Phân loại & nhận diện**: `type` (`INCOME`/`EXPENSE`, text — KHÔNG phải enum), `code` (auto `PT{YYMM}{seq}` cho thu / `PC{YYMM}{seq}` cho chi, sinh per-user-per-month-per-type), `name`, `voucher_date` (ngày phát sinh — mọi báo cáo & số dư lấy theo cột này), `notes`.
+- **Phân loại & nhận diện**: `type` (`INCOME`/`EXPENSE`, text — KHÔNG phải enum), `code` (auto `PT{YYMM}{seq}` cho thu / `PC{YYMM}{seq}` cho chi, sinh per-user-per-month-per-type — **`YYMM` lấy theo THÁNG TẠO phiếu** `TO_CHAR(CURRENT_DATE,'YYMM')`, KHÔNG theo `voucher_date`: phiếu backdate tháng trước vẫn mang mã tháng hiện tại), `name`, `voucher_date` (ngày phát sinh — mọi báo cáo & số dư lấy theo cột này), `notes`.
 - **Số tiền**: `total_amount` (auto = Σ items), `payer_name` (người nộp/nhận), `receive_bank_name`/`receive_bank_account` (TK nhận tiền in trên phiếu — KHÔNG phải FK sổ quỹ).
 - **Sổ quỹ & gắn kết**: `account_id` → `accounts`, `building_id` (NOT NULL) → `buildings`, `room_id` → `rooms`, `tenant_id` → `tenants` (lưu ý: là bảng `tenants` legacy, KHÁC `customers`), `contract_id` → `contracts`, `invoice_id` → `invoices`, `payment_id` → `payments` (phiếu thu mirror từ thanh toán hoá đơn).
 - **Trạng thái duyệt**: `approval_status` (text, mặc định `'APPROVED'` — phiếu tạo là duyệt ngay; giá trị khác: `UNAPPROVED` = nháp, `CANCELLED` = huỷ), `approved_by`/`approved_at`, `deleted_at` (soft delete), `creator_name`.
@@ -56,13 +59,17 @@ FK đi ra: `accounts` (×3: account_id, change_account_id, rounding_account_id),
 
 ### 2.2 `income_expense_items` — hạng mục phiếu (11 cột)
 
-Mục đích: chi tiết từng dòng của phiếu. Cột chủ chốt: `income_expense_id` → phiếu, `income_expense_type_id` → loại, `quantity`/`unit_price`, `amount` (auto = qty × price), `description`, **`start_date`/`end_date` = kỳ áp dụng** (dùng cho filter "lọc kỳ theo tháng" và accrual). FK ra: `income_expenses`, `income_expense_types`.
+Mục đích: chi tiết từng dòng của phiếu. Cột chủ chốt: `income_expense_id` → phiếu, `income_expense_type_id` → loại, `quantity`/`unit_price`, `amount` (auto = qty × price), `description`, `notes` (có trong schema nhưng FE hiện **không dùng** — chỉ dùng `description`), **`start_date`/`end_date` = kỳ áp dụng** (dùng cho filter "lọc kỳ theo tháng" và accrual). FK ra: `income_expenses`, `income_expense_types`.
 
 ### 2.3 `income_expense_types` — loại/hạng mục thu chi (10 cột, per-user)
 
 Mục đích: danh mục hạng mục. Cột chủ chốt: `name`, `type` (text `'income'`/`'expense'` — **chữ thường**, khác `income_expenses.type` viết HOA), `category` (nhóm gom để thống kê), `is_default`, **`is_deposit`** (TRUE = hạng mục cọc → phiếu chứa nó bị loại khỏi P&L khi auto), `user_id` (mỗi owner 1 bộ riêng → có nhiều row trùng `(name, type)` giữa các user). Được tham chiếu bởi `income_expense_items`.
 
-> Hệ quả của per-user: khi lọc theo loại, FE phải **expand** id đã chọn sang mọi id "sibling" cùng `(name, type)` của user khác (xem `getVoucherIdsByItemTypes`), nếu không sẽ bỏ sót phiếu.
+> **RLS đã MỞ hoàn toàn** (migration `20260511000002_open_income_expense_types_access`): 1 policy `income_expense_types_authenticated_all` FOR ALL `USING (true) WITH CHECK (true)` — mọi user authenticated xem/tạo/sửa/xoá được hạng mục của **mọi** user (dictionary table dùng chung, theo yêu cầu boss). Hệ quả: user có thể gắn item vào `type_id` thuộc user khác.
+>
+> FE xử lý trùng tên: [useIncomeExpenseTypes](src/hooks/useIncomeExpenseTypes.ts) đọc **toàn bộ rows mọi user** rồi **dedup client-side** theo `(lower(name), type)`, ưu tiên row của user hiện tại (để nút sửa thao tác đúng record của họ).
+>
+> Hệ quả của per-user data: khi lọc theo loại, FE phải **expand** id đã chọn sang mọi id "sibling" cùng `(name, type)` của user khác (xem `getVoucherIdsByItemTypes`), nếu không sẽ bỏ sót phiếu.
 
 ### 2.4 `income_expense_templates` — mẫu in (12 cột, per-user)
 
@@ -77,10 +84,12 @@ Mục đích: mẫu file in phiếu. Cột chủ chốt: `code` (auto `MT{YYMM}{
 Mục đích: ví tiền. Cột chủ chốt: `name`, `code` (auto `TK{6 số}`, unique), `bank_name`/`account_number`/`bank_account_holder`/`branch`, `description`, `is_default`, **`initial_amount`/`initial_date`** (số dư & ngày chốt đầu kỳ), **`lock_date`** (khoá sổ — chặn phiếu có `voucher_date ≤ lock_date`), `quick_default_building_id` → `buildings` (toà mặc định khi tạo phiếu nhanh), `user_id` (owner phụ trách sổ). FK ra: `buildings`. Được tham chiếu bởi: `income_expenses` (×3), `account_shared_users`, `buildings.default_account_id_tk/tt`.
 
 > Cột `type` (`cash`/`bank`/`ewallet`) từng tồn tại nhưng **đã bị drop** (migration `20260514000051_drop_accounts_type`); code hiện không dùng.
+>
+> **Gotcha `quick_default_building_id`**: cột thêm ở `20260602000001` (kèm index partial `idx_accounts_quick_default_building`), nhưng view `accounts_with_balance` (bản cuối `20260527000004`, ra đời TRƯỚC) liệt kê cột tường minh nên **KHÔNG expose cột này**. Hệ luỵ: trang Sổ quỹ edit truyền row từ view vào [CashbookForm](src/components/cashbooks/CashbookForm.tsx) → default `account?.quick_default_building_id ?? null` luôn `null` → mỗi lần bấm Lưu khi sửa sổ là **ghi đè `null`, mất ngầm cấu hình** "Tòa nhà mặc định khi tạo phiếu nhanh" (xem §5.5).
 
 ### 2.7 `account_shared_users` — sổ chia sẻ (5 cột)
 
-Mục đích: cho `user_id` xem/ghi phiếu trên `account_id` không thuộc RBAC toà nhà của họ. Cột: `account_id` → `accounts`, `user_id`, `created_by`. Dùng bởi 2 helper `is_account_owner` / `is_account_shared_with_me` trong RLS.
+Mục đích: cho `user_id` xem/ghi phiếu trên `account_id` không thuộc RBAC toà nhà của họ. Cột: `account_id` → `accounts`, `user_id`, `created_by`. Dùng bởi 2 helper `is_account_owner` / `is_account_shared_with_me` trong RLS. UI quản lý danh sách nằm ngay trong form Sổ quỹ — khối "Người được phép sử dụng" của [CashbookForm](src/components/cashbooks/CashbookForm.tsx) (xem §5.5).
 
 ### 2.8 `auto_debt_config` — gạch nợ tự động (8 cột)
 
@@ -105,6 +114,7 @@ erDiagram
     accounts ||--o| accounts_with_balance : "view tồn quỹ"
     buildings ||--o{ income_expenses : "building_id (NOT NULL)"
     buildings ||--o{ auto_debt_config : "cấu hình"
+    buildings ||--o{ accounts : "quick_default_building_id (toà mặc định phiếu nhanh)"
     income_expenses ||--o{ income_expense_items : "1 phiếu N hạng mục"
     income_expense_types ||--o{ income_expense_items : "loại hạng mục"
     income_expenses ||--o{ income_expenses : "repeat_parent_id (con→gốc)"
@@ -133,6 +143,7 @@ erDiagram
       text code "TK000001"
       numeric initial_amount
       date lock_date "khoá sổ"
+      uuid quick_default_building_id FK "toà mặc định phiếu nhanh"
     }
 ```
 
@@ -148,6 +159,8 @@ flowchart TD
     S --> O["Tồn quỹ hiển thị ở /finance/cashbooks"]
 ```
 
+> View **bỏ qua RLS** (chạy quyền owner — xem §4.4): mọi user authenticated thấy số dư mọi sổ. Danh sách phiếu (bảng theo RLS) có thể "hẹp" hơn số dư — đây là chủ ý, được bù bằng policy `income_expenses_select_fund_member` (§4.9).
+
 ---
 
 ## 4. Quy tắc nghiệp vụ & tự động hoá
@@ -161,8 +174,8 @@ flowchart TD
 
 ### 4.2 Duyệt / bỏ duyệt phiếu
 
-- `approve_voucher(voucher_id)` (SECURITY DEFINER): set `APPROVED` + `approved_by=auth.uid()` + `approved_at=now()`, **chỉ với phiếu `user_id = auth.uid()`**. Dùng cho phiếu nháp (vd phiếu chi hoa hồng `UNAPPROVED` chờ thực chi).
-- `unapprove_voucher(voucher_id)`: ngược lại (`UNAPPROVED`, clear approver).
+- `approve_voucher(voucher_id)` (SECURITY DEFINER): set `APPROVED` + `approved_by=auth.uid()` + `approved_at=now()`, với phiếu **`user_id = auth.uid()` HOẶC caller là super admin** (`OR public.is_super_admin()` — bypass thêm ở migration `20260514000005_super_admin_bypass_rpcs_and_storage`). Dùng cho phiếu nháp (vd phiếu chi hoa hồng `UNAPPROVED` chờ thực chi).
+- `unapprove_voucher(voucher_id)`: ngược lại (`UNAPPROVED`, clear approver) — cùng điều kiện chủ phiếu hoặc super admin.
 - Mặc định mọi phiếu tạo qua form đã là `APPROVED` ngay → workflow duyệt thường chỉ chạm tới phiếu commission/nháp. Huỷ phiếu = set `CANCELLED` (không gọi RPC, chỉ `UPDATE` trực tiếp ở hook).
 
 ### 4.3 Khoá sổ (`income_expenses_check_lock`, migration `20260425000001`)
@@ -171,7 +184,15 @@ Trigger BEFORE INS/UPD/DEL: nếu sổ (`account_id`) có `lock_date` và `vouch
 
 ### 4.4 View tồn quỹ `accounts_with_balance` (mới nhất: `20260527000004`)
 
-`current_amount = initial_amount + Σ(INCOME APPROVED) − Σ(EXPENSE APPROVED) + Σ(change_amount khi sổ = change_account_id) + Σ(rounding_amount khi sổ = rounding_account_id)`, đều lọc `approval_status='APPROVED' AND deleted_at IS NULL`. View có `security_invoker = true` (áp RLS của caller) ở bản 1; bản hiện tại lọc trực tiếp. **Bất biến**: sổ "X Thối"/"Làm tròn" không bị âm vì chỉ cộng metadata thối/làm tròn, không có phiếu chi thật.
+`current_amount = initial_amount + Σ(INCOME APPROVED) − Σ(EXPENSE APPROVED) + Σ(change_amount khi sổ = change_account_id) + Σ(rounding_amount khi sổ = rounding_account_id)`, đều lọc `approval_status='APPROVED' AND deleted_at IS NULL`.
+
+Lịch sử `security_invoker` (quan trọng vì quyết định view có áp RLS hay không):
+
+- Bản đầu (`20260425000001`) tạo view **không có** `security_invoker` → chạy quyền owner.
+- Cờ được bật qua `ALTER VIEW ... SET (security_invoker = true)` ở `20260506000004` (và set lại ở `20260512000003`, `20260514000051`).
+- Bản hiện tại (`20260527000004`) dùng `CREATE OR REPLACE VIEW` **không kèm** `WITH (security_invoker...)` → Postgres **reset reloptions** → view quay lại **chạy quyền owner, BỎ QUA RLS**: mọi user authenticated thấy số dư mọi sổ (by-design — danh sách phiếu thì vẫn theo RLS, xem §4.9).
+
+Bản `20260527000004` liệt kê cột tường minh nên view **không expose** `quick_default_building_id` (cột thêm sau ở `20260602000001`) — xem gotcha ở §2.6. **Bất biến**: sổ "X Thối"/"Làm tròn" không bị âm vì chỉ cộng metadata thối/làm tròn, không có phiếu chi thật.
 
 ### 4.5 Hạch toán kết quả kinh doanh / KQKD (migration `20260531000001`)
 
@@ -201,6 +222,10 @@ flowchart TD
 
 Toggle "đã kiểm": nếu chưa kiểm → set `verified_*` với người + note; nếu đã kiểm → bỏ kiểm (chỉ chủ kiểm hoặc super admin). Caller phải có quyền xem phiếu (`is_super_admin`/`is_admin`/`can_access_building`/`is_account_shared_with_me`). Độc lập với `approval_status`.
 
+> **Lệch với policy SELECT hiện tại**: check quyền trong RPC **thiếu nhánh `is_account_owner`** — policy `income_expenses_select_fund_member` (`20260601000001`, ra đời SAU RPC này) cho **chủ sổ** thấy phiếu ở toà ngoài RBAC, nhưng họ gọi verify sẽ bị `RAISE 'Không có quyền xem phiếu này'`.
+>
+> **Giới hạn UI**: nút "đánh dấu đã kiểm" + [IncomeExpenseVerifyDialog](src/components/income-expenses/IncomeExpenseVerifyDialog.tsx) **chỉ có ở desktop** — layout mobile của trang Thu chi không render dialog này (list mobile chỉ có `onView`).
+
 ### 4.8 Sửa nhanh — `update_income_expense_quick` (migration `20260527000005`)
 
 Cho **chủ phiếu hoặc super admin** sửa 3 field non-financial trên phiếu đã ghi nhận: `account_id`, `attachments`, `notes`. KHÔNG động `total_amount`/items/type. Chặn nếu phiếu đã xoá hoặc không có quyền.
@@ -208,7 +233,8 @@ Cho **chủ phiếu hoặc super admin** sửa 3 field non-financial trên phi�
 ### 4.9 RLS & hàm phân quyền sổ (migration `20260516000005`, `20260601000001`)
 
 - `is_account_owner(p_account_id)` / `is_account_shared_with_me(p_account_id)`: 2 helper SECURITY DEFINER phá đệ quy RLS giữa `accounts` ↔ `account_shared_users`.
-- Policy `income_expenses_select_fund_member`: **chủ sổ + người được chia sẻ thấy MỌI phiếu của sổ** (phủ cả `account_id`, `change_account_id`, `rounding_account_id`), bất kể RBAC toà nhà → để danh sách khớp số dư (view bỏ qua RLS). Đây là chủ ý: số dư có thể "rộng" hơn quyền toà nhà.
+- Policy `income_expenses_select_fund_member` (`20260601000001`): **chủ sổ + người được chia sẻ thấy MỌI phiếu của sổ** (phủ cả `account_id`, `change_account_id`, `rounding_account_id`), bất kể RBAC toà nhà → để danh sách khớp số dư (view bỏ qua RLS). Đây là chủ ý: số dư có thể "rộng" hơn quyền toà nhà. (Lưu ý: chủ sổ thấy phiếu qua nhánh này nhưng KHÔNG verify được — §4.7; và ô lọc sổ quỹ không OR `rounding_account_id` — §5.1.)
+- Toàn cảnh stack policy trên `income_expenses`/`income_expense_items` (`20260527000054` + additive): **SELECT** = `is_super_admin` OR `is_admin` OR `can_access_building(building_id)`; **INSERT/UPDATE/DELETE** = `is_super_admin` OR `can_do_on_building('income_expenses', create/edit/delete, building_id)` — **UPDATE không kiểm `approval_status`** (phiếu APPROVED không bất biến ở tầng DB, xem §5.1 #2). Additive: `*_all_buildings` (chỉ phiếu `user_id = auth.uid()` + cờ all_buildings, §4.13), `select_fund_member` (theo SỔ QUỸ, ở trên), `income_expenses_insert_shared` (`20260516000005`, được GIỮ khi dọn legacy — người được chia sẻ sổ INSERT phiếu của mình lên sổ đó: `user_id = auth.uid()` + `is_account_shared_with_me(account_id)`), và `income_expenses_select_shareholder` (`20260603000001` — cổ đông thấy phiếu gắn `shareholder_id` của mình).
 
 ### 4.10 Tiền thối & làm tròn (migration `20260512000001`, `20260527000061`)
 
@@ -223,6 +249,22 @@ Cho **chủ phiếu hoặc super admin** sửa 3 field non-financial trên phi�
 
 > Lưu ý phân biệt: đây là trigger trên **`invoices`** (nợ cũ `previous_debt_sources`), khác với `auto_debt_config` (đối soát chuyển khoản). Khi hoá đơn chuyển `PAID`: với mỗi source `type=invoice` → mark hoá đơn nguồn `PAID`; `type=deposit` → cộng `contracts.deposit_paid`. Liên quan domain Hoá đơn/HĐ, nêu ở đây vì cùng họ "debt".
 
+### 4.13 Quyền "Mọi toà nhà" — `income_expenses.all_buildings` (migration `20260603000002` + thu hẹp `...003`)
+
+Cấp cho staff (vd kế toán) khả năng **ghi thu chi cho MỌI toà của owner**, CHỈ trong phạm vi module Thu chi — toà/phòng ở các module khác (HĐ, cư dân, hoá đơn…) vẫn khoá theo toà quản lý.
+
+- **Cờ quyền** nằm trong JSONB permissions (role hoặc per-staff): `{"income_expenses": {"all_buildings": true}}`.
+- **2 helper SECURITY DEFINER**: `ie_all_buildings_scope(building)` (cờ all_buildings + building thuộc owner của caller — per-owner, staff đa-owner không bị lộ toà của owner khác) và `can_ie_all_buildings(action, building)` (như trên + có quyền `{action}` create/edit/delete).
+- **8 policy ADDITIVE** trên `income_expenses` + `income_expense_items` (OR-merge với RBAC cũ). **Đã thu hẹp** ở `20260603000003`: mọi policy all_buildings đều thêm điều kiện **`user_id = auth.uid()`** — staff chỉ thấy/sửa được phiếu xuyên toà **do chính mình tạo** (đủ cho `.insert().select()` = RETURNING + sửa phiếu mình); KHÔNG mở quyền xem/sửa phiếu của người khác. Phiếu ở toà quản lý vẫn đầy đủ qua RBAC cũ.
+- **2 RPC SECURITY DEFINER cấp dropdown TOÀ/PHÒNG riêng cho form thu chi**: `ie_form_buildings()` (kèm cờ `managed` — toà quản lý, FE xếp lên đầu) và `ie_form_rooms(_building_id)` (`NULL` → mọi phòng caller được chọn, dùng cho ô nhập nhanh). Hai RPC **không đụng** `buildings_select_rbac`/`rooms_select_rbac` → phạm vi "thấy mọi toà" gói gọn trong form. Revoke anon, chỉ authenticated gọi được.
+- **FE**: hook [useIncomeExpenseFormScope](src/hooks/useIncomeExpenseFormScope.ts) (`useIncomeExpenseFormBuildings`/`useIncomeExpenseFormRooms`) dùng cho [IncomeExpenseForm](src/components/income-expenses/IncomeExpenseForm.tsx), [IncomeExpenseBatchForm](src/components/income-expenses/IncomeExpenseBatchForm.tsx), [IncomeExpenseQuickCreateDialog](src/components/income-expenses/IncomeExpenseQuickCreateDialog.tsx).
+- **Ô lọc & list KHÔNG nới**: filter toà/phòng của trang Thu chi vẫn dùng `useBuildings`/`useRooms` (RLS thường) → staff all_buildings **không thấy** toà mở rộng trong ô lọc; list hiện phiếu xuyên toà (phiếu mình tạo) nhưng **tên toà hiển thị "—"** vì join `buildings` bị RLS chặn trả null. Đây là by-design.
+- Import Excel cũng map toà qua `useBuildings` (RLS thường) — không qua RPC all_buildings.
+
+### 4.14 RPC `ensure_room_deposit_type` (⚠️ WIP — migration `20260608100000` chưa commit)
+
+SECURITY DEFINER get-or-create loại thu **"Tiền cọc"** của chính caller (tái dùng helper `_termination_ensure_type`) rồi **ép `is_deposit = TRUE`** — vì FE chỉ đọc `is_deposit` (set DB-side), `useCreateIncomeExpenseType` không bật được cờ này. Phục vụ "Tạo cọc nhanh" ([QuickDepositModal](src/pages/phong-trong/QuickDepositModal.tsx), untracked) ở trang công khai Phòng trống `/r/:token`: phiếu cọc tạo ra kích `recompute_room_reservation` → `rooms.status = RESERVED`. Revoke anon, chỉ authenticated. Khi commit cần cập nhật mục §6.
+
 ---
 
 ## 5. Quy trình theo từng trang
@@ -233,22 +275,43 @@ File: [IncomeExpensePage.tsx](src/pages/payments/IncomeExpensePage.tsx). Mục �
 
 **Dữ liệu hiển thị**: `useIncomeExpenses` (list phiếu lẻ), `useIncomeExpenseBatches` (phiếu tổng), `useIncomeExpenseStats` (3 card). Toolbar có 2 view mode: "Phiếu lẻ" / "Phiếu tổng".
 
-**Filter** (`IncomeExpenseFilters`): toà/khu/phòng, sổ quỹ (`account_id` — OR với `change_account_id` để bắt sổ Thối), type, khoảng `voucher_date`, `approval_status` (mặc định `ALL_ACTIVE` = APPROVED+UNAPPROVED, ẩn CANCELLED), loại hạng mục thu/chi (expand sibling), người tạo, `verified_status`, **kỳ áp dụng theo tháng** (`period_start/end_month` → overlap với item start/end), `amount_target`.
+**Deep-link**: trang nhận query `?account_id=xxx` (từ trang Sổ quỹ → "xem thu chi") → preload filter sổ quỹ rồi xoá query khỏi URL (`replace: true`) — filter chip vẫn hiển thị.
+
+**Filter** (`IncomeExpenseFiltersBar` desktop / `IncomeExpenseFilterPanel` drawer): khu vực/toà/phòng, sổ quỹ, type, khoảng `voucher_date`, `approval_status` (mặc định `ALL_ACTIVE` = APPROVED+UNAPPROVED, ẩn CANCELLED), loại hạng mục thu/chi (expand sibling), người tạo, `verified_status`, **kỳ áp dụng theo tháng** (`period_start/end_month` → overlap với item start/end), `amount_target`. Chi tiết:
+
+- **Khu vực → toà → phòng cascade**: areas từ `useAreas()`; buildings từ `useBuildings({includeVirtual:true})` (RLS thường — staff all_buildings KHÔNG thấy toà mở rộng ở đây, xem §4.13) rồi filter client-side theo `area_id`; chọn khu reset toà+phòng. Khu vực không có cột trên `income_expenses` — query suy qua `buildings.area_id` → `.in('building_id', ids)` (khu không có toà → trả rỗng ngay).
+- **Phòng lọc gộp theo TÊN**: chọn 1 tên phòng → `room_ids` = mọi id phòng cùng tên xuyên toà.
+- **Sổ quỹ**: OR `account_id` / `change_account_id` (bắt sổ Thối) — **KHÔNG OR `rounding_account_id`** → chọn sổ "Làm tròn tiền thiếu" ở ô lọc ra rỗng dù policy fund_member cho thấy phiếu; xem log làm tròn phải qua `/finance/refund-log` (§5.4).
+- Drawer FilterPanel giữ draft local, chỉ commit khi bấm "Áp dụng".
+
+**Lưu ý 3 card thống kê**: mặc định lọc `ALL_ACTIVE` nên **gồm cả phiếu NHÁP** (UNAPPROVED), trong khi tồn quỹ `accounts_with_balance` chỉ tính APPROVED → tổng thu/chi trên trang có thể lệch số dư sổ quỹ (không phải sai sót).
 
 **Ô tìm kiếm thông minh** (`parseSearchInput`): gõ toàn số → lọc theo `total_amount` ±5.000đ; gõ chữ → search client-side trên name/code/tenant_name.
 
 **Thao tác chính**:
 
-1. *Tạo phiếu lẻ* → `IncomeExpenseForm` (zod `incomeExpenseFormSchema`) → `useCreateIncomeExpense`: INSERT phiếu (set `repeat_next_date = addCycle(voucher_date, cycle, 1)` nếu có lặp) → INSERT items → trigger tự tính total + code + KQKD. Validate: `account_id` bắt buộc, ≥1 item, item có start≤end, nếu chọn chu kỳ mà không vô hạn thì `repeat_count ≥ 1`.
-2. *Sửa phiếu* → `useUpdateIncomeExpense`: chỉ chạy được khi UNAPPROVED (RLS); UPDATE phiếu + xoá toàn bộ items cũ + insert lại (trigger recompute total/KQKD). Phiếu đã APPROVED dùng *Sửa nhanh* (`useQuickUpdateIncomeExpense` → RPC 3 field) hoặc super admin.
-3. *Duyệt* → `useApproveVoucher` (RPC `approve_voucher`) — confirm dialog "tính vào tồn quỹ".
-4. *Huỷ* → `useCancelIncomeExpense`: set `CANCELLED`; nếu là INCOME có `payment_id` (mirror thanh toán hoá đơn) → xoá luôn `payments` row để trigger recompute hoá đơn. Invalidate cả invoices/payments/stats.
-5. *Đánh dấu đã kiểm* → `useVerifyIncomeExpense` (RPC toggle).
+1. *Tạo phiếu lẻ* → `IncomeExpenseForm` (zod `incomeExpenseFormSchema`) → `useCreateIncomeExpense`: INSERT phiếu (set `repeat_next_date = addCycle(voucher_date, cycle, 1)` nếu có lặp) → INSERT items → trigger tự tính total + code + KQKD. Validate: `account_id` bắt buộc, ≥1 item, item có start≤end, nếu chọn chu kỳ mà không vô hạn thì `repeat_count ≥ 1`. Dropdown toà/phòng lấy từ RPC `ie_form_buildings`/`ie_form_rooms` (§4.13). ⚠️ Không transaction: nếu INSERT items lỗi (vd `type_id` của user khác bị policy chặn), phiếu đã insert vẫn tồn tại với `total_amount = 0` (chỉ toast, không cleanup).
+2. *Sửa phiếu* → `useUpdateIncomeExpense`: UPDATE phiếu + xoá toàn bộ items cũ + insert lại (trigger recompute total/KQKD). **"Chỉ sửa khi nháp" là gate Ở UI**, không phải RLS: `showFullEdit = isUnapproved || isAdmin` ([IncomeExpenseList](src/components/income-expenses/IncomeExpenseList.tsx) + [IncomeExpenseDetailDialog](src/components/income-expenses/IncomeExpenseDetailDialog.tsx)); policy `income_expenses_update_rbac` **không kiểm `approval_status`** (chỉ kiểm `is_super_admin()` OR `can_do_on_building('income_expenses','edit',building_id)`) → staff có quyền edit toà vẫn UPDATE được phiếu APPROVED qua API trực tiếp — chỉ trigger khoá sổ (`lock_date`, §4.3) chặn thật ở DB. Phiếu đã ghi nhận trên UI: creator (không phải admin) dùng *Sửa nhanh* (`useQuickUpdateIncomeExpense` → RPC 3 field, §4.8); admin/super admin mở full form.
+3. *Duyệt* → `useApproveVoucher` (RPC `approve_voucher` — chủ phiếu hoặc super admin, §4.2) — confirm dialog "tính vào tồn quỹ".
+4. *Huỷ* → `useCancelIncomeExpense`: set `CANCELLED`; nếu là INCOME có `payment_id` (mirror thanh toán hoá đơn) → xoá luôn `payments` row để trigger recompute hoá đơn. Invalidate cả invoices/payments/stats. ⚠️ Chuỗi 2 bước **không atomic** (UPDATE phiếu rồi MỚI delete payment): nếu bước 2 fail, phiếu đã huỷ nhưng payment còn → hoá đơn vẫn PAID trong khi sổ quỹ mất khoản thu, không có rollback.
+5. *Đánh dấu đã kiểm* → `useVerifyIncomeExpense` (RPC toggle) — **chỉ desktop** (§4.7).
 6. *Sinh phiếu lặp lại* → `useGenerateRecurringVouchers` (RPC `generate_recurring_vouchers_v2`).
 7. *Dừng lặp* → `useStopRecurring`: set `repeat_cycle='NONE'` + clear remaining/next_date (giữ con đã sinh).
 8. *In* → điều hướng `/income-expense/print/:id`.
+9. *Import Excel* (nút "Import", chỉ toolbar desktop) → [IncomeExpenseImportDialog](src/components/income-expenses/IncomeExpenseImportDialog.tsx) + `useImportIncomeExpenses`: mỗi dòng Excel = 1 phiếu + 1 item, validate bằng zod `excelImportRowSchema` ([incomeExpenseValidation.ts](src/lib/incomeExpenseValidation.ts)), map `building_name` trong file → `building_id` qua `useBuildings({includeVirtual:true})` (RLS thường). Insert **tuần tự per-row, không transaction** — đếm `successCount`/`failedCount`/`errors` từng dòng, dòng lỗi không rollback dòng đã vào.
 
-**Edge case**: filter loại hạng mục phải expand sibling (per-user types) nếu không bỏ sót; khi search bật → fetch toàn bộ rồi paginate client-side (vì tenant_name từ join). Sổ bị khoá → INSERT/UPDATE ném lỗi từ trigger.
+**Tạo phiếu nhanh** (mở từ FAB mobile) → [IncomeExpenseQuickCreateDialog](src/components/income-expenses/IncomeExpenseQuickCreateDialog.tsx) + parser thuần [incomeExpenseQuickInput.ts](src/lib/incomeExpenseQuickInput.ts):
+
+- Cú pháp 1 dòng: `(phòng) (tòa) (hạng mục) (ghi chú) (số tiền)` — vd `201 1392qt tiền điện tháng 5 200`.
+- **Số tiền luôn ×1000** (`parseQuickAmount`): `200` hay `200k` đều = 200.000đ.
+- Token phòng = `tn` → **phiếu cả toà** (`isBuildingWide`, không cần phòng).
+- Hạng mục là chuỗi nhiều từ nên parser KHÔNG tự đoán ranh giới hạng-mục↔ghi-chú: dialog **khoá** hạng mục khi user chọn từ dropdown gợi ý (`lockedTypeId` + `categoryEndIndex`); chưa khoá thì `categorySearch` feed dropdown. Tạo hạng mục mới inline **bắt buộc chọn Nhóm** (category).
+- **Tự chọn sổ quỹ**: theo `accounts.quick_default_building_id` khớp toà đã parse → fallback sổ `is_default` → sổ đầu tiên (đến khi user tự đổi).
+- Submit → `useCreateIncomeExpense` với 1 item (qty 1 × amount), kỳ áp dụng = hôm nay. Toà/phòng từ RPC form scope (§4.13).
+
+**Mobile** (`useIsMobile`): layout riêng — `IncomeExpenseStatsMobile`, `IncomeExpenseListMobile` (card, chỉ tap mở chi tiết), `IncomeExpenseFilterChips` (chip filter đang bật), `IncomeExpenseFilterPanel` dạng bottom-sheet, phân trang "Xem thêm", và [IncomeExpenseFAB](src/components/income-expenses/IncomeExpenseFAB.tsx) 4 hành động: tạo nhanh / phiếu thu / phiếu chi / phiếu tổng. Mobile **không render** `IncomeExpenseVerifyDialog` (verify chỉ desktop).
+
+**Edge case**: filter loại hạng mục phải expand sibling (per-user types) nếu không bỏ sót; khi search chữ bật → bỏ server-side pagination, **fetch toàn bộ phiếu khớp filter** rồi search/paginate client-side (vì tenant_name từ join) — chịu row-cap PostgREST (mặc định 1000) nên kết quả search có thể thiếu phiếu cũ. Sổ bị khoá → INSERT/UPDATE ném lỗi từ trigger.
 
 ```mermaid
 sequenceDiagram
@@ -270,7 +333,11 @@ sequenceDiagram
 
 ### 5.2 Phiếu tổng (batch) — trong cùng trang `/income-expense`
 
-`useCreateIncomeExpenseBatch`: INSERT 1 batch + N phiếu con (1 hạng mục/phiếu, denormalize metadata chung) + N items + N junction. Rollback best-effort: nếu lỗi giữa chừng → soft-delete phiếu con đã tạo + xoá batch. `useCancelIncomeExpenseBatch` huỷ tất cả con APPROVED 1 click (cascade xoá payment). `useUpdateBatchAccount` đổi sổ quỹ đồng loạt. Hiển thị qua `useIncomeExpenseBatches` (group theo junction, tổng hợp building_names/total/has_approved/all_cancelled, apply filter ở mức batch).
+`useCreateIncomeExpenseBatch`: INSERT 1 batch + N phiếu con (1 hạng mục/phiếu, denormalize metadata chung; mỗi item có building_id/room_id riêng → 1 hạng mục = 1 phiếu 1 toà, dropdown từ RPC form scope §4.13) + N items + N junction. Rollback best-effort: nếu lỗi giữa chừng → soft-delete phiếu con đã tạo + xoá batch (vẫn có khe hở nếu chính rollback fail).
+
+`useCancelIncomeExpenseBatch` huỷ con 1 click (cascade xoá payment các phiếu INCOME mirror). ⚠️ Chỉ huỷ phiếu con **đang APPROVED** (`.eq('approval_status','APPROVED')`) — con UNAPPROVED (nháp) trong đợt **vẫn sống**, dù dialog xác nhận nói "Tất cả phiếu trong đợt sẽ được đánh dấu Đã huỷ". Cũng theo pattern update-rồi-mới-delete-payments (không atomic, như §5.1 #4).
+
+`useUpdateBatchAccount` đổi sổ quỹ đồng loạt cho **TẤT CẢ** phiếu con (kể cả phiếu đã CANCELLED, không filter); đổi bằng **1 statement** `UPDATE ... IN (ids)` nên **all-or-nothing**: chỉ cần 1 phiếu con đụng trigger khoá sổ (sổ ĐÍCH có `lock_date` ≥ `voucher_date` của phiếu, §4.3) là cả lượt đổi sổ fail — không xảy ra đổi được một phần. Hiển thị qua `useIncomeExpenseBatches` (group theo junction, tổng hợp building_names/total/has_approved/all_cancelled, apply filter ở mức batch).
 
 ### 5.3 `/income-expense/print/:id` — In phiếu A5
 
@@ -280,9 +347,16 @@ File: [IncomeExpensePrintPage.tsx](src/pages/payments/IncomeExpensePrintPage.tsx
 
 File: [RefundLogPage.tsx](src/pages/payments/RefundLogPage.tsx). Nhận `?account_id=`. `detectMode`: tên sổ = "Làm tròn tiền thiếu" → mode `rounding` (lọc `rounding_account_id`, cộng `rounding_amount`); ngược lại mode `refund` (lọc `change_account_id`, cộng `change_amount`). 3 card: tổng / số phiếu / TB. List hiển thị cột tiền thối (hoặc làm tròn) thay total, có link sang hoá đơn. Filter kỳ: tháng này/trước/năm nay/custom.
 
+> ⚠️ **Quy ước resolve sổ bằng TÊN (magic string)**: `detectMode` so đúng chuỗi `"Làm tròn tiền thiếu"`; trang Thu tiền (§5.10) cũng tìm sổ theo tên (`…Thu` / `Chung` / trùng tên toà / `"Làm tròn tiền thiếu"`). **Đổi tên các sổ này là gãy âm thầm** (hiển thị sai mode / thu vào nhầm sổ) — không đổi tên khi chưa rà các điểm so tên.
+
 ### 5.5 `/finance/cashbooks` — Sổ quỹ
 
-File: [CashbooksPage.tsx](src/pages/settings/finance/CashbooksPage.tsx). `useAccountsWithBalance` (đọc view, JS-merge `owner_name` từ profiles). Thao tác: thêm/sửa (`useCreateAccount`/`useUpdateAccount` — chỉ admin đổi `user_id` phụ trách), xoá mềm (`useDeleteAccount`), **khoá/mở khoá** (`useLockAccount`/`useUnlockAccount` set/clear `lock_date`), xem chi tiết. Search theo name/code. Các mutation kiểm quyền qua RLS (`select("id")` rỗng → báo "không có quyền").
+File: [CashbooksPage.tsx](src/pages/settings/finance/CashbooksPage.tsx). `useAccountsWithBalance` (đọc view, JS-merge `owner_name` từ profiles). Thao tác: thêm/sửa (`useCreateAccount`/`useUpdateAccount` — chỉ admin đổi `user_id` phụ trách), xoá mềm (`useDeleteAccount`), **khoá/mở khoá** (`useLockAccount`/`useUnlockAccount` set/clear `lock_date`), xem chi tiết, "xem thu chi" → deep-link `/income-expense?account_id=` (§5.1). Search theo name/code. Các mutation kiểm quyền qua RLS (`select("id")` rỗng → báo "không có quyền").
+
+[CashbookForm](src/components/cashbooks/CashbookForm.tsx) gồm thêm:
+
+- **"Tòa nhà mặc định khi tạo phiếu nhanh"** (`quick_default_building_id`, Select toà `useBuildings({includeVirtual:true})`) — dùng để Tạo phiếu nhanh tự chọn sổ theo toà (§5.1). ⚠️ **Bug đã biết**: trang edit truyền row từ view `accounts_with_balance` (view không expose cột này, §2.6/§4.4) → default form luôn `null` → **mỗi lần bấm Lưu khi sửa sổ là mất ngầm cấu hình toà→sổ**.
+- **Khối "Người được phép sử dụng"** (sổ chia sẻ, §2.7): multi-checkbox staff (loại owner ra), sync qua `useAccountSharedUsers`/`useSyncAccountSharedUsers` ([useAccountSharedUsers](src/hooks/useAccountSharedUsers.ts)); chỉ **owner của sổ hoặc admin** sửa được danh sách (`canEditShared`).
 
 ### 5.6 `/settings/income-expense-types` — Loại thu chi
 
@@ -300,21 +374,35 @@ File: [AutoDebtPage.tsx](src/pages/settings/categories/AutoDebtPage.tsx). Dùng 
 
 File: [BankAccountsPage.tsx](src/pages/settings/categories/BankAccountsPage.tsx). Hiện là **PlaceholderPage** (chưa triển khai) — quản lý TK ngân hàng tách khỏi sổ quỹ.
 
+### 5.10 `/thu-tien` — Thu tiền mặt mobile
+
+File: [ThuTien.tsx](src/pages/ThuTien.tsx) + [src/components/thu-tien/](src/components/thu-tien/). Menu Tài chính → "Thu tiền". Route lazy-load, CSS cô lập (`thu-tien.css` scope `.tt-page`, font riêng — không kế thừa theme site). Trang mobile-first cho người đi thu tiền mặt từng phòng.
+
+**UI**: chọn toà bằng `BuildingPills` (1-toà-active, từ `useBuildings()` RLS thường, mặc định toà đầu) + ô kỳ hoá đơn `billing_month` → `useInvoices({building_id, billing_month})`; mọi lọc còn lại làm **client-side** trên list hoá đơn của toà: `TimeFilter` (tất cả / hôm nay / theo ngày — `DatePanel` 1 ngày hoặc khoảng), `StatusFilter` (chưa thu / đã thu / tất cả), `CollectSummaryBar` (đã thu / còn lại / số phòng). Lưới phòng `RoomCellGrid`: mỗi cell có nút **Thu đủ** (confirm dialog) và **Thu một phần** (drawer keypad `CollectDrawer`, điều hướng phòng trước/sau). `CollectionReport` = báo cáo thu (có thêm lựa chọn "Tất cả tòa").
+
+**Quyền**: gate bằng `invoices.record_payment` (`useMyPermissions` + `can`) — không có quyền thì ẩn nút thu.
+
+**Luồng thu** ([useQuickCollect](src/hooks/useQuickCollect.ts)): mỗi lần thu gọi `collect()` → bọc `useBulkRecordPayment` với đúng **1 item TM** → INSERT `payments` + phiếu `income_expenses` INCOME mirror (`payment_id`/`invoice_id`; **`user_id` = OWNER của hoá đơn**, không phải staff thao tác — để RLS khớp); trigger `recompute_invoice_for_id` tự cập nhật `paid_amount`/`status` hoá đơn. Số tiền cap ≤ remaining.
+
+- **Sổ quỹ nhận resolve THEO TÊN** (magic string — xem cảnh báo §5.4): sổ có tên kết thúc `"Thu"` của user đang đăng nhập → sổ tên `"Chung"` → sổ **trùng tên toà**; không resolve được thì throw (chặn insert `account_id` rỗng).
+- **Làm tròn tự động**: residual sau thu > 0 và < 10.000đ → đính `rounding_amount` + sổ `"Làm tròn tiền thiếu"` (tìm theo tên) lên phiếu → trigger mark hoá đơn `PAID` (§4.10).
+
 ---
 
 ## 6. Liên kết sang domain khác (vào / ra)
 
 **Vào domain này (tiền đáp xuống thu chi):**
 
-- **Hoá đơn / Thanh toán** (`payments` → `income_expenses.payment_id`, `invoice_id`): mỗi thanh toán hoá đơn tạo phiếu thu mirror. Huỷ phiếu thu mirror → xoá payment → trigger recompute hoá đơn.
-- **Hợp đồng** (`contracts` → `contract_id`): phiếu cọc, hoa hồng (`useCreateCommissionVoucher` tạo phiếu chi UNAPPROVED khi ký HĐ), hoàn/thối cọc khi thanh lý.
-- **Cọc** (`is_deposit` types + `is_deposit` items): phiếu thu cọc / hoàn cọc; nguồn deposit_remaining và phân biệt KQKD.
-- **Cổ đông** (`shareholders` → `shareholder_id`): `useCreateProfitDistribution` tạo phiếu chi chia lợi nhuận (EXPENSE, `business_result_accounting=false`, toà ảo "Chung").
+- **Hoá đơn / Thanh toán** (`payments` → `income_expenses.payment_id`, `invoice_id`): mỗi thanh toán hoá đơn tạo phiếu thu mirror, qua 2 đường: (a) `RecordPaymentDialog` (thu 1 hoá đơn) → `useRecordPaymentRPC` — RPC `record_invoice_payment_v2` insert payment + update hoá đơn, FE insert phiếu mirror sau đó, **`user_id` = người thao tác** (`auth.uid()`); (b) `BulkRecordPaymentDialog` (thu hàng loạt) + trang `/thu-tien` (§5.10, qua `useQuickCollect`) → `useBulkRecordPayment` — insert trực tiếp payments + voucher, **`user_id` = OWNER của hoá đơn** (không phải staff thao tác — để RLS khớp). Huỷ phiếu thu mirror → xoá payment → trigger recompute hoá đơn (chuỗi 2 bước không atomic — §5.1 #4).
+- **Hợp đồng** (`contracts` → `contract_id`): phiếu cọc, hoa hồng (`useCreateCommissionVoucher` tạo phiếu chi UNAPPROVED khi ký HĐ, chờ duyệt qua `approve_voucher`), hoàn/thối cọc khi thanh lý (sổ "CỌC (giữ hộ khách)" + chuyển khoản nội bộ sang sổ vận hành).
+- **Cọc** (`is_deposit` types + `is_deposit` items): phiếu thu cọc / hoàn cọc; nguồn deposit_remaining và phân biệt KQKD. Phiếu cọc giữ chỗ (kể cả UNAPPROVED) kích `recompute_room_reservation` → `rooms.status = RESERVED` (domain Phòng).
+- **Phòng trống công khai `/r/:token`** (⚠️ WIP chưa commit): "Tạo cọc nhanh" (QuickDepositModal) sẽ tạo phiếu thu cọc qua RPC `ensure_room_deposit_type` (§4.14) — cửa ngõ mới tạo phiếu từ domain Phòng trống.
+- **Cổ đông** (`shareholders` → `shareholder_id`): `useCreateProfitDistribution` tạo phiếu chi chia lợi nhuận (EXPENSE, `business_result_accounting=false`, toà ảo "Chung" — `buildings.is_virtual=true`, vì `building_id` NOT NULL nên mọi phiếu hệ thống đều phải có toà, dù là toà ảo).
 
 **Ra domain khác (thu chi cấp dữ liệu cho):**
 
 - **Báo cáo dòng tiền** (`useCashBook`/`useCashBookSummary`/`useCashFlowByDay`): đọc CANONICAL từ `income_expenses` APPROVED (KHÔNG cộng thêm payments/expenses để tránh double-count).
 - **Báo cáo Lợi nhuận (P&L)**: lọc `counts_in_business_result = TRUE` (loại cọc & khoản override không-KQKD).
 - **Cổ đông / chia lợi nhuận**: phiếu EXPENSE không-KQKD gắn `shareholder_id`.
-- **Sổ quỹ → Tồn quỹ**: view `accounts_with_balance` là nguồn số dư cho dashboard tài chính.
-- **Buildings**: `buildings.default_account_id_tk/tt` chọn sổ mặc định khi thu HĐ; toà ảo "Chung" (`is_virtual`) hạch toán chi phí không thuộc toà thật.
+- **Sổ quỹ → Tồn quỹ**: view `accounts_with_balance` là nguồn số dư cho dashboard tài chính — view chạy quyền owner (bỏ RLS, §4.4) nên mọi user authenticated thấy số dư mọi sổ (by-design).
+- **Buildings**: `buildings.default_account_id_tk/tt` chọn sổ mặc định khi thu HĐ; `accounts.quick_default_building_id` ánh xạ toà→sổ cho Tạo phiếu nhanh; toà ảo "Chung" (`is_virtual`) hạch toán chi phí không thuộc toà thật.

@@ -1,6 +1,6 @@
-# Kiến trúc & Tổng quan hệ thống CRM BĐS
+﻿# Kiến trúc & Tổng quan hệ thống CRM BĐS
 
-> Tài liệu nóc của bộ `docs/he-thong/`. Mô tả toàn cảnh hệ thống CRM quản lý bất động sản cho thuê (kiểu iHomeCRM): stack, 14 domain nghiệp vụ, mô hình multi-tenant + phân quyền RLS, sơ đồ quan hệ dữ liệu cốt lõi, phụ thuộc giữa các domain, bảng tra cứu enum trạng thái và các quy ước chung. Mỗi domain có file chi tiết riêng — xem cột "Tài liệu" trong [§2](#2-bản-đồ-14-domain).
+> Tài liệu nóc của bộ `docs/he-thong/`. Mô tả toàn cảnh hệ thống CRM quản lý bất động sản cho thuê (kiểu iHomeCRM): stack, 15 domain nghiệp vụ, mô hình multi-tenant + phân quyền RLS, sơ đồ quan hệ dữ liệu cốt lõi, phụ thuộc giữa các domain, bảng tra cứu enum trạng thái và các quy ước chung. Mỗi domain có file chi tiết riêng — xem cột "Tài liệu" trong [§2](#2-bản-đồ-15-domain).
 
 ---
 
@@ -10,14 +10,14 @@
 
 **Backend.** Supabase = Postgres + Auth + Storage + RLS + RPC. Không có server tự viết: logic nghiệp vụ nặng nằm trong Postgres dưới dạng:
 
-- **RPC** (`SECURITY DEFINER` / `INVOKER`) — ví dụ `renew_contract`, `record_invoice_payment_v2`, `generate_invoices_for_building_v2`, `monthly_building_profit`. Pattern phổ biến: RPC public bọc một `*_impl` chứa logic gốc, lớp ngoài lo kiểm quyền (xem `project_contract_rpc_authz`).
+- **RPC** (`SECURITY DEFINER` / `INVOKER`) — ví dụ `renew_contract`, `record_invoice_payment_v2`, `generate_invoices_for_building_v2`, `monthly_building_profit`. Pattern phổ biến: RPC public bọc một `*_impl` chứa logic gốc, lớp ngoài lo kiểm quyền (xem `project_contract_rpc_authz`). Một số ít RPC `SECURITY DEFINER` được GRANT cho `anon` phục vụ kênh công khai (`get_public_available_rooms` của trang `/r/:token`, tra cứu hoá đơn/HĐ theo mã public `/c/:code`) — tự lọc theo token/mã, role `anon` không có quyền trực tiếp trên bảng nào (xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md)).
 - **Trigger** — sinh mã, đồng bộ trạng thái phòng theo HĐ, recompute tồn vật tư/giá vốn, recompute `paid_amount` hoá đơn, recompute `deposit_paid`, gắn audit user_id…
 - **View** — `accounts_with_balance`, `meter_readings_detailed`, `meters_with_latest_reading`… (một số view bỏ qua RLS để tính số dư — xem `project_ie_fund_owner_visibility`).
 - **Edge Function** — admin tạo user (vd `admin-create-user` cho login cổ đông/nhân viên).
 
 Migrations versioned theo timestamp ở `supabase/migrations/`. Cron tác vụ định kỳ dùng `pg_cron` (vd `run_recurring_vouchers_job` sinh phiếu thu chi lặp).
 
-**RLS (Row Level Security).** Mọi bảng nghiệp vụ bật RLS. Quyền không kiểm ở frontend mà ở từng policy DB, gọi xuống một bộ helper chung (`is_super_admin`, `is_admin`, `staff_can`, `can_do_on_building`, `can_access_building`, `current_visible_owner_ids`…). Đây là hàng rào thật — frontend chỉ điều khiển hiển thị.
+**RLS (Row Level Security).** Mọi bảng nghiệp vụ bật RLS. Quyền không kiểm ở frontend mà ở từng policy DB, gọi xuống một bộ helper chung — bộ mặt hiện hành là **RBAC theo toà** (`is_super_admin`, `is_admin`, `can_access_building`, `can_do_on_building`, `can_access_org_entity`, `building_of_*`); `staff_can` / `current_visible_owner_ids` là lớp legacy chỉ còn hiệu lực trên vài bảng ngoài RBAC (xem [§3](#3-mô-hình-phân-quyền--multi-tenant)). Đây là hàng rào thật — frontend chỉ điều khiển hiển thị.
 
 **Kiểm thử & chất lượng.** Vitest + fast-check (property-based) — `npx vitest run <path>`. Type check: `npx tsc --noEmit`. Quy trình mỗi thay đổi (xem [CLAUDE.md](../../CLAUDE.md)): type-check + test xanh → kiểm trực tiếp trên web bằng Playwright → seed/cleanup dữ liệu test qua Supabase Management API nếu cần → commit (stage file cụ thể) → push `origin/main`.
 
@@ -33,7 +33,7 @@ flowchart LR
     auth["Auth (auth.users)"]
     pg[("Postgres + RLS")]
     rpc["RPC / Trigger / View"]
-    storage["Storage (7 bucket private)"]
+    storage["Storage (private + signed URL; room-sale-images PUBLIC)"]
     cron["pg_cron jobs"]
     pg --- rpc
     pg --- cron
@@ -46,9 +46,9 @@ flowchart LR
 
 ---
 
-## 2. Bản đồ 14 domain
+## 2. Bản đồ 15 domain
 
-Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo **vòng đời dữ liệu**: phân quyền → cơ cấu BĐS → khách/lead → cọc → hợp đồng → chỉ số → hoá đơn → thu chi → (vật tư/tài sản/công việc hỗ trợ) → cổ đông → báo cáo → cài đặt.
+Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo **vòng đời dữ liệu**: phân quyền → cơ cấu BĐS → khách/lead → cọc → hợp đồng → chỉ số → hoá đơn → thu chi → (vật tư/tài sản/công việc hỗ trợ) → cổ đông → báo cáo → cài đặt. Domain 15 là lớp **kênh công khai & mobile** (2026-06) xây bên trên các domain lõi, không có vòng đời dữ liệu riêng.
 
 | # | Domain | Mục đích | Bảng chính | Route chính | Tài liệu |
 |---|--------|----------|------------|-------------|----------|
@@ -64,64 +64,69 @@ Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo
 | 10 | Tài sản & Nội thất | Tài nguyên hỗ trợ; bàn giao gắn HĐ + dữ liệu chi phí | `assets`, `asset_categories`, `asset_movements`, `asset_maintenance`, `asset_handovers` | `/assets`, `/settings/categories/warehouses` | [10-tai-san.md](10-tai-san.md) |
 | 11 | Công việc · Sự cố · Quy trình | Giao việc + ticket sự cố có workflow/SLA; xuất vật tư trừ kho | `jobs`, `issues`, `job_types`, `task_flows`, `task_phases`, `departments` | `/tasks`, `/settings/categories/task-types` | [11-cong-viec-su-co.md](11-cong-viec-su-co.md) |
 | 12 | Cổ đông · Lợi nhuận · Ví cá nhân | Chốt-khoá LN tháng theo toà → phân bổ → sinh phiếu chi chia tiền cổ đông | `shareholders`, `building_shareholders`, `profit_monthly`, `profit_allocations`, `personal_transactions` | `/finance/shareholder-profit`, `/finance/personal-wallet` | [12-co-dong-loi-nhuan.md](12-co-dong-loi-nhuan.md) |
-| 13 | Báo cáo · Dashboard · Thông báo | Đọc tổng hợp dựng KPI + ~17 báo cáo + đẩy cảnh báo | `notifications`, `notification_templates`, `notification_logs` | `/` (Dashboard), `/notifications`, `/reports/*` | [13-bao-cao-dashboard-thong-bao.md](13-bao-cao-dashboard-thong-bao.md) |
+| 13 | Báo cáo · Dashboard · Thông báo | Đọc tổng hợp dựng KPI + 17 báo cáo (8 BĐS + 9 tài chính) + đẩy cảnh báo | `notifications`, `notification_templates`, `notification_logs` | `/` (Dashboard), `/notifications`, `/reports/*` | [13-bao-cao-dashboard-thong-bao.md](13-bao-cao-dashboard-thong-bao.md) |
 | 14 | Cài đặt · Danh mục · Tài liệu mẫu | Tham số điều khiển: mẫu in, công tắc hành vi, engine sinh mã, gói cước | `settings`, `document_templates`, `signature_templates`, `code_sequences`, `subscription_plans` | `/settings/*`, `/account/subscription` | [14-cai-dat-danh-muc-tai-lieu.md](14-cai-dat-danh-muc-tai-lieu.md) |
+| 15 | Kênh công khai & mobile | Trang Phòng trống công khai (anon, share token) + module quản trị Sale Phòng + trang thu tiền mặt mobile — "mặt tiền" trên domain 02/05/07/08 | `public_room_share_tokens`, `public_room_settings` (+ cột sale/public trên `rooms`/`buildings`: `sale_note`, `room_type`, `floor_layouts`, `public_contact_*`…) | `/r/:token` (anon), `/sale-phong`, `/thu-tien` | [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md) |
 
 ---
 
 ## 3. Mô hình phân quyền & multi-tenant
 
-Hệ thống **multi-tenant theo owner**: mỗi *owner* là một `user_id` (auth.users) sở hữu trọn dữ liệu của mình. Bốn loại caller:
+Hệ thống **multi-tenant theo owner**: mỗi *owner* là một `user_id` (auth.users) sở hữu trọn dữ liệu của mình — nhưng từ đợt refactor RBAC 2026-05-27/28, **RLS bảng nghiệp vụ keyed theo TOÀ chứ không theo owner**: 63 bảng chỉ còn bộ policy `<t>_select/insert/update/delete_rbac` + `<t>_admin_all` + `<t>_super_admin_all` (batch F drop sạch policy owner cũ và `*_staff_*`). Bốn loại caller (+ khách anon):
 
 - **Super admin** (`super_admins.user_id`) — bypass toàn cục, thấy mọi owner. Cổng: `is_super_admin()`.
-- **Owner / tenant** — `user_id` sở hữu dữ liệu; mọi bản ghi nghiệp vụ có cột `user_id` = owner. `is_admin()` (tenant-admin: role `__superadmin` hoặc `name='Admin'`) là tầng bypass trong phạm vi một owner.
-- **Staff (nhân viên)** — `staff_assignments` nối `staff_id ↔ owner ↔ building ↔ role`. Quyền là **2 tầng**: Tier 1 = `roles.permissions` (JSONB mẫu, 4 role hệ thống); Tier 2 = `staff_assignments.permissions` snapshot override per-staff. `building_id = NULL` nghĩa là full scope (tất cả toà của owner đó). Action keys trong JSONB: `view → create → edit → delete` (+ `record_payment`, `approve`, `print`, `export`).
+- **Owner / tenant** — `user_id` sở hữu dữ liệu, nhưng trên 63 bảng RBAC cột này giờ chủ yếu là **audit** (trigger `set_user_id_from_auth` tự fill): policy owner `auth.uid() = user_id` đã bị **drop** (batch F). Owner gốc vẫn toàn quyền vì nằm trong `super_admins` + có self-assignment role Super Admin từ seed; user mới không có assignment → **không thấy gì** trên bảng RBAC (chủ ý). `auth.uid() = user_id` chỉ còn trên các bảng **ngoài RBAC** (profiles, accounts, roles, staff_assignments, settings, notifications…). `is_admin()` (tenant-admin: role `__superadmin` hoặc `name='Admin'`) là tầng bypass trong phạm vi một owner.
+- **Staff (nhân viên)** — `staff_assignments` nối `staff_id ↔ owner ↔ building ↔ role`. Quyền là **2 tầng**: Tier 1 = `roles.permissions` (JSONB mẫu, 4 role hệ thống); Tier 2 = `staff_assignments.permissions` snapshot override per-staff — **enforce ngay ở DB** qua `COALESCE(sa.permissions, r.permissions)` trong `can_do_on_building`/`can_access_org_entity`. `building_id = NULL` nghĩa là full scope (tất cả toà của owner đó). Action keys trong JSONB: `view → create → edit → delete` (+ `record_payment`, `approve`, `print`, `export`, cờ phạm vi `all_buildings` của thu chi; `create_deposit` của sale_phong đang WIP chưa commit).
 - **Cổ đông** — nhánh read-only trong `get_my_permissions`/`can_access_building`: chỉ đọc các toà có cổ phần (`building_shareholders`) + toàn quyền `personal_finance`. Map login qua `shareholders.auth_user_id` / `current_shareholder_id()`.
+- **Khách anon (kênh công khai)** — không phải caller RLS thật: role `anon` không có policy trên bảng nào, chỉ EXECUTE vài RPC `SECURITY DEFINER` tự lọc theo token/mã (`get_public_available_rooms` cho `/r/:token`, tra cứu HĐ/hoá đơn theo mã public). Xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md).
 
-**Các helper RLS cốt lõi** (gọi xuyên suốt mọi domain):
+**Các helper RLS cốt lõi** (gọi xuyên suốt mọi domain — engine hiện hành ở trên, legacy ở dưới):
 
 | Helper | Vai trò |
 |--------|---------|
 | `is_super_admin()` / `is_admin()` | 2 tầng bypass (toàn cục / trong-owner) |
-| `staff_can(table, action, owner)` | Động cơ write-policy: staff được ghi bảng X action Y trên owner Z? |
-| `can_access_building(building_id)` | Đọc: caller được xem toà này? (COALESCE snapshot → role template; có nhánh cổ đông) |
-| `can_do_on_building(table, action, building_id)` | Ghi theo toà (record payment, sinh HĐ…) |
-| `can_access_org_entity(entity, action)` | Quyền org-level không scope theo toà (vật tư, kho) |
-| `current_visible_owner_ids()` / `is_staff_of()` | Visibility đọc: tập owner mà caller được thấy |
-| `customer_in_my_scope` / `staff_in_building` | Scope ghi theo toà của HĐ còn hiệu lực |
+| `can_access_building(building_id)` | Đọc theo toà: staff pass nếu có assignment full-scope (`building_id IS NULL`) hoặc đúng toà; **có nhánh cổ đông** (`building_shareholders`) |
+| `can_do_on_building(table, action, building_id)` | Ghi theo toà — đọc quyền `COALESCE(staff_assignments.permissions, roles.permissions)` (Tier-2 aware) |
+| `can_access_org_entity(entity, action)` | Entity org-level **không scope toà** (customers, tenants, services, suppliers, vật tư, templates…) |
+| `building_of_contract / _invoice / _payment(id)` | Traversal: trả `building_id` qua chain FK cho bảng con (contract_*, deposits, invoice_items, payments…) |
+| `staff_can(table, action, owner)` | **Legacy** — sau batch F chỉ còn trên `accounts` (perm key `cashbooks`), `settings`, `notifications`; chỉ đọc `roles.permissions`, KHÔNG Tier 2 (lỗ hổng đã ghi nhận, xem doc 01 §4.4) |
+| `current_visible_owner_ids()` | **Residual** — còn sống trên bảng ngoài RBAC + `invoice_audit_log` + storage policy `document-templates`. `is_staff_of` / `staff_in_building` / `customer_in_my_scope` đã **mồ côi** (không policy nào tham chiếu; mirror FE = `useMyBuildingScope`) |
 | `get_my_context()` / `get_my_permissions()` / `get_my_assignments()` | FE bootstrap: ai là tôi + quyền + phân công |
 
-Chi tiết đầy đủ ở [01-phan-quyen-nhan-su.md](01-phan-quyen-nhan-su.md).
+Chi tiết đầy đủ ở [01-phan-quyen-nhan-su.md](01-phan-quyen-nhan-su.md) (mục 4.3–4.5).
 
-### Luồng kiểm quyền 1 request (đọc/ghi một bản ghi gắn toà)
+### Luồng kiểm quyền 1 request (đọc/ghi một bản ghi)
 
 ```mermaid
 flowchart TD
   start["Request từ FE (supabase-js / rpc)"] --> rls["Postgres RLS policy kích hoạt"]
   rls --> super{"is_super_admin()?"}
   super -->|"Có"| allow["CHO PHÉP (bypass toàn cục)"]
-  super -->|"Không"| owner{"row.user_id = auth.uid()? (chính owner)"}
-  owner -->|"Có"| admin{"is_admin()? (tenant-admin)"}
+  super -->|"Không"| admin{"is_admin()? (tenant-admin)"}
   admin -->|"Có"| allow
-  admin -->|"Không, là owner thường"| allow
-  owner -->|"Không (caller là staff/cổ đông của owner khác)"| visible{"owner thuộc current_visible_owner_ids()?"}
-  visible -->|"Không"| deny["TỪ CHỐI"]
-  visible -->|"Có"| op{"Thao tác?"}
-  op -->|"ĐỌC"| canread{"can_access_building(building_id)? (gồm nhánh cổ đông)"}
-  op -->|"GHI"| canwrite{"staff_can / can_do_on_building(table, action, building)?"}
+  admin -->|"Không"| kind{"Bảng thuộc nhóm nào?"}
+  kind -->|"63 bảng RBAC keyed theo TOÀ"| op{"Thao tác?"}
+  op -->|"ĐỌC"| canread{"can_access_building(building_id)?<br/>scope toà của staff + nhánh cổ đông;<br/>bảng con traverse building_of_contract/_invoice"}
+  op -->|"GHI"| canwrite{"can_do_on_building(table, action, building)?<br/>quyền = COALESCE(sa.permissions, roles.permissions)"}
+  kind -->|"entity org-level không toà<br/>(customers, services, suppliers, templates...)"| orgent{"can_access_org_entity(entity, action)?"}
+  kind -->|"ngoài RBAC<br/>(profiles, accounts, roles, settings, notifications...)"| legacy{"auth.uid() = user_id?<br/>OR staff_can / current_visible_owner_ids"}
   canread -->|"Có"| allow
-  canread -->|"Không"| deny
+  canread -->|"Không"| deny["TỪ CHỐI"]
   canwrite -->|"Có"| allow
   canwrite -->|"Không"| deny
+  orgent -->|"Có"| allow
+  orgent -->|"Không"| deny
+  legacy -->|"Có"| allow
+  legacy -->|"Không"| deny
 ```
 
-> Lưu ý: `can_access_building`/`can_do_on_building` đọc quyền theo `COALESCE(staff_assignments.permissions, roles.permissions)` — Tier 2 override Tier 1. Một số **view tính số dư** (vd `accounts_with_balance`) cố ý bỏ qua RLS để chủ sổ thấy đủ số dư xuyên toà, trong khi **bảng chi tiết** vẫn lọc theo RLS → số dư và danh sách giao dịch có thể lệch quyền (đây là chủ ý, xem `project_ie_fund_owner_visibility`).
+> Lưu ý: `can_do_on_building`/`can_access_org_entity` đọc quyền theo `COALESCE(staff_assignments.permissions, roles.permissions)` — Tier 2 override Tier 1 ngay ở DB. User thường không có assignment (và không trong `super_admins`) bị bảng RBAC chặn hoàn toàn dù `get_my_permissions` trả sentinel `__superadmin` — "FE mở mà DB đóng". Một số **view tính số dư** (vd `accounts_with_balance`) cố ý bỏ qua RLS để chủ sổ thấy đủ số dư xuyên toà, trong khi **bảng chi tiết** vẫn lọc theo RLS → số dư và danh sách giao dịch có thể lệch quyền (đây là chủ ý, xem `project_ie_fund_owner_visibility`).
 
 ---
 
 ## 4. Sơ đồ quan hệ dữ liệu CỐT LÕI (spine)
 
-Chỉ vẽ **xương sống** dòng giao dịch. ~79 bảng còn lại (trong tổng ~94 bảng) được gom nhóm và chú thích bên dưới — KHÔNG vẽ hết vào một sơ đồ.
+Chỉ vẽ **xương sống** dòng giao dịch. ~80 bảng còn lại (trong tổng **96 bảng** — đếm từ khối `Tables` của `src/integrations/supabase/types.ts`, regen từ live DB 2026-06-07; kèm 5 view, ~86 RPC) được gom nhóm và chú thích bên dưới — KHÔNG vẽ hết vào một sơ đồ.
 
 ```mermaid
 erDiagram
@@ -154,6 +159,7 @@ erDiagram
     uuid area_id FK
     boolean is_virtual "toa ao Chung"
     uuid default_account_id_tt "so quy mac dinh"
+    jsonb floor_layouts "so do tang (sale phong)"
   }
   rooms {
     uuid id PK
@@ -161,6 +167,7 @@ erDiagram
     numeric rent_price
     numeric deposit_amount
     enum status "room_status"
+    text sale_note "khuyen mai (trang cong khai)"
   }
   contracts {
     uuid id PK
@@ -214,13 +221,14 @@ erDiagram
 - **Vận hành** (`jobs`, `issues`, `task_flows`, `task_phases`, `job_types`, `sla_configs`) — gắn `building_id`/`room_id`/`contract_id`/`profiles`.
 - **Cổ đông** (`shareholders`, `building_shareholders`, `profit_monthly`, `profit_allocations`, `personal_transactions`) — đọc từ `income_expenses`, ghi phiếu chia LN vào `income_expenses`.
 - **Báo cáo & thông báo** (`notifications`, `notification_*`) — chỉ đọc tổng hợp + deep-link.
+- **Kênh công khai** (`public_room_share_tokens`, `public_room_settings`) — token chia sẻ + cấu hình trang Phòng trống `/r/:token`; không FK vào spine, RPC `get_public_available_rooms` (SECURITY DEFINER, grant `anon`) đọc xuyên `buildings/rooms/areas/hotlines/contracts/building_services` theo `owner_id` của token.
 - **Cấu hình** (`settings`, `document_templates`, `signature_templates`, `subscription_plans`, `hotlines`, `ai_*`) — tham số điều khiển.
 
 ---
 
 ## 5. Sơ đồ phụ thuộc domain-level
 
-14 domain là node; mũi tên = phụ thuộc dữ liệu chính (dựa crossLinks + FK). `A --> B` đọc là "A feed/ghi vào B" theo chiều dòng giao dịch.
+15 domain là node; mũi tên = phụ thuộc dữ liệu chính (dựa crossLinks + FK). `A --> B` đọc là "A feed/ghi vào B" theo chiều dòng giao dịch.
 
 ```mermaid
 flowchart TD
@@ -238,6 +246,7 @@ flowchart TD
   d12["12 Cổ đông · Lợi nhuận"]
   d13["13 Báo cáo · Dashboard · Thông báo"]
   d14["14 Cài đặt · Danh mục · Mẫu"]
+  d15["15 Kênh công khai & mobile (/r/:token · sale-phong · thu-tien)"]
 
   d01 -.->|"RLS gate mọi domain"| d02
   d14 -.->|"tham số: mẫu in, công tắc, sinh mã"| d05
@@ -267,22 +276,27 @@ flowchart TD
   d11 --> d13
   d12 --> d13
   d12 --> d08
+  d02 --> d15
+  d05 --> d15
+  d07 --> d15
+  d15 --> d08
+  d15 -.->|"(WIP) tạo cọc nhanh → RESERVED"| d04
 ```
 
-Đọc nhanh: **02→03→04→05** là phễu mở (toà/phòng → khách/lead → cọc → HĐ). Từ HĐ tỏa ra **06 (chỉ số)** và **07 (hoá đơn)**; hoá đơn + cọc + HĐ + vật tư đều đáp xuống **08 (thu chi)** — trung tâm dòng tiền. **08** feed **12 (cổ đông)** và **13 (báo cáo)**; **12** lại ghi ngược phiếu chia LN vào **08**. **01** và **14** là 2 lớp ngang (gate quyền + tham số) phủ lên toàn bộ.
+Đọc nhanh: **02→03→04→05** là phễu mở (toà/phòng → khách/lead → cọc → HĐ). Từ HĐ tỏa ra **06 (chỉ số)** và **07 (hoá đơn)**; hoá đơn + cọc + HĐ + vật tư đều đáp xuống **08 (thu chi)** — trung tâm dòng tiền. **08** feed **12 (cổ đông)** và **13 (báo cáo)**; **12** lại ghi ngược phiếu chia LN vào **08**. **01** và **14** là 2 lớp ngang (gate quyền + tham số) phủ lên toàn bộ. **15** là lớp mặt tiền: đọc 02/05 (phòng trống public — `status_public` suy từ HĐ ACTIVE) và 07 (lưới thu tiền theo hoá đơn), ghi ngược `payments` + phiếu thu TM vào 08; flow tạo cọc nhanh (WIP chưa commit) ghi phiếu cọc `is_deposit` → phòng tự `RESERVED` (04).
 
 ---
 
 ## 6. Bảng tra cứu Enum trạng thái
 
-30 enum DB (`.tmp/schema/enums.json`). Bảng dưới gom các enum trạng thái + một số enum phân loại hay tra. Một số "trạng thái" thực ra là `text + CHECK` chứ không phải enum Postgres — đánh dấu rõ ở cột ý nghĩa.
+30 enum DB (khối `Enums` trong `src/integrations/supabase/types.ts` — regen từ live DB 2026-06-07). Bảng dưới gom các enum trạng thái + một số enum phân loại hay tra. Một số "trạng thái" thực ra là `text + CHECK` chứ không phải enum Postgres — đánh dấu rõ ở cột ý nghĩa.
 
 | Enum | Giá trị | Ý nghĩa / đặt ở đâu |
 |------|---------|---------------------|
 | `building_status` | ACTIVE, INACTIVE, MAINTENANCE | Trạng thái toà (`buildings.status`); UI form chỉ ACTIVE↔INACTIVE |
 | `building_type` | APARTMENT, DORMITORY, HOUSE, OFFICE, SLEEPBOX, HOMESTAY | Loại hình toà (`buildings.type`) |
-| `room_status` | AVAILABLE, OCCUPIED, RESERVED, MAINTENANCE, UNAVAILABLE | Trạng thái phòng (`rooms.status`); trigger HĐ tự set AVAILABLE/OCCUPIED |
-| `contract_status` | DRAFT, ACTIVE, **EXTENDED**, TRANSFERRED, TERMINATED, EXPIRED | Vòng đời HĐ (`contracts.status`). EXTENDED = đang hiệu lực, đối xử như ACTIVE ở mọi check (`isContractInEffect`) |
+| `room_status` | AVAILABLE, OCCUPIED, RESERVED, MAINTENANCE, UNAVAILABLE | Trạng thái phòng (`rooms.status`); trigger HĐ tự set AVAILABLE↔OCCUPIED; `recompute_room_reservation` tự set AVAILABLE↔RESERVED theo cọc giữ chỗ chưa gắn HĐ (kể cả phiếu **chưa duyệt**) |
+| `contract_status` | DRAFT, ACTIVE, **EXTENDED (ngưng dùng)**, TRANSFERRED, TERMINATED, EXPIRED | Vòng đời HĐ (`contracts.status`). ⚠️ **EXTENDED còn trong enum nhưng NGƯNG GHI từ 2026-06-06** (migration `20260606140000`): HĐ gia hạn **giữ nguyên ACTIVE**; `isContractInEffect()` = ACTIVE-only; "đã gia hạn" suy từ bảng `contract_extensions` (`useRenewedContracts` + `RenewedBadge`). Trigger phòng / RPC cũ còn đọc `IN ('ACTIVE','EXTENDED')` chỉ là **lớp tương thích** với dữ liệu cũ — xem [05](05-hop-dong.md) |
 | `payment_cycle` | MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL | Kỳ thanh toán HĐ (`contracts.payment_cycle`) |
 | `lead_status` | B1_LEAD, B2_APPOINTMENT, B3_CONSULTATION, CONVERTED, FAILED | Phễu sale (`leads.status`) |
 | `lead_source` | FACEBOOK, ZALO, PHONE, REFERRAL, WALK_IN, WEBSITE, OTHER | Nguồn lead (`leads.source`) |
@@ -305,7 +319,7 @@ flowchart TD
 | `issue_status` | NEW, ASSIGNED, IN_PROGRESS, RESOLVED, CLOSED, CANCELLED | Trạng thái sự cố (`issues.status`) |
 | `issue_priority` | LOW, MEDIUM, HIGH, URGENT | Mức ưu tiên sự cố + `job_types.default_priority` |
 | `notification_status` | PENDING, SENT, FAILED, CANCELLED, READ | PENDING=chưa đọc / READ=đã đọc (IN_APP). SENT/FAILED/CANCELLED dành kênh ngoài |
-| `notification_type` | NEW_INVOICE, PAYMENT_REMINDER, OVERDUE_INVOICE, CONTRACT_EXPIRING, ISSUE_RESOLVED, GENERAL_ANNOUNCEMENT, CUSTOM, DEPOSIT_SHORTFALL | Loại thông báo |
+| `notification_type` | NEW_INVOICE, PAYMENT_REMINDER, OVERDUE_INVOICE, CONTRACT_EXPIRING, ISSUE_RESOLVED, GENERAL_ANNOUNCEMENT, CUSTOM, DEPOSIT_SHORTFALL | Loại thông báo. Thực tế chỉ PAYMENT_REMINDER / OVERDUE_INVOICE / CONTRACT_EXPIRING / DEPOSIT_SHORTFALL được sinh (scheduler client-side); 4 loại còn lại không có nơi sinh — xem [13](13-bao-cao-dashboard-thong-bao.md) |
 | `notification_channel` | IN_APP, EMAIL, SMS, ZALO, PUSH | Kênh gửi; thực tế chỉ IN_APP dùng |
 | `template_category` | CONTRACT_NEW, CONTRACT_TERMINATION, CONTRACT_EXTENSION, CONTRACT_TRANSFER, INVOICE, RECEIPT, HANDOVER | Phân loại mẫu in (`document_templates.category`) |
 | `ai_message_role` | user, assistant, system | Subsystem AI RAG (`ai_messages.role`) |
@@ -323,6 +337,7 @@ flowchart TD
 | `jobs.priority` | NORMAL, LOW, URGENT | Khác `issue_priority` |
 | `deposit_debt_mode` | DEBT, FIRST_INVOICE, NULL | Chế độ nợ cọc (`contracts`) |
 | `contract_terminations.status` | DRAFT, PENDING_APPROVAL, APPROVED, COMPLETED | Legacy flow; RPC tức thì ghi thẳng COMPLETED |
+| `contract_extensions.extension_type` | UPDATE_EXISTING, CREATE_NEW | CHECK chỉ 2 giá trị; ⚠️ hook legacy `useExtendContract` còn ghi `'SIMPLE'` vi phạm CHECK (xem [05 §2.5](05-hop-dong.md)) |
 | `termination_type` | NORMAL, FORFEIT, EARLY_*, BREACH | Loại thanh lý (FORFEIT = bỏ cọc) |
 | `profit_monthly.status` | DRAFT, LOCKED | Chốt-khoá LN tháng (mở khoá quay lại DRAFT) |
 | `material_adjustments.type` | IN, OUT | Kiểm kê cộng/trừ tồn |
@@ -330,18 +345,21 @@ flowchart TD
 | `signature_type` | UPLOAD, DRAW, TEXT | Loại chữ ký |
 | `code_sequences.reset_period` | DAILY, MONTHLY, YEARLY, NEVER | Chu kỳ reset bộ đếm mã |
 | `user_subscriptions.status` | active, expired, cancelled | Trạng thái gói cước |
+| `status_public` (không lưu DB) | free, soon, rented | Trạng thái phòng trên trang công khai `/r/:token` — RPC `get_public_available_rooms` tính tại chỗ từ HĐ ACTIVE + `soon_days`; phòng RESERVED (đã cọc) hiện như rented (xem [15 §4.2](15-kenh-cong-khai-sale-thu-tien.md)) |
 
 ---
 
 ## 7. Quy ước chung
 
-**Mã tự sinh (code_sequences).** Engine sinh mã tuần tự ở bảng `code_sequences` per-user + per-object-type, qua 2 RPC: `generate_code(p_user_id, p_object_type)` (RAISE nếu chưa cấu hình) và `generate_next_code(...)` (`FOR UPDATE` chống race, tự tạo config mặc định nếu thiếu). `reset_period` (DAILY/MONTHLY/YEARLY/NEVER) quyết định khi nào bộ đếm về 0. Các domain có mã riêng còn dùng trigger sinh mã chuyên biệt (vd `JOB-YYYYMMDD-NNNN`, `MP/MU/MA-YYYYMMDD-NNNN`, `CSS{YYMM}{seq}` cho chỉ số, `DCxxxxxx` cho cọc) — thường kèm advisory lock để chống trùng.
+**Mã tự sinh (code_sequences).** Bảng `code_sequences` per-user + per-object-type (9 object_type seed sẵn) + 2 RPC `generate_code` / `generate_next_code` là engine sinh mã *theo thiết kế* — nhưng hiện là **engine mồ côi**: không FE/trigger nào gọi, `current_sequence` không nhúc nhích (xem [14 §4.5](14-cai-dat-danh-muc-tai-lieu.md)). Mã thực tế do từng domain tự sinh bằng trigger/helper chuyên biệt (vd `PT/PC{YYMM}{seq}` phiếu thu chi, `JOB-YYYYMMDD-NNNN`, `MP/MU/MA-YYYYMMDD-NNNN`, `CSS{YYMM}{seq}` cho chỉ số, `DCxxxxxx` cho cọc, retry client-side cho mã mẫu in) — thường kèm advisory lock để chống trùng.
 
 **payment_method TM / TK / TT.** Giữ nguyên mã (TM = tiền mặt, TK = tài khoản, TT = thanh toán) ở `payments` và `income_expenses`. **Không dịch** sang "Tiền mặt/Chuyển khoản", **không** đặt icon cạnh badge (xem `feedback_payment_method_codes`).
 
-**Soft-delete (`deleted_at`).** Hầu hết bảng nghiệp vụ có cột `deleted_at timestamptz`; xoá là set timestamp, không DELETE vật lý. Mọi query/trigger/aggregate lọc `deleted_at IS NULL` (vd `update_building_total_rooms` chỉ đếm phòng chưa xoá; số dư/báo cáo chỉ tính phiếu APPROVED + chưa xoá). RPC `soft_delete_customer` là ví dụ điển hình (set `deleted_at`, kiểm `user_id = auth.uid()`).
+**Soft-delete (`deleted_at`).** Hầu hết bảng nghiệp vụ có cột `deleted_at timestamptz`; xoá là set timestamp, không DELETE vật lý. Mọi query/trigger/aggregate lọc `deleted_at IS NULL` (vd `update_building_total_rooms` chỉ đếm phòng chưa xoá; số dư/báo cáo chỉ tính phiếu APPROVED + chưa xoá). RPC `soft_delete_customer` là ví dụ điển hình (set `deleted_at`, kiểm `user_id = auth.uid()` OR `is_super_admin()` — bản `20260514000005`).
 
-**Storage bucket private + signed URL.** 7 bucket Storage đều **private** (vd `document-templates`, ảnh hoá đơn/chỉ số/biên lai…). Hiển thị ảnh phải qua `StorageImage`/`useSignedUrl` (signed URL ngắn hạn), **không** dùng `<img src={publicUrl}>` (xem `project_storage_private_signed_urls`).
+**Storage bucket private + signed URL.** 7 bucket ảnh nhạy cảm đã chuyển **private** ở `20260601000200` (`customer-id-cards`, `customer-images`, `payment-receipts`, `income-expense-attachments`, `meter-images`, `job-attachments`, `ui-references`; `document-templates` private từ trước). Hiển thị ảnh phải qua `StorageImage`/`useSignedUrl` (signed URL ngắn hạn), **không** dùng `<img src={publicUrl}>` (xem `project_storage_private_signed_urls`). **Ngoại lệ chủ ý**: bucket `room-sale-images` (ảnh sale của trang công khai `/r/:token`) là **PUBLIC** vì phục vụ khách `anon` (xem [15 §2.5](15-kenh-cong-khai-sale-thu-tien.md)); `avatars` cũng không nằm trong nhóm private.
+
+**Cọc giữ chỗ tự khoá phòng (`RESERVED`).** Nguồn sự thật số cọc = tổng phiếu thu chi `is_deposit` (đáp xuống cột suy `contracts.deposit_remaining`); hoàn/bỏ cọc đọc từ `contract_terminations`, **không** dùng `deposits.status`. Hàm `recompute_room_reservation` (trigger trên `deposits` / `income_expenses` / `income_expense_items` / `rooms`, migration `20260608000000`) tự chuyển `rooms.status` AVAILABLE↔RESERVED khi phòng có cọc chưa gắn HĐ — **kể cả phiếu chưa duyệt** (chỉ loại CANCELLED/đã xoá) → phòng ẩn khỏi danh sách trống nội bộ lẫn trang công khai (xem [04 §4.11](04-coc-giu-cho.md)).
 
 **Kỳ tháng dạng `YYYY-MM`.** Hoá đơn (`billing_month`), chỉ số (`settlement_month`), chốt LN (`profit_monthly`) đều dùng chuỗi `YYYY-MM` làm khoá chốt tháng — tiện so sánh/nhóm mà không lệ thuộc timezone.
 
@@ -353,4 +371,4 @@ flowchart TD
 
 ---
 
-*Để xem chi tiết từng domain (quy trình page từng bước, hook → RPC → trigger → side-effect, edge case + zod validate), mở file tương ứng ở cột "Tài liệu" trong [§2](#2-bản-đồ-14-domain).*
+*Để xem chi tiết từng domain (quy trình page từng bước, hook → RPC → trigger → side-effect, edge case + zod validate), mở file tương ứng ở cột "Tài liệu" trong [§2](#2-bản-đồ-15-domain).*

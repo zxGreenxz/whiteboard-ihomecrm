@@ -13,11 +13,19 @@ Domain này gom 7 bảng phục vụ 4 nhóm chức năng, tất cả đều **p
 | Nhóm | Bảng | Vai trò |
 |------|------|---------|
 | Cài đặt hệ thống | `settings` | Key-value JSONB: bật/tắt tính năng (tự duyệt hoá đơn, ký HĐ online…), thông tin công ty, cấu hình quy tắc tính tiền. |
-| Tài liệu mẫu | `document_templates`, `signature_templates` | Mẫu Word/PDF để in HĐ / hoá đơn / biên bản; mẫu chữ ký điện tử. Buildings/rooms/contracts/invoices **tham chiếu** template mặc định. |
+| Tài liệu mẫu | `document_templates`, `signature_templates` | Mẫu `.docx` (file) + `content` HTML để in HĐ / hoá đơn / biên bản; mẫu chữ ký điện tử. Buildings/rooms/contracts/invoices **tham chiếu** template mặc định. |
 | Danh mục phụ trợ | `hotlines` | Danh bạ hotline. `CategoriesPage` là **hub điều hướng** tới mọi danh mục con của hệ thống (sổ quỹ, loại thu chi, nhà cung cấp, tầng…). |
 | Sinh mã & Gói cước | `code_sequences`, `subscription_plans`, `user_subscriptions` | `code_sequences` = engine sinh mã định danh dùng chung; subscription = quản lý gói cước/giới hạn tài nguyên. |
 
-**Đặc điểm chung về quyền (RLS):** trừ `subscription_plans` (bảng toàn cục, ai đăng nhập cũng đọc được), tất cả bảng còn lại theo mô hình **đơn giản `user_id = auth.uid()`** — tức là cấu hình thuộc về **chính owner**, KHÔNG chia sẻ qua `staff_can`/`can_access_building` như các bảng nghiệp vụ. Đây là điểm khác biệt đáng chú ý: nhân viên (staff) thao tác dữ liệu nghiệp vụ của owner được, nhưng các bảng cài đặt này (hotlines, code_sequences, settings, templates) RLS chỉ mở cho đúng `auth.uid()` của owner. (Lưu ý: admin/super_admin có thể có policy bypass riêng từ các migration RBAC sau này.)
+**Đặc điểm chung về quyền (RLS):** dữ liệu vẫn **keyed theo `user_id` owner**, nhưng sau loạt migration RBAC 2026-05 thì quyền truy cập đã tách thành 3 tầng — KHÔNG còn là "owner-only thuần" cho cả 7 bảng:
+
+- **`hotlines`, `document_templates`, `signature_templates` — RBAC cấp tổ chức (org-wide):** policy `*_rbac` dùng helper `can_access_org_entity(_resource, _action)` ([20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql) — nhóm E "global entities", không gắn building), đối chiếu `roles.permissions` key `hotline` (hotlines) / `templates` (2 bảng mẫu) qua `staff_assignments`. Staff có quyền role tương ứng thao tác được trên dữ liệu của owner, và quyền **KHÔNG phân theo toà nhà** — staff chỉ được gán vài toà vẫn thấy/sửa toàn bộ hotline + mẫu biểu của org (chủ ý thiết kế: mẫu biểu/danh bạ dùng chung toàn tổ chức). Lưu ý kỹ thuật: helper chỉ trả boolean theo role, **không so `user_id` của dòng với owner của staff** — staff đạt điều kiện sẽ qua policy với mọi dòng trong bảng; nếu DB có nhiều org thì phạm vi thực tế rộng hơn "org của mình". Các policy owner-only cũ (`Users can manage own templates`, `hotlines_*`, `Users can manage own signature templates`) đã bị **DROP** ở [20260528000003_rbac_batch_f_drop_legacy.sql](supabase/migrations/20260528000003_rbac_batch_f_drop_legacy.sql).
+- **`settings`, `code_sequences`, `user_subscriptions` — vẫn owner (`auth.uid() = user_id`):** batch F chủ ý "không động" các bảng này. Riêng `settings` có thêm bộ policy `settings_staff_insert/update/delete` ([20260510000056_staff_write_rls.sql](supabase/migrations/20260510000056_staff_write_rls.sql), mapping `('settings','settings')`) cho staff có quyền role `settings`.create/edit/delete **GHI** lên settings của owner qua `staff_can()` — nhưng **không có policy staff SELECT** → staff ghi được mà không đọc lại được dòng của owner (bất đối xứng; FE hiện cũng không dùng nhánh này, xem §6).
+- **Bypass:** mọi bảng trong domain (kể cả `settings`, `code_sequences`, `user_subscriptions`, `subscription_plans`) đều có policy `*_admin_all` cho user mang role Admin (`is_admin()`) từ [20260506000002_admin_bypass_rls.sql](supabase/migrations/20260506000002_admin_bypass_rls.sql), cộng `*_super_admin_all` cho super admin ở các migration sau.
+
+`subscription_plans` ngoài bypass trên vẫn là bảng toàn cục: SELECT cho mọi user đăng nhập, không cho ghi từ client.
+
+**Đặc điểm "phi toà nhà":** cả 7 bảng đều **không có cột `building_id`/`area_id`** — scope duy nhất là `user_id` owner; không trang nào trong domain có ô lọc toà nhà/khu vực. Điểm chạm per-building duy nhất là chiều ngược: `buildings`/`rooms` giữ FK mẫu mặc định trỏ về `document_templates` (§2.2).
 
 > **Ghi chú về subsystem AI (RAG):** DB có 4 bảng `ai_conversations`, `ai_messages`, `ai_memory_embeddings`, `ai_usage_stats` — đây là **backend cho trợ lý AI dạng RAG** (Retrieval-Augmented Generation): lưu hội thoại + tin nhắn, sinh embedding (`embedding vector` + index HNSW/pgvector) để `search_similar_memories()` truy hồi "trí nhớ" theo độ tương đồng cosine, và `ai_usage_stats` theo dõi token/chi phí theo kỳ. Có sẵn trigger `auto_generate_conversation_title`, `update_conversation_stats_on_message`, RPC `get_conversation_context`. **Hiện chưa rõ UI** nào trong `src/pages` gắn vào subsystem này — coi như hạ tầng backend đã dựng sẵn, chưa lộ ra giao diện ở domain cài đặt.
 
@@ -33,7 +41,8 @@ Cột chủ chốt:
 - `user_id` — chủ cấu hình.
 - `key` (text) — tên khoá cấu hình. Có **2 phong cách key** cùng tồn tại:
   - **Key gộp (object)**: `company_info`, `contract_config`, `invoice_config`, `payment_config`, `notification_config`, `code_generation_config` — mỗi key chứa nguyên một object cấu hình (định nghĩa kiểu trong [useSettings.ts](src/hooks/useSettings.ts): `CompanyInfo`, `ContractConfig`…).
-  - **Key đơn (scalar)**: ~20 key riêng lẻ như `invoice_auto_approve`, `contract_e_signing_enabled`, `invoice_payment_deadline_days` — mỗi key 1 giá trị boolean/number/string. Đây là nhóm mà `GeneralSettingsPage` đọc/ghi.
+  - **Key đơn (scalar)**: 20 key riêng lẻ như `invoice_auto_approve`, `contract_e_signing_enabled`, `invoice_payment_deadline_days` — mỗi key 1 giá trị boolean/number/string. Đây là nhóm mà `GeneralSettingsPage` đọc/ghi. **Lưu ý:** chỉ `payment_auto_approve` có consumer thật ngoài trang cài đặt (xem §5.1/§6).
+  - **Key ngoài 2 nhóm trên**: `onboarding_completed` (boolean) — do [OnboardingWizard](src/components/onboarding/OnboardingWizard.tsx) đọc/ghi qua `useIndividualSetting` để đánh dấu hoàn tất luồng onboarding.
 - `value` (jsonb, NOT NULL) — giá trị. Scalar được lưu dưới dạng JSONB literal (`'false'::jsonb`, `'5'::jsonb`, `'"monthly"'::jsonb`).
 - Ràng buộc quan trọng: **UNIQUE (user_id, key)** — mỗi owner chỉ 1 bản ghi/khoá. Mọi ghi đều dùng `upsert ... onConflict: 'user_id,key'`.
 - `id`, `created_at`, `updated_at` — chuẩn.
@@ -42,25 +51,26 @@ Không có FK ra/vào (bảng độc lập, tham chiếu logic qua giá trị `*
 
 ### 2.2. `document_templates` — Mẫu tài liệu (HĐ/hoá đơn/biên bản)
 
-**Mục đích:** lưu file mẫu (Word/PDF) upload lên Storage để in hợp đồng, hoá đơn, biên lai, biên bản bàn giao/thanh lý/gia hạn/chuyển nhượng.
+**Mục đích:** lưu file mẫu upload lên Storage để in hợp đồng, hoá đơn, biên lai, biên bản bàn giao/thanh lý/gia hạn/chuyển nhượng. **UI chỉ chấp nhận `.docx`** (zod refine `endsWith('.docx')`, tối đa 5MB ở cả [CreateTemplateDialog](src/components/document-templates/CreateTemplateDialog.tsx) lẫn [EditTemplateDialog](src/components/document-templates/EditTemplateDialog.tsx)) — KHÔNG upload được PDF; cột bảng TemplatesPage ghi "Xem mẫu PDF" chỉ là text UI sai.
 
 Cột chủ chốt:
-- `code` (varchar, **UNIQUE NOT NULL**) — mã mẫu tự sinh dạng `MHD000001` (sinh client-side trong hook, xem §4).
+- `code` (varchar, **UNIQUE NOT NULL** — unique **toàn cục, phủ cả bản ghi soft-deleted**) — mã mẫu tự sinh dạng `MHD000001` (sinh client-side trong hook, có retry chống trùng — xem §4.3).
 - `name`, `description` — tên + mô tả mẫu.
 - `category` — enum **`template_category`** (xem §2 enum): `CONTRACT_NEW`, `CONTRACT_TERMINATION`, `CONTRACT_EXTENSION`, `CONTRACT_TRANSFER`, `INVOICE`, `RECEIPT`, `HANDOVER`.
-- `type` (text, tự do) — phân loại UI thứ hai do hook quản (`signature` / `deposit_contract` / `lease_contract` / `handover_report` / `invoice` / `receipt` / `other`). **TemplatesPage lọc tab theo `type`, không phải `category`** — vì vậy hook có map `CATEGORY_TO_TYPE` để mẫu mới không "biến mất" khỏi mọi tab.
-- `file_url` (NOT NULL) — URL object trong bucket private **`document-templates`**; `file_name` giữ tên gốc (có dấu) để hiển thị/tải; `file_size`, `file_type`.
-- `content` (text), `variables` (jsonb, mặc định `[]`) — nội dung mẫu + danh sách biến thay thế (vd `{tenant_name}`, `{rent_price}`) để điền tự động khi in.
+- `type` (text, **CHECK `document_templates_type_check`** giới hạn đúng 7 giá trị: `signature` / `deposit_contract` / `lease_contract` / `handover_report` / `invoice` / `receipt` / `other` — xem [20260426000009_document_templates_other_type.sql](supabase/migrations/20260426000009_document_templates_other_type.sql)) — phân loại UI thứ hai. **TemplatesPage lọc tab theo `type`, không phải `category`** — vì vậy hook có map `CATEGORY_TO_TYPE` để mẫu mới không "biến mất" khỏi mọi tab.
+- `file_url` (NOT NULL) — hook lưu `getPublicUrl()` của object trong bucket private **`document-templates`** (URL này fetch trực tiếp sẽ 400 — chỉ dùng làm "định danh path", xem/tải đều parse path rồi đi qua signed URL/SDK); `file_name` giữ tên gốc (có dấu) để hiển thị/tải; `file_size`, `file_type`.
+- `content` (text) — nội dung HTML của mẫu. **ĐƯỢC DÙNG thật** khi in hoá đơn: `PrintInvoiceDialog` render `selectedTemplate.content` qua `renderInvoiceTemplate` (invoiceTemplateEngine). Lưu ý: mẫu tạo từ UI không có content (dialog không thu trường này).
+- `variables` (jsonb, mặc định `[]`) — danh sách biến thay thế theo thiết kế ban đầu. **Thực tế KHÔNG được engine in HĐ đọc** — `renderContractDocx` điền bộ placeholder CỐ ĐỊNH trong code (xem §4.8); `CreateTemplateDialog` cũng không gửi `variables`/`content` (payload chỉ có name/category/description/file/is_default/type) nên cột này của mẫu mới luôn rỗng. Hằng `DEFAULT_TEMPLATE_VARIABLES` (biến lowercase `tenant_name`…) export từ [useDocumentTemplates.ts](src/hooks/useDocumentTemplates.ts) nhưng không nơi nào import — dead code.
 - `is_default` (bool) — **chỉ 1 mẫu default / category / user** (đảm bảo bởi trigger, xem §4).
 - `is_active` (bool), `deleted_at` (timestamptz) — soft delete.
 
 **Quan hệ FK (được tham chiếu vào):** đây là bảng có nhiều "khách hàng" nhất trong domain — được trỏ tới bởi:
-- `buildings.contract_template_id`, `buildings.invoice_template_id`
+- `buildings.contract_template_id`, `buildings.invoice_template_id` (ON DELETE SET NULL, có index riêng — [20260510000001_buildings_default_templates.sql](supabase/migrations/20260510000001_buildings_default_templates.sql); đặt trong `BuildingFormDialog`)
 - `contracts.contract_template_id`, `contracts.invoice_template_id`
-- `rooms.lease_template_id`, `rooms.invoice_template_id`
+- `rooms.lease_template_id`, `rooms.invoice_template_id` (đặt trong `RoomFormDialog`)
 - `invoices.template_id`
 
-→ tức là toà nhà/phòng đặt mẫu mặc định, hợp đồng/hoá đơn ghi nhận mẫu đã dùng để in. (Sang domain **Toà nhà/Phòng**, **Hợp đồng**, **Hoá đơn**.)
+→ tức là toà nhà/phòng đặt mẫu mặc định, hợp đồng/hoá đơn ghi nhận mẫu đã dùng để in. Khi in, chỉ `PrintInvoiceDialog` ưu tiên `invoice.template_id` rồi fallback mẫu `is_default`; còn `PrintContractDialog` **KHÔNG đọc** `contracts.contract_template_id` — luôn pre-select mẫu `is_default` (hoặc mẫu đầu tiên) trong các mẫu `type='lease_contract'`, tức FK template trên contracts/buildings/rooms hiện chưa tham gia luồng in HĐ. (Sang domain **Toà nhà/Phòng**, **Hợp đồng**, **Hoá đơn** — chi tiết cơ chế in xem §4.8 và §6.)
 
 ### 2.3. `signature_templates` — Mẫu chữ ký điện tử
 
@@ -74,11 +84,15 @@ Cột chủ chốt:
 
 Không FK ra/vào cứng. **Lưu ý hiện trạng:** trang [SignaturesPage.tsx](src/pages/settings/SignaturesPage.tsx) hiện chỉ là **UI mock** (mảng `signatures` hardcode 2 dòng), chưa nối với bảng này — bảng đã sẵn sàng nhưng phần ghi/đọc chưa cài đặt ở frontend.
 
+**Cảnh báo trùng lắp kiến trúc chữ ký:** tab đầu tiên của TemplatesPage là "Mẫu chữ ký" đọc các dòng `document_templates.type='signature'` (lưu ý: UI hiện **không tạo được** type này — `CreateTemplateDialog` chỉ thu `category` và `CATEGORY_TO_TYPE` không có category nào map sang `signature`, nên tab này gần như luôn rỗng), trong khi SignaturesPage (mock) nhắm tới bảng `signature_templates` — 2 nơi cùng nhận "chữ ký" nhưng 2 bảng khác nhau. Khi hoàn thiện cần chốt 1 nguồn sự thật để tránh làm tiếp sai chỗ.
+
 ### 2.4. `hotlines` — Danh bạ hotline
 
 **Mục đích:** quản lý danh sách số hotline (vd hỗ trợ kỹ thuật, an ninh toà nhà) hiển thị cho cư dân.
 
-Cột: `name`, `phone_number` (cả hai CHECK không rỗng), `description`, `is_active`, `user_id`. Bảng phẳng, không FK ra/vào. RLS thuần `user_id = auth.uid()` cho cả SELECT/INSERT/UPDATE/DELETE.
+Cột: `name`, `phone_number` (cả hai CHECK không rỗng — `hotlines_name_not_empty`/`hotlines_phone_not_empty`), `description`, `is_active`, `user_id`. Bảng phẳng, không FK ra/vào. RLS: policy `hotlines_*_rbac` dùng `can_access_org_entity('hotline', view/create/edit/delete)` — quyền org-wide, policy owner-only cũ đã drop (xem §1/§4.7).
+
+**Consumer thực ngoài trang CRUD:** module **Sale Phòng** — [DisplaySettingsTab](src/components/sale-phong/DisplaySettingsTab.tsx) dùng `useHotlines` cho ô "Hotline hiển thị" của trang Phòng trống công khai `/r/:token` (để "Mặc định" sẽ lấy hotline đầu tiên).
 
 ### 2.5. `code_sequences` — Engine sinh mã định danh
 
@@ -95,6 +109,8 @@ Cột chủ chốt:
 
 Không FK ra/vào. Là **bảng cấu hình thuần** được đọc/ghi bởi các hàm sinh mã.
 
+**Dữ liệu seed sẵn:** migration [029_missing_features.sql](supabase/migrations/029_missing_features.sql) backfill cho **mọi profile** 9 `object_type` mặc định: `CONTRACT`/HD, `INVOICE`/HD, `DEPOSIT`/DC, `PAYMENT`/PT, `ISSUE`/IS, `ASSET`/TS, `LEAD`/KH, `TENANT`/KT, `HANDOVER`/BG (đều `date_format='YYMM'`, separator `-`, length 4, reset `MONTHLY`, `ON CONFLICT DO NOTHING`). Tuy nhiên engine này hiện **mồ côi hoàn toàn** — xem §4.5.
+
 ### 2.6. `subscription_plans` — Gói cước (bảng toàn cục)
 
 **Mục đích:** danh mục các gói thuê bao bán cho owner. **Không có `user_id`** → bảng dùng chung, RLS chỉ cho SELECT với `auth.role() = 'authenticated'`.
@@ -107,7 +123,7 @@ Cột chủ chốt: `name`, `description`, `price` (numeric, CHECK ≥0), `durat
 
 **Mục đích:** bản ghi owner đã mua gói nào, hiệu lực từ–đến.
 
-Cột chủ chốt: `user_id`, `plan_id` (**FK → subscription_plans, ON DELETE RESTRICT** — không cho xoá gói đang được đăng ký), `start_date`, `end_date`, `status` (text, **CHECK IN ('active','expired','cancelled')**, mặc định `active`). RLS thuần `user_id = auth.uid()`.
+Cột chủ chốt: `user_id`, `plan_id` (**FK → subscription_plans, ON DELETE RESTRICT** — không cho xoá gói đang được đăng ký), `start_date`, `end_date`, `status` (text, **CHECK IN ('active','expired','cancelled')**, mặc định `active`). RLS thuần `user_id = auth.uid()` (+ bypass `*_admin_all`, xem §1).
 
 ---
 
@@ -178,9 +194,13 @@ erDiagram
 
 ```mermaid
 flowchart TD
-    seq["code_sequences<br/>(prefix + seq + date)"] -->|generate_code / generate_next_code| codes["Mã định danh<br/>building/room/contract/invoice…"]
-    settings["settings (key-value)<br/>invoice_config, contract_config…"] -->|đọc bởi hook| behavior["Hành vi hệ thống<br/>(tự duyệt, ký online, hạn TT…)"]
+    seq["code_sequences<br/>(prefix + seq + date)"] -.->|"generate_code / generate_next_code<br/>KHÔNG ai gọi — engine mồ côi"| codes["Mã định danh<br/>(thực tế sinh bởi trigger riêng / client-side)"]
+    settings["settings (key-value)"] -->|payment_auto_approve| collect["CollectPaymentDialog<br/>(tự duyệt phiếu thu)"]
+    settings -->|onboarding_completed| onboard["OnboardingWizard"]
+    settings -.->|"19 key đơn còn lại<br/>chưa có consumer nào"| ghost["(chưa điều khiển gì)"]
     tpl["document_templates"] -->|FK *_template_id| domains["Toà nhà · Phòng · HĐ · Hoá đơn"]
+    tpl -->|"file .docx + ~99 placeholder"| pc["PrintContractDialog<br/>(contractTemplateEngine)"]
+    tpl -->|"cột content (HTML)"| pi["PrintInvoiceDialog<br/>(invoiceTemplateEngine)"]
 ```
 
 ---
@@ -196,8 +216,14 @@ Hàm SQL ([20250101000012_add_settings_keys.sql](supabase/migrations/20250101000
 Trigger `BEFORE INSERT OR UPDATE ON document_templates WHEN (NEW.is_default = TRUE)` ([016_document_templates.sql](supabase/migrations/016_document_templates.sql)): khi một mẫu được set `is_default = TRUE`, trigger `UPDATE` toàn bộ mẫu khác **cùng `user_id` + cùng `category`** về `is_default = FALSE` (bỏ qua bản ghi hiện tại, bỏ qua các bản đã soft-delete).
 **Invariant:** tối đa 1 mẫu default/(user, category). Trong UI ([TemplatesPage.tsx](src/pages/settings/TemplatesPage.tsx)) toggle Switch "Mặc định" gọi `useUpdateDocumentTemplate({ is_default })` — trigger tự lo phần "tắt mẫu cũ".
 
-### 4.3. Sinh mã `document_templates.code` (client-side `MHD...`)
-**Không qua trigger DB.** Hook `generateTemplateCode()` trong [useDocumentTemplates.ts](src/hooks/useDocumentTemplates.ts) query mẫu mới nhất của user (chưa xoá), parse số từ `MHD000001` rồi `+1`, zero-pad 6 chữ số. Đây là sinh mã tuần tự đơn giản, không reset theo kỳ.
+### 4.3. Sinh mã `document_templates.code` (client-side `MHD...` + retry chống trùng)
+**Không qua trigger DB.** Hàm `getNextTemplateNumber()` trong [useDocumentTemplates.ts](src/hooks/useDocumentTemplates.ts):
+- Lấy `MAX(code)` trên **TẤT CẢ bản ghi của user, KỂ CẢ đã soft-delete** — vì UNIQUE `code` phủ cả dòng `deleted_at != null`; nếu chỉ tính dòng chưa xoá thì xoá mềm mẫu mới nhất rồi up lại sẽ sinh trùng đúng mã cũ (23505). Comment dài trong code ghi rõ đây là fix có chủ đích.
+- `ORDER BY code DESC` (không phải `created_at` — mã zero-pad nên so sánh chuỗi == so sánh số), parse số từ `MHD000001` rồi `+1`, zero-pad 6 chữ số. Không reset theo kỳ.
+
+Flow tạo mẫu thực tế trong `useCreateDocumentTemplate`: **upload file TRƯỚC** → tính code → `INSERT` với **vòng retry tối đa 25 lần** tăng số liên tiếp khi gặp `23505`; chỉ toast "Mã mẫu đã tồn tại" khi hết 25 lần (lỗi khác 23505 thì dừng ngay). Insert thất bại hẳn → rollback xoá file đã upload.
+
+**Hạn chế đã biết:** sinh mã client-side vốn race-prone (2 tab/2 staff cùng đọc max rồi cùng insert) — retry tự chữa được phần lớn, nhưng worst-case tốn 26 round-trip; phương án bền hơn là chuyển về DB (trigger BEFORE INSERT, hoặc `generate_next_code` có `FOR UPDATE` đang bỏ không — §4.5).
 > Lưu ý đặt tên: RPC trigger tên `generate_template_code()` trong DB **không thuộc** bảng này — nó sinh mã `MT...` cho `income_expense_templates` (domain Thu chi). Đừng nhầm.
 
 ### 4.4. Upload file mẫu lên Storage (bucket private)
@@ -205,21 +231,45 @@ Khi tạo/sửa mẫu, hook upload file vào bucket **`document-templates`** (đ
 - Tên object phải **sanitize** (`sanitizeStorageFileName`): bỏ dấu tiếng Việt, thay khoảng trắng/ký tự đặc biệt bằng `_`, vì Storage từ chối key có dấu/space ("Invalid key"). Tên gốc vẫn lưu ở `file_name`.
 - Xem/tải file **không dùng public URL** (sẽ 400) mà tạo **signed URL** ngắn hạn: `useViewTemplate` tạo signed URL 60s rồi `window.open`; `useDownloadTemplate` gọi `storage.download()` qua session để tải blob. Khớp với quy ước chung của dự án "bucket private + signed URL".
 - Có **rollback**: nếu `INSERT` DB lỗi sau khi upload thành công → hook `storage.remove()` file vừa upload để tránh rác.
+- **Storage policy đã mở SELECT cho staff cùng tổ chức:** policy "Users can read own templates" (own-folder, [016_document_templates.sql](supabase/migrations/016_document_templates.sql)) đã bị thay bởi **"Tenant can read shared templates"** ([20260510000012_contract_action_rpcs.sql](supabase/migrations/20260510000012_contract_action_rpcs.sql)) — cho đọc folder của chính mình HOẶC folder của owner thuộc `current_visible_owner_ids()`, để staff (được RBAC `templates`.view) xem/tải/in được file mẫu của owner. INSERT/UPDATE/DELETE vẫn chỉ own-folder; [20260514000005_super_admin_bypass_rpcs_and_storage.sql](supabase/migrations/20260514000005_super_admin_bypass_rpcs_and_storage.sql) thêm bypass storage cho super admin. Hệ quả đáng lưu ý: staff có quyền `templates`.create upload file vào folder **của staff** (object key `<uid staff>/...`), không phải folder owner — bản ghi DB vẫn đọc chung qua RBAC nhưng file nằm khác folder.
 
 ### 4.5. `generate_code()` / `generate_next_code()` — engine sinh mã dùng chung
 Hai hàm trên `code_sequences`:
 - **`generate_code(p_user_id, p_object_type)`** ([008_triggers_functions.sql](supabase/migrations/008_triggers_functions.sql)): đọc config theo `(user_id, object_type)`; nếu không thấy → **RAISE EXCEPTION** (yêu cầu config phải tồn tại trước). Kiểm tra `reset_period` (DAILY/MONTHLY/YEARLY) so với `last_reset_at`: nếu sang kỳ mới → reset seq về 1, ngược lại `current_sequence + 1`. Ghép `prefix + separator + date_part + LPAD(seq, sequence_length)`, rồi `UPDATE` lại `current_sequence` + `last_reset_at`.
 - **`generate_next_code(p_user_id, p_object_type)`** ([029_missing_features.sql](supabase/migrations/029_missing_features.sql)): bản "an toàn hơn" — `SELECT ... FOR UPDATE` (khoá hàng tránh race), và nếu **chưa có config thì tự tạo mặc định** (`prefix = 2 ký tự đầu object_type`, `date_format='YYMM'`, `reset_period='MONTHLY'`). Hỗ trợ reset MONTHLY/YEARLY.
 
-**Invariant:** mã sinh ra duy nhất tăng dần trong kỳ; bộ đếm reset theo `reset_period`. `code_sequences` không có UI riêng trong domain — nó được điều khiển gián tiếp qua object `code_generation_config` (settings) ở mức ý niệm, còn các trigger sinh số HĐ/hoá đơn thực tế (`generate_contract_number`, `generate_invoice_number_v2`) tự tính sequence riêng. Nói cách khác `code_sequences` là engine **có sẵn** nhưng nhiều luồng sinh mã trong hệ thống dùng cách tính riêng thay vì gọi 2 hàm này.
+**Invariant:** mã sinh ra duy nhất tăng dần trong kỳ; bộ đếm reset theo `reset_period`. `code_sequences` không có UI riêng trong domain — nó được điều khiển gián tiếp qua object `code_generation_config` (settings) ở mức ý niệm.
+
+**Hiện trạng: engine "mồ côi" hoàn toàn.** `generate_code`/`generate_next_code` KHÔNG được FE gọi ở bất kỳ đâu (grep toàn `src` chỉ match định nghĩa kiểu trong `types.ts`) và cũng không có trigger SQL nào gọi chúng. Mọi mã thực tế trong hệ thống sinh bởi trigger riêng (`generate_contract_number`, `generate_invoice_number_v2` — dùng `COUNT(*)+1` theo năm, xem cảnh báo lệch key ở §6; `generate_template_code` cho `income_expense_templates` bên Thu chi) hoặc client-side (`MHD` của `document_templates`, §4.3). Bảng đã được seed 9 `object_type` cho mọi profile (§2.5) nhưng `current_sequence` không bao giờ nhúc nhích.
 
 ### 4.6. Trigger `updated_at`
-`settings`, `document_templates`, `signature_templates`, `code_sequences` gắn trigger `update_updated_at_column()` (`set_*_updated_at`) để tự cập nhật `updated_at` mỗi lần UPDATE — `settings`/`signature_templates`/`code_sequences` ở [008_triggers_functions.sql](supabase/migrations/008_triggers_functions.sql), `document_templates` ở [016_document_templates.sql](supabase/migrations/016_document_templates.sql). Riêng `hotlines`, `subscription_plans`, `user_subscriptions` có cột `updated_at` nhưng **KHÔNG có trigger** — giá trị chỉ đổi khi client ghi trực tiếp (các hook không set nên thực tế giữ nguyên). (`hotlines` chỉ có trigger `hotlines_set_user_id_audit` BEFORE INSERT từ migration RBAC, không liên quan `updated_at`.)
+`settings`, `document_templates`, `signature_templates`, `code_sequences` gắn trigger `update_updated_at_column()` (`set_*_updated_at`) để tự cập nhật `updated_at` mỗi lần UPDATE — `settings`/`signature_templates`/`code_sequences` ở [008_triggers_functions.sql](supabase/migrations/008_triggers_functions.sql), `document_templates` ở [016_document_templates.sql](supabase/migrations/016_document_templates.sql). Riêng `hotlines`, `subscription_plans`, `user_subscriptions` có cột `updated_at` nhưng **KHÔNG có trigger** — giá trị chỉ đổi khi client ghi trực tiếp (các hook không set nên thực tế giữ nguyên).
+
+Ngoài ra cả 3 bảng `hotlines`, `document_templates`, `signature_templates` đều có trigger BEFORE INSERT `*_set_user_id_audit` chạy `set_user_id_from_auth()` (từ [20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql)) — tự gán `user_id = auth.uid()` khi client không truyền, không liên quan `updated_at`.
 
 ### 4.7. RLS — tóm tắt bất biến quyền
-- `settings`, `hotlines`, `code_sequences`, `signature_templates`, `document_templates`, `user_subscriptions`: **chỉ owner (`auth.uid() = user_id`)** thao tác — cấu hình mang tính cá nhân của chủ tài khoản. (Migration RBAC về sau có thể thêm bypass cho admin/super_admin.)
-- `subscription_plans`: SELECT cho mọi user đăng nhập (danh mục gói toàn cục), không cho ghi từ client.
+(Chi tiết và link migration ở §1.)
+- `hotlines`, `document_templates`, `signature_templates`: **RBAC org-wide** — policy `*_rbac` qua `can_access_org_entity('hotline'|'templates', view/create/edit/delete)`; staff có quyền role tương ứng thao tác trên dữ liệu owner, không phân theo toà nhà. Policy owner-only cũ đã DROP (batch F).
+- `settings`, `code_sequences`, `user_subscriptions`: **owner (`auth.uid() = user_id`)**. Riêng `settings` có thêm `settings_staff_insert/update/delete` (staff GHI qua `staff_can('settings', ...)`) nhưng **không có staff SELECT** — bất đối xứng, và FE không dùng (xem §6).
+- Mọi bảng có `*_admin_all` (role Admin bypass toàn bộ) + `*_super_admin_all`.
+- `subscription_plans`: SELECT cho mọi user đăng nhập (danh mục gói toàn cục), không cho ghi từ client. Lưu ý `user_subscriptions_insert` chỉ check `user_id = auth.uid()` — client tự INSERT đăng ký gói được, không có server validation (xem caveat §5.7).
 - `user_subscriptions.plan_id` **ON DELETE RESTRICT**: không thể xoá một `subscription_plan` khi còn đăng ký trỏ tới.
+
+### 4.8. Engine in hợp đồng `.docx` client-side (`contractTemplateEngine`)
+Tính năng tiêu thụ lớn nhất của `document_templates`: in HĐ thuê từ file mẫu `.docx` ngay trên browser, **không cần server**.
+
+- [contractTemplateEngine.ts](src/lib/contractTemplateEngine.ts) render bằng `docxtemplater` + `pizzip`. Cú pháp placeholder trong file mẫu: `{NAME}` (scalar) và `{#NAME}...{/NAME}` (loop).
+- `buildContractTemplateData({ contract, vehicles })` gom dữ liệu contract + room + building + khách đại diện + danh sách tenants + vehicles + assets + phí dịch vụ thành bộ placeholder **CỐ ĐỊNH** (UPPERCASE: `{CONTRACT_NUMBER}`, `{REPRESENT_NAME}`, `{RENT_PRICE}`…), gồm 4 bảng loop `TENANTS_TABLE` / `ASSETS_TABLE` / `FEES_TABLE` / `VEHICLES_TABLE` (+ loop `{#fees}`). Số tiền kèm bản chữ tiếng Việt (`numberToVietnameseWords` — import từ invoiceTemplateEngine) và tiếng Anh (`numberToEnglishWords` nội bộ).
+- `fetchTemplateBuffer()` tải file mẫu từ bucket private qua SDK (`storage.download` với session user — public URL sẽ 400), fallback fetch trực tiếp nếu URL không parse được path.
+- `renderContractDocx()` render với `nullGetter: () => ""` — placeholder lạ/thiếu trả chuỗi rỗng thay vì throw; `downloadDocxBlob()` tải file kết quả.
+- [contractTemplateCodes.ts](src/lib/contractTemplateCodes.ts) liệt kê `CONTRACT_TEMPLATE_CODE_SECTIONS` — **9 nhóm mã** (tổng `TOTAL_CONTRACT_CODES` = 97 mã liệt kê; comment spec gọi tròn "99 placeholder") hiển thị trong [TemplateCodesDialog](src/components/document-templates/TemplateCodesDialog.tsx) với tìm kiếm + copy-to-clipboard từng mã.
+- Consumer: [PrintContractDialog](src/components/contracts/PrintContractDialog.tsx) lọc mẫu `type='lease_contract'`, pre-select mẫu `is_default` (hoặc mẫu đầu tiên), gọi `buildContractTemplateData` → `renderContractDocx(selected.file_url, data)`.
+- **Quan trọng:** engine KHÔNG đọc cột `variables` của mẫu — bộ placeholder nằm cứng trong code (§2.2).
+
+### 4.9. Khung quyền FE nhóm "Cấu hình hệ thống" & guard route
+- [permissions.ts](src/lib/permissions.ts) định nghĩa group `settings` ("Cấu hình hệ thống") với 7 module: `meters`, `service_quotas`, `auto_debt`, `hotline`, `categories`, `templates`, `settings` — đây chính là các key `roles.permissions` mà RLS RBAC (§4.7, helper `can_access_org_entity`/`staff_can`) đối chiếu.
+- Tuy nhiên mọi route `/settings/*` của domain (general, templates, signatures, categories/*) chỉ bọc `ProtectedRoute` (yêu cầu đăng nhập), **KHÔNG có `RequirePermission`** — duy nhất `/settings/staff` có `RequirePermission module="users"` ([App.tsx](src/App.tsx)). Việc chặn quyền thực tế dựa hoàn toàn vào RLS: UI vẫn render trang, staff thiếu quyền chỉ thấy danh sách trống hoặc lỗi khi thao tác.
+- Sidebar tĩnh ([Sidebar.tsx](src/components/layout/Sidebar.tsx)): nhóm "Cài đặt hệ thống" gồm Cài đặt chung / Danh mục khác / Mẫu biểu / Nhân viên — **không ẩn mục theo quyền**, và không có link tới `/settings/signatures` (chỉ vào được bằng URL trực tiếp).
 
 ---
 
@@ -240,12 +290,18 @@ Hai hàm trên `code_sequences`:
 3. Hook **upsert** vào `settings` với `onConflict: 'user_id,key'` (tạo mới nếu chưa có, ghi đè nếu đã có).
 4. `onSuccess` → invalidate `['settings','general-all']` (refetch) + toast "Dữ liệu đã được CẬP NHẬT thành công".
 
-Tab cơ bản: nút "Tải lên logo" mở file picker; hiện tại chỉ tạo `URL.createObjectURL` preview cục bộ và lưu vào `company_info.company_logo_url` (comment trong code ghi rõ "in production, upload to Supabase Storage" — chưa upload thật).
+Tab cơ bản: nút "Tải lên logo" mở file picker; hiện tại chỉ tạo `URL.createObjectURL` preview cục bộ và lưu vào `company_info.company_logo_url` (comment trong code ghi rõ "in production, upload to Supabase Storage" — chưa upload thật). **Hậu quả:** `blob:` URL chỉ sống trong session hiện tại nhưng vẫn bị **persist vào DB** kèm toast "CẬP NHẬT thành công" — sau reload/máy khác ảnh chết. Cần upload thật lên bucket (private + signed URL theo quy ước dự án) trước khi tin tính năng này.
+
+> ⚠️ **19/20 key là "cấu hình ma":** trong 20 key đơn của trang này, **chỉ duy nhất `payment_auto_approve` có consumer thật** ([CollectPaymentDialog](src/components/payments/CollectPaymentDialog.tsx) tự query settings để auto-duyệt phiếu thu). 19 key còn lại (`invoice_auto_approve`, `contract_e_signing_enabled`, `invoice_payment_deadline_days`, `notification_*`…) **không được đọc ở bất kỳ đâu** ngoài chính trang này + `useSettings` — gạt switch không đổi hành vi gì của hệ thống. Phía DB cũng không có trigger nào đọc các key đơn này. Chi tiết xem §6.
+
+> ⚠️ **Settings KHÔNG chảy từ owner xuống staff:** `useSetting`/`useIndividualSetting`/`useGeneralSettings` đọc theo RLS `auth.uid()` (không filter `user_id` owner), còn upsert luôn ghi `user_id = user.id` của người thao tác. Staff mở `/settings/general` sẽ thấy toàn default và gạt switch tạo bản ghi settings **của chính staff** — cấu hình owner bật không có hiệu lực với staff (consumer duy nhất `payment_auto_approve` cũng đọc theo `user.id` người lập phiếu). DB có policy `settings_staff_update` cho staff sửa settings của owner nhưng FE không bao giờ dùng (và staff không SELECT được dòng owner để mà sửa).
 
 **Validate / edge case:**
 - Mỗi item có kiểu (`toggle`/`select`/`number`) với `min`/`max` (vd hạn thanh toán 1–90 ngày) ở UI; không có zod riêng — giá trị được upsert thẳng dưới dạng JSONB scalar.
 - Chưa đăng nhập → hook throw "User not authenticated", query `enabled: !!user?.id`.
 - Giá trị JSONB lạ (object thay vì scalar) → `useIndividualSetting` trả default.
+- `useSetting`/`useIndividualSetting` query `.eq('key', key).maybeSingle()` **không lọc `user_id`** — với tài khoản admin (policy `settings_admin_all` thấy mọi user), cùng key tồn tại ở ≥2 user → `maybeSingle` lỗi PGRST116 → trang Cài đặt/Onboarding vỡ. `CollectPaymentDialog` thì CÓ lọc `user_id` (không nhất quán). Nên thêm `.eq('user_id', user.id)` (queryKey đằng nào cũng đã chứa `user.id`) — vừa đúng vừa hit unique index `UNIQUE(user_id, key)`.
+- Perf: `useAllSettings` bắn 6 query riêng lẻ cho 6 key gộp (trong khi `useGeneralSettings` đã có pattern gộp `.in('key', keys)` 1 query); mỗi lần gạt 1 switch invalidate cả `['settings','general-all']` → refetch toàn bộ 20 key, không optimistic update.
 
 ```mermaid
 sequenceDiagram
@@ -263,22 +319,26 @@ sequenceDiagram
 ### 5.2. `TemplatesPage` — Mẫu biểu
 **Route:** `/settings/templates` · **File:** [TemplatesPage.tsx](src/pages/settings/TemplatesPage.tsx) · **Hook:** [useDocumentTemplates.ts](src/hooks/useDocumentTemplates.ts)
 
-**Mục đích:** quản lý 7 loại mẫu (theo `type`): chữ ký, HĐ đặt cọc, HĐ thuê, BB bàn giao, mẫu hoá đơn, mẫu thu chi, biểu mẫu khác.
+**Mục đích:** quản lý 7 loại mẫu (theo `type`): chữ ký, HĐ đặt cọc, HĐ thuê, BB bàn giao, mẫu hoá đơn, mẫu thu chi, biểu mẫu khác. (Header trang vẫn ghi "Quản lý 6 loại mẫu biểu" — text UI lỗi thời, `TEMPLATE_TYPES` có 7 tab; tab mặc định khi mở trang là `signature`.)
 
-**Dữ liệu hiển thị:** mỗi tab gọi `useDocumentTemplatesByType(type)` → query `document_templates` lọc `type = ?`, `deleted_at IS NULL`. Có ô tìm kiếm lọc theo `name`/`code` (client-side).
+**Dữ liệu hiển thị:** mỗi tab gọi `useDocumentTemplatesByType(type)` → query `document_templates` lọc `type = ?`, `deleted_at IS NULL`. Có ô tìm kiếm lọc theo `name`/`code` (client-side). **Không phân trang** — fetch toàn bộ rồi lọc client-side; footer "1 - N trên tổng số N bản ghi" chỉ là giả lập phân trang (chấp nhận được với số mẫu nhỏ).
 
 **Thao tác từng bước:**
-1. **Thêm mẫu** (`CreateTemplateDialog`): nhập name/category/description + chọn file → `useCreateDocumentTemplate`:
-   - sinh `code` (`MHD...`) → upload file vào bucket `document-templates` (sanitize tên) → lấy publicUrl → `INSERT` bản ghi (kèm `type` map từ `category`, `variables`, `content`).
-   - Lỗi `23505` (trùng mã) → toast "Mã mẫu đã tồn tại"; lỗi insert → rollback xoá file.
+1. **Thêm mẫu** (`CreateTemplateDialog`): nhập name/category/description + **Switch "Mặc định"** (`is_default` có ngay trong form tạo — set mặc định được từ lúc tạo, trigger `ensure_single_default_template` chạy ngay khi INSERT) + chọn file (**chỉ `.docx`**, ≤5MB) → `useCreateDocumentTemplate`:
+   - **upload file TRƯỚC** vào bucket `document-templates` (sanitize tên) → lấy publicUrl → tính `code` (`MHD...`) → `INSERT` bản ghi (kèm `type` map từ `CATEGORY_TO_TYPE`; payload **không gửi** `variables`/`content` — luôn rỗng với mẫu tạo từ UI).
+   - Lỗi `23505` (trùng mã) → tự retry tối đa 25 mã liên tiếp (§4.3); chỉ toast "Mã mẫu đã tồn tại" khi hết retry. Insert thất bại hẳn → rollback xoá file.
 2. **Xem** (`Eye`): `useViewTemplate` tạo signed URL 60s → mở tab mới.
 3. **Tải** (`Download`): `useDownloadTemplate` tải blob qua SDK → tạo `<a download>`.
 4. **Sửa** (`EditTemplateDialog`): `useUpdateDocumentTemplate` — nếu thay file thì upload file mới, cập nhật `file_url/...`, xoá file cũ (best-effort).
 5. **Toggle "Mặc định"**: gọi update `is_default` → trigger `ensure_single_default_template` tắt mẫu default cũ cùng category.
 6. **Xoá** (`DeleteTemplateDialog`): `useDeleteDocumentTemplate` = **soft delete** (`deleted_at = now()`), không xoá file Storage.
-7. Nút **"Xem mã biến"** (`TemplateCodesDialog`): tra cứu danh sách biến `{...}` dùng trong mẫu.
+7. Nút **"Xem mã biến"** (`TemplateCodesDialog`): tra cứu 9 nhóm mã placeholder của engine in HĐ (tìm kiếm + copy-to-clipboard) — chi tiết §4.8.
 
-**Edge case:** TemplatesPage lọc theo `type` nhưng dialog tạo chỉ thu `category` → hook bù bằng `CATEGORY_TO_TYPE` để mẫu mới hiện đúng tab. Bucket private nên tuyệt đối không nhúng public URL.
+**Edge case:**
+- TemplatesPage lọc theo `type` nhưng dialog tạo chỉ thu `category` → hook bù bằng `CATEGORY_TO_TYPE` để mẫu mới hiện đúng tab. Tuy nhiên dialog **không pre-select category theo tab đang mở** (luôn default `CONTRACT_NEW`) → mẫu tạo từ tab "Mẫu thu chi" dễ rơi sang tab "HĐ thuê" nếu quên đổi.
+- UI text lệch nhau: tiêu đề dialog tạo luôn "THÊM MẪU HỢP ĐỒNG", label field category là "Loại biên bản bàn giao" bất kể loại; cột bảng ghi "Xem mẫu PDF" nhưng file là `.docx`.
+- queryKey của document-templates **không chứa user id** (`['document-templates', category]` / `['document-templates','by-type',type]`, khác `useSettings` đã có) → logout/login tài khoản khác cùng session có thể thấy cache mẫu của tài khoản trước tới khi refetch.
+- Bucket private nên tuyệt đối không nhúng public URL.
 
 ### 5.3. `SignaturesPage` — Mẫu chữ ký
 **Route:** `/settings/signatures` · **File:** [SignaturesPage.tsx](src/pages/settings/SignaturesPage.tsx)
@@ -294,7 +354,13 @@ sequenceDiagram
 - **Tài sản**: Nhà cung cấp, Kho tài sản, Loại tài sản, Lịch sử di chuyển/sửa chữa.
 - **Khác** (standalone): Quản lý Hotline (`/settings/categories/hotlines`), Danh mục chung, Danh sách tầng, Loại công việc.
 
-Mỗi item là `<Link>` tĩnh; không gọi hook. Là "bản đồ" sang các domain khác (thu chi, tài sản, chỉ số…).
+Mỗi item là `<Link>` tĩnh; không gọi hook. Là "bản đồ" sang các domain khác (thu chi, tài sản, chỉ số…) — quyền vào các trang đích do RLS của domain đích quyết định.
+
+**Quirk routing của domain (xem [App.tsx](src/App.tsx)):**
+- Alias `/general-setting` → redirect `/settings/general`.
+- Link "Loại thu chi" trỏ `/settings/categories/income-expense-types` nhưng route này chỉ là `Navigate` sang trang chính `/settings/income-expense-types` (doc 04).
+- Route `/settings/categories/bank-accounts` (`BankAccountsPage`) tồn tại nhưng **không có link nào** trong hub — trang mồ côi.
+- `/settings/signatures` không có link sidebar (chỉ vào bằng URL trực tiếp — §4.9).
 
 ### 5.5. `HotlinesPage` — Quản lý Hotline
 **Route:** `/settings/categories/hotlines` · **File:** [HotlinesPage.tsx](src/pages/settings/categories/HotlinesPage.tsx) · **Hook:** [useHotlines.ts](src/hooks/useHotlines.ts)
@@ -306,7 +372,10 @@ Mỗi item là `<Link>` tĩnh; không gọi hook. Là "bản đồ" sang các do
 2. **Sửa**: icon bút → dialog điền sẵn `getFormValues` → `useUpdateHotline.mutate({ id, updates })`.
 3. **Xoá**: icon thùng rác → AlertDialog → `useDeleteHotline.mutate(id)` (**hard delete**).
 
-**Validate / edge case:** `name`/`phone_number` `required` ở UI + CHECK không rỗng ở DB. `useHotlines` query lỗi → trả `[]` (không throw, log console). RLS: chỉ thấy/sửa hotline của chính owner.
+**Validate / edge case:**
+- `name`/`phone_number` có dấu `*` đỏ nhưng `CategoryCrudPage` **KHÔNG enforce required** — `FieldDef.required` chỉ để vẽ dấu sao; `handleSubmit` gọi `onCreate`/`onUpdate` vô điều kiện rồi **đóng dialog + clear form NGAY** (trước khi mutation kết thúc). Submit rỗng đi thẳng xuống DB và fail CHECK `hotlines_name_not_empty` → user chỉ thấy toast lỗi sau khi dialog đã đóng, **mất toàn bộ dữ liệu vừa nhập**. (Áp dụng cho mọi trang danh mục dùng `CategoryCrudPage`; nên `mutateAsync` xong mới đóng dialog + validate required trước submit.)
+- `useHotlines` query lỗi → trả `[]` (không throw, log console).
+- RLS: theo RBAC org-wide `can_access_org_entity('hotline', ...)` — staff có quyền role `hotline` thấy/sửa hotline của owner (§4.7).
 
 ### 5.6. `GeneralCategoriesPage` — Danh mục chung
 **Route:** `/settings/categories/general` · **File:** [GeneralCategoriesPage.tsx](src/pages/settings/categories/GeneralCategoriesPage.tsx)
@@ -319,13 +388,19 @@ Hiện chỉ là **`PlaceholderPage`** (chưa cài đặt nội dung). Để tr�
 
 **Dữ liệu hiển thị:**
 - `useSubscriptionPlans()` — gói `is_active=true`, sắp theo `price` tăng dần.
-- `useUserSubscription()` — gói `status='active'` mới nhất của user, join `plan:subscription_plans(*)`. Tính `isExpired = end_date < now`.
+- `useUserSubscription()` — gói `status='active'` mới nhất của user, join `plan:subscription_plans(*)` (hook chỉ trả bản ghi; `isExpired = end_date < now` được tính ở **SubscriptionPage**, không phải trong hook).
 
 **Thao tác từng bước:**
 1. Bấm **"Đăng ký"** trên một gói → `handleSubscribe(planId, durationMonths)`: tính `start_date = hôm nay`, `end_date = +duration_months` → `useCreateUserSubscription.mutate({ plan_id, start_date, end_date, status:'active' })` → `INSERT { ...values, user_id }`.
 2. (Hook cũng có `useUpdateUserSubscription`, `useCancelUserSubscription` set `status='cancelled'` — chưa nối nút trên trang này.)
 
-**Validate / edge case:** gói đang dùng (`isCurrent`) bị disable nút. Chưa đăng ký gói nào → hiển thị "Bạn chưa đăng ký gói cước nào". `max_rooms`/`max_buildings` null = không giới hạn (ẩn dòng). **Lưu ý**: trang chỉ tạo bản ghi đăng ký, **chưa có cổng thanh toán** và **chưa enforce giới hạn** `max_rooms/max_buildings` ở tầng tạo phòng/toà — đây là dữ liệu hiển thị/đăng ký, chưa phải hàng rào chặn nghiệp vụ.
+**Validate / edge case:** gói đang dùng (`isCurrent`) bị disable nút. Chưa đăng ký gói nào → hiển thị "Bạn chưa đăng ký gói cước nào". `max_rooms`/`max_buildings` null = không giới hạn (ẩn dòng).
+
+**Lưu ý — toàn bộ luồng đăng ký là client-side, KHÔNG phải hàng rào nghiệp vụ:**
+- Bấm "Đăng ký" là INSERT trực tiếp `user_subscriptions` với `status='active'`; RLS `user_subscriptions_insert` chỉ check `user_id = auth.uid()` — **không thanh toán, không server validation**, user có thể tự cấp gói đắt nhất miễn phí.
+- Đăng ký nhiều lần tạo **nhiều bản ghi `active` chồng nhau** — `useUserSubscription` chỉ lấy bản mới nhất, các bản cũ "active" vĩnh viễn vì **không có job/trigger nào chuyển `expired`** (`isExpired` chỉ là cờ hiển thị ở trang).
+- `max_rooms`/`max_buildings` **không enforce ở đâu** trong tầng tạo phòng/toà.
+- Nếu subscription trở thành tính năng thật cần: chuyển INSERT qua RPC/edge function có kiểm thanh toán, thu hồi quyền INSERT trực tiếp, thêm job chuyển expired, enforce giới hạn tài nguyên. Hiện trạng nên coi là **demo**.
 
 ```mermaid
 flowchart TD
@@ -340,12 +415,21 @@ flowchart TD
 ## 6. Liên kết sang domain khác (vào / ra)
 
 **Ra (domain này cung cấp tham số/cấu hình cho nơi khác):**
-- **`document_templates` → Toà nhà / Phòng / Hợp đồng / Hoá đơn**: qua FK `contract_template_id`, `invoice_template_id`, `lease_template_id`, `template_id`. Toà/phòng đặt mẫu in mặc định; HĐ/hoá đơn ghi nhận mẫu đã dùng. Khi in HĐ/hoá đơn, các domain đó đọc mẫu + điền `variables`.
-- **`settings` → toàn hệ thống**: key như `invoice_auto_approve`, `invoice_auto_approve_meter`, `contract_e_signing_enabled`, `contract_auto_create_on_renewal`, `invoice_payment_deadline_days`, `payment_auto_approve` điều khiển hành vi của domain **Hoá đơn**, **Chỉ số (meter)**, **Hợp đồng**, **Thu chi**. (Các domain tương ứng đọc settings để quyết định auto-duyệt, hạn thanh toán, ký online…)
-- **`code_sequences` → mọi domain cần sinh mã**: engine `generate_code`/`generate_next_code` cấp mã cho building/room/contract/invoice… (dù nhiều luồng dùng trigger sinh số riêng).
-- **`subscription_plans.max_rooms/max_buildings` → Toà nhà / Phòng**: giới hạn tài nguyên (hiện chưa enforce cứng).
+- **`document_templates` → Toà nhà / Phòng / Hợp đồng / Hoá đơn / Thu chi**: qua FK `contract_template_id`, `invoice_template_id`, `lease_template_id`, `template_id` (toà/phòng đặt mẫu in mặc định; HĐ/hoá đơn ghi nhận mẫu đã dùng) và **3 dialog in ấn ở 3 domain với 2 cơ chế render khác hẳn nhau**:
+  - [PrintContractDialog](src/components/contracts/PrintContractDialog.tsx) (HĐ) — lọc `type='lease_contract'`, render **file `.docx`** với ~99 placeholder cố định qua `contractTemplateEngine` (§4.8). KHÔNG đọc cột `variables`.
+  - [PrintInvoiceDialog](src/components/invoices/PrintInvoiceDialog.tsx) (Hoá đơn) — đọc `useDocumentTemplates('INVOICE')` (lọc theo **`category`**, không phải `type`), ưu tiên `invoice.template_id` rồi mẫu `is_default`; render **cột `content` (HTML)** qua `renderInvoiceTemplate` của invoiceTemplateEngine — đây là nơi duy nhất cột `content` được dùng thật; không có content thì fallback layout A4/thermal hardcode.
+  - [PaymentReceiptDialog](src/components/payments/PaymentReceiptDialog.tsx) (Thu chi) — đọc mẫu `category='RECEIPT'` nhưng hiện **chỉ hiển thị số lượng** "(N mẫu biểu có sẵn)"; nội dung biên lai vẫn là layout hardcode in qua window.print.
+- **`settings` → toàn hệ thống — thực tế dòng chảy gần như ĐỨT:**
+  - Consumer thật duy nhất của 20 key đơn: **`payment_auto_approve`** → [CollectPaymentDialog](src/components/payments/CollectPaymentDialog.tsx) (domain Thu chi) tự query settings để auto-duyệt phiếu thu — và đọc theo `user_id` của **người thao tác**, nên owner bật mà staff lập phiếu thì không có hiệu lực.
+  - 19 key còn lại (`invoice_auto_approve`, `invoice_auto_approve_meter`, `contract_e_signing_enabled`, `contract_auto_create_on_renewal`, `invoice_payment_deadline_days`, `notification_*`…) **chưa nơi nào đọc** — "cấu hình ma", xem cảnh báo §5.1.
+  - Key `onboarding_completed` (ngoài 20 key đơn + 6 key gộp) do [OnboardingWizard](src/components/onboarding/OnboardingWizard.tsx) đọc/ghi qua `useIndividualSetting` — phục vụ luồng onboarding sau đăng ký.
+  - **Lệch key giữa FE và trigger DB sinh số:** `generate_invoice_number(_v2)`/`generate_contract_number` đọc settings key **`invoice_number_format`/`contract_number_format`** (field `value->>'invoice_prefix'`/`'contract_prefix'`), nhưng FE chỉ ghi key **`invoice_config`/`contract_config`** với field `invoice_number_prefix`/`contract_number_prefix` → prefix tuỳ chỉnh **không bao giờ được áp**, mã luôn fallback `INV-YYYY-00001`/`HD-YYYY-00001`. Counter cũng là `COUNT(*)+1` theo năm — xoá hoá đơn có thể gây trùng số. (Hướng sửa: đồng bộ tên key, hoặc chuyển sang `code_sequences`/`generate_next_code` có `FOR UPDATE` đang bỏ không.)
+- **`hotlines` → module Sale Phòng**: [DisplaySettingsTab](src/components/sale-phong/DisplaySettingsTab.tsx) (`/sale-phong`) chọn "Hotline hiển thị" cho trang Phòng trống công khai `/r/:token` (mặc định lấy hotline đầu tiên).
+- **`code_sequences` → (không ai)**: engine `generate_code`/`generate_next_code` hiện mồ côi — không FE/trigger nào gọi (§4.5); mọi mã thực tế sinh bởi trigger riêng hoặc client-side.
+- **`subscription_plans.max_rooms/max_buildings` → Toà nhà / Phòng**: giới hạn tài nguyên (hiện chưa enforce cứng — §5.7).
 
 **Vào (domain này điều hướng / phụ thuộc nơi khác):**
-- **`CategoriesPage` → Tài chính / Tài sản / Chỉ số / Vận hành**: hub link sang `/finance/cashbooks`, loại thu chi, định mức dịch vụ, đồng hồ công tơ, nhà cung cấp, kho/loại tài sản, tầng, loại công việc — domain Cài đặt đóng vai "cổng vào" các danh mục con thuộc domain khác.
+- **`CategoriesPage` → Tài chính / Tài sản / Chỉ số / Vận hành**: hub link sang `/finance/cashbooks`, loại thu chi, định mức dịch vụ, đồng hồ công tơ, nhà cung cấp, kho/loại tài sản, tầng, loại công việc — domain Cài đặt đóng vai "cổng vào" các danh mục con thuộc domain khác. Lưu ý: bảng `income_expense_types` (trang chính `/settings/income-expense-types`, doc 04) đi theo trục quyền RBAC `can_access_org_entity('categories', ...)` từ [batch A](supabase/migrations/20260528000001_rbac_batch_a_config_tables.sql) — key `categories` chính là module trong group `settings` của permissions.ts (§4.9).
+- **`FloorsPage` (`/settings/categories/floors`)**: CRUD bảng `floors` hoàn toàn **phẳng theo user** — form không có field `building_id`, list không lọc theo toà (dữ liệu tầng dùng chung mọi toà); RBAC ghi map `floors` → permission `building_layout` trong staff_write_rls. Cũng dùng `CategoryCrudPage` nên dính cùng vấn đề validate/đóng-dialog-sớm như §5.5.
 - **`user_subscriptions.user_id` / mọi bảng `user_id` → Auth (auth.users)**: gắn cấu hình vào chủ tài khoản; `ON DELETE CASCADE` khi user bị xoá.
 - **Subsystem AI (`ai_*`)**: hạ tầng RAG độc lập (pgvector), chưa nối UI ở domain này — về lâu dài có thể trở thành "trợ lý" đọc context xuyên các domain.

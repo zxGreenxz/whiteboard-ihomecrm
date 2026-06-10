@@ -16,10 +16,17 @@ chủ thể:
 | Cấp | Là ai | Cách nhận diện trong DB | Quyền |
 |-----|-------|--------------------------|-------|
 | **Super admin** | Người vận hành nền tảng / chủ tài khoản gốc | có row trong `super_admins` | Bypass **mọi** RLS, **mọi** tenant, mọi bảng. |
-| **Owner** (chủ dữ liệu / tenant) | 1 `user_id` sở hữu dữ liệu | xuất hiện ở cột `user_id` của các bảng nghiệp vụ; **không** là staff của ai | Toàn quyền trên dữ liệu của chính mình (RLS `auth.uid() = user_id`). |
+| **Owner** (chủ dữ liệu / tenant) | 1 `user_id` sở hữu dữ liệu | xuất hiện ở cột `user_id` của các bảng nghiệp vụ; **không** là staff của ai | Trên 63 bảng đã RBAC-hoá, policy owner `auth.uid() = user_id` đã bị **drop** (batch F, xem 4.3) — owner gốc vẫn toàn quyền vì nằm trong `super_admins` (và có self-assignment role Super Admin từ seed). `auth.uid() = user_id` chỉ còn trên các bảng **ngoài RBAC** (profiles, accounts, roles, staff_assignments, settings, notifications…). User mới không có `staff_assignments` và không trong `super_admins` → **không thấy gì** trên bảng nghiệp vụ (chủ ý, ghi rõ trong comment migration `20260527000054`). |
 | **Staff** (nhân viên) | Người được owner thuê | có row trong `staff_assignments` với `staff_id = mình, user_id = owner` | Quyền **giới hạn** theo (1) role/permissions và (2) phạm vi toà nhà được giao. |
 
 Điểm mấu chốt của mô hình:
+
+- **RLS bảng nghiệp vụ keyed theo TOÀ, không theo owner** (từ đợt refactor RBAC
+  2026-05-27/28): policy chuẩn của mỗi bảng là `<t>_select/insert/update/delete_rbac`
+  gọi `can_access_building` / `can_do_on_building` / `can_access_org_entity`
+  (mục 4.3). Các policy owner-keyed cũ và `*_staff_*` (qua `staff_can`) đã bị drop
+  trên 63 bảng — `staff_can` chỉ còn hiệu lực trên `accounts`/`settings`/
+  `notifications` (mục 4.4).
 
 - **`roles` là TEMPLATE permissions, không phải role gắn cứng.** Khi gán nhân
   viên, permissions JSONB của role được **COPY snapshot** vào
@@ -63,6 +70,12 @@ tại đây.
     `language`, `subscription_plan`, `subscription_expires_at` — cấu hình tenant
     cấp owner (phần lớn chỉ owner dùng).
   - `id`, `created_at`, `updated_at` — khoá + audit.
+- **RLS đáng chú ý** (migration `20260502000001`): `profiles_select_via_staff_assignments`
+  cho đọc **2 chiều** — owner thấy profile staff mình quản VÀ staff thấy profile
+  owner mình phục vụ; nhờ vậy dropdown "người phụ trách"
+  ([useStaffUsers](src/hooks/useStaffUsers.ts), lọc `is_active` client-side) hoạt
+  động cho cả staff. Kèm `profiles_admin_insert` / `profiles_admin_update` (owner
+  tạo/sửa profile staff mình quản lý).
 - **Quan hệ FK (được tham chiếu)**: nhiều bảng nghiệp vụ trỏ tới `profiles.id`
   để chỉ "người phụ trách": `asset_maintenance.assigned_to`,
   `departments.manager_id`, `issues.assigned_to`/`reported_by_staff_id`,
@@ -102,6 +115,13 @@ tại đây.
     từ `role.permissions` khi áp template; `NULL` = chưa override → RPC fallback
     về `role.permissions`. Có GIN index `idx_staff_assignments_permissions`.
   - `id`, `created_at`, `updated_at` — khoá + audit.
+- **Constraint & index**: `staff_assignments_unique_staff_building` —
+  **UNIQUE `(staff_id, building_id)`** (migration `20250101000008`), nền của toast
+  lỗi 23505 "Nhân viên đã được gán cho toà nhà này" trong hooks. ⚠️ Postgres coi
+  `NULL ≠ NULL` nên 2+ row full-scope (`building_id IS NULL`) của cùng staff
+  **không** bị chặn — dữ liệu bẩn kiểu này làm `get_my_permissions` chọn row tuỳ
+  `created_at` (xem 4.7). Index thường theo `user_id`/`staff_id`/`role_id`/
+  `building_id` — đủ cho các EXISTS trong helper RLS.
 - **Quan hệ FK (đi ra)**: `role_id → roles.id`, `building_id → buildings.id`
   (sang domain Bất động sản).
 
@@ -142,9 +162,18 @@ tại đây.
 
 Domain này **không** sở hữu enum riêng (các bảng dùng `boolean`/`jsonb`/`text`).
 Permissions không phải enum mà là JSONB tự do với khoá module/action do FE quy
-định trong [permissions.ts](src/lib/permissions.ts). Các action chuẩn:
-`view · create · edit · delete` (+ extras: `record_payment · approve · print ·
-export` tuỳ module).
+định trong [permissions.ts](src/lib/permissions.ts).
+
+- **Registry**: `PERMISSION_GROUPS` hiện có **34 module trong 8 nhóm UI** —
+  Tổng quan (2) · Bất động sản (5, gồm `sale_phong`) · Khách hàng (5) ·
+  Tài chính (5) · Cổ đông & Cá nhân (2) · Tài sản (4) · Vận hành & Báo cáo (4) ·
+  Cấu hình hệ thống (7). ⚠️ Các comment trong code ghi "37 modules"/"35 modules"
+  và UI StaffPage ghi "35 quyền" đều **lệch** — số đúng đếm từ registry là 34.
+- **Action chuẩn**: `view · create · edit · delete` + extras tuỳ module:
+  `record_payment · approve · print · export`; cờ phạm vi `all_buildings`
+  (chỉ module `income_expenses` — xem 4.6); và `create_deposit` (module
+  `sale_phong` — **WIP chưa commit**, working tree 2026-06-10, xem mục 6).
+  `ACTION_LABELS` có đủ 10 action.
 
 ---
 
@@ -185,7 +214,7 @@ erDiagram
         uuid staff_id "nhân viên"
         uuid user_id "owner"
         uuid role_id "template hiện hành"
-        uuid building_id "NULL = tất cả toà"
+        uuid building_id "NULL = tất cả toà; UNIQUE(staff_id, building_id)"
         jsonb permissions "snapshot per-staff (Tier 2)"
     }
     super_admins {
@@ -200,11 +229,16 @@ flowchart TD
     A["auth.uid()"] --> B{"có trong super_admins?"}
     B -- "có" --> S["SUPER ADMIN<br/>bypass mọi RLS, mọi tenant"]
     B -- "không" --> C{"có staff_assignments<br/>(staff_id=mình, user_id≠mình)?"}
-    C -- "không" --> O["OWNER (chủ dữ liệu)<br/>toàn quyền trên user_id=mình"]
     C -- "có" --> D{"role có __superadmin<br/>hoặc name='Admin'?"}
-    D -- "có" --> AD["TENANT ADMIN<br/>bypass RLS trong tenant của owner"]
-    D -- "không" --> ST["STAFF thường<br/>quyền theo permissions × scope toà"]
+    D -- "có" --> AD["TENANT ADMIN<br/>bypass RLS trong tenant (qua is_admin)"]
+    D -- "không" --> ST["STAFF thường<br/>quyền theo COALESCE(sa.permissions, role.permissions)<br/>× scope toà (building_id)"]
+    C -- "không" --> E{"có trong shareholders<br/>(auth_user_id, chưa xoá)?"}
+    E -- "có" --> SH["CỔ ĐÔNG<br/>get_my_permissions: bộ quyền chỉ-xem<br/>+ shareholder_profit.view + personal_finance;<br/>SELECT theo building_shareholders"]
+    E -- "không" --> O["USER THƯỜNG (không assignment)<br/>bảng ngoài RBAC: auth.uid()=user_id<br/>bảng RBAC: KHÔNG thấy gì<br/>(owner gốc thực tế nằm trong super_admins)"]
 ```
+
+> Lưu ý: `get_my_permissions()` trả sentinel `__superadmin` cho nhánh "user
+> thường" (mở khoá FE), nhưng RLS trên các bảng RBAC vẫn chặn — FE mở mà DB đóng.
 
 ---
 
@@ -247,63 +281,143 @@ kiểm tra, tránh đệ quy vô hạn). Được `GRANT EXECUTE` cho `authentic
   sửa dữ liệu do staff tạo → UPDATE khớp 0 row, PostgREST trả 204 "fake success".
   2 policy bypass này vá lỗ hổng đó.
 
-### 4.3 `staff_can(_table, _action, _owner)` — quyền theo permissions
+  > ⚠️ `is_admin()` **không** OR `is_super_admin()`: một tài khoản chỉ có row trong
+  > `super_admins` nhưng KHÔNG có staff_assignment role-admin sẽ bị
+  > [AdminOnlyRoute](src/components/auth/AdminOnlyRoute.tsx) (guard FE gọi
+  > `is_admin()` — xem 4.8/5.3) chặn khỏi `/admin/users` dù DB cho phép mọi thứ.
+  > Hiện chưa lộ vì owner gốc tình cờ có self-assignment role Super Admin (seed
+  > `20260529000002`), nhưng thêm super admin "thuần" thứ 2 sẽ gặp.
+
+### 4.3 RBAC theo toà — engine RLS hiện hành (`*_rbac`)
+
+Cụm migration `20260527000007/8/9` + `20260527000053/54/55` + `20260528000001-3`
+(2026-05-27/28) chuyển toàn bộ RLS bảng nghiệp vụ từ **owner-keyed** sang
+**building-keyed**. Batch F
+([20260528000003_rbac_batch_f_drop_legacy.sql](supabase/migrations/20260528000003_rbac_batch_f_drop_legacy.sql))
+drop sạch policy owner cũ ("Users can … own …") và `*_staff_*`/`*_select_staff`
+trên **63 bảng**; mỗi bảng giờ chỉ còn `<t>_select/insert/update/delete_rbac` +
+`<t>_admin_all` + `<t>_super_admin_all` (+ `*_shared` của sổ quỹ). Các bảng
+**ngoài RBAC** (profiles, accounts, account_shared_users, roles, super_admins,
+staff_assignments, user_roles, notifications, settings, departments…) giữ policy
+cũ — xem 4.4/4.5.
+
+4 nhóm helper chính (gốc:
+[20260527000053_rbac_helpers.sql](supabase/migrations/20260527000053_rbac_helpers.sql) —
+riêng `can_access_org_entity` gốc ở
+[20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql);
+bản hiện hành **Tier-2 aware** của `can_do_on_building`/`can_access_org_entity` ở
+[20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql)):
+
+| Helper | Dùng cho | Logic |
+|--------|----------|-------|
+| `can_access_building(b)` | SELECT | super/admin pass; staff pass nếu có row `building_id IS NULL` (full scope) hoặc `= b`; **cổ đông** pass đúng các toà trong `building_shareholders` của mình (bản `20260603000002_shareholder_access_and_perms`). |
+| `can_do_on_building(t, a, b)` | INSERT/UPDATE/DELETE | super/admin pass; staff cần row scope khớp **và** `COALESCE(sa.permissions, r.permissions) -> t ->> a = true` — tức **override Tier 2 được enforce ngay ở DB**. |
+| `can_access_org_entity(r, a)` | entity không gắn toà (customers, tenants, services, suppliers, hotlines, templates…) | như trên nhưng **không** check building. |
+| `building_of_contract / building_of_invoice / building_of_payment(id)` | traversal | trả `building_id` qua chain FK cho bảng con (contract_*, deposits, invoice_items, payments…). |
+
+Pattern policy theo loại bảng:
+
+```mermaid
+flowchart TD
+    T{"Bảng thuộc loại nào?"}
+    T -- "building_id NOT NULL<br/>(buildings, rooms, meters, invoices...)" --> A["SELECT: can_access_building(building_id)<br/>CUD: can_do_on_building(t, a, building_id)"]
+    T -- "building_id NULLABLE<br/>(income_expenses, issues, jobs, leads, vehicles...)" --> B["NOT NULL → như nhánh trên<br/>NULL → income_expenses: chỉ admin/super (voucher hệ thống)<br/>NULL → jobs/leads/vehicles...: can_access_org_entity"]
+    T -- "con của contract / invoice<br/>(contract_*, deposits, invoice_items, payments)" --> C["traverse building_of_contract /<br/>building_of_invoice / subquery room→building"]
+    T -- "entity tổ chức không toà<br/>(customers, tenants, services, suppliers...)" --> D["can_access_org_entity(resource, action)"]
+    T -- "ngoài RBAC<br/>(profiles, accounts, roles, settings, notifications...)" --> E["policy cũ giữ nguyên:<br/>auth.uid()=user_id / staff_can (4.4) /<br/>current_visible_owner_ids (4.5)"]
+```
+
+Quy ước & điểm cần nhớ:
+
+- **contracts** scope qua chain `contract → room → building` (subquery trong
+  policy; bảng con dùng `building_of_contract`). RPC vòng đời hợp đồng
+  (renew/transfer/terminate_*) cũng kiểm `can_do_on_building('contracts','edit',
+  room→building)` trong wrapper trước khi gọi `*_impl`, REVOKE anon
+  (`20260601000100`).
+- **`income_expenses.building_id IS NULL` = voucher hệ thống** — chỉ super
+  admin/admin truy cập ([20260527000054](supabase/migrations/20260527000054_rbac_phase2_policies_invoices_payments_ie.sql)).
+- **vehicles** hybrid: `building_id NOT NULL` → `can_do_on_building`; NULL →
+  `can_access_org_entity('vehicles', …)`.
+- **customers/tenants** dùng `can_access_org_entity('customers', …)` — **không có
+  scope toà** ở RLS (xem bất biến bên dưới).
+- **areas**: SELECT pass nếu super/admin, staff full-scope, hoặc được giao ≥1
+  building thuộc area; **INSERT/UPDATE/DELETE yêu cầu staff FULL-SCOPE**
+  (`sa.building_id IS NULL`) + quyền `areas.*` — staff giới hạn toà không bao giờ
+  tạo/sửa khu vực ([20260527000008](supabase/migrations/20260527000008_rbac_phase4_buildings_rooms.sql)).
+- Mapping `tbl → perm_key` vẫn như mô hình cũ: nhiều bảng vật lý chia sẻ 1 khoá
+  quyền (`contract_extensions/terminations/transfers` → `'contracts'`;
+  `payments` → `'invoices'`; `issues/jobs/job_groups/task_flows` → `'tasks'`…).
+
+**Bất biến**: staff được tick N toà chỉ ghi được dữ liệu trong N toà đó (qua
+`can_do_on_building`) — đúng cho mọi bảng building-keyed (contracts, invoices,
+vehicles có toà…). **Ngoại lệ chủ ý phải nhớ**: các entity org-level đi qua
+`can_access_org_entity` (đặc biệt `customers`) — staff có `customers.edit` sửa
+được **mọi** khách của tenant bất kể toà.
+
+### 4.4 `staff_can(_table, _action, _owner)` — legacy, chỉ còn 3 bảng
 
 [20260510000056_staff_write_rls.sql](supabase/migrations/20260510000056_staff_write_rls.sql).
 
-- True khi caller có `staff_assignments` trỏ tới `_owner` mà role thoả 1 trong:
+- True khi caller có `staff_assignments` trỏ tới `_owner` mà **role** thoả 1 trong:
   `__superadmin` / `name='Admin'` / `(role.permissions -> _table ->> _action) = true`.
-- Là **động cơ chính của các write-policy staff**. Mỗi bảng nghiệp vụ keyed
-  trực tiếp bởi `user_id` có 3 policy `<t>_staff_insert/update/delete` gọi
-  `staff_can('<perm_key>', 'create|edit|delete', user_id)`. Bảng phụ thuộc
-  (rooms, beds, invoice_items, contract_customers…) check qua FK lên bảng cha.
-- Lưu ý mapping `tbl → perm_key`: nhiều bảng vật lý chia sẻ 1 khoá quyền (vd
-  `contract_extensions/terminations/transfers` đều dùng `'contracts'`;
-  `meters` dùng `'meters'`; `accounts` dùng `'cashbooks'`).
+- Trước batch F là động cơ của mọi write-policy staff (`<t>_staff_insert/update/
+  delete` trên ~40 bảng). Sau batch F, các policy đó chỉ còn trên các bảng **bị
+  loại khỏi RBAC**: `accounts` (perm key `'cashbooks'`), `settings`,
+  `notifications`. Mọi bảng khác đã chuyển sang `*_rbac` (4.3).
 
-  > ⚠️ **Lệch quyền cũ vs mới**: `staff_can()` đọc `role.permissions` (chưa biết
-  > tới override Tier 2). Các helper `can_do_on_building`/`can_access_org_entity`
-  > (4.6) mới đọc `COALESCE(sa.permissions, role.permissions)`. Vì vậy
-  > write-policy chuẩn (insert/update/delete qua `staff_can`) **chưa** phản ánh
-  > tinh chỉnh per-staff — đây là chủ ý hiện tại; gate per-staff chủ yếu áp ở FE
-  > qua `get_my_permissions()`.
+  > ⚠️ **Lỗ hổng Tier 2 trên 3 bảng còn lại**: `staff_can()` chỉ đọc
+  > `role.permissions` (KHÔNG `COALESCE(sa.permissions, …)`). Owner untick
+  > `cashbooks.create` cho 1 nhân viên → FE ẩn nút (vì `get_my_permissions` trả
+  > override) nhưng gọi API trực tiếp vẫn INSERT được sổ quỹ, vì role template
+  > vẫn cấp quyền. Fix gọn: sửa `staff_can` đọc `COALESCE(sa.permissions,
+  > r.permissions)` (giống `can_do_on_building`) hoặc RBAC-hoá nốt 3 bảng.
 
-### 4.4 `staff_in_building` & scope ghi theo toà
+### 4.5 Các helper visibility cũ — trạng thái sau batch F
 
-[20260518000051_staff_building_scope_writes.sql](supabase/migrations/20260518000051_staff_building_scope_writes.sql).
+Các policy `*_select_staff` (đọc theo owner-set) đã bị drop trên 63 bảng; SELECT
+nghiệp vụ hiện đi qua `*_select_rbac` (4.3). Tình trạng từng helper:
 
-- `staff_in_building(_owner, _building_id)` → true nếu caller là owner / `is_admin`
-  / staff có row `building_id IS NULL` (full scope) / staff có row trùng đúng
-  `_building_id`.
-- Áp cho write-policy của **contracts / vehicles / customers**: ngoài `staff_can`
-  còn AND thêm `staff_in_building(...)`:
-  - `contracts`: scope lấy từ `room.building_id` (chain contract → room → building).
-  - `vehicles`: `building_id` trực tiếp.
-  - `customers`: dùng `customer_in_my_scope` (khách không có building trực tiếp →
-    xét qua hợp đồng còn sống; khách **chưa có** hợp đồng nào → fallback cho phép
-    để không khoá use-case tạo khách mới).
-- `get_my_assignments()` (cùng migration) trả `(user_id, building_id)` của caller
-  cho FE biết phải ẩn nút action nào — gương soi của `staff_in_building` ở client.
-- **Bất biến**: staff được tick N toà chỉ ghi được dữ liệu trong N toà đó, dù
-  role cho phép action.
+| Helper | Trạng thái | Còn dùng ở |
+|--------|-----------|------------|
+| `current_visible_owner_ids()` ([20260506000004](supabase/migrations/20260506000004_tenant_symmetric_visibility.sql): mình + owner mình phục vụ + staff của mình + co-staff) | còn sống | policy trên các bảng **ngoài RBAC** (`accounts`, `notifications`, `roles`, `settings` — comment giữ-lại trong `20260528000004`); `invoice_audit_log_select_visible`; storage policy "Tenant can read shared templates" (bucket `document-templates`). |
+| `is_staff_of` / `staff_building_scope` | mồ côi | chỉ còn định nghĩa trong [migrations-bundle/20260427_apply_staff_visibility.sql](supabase/migrations-bundle/20260427_apply_staff_visibility.sql); không policy nào tham chiếu. |
+| `staff_in_building` / `customer_in_my_scope` ([20260518000051](supabase/migrations/20260518000051_staff_building_scope_writes.sql)) | mồ côi | function vẫn tồn tại nhưng các policy contracts/vehicles/customers dùng chúng đã bị drop ở batch F. Logic tương đương sống tiếp ở FE qua [useMyBuildingScope](src/hooks/useMyBuildingScope.ts). |
+| `get_my_assignments()` (cùng `20260518000051`) | còn sống | RPC cho FE — `useMyBuildingScope` dùng để ẩn nút action theo toà (4.8). |
 
-### 4.5 Visibility đọc: `current_visible_owner_ids`, `is_staff_of`, `staff_building_scope`
+- View `accounts_with_balance` vẫn `security_invoker = true` (tôn trọng RLS,
+  từ `20260506000004`) — điểm này không đổi.
+- Lưu ý **jobs**: từng bị siết SELECT về creator/assignee
+  (`20260526000001_jobs_scope_owner_or_assignee`), nhưng batch F đã drop policy
+  đó — hiện `jobs_select_rbac` (theo toà / org-entity `'tasks'`) là policy SELECT
+  duy nhất. Doc Vận hành nào còn ghi "chỉ creator/assignee thấy job" cần soát lại.
 
-- `is_staff_of(owner)` / `staff_building_scope(owner)`
-  ([migrations-bundle/20260427_apply_staff_visibility.sql](supabase/migrations-bundle/20260427_apply_staff_visibility.sql)):
-  - `is_staff_of` → caller có làm staff cho owner không.
-  - `staff_building_scope` → mảng `building_id[]` caller xem được dưới owner;
-    trả `NULL` nếu có ít nhất 1 row `building_id IS NULL` (xem tất cả toà).
-- `current_visible_owner_ids()`
-  ([20260506000004_tenant_symmetric_visibility.sql](supabase/migrations/20260506000004_tenant_symmetric_visibility.sql)):
-  trả tập owner_id mà caller được SELECT, gồm: **chính mình + các owner mình làm
-  staff + staff của mình + đồng nghiệp (co-staff) chung owner**. Nhánh co-staff
-  được thêm để nhân viên cùng tenant thấy dữ liệu của nhau (vd sổ quỹ của đồng
-  nghiệp trong dropdown). Đồng thời view `accounts_with_balance` được chuyển sang
-  `security_invoker = true` để tôn trọng RLS (trước đó leak xuyên tenant).
-- `customer_in_my_scope(_owner, _customer_id)` — đã mô tả ở 4.4.
+### 4.6 Quyền `income_expenses.all_buildings` — vượt scope toà trong form thu chi
 
-### 4.6 RPC cho FE: `get_my_context` & `get_my_permissions`
+[20260603000002_ie_all_buildings_permission.sql](supabase/migrations/20260603000002_ie_all_buildings_permission.sql)
++ siết lại ở [20260603000003_ie_all_buildings_scope_own.sql](supabase/migrations/20260603000003_ie_all_buildings_scope_own.sql).
+
+- **Cờ phạm vi** trong JSONB permissions (role hoặc per-staff):
+  `{"income_expenses": {"all_buildings": true}}` — cho phép staff (vd kế toán)
+  XEM + GHI phiếu thu chi cho **mọi toà của chủ**, CHỈ trong module Thu chi;
+  toà/phòng ở các module khác vẫn khoá theo toà quản lý.
+- 2 helper SECURITY DEFINER, đều đọc `COALESCE(sa.permissions, r.permissions)`
+  (Tier-2 aware): `ie_all_buildings_scope(b)` cho SELECT và
+  `can_ie_all_buildings(action, b)` cho WRITE (cần thêm quyền
+  `create/edit/delete` trên `income_expenses`).
+- 8 policy **additive** trên `income_expenses` + `income_expense_items` (OR với
+  RBAC thường). Migration `20260603000003` siết thêm `user_id = auth.uid()`:
+  quyền này chỉ mở **phiếu do chính mình tạo** xuyên toà (đủ cho luồng
+  `.insert().select()` RETURNING và sửa phiếu mình) — KHÔNG mở xem/sửa phiếu
+  người khác; phiếu ở toà mình quản lý vẫn thấy/sửa đầy đủ qua RBAC thường.
+- 2 RPC SECURITY DEFINER cấp dữ liệu dropdown cho form: `ie_form_buildings()`
+  (kèm cờ `managed` để FE xếp toà quản lý lên đầu; điều kiện per-owner chống lộ
+  tên toà của owner khác với staff đa-owner) và `ie_form_rooms(_building_id)`.
+  FE: [useIncomeExpenseFormScope](src/hooks/useIncomeExpenseFormScope.ts) — form
+  thu chi KHÔNG query buildings/rooms trực tiếp.
+- Trang danh sách/ô lọc Thu chi **vẫn theo scope toà quản lý** (tên toà ngoài
+  scope hiện "—") — phạm vi "mọi toà" gói gọn trong FORM, đúng chủ ý.
+
+### 4.7 RPC cho FE: `get_my_context` & `get_my_permissions`
 
 Hai RPC này tồn tại vì **RLS của `staff_assignments` chỉ cho owner đọc** → staff
 không tự query được context/permissions của chính mình. Cả hai `SECURITY DEFINER`.
@@ -332,14 +446,45 @@ không tự query được context/permissions của chính mình. Cả hai `SEC
   - **Bất biến quan trọng**: cổ đông không-staff trước đây rơi vào nhánh "owner
     thật → superadmin bypass" gây lỗ hổng; nhánh cổ đông (3) đóng lỗ hổng này
     bằng cách trả permissions read-only tường minh.
+  - ⚠️ **Chỉ đọc 1 row**: với staff nhiều assignment, RPC lấy đúng 1 row (ưu tiên
+    `building_id IS NULL`, rồi `created_at ASC`). Nếu các row của 1 staff lệch
+    `permissions` (xem gotcha 5.2), quyền hiệu lực phụ thuộc thứ tự tạo row.
 
 - `get_my_permissions` đi kèm `can_do_on_building(_table,_action,_building_id)` và
-  `can_access_org_entity(_resource,_action)` — bản kiểm quyền có scope toà / không
-  scope, đều đọc `COALESCE(sa.permissions, role.permissions)` (tôn trọng Tier 2).
-- `can_access_building(_building_id)` (4.x) còn có nhánh **cổ đông**: cổ đông
+  `can_access_org_entity(_resource,_action)` (4.3) — bản kiểm quyền có scope toà /
+  không scope, đều đọc `COALESCE(sa.permissions, role.permissions)` (tôn trọng Tier 2).
+- `can_access_building(_building_id)` (4.3) còn có nhánh **cổ đông**: cổ đông
   SELECT được đúng các toà có trong `building_shareholders` của mình.
 
-### 4.7 RPC quản trị nhân sự
+### 4.8 Gate phía FE: RequirePermission · AdminOnlyRoute · useIsAdmin · useMyBuildingScope
+
+Lớp guard route/UI mirror các helper DB (gate FE chỉ là UX — enforcement thật nằm
+ở RLS/RPC):
+
+- [RequirePermission](src/components/auth/RequirePermission.tsx) `(module,
+  action="view")` — bọc route trong [App.tsx](src/App.tsx), redirect về `/` khi
+  `can(perms, module, action)` false; dữ liệu từ
+  [useMyPermissions](src/hooks/useMyPermissions.ts) (RPC `get_my_permissions`,
+  staleTime 5 phút).
+
+  > ⚠️ **Module "users" là phantom key**: route `/settings/staff` được gate bằng
+  > `RequirePermission module="users"` — key này **không tồn tại** trong registry
+  > [permissions.ts](src/lib/permissions.ts), không hiện trong PermissionMatrix,
+  > không template nào cấp. Hệ quả: chỉ caller có sentinel `__superadmin`
+  > (owner gốc / super admin / tenant admin) vào được trang Phân quyền; KHÔNG có
+  > cách uỷ quyền quản lý nhân sự cho một staff thường qua matrix. Muốn uỷ quyền
+  > phải thêm module `users` vào `PERMISSION_GROUPS` hoặc đổi guard sang module
+  > có thật.
+
+- [AdminOnlyRoute](src/components/auth/AdminOnlyRoute.tsx) — guard `/admin/users`,
+  dựa [useIsAdmin](src/hooks/useIsAdmin.ts) (mirror RPC `is_admin()`, staleTime
+  5 phút). Xem caveat super-admin-"thuần" ở 4.2.
+- [useMyBuildingScope](src/hooks/useMyBuildingScope.ts) — mirror scope toà qua RPC
+  `get_my_assignments` + `useMyContext` + `useIsAdmin`: trả `canManageAll` /
+  `buildingIds` (Set) / `hasAnyScope` / `canManageBuilding(b)` để ẩn nút
+  Thêm/Sửa/Xoá theo toà trên các trang nghiệp vụ.
+
+### 4.9 RPC quản trị nhân sự
 
 - **`delete_staff_member(p_staff_id)`**
   ([20260502000002_delete_staff_member_rpc.sql](supabase/migrations/20260502000002_delete_staff_member_rpc.sql)):
@@ -348,24 +493,31 @@ không tự query được context/permissions của chính mình. Cả hai `SEC
   với `user_id = auth.uid()`); **chặn tự xoá mình** (ERRCODE 42501). Mục đích:
   `auth.users` là single source of truth — xoá nửa vời (chỉ staff_assignments)
   để lại username chiếm chỗ + vẫn đăng nhập được.
+
+  > ⚠️ Guard yêu cầu caller là **owner trực tiếp** của assignment
+  > (`user_id = auth.uid()`), không nhận `is_admin`/`is_super_admin`. Tenant
+  > admin vẫn thấy nút Xoá trên `/settings/staff` nhưng RPC sẽ 42501 vì mọi
+  > assignment có `user_id` = owner gốc.
+
 - Tạo tài khoản: 2 đường — (a) FE provision qua `supabase.auth.signUp` +
   insert `staff_assignments` (xem 5.2), (b) super admin gọi edge function
   `admin-create-user` từ [UsersPage](src/pages/admin/UsersPage.tsx).
 
-### 4.8 4 template hệ thống
+### 4.10 4 template hệ thống
 
 Seed tại [20260529000002_seed_system_role_templates.sql](supabase/migrations/20260529000002_seed_system_role_templates.sql):
 
 | Template | permissions | Dùng cho |
 |----------|-------------|----------|
 | **Super Admin** | `{"__superadmin": true}` | Toàn quyền, bypass mọi check. |
-| **Quản Lý Tòa** | full CRUD + duyệt trên ~30 module vận hành | Quản lý 1+ toà. |
+| **Quản Lý Tòa** | full CRUD + duyệt trên ~30 module vận hành (riêng `areas`/`templates` chỉ `view`; `auto_debt`/`excess_amounts` chỉ `view`+`edit`) | Quản lý 1+ toà. |
 | **Partner** | quản lý leads/cọc + xem BĐS, hợp đồng read-only | CTV/đối tác. |
 | **Viewer** | mọi module chỉ `view` | Chỉ xem (read-only). |
 
 `is_system=true` → UI không cho sửa/xoá, chỉ "Tạo bản sao". Migration này cũng
-migrate role cũ (Admin→Super Admin, Manager→Quản Lý Tòa) và snapshot permissions
-vào mọi row `staff_assignments`.
+migrate role cũ (Admin→Super Admin — chính là **self-assignment của owner gốc**
+nhắc ở 4.2, Manager→Quản Lý Tòa) và snapshot permissions vào mọi row
+`staff_assignments`.
 
 ---
 
@@ -407,6 +559,10 @@ link email.
 (tab "Mẫu phân quyền") và **nhân viên** (tab "Nhân viên"). Dữ liệu:
 `useStaffAssignments`, `useRoles`, `useBuildings`, `useAreas`.
 
+Route được gate bằng `RequirePermission module="users"` — module **phantom**
+(không có trong registry), nên thực tế chỉ ai có `__superadmin` vào được trang
+này (xem cảnh báo 4.8).
+
 #### Tab "Mẫu phân quyền"
 
 - Hiển thị 4 card system + N card custom (đếm số staff/role qua `useStaffAssignments`).
@@ -444,32 +600,67 @@ flowchart TD
    buộc, nếu không "tất cả toà" phải chọn ≥ 1 toà, phone `10-11` số / email đúng
    regex.
 
+**Bước ③ Phạm vi toà**: chips khu vực (`useAreas`) chỉ là **bộ lọc UI** — click
+toggle `form.area_ids` để lọc client-side danh sách toà (`useBuildings`) theo
+`b.area_id` + ô tìm kiếm. Khi lưu chỉ `building_ids` (hoặc `null` = tất cả toà)
+được ghi vào `staff_assignments`; `area_ids` **không persist**.
+
 **Sửa — `useUpdateStaffMember`**: (1) update `profiles` (RLS `profiles_admin_update`
 cho phép owner sửa profile staff mình quản lý); (2) **diff** assignments hiện có
 vs `wantBuildings`: xoá row toà bị bỏ, insert row toà mới, update `role_id` +
 re-snapshot `permissions` khi đổi role. Sau đó nếu draft khác `role.permissions`
 → `useUpdateStaffPermissions` (UPDATE cùng JSONB cho mọi row của staff).
 
-**Xoá — `useRemoveStaffMember`** → RPC `delete_staff_member` (4.7).
+> ⚠️ Gotcha hiện có quanh handleSave / useUpdateStaffMember:
+>
+> - **Không "revert về khớp mẫu" được**: handleSave chỉ gọi
+>   `useUpdateStaffPermissions` khi draft **khác** `role.permissions`. Staff đang
+>   có override trong DB, owner chỉnh matrix về đúng template rồi Lưu → diff = 0
+>   → không UPDATE → override cũ vẫn nằm trong `staff_assignments.permissions`;
+>   sau refetch card lại hiện "N thay đổi so với mẫu".
+> - **Rows của 1 staff có thể lệch permissions**: giữ nguyên role nhưng thêm toà
+>   mới → row mới snapshot từ `role.permissions` trong khi row cũ giữ override;
+>   `get_my_permissions` chỉ đọc 1 row (4.7) nên quyền hiệu lực phụ thuộc thứ tự
+>   tạo row. (Được "heal" một phần vì handleSave update mọi row khi draft khác
+>   mẫu, nhưng gọi API trực tiếp hoặc lỗi giữa chừng vẫn để lệch.)
+> - **Provision không rollback**: nếu insert `staff_assignments` thất bại SAU khi
+>   signUp thành công → auth user mồ côi chiếm username, lần tạo lại báo "đã được
+>   sử dụng" — phải dọn bằng `delete_staff_member`.
 
-**Áp mẫu nhanh — `useApplyTemplate`**: copy `role.permissions` vào
-`staff_assignments.permissions` cho mọi row + đổi `role_id`.
+**Xoá — `useRemoveStaffMember`** → RPC `delete_staff_member` (4.9; lưu ý tenant
+admin thấy nút Xoá nhưng RPC trả 42501 — chỉ owner trực tiếp xoá được).
+
+**Áp mẫu trong Sheet — `applyTemplateToDraft`**: copy `role.permissions` vào
+**draft client-side**; thay đổi chỉ được ghi khi bấm Lưu (qua flow ở trên).
+⚠️ Hook `useApplyTemplate` trong
+[useStaffAssignments.ts](src/hooks/useStaffAssignments.ts) (copy thẳng vào DB +
+đổi `role_id`) được khởi tạo trong StaffPage nhưng **không nơi nào gọi** — dead
+code, đừng nhầm là flow áp mẫu chính. Tương tự, `useCreateStaffAssignment` /
+`useUpdateStaffAssignment` / `useDeleteStaffAssignment` /
+`useStaffAssignmentsByStaff` còn export nhưng không trang nào import — legacy.
 
 Card nhân viên hiển thị badge: phạm vi toà ("Tất cả toà" / "N toà (…)"), và trạng
 thái quyền: "Bypass toàn quyền" (super), "Khớp mẫu" (diff=0), hoặc "N thay đổi so
 với mẫu" (`diffPermissions`).
 
-### 5.3 `/admin/users` — Quản lý tài khoản (super admin)
+### 5.3 `/admin/users` — Quản lý tài khoản (admin)
 
-[UsersPage.tsx](src/pages/admin/UsersPage.tsx). Mục đích: super admin xem danh
-sách toàn bộ tài khoản và tạo tài khoản gốc.
+[UsersPage.tsx](src/pages/admin/UsersPage.tsx). Mục đích: xem danh sách toàn bộ
+tài khoản và tạo tài khoản gốc.
 
-- Hiển thị (`useAdminUsers`): join `profiles` + `super_admins` (cờ) +
-  `staff_assignments` (đếm) → cột Họ tên/Email/SĐT/Vai trò (Super admin | Staff |
-  Chưa gán)/số toà được giao/ngày tạo.
+- **Guard**: [AdminOnlyRoute](src/components/auth/AdminOnlyRoute.tsx) → RPC
+  `is_admin()` — pass cho staff có role `__superadmin`/`'Admin'` (tức cả **tenant
+  admin**, không riêng super admin). ⚠️ `is_admin()` không OR `is_super_admin()`
+  → super admin "thuần" (chỉ có row `super_admins`, không có staff_assignment
+  admin) bị guard FE chặn dù DB cho phép mọi thứ (xem 4.2). Chỉ edge function
+  `admin-create-user` mới check bảng `super_admins` thật sự.
+- Hiển thị ([useAdminUsers](src/hooks/useAdminUsers.ts)): kéo toàn bộ `profiles`
+  + toàn bộ `super_admins` (cờ) + toàn bộ `staff_assignments` rồi đếm
+  client-side (không phân trang) → cột Họ tên/Email/SĐT/Vai trò (Super admin |
+  Staff | Chưa gán)/số toà được giao/ngày tạo.
 - Tạo tài khoản (`useCreateAdminUser`): gọi edge function `admin-create-user`
-  (yêu cầu caller là super_admin trên DB). Validate: email + password (≥6) bắt
-  buộc. Sau khi tạo, phân quyền chi tiết làm ở `/settings/staff`.
+  (403 nếu caller không nằm trong `super_admins`). Validate: email + password
+  (≥6) bắt buộc. Sau khi tạo, phân quyền chi tiết làm ở `/settings/staff`.
 
 ### 5.4 `/account/profile` — Hồ sơ cá nhân
 
@@ -481,8 +672,9 @@ thông tin của mình.
   - Lưu thông tin → `useUpdateProfile` (UPDATE `profiles WHERE id=auth.uid()`).
   - Đổi avatar → `useUploadAvatar`: upload bucket `avatars`
     (`<uid>/avatar.<ext>`, ≤ 2MB, hỗ trợ paste clipboard) rồi cập nhật
-    `avatar_url`. ⚠️ Hiện dùng `getPublicUrl` — xem cảnh báo bucket private ở
-    phần 6.
+    `avatar_url`. Dùng `getPublicUrl` — hợp lệ vì `avatars` KHÔNG nằm trong 7
+    bucket bị chuyển private ở `20260601000200` (ảnh nghiệp vụ nhạy cảm mới phải
+    đi qua StorageImage/useSignedUrl).
   - Đổi mật khẩu → `useChangePassword` → `supabase.auth.updateUser`. Validate:
     mật khẩu mới ≥ 6 ký tự + khớp confirm (lưu ý khác chuẩn mạnh ở ResetPassword).
 
@@ -492,20 +684,45 @@ thông tin của mình.
 
 **Ra (domain này cung cấp cho domain khác):**
 
-- **Mọi domain nghiệp vụ** gọi xuống các helper RLS định nghĩa ở đây:
-  `is_super_admin / is_admin / staff_can / staff_in_building / can_access_building
-  / can_do_on_building / current_visible_owner_ids`. Cột `user_id` của bảng
-  nghiệp vụ chính là khoá tenant mà các helper này dùng.
+- **Mọi domain nghiệp vụ** gọi xuống các helper RLS định nghĩa ở đây. Bộ mặt xuất
+  khẩu **hiện hành** là RBAC building-keyed (Tier-2 aware):
+  `can_access_building / can_do_on_building / can_access_org_entity /
+  building_of_contract / building_of_invoice / building_of_payment` + 2 tầng
+  bypass `is_super_admin / is_admin` (4.2-4.3). Các helper owner-keyed cũ
+  (`staff_can`, `staff_in_building`, `current_visible_owner_ids`…) chỉ còn hiệu
+  lực residual (4.4-4.5) — **doc domain khác nào còn trích mục 4.3-4.5 phiên bản
+  cũ ("staff_can là động cơ chính"…) cần soát lại theo bản này.**
+- → **Hợp đồng**: RPC vòng đời (renew/transfer/terminate_*) được bọc wrapper kiểm
+  `can_do_on_building('contracts','edit', room→building)` rồi mới gọi `*_impl`,
+  REVOKE anon (`20260601000100`).
 - → **Bất động sản**: `staff_assignments.building_id → buildings.id` là chiều
-  scope toà; `default_area_id` trong `get_my_context` khoá filter khu vực.
+  scope toà; `default_area_id` trong `get_my_context` khoá filter khu vực — ⚠️
+  dựa trên quy ước ngầm "tên khu vực (lowercase) = username staff": đổi tên khu
+  vực sẽ làm mất auto-lock mà không có cảnh báo nào.
 - → **Vận hành / Công việc**: `profiles.id` được tham chiếu làm "người phụ trách"
   (`issues.assigned_to`, `jobs.assignee_id`, `leads.assigned_staff_id`,
-  `asset_maintenance.assigned_to`); `departments` gắn vào `issues`/`job_types`.
+  `asset_maintenance.assigned_to`); `departments` gắn vào `issues`/`job_types`;
+  dropdown chung là `useStaffUsers` (profiles, lọc `is_active`). SELECT của
+  `jobs` hiện theo `jobs_select_rbac` (không còn siết creator/assignee — xem 4.5).
 - → **Sổ quỹ / Thu chi**: `account_shared_users.account_id → accounts.id` mở rộng
-  quyền dùng sổ quỹ cho nhiều user; `staff_can('cashbooks', …)` gate sổ quỹ.
+  quyền dùng sổ quỹ cho nhiều user; `accounts` vẫn gate bằng
+  `staff_can('cashbooks', …)` — **role-only, lệch Tier 2** (4.4). Cờ
+  `income_expenses.all_buildings` + RPC `ie_form_buildings`/`ie_form_rooms` gói
+  scope "mọi toà" trong form thu chi (4.6); list/ô lọc vẫn theo scope toà.
 - → **Cổ đông & Tài chính**: `get_my_permissions` và `can_access_building` có
   nhánh riêng cho cổ đông (`shareholders.auth_user_id`, `building_shareholders`)
   → cổ đông read-only theo toà có cổ phần + toàn quyền `personal_finance`.
+- → **Sale Phòng / Phòng trống công khai** (**WIP — chưa commit**, working tree
+  2026-06-10): action mới `sale_phong.create_deposit` — user đăng nhập có quyền
+  này thấy nút "Tạo cọc nhanh" trên trang công khai `/r/:token`
+  ([PhongTrongPage](src/pages/phong-trong/PhongTrongPage.tsx) gate qua
+  `can(perms, "sale_phong", "create_deposit")`).
+  [QuickDepositModal](src/pages/phong-trong/QuickDepositModal.tsx) tạo phiếu thu
+  cọc: sổ "CỌC (giữ hộ khách)" qua RPC `get_or_create_deposit_account`, loại thu
+  qua RPC mới `ensure_room_deposit_type` (migration untracked
+  `20260608100000`, đảm bảo `is_deposit = TRUE`) → trigger
+  `recompute_room_reservation` set `rooms.status = RESERVED` (liên kết Đặt cọc +
+  Bất động sản).
 
 **Vào (domain này phụ thuộc):**
 

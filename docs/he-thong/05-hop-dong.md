@@ -11,16 +11,16 @@ Domain Hợp đồng quản lý toàn bộ **vòng đời** của một hợp đ
 ```
 Lead → (cọc giữ phòng) → KÝ HĐ (DRAFT/ACTIVE) → chốt chỉ số đầu → sinh hoá đơn cọc + tháng đầu
      → vận hành (ghi chỉ số → hoá đơn định kỳ → thu chi → công nợ)
-     → biến động: GIA HẠN (EXTENDED) / CHUYỂN PHÒNG / NHƯỢNG HĐ / ĐĂNG KÝ CHUYỂN ĐI
+     → biến động: GIA HẠN (giữ ACTIVE, ghi contract_extensions) / CHUYỂN PHÒNG / NHƯỢNG HĐ / ĐĂNG KÝ CHUYỂN ĐI
      → KẾT THÚC: THANH LÝ (move-out: hoàn cọc/cấn trừ) hoặc BỎ CỌC (forfeit) → TERMINATED
 ```
 
 Vai trò trung tâm:
 
 - **Một phòng chỉ có một HĐ đang hiệu lực tại một thời điểm** — bất biến được bảo vệ ở nhiều tầng (hook tạo HĐ, RPC chuyển phòng).
-- HĐ là **đối tượng phân quyền theo toà nhà**: mọi RPC vòng đời đều kiểm tra `can_do_on_building('contracts','edit', building_id)` (qua phòng) — xem [migration authz](../../supabase/migrations/20260601000100_sec_contract_rpc_authz_and_anon_revoke.sql).
+- HĐ là **đối tượng phân quyền theo toà nhà**: mọi RPC vòng đời đều kiểm tra `can_do_on_building('contracts','edit', building_id)` (qua phòng) — xem [migration authz](../../supabase/migrations/20260601000100_sec_contract_rpc_authz_and_anon_revoke.sql). Ngoài wrapper RPC, bản thân bảng `contracts` + 6 bảng con cũng có **tầng RLS RBAC theo toà** — xem §4.6.
 - HĐ sinh **mã công khai ngắn** (`public_code`, 6 ký tự) cho link QR `/c/:code` để khách tự tra hoá đơn mới nhất mà không cần đăng nhập.
-- enum trạng thái **`contract_status`**: `DRAFT / ACTIVE / EXTENDED / TRANSFERRED / TERMINATED / EXPIRED`. **EXTENDED phải được đối xử như ACTIVE** ở mọi check vận hành — dùng helper `isContractInEffect()` trong [src/types/contract.ts](../../src/types/contract.ts).
+- enum trạng thái **`contract_status`**: `DRAFT / ACTIVE / EXTENDED / TRANSFERRED / TERMINATED / EXPIRED`. **`EXTENDED` đã NGƯNG DÙNG từ 2026-06-06** ([migration decouple](../../supabase/migrations/20260606140000_contract_extended_decouple.sql)): HĐ gia hạn **giữ nguyên `ACTIVE`**, mọi HĐ `EXTENDED` cũ đã được di trú về `ACTIVE` (giá trị enum vẫn tồn tại nhưng không còn được ghi). "Đang hiệu lực" = **chỉ `ACTIVE`** — helper `isContractInEffect()` / `ACTIVE_CONTRACT_STATUSES = ['ACTIVE']` trong [src/types/contract.ts](../../src/types/contract.ts). Dấu **"đã gia hạn"** là dấu hiệu RIÊNG suy từ bảng `contract_extensions` (status `APPROVED/COMPLETED`) qua hook [useRenewedContracts.ts](../../src/hooks/useRenewedContracts.ts) (`useRenewedContractIds`/`useIsContractRenewed` — 1 query trả `Set` tra O(1)) + chip xanh dương [RenewedBadge](../../src/components/contracts/RenewedBadge.tsx). Lưu ý: `RenewedBadge` hiện **chỉ** hiển thị ở header trang chi tiết — danh sách `/contracts` chưa hiện dấu này.
 
 Hai trang chính:
 
@@ -43,7 +43,7 @@ Các cột chủ chốt:
 | | `public_code` (NOT NULL, UNIQUE) | Mã ngắn 6 ký tự base-57, tự sinh, dùng cho link QR `/c/<code>`. |
 | | `parent_contract_id` → `contracts.id` | Tự tham chiếu: HĐ con (gia hạn tạo-mới / chuyển phòng / nhượng) trỏ về HĐ gốc. |
 | Quan hệ | `room_id` → `rooms.id` | Phòng thuê. Nullable (HĐ chưa gán phòng). |
-| | `tenant_id` → `tenants.id` | **Legacy**. Hiện để `NULL` khi tạo mới; khách thật nằm ở `contract_customers`. FK còn nhưng không dùng. |
+| | `tenant_id` → `tenants.id` | **Legacy**. `useCreateContract` để `NULL` khi tạo mới; khách thật nằm ở `contract_customers`. FK `contracts_tenant_id_fkey` → `tenants` **vẫn tồn tại** trên live DB ([types.ts](../../src/integrations/supabase/types.ts)). ⚠️ Riêng luồng **Nhập Excel** ([ContractImportExportDialog](../../src/components/contracts/ContractImportExportDialog.tsx)) vẫn set `tenant_id = customers.id` — id bảng `customers` nhét vào cột FK trỏ `tenants`, nên khách **mới tạo** qua import có nguy cơ lỗi FK khi insert HĐ. |
 | Trạng thái | `status` (`contract_status`, default `DRAFT`) | Vòng đời. Tạo từ UI luôn set thẳng `ACTIVE`. |
 | Thời gian | `signed_date`, `start_date`, `end_date` (NOT NULL) | Ngày ký / bắt đầu / kết thúc. `end_date > start_date` (zod + DB). |
 | | `actual_end_date` | Ngày kết thúc thực (set khi thanh lý/bỏ cọc). |
@@ -73,7 +73,7 @@ Mục đích: nối nhiều khách vào một HĐ, đánh dấu **người đạ
 
 ### 2.3. `contract_tenants` — junction HĐ ↔ tenant (legacy)
 
-Cùng vai trò junction nhưng trỏ sang bảng `tenants` (mô hình cũ). Còn cột `move_in_date`, `is_representative`. Chỉ luồng **import hàng loạt cũ** (`useBulkCreateContracts`) còn ghi vào đây; luồng tạo HĐ mới dùng `contract_customers`.
+Cùng vai trò junction nhưng trỏ sang bảng `tenants` (mô hình cũ). Còn cột `move_in_date`, `is_representative`. **Không còn đường ghi nào từ UI**: hook import hàng loạt cũ `useBulkCreateContracts` chỉ còn là định nghĩa deprecated trong [useContracts.ts](../../src/hooks/useContracts.ts) (không UI nào gọi); luồng import thật ([ContractImportExportDialog](../../src/components/contracts/ContractImportExportDialog.tsx) — nút Nhập của `/contracts`) ghi vào `contract_customers`, và luồng tạo HĐ mới cũng dùng `contract_customers`.
 
 ### 2.4. `contract_services` — dịch vụ đăng ký trong HĐ
 
@@ -86,7 +86,7 @@ Mục đích: chốt **đơn giá riêng theo HĐ** và **chỉ số đầu** ch
 
 Mục đích: audit mỗi lần gia hạn.
 
-- `extension_type` (text): `UPDATE_EXISTING` (gia hạn tại chỗ — RPC `renew_contract` ghi loại này), `CREATE_NEW`/`RENEWAL` (tạo HĐ mới link parent — đường legacy).
+- `extension_type` (text, CHECK **chỉ cho phép** `UPDATE_EXISTING` | `CREATE_NEW` — [015](../../supabase/migrations/015_contract_extensions.sql)): `UPDATE_EXISTING` (gia hạn tại chỗ — RPC `renew_contract` ghi loại này), `CREATE_NEW` (tạo HĐ mới link parent — đường legacy; bản hiện hành set HĐ cũ → `EXPIRED`). ⚠️ Hook deprecated `useExtendContract` (vẫn được trang chi tiết dùng — xem §5.2) ghi `'SIMPLE'` → **vi phạm CHECK, lỗi DB ngay khi submit**.
 - `old_end_date`, `new_end_date`, `extension_months`, `new_rent_price`/`rent_price_changed`, `new_deposit`/`additional_deposit_required`/`deposit_changed`, `services_changed`/`new_services` (jsonb).
 - `new_contract_id` → `contracts.id` (nếu tạo HĐ mới).
 - `status` (text, default `DRAFT`): vòng `DRAFT → APPROVED → COMPLETED` (đường legacy) hoặc ghi thẳng `COMPLETED` (RPC mới).
@@ -107,8 +107,10 @@ Mục đích: lưu tính toán tài chính khi thanh lý.
 - `actual_move_out_date` (NOT NULL), `termination_date`, `notice_date`.
 - Tính tiền: `outstanding_debt`, `prorated_days/rent/services`, các loại phí (`early_termination_fee`, `notice_violation_fee`, `damage_fee` + `damage_description` + `damage_images` jsonb, `cleaning_fee`, `other_fees` + mô tả), `total_deposit` (NOT NULL), `total_deductions`, `refund_amount`, `refund_method` (kiểu enum `payment_method` — TM/TK/TT), `refund_date`, `refund_receipt_url`.
 - `status` (text): `DRAFT → PENDING_APPROVAL → APPROVED → COMPLETED` (legacy) hoặc `COMPLETED` (RPC mới).
+- `internal_notes` (text) — ghi chú nội bộ của staff.
+- **UNIQUE INDEX `idx_terminations_unique_contract`** ([013](../../supabase/migrations/013_contract_terminations.sql)): tối đa **1 biên bản thanh lý / HĐ**. ⚠️ RPC thanh lý insert audit trong khối `BEGIN...EXCEPTION WHEN OTHERS THEN NULL` → nếu HĐ đã có bản ghi từ trước (vd bản `PENDING_APPROVAL` mồ côi do dialog legacy tạo — xem §5.2) thì **audit row của lần thanh lý thật bị mất im lặng**.
 
-> Nhiều cột tài chính được **trigger tự tính** lúc INSERT/UPDATE (xem mục 4) — frontend không cần tính tay.
+> Nhiều cột tài chính được **trigger `auto_calculate_termination_financials` tự tính (BEFORE INSERT/UPDATE) và ĐÈ LÊN giá trị truyền vào** (xem mục 4.2) — frontend không cần tính tay, nhưng cũng nghĩa là số RPC truyền vào audit bị đè: RPC move-out đánh PAID mọi hoá đơn **trước** khi insert audit, nên trigger tính lại `outstanding_debt ≈ 0` (mất số nợ thật đã quyết toán); `prorated_*` cũng bị tính lại theo công thức cũ dù RPC không dùng prorate.
 
 ### 2.8. `asset_handovers` — biên bản bàn giao tài sản (10 cột)
 
@@ -120,7 +122,7 @@ Mục đích: biên bản nhận/trả phòng kèm danh mục tài sản.
 
 ### Enum liên quan
 
-- **`contract_status`**: `DRAFT, ACTIVE, EXTENDED, TRANSFERRED, TERMINATED, EXPIRED`.
+- **`contract_status`**: `DRAFT, ACTIVE, EXTENDED, TRANSFERRED, TERMINATED, EXPIRED` — giá trị `EXTENDED` vẫn tồn tại trong enum nhưng **đã ngưng ghi** (xem §1); reader-guard `IN ('ACTIVE','EXTENDED')` ở các RPC chỉ là lớp tương thích.
 - **`payment_cycle`**: `MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL`.
 - Cột `contract_terminations.refund_method` dùng enum **`payment_method`** (`TM/TK/TT`) — không có enum `refund_method` riêng.
 
@@ -178,18 +180,17 @@ Sơ đồ trạng thái HĐ:
 stateDiagram-v2
     [*] --> DRAFT
     DRAFT --> ACTIVE : tạo từ UI (set thẳng ACTIVE)
-    ACTIVE --> EXTENDED : renew_contract (gia hạn tại chỗ)
-    EXTENDED --> EXTENDED : renew_contract (gia hạn tiếp)
+    ACTIVE --> ACTIVE : renew_contract (gia hạn tại chỗ — GIỮ ACTIVE, ghi contract_extensions)
     ACTIVE --> TRANSFERRED : apply_contract_transfer (legacy, có tạo HĐ con)
     ACTIVE --> TERMINATED : terminate_move_out / forfeit
-    EXTENDED --> TERMINATED : terminate_move_out / forfeit
-    ACTIVE --> EXPIRED : (hết hạn — display-status, ít set DB)
+    ACTIVE --> EXPIRED : hết hạn (display-status, ít set DB) / create_new_contract_extension (legacy, HĐ cũ bị HĐ mới thay)
     TERMINATED --> [*]
 
-    note right of EXTENDED
-        EXTENDED = "đang hiệu lực"
-        isContractInEffect() = true
-        → cho mọi thao tác như ACTIVE
+    note right of ACTIVE
+        EXTENDED đã NGƯNG DÙNG (2026-06-06)
+        isContractInEffect() = chỉ ACTIVE
+        "Đã gia hạn" suy từ contract_extensions
+        (useRenewedContractIds + RenewedBadge)
     end note
 ```
 
@@ -203,7 +204,7 @@ stateDiagram-v2
 |---|---|---|
 | `generate_contract_number` ([008](../../supabase/migrations/008_triggers_functions.sql)) | BEFORE INSERT | Nếu `contract_number` NULL → sinh `<prefix>-<năm>-<đếm 5 số>` theo `settings`. |
 | `set_contract_public_code` ([20260530000003](../../supabase/migrations/20260530000003_contract_public_short_code.sql)) | BEFORE INSERT | Sinh `public_code` 6 ký tự base-57 (bỏ ký tự dễ nhầm), retry khi trùng, >10 lần → 8 ký tự. UNIQUE index bảo đảm không trùng. |
-| `update_room_status_on_contract_change` ([20260601000300](../../supabase/migrations/20260601000300_drop_bed_remnants_db.sql)) | AFTER INSERT/UPDATE | HĐ INSERT `ACTIVE` → phòng `OCCUPIED`. UPDATE rời `ACTIVE` → phòng `AVAILABLE` **nếu không còn HĐ ACTIVE khác**. ⚠️ Nhánh free-phòng chỉ kiểm `status = 'ACTIVE'` (không gồm EXTENDED) — RPC thanh lý/chuyển phòng tự xử lý phòng nên không phụ thuộc hành vi này. |
+| `update_room_status_on_contract_change` (bản hiện hành [20260606140000](../../supabase/migrations/20260606140000_contract_extended_decouple.sql)) | AFTER INSERT/UPDATE | Active-set = `IN ('ACTIVE','EXTENDED')` cho **cả 3 nhánh** (phòng hờ dữ liệu cũ): INSERT vào active-set → phòng `OCCUPIED`; UPDATE rời active-set → phòng `AVAILABLE` **nếu không còn HĐ trong active-set khác**; UPDATE vào active-set → `OCCUPIED`. RPC thanh lý/chuyển phòng tự xử lý phòng nên không phụ thuộc hành vi này. |
 | `update_asset_status_on_contract_change` ([008](../../supabase/migrations/008_triggers_functions.sql) → [no-op](../../supabase/migrations/20260528000008_fix_asset_trigger_no_op.sql)) | AFTER INSERT/UPDATE OF status | **Hiện no-op toàn phần** (chỉ `RETURN NEW`) — bảng `assets` không có cột status nên trigger không làm gì; giữ trigger để tránh DDL churn trên `contracts`. Việc đồng bộ `rooms.status` **do `update_room_status_on_contract_change` đảm nhiệm**, không phải hàm này. |
 
 ### 4.2. Trigger trên các bảng con
@@ -211,11 +212,11 @@ stateDiagram-v2
 | Trigger / hàm | Bảng | Tác động |
 |---|---|---|
 | `check_contract_representative` ([20250710000001](../../supabase/migrations/20250710000001_lease_contract_management.sql)) | `contract_customers` | Khi set `is_representative=true` → hạ cờ đại diện của mọi dòng khác cùng HĐ. **Bất biến: tối đa 1 đại diện/HĐ.** |
-| `auto_calculate_termination_financials` ([013](../../supabase/migrations/013_contract_terminations.sql)) | `contract_terminations` | BEFORE INSERT/UPDATE: tự tính `outstanding_debt` (Σ hoá đơn chưa PAID/CANCELLED), `prorated_rent`/`prorated_days` (theo ngày trong tháng rời), `prorated_services` (FIXED/PER_ROOM theo tỉ lệ ngày), set `total_deposit` từ HĐ. Validate `actual_move_out_date >= start_date`. |
+| `auto_calculate_termination_financials` ([013](../../supabase/migrations/013_contract_terminations.sql) → bản hiện hành [031](../../supabase/migrations/031_fix_all_deleted_at_issues.sql)) | `contract_terminations` | BEFORE INSERT/UPDATE: tự tính và **ĐÈ** `outstanding_debt` (Σ hoá đơn chưa PAID/CANCELLED), `prorated_rent`/`prorated_days` (theo ngày trong tháng rời), `prorated_services` (FIXED/PER_ROOM theo tỉ lệ ngày), `total_deposit` từ HĐ — kể cả đè lên giá trị RPC thanh lý truyền vào (xem ⚠️ §2.7). Validate `actual_move_out_date >= start_date`. |
 | `update_contract_on_termination_approved` ([013](../../supabase/migrations/013_contract_terminations.sql)) | `contract_terminations` | BEFORE UPDATE OF status: khi `status` chuyển → `APPROVED` ⇒ HĐ thành `TERMINATED` + set `actual_end_date` + ghi `approved_by/at`. (Đường legacy duyệt thủ công.) |
 | `auto_calculate_transfer_outstanding` ([014](../../supabase/migrations/014_contract_transfers.sql)) | `contract_transfers` | Tính `old_tenant_outstanding` (Σ hoá đơn chưa thanh toán) cho `TENANT_CHANGE`/`BOTH_CHANGE`. |
 | `apply_contract_transfer` ([014](../../supabase/migrations/014_contract_transfers.sql)) | `contract_transfers` | Khi `DRAFT→APPROVED`: cập nhật HĐ (đổi tenant/phòng/giá/cọc/ngày), set `status='TRANSFERRED'`, `parent_contract_id=id`, free phòng cũ / chiếm phòng mới. (Đường legacy.) |
-| `apply_contract_extension_update` ([015](../../supabase/migrations/015_contract_extensions.sql)) | `contract_extensions` | Khi `DRAFT→APPROVED` + type `UPDATE_EXISTING`: gia hạn HĐ (`end_date`, giá, cọc), set `EXTENDED`, thay dịch vụ nếu `services_changed`. (Đường legacy.) |
+| `apply_contract_extension_update` ([015](../../supabase/migrations/015_contract_extensions.sql) → bản hiện hành [20260606140000](../../supabase/migrations/20260606140000_contract_extended_decouple.sql)) | `contract_extensions` | Khi `DRAFT→APPROVED` + type `UPDATE_EXISTING`: gia hạn HĐ (`end_date`, giá, cọc), thay dịch vụ nếu `services_changed`, set bản ghi → `COMPLETED`. **KHÔNG đổi status HĐ nữa (giữ `ACTIVE`)** — bản cũ set `EXTENDED` đã bị thay. (Đường legacy duyệt thủ công.) |
 
 ### 4.3. RPC vòng đời (đường "thao tác tức thì" mà UI dùng)
 
@@ -223,17 +224,22 @@ stateDiagram-v2
 
 | RPC (impl) | Hook gọi | Việc làm |
 |---|---|---|
-| `renew_contract_impl` ([action_rpcs](../../supabase/migrations/20260510000012_contract_action_rpcs.sql)) | `useRenewContract` | Chỉ gia hạn HĐ `ACTIVE/EXTENDED`. Validate `new_end_date > end_date`. UPDATE `end_date`/giá/cọc + set `EXTENDED` + nối ghi chú. Ghi audit `contract_extensions` (type `UPDATE_EXISTING`, status `COMPLETED`). |
+| `renew_contract_impl` ([action_rpcs](../../supabase/migrations/20260510000012_contract_action_rpcs.sql) → bản hiện hành [20260606140000](../../supabase/migrations/20260606140000_contract_extended_decouple.sql)) | `useRenewContract` | Chỉ gia hạn HĐ `ACTIVE/EXTENDED` (reader-guard tương thích). Validate `new_end_date > end_date`. UPDATE `end_date`/giá/cọc + nối ghi chú `[Gia hạn]` — **GIỮ status `ACTIVE`** (bản cũ set `EXTENDED` đã bị thay). Ghi audit `contract_extensions` (type `UPDATE_EXISTING`, status `COMPLETED`, tự tính `extension_months = GREATEST(1, số tháng chênh)`) bằng INSERT **chắc chắn** — không còn bọc EXCEPTION nuốt lỗi như bản cũ, vì bản ghi này là **nguồn sự thật của "đã gia hạn"**. |
 | `transfer_room` ([recreate_transfer_room](../../supabase/migrations/20260603000100_recreate_transfer_room_no_bed.sql)) | `useTransferRoom` | **Chuyển phòng** HĐ đang hiệu lực sang phòng khác. Hàm **tự kiểm quyền** (`auth.uid()` + `is_super_admin()` OR `can_do_on_building('contracts','edit', building_of_room)`). Validate HĐ `ACTIVE/EXTENDED`, phòng đích ≠ phòng hiện tại và không bị HĐ hiệu lực khác chiếm. UPDATE `room_id` + `rent_price` (COALESCE) + nối ghi chú; **giữ nguyên status** (KHÔNG sang TRANSFERRED); free phòng cũ → `AVAILABLE`, phòng mới → `OCCUPIED`. Audit `contract_transfers` (`ROOM_CHANGE`, `status='COMPLETED'` ⇒ không kích trigger `apply_contract_transfer`). _Lịch sử: bản 6-tham-số (có bed) bị DROP ở [drop_beds 28/05](../../supabase/migrations/20260528000005_drop_beds.sql), tạo lại 5-tham-số (bỏ bed) ở migration 20260603000100._ |
-| `transfer_contract_impl` ([action_rpcs](../../supabase/migrations/20260510000012_contract_action_rpcs.sql)) | `useTransferContract` | **Đổi khách đại diện**: hạ cờ mọi khách, promote/insert khách mới làm đại diện; cập nhật giá/cọc. **Không** đổi status (HĐ vẫn ACTIVE/EXTENDED). Audit `contract_transfers` (`TENANT_CHANGE`). |
+| `transfer_contract_impl` ([action_rpcs](../../supabase/migrations/20260510000012_contract_action_rpcs.sql)) | `useTransferContract` | **Đổi khách đại diện**: hạ cờ mọi khách, promote/insert khách mới làm đại diện; cập nhật giá/cọc. **Không** đổi status (HĐ vẫn `ACTIVE` — reader-guard `ACTIVE/EXTENDED` chỉ là lớp tương thích). Audit `contract_transfers` (`TENANT_CHANGE`). |
 | `terminate_contract_forfeit_impl` ([forfeit_keep_partial_paid](../../supabase/migrations/20260530000001_forfeit_keep_partial_paid_revenue.sql)) | `useTerminateForfeit` | **Khách bỏ cọc**: tạo hoá đơn thanh lý status `APPROVED` (không phải PAID), `subtotal = total_amount = total_deposit`, **không** prepaid, 1 line `PENALTY` = `total_deposit` (ghi nhận cọc thành doanh thu, không có tiền mới đổi tay). Ngoài ra **huỷ các hoá đơn của tháng thanh lý**: hoá đơn đã thu một phần/đủ → `CANCELLED` nhưng **giữ payment**, hạ `total_amount = paid_amount` (phần đã thu thành doanh thu, huỷ phần nợ); hoá đơn chưa thu → `CANCELLED`, `total_amount = 0`. Set HĐ `TERMINATED` + `actual_end_date`. Audit `contract_terminations` (`FORFEIT`). Hook còn **tiêu hết credit dư** của HĐ. |
-| `terminate_contract_move_out_impl` ([move_out_drop_bed_id](../../supabase/migrations/20260601000200_termination_move_out_drop_bed_id.sql)) | `useTerminateMoveOut` | **Khách rời phòng**: (1) chỉ tạo hoá đơn **phạt** khi `penalty > 0` — status `APPROVED` cố định, `subtotal = total_amount = penalty`, **không** prepaid, line `PENALTY`, `previous_debt = outstanding_debt`; (2) hoàn cọc và tiền phòng thừa là **2 phiếu chi `income_expenses` (EXPENSE)** riêng: hoàn cọc `is_deposit=TRUE` (loại khỏi KQKD), hoàn phòng thừa `is_deposit=FALSE` (giảm doanh thu). Set HĐ `TERMINATED`. Audit `contract_terminations` (`NORMAL`, `refund_amount = deposit + excess` — **không** trừ debt/penalty). Hook tiêu credit dư. |
+| `terminate_contract_move_out_impl` (bản hiện hành [20260603000022 — sổ CỌC + chuyển khoản nội bộ](../../supabase/migrations/20260603000022_termination_deposit_book_transfer.sql); viết lại 2 lần từ bản [20260601000200](../../supabase/migrations/20260601000200_termination_move_out_drop_bed_id.sql) qua [20260603000020](../../supabase/migrations/20260603000020_termination_net_settlement.sql)) | `useTerminateMoveOut` | **Khách rời phòng** — mô hình "sổ CỌC". Ký hiệu: `charges = nợ + phạt`, `pool = cọc hoàn + tiền thừa`, `applied = min(pool, charges)`, `S = pool − charges`. (1) `_ensure_initial_deposit_voucher`: đảm bảo cọc nằm trên sổ **"CỌC (giữ hộ khách)"** (backfill phiếu thu cọc nếu HĐ cũ thiếu) và trả về sổ đang chứa cọc; (2) phí phạt được **GỘP** vào hoá đơn còn sống của tháng thanh lý dưới dạng line `PENALTY` (chưa có hoá đơn → tạo hoá đơn `APPROVED` subtotal 0 rồi cộng) — **không** set `previous_debt`; (3) đánh **PAID mọi hoá đơn còn nợ** bằng `payments` (`TM`, "Quyết toán khi thanh lý") — trigger `trg_payments_recompute_invoice` tự flip status; riêng hoá đơn thanh lý được gọi thêm `recompute_invoice_for_id`; (4) **chuyển khoản nội bộ** phần cấn `applied`: phiếu **CHI sổ CỌC** "Cấn cọc → chuyển doanh thu" (`is_deposit`, ngoài KQKD) + phiếu **THU sổ vận hành** "Doanh thu thanh lý" (KQKD của toà); (5) quyết toán ròng: `S>0` → **1 phiếu CHI từ sổ CỌC** trả khách (`is_deposit`); `S<0` → phiếu **THU sổ vận hành** "Khách trả thêm" (KQKD); (6) set HĐ `TERMINATED` + nối ghi chú `[Thanh lý ...]`; (7) audit `contract_terminations` (`NORMAL`, `total_deductions = applied`, `refund_amount = GREATEST(S, 0)` — tức **ĐÃ trừ** nợ/phạt; insert bọc EXCEPTION nuốt lỗi — xem ⚠️ §2.7). Trả về jsonb `{contract_id, settlement_invoice_id, charges, applied, net_settlement, acc_op, acc_deposit}`. Sổ vận hành chọn qua `_termination_pick_account` — ưu tiên `buildings.default_account_id_tt` (xem §4.4). Hook tiêu credit dư (client-side, **sau** RPC — không cùng transaction). |
 
-> **Lưu ý kiến trúc**: tồn tại **hai thế hệ** RPC trùng tên — bản legacy "DRAFT→APPROVED" (013/014/015) và bản "tức thì" (action_rpcs). UI hiện tại (các dialog ở mục 5) dùng bản **tức thì**. Các RPC legacy không dùng ở FE (`create_new_contract_extension`, `create_simple_extension`, `create_tenant_transfer`) đã bị **revoke EXECUTE** cho client.
+> **Lưu ý kiến trúc**: tồn tại **hai thế hệ** RPC trùng tên — bản legacy "DRAFT→APPROVED" (013/014/015) và bản "tức thì" (action_rpcs + các bản viết lại sau). **Trang danh sách `/contracts`** dùng bộ dialog gọi bản **tức thì**; ⚠️ **trang chi tiết `/contracts/:id` vẫn nối bộ dialog LEGACY khác hẳn** cho Gia hạn/Thanh lý/Đăng ký chuyển đi (xem bảng §5.2). Các RPC legacy không dùng ở FE (`create_new_contract_extension` — bản hiện hành set HĐ cũ → `EXPIRED` thay vì `EXTENDED`, `create_simple_extension`, `create_tenant_transfer`) đã bị **revoke EXECUTE** cho client.
 
 ### 4.4. Hàm hỗ trợ & view
 
 - `estimate_termination_costs(contract, move_out_date, ...)` — ước tính chi phí thanh lý trước khi tạo (FE hiện tính phía client trong dialog).
+- **Hệ sổ quỹ thanh lý** ([20260603000022](../../supabase/migrations/20260603000022_termination_deposit_book_transfer.sql)):
+  - `_deposit_account(user_id)` / RPC `get_or_create_deposit_account()` — get-or-create sổ **"CỌC (giữ hộ khách)"**, **1 sổ/owner dùng chung mọi toà** (số dư = tổng cọc đang giữ toàn hệ, tất toán về 0 mỗi HĐ sau thanh lý). FE gọi RPC này khi auto-tạo phiếu thu cọc lúc ký HĐ (xem §5.1) — và cả [QuickDepositModal](../../src/pages/phong-trong/QuickDepositModal.tsx) (WIP chưa commit ở trang Phòng trống) cũng ghi cọc giữ chỗ vào đúng sổ này.
+  - `_ensure_initial_deposit_voucher(contract_id)` — nếu HĐ đã có phiếu thu cọc (`is_deposit`, APPROVED) thì trả về sổ đang chứa cọc; chưa có và `deposit_paid > 0` → backfill phiếu thu cọc `[BACKFILL_INITIAL_DEPOSIT]` vào sổ CỌC (HĐ cũ trước mô hình mới).
+  - `_termination_pick_account(user, building)` ([20260603000021](../../supabase/migrations/20260603000021_termination_pick_account_building_cashbook.sql)) — chọn sổ **vận hành** cho thanh lý: ưu tiên `buildings.default_account_id_tt` (sổ tiền mặt cấu hình cho toà) → `default_account_id_tk` (ngân hàng) → fallback trùng tên toà / `is_default` / tạo sớm nhất, **né** các sổ kỹ thuật ("Cấn trừ thanh lý (nội bộ)", "Làm tròn tiền thiếu"). Lưu ý: comment trong migration ghi "forfeit + move-out" nhưng thực tế **chỉ bản move-out hiện hành gọi hàm này** — forfeit hiện hành ([20260530000001](../../supabase/migrations/20260530000001_forfeit_keep_partial_paid_revenue.sql)) không tạo phiếu sổ quỹ nào (chỉ thao tác hoá đơn).
+  - `_termination_offset_account(user)` ([20260603000020](../../supabase/migrations/20260603000020_termination_net_settlement.sql)) — sổ ảo "Cấn trừ thanh lý (nội bộ)" của phương án cũ; hàm và sổ còn tồn tại nhưng bản move-out hiện hành **không dùng nữa**.
 - `recompute_contract_deposit_paid(contract_id)` / trigger `trg_ie_recompute_contract_deposit` — đồng bộ `deposit_paid` từ phiếu IE `is_deposit` (xem domain Thu chi & Cọc).
 - `get_contract_extension_count(contract_id)` — đếm số lần gia hạn `COMPLETED`.
 - `get_public_latest_invoice_by_code(code)` ([20260530000003](../../supabase/migrations/20260530000003_contract_public_short_code.sql)) — RPC **public** (anon): resolve `public_code` → contract → hoá đơn mới nhất; trả NULL nếu mã sai / HĐ thanh lý / đã xoá. Đây là cổng duy nhất cho link QR.
@@ -242,11 +248,21 @@ stateDiagram-v2
 
 ### 4.5. Bất biến quan trọng (invariant)
 
-1. **Một phòng — một HĐ hiệu lực**: kiểm ở `useCreateContract` (chặn tạo nếu phòng có HĐ `ACTIVE/EXTENDED`); RPC `transfer_room` cũng tự chặn nếu phòng đích đang có HĐ hiệu lực khác (xem §4.3).
-2. **EXTENDED = đang hiệu lực**: mọi gate thao tác dùng `isContractInEffect()` / `.in('status',['ACTIVE','EXTENDED'])`.
+1. **Một phòng — một HĐ hiệu lực**: kiểm ở `useCreateContract` (guard `.in('status', ['ACTIVE'])` — `EXTENDED` không còn trong điều kiện vì đã ngưng gán); RPC `transfer_room` cũng tự chặn nếu phòng đích đang có HĐ hiệu lực khác (xem §4.3). ⚠️ Luồng **Nhập Excel** ([ContractImportExportDialog](../../src/components/contracts/ContractImportExportDialog.tsx)) insert thẳng `contracts` **bỏ qua guard này** — có thể tạo 2 HĐ `ACTIVE` cùng phòng (xem §5.1).
+2. **Đang hiệu lực = chỉ `ACTIVE`**: mọi gate FE dùng `isContractInEffect()` (ACTIVE-only). Các RPC DB còn giữ reader-guard `IN ('ACTIVE','EXTENDED')` như **lớp tương thích** (vô hại — `EXTENDED` không còn được ghi).
 3. **Một đại diện/HĐ**: trigger `check_contract_representative`.
 4. **Không xoá HĐ đã có hoá đơn / biên bản thanh lý**: `useDeleteContract` chặn; nếu được phép → soft-delete (`deleted_at`).
 5. **Ký phải đủ cọc** trừ khi admin chủ động "đồng ý cho nợ cọc" kèm lý do — kiểm ở cả form lẫn hook (`PREVIOUS_DEBT_ROUND_THRESHOLD`).
+
+### 4.6. RLS RBAC theo toà ([rbac_phase3_contracts](../../supabase/migrations/20260527000007_rbac_phase3_contracts.sql))
+
+Ngoài wrapper RPC (§4.3), bản thân các bảng cũng có policy RBAC theo toà:
+
+- `contracts_select_rbac`: `is_super_admin()` OR `is_admin()` OR `can_access_building(building của room)`; `contracts_insert/update/delete_rbac` dùng `can_do_on_building('contracts', <create|edit|delete>, building của room)`.
+- 6 bảng con (`contract_customers`, `contract_tenants`, `contract_services`, `contract_extensions`, `contract_terminations`, `contract_transfers`) traverse qua helper `building_of_contract(contract_id)` với cùng pattern select/insert/update/delete (module `'contracts'`).
+- `deposits` cũng có bộ policy `deposits_*_rbac` nhưng **khác pattern**: dùng module `'deposits'` cho `can_do_on_building`, SELECT thêm nhánh `is_super_admin()/is_admin()`, và khi `contract_id` NULL thì fallback `room_id → building`.
+- Trigger `*_set_user_id_audit` (BEFORE INSERT, hàm `set_user_id_from_auth`) tự điền `user_id` từ `auth.uid()` cho `contracts`, 3 bảng audit (`contract_extensions`/`contract_terminations`/`contract_transfers`) và `deposits` (không có trên `contract_customers`/`contract_tenants`/`contract_services`).
+- Hệ quả: `useContracts()` **không tự filter theo toà** — danh sách bị **RLS scope ngầm** theo quyền của user đang đăng nhập.
 
 ---
 
@@ -262,7 +278,10 @@ stateDiagram-v2
 - **Lọc & phân trang client-side**: lọc theo vòng đời (Đang ở / Thanh lý / Tất cả), stat card (Sắp hết hạn / Quá hạn / Đã thanh lý), tìm kiếm (mã HĐ / tên khách đại diện / SĐT / tên phòng), khu vực → toà → phòng (cascading), tháng (overlap với kỳ HĐ). Sắp xếp gom theo toà rồi tên phòng.
 - **Mặc định khu vực theo user**: nếu `full_name` là `joey`/`nathan` → tự chọn khu vực tương ứng.
 - Stats tính bằng `getContractDisplayStatus` (display status dẫn xuất, gồm `EXPIRING` ≤30 ngày).
-- Nút Thêm/Nhập chỉ hiện khi `hasAnyScope`.
+- Nút **Thêm/Nhập** chỉ hiện khi `hasAnyScope` ([useMyBuildingScope](../../src/hooks/useMyBuildingScope.ts)); nút **Xuất** Excel (`exportContracts(sortedContracts)` — xuất đúng theo bộ lọc/sắp xếp hiện tại) hiển thị cho mọi user.
+- **Per-row `canManageBuilding`**: từng dòng còn ẩn toàn bộ nút quản trị (Sửa / Gia hạn / Chuyển phòng / Đăng ký chuyển đi / Nhượng / Thanh lý / Xoá) nếu user không quản lý toà của HĐ — chỉ giữ Xem / In / QR.
+- **Click ô "Vị trí"** của mỗi dòng → copy **ảnh QR** (QR + nhãn phòng/toà) vào clipboard (`copyContractQrToClipboard` — [contractQrImage.ts](../../src/lib/contractQrImage.ts)); không khả dụng khi HĐ `TERMINATED/DRAFT`.
+- Cột "Người tạo" hiện đang hard-code `-` (chưa hoàn thiện).
 
 **Thao tác (mỗi dòng mở một dialog)** — gating bởi `getActionButtonStates` trong [ContractListTable.tsx](../../src/components/contracts/ContractListTable.tsx):
 
@@ -271,10 +290,10 @@ stateDiagram-v2
 | Sửa | `status ≠ TERMINATED` | `ContractFormDialog` | `useUpdateContract` + sync customers/services |
 | Gia hạn | inEffect / EXPIRED / EXPIRING | `RenewDialog` | `useRenewContract` → `renew_contract` |
 | Chuyển phòng | inEffect | `TransferRoomDialog` | `useTransferRoom` → `transfer_room` (đổi `room_id`, giữ status, đồng bộ phòng cũ/mới — xem §4.3) |
-| Đăng ký chuyển đi | inEffect | `MoveOutDialog` | `useRegisterMoveOut` (UPDATE `expected_move_out_date`) |
+| Đăng ký chuyển đi | inEffect | `MoveOutDialog` | `useRegisterMoveOut` (UPDATE `expected_move_out_date`). ⚠️ Form default `notes: ''` và hook chỉ kiểm `notes !== undefined` → submit không nhập ghi chú sẽ **ghi đè trắng** ghi chú HĐ cũ — khác ý đồ APPEND của `RegisterMoveOutDialog` ở trang chi tiết (bản đó lại hỏng vì sai shape payload — §5.2). |
 | Nhượng HĐ | inEffect | `TransferContractDialog` | `useTransferContract` → `transfer_contract` |
 | Thanh lý | inEffect / EXPIRED / EXPIRING | `TerminateDialog` | `useTerminateForfeit` / `useTerminateMoveOut` |
-| Xoá | `status = DRAFT` | `DeleteContractDialog` | `useDeleteContract` (soft-delete) |
+| Xoá | `status = DRAFT` | `DeleteContractDialog` | `useDeleteContract` (soft-delete). ⚠️ UI tạo HĐ luôn set thẳng `ACTIVE` → nút Xoá gần như không bao giờ bật trên dữ liệu thật (guard trong `useDeleteContract` thực ra cho phép rộng hơn). |
 | QR | `status ≠ TERMINATED/DRAFT` | `ContractQRDialog` | dựng link `/c/<public_code>` |
 
 #### Luồng "Tạo hợp đồng" (qua `ContractFormDialog`)
@@ -282,22 +301,32 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     A["User mở form Thêm HĐ"] --> B["Chọn toà → phòng (cascading)"]
-    B --> C["Chọn khách (đại diện) + dịch vụ + đơn giá + chỉ số đầu"]
-    C --> D["Nhập giá, cọc, đã thu cọc, chu kỳ, mốc billing"]
-    D --> E{"Thu đủ cọc?"}
+    B --> C["Chọn khách (đại diện) + toggle 'Dùng dịch vụ riêng cho HĐ' + chỉ số đầu"]
+    C --> D["Nhập giá, cọc, đã thu cọc, chu kỳ, mốc billing, KM tháng đầu"]
+    D --> P0["Preview hoá đơn cọc + tháng đầu (items tự sinh,<br/>user CHỈNH/thêm/xoá trực tiếp; KM tách riêng)"]
+    P0 --> E{"Thu đủ cọc?"}
     E -- "Không" --> F["Bắt chọn cách xử lý nợ cọc<br/>DEBT (lý do+hẹn) | FIRST_INVOICE<br/>+ tick Đồng ý cho nợ"]
     E -- "Có" --> G
     F --> G["Submit (zod: contractFormSchema)"]
     G --> H["useCreateContract"]
-    H --> I["Guard: phòng chưa có HĐ hiệu lực"]
+    H --> I["Guard: phòng chưa có HĐ ACTIVE"]
     H --> J["Guard: đủ cọc HOẶC acknowledged"]
     I & J --> K["INSERT contracts (status=ACTIVE, tenant_id=NULL)"]
     K --> L["trigger: gen contract_number + public_code; phòng→OCCUPIED"]
-    K --> M["INSERT contract_customers + contract_services"]
+    K --> M["INSERT contract_customers + contract_services (chỉ khi toggle ON)"]
     M --> N["UPDATE rooms = OCCUPIED"]
-    N --> O["Best-effort: tạo hoá đơn cọc + tháng đầu (invoiceItems)"]
-    O --> P["invalidate contracts/rooms/invoices"]
+    N --> O["Best-effort: tạo hoá đơn cọc + tháng đầu từ invoiceItems đã chỉnh<br/>+ discount_amount/discount_notes (KM slot 1/Y)"]
+    O --> Q["Auto-tạo phiếu thu cọc 'Cọc giữ phòng...' vào sổ CỌC<br/>(RPC get_or_create_deposit_account, loại thu 'Tiền cọc' is_deposit,<br/>kèm ảnh đính kèm phiếu cọc)"]
+    Q --> R["Đóng dialog → mở CommissionVoucherModal (phiếu chi hoa hồng)"]
+    R --> P["invalidate contracts/rooms/invoices"]
 ```
+
+Chi tiết các bước mới so với mô tả cũ:
+
+- **Toggle "Dùng dịch vụ riêng cho HĐ"** (`useCustomServices` trong [ContractFormDialog.tsx](../../src/components/contracts/ContractFormDialog.tsx)): **OFF** (mặc định khi tạo) = KHÔNG lưu `contract_services` — hoá đơn về sau fallback **đơn giá dịch vụ của toà** (khớp `resolveInvoicePricing`); **ON** = seed danh sách từ dịch vụ đang bật của toà (`useBuildingServices`) rồi thêm/bớt/sửa giá. "Số lượng" của dịch vụ tính theo người (`pricing_type = DON_GIA_THEO_NGUOI`) tự bump theo số khách đã chọn.
+- **Preview hoá đơn cọc + tháng đầu chỉnh được**: items tự sinh bởi `buildFirstInvoiceItems` ([firstInvoiceBuilder.ts](../../src/lib/firstInvoiceBuilder.ts)) và user **chỉnh trực tiếp** (sửa mô tả/đơn giá/số lượng, thêm/xoá dòng) trước khi lưu — hook insert đúng payload, không tự tính lại. Giảm trừ **"Khuyến mãi tháng đầu"** (`firstInvoiceDiscount`) KHÔNG trộn vào items mà ghi vào `invoices.discount_amount + discount_notes` (slot `1/Y`; các tháng `2..Y` auto-fill qua `getContractDiscountSlot` khi tạo hoá đơn tháng kế).
+- **Auto-tạo phiếu thu cọc vào sổ CỌC**: sau khi lưu HĐ thành công, nếu "Đã đặt cọc" > 0 → tự tạo phiếu IE `INCOME` "Cọc giữ phòng `<phòng>` Toà nhà `<toà>`" (loại thu "Tiền cọc" `is_deposit`) vào sổ **"CỌC (giữ hộ khách)"** resolve qua RPC `get_or_create_deposit_account` — **không cho user chọn sổ thu cọc nữa**, kèm ảnh đính kèm (AttachmentUpload tại form). Thiếu sổ/loại thu → toast cảnh báo (HĐ vẫn lưu).
+- **CommissionVoucherModal** ([CommissionVoucherModal.tsx](../../src/components/contracts/CommissionVoucherModal.tsx)): tạo HĐ xong, dialog đóng và mở modal lập **phiếu chi hoa hồng** (Đơn vị MG + Sale, prefill theo tier qua `useCommissionPrefill`, chọn sổ quỹ) — chỉ khi tạo mới, không khi edit.
 
 **Validate (zod `contractFormSchema`)**: `room_id` là uuid, các ngày bắt buộc, `end_date > start_date`, giá/cọc ≥ 0, `deposit_debt_mode ∈ {DEBT, FIRST_INVOICE}`.
 
@@ -306,6 +335,15 @@ flowchart TD
 - Phòng đã có HĐ hiệu lực → chặn, yêu cầu thanh lý HĐ cũ trước.
 - Thiếu cọc mà chưa "đồng ý cho nợ" → chặn (defense-in-depth ở cả hook).
 - Tạo hoá đơn đầu **best-effort**: lỗi không rollback HĐ, chỉ toast nhắc tạo hoá đơn tay.
+
+#### Luồng Nhập / Xuất Excel (`ContractImportExportDialog`)
+
+[ContractImportExportDialog.tsx](../../src/components/contracts/ContractImportExportDialog.tsx) — `ContractsPage` chỉ mount dialog này với `mode="import"` (nút **Nhập**):
+
+- **Nhập**: bắt buộc **chọn toà trước** → chọn file → `parseContractExcel` ([contractExcelHelpers.ts](../../src/lib/contractExcelHelpers.ts)) → xác nhận. Với mỗi dòng hợp lệ: tìm phòng theo tên/code trong toà; **tìm hoặc tạo customer theo SĐT**; insert thẳng `contracts` (status `ACTIVE`, `deposit_paid = 0`); insert `contract_customers` (đại diện); set phòng `OCCUPIED`.
+- **Xuất**: KHÔNG đi qua dialog — nút Xuất trên toolbar gọi thẳng `exportContracts(sortedContracts)` ([contractExcelHelpers.ts](../../src/lib/contractExcelHelpers.ts)), xuất đúng danh sách theo bộ lọc/sắp xếp hiện tại.
+
+> ⚠️ **Luồng import bypass mọi bất biến của domain** (đi đường insert trực tiếp, không qua `useCreateContract`): KHÔNG kiểm "1 phòng 1 HĐ hiệu lực" (có thể tạo 2 HĐ `ACTIVE` cùng phòng), KHÔNG kiểm đủ cọc / `deposit_debt_mode`, KHÔNG tạo phiếu thu cọc / hoá đơn đầu, và set `tenant_id = customers.id` trong khi FK `contracts_tenant_id_fkey` → `tenants` vẫn tồn tại (khách mới tạo qua import → nguy cơ lỗi FK; xem §2.1).
 
 #### Luồng "Thanh lý" (`TerminateDialog` — 2 bước)
 
@@ -319,10 +357,12 @@ flowchart TD
     FO --> FH["useTerminateForfeit → terminate_contract_forfeit"]
     MO --> MH["useTerminateMoveOut → terminate_contract_move_out"]
     FH --> R1["HĐ→TERMINATED; hoá đơn thanh lý APPROVED (PENALTY=cọc) ghi nhận cọc=doanh thu;<br/>huỷ hoá đơn tháng thanh lý (giữ phần đã thu làm doanh thu, huỷ phần nợ);<br/>tiêu credit dư"]
-    MH --> R2["HĐ→TERMINATED; nếu penalty&gt;0 → hoá đơn phạt APPROVED;<br/>hoàn cọc + hoàn phòng thừa = 2 phiếu chi income_expenses (EXPENSE);<br/>refund = cọc + phòng thừa; tiêu credit dư"]
+    MH --> R2["HĐ→TERMINATED; phạt GỘP vào hoá đơn tháng thanh lý (line PENALTY);<br/>đánh PAID mọi hoá đơn nợ (payments 'Quyết toán khi thanh lý');<br/>chuyển khoản nội bộ applied: CHI sổ CỌC + THU sổ vận hành 'Doanh thu thanh lý' (KQKD);<br/>S&gt;0 → 1 phiếu CHI sổ CỌC trả khách; S&lt;0 → THU 'Khách trả thêm' (KQKD);<br/>tiêu credit dư"]
 ```
 
-**Validate**: `terminateForfeitFormSchema` (chỉ ngày), `terminateMoveOutFormSchema` (ngày + `deposit_refund≥0`, `penalty_fee`/`excess_rent` optional ≥0).
+(Chi tiết từng bút toán move-out: xem dòng `terminate_contract_move_out_impl` ở §4.3 — mô hình "sổ CỌC + chuyển khoản nội bộ".)
+
+**Validate**: `terminateForfeitFormSchema` (chỉ ngày), `terminateMoveOutFormSchema` (ngày + `deposit_refund≥0`, `penalty_fee`/`excess_rent` optional ≥0). Lưu ý `renewFormSchema` của dialog Gia hạn **không** validate `new_end_date > end_date` phía client — lỗi chỉ hiện qua toast từ RPC sau khi submit. Bảng hoá đơn chưa trả trong `TerminateDialog` có cột "Kỳ" đọc `inv.billing_period` (cột không tồn tại — `invoices` chỉ có `billing_month`) → luôn hiện "—".
 
 **Edge case**: HĐ đã `TERMINATED/EXPIRED` → RPC ném lỗi "Hợp đồng đã thanh lý/hết hạn". Quyền: RPC kiểm `can_do_on_building` trước khi chạy logic.
 
@@ -333,13 +373,22 @@ flowchart TD
 **Dữ liệu**: `useContract(id)` (HĐ + relations); `useInvoicesLegacy({contract_id})` (hoá đơn + payments); query trực tiếp `contract_services`, `income_expenses` (phiếu thu cọc đã link để minh bạch `deposit_paid`), `vehicles` (phương tiện theo khách), và lịch sử (`contract_extensions` + `contract_transfers` + `contract_terminations` gộp & sort).
 
 **5 tab**:
-1. **Thông tin chung** — thẻ HĐ (số, ngày, giá, chu kỳ, thanh tiến độ), thẻ khách (đại diện đứng đầu, phương tiện, ghi chú), thẻ phòng (vị trí, chỉ số đầu), thẻ **Tiền cọc** (tổng/đã thu/còn lại + alert theo `deposit_debt_mode` + **danh sách phiếu thu cọc** đã ghi nhận), thẻ tóm tắt hoá đơn (công nợ), thẻ thời gian.
+1. **Thông tin chung** — thẻ HĐ (số, ngày, giá, chu kỳ, thanh tiến độ; cạnh badge status có chip **[RenewedBadge](../../src/components/contracts/RenewedBadge.tsx)** "Đã gia hạn" nếu HĐ có bản ghi `contract_extensions` APPROVED/COMPLETED), thẻ khách (đại diện đứng đầu, phương tiện, ghi chú), thẻ phòng (vị trí, chỉ số đầu), thẻ **Tiền cọc** (tổng/đã thu/còn lại + alert theo `deposit_debt_mode` + **danh sách phiếu thu cọc** đã ghi nhận), thẻ tóm tắt hoá đơn (công nợ), thẻ thời gian.
 2. **Dịch vụ** — bảng `contract_services`.
 3. **Hoá đơn** — bảng hoá đơn (kỳ, hạn, tổng/đã thu/còn lại, status).
 4. **Thanh toán** — gom payments từ mọi hoá đơn.
-5. **Lịch sử** — timeline gia hạn / chuyển / thanh lý kèm badge status; nếu thanh lý còn `DRAFT/PENDING_APPROVAL` → nút "Đi đến duyệt thanh lý".
+5. **Lịch sử** — timeline gia hạn / chuyển / thanh lý kèm badge status; nếu thanh lý còn `DRAFT/PENDING_APPROVAL` → nút "Đi đến duyệt thanh lý". ⚠️ Nút này navigate `/contracts?tab=termination-approvals` nhưng `ContractsPage` **không đọc query param** đó → ngõ cụt; cũng không tồn tại UI duyệt nào (`usePendingTerminations`/`useApproveTermination` không được mount ở đâu).
 
-**Thao tác (header)**: Cập nhật (nếu ≠ TERMINATED), In HĐ, QR (nếu ≠ TERMINATED/DRAFT), và khi `isContractInEffect`: Gia hạn / Chuyển phòng / Nhượng HĐ / Đăng ký chuyển đi / Thanh lý. `DRAFT` → nút Xoá.
+**Thao tác (header)**: Cập nhật (nếu ≠ TERMINATED), In HĐ, QR (nếu ≠ TERMINATED/DRAFT), và khi `isContractInEffect`: Gia hạn / Chuyển phòng / Nhượng HĐ / Đăng ký chuyển đi / Thanh lý. `DRAFT` → nút Xoá. Trang chi tiết **không gate nút theo quyền toà** (chỉ kiểm `isContractInEffect`) — staff ngoài scope vẫn thấy đủ nút, bấm mới bị RLS/RPC từ chối (42501); lệch UX với trang danh sách (đã ẩn theo `canManageBuilding`).
+
+> ⚠️ **Trang chi tiết vẫn nối bộ dialog LEGACY**, khác hẳn trang danh sách (cùng nghiệp vụ, hai code-path):
+>
+> | Nút | Dialog (detail page) | Hook | Hành vi thật |
+> |---|---|---|---|
+> | Gia hạn | [ExtendContractDialog](../../src/components/contracts/ExtendContractDialog.tsx) | `useExtendContract` (deprecated) | INSERT `contract_extensions` với `extension_type='SIMPLE'` (**vi phạm CHECK → lỗi DB ngay khi submit**), `old_end_date`/`new_end_date` đều `= now()` (dữ liệu rác), status `DRAFT` không bao giờ được duyệt — **không hề gia hạn HĐ thật** (không đổi `end_date`). Trang danh sách dùng `RenewDialog` → RPC `renew_contract`. |
+> | Thanh lý | [TerminateContractDialog](../../src/components/contracts/TerminateContractDialog.tsx) | `useTerminateContract` (deprecated) | Chỉ INSERT `contract_terminations` status `PENDING_APPROVAL` (`total_deposit=0`, type có thể `EARLY_TENANT/...`) — **không terminate HĐ, không sinh bút toán/hoá đơn**. Tệ hơn: do UNIQUE 1 biên bản/HĐ (§2.7), bản ghi PENDING mồ côi này làm RPC thanh lý thật về sau **mất audit row im lặng**. Trang danh sách dùng `TerminateDialog` → RPC forfeit/move-out. |
+> | Đăng ký chuyển đi | [RegisterMoveOutDialog](../../src/components/contracts/RegisterMoveOutDialog.tsx) | `useUpdateContract` | **Ý đồ**: UPDATE `expected_move_out_date` + **APPEND** `[Đăng ký chuyển đi]: ...` vào notes. ⚠️ Nhưng dialog gọi `mutate({ id, expected_move_out_date, notes })` **phẳng** trong khi hook nhận `{ id, updates }` → `updates = undefined` → `.update(undefined)` lỗi PostgREST, **không ghi được gì**. Trang danh sách dùng `MoveOutDialog` → `useRegisterMoveOut` (hoạt động, nhưng có thể ghi đè trắng notes — §5.1). |
+> | Chuyển phòng / Nhượng HĐ | `TransferRoomDialog` / `TransferContractDialog` | (bộ mới, như danh sách) | Gọi RPC `transfer_room` / `transfer_contract`. |
 
 **Alert**: sắp hết hạn ≤30 ngày (nếu đang hiệu lực); đã đăng ký chuyển đi (`expected_move_out_date`).
 
@@ -356,9 +405,10 @@ flowchart TD
 | → **Dịch vụ** | `contract_services.service_id → services` | Đơn giá riêng + chỉ số đầu cho từng dịch vụ. |
 | → **Hoá đơn** | `invoices.contract_id`; tạo hoá đơn cọc+tháng đầu, hoá đơn thanh lý | Vòng đời tiền: HĐ là gốc của mọi hoá đơn. ContractDetail có nút "Tạo hoá đơn" → `/invoices`. |
 | → **Chỉ số (meter)** | `meter_readings.contract_id`; `initial_*_reading` | Chốt chỉ số đầu khi nhận phòng → cơ sở tính hoá đơn dịch vụ công-tơ. |
-| → **Thu chi (IE) & Cọc** | `income_expenses.contract_id` (phiếu `is_deposit`), `deposits.contract_id`; `recompute_contract_deposit_paid` | `deposit_paid`/`deposit_remaining` là **hệ quả** của phiếu cọc; thanh lý sinh hoá đơn + (qua hook) tiêu credit `excess_amounts`. |
+| → **Thu chi (IE) & Cọc** | `income_expenses.contract_id` (phiếu `is_deposit`), `deposits.contract_id`; `recompute_contract_deposit_paid` | `deposit_paid`/`deposit_remaining` là **hệ quả** của phiếu cọc. Ký HĐ auto-tạo phiếu thu cọc vào sổ **"CỌC (giữ hộ khách)"** (`get_or_create_deposit_account` — §5.1); thanh lý move-out sinh cặp **chuyển khoản nội bộ** sổ CỌC → sổ vận hành ("Doanh thu thanh lý" vào KQKD, sổ vận hành theo `buildings.default_account_id_tt`) + 1 phiếu chi ròng trả khách từ sổ CỌC (§4.3); hook tiêu credit `excess_amounts` (client, sau RPC). |
 | → **Tài sản** | `asset_handovers.contract_id` | Biên bản bàn giao tài sản khi nhận/trả phòng. |
 | ← **Lead** | `leads.contract_id` | Lead chuyển đổi thành HĐ (đính kèm cọc giữ phòng). |
 | ← **Sự cố / Thông báo / Phương tiện** | `issues.contract_id`, `notifications.contract_id`, `vehicles` (qua khách) | Tham chiếu ngữ cảnh HĐ. |
 | ← **Public QR** | route `/c/:code` → `get_public_latest_invoice_by_code` | Khách quét QR xem hoá đơn mới nhất không cần đăng nhập. |
+| ← **Báo cáo Gia hạn & Chuyển nhượng** | `useRenewalsTransfersReport` ([useReports.ts](../../src/hooks/useReports.ts)) | "Gia hạn" (RENEWAL) đọc `contract_extensions` (status `APPROVED/COMPLETED`, theo `extension_date`); "Chuyển nhượng" (TRANSFER) đọc HĐ `status='TRANSFERRED'`. Consumer thứ 2 của `contract_extensions` sau `RenewedBadge` — cùng nguồn sự thật "đã gia hạn". |
 | ← **Báo cáo / Lợi nhuận** | tổng hợp từ hoá đơn + thu chi gắn HĐ | HĐ là chiều phân tích (occupancy, doanh thu phòng) cho dashboard & chia lợi nhuận cổ đông. |

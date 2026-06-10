@@ -1,16 +1,16 @@
-# Tài liệu Hệ thống CRM Quản lý BĐS cho thuê
+﻿# Tài liệu Hệ thống CRM Quản lý BĐS cho thuê
 
 Bộ tài liệu **cấu trúc dữ liệu + quy trình nghiệp vụ** của toàn bộ ứng dụng (production: <https://ptcrm.vercel.app>).
 Mỗi file mô tả một **domain** theo cùng một bố cục: *Tổng quan → Cấu trúc dữ liệu → Sơ đồ quan hệ → Quy tắc nghiệp vụ & tự động hoá → Quy trình từng trang (page) → Liên kết domain khác*.
 
 > **Sơ đồ**: tất cả vẽ bằng [Mermaid](https://mermaid.js.org) trong các khối mã `mermaid`. Xem trực tiếp trên GitHub, VS Code (ext *Markdown Preview Mermaid*), hoặc <https://mermaid.live>.
-> **Phạm vi dữ liệu**: 95 bảng · 5 view · 30 enum · ~80 RPC/function nghiệp vụ · 60 sơ đồ. Trích từ schema thật của Supabase (project `tryymsxyyckgbrmmvozx`) tại thời điểm lập tài liệu.
+> **Phạm vi dữ liệu**: 96 bảng · 5 view · 30 enum · ~86 RPC/function nghiệp vụ · 65 sơ đồ. Trích từ schema thật của Supabase (project `tryymsxyyckgbrmmvozx`, `types.ts` regen 2026-06-07) tại thời điểm lập tài liệu.
 
 ---
 
 ## 🗺️ Bắt đầu từ đâu?
 
-1. **[00 — Kiến trúc & Tổng quan](00-tong-quan.md)** — đọc trước: stack, bản đồ 14 domain, mô hình phân quyền, **ER sơ đồ cốt lõi**, tra cứu enum.
+1. **[00 — Kiến trúc & Tổng quan](00-tong-quan.md)** — đọc trước: stack, bản đồ 15 domain, mô hình phân quyền, **ER sơ đồ cốt lõi**, tra cứu enum.
 2. **[99 — Quy trình nghiệp vụ tổng](99-quy-trinh-tong.md)** — vòng đời end-to-end *Lead → Cọc → Hợp đồng → Chỉ số → Hoá đơn → Thu chi → Báo cáo → Lợi nhuận*, kèm sequence/state diagram.
 3. Sau đó tra từng domain theo bảng dưới.
 
@@ -45,10 +45,11 @@ Mỗi file mô tả một **domain** theo cùng một bố cục: *Tổng quan �
 | [10](10-tai-san.md) | **Tài sản & Nội thất** | `assets, asset_categories/movements/maintenance/warehouses/handovers` | `/assets`, `/settings/categories/asset-*` |
 | [11](11-cong-viec-su-co.md) | **Công việc · Sự cố · Quy trình** | `jobs, job_types/groups, issues(+history), task_flows/phases, sla_configs` | `/tasks` |
 
-### Tổng hợp
+### Tổng hợp & kênh công khai
 | # | Domain | Bảng chính | Route chính |
 |---|--------|-----------|-------------|
 | [13](13-bao-cao-dashboard-thong-bao.md) | **Báo cáo · Dashboard · Thông báo** | `notifications(+logs/templates)` + đọc xuyên domain | `/`, `/reports/*`, `/notifications` |
+| [15](15-kenh-cong-khai-sale-thu-tien.md) | **Kênh công khai & mobile** — Phòng trống công khai · Sale Phòng · Thu tiền mặt | `public_room_share_tokens, public_room_settings` + cột sale trên `buildings/rooms` (`floor_layouts, sale_note…`) | `/r/:token` (công khai, anon), `/sale-phong`, `/thu-tien` |
 
 ---
 
@@ -60,6 +61,7 @@ flowchart LR
     classDef cust fill:#efe,stroke:#393
     classDef money fill:#fee,stroke:#933
     classDef ops fill:#fff3d6,stroke:#c90
+    classDef pub fill:#f3e8ff,stroke:#937
 
     P01["01 Phân quyền/RLS"]:::base
     P02["02 Cơ cấu BĐS"]:::base
@@ -78,8 +80,10 @@ flowchart LR
     P10["10 Tài sản"]:::ops
     P11["11 Công việc"]:::ops
     P13["13 Báo cáo/Thông báo"]:::base
+    P15["15 Kênh công khai/Sale/Thu tiền"]:::pub
 
     P01 -.scope toà/RLS.-> P02 & P03 & P05 & P07 & P08
+    P01 -.sale_phong + record_payment.-> P15
     P02 --> P05 & P06 & P07 & P08
     P14 -.mẫu in + mã.-> P05 & P07
     P03 --> P04 --> P05
@@ -88,6 +92,9 @@ flowchart LR
     P07 --> P08
     P08 --> P12
     P11 --> P09 & P10
+    P02 & P05 & P07 --> P15
+    P15 --> P08
+    P15 -.cọc nhanh WIP.-> P04
     P02 & P05 & P07 & P08 --> P13
     P05 -.CONTRACT_EXPIRING.-> P13
     P04 -.DEPOSIT_SHORTFALL.-> P13
@@ -97,6 +104,7 @@ flowchart LR
 
 - **Link code** dạng `[Tên](src/...)` click thẳng tới file nguồn trong repo.
 - **Mã trạng thái** giữ nguyên enum DB (vd `ACTIVE`, `TM/TK/TT`) — xem bảng tra cứu enum ở [00 §6](00-tong-quan.md).
-- **EXTENDED = đang hiệu lực**: hợp đồng đã gia hạn được đối xử như `ACTIVE` ở mọi kiểm tra vận hành.
+- **Gia hạn giữ nguyên `ACTIVE`** (từ 2026-06-06): status `EXTENDED` đã **ngưng ghi** — hợp đồng gia hạn vẫn là `ACTIVE`, `isContractInEffect()` chỉ tính `ACTIVE`; "đã gia hạn" suy từ bảng `contract_extensions` (hook `useRenewedContracts` + `RenewedBadge`). Một số trigger DB còn nhận `EXTENDED` chỉ là lớp tương thích — xem [05](05-hop-dong.md).
 - **Nguồn sự thật số cọc** = tổng phiếu thu chi `is_deposit` (→ `contracts.deposit_paid`), **không** phải `deposits.status` — xem [04](04-coc-giu-cho.md).
+- Các trang nội dung tĩnh `/faq`, `/changelog`, `/app-guide` không có nghiệp vụ dữ liệu — **ngoài phạm vi** bộ tài liệu (bỏ qua có chủ ý).
 - Tài liệu phản ánh schema tại thời điểm lập; khi đổi migration nên cập nhật lại domain tương ứng.

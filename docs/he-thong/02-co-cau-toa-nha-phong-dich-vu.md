@@ -25,7 +25,7 @@ Vai trò nghiệp vụ chính:
 
 - **Toà nhà là đơn vị phân quyền (multi-tenant + RBAC).** Nhân viên (staff) được gán vào toà qua `staff_assignments`; RLS dùng `can_access_building(building_id)` để lọc dữ liệu. Khu vực được "thấy" gián tiếp nếu staff có quyền trên ít nhất 1 toà thuộc khu vực đó.
 - **Toà nhà mang cấu hình mặc định** áp xuống các nghiệp vụ con: sổ quỹ mặc định (`default_account_id_tt/tk`), mẫu hợp đồng (`contract_template_id`), mẫu hoá đơn (`invoice_template_id`), bậc hoa hồng môi giới (`commission_tiers`).
-- **Phòng (room) là đơn vị cho thuê.** Hợp đồng, hoá đơn, đồng hồ, tài sản, vehicle… đều gắn `room_id`. Trạng thái phòng (`room_status`) được trigger tự cập nhật theo vòng đời hợp đồng.
+- **Phòng (room) là đơn vị cho thuê.** Hợp đồng, hoá đơn, đồng hồ, tài sản, vehicle… đều gắn `room_id`. Trạng thái phòng (`room_status`) được trigger tự cập nhật theo vòng đời hợp đồng (4.2) **và theo cọc giữ chỗ** (AVAILABLE↔RESERVED tự động, 4.6).
 - **Dịch vụ + định mức** quyết định cách tính tiền trên hoá đơn (cố định theo tháng, theo đồng hồ, theo người, theo phòng, hoặc bậc thang theo định mức).
 - **Tòa ảo (`is_virtual`)**: một toà đặc biệt tên "Chung" để gắn các chi phí không thuộc toà thật nào (xem domain thu/chi & cổ đông). Mặc định bị ẩn khỏi mọi danh sách trừ form thu/chi.
 
@@ -49,13 +49,19 @@ Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà.
 - `type` enum **building_type** mặc định `APARTMENT`; `status` enum **building_status** mặc định `ACTIVE`.
 - Địa chỉ: `province`, `district`, `ward` (đều NOT NULL) + `street_address`.
 - Thống kê: `total_floors` (mặc định 1), `total_rooms` (mặc định 0 — **được trigger tự tính**, không sửa tay).
-- Media/đặc điểm: `images` jsonb, `amenities` jsonb.
+- Media/đặc điểm: `description`, `images` jsonb, `amenities` jsonb.
 - Liên kết cấu hình:
   - `area_id` → `areas.id` (thuộc khu vực nào, nullable).
   - `contract_template_id`, `invoice_template_id` → `document_templates.id` (mẫu in mặc định cho HĐ/hoá đơn của toà).
-  - `default_account_id_tt`, `default_account_id_tk` → `accounts.id` — **sổ quỹ mặc định** ghi nhận khi khách thanh toán hoá đơn phòng bằng TT (tiền mặt/thanh toán) / TK (chuyển khoản). Chỉ super admin được xem & sửa 2 field này.
+  - `default_account_id_tt`, `default_account_id_tk` → `accounts.id` — **sổ quỹ mặc định** ghi nhận khi khách thanh toán hoá đơn phòng bằng TT (tiền mặt/thanh toán) / TK (chuyển khoản). Chỉ super admin được xem & sửa 2 field này (gate ở FE — RLS không chặn riêng cột).
   - `commission_tiers` jsonb (NOT NULL, có default) — bậc hoa hồng môi giới theo số tháng hợp đồng `[{min_months,max_months,rate_percent}]`.
 - `is_virtual` boolean (NOT NULL, default false) — **tòa ảo "Chung"** cho chi phí không thuộc toà thật.
+- **Cột phục vụ trang Phòng trống công khai `/r/:token` & module Sale Phòng** (thêm 2026-06-07, xem §6):
+  - `floor_layouts` jsonb — sơ đồ tọa độ thủ công per-tầng cho trang public, shape `{"<floor>": {canvasW, canvasH, corridor, fixtures, rooms: {"<room_id>": {x,y,w,h}}}}` ([20260607090100_building_floor_layouts.sql](supabase/migrations/20260607090100_building_floor_layouts.sql)). Ghi bởi editor kéo-thả Sale Phòng ([FloorPlanEditorTab.tsx](src/components/sale-phong/floor-editor/FloorPlanEditorTab.tsx) qua `useUpdateBuilding`), đọc bởi RPC `get_public_available_rooms`; tầng/phòng thiếu layout → client tự sinh fallback.
+  - `public_contact_name`, `public_contact_phone` — liên hệ quản lý riêng từng toà (nút gọi/Zalo trên trang public) ([20260607140000](supabase/migrations/20260607140000_room_sale_bonus_building_public_contact.sql)).
+  - `public_map_url` — link Google Maps "Chỉ đường" riêng từng toà.
+  - `public_lift_type` — `'Thang máy'` / `'Thang bộ'` ([20260607150000](supabase/migrations/20260607150000_building_public_elec_lift.sql)).
+  - Lưu ý: `types.ts` (regen 2026-06-07) đã có `floor_layouts` nhưng **chưa có các cột `public_*`** — đối chiếu migrations chứ đừng chỉ tin types.ts.
 - Soft delete `deleted_at`.
 - **Được tham chiếu bởi (rộng):** `floors`, `rooms`, `building_services`, `building_shareholders`, `staff_assignments`, `meters`, `meter_readings`, `invoices`, `income_expenses`, `expenses`, `leads`, `issues`, `jobs`, `assets`, `asset_warehouses`, `vehicles`, `auto_debt_config`, `profit_monthly`, `accounts.quick_default_building_id`. → Toà nhà là "khoá ngoại trung tâm" của gần như mọi domain.
 
@@ -64,9 +70,9 @@ Nhóm địa lý/quản lý cấp cao nhất, gom nhiều toà nhà.
 Danh mục số tầng theo toà, chủ yếu để **nhóm/hiển thị phòng** trong Sơ đồ toà nhà và bộ lọc.
 
 - `building_id` → `buildings.id` (NOT NULL), `floor_number` (NOT NULL), `name` (vd "Tầng trệt"), `description`.
-- `status` text mặc định `'active'` (chú ý: chữ thường, khác convention `ACTIVE` của area/building).
+- `status` text mặc định `'active'` + CHECK `status IN ('active','inactive')` (chú ý: chữ thường, khác convention `ACTIVE` của area/building).
 - `user_id` (NOT NULL). Không có `deleted_at` → xoá tầng là **hard delete**.
-- **Quan trọng:** `floors` *không* phải nguồn sự thật cho tầng của phòng. Phòng có cột `rooms.floor` (integer) riêng; bảng `floors` chỉ là danh mục đặt tên & lọc. Có UNIQUE ngầm `(building_id, floor_number)` (hook bắt lỗi `23505` → "Tầng này đã tồn tại trong toà nhà").
+- **Quan trọng:** `floors` *không* phải nguồn sự thật cho tầng của phòng. Phòng có cột `rooms.floor` (integer) riêng; bảng `floors` chỉ là danh mục đặt tên & lọc. Có constraint **tường minh** `floors_unique_building_floor UNIQUE (building_id, floor_number)` ([20250101000001_create_floors_table.sql](supabase/migrations/20250101000001_create_floors_table.sql)) — hook bắt lỗi `23505` → "Tầng này đã tồn tại trong toà nhà".
 
 ### 2.4. `rooms` — Phòng / Căn hộ
 
@@ -76,7 +82,9 @@ Danh mục số tầng theo toà, chủ yếu để **nhóm/hiển thị phòng*
 - `status` enum **room_status** mặc định `AVAILABLE`.
 - Thương mại: `rent_price` (NOT NULL — giá thuê), `deposit_amount` (NOT NULL — tiền cọc), `area` numeric (diện tích), `max_occupants` (default 1).
 - Media: `images`, `amenities` jsonb; `description`.
+- **Cột sale/public** (thêm 2026-06-07 — **chưa có trong `types.ts`**, xem migrations [20260607120000](supabase/migrations/20260607120000_room_sale_note.sql), [20260607130000](supabase/migrations/20260607130000_room_type.sql), [20260607140000](supabase/migrations/20260607140000_room_sale_bonus_building_public_contact.sql)): `sale_note` (ô "Khuyến mãi" cho khách), `room_type` ("Loại phòng" — Gác/Ban công/Studio/Cửa sổ hành lang…), `sale_bonus_note` ("Thưởng sale" nội bộ, không gửi khách). Dùng bởi trang Phòng trống công khai ([supabaseData.ts](src/pages/phong-trong/supabaseData.ts)) & module Sale Phòng.
 - Mẫu in riêng cho phòng (ưu tiên hơn cấu hình toà): `invoice_template_id`, `lease_template_id` → `document_templates.id`.
+- **UNIQUE:** partial index `idx_rooms_unique_name_per_building` trên `(building_id, name) WHERE deleted_at IS NULL` ([002_core_tables_part1.sql](supabase/migrations/002_core_tables_part1.sql)) — **tên phòng** duy nhất trong toà; cột `code` KHÔNG unique.
 - Soft delete `deleted_at`.
 - **Được tham chiếu bởi (rộng):** `contracts.room_id`, `deposits.room_id`, `invoices.room_id`, `income_expenses.room_id`, `expenses.room_id`, `meters.room_id`, `meter_readings.room_id`, `assets.room_id`, `asset_movements.from/to_room_id`, `contract_transfers.old/new_room_id`, `leads.room_id`, `issues.room_id`, `jobs.room_id`, `vehicles.room_id`.
 
@@ -153,6 +161,11 @@ erDiagram
     jsonb commission_tiers
     uuid default_account_id_tt FK
     uuid default_account_id_tk FK
+    jsonb floor_layouts "so do public per tang"
+    text public_contact_name
+    text public_contact_phone
+    text public_map_url
+    text public_lift_type
   }
   floors {
     uuid id PK
@@ -168,6 +181,9 @@ erDiagram
     room_status status
     numeric rent_price
     numeric deposit_amount
+    text sale_note "khuyen mai public"
+    text room_type
+    text sale_bonus_note "thuong sale noi bo"
   }
   services {
     uuid id PK
@@ -214,16 +230,17 @@ erDiagram
 - **Nguồn:** [008_triggers_functions.sql](supabase/migrations/008_triggers_functions.sql).
 - **Khi nào:** `AFTER INSERT OR UPDATE OR DELETE ON rooms` (mỗi dòng).
 - **Làm gì:** `UPDATE buildings SET total_rooms = (SELECT COUNT(*) FROM rooms WHERE building_id = … AND deleted_at IS NULL)`.
-- **Bất biến:** `buildings.total_rooms` luôn = số phòng **chưa soft-delete** của toà. Soft delete phòng (set `deleted_at`) là một UPDATE → trigger chạy → đếm lại. → Không bao giờ set `total_rooms` thủ công.
+- **Bất biến (có điều kiện):** `buildings.total_rooms` = số phòng **chưa soft-delete** của toà. Soft delete phòng (set `deleted_at`) là một UPDATE → trigger chạy → đếm lại. → Không bao giờ set `total_rooms` thủ công.
+- **Lỗ hổng đã biết:** trigger chỉ recount toà `COALESCE(NEW.building_id, OLD.building_id)` — khi UPDATE **đổi `building_id`** (chuyển phòng sang toà khác) chỉ toà MỚI được đếm lại, `total_rooms` của toà CŨ đứng giá trị sai cho tới lần thay đổi phòng kế tiếp của chính toà đó. Bất biến chỉ đúng khi không move phòng giữa các toà.
 
 ### 4.2. Trigger `update_room_status_on_contract_change` — vòng đời trạng thái phòng
 
-- **Nguồn:** [20260601000300_drop_bed_remnants_db.sql](supabase/migrations/20260601000300_drop_bed_remnants_db.sql) (đã đổi tên, gỡ "bed"). Trigger `trigger_update_room_status` `AFTER INSERT OR UPDATE ON contracts`.
-- **Logic:**
-  - INSERT hợp đồng `status=ACTIVE` & có `room_id` → phòng `OCCUPIED`.
-  - UPDATE rời ACTIVE (ACTIVE → TERMINATED/EXPIRED/…) → phòng về `AVAILABLE` **chỉ khi** không còn hợp đồng ACTIVE nào khác trên cùng phòng (`NOT EXISTS … status='ACTIVE' AND id<>NEW.id`).
-  - UPDATE vào ACTIVE (khác → ACTIVE) → phòng `OCCUPIED`.
-- **Bất biến/cảnh báo:** Trigger chỉ phản ứng với trạng thái `'ACTIVE'` thuần. **`EXTENDED` không được xử lý ở đây** — phòng có HĐ EXTENDED giữ nguyên trạng thái cuối cùng (đã OCCUPIED từ lúc ACTIVE). Các trạng thái hiển thị "đang thuê / sắp trống" trên UI **không** dựa vào cột `rooms.status` này mà tính lại từ hợp đồng đang hiệu lực (xem `getRoomDisplayStatus` 4.5).
+- **Nguồn (bản hiện hành):** [20260606140000_contract_extended_decouple.sql](supabase/migrations/20260606140000_contract_extended_decouple.sql) — REPLACE bản cũ ở `20260601000300_drop_bed_remnants_db.sql`. Trigger `trigger_update_room_status` `AFTER INSERT OR UPDATE ON contracts`.
+- **Logic — "active-set" = `{ACTIVE, EXTENDED}` ở cả 3 nhánh:**
+  - INSERT hợp đồng `status IN ('ACTIVE','EXTENDED')` & có `room_id` → phòng `OCCUPIED`.
+  - UPDATE rời active-set (vd ACTIVE → TERMINATED/EXPIRED) → phòng về `AVAILABLE` **chỉ khi** không còn HĐ active-set nào khác trên cùng phòng (`NOT EXISTS … status IN ('ACTIVE','EXTENDED') AND deleted_at IS NULL AND id <> NEW.id`).
+  - UPDATE vào active-set → phòng `OCCUPIED`.
+- **Bất biến/cảnh báo:** `EXTENDED` đã **ngưng ghi** từ 2026-06-06 (HĐ gia hạn giữ `ACTIVE` — xem domain Hợp đồng), nhưng trigger vẫn coi `EXTENDED` là "đang thuê" để phòng hờ dữ liệu cũ/ngoại lệ. Trạng thái hiển thị "đang thuê / sắp trống" trên UI **không** dựa thẳng vào cột `rooms.status` mà tính lại từ hợp đồng đang hiệu lực (`ACTIVE`-only, xem `getRoomDisplayStatus` 4.5). Khi trigger thả phòng về `AVAILABLE`, trigger reconcile cọc (4.6) chạy nối tiếp — nếu phòng còn cọc giữ chỗ sẽ tự thành `RESERVED`.
 
 ### 4.3. `generate_code` / `generate_next_code` — sinh mã tuần tự
 
@@ -237,14 +254,30 @@ erDiagram
 - **Nguồn:** [20260527000008_rbac_phase4_buildings_rooms.sql](supabase/migrations/20260527000008_rbac_phase4_buildings_rooms.sql).
 - **buildings / floors / rooms / building_services:** SELECT/ghi dựa trên `can_access_building(building_id)` (super_admin/admin thấy hết; staff thấy toà được gán trong `staff_assignments`; quyền ghi kiểm `can_do_on_building(table, action, building_id)`).
 - **areas:** thấy nếu super_admin/admin HOẶC có `staff_assignments` (full-scope `building_id IS NULL`, hoặc gán 1 toà thuộc area đó). Tạo/sửa/xoá area chỉ cho user full-scope có quyền `areas.create/edit/delete`.
-- **services / service_quotas / service_quota_tiers:** đơn giản theo owner — `auth.uid() = user_id` (và `deleted_at IS NULL` cho SELECT). Tiers/junction kiểm qua `EXISTS` trên bảng cha (quota của tôi / service của tôi).
+- **services / service_quotas / service_quota_tiers:** **KHÔNG còn** policy owner-based (`auth.uid() = user_id`) — toàn bộ đã bị DROP ở [20260528000003_rbac_batch_f_drop_legacy.sql](supabase/migrations/20260528000003_rbac_batch_f_drop_legacy.sql). Policy hiện hành là **RBAC org-entity** (quyền toàn tổ chức, không theo toà): `can_access_org_entity('services', action)` cho `services` ([20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql)); `can_access_org_entity('service_quotas', action)` cho **cả** `service_quotas` lẫn `service_quota_tiers` ([20260528000001_rbac_batch_a_config_tables.sql](supabase/migrations/20260528000001_rbac_batch_a_config_tables.sql)) — tiers KHÔNG kiểm `EXISTS` trên bảng cha. Policy không so `user_id` và không lọc `deleted_at` (hook tự thêm `.is('deleted_at', null)` vào query); pass nếu super_admin/admin hoặc role/per-staff permission tương ứng ([20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql)).
+- **Lớp quyền FE:** song song với RLS, permission matrix ([permissions.ts](src/lib/permissions.ts)) có module `areas` / `buildings` / `rooms` / `services` / `sale_phong` (nhóm "Bất động sản") và `service_quotas` (nhóm "Cấu hình hệ thống") — trang/nút bị ẩn theo role + per-staff permissions, khớp với `can_access_org_entity`/`can_do_on_building` phía DB. Các hook đọc của domain KHÔNG tự lọc scope — dựa hoàn toàn vào RLS; lưu ý các hook đọc (`useAreas`/`useBuildings`/`useRooms`/`useFloors`) **nuốt lỗi và trả `[]`** → khi RLS chặn hoặc query fail, UI hiện "Chưa có dữ liệu" thay vì báo lỗi, dễ chẩn đoán nhầm.
 
 ### 4.5. `getRoomDisplayStatus` — trạng thái phòng hiển thị (client-side)
 
-- **Nguồn:** [roomStatus.ts](src/lib/roomStatus.ts). Suy ra trạng thái hiển thị từ `room.status` + **ngày kết thúc hợp đồng đang hiệu lực** (ACTIVE/EXTENDED):
+- **Nguồn:** [roomStatus.ts](src/lib/roomStatus.ts). Suy ra trạng thái hiển thị từ `room.status` + **ngày kết thúc hợp đồng đang hiệu lực** (`ACTIVE`-only — JSDoc trong file còn ghi "(ACTIVE/EXTENDED)" là comment sót, dữ liệu nạp vào thực tế chỉ ACTIVE):
   - Còn 1..30 ngày → `EXPIRING_SOON` (sắp trống). Còn lại → `OCCUPIED`.
   - Không có HĐ hiệu lực → theo `room.status`: `MAINTENANCE` / `RESERVED`, mặc định `AVAILABLE`.
-- Dùng chung cho Sơ đồ toà nhà và Danh mục căn hộ → đảm bảo cách tính "đang thuê / sắp trống / trống" nhất quán. Nguồn HĐ lấy từ hook `useRoomsWithActiveContracts` ([useRoomsWithContracts.ts](src/hooks/useRoomsWithContracts.ts), lọc `contracts.status IN ('ACTIVE','EXTENDED')`).
+- Dùng chung cho Sơ đồ toà nhà và Danh mục căn hộ → đảm bảo cách tính "đang thuê / sắp trống / trống / đã đặt cọc" nhất quán. Nguồn HĐ lấy từ hook `useRoomsWithActiveContracts` ([useRoomsWithContracts.ts](src/hooks/useRoomsWithContracts.ts)) lọc `contracts.status IN ('ACTIVE')` — khớp mô hình mới "còn hiệu lực = ACTIVE-only" (`isContractInEffect` / `ACTIVE_CONTRACT_STATUSES = ['ACTIVE']` trong [contract.ts](src/types/contract.ts)).
+
+### 4.6. `recompute_room_reservation` — cọc giữ chỗ tự động RESERVED
+
+- **Nguồn:** [20260608000000_room_reservation_reconcile.sql](supabase/migrations/20260608000000_room_reservation_reconcile.sql). Hàm `recompute_room_reservation(p_room_id)` (SECURITY DEFINER, idempotent) là **nguồn sự thật duy nhất** cho việc chuyển `AVAILABLE` ↔ `RESERVED`.
+- **Logic:** bỏ qua nếu phòng đã xoá hoặc đang có HĐ hiệu lực (`contracts.status IN ('ACTIVE','EXTENDED')`, `deleted_at IS NULL` — HĐ "sở hữu" OCCUPIED, reconcile không can thiệp). Predicate "cọc giữ chỗ đang hiệu lực":
+  - `deposits` `status IN ('PENDING','CONFIRMED')`, chưa link HĐ (`contract_id IS NULL`), chưa xoá; **HOẶC**
+  - phiếu thu `income_expenses` `type='INCOME'`, chưa link HĐ, `approval_status <> 'CANCELLED'` (**đếm cả phiếu CHƯA DUYỆT**) và có item cọc theo `ie_has_deposit_item(ie.id)` (hàm của domain Thu chi).
+  - Có cọc + phòng `AVAILABLE` → set `RESERVED`; hết cọc + phòng `RESERVED` → trả về `AVAILABLE`. **KHÔNG đụng** `OCCUPIED` / `MAINTENANCE` / `UNAVAILABLE`.
+- **4 nhóm trigger** gọi hàm: trên `deposits` (INSERT / `UPDATE OF room_id, contract_id, status, deleted_at` / DELETE), `income_expenses` (INSERT / `UPDATE OF room_id, contract_id, approval_status, deleted_at, type` / DELETE), `income_expense_items` (mọi INSERT/UPDATE/DELETE — FOR EACH ROW nên phiếu N item chạy reconcile N lần; idempotent nên chỉ tốn chi phí, không sai kết quả) và `rooms` (`AFTER UPDATE OF status WHEN NEW.status='AVAILABLE'` — phòng vừa được thả về trống, kể cả sửa tay, sẽ tự "cứu" lại `RESERVED` nếu còn cọc). Migration kèm backfill toàn bộ phòng hiện có.
+- **Hệ quả UI:** trạng thái `RESERVED` ("Đã đặt cọc") xuất hiện **tự động** ở Danh mục căn hộ / Chi tiết toà / Sơ đồ toà nhà / trang Phòng trống — không ai set tay. Đây là cầu nối với domain Đặt cọc & Thu chi (xem §6).
+
+### 4.7. Trigger `set_user_id_from_auth` — auto-fill `user_id`
+
+- `areas` / `buildings` / `floors` có trigger `BEFORE INSERT … set_user_id_from_auth()` ([20260527000008_rbac_phase4_buildings_rooms.sql](supabase/migrations/20260527000008_rbac_phase4_buildings_rooms.sql)); `services` ở [20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql); `service_quotas` ở [20260528000001_rbac_batch_a_config_tables.sql](supabase/migrations/20260528000001_rbac_batch_a_config_tables.sql). (`rooms`/`building_services`/`service_quota_tiers` không có cột `user_id`.)
+- Trigger chỉ gán `user_id := auth.uid()` **khi NEW.user_id NULL** (định nghĩa gốc ở [20260527000006_rbac_phase2_trigger_auto_user_id.sql](supabase/migrations/20260527000006_rbac_phase2_trigger_auto_user_id.sql), mục đích audit — không tham gia access control) → giải thích vì sao staff insert được dù FE không truyền `user_id`; một số hook vẫn tự gắn `user_id` — vô hại.
 
 ## 5. Quy trình theo từng trang
 
@@ -254,9 +287,9 @@ erDiagram
 
 - **Hiển thị:** `useAreas` select `areas` + `buildings:buildings(count)` (đếm toà nhà mỗi khu vực), lọc `deleted_at IS NULL`. Bảng: Mã, Tên, Mô tả, Số toà nhà (badge), Trạng thái.
 - **Lọc client-side:** ô tìm theo tên/mã (Input) + dropdown trạng thái dùng `SearchableSelect` (theo MEMORY: filter phải là combobox gõ-để-tìm).
-- **Tạo / sửa:** `CreateAreaDialog` / `EditAreaDialog` → `useCreateArea` (tự gắn `user_id`) / `useUpdateArea`. Lỗi `23505` → toast "Mã khu vực đã tồn tại".
+- **Tạo / sửa:** `CreateAreaDialog` / `EditAreaDialog` → `useCreateArea` (tự gắn `user_id`) / `useUpdateArea`. Hook có handler `23505` → toast "Mã khu vực đã tồn tại", nhưng đây chỉ là **phòng hờ FE**: DB không có UNIQUE nào trên `areas.code` ([20260222135029_recreate_areas_table.sql](supabase/migrations/20260222135029_recreate_areas_table.sql)) → mã trùng vẫn lưu được, nhánh 23505 này thực tế không kích hoạt từ mã trùng.
 - **Xoá (soft):** `useDeleteArea` **chặn** nếu khu vực còn toà nhà chưa xoá → toast "Không thể xóa khu vực đang có N tòa nhà"; ngược lại set `deleted_at`.
-- **Gán toà vào khu vực:** `useAssignBuildingsToArea` (diff add/remove → update `buildings.area_id`), dùng ở dialog gán nhanh.
+- **Gán toà vào khu vực:** `useAssignBuildingsToArea` (nhận 2 mảng `toAddIds`/`toRemoveIds` → update `buildings.area_id` set/null) — chỉ được dùng bên trong `EditAreaDialog` ([EditAreaDialog.tsx](src/components/areas/EditAreaDialog.tsx)): danh sách checkbox toàn bộ toà nhà ngay trong form sửa khu vực, diff với tập toà hiện thuộc khu vực. **Không có dialog gán nhanh riêng.**
 
 ### 5.2. `/buildings` — Danh sách Toà nhà
 
@@ -275,38 +308,47 @@ flowchart TD
   B -- Sửa --> D["useUpdateBuilding<br/>update buildings"]
   C --> E["useUpsertBuildingServices<br/>(buildingId mới)"]
   D --> E
-  E --> F["DELETE building_services của toà<br/>rồi INSERT lại tập đã chọn"]
+  E --> F["DELETE toàn bộ building_services của toà<br/>rồi INSERT lại MỌI dịch vụ — mỗi service 1 dòng,<br/>kể cả is_active=false, giữ unit_price_override"]
   F --> G["trigger? không. invalidate buildings + building-services"]
 ```
 
-- **Edge case:** mã trùng → 23505 ("Mã tòa nhà đã tồn tại"); FK sai (vd template/account không tồn tại) → 23503. `useUpsertBuildingServices` xoá-rồi-chèn nên **mất `unit_price_override` của dịch vụ bị bỏ chọn** (cố ý).
+- **Edge case:** handler `23505` → toast "Mã tòa nhà đã tồn tại" chỉ là **phòng hờ FE** — DB không có UNIQUE trên `buildings.code` ([002_core_tables_part1.sql](supabase/migrations/002_core_tables_part1.sql)), mã trùng vẫn lưu được; FK sai (vd template/account không tồn tại) → 23503.
+- **Hành vi `useUpsertBuildingServices`** ([useBuildingServices.ts](src/hooks/useBuildingServices.ts)): form khởi tạo state từ **toàn bộ** `useServices()` + junction hiện có (giữ `unit_price_override` sẵn trong state), submit gửi đủ N dòng (kể cả `is_active=false`) → sau delete-all + insert-all, **override của dịch vụ bị bỏ chọn vẫn được chèn lại (không mất)**. Hệ quả phụ: `building_services` phình N×M dòng (mỗi toà × mọi dịch vụ); và vì 2 bước delete + insert **không nằm trong transaction**, nếu insert fail sau khi delete thành công thì toà mất toàn bộ liên kết dịch vụ + override. Mỗi lần bấm Lưu toà đều xoá-chèn lại junction dù không đổi dịch vụ (churn row/id).
 - **Xem phòng:** nút điều hướng `/apartments?building_id=…` (RoomsPage đọc query param).
 
 ### 5.3. `/buildings/:id` (chi tiết) — `BuildingDetailPage`
 
 [BuildingDetailPage.tsx](src/pages/buildings/BuildingDetailPage.tsx)
 
-- **Tabs:** Thông tin chung (cơ bản + địa chỉ + 4 thẻ thống kê phòng tính từ `useRooms(id)`), Căn hộ (danh sách phòng của toà), Hợp đồng (query trực tiếp `contracts` join room thuộc toà), Hoá đơn (query `invoices` theo room_id của toà).
+- **Tabs:** Thông tin chung (cơ bản + địa chỉ + **5 thẻ thống kê phòng** tính từ `useRooms(id)`: Tổng số căn hộ / Còn trống / **Đã đặt cọc** (RESERVED) / Đang thuê / Bảo trì), Căn hộ (danh sách phòng của toà), Hợp đồng (query trực tiếp `contracts` join room thuộc toà), Hoá đơn (query `invoices` theo room_id của toà).
 - **Sửa:** `EditBuildingDialog`. Lưu ý: trang có vài field tham chiếu tới schema cũ (`building.floors`, `building.notes`, `room.base_rent`) có thể không khớp cột thực (cột thực là `total_floors`, không có `notes`, phòng dùng `rent_price`) — hiển thị fallback `-`.
+- **Cảnh báo dữ liệu & điều hướng (hiện trạng):**
+  - 2 query Hợp đồng/Hoá đơn join `tenant:tenants` là **model cũ** (`contracts.tenant_id` nullable) — HĐ mới dùng `contract_customers` nên cột Khách hàng thường hiện `-`.
+  - Query Hoá đơn lọc qua embed **không `!inner`** (`.in('contract.room_id', roomIds)` chỉ null-out `contract`, không lọc dòng cha) → có thể hiện hoá đơn của **toà khác**; query Hợp đồng cũng non-inner, lọc client SAU `limit 50` → có thể sót HĐ của toà khi dữ liệu lớn. (So sánh: `RoomDetailPage` đã dùng `contracts!inner` đúng cách.)
+  - Nút "Quản lý căn hộ" gọi `navigate('/rooms', {state: {buildingId}})` nhưng `/rooms` redirect về `/apartments` và RoomsPage chỉ đọc query `?building_id=` → **mất pre-filter toà**; nút Eye từng phòng gọi `navigate('/rooms/${room.id}')` cũng rơi về trang danh sách (xem 5.5).
 
 ### 5.4. `/rooms` (route `/apartments`) — Danh mục Căn hộ
 
 [RoomsPage.tsx](src/pages/rooms/RoomsPage.tsx) · hooks [useRooms.ts](src/hooks/useRooms.ts), [useRoomsWithContracts.ts](src/hooks/useRoomsWithContracts.ts)
 
 - **Hiển thị:** `useRooms()` (toàn bộ phòng chưa xoá, join `building`), sắp xếp theo toà rồi tên phòng bằng `compareBuildingThenRoom`. `useRoomsWithActiveContracts()` (toàn bộ) cung cấp ngày hết hạn để tính trạng thái.
-- **Bộ lọc liên hoàn:** Khu vực → Toà → Tầng (đổi khu vực reset toà+tầng; dropdown toà giới hạn theo khu vực; tầng lấy từ `useFloors(buildingId)`). Có pre-filter từ query `?building_id=`.
-- **Stat cards** (theo danh sách đang lọc): Tổng phòng, Tổng phòng trống, Sắp hết hạn — tính qua `getRoomDisplayStatus`.
-- **Tạo / sửa:** `RoomFormDialog` (validate `roomSchema` [roomValidation.ts](src/lib/roomValidation.ts): bắt buộc `building_id`, `floor` dương, `name`, `rent_price/deposit_amount ≥ 0`). `useCreateRoom`/`useUpdateRoom` invalidate cả `rooms` lẫn `buildings` (cập nhật `total_rooms` qua trigger).
-- **Toggle trạng thái:** `useUpdateRoomStatus` map switch → `AVAILABLE`/`UNAVAILABLE`.
+- **Bộ lọc liên hoàn:** Khu vực → Toà → Tầng (đổi khu vực reset toà+tầng; dropdown toà giới hạn theo khu vực; tầng lấy từ `useFloors(buildingId)` — lọc server-side `.eq('building_id', …)`). Ô lọc trạng thái ([RoomListFilters.tsx](src/components/rooms/RoomListFilters.tsx)) có 3 lựa chọn `ACTIVE` ("Đang hoạt động") / `RESERVED` ("Đã đặt cọc") / `INACTIVE` ("Ngừng hoạt động") map sang `AVAILABLE` / `RESERVED` / `UNAVAILABLE`. Có pre-filter từ query `?building_id=`.
+- **Stat cards** (4 thẻ, theo danh sách đang lọc): Tổng phòng, Tổng phòng trống, **Đã đặt cọc** (RESERVED), Sắp hết hạn — tính qua `getRoomDisplayStatus`.
+- **Tạo / sửa:** `RoomFormDialog` (validate `roomSchema` [roomValidation.ts](src/lib/roomValidation.ts): bắt buộc `building_id`, `floor` dương, `name`, `rent_price/deposit_amount ≥ 0`). Dropdown Toà **chỉ liệt kê toà `status='ACTIVE'`**; Tầng cascade theo toà đã chọn (đổi toà reset floor). Trong 2 dropdown có mục **tạo nhanh inline**:
+  - "+ Thêm toà nhà" → `QuickCreateBuildingDialog` ([QuickCreateBuildingDialog.tsx](src/components/rooms/QuickCreateBuildingDialog.tsx)): insert toà tối thiểu (tên + mã) với `province/district/ward` = **chuỗi rỗng** để lách NOT NULL — toà tạo nhanh không có địa chỉ, các màn khác hiện `-`, và `buildingSchema` (bắt buộc địa chỉ) sẽ chặn khi sửa lại nếu không điền đủ.
+  - "+ Thêm tầng" → `QuickCreateFloorDialog` ([QuickCreateFloorDialog.tsx](src/components/rooms/QuickCreateFloorDialog.tsx)): insert `floors` **có truyền `buildingId` đã chọn** — đây là đường tạo tầng thật của hệ thống (xem 5.8).
+  - `useCreateRoom`/`useUpdateRoom` invalidate cả `rooms` lẫn `buildings` (cập nhật `total_rooms` qua trigger).
+- **Toggle trạng thái:** `useUpdateRoomStatus` map switch → `AVAILABLE`/`UNAVAILABLE`. **Cảnh báo:** switch chỉ `checked` khi `status === 'AVAILABLE'` nên phòng `OCCUPIED`/`RESERVED` hiện OFF; bật ON sẽ set thẳng `AVAILABLE` — có thể "mở bán" nhầm phòng đang có HĐ thuê (trigger 4.6 chỉ tự cứu lại `RESERVED` nếu còn cọc; `OCCUPIED` thì không gì khôi phục cho tới sự kiện HĐ kế tiếp). Toggle này chỉ nên dùng cho AVAILABLE↔UNAVAILABLE.
 - **Xoá (soft):** `useDeleteRoom` set `deleted_at` → trigger giảm `total_rooms`.
-- **Tạo hàng loạt:** `useBulkCreateRooms` (insert mảng `rooms`).
-- **Edge case:** mã phòng trùng → 23505; `building_id` sai → 23503 ("Tòa nhà không tồn tại").
+- `useBulkCreateRooms` (insert mảng `rooms`) **tồn tại trong hook nhưng không có UI nào gọi** — dead code, không phải tính năng đang dùng.
+- **Edge case:** `23505` đến từ partial index `idx_rooms_unique_name_per_building` `(building_id, name) WHERE deleted_at IS NULL` — tức **trùng TÊN phòng trong cùng toà**, không liên quan cột `code`. `RoomFormDialog` toast đúng nghĩa "Tên phòng đã tồn tại trong toà nhà này" (toast "Mã căn hộ đã tồn tại" trong `useRooms` là nhãn sai). `building_id` sai → 23503 ("Tòa nhà không tồn tại").
 
-### 5.5. `/apartments/:id` (route chi tiết; `/rooms/:id` redirect) — `RoomDetailPage`
+### 5.5. `/apartments/:id` — `RoomDetailPage`
 
 [RoomDetailPage.tsx](src/pages/rooms/RoomDetailPage.tsx)
 
 - `useRoom(id)` + các query trực tiếp: hợp đồng của phòng, hoá đơn, khách đang thuê (lọc HĐ còn hiệu lực qua `isContractInEffect`), tài sản (`assets` theo `room_id`). Dùng tabs Hợp đồng / Hoá đơn / Khách thuê / Tài sản. Sửa qua `EditRoomDialog`.
+- **Lưu ý route:** `/rooms/:id` được `Navigate` về `/apartments` (trang **danh sách**) và **mất `:id`** — KHÔNG tới trang chi tiết tương ứng ([App.tsx](src/App.tsx)). Mọi `navigate('/rooms/${id}')` còn sót (vd nút Eye ở `BuildingDetailPage`) vì vậy rơi về danh sách.
 
 ### 5.6. `/building-map` — Sơ đồ Toà nhà
 
@@ -316,23 +358,26 @@ flowchart TD
 - **Bộ lọc:** Khu vực → Toà (auto chọn toà đầu tiên nếu chưa chọn) → Tầng → Trạng thái + ô tìm phòng/khách. Tất cả dùng `SearchableSelect`.
 - **Trạng thái hiển thị (5 loại):** Đang thuê / Đã đặt cọc / Trống / Sắp trống / Ngừng hoạt động, suy từ `getRoomDisplayStatus` + `useRoomsWithActiveContracts(buildingId)`. Có thẻ thống kê + chú thích màu.
 - **Bố cục:** chọn 1 tầng → lưới phẳng; chọn "tất cả tầng" → nhóm theo `floor` (dùng `floors` để đặt tên tầng). Click phòng → `RoomDetailDialog`.
+- **Lưu ý hiện trạng:** trang gọi `useRooms()` KHÔNG truyền `buildingId` (tải mọi phòng của mọi toà rồi lọc client theo toà đang xem — hook đã hỗ trợ lọc server nhưng chưa dùng); việc auto-chọn toà đầu tiên làm bằng `setState` **ngay trong thân render** (`if (!selectedBuildingId && …) setSelectedBuildingId(…)`) — pattern render-phase update, khó lường khi danh sách toà đổi theo khu vực.
 
 ### 5.7. `/services` — Danh mục Dịch vụ
 
 [ServicesPage.tsx](src/pages/services/ServicesPage.tsx) · hooks [useServices.ts](src/hooks/useServices.ts), [useBuildingServices.ts](src/hooks/useBuildingServices.ts)
 
 - **Hiển thị:** `useServices({building_id, fee_type})` select services + `building_services(building_id, is_active)`; lọc theo toà **client-side** (phải có junction `is_active=true`), lọc `fee_type` server-side. Bảng: Mã, Tên, Loại phí (`fee_type`), Loại tính tiền (`pricing_type`), Giá (đơn giá + đơn vị), Mặc định (switch read-only). Phân trang client.
-- **Tạo / sửa:** `CreateServiceDialog`/`EditServiceDialog` → `useCreateService` (insert service + insert `building_services` cho các toà chọn) / `useUpdateService` (**diff** add/activate/delete junction để **giữ `unit_price_override`** của dòng không đổi).
+- **Tạo / sửa:** `CreateServiceDialog`/`EditServiceDialog` → `useCreateService` (insert service + insert `building_services` cho các toà chọn) / `useUpdateService` (**diff** add/activate/delete junction để **giữ `unit_price_override`** của dòng không đổi — pattern đúng, khác kiểu delete-all của `useUpsertBuildingServices` 5.2).
 - **Xoá (soft):** `useDeleteService` set `deleted_at`.
 - **Bộ lọc** dùng `SearchableSelect`; combobox phân trang dùng `Select` thường (đúng MEMORY).
+- **Lưu ý:** vì `BuildingFormDialog` chèn 1 dòng junction cho MỌI service × toà (kể cả `is_active=false`, xem 5.2), payload `building_services` tải về phình N×M theo thời gian; lọc theo toà vẫn đúng nhờ điều kiện `is_active=true`.
 
 ### 5.8. `/settings/categories/floors` — Danh sách Tầng
 
 [FloorsPage.tsx](src/pages/settings/categories/FloorsPage.tsx) · hook [useFloors.ts](src/hooks/useFloors.ts)
 
-- Trang CRUD generic (`CategoryCrudPage`): cột Số tầng / Tên / Mô tả / Trạng thái. Field form: `floor_number` (số, bắt buộc), `name`, `description`.
-- `useCreateFloor` (tự gắn `user_id`) / `useUpdateFloor` / `useDeleteFloor` (**hard delete**, không có `deleted_at`). Trùng `(building_id, floor_number)` → 23505 "Tầng này đã tồn tại trong toà nhà".
-- Lưu ý: trang này không gắn `building_id` cụ thể (form không có field toà) → chủ yếu là danh mục tên tầng dùng lại; tầng theo toà thực tế được tạo/đọc qua `useFloors(buildingId)` ở RoomsPage/BuildingMapPage.
+- Trang CRUD generic (`CategoryCrudPage`): cột Số tầng / Tên / Mô tả / Trạng thái. Field form: `floor_number` (số, bắt buộc), `name`, `description` — **KHÔNG có field toà nhà**.
+- **Nút "Thêm" của trang này LUÔN thất bại:** `floors.building_id` là NOT NULL ([20250101000001_create_floors_table.sql](supabase/migrations/20250101000001_create_floors_table.sql)) mà form không truyền → insert vi phạm NOT NULL (23502), toast "Không thể tạo tầng". Trang thực tế chỉ dùng được để **xem / sửa / xoá**. Tạo tầng thật đi qua `QuickCreateFloorDialog` trong form Căn hộ (có truyền `buildingId`, xem 5.4).
+- `useCreateFloor` (tự gắn `user_id`) / `useUpdateFloor` / `useDeleteFloor` (**hard delete**, không có `deleted_at`). Trùng `(building_id, floor_number)` → 23505 "Tầng này đã tồn tại trong toà nhà" (constraint tường minh `floors_unique_building_floor`).
+- Lưu ý thêm: bảng liệt kê tầng của **MỌI toà** (`useFloors()` không filter) nhưng không có cột Toà nhà → các toà trùng số tầng hiển thị lẫn nhau, dễ rối; tầng theo toà thực tế được đọc qua `useFloors(buildingId)` ở RoomsPage/BuildingMapPage/RoomFormDialog.
 
 ### 5.9. `/settings/categories/service-quotas` — Định mức dịch vụ
 
@@ -340,17 +385,20 @@ flowchart TD
 
 - **Hiển thị:** `useServiceQuotas()` select quotas + `service_quota_tiers(*)`. Bảng: Tên định mức, Số bậc (đếm tiers), Mô tả. Phân trang client.
 - **Tạo / sửa:** `CreateQuotaDialog`/`EditQuotaDialog` → `useCreateServiceQuota` (insert quota + insert tiers) / `useUpdateServiceQuota` (**xoá hết tiers rồi chèn lại** — replace toàn bộ bậc).
+- **Rủi ro hiện trạng:** cả 2 hook **nuốt lỗi tiers** — insert tiers lỗi chỉ `console.error`, không throw/không toast, mutation vẫn báo "thành công"; update lại là delete-all-rồi-insert **không transaction** (delete còn không check error) → quota có thể mất sạch bậc giá mà UI vẫn xanh, hoá đơn bậc thang tính sai âm thầm ([useServices.ts](src/hooks/useServices.ts)).
 - **Xoá (soft):** `useDeleteServiceQuota` set `deleted_at`.
 - Định mức tạo ở đây được gắn vào dịch vụ qua `services.quota_id` (chọn trong form dịch vụ) để tính giá bậc thang trên hoá đơn.
 
 ## 6. Liên kết sang domain khác (vào / ra)
 
 - **→ Phân quyền / RBAC:** `staff_assignments.building_id`, `roles` quyết định ai thấy/sửa toà–phòng–dịch vụ. `can_access_building`, `can_do_on_building`, `is_admin/is_super_admin` là cổng RLS xuyên suốt mọi domain bám theo `building_id`.
-- **→ Khách hàng & Hợp đồng:** `contracts.room_id` (và `deposits.room_id`, `contract_transfers.old/new_room_id`) gắn nghiệp vụ thuê vào phòng. Trigger contract → cập nhật `rooms.status`. `buildings.contract_template_id`/`rooms.lease_template_id` cấp mẫu HĐ.
+- **→ Khách hàng & Hợp đồng:** `contracts.room_id` (và `deposits.room_id`, `contract_transfers.old/new_room_id`) gắn nghiệp vụ thuê vào phòng. Trigger contract → cập nhật `rooms.status` (active-set ACTIVE+EXTENDED, xem 4.2); chiều ngược lại trạng thái hiển thị FE suy từ HĐ `ACTIVE`-only (4.5). `buildings.contract_template_id`/`rooms.lease_template_id` cấp mẫu HĐ.
+- **→ Đặt cọc & Thu chi (tự động RESERVED):** trigger trên `deposits` / `income_expenses` / `income_expense_items` gọi `recompute_room_reservation` (xem 4.6) — phiếu cọc giữ chỗ (kể cả **chưa duyệt**, chỉ loại CANCELLED) tự đẩy `rooms.status` AVAILABLE↔RESERVED; predicate dùng `ie_has_deposit_item` của domain Thu chi. Đây là cầu nối mới (2026-06-08) giữa domain này và Đặt cọc/Thu chi.
 - **→ Đồng hồ / Chỉ số (meter):** `meters.room_id/building_id/service_id`, `meter_readings.*` — dịch vụ kiểu đồng hồ (`pricing_type = DON_GIA_CO_DINH_DONG_HO`) ghi chỉ số tại phòng để ra sản lượng.
 - **→ Hoá đơn:** `invoices.room_id/building_id`; `invoice_items.service_id` lấy giá từ `building_services.unit_price_override` (fallback `services.unit_price`) và `service_quota_tiers` nếu tính bậc. `buildings/rooms.invoice_template_id` cấp mẫu in.
 - **→ Thu / Chi (income_expenses) & sổ quỹ:** `income_expenses.building_id/room_id`; `buildings.default_account_id_tt/tk` quyết định sổ quỹ mặc định khi thu tiền phòng. **Tòa ảo `is_virtual`** chứa chi phí "Chung" không thuộc toà thật.
 - **→ Báo cáo & Lợi nhuận / Cổ đông:** `profit_monthly.building_id`, `building_shareholders.building_id`, RPC `monthly_building_profit(...)` tổng hợp thu–chi theo toà → là chiều phân tích chính của báo cáo lợi nhuận.
 - **→ Vận hành khác:** `leads.building_id/room_id`, `issues.*`, `jobs.*`, `assets.room_id/building_id`, `asset_warehouses.building_id`, `vehicles.room_id/building_id`, `auto_debt_config.building_id` — toàn bộ neo vào cây toà–phòng của domain này.
+- **→ Phòng trống công khai `/r/:token` & Sale Phòng `/sale-phong`:** cây areas→buildings→rooms được expose **ra ngoài hệ thống** qua RPC SECURITY DEFINER `get_public_available_rooms(p_token)` (grant `anon`; bản mới nhất ở [20260607150000_building_public_elec_lift.sql](supabase/migrations/20260607150000_building_public_elec_lift.sql)): scope theo **owner của token** (`b.user_id = v_owner`), loại toà ảo + đã xoá; tính `status_public` free/soon/rented từ `contracts` `ACTIVE/EXTENDED` (soon = hết hạn trong `soon_days`); trả areas + buildings (kèm `floor_layouts`, `public_contact_*`, `public_map_url`, `public_lift_type`, `elec_rate` tính từ `building_services` giá điện toà) + rooms (kèm `sale_note/room_type/sale_bonus_note`). Module Sale Phòng quản trị token chia sẻ / cài đặt `soon_days`+hotline / ảnh sale (bucket **PUBLIC** `room-sale-images`, khác 7 bucket private còn lại) / editor kéo-thả sơ đồ tầng ghi `buildings.floor_layouts`. Quyền FE: module `sale_phong` ([permissions.ts](src/lib/permissions.ts)). Chi tiết xem doc Sale Phòng / Phòng trống. *(WIP chưa commit: luồng "cọc nhanh" từ trang Phòng trống — `QuickDepositModal.tsx` + action `create_deposit` + RPC `ensure_room_deposit_type` — chỉ ghi nhận, chưa phải hành vi chính thức.)*
 - **→ Mẫu in:** `document_templates` (qua `contract_template_id`, `invoice_template_id`, `lease_template_id`).
 - **→ Sinh mã:** `code_sequences` + `generate_code`/`generate_next_code` dùng bởi các domain có mã tuần tự (HĐ, hoá đơn, phiếu, công việc…).
