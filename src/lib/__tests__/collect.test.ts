@@ -13,6 +13,10 @@ import {
   collectedAt,
   paymentsInRange,
   latestPaymentId,
+  paidUpTo,
+  paidAsOf,
+  remainingAsOf,
+  todayISO,
 } from '../collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
@@ -152,5 +156,101 @@ describe('payments helpers', () => {
   it('latestPaymentId = payment ngày mới nhất', () => {
     expect(latestPaymentId(inv({ payments: pays as any }))).toBe('p2');
     expect(latestPaymentId(inv({ payments: [] }))).toBeNull();
+  });
+});
+
+describe('snapshot theo ngày (paidUpTo / paidAsOf / remainingAsOf)', () => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  it('paidUpTo cộng các phiếu thu ≤ ngày cắt', () => {
+    const i = inv({
+      payments: [
+        { id: 'p1', amount: 200_000, payment_date: '2026-06-05' },
+        { id: 'p2', amount: 300_000, payment_date: '2026-06-08' },
+      ] as any,
+    });
+    expect(paidUpTo(i, '2026-06-04')).toBe(0);
+    expect(paidUpTo(i, '2026-06-05')).toBe(200_000);
+    expect(paidUpTo(i, '2026-06-30')).toBe(500_000);
+  });
+
+  // Kịch bản thực: phòng thu đủ ngày 12/6 → xem lại ngày 10/6 vẫn là "chưa thu" của 10/6.
+  it('paidAsOf: thu ngày 12 → ngày 10 chưa thu, ngày 12 đã thu', () => {
+    const i = inv({
+      status: 'PAID',
+      paid_amount: 1_000_000,
+      remaining_amount: 0,
+      payments: [{ id: 'p1', amount: 1_000_000, payment_date: '2026-06-12' }] as any,
+    });
+    expect(paidAsOf(i, '2026-06-10')).toBe(false);
+    expect(remainingAsOf(i, '2026-06-10')).toBe(1_000_000);
+    expect(paidAsOf(i, '2026-06-12')).toBe(true);
+    expect(remainingAsOf(i, '2026-06-12')).toBe(0);
+  });
+
+  it('paidAsOf xử lý làm tròn <10K: settled hiện tại + phiếu cuối ≤ ngày cắt → true', () => {
+    const i = inv({
+      status: 'PAID', // trigger DB mark PAID dù thiếu 5K (làm tròn)
+      total_amount: 5_000_000,
+      paid_amount: 4_995_000,
+      remaining_amount: 0,
+      payments: [{ id: 'p1', amount: 4_995_000, payment_date: '2026-06-08' }] as any,
+    });
+    expect(paidAsOf(i, '2026-06-07')).toBe(false);
+    expect(remainingAsOf(i, '2026-06-07')).toBe(5_000_000);
+    expect(paidAsOf(i, '2026-06-08')).toBe(true);
+    expect(remainingAsOf(i, '2026-06-08')).toBe(0);
+  });
+
+  it('HĐ chưa thu đồng nào → mọi ngày đều chưa thu, còn nguyên total', () => {
+    const i = inv({});
+    expect(paidAsOf(i, '2026-06-30')).toBe(false);
+    expect(remainingAsOf(i, '2026-06-30')).toBe(1_000_000);
+  });
+
+  // Invariant: theo dòng thời gian, đã-thu không thể "quay lại chưa thu",
+  // số còn phải thu không tăng.
+  it('property: paidAsOf đơn điệu tăng, remainingAsOf đơn điệu giảm theo ngày', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            day: fc.integer({ min: 1, max: 28 }),
+            amount: fc.integer({ min: 1_000, max: 600_000 }),
+          }),
+          { maxLength: 6 },
+        ),
+        (raw) => {
+          const total = 1_000_000;
+          const payments = raw.map((p, idx) => ({
+            id: `p${idx}`,
+            amount: p.amount,
+            payment_date: `2026-06-${pad(p.day)}`,
+          }));
+          const paid = payments.reduce((s, p) => s + p.amount, 0);
+          const i = inv({
+            total_amount: total,
+            paid_amount: paid,
+            remaining_amount: total - paid,
+            payments: payments as any,
+          });
+          for (let d = 1; d < 28; d += 1) {
+            const d1 = `2026-06-${pad(d)}`;
+            const d2 = `2026-06-${pad(d + 1)}`;
+            if (paidAsOf(i, d1) && !paidAsOf(i, d2)) return false;
+            if (remainingAsOf(i, d2) > remainingAsOf(i, d1)) return false;
+          }
+          return true;
+        },
+      ),
+    );
+  });
+});
+
+describe('todayISO', () => {
+  it('trả về ngày LOCAL (không lệch theo UTC trước 7h sáng VN)', () => {
+    const d = new Date();
+    const expected = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    expect(todayISO()).toBe(expected);
   });
 });

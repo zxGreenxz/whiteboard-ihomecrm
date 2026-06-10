@@ -7,7 +7,15 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { useInvoices } from '@/hooks/useInvoices';
 import { useMyPermissions, can } from '@/hooks/useMyPermissions';
 import { useQuickCollect } from '@/hooks/useQuickCollect';
-import { collectStatus, paymentsInRange, remainingOf, fmtShort, todayISO } from '@/lib/collect';
+import {
+  collectStatus,
+  paidAsOf,
+  paymentsInRange,
+  remainingAsOf,
+  remainingOf,
+  fmtShort,
+  todayISO,
+} from '@/lib/collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 import { BuildingPills } from '@/components/thu-tien/BuildingPills';
@@ -34,10 +42,10 @@ const ThuTien = () => {
 
   const [buildingId, setBuildingId] = useState('');
   const [billingMonth, setBillingMonth] = useState(currentMonth());
-  const [timeFilter, setTimeFilter] = useState<TimeFilterValue>('all');
+  const [timeFilter, setTimeFilter] = useState<TimeFilterValue>('today');
   const [dateMode, setDateMode] = useState<'single' | 'range'>('single');
   const [dateRange, setDateRange] = useState<CollectDateRange>({ start: todayISO(), end: todayISO() });
-  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('unpaid');
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');
 
   // Sheet/dialog/report: giữ DOM + toggle .show để chạy animation translateY.
   const [drawer, setDrawer] = useState<{ id: string | null; mode: 'view' | 'keypad'; show: boolean }>({
@@ -71,11 +79,22 @@ const ThuTien = () => {
   }, [timeFilter, dateRange]);
 
   const isPaid = (inv: InvoiceWithRelations) => collectStatus(inv) === 'paid';
+  // "Đã thu" của ngày/khoảng đang xem: có phiếu thu trong phạm vi (đủ hoặc 1 phần).
+  const collectedInScope = (inv: InvoiceWithRelations) => paymentsInRange(inv, lo, hi).has;
+  // "Chưa thu" (backlog) của ngày đang xem: hôm nay = còn nợ hiện tại (dồn mọi ngày);
+  // ngày quá khứ = còn nợ tính đến hết ngày đó (snapshot từ lịch sử phiếu thu).
+  const owesInScope = (inv: InvoiceWithRelations) =>
+    timeFilter === 'today' ? !isPaid(inv) : !paidAsOf(inv, hi);
+  // Danh sách của 1 ngày = phòng có thu trong ngày ∪ phòng còn phải thu của ngày đó.
   const timeMatch = (inv: InvoiceWithRelations) =>
-    timeFilter === 'all' ? true : paymentsInRange(inv, lo, hi).has;
+    timeFilter === 'all' ? true : collectedInScope(inv) || owesInScope(inv);
   const statusMatch = (inv: InvoiceWithRelations) => {
     if (statusFilter === 'all') return true;
-    return statusFilter === 'paid' ? isPaid(inv) : !isPaid(inv);
+    if (timeFilter === 'all') return statusFilter === 'paid' ? isPaid(inv) : !isPaid(inv);
+    // Theo ngày: thu 1 phần trong ngày vẫn xếp về "Đã thu" của ngày đó (ô vàng Thu thêm).
+    return statusFilter === 'paid'
+      ? collectedInScope(inv)
+      : owesInScope(inv) && !collectedInScope(inv);
   };
 
   const list = useMemo(
@@ -83,34 +102,53 @@ const ThuTien = () => {
     [allRooms, timeFilter, lo, hi, statusFilter],
   );
 
+  // Thanh tổng theo phạm vi thời gian (không phụ thuộc tab Đã thu/Chưa thu):
+  // cả kỳ = lũy kế paid_amount; theo ngày = tiền thu TRONG ngày + backlog của ngày đó.
   const summary = useMemo(() => {
     let collectedSum = 0, remainingSum = 0, paidRooms = 0, dueRooms = 0;
-    for (const inv of list) {
-      collectedSum += inv.paid_amount ?? 0;
-      if (isPaid(inv)) paidRooms += 1;
-      else {
-        dueRooms += 1;
-        remainingSum += Math.max(0, remainingOf(inv));
+    for (const inv of allRooms) {
+      if (timeFilter === 'all') {
+        collectedSum += inv.paid_amount ?? 0;
+        if (isPaid(inv)) paidRooms += 1;
+        else {
+          dueRooms += 1;
+          remainingSum += Math.max(0, remainingOf(inv));
+        }
+      } else {
+        const { sum, has } = paymentsInRange(inv, lo, hi);
+        collectedSum += sum;
+        if (has) paidRooms += 1;
+        else if (owesInScope(inv)) {
+          dueRooms += 1;
+          remainingSum +=
+            timeFilter === 'today' ? Math.max(0, remainingOf(inv)) : remainingAsOf(inv, hi);
+        }
       }
     }
     return { collectedSum, remainingSum, paidRooms, dueRooms };
-  }, [list]);
+  }, [allRooms, timeFilter, lo, hi]);
 
   const timeCounts = useMemo(() => {
-    const base = allRooms.filter(statusMatch);
+    const today = todayISO();
     return {
-      all: base.length,
-      today: base.filter((i) => paymentsInRange(i, todayISO(), todayISO()).has).length,
-      date: base.filter((i) => paymentsInRange(i, lo || todayISO(), hi || todayISO()).has).length,
+      all: allRooms.length,
+      // Việc của hôm nay = đã thu hôm nay ∪ còn phải thu.
+      today: allRooms.filter((i) => paymentsInRange(i, today, today).has || !isPaid(i)).length,
+      // Hiện trong DatePanel: "Thu được … · n phòng" → số phòng CÓ thu trong khoảng.
+      date: allRooms.filter((i) => paymentsInRange(i, lo || today, hi || today).has).length,
     };
-  }, [allRooms, statusFilter, lo, hi]);
+  }, [allRooms, lo, hi]);
   const statusCounts = useMemo(() => {
     const base = allRooms.filter(timeMatch);
-    return {
-      all: base.length,
-      paid: base.filter(isPaid).length,
-      unpaid: base.filter((i) => !isPaid(i)).length,
-    };
+    if (timeFilter === 'all') {
+      return {
+        all: base.length,
+        paid: base.filter(isPaid).length,
+        unpaid: base.filter((i) => !isPaid(i)).length,
+      };
+    }
+    const paid = base.filter(collectedInScope).length;
+    return { all: base.length, paid, unpaid: base.length - paid };
   }, [allRooms, timeFilter, lo, hi]);
 
   const dateRangeSum = useMemo(
@@ -158,15 +196,19 @@ const ThuTien = () => {
     window.setTimeout(() => setReport({ mounted: false, show: false }), 320);
   };
 
-  const emptyIcon = statusFilter === 'unpaid' && timeFilter === 'all' ? '🎉' : '🔍';
+  const emptyIcon = statusFilter === 'paid' || allRooms.length === 0 ? '🔍' : '🎉';
   const emptyMessage =
-    statusFilter === 'unpaid' && timeFilter === 'all'
-      ? 'Đã thu xong toàn bộ tòa này!'
-      : timeFilter === 'today'
-        ? 'Chưa thu phòng nào hôm nay.'
+    allRooms.length === 0
+      ? 'Không có hoá đơn nào trong kỳ này.'
+      : statusFilter === 'paid'
+        ? timeFilter === 'today'
+          ? 'Chưa thu phòng nào hôm nay.'
+          : timeFilter === 'date'
+            ? 'Không có khoản thu nào trong ngày đã chọn.'
+            : 'Chưa thu phòng nào trong kỳ này.'
         : timeFilter === 'date'
-          ? 'Không có khoản thu nào trong ngày đã chọn.'
-          : 'Không có phòng nào khớp bộ lọc.';
+          ? 'Đến hết ngày này đã thu xong toàn bộ.'
+          : 'Đã thu xong toàn bộ tòa này!';
 
   const buildingOpts = buildings.map((b: any) => ({ id: b.id, name: b.name }));
 
