@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Copy } from "lucide-react";
+import { Share2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -74,26 +74,51 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
       })
     : null;
 
-  const downloadQR = async () => {
+  // Mở share sheet gốc của máy (có Zalo / Lưu ảnh vào album...). Trình duyệt
+  // không hỗ trợ share file (desktop) → fallback tải ảnh về máy.
+  const shareQR = async () => {
     if (!qrUrl) return;
+    let file: File;
     try {
       const res = await fetch(qrUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `VietQR-${voucher.code}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast.success("Đã lưu ảnh QR — mở app ngân hàng, quét QR từ thư viện ảnh");
+      file = new File([blob], `VietQR-${voucher.code}.png`, {
+        type: blob.type || "image/png",
+      });
     } catch {
-      // CORS chặn fetch → mở tab mới để user nhấn giữ lưu ảnh
+      // CORS/mạng chặn fetch → mở tab mới để user nhấn giữ lưu ảnh
       window.open(qrUrl, "_blank", "noopener");
       toast.info("Nhấn giữ ảnh QR để lưu về máy");
+      return;
     }
+
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: `VietQR ${voucher.code}`,
+          text: `Chuyển khoản ${formatVND(voucher.total_amount)} — ${voucher.name}`,
+        });
+      } catch (err) {
+        // User bấm huỷ share sheet → không làm gì
+        if ((err as DOMException)?.name !== "AbortError") {
+          toast.error("Không chia sẻ được — thử nhấn giữ ảnh QR để lưu");
+        }
+      }
+      return;
+    }
+
+    // Desktop / trình duyệt cũ: tải file về
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Đã tải ảnh QR về máy");
   };
 
   const copyAccount = async () => {
@@ -212,15 +237,16 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
               />
               <Button
                 type="button"
-                onClick={downloadQR}
+                onClick={shareQR}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                <Download className="h-4 w-4 mr-2" />
-                Lưu ảnh QR
+                <Share2 className="h-4 w-4 mr-2" />
+                Gửi qua Zalo / Lưu vào album
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                Lưu ảnh → mở app ngân hàng → bấm <b>Quét QR</b> → chọn ảnh từ{" "}
-                <b>thư viện</b>. App tự điền đủ STK, số tiền, nội dung.
+                Chọn <b>Zalo</b> để gửi QR cho người nhận, hoặc <b>Lưu ảnh</b>{" "}
+                vào album rồi mở app ngân hàng → <b>Quét QR</b> → chọn ảnh từ
+                thư viện. App tự điền đủ STK, số tiền, nội dung.
               </p>
             </div>
           </div>
