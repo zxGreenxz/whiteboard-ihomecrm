@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   matchRecipientBankCode,
   buildVietQRDeeplink,
+  buildVietQRImageUrl,
   sanitizeTransferText,
   extractRecipientFromNotes,
   RECIPIENT_BANKS,
@@ -73,6 +74,35 @@ describe("buildVietQRDeeplink", () => {
   });
 });
 
+describe("buildVietQRImageUrl", () => {
+  it("đúng format img.vietqr.io compact2 với amount/addInfo/accountName", () => {
+    const url = buildVietQRImageUrl({
+      bin: "970415",
+      accountNumber: "6053 5688",
+      amount: 1800000,
+      note: "PC2606003 Hoa hồng môi giới",
+      accountName: "ĐẶNG LỮ ÁI QUYÊN",
+    });
+    const parsed = new URL(url);
+    expect(parsed.origin + parsed.pathname).toBe(
+      "https://img.vietqr.io/image/970415-60535688-compact2.png"
+    );
+    expect(parsed.searchParams.get("amount")).toBe("1800000");
+    expect(parsed.searchParams.get("addInfo")).toBe(
+      "pc2606003 hoa hong moi gioi"
+    );
+    expect(parsed.searchParams.get("accountName")).toBe("dang lu ai quyen");
+  });
+
+  it("không amount/note → URL không query string", () => {
+    const url = buildVietQRImageUrl({
+      bin: "970436",
+      accountNumber: "123456",
+    });
+    expect(url).toBe("https://img.vietqr.io/image/970436-123456-compact2.png");
+  });
+});
+
 describe("sanitizeTransferText", () => {
   it("bỏ dấu + ký tự đặc biệt, cắt 70 ký tự", () => {
     expect(sanitizeTransferText("Hoa hồng môi giới HĐ HD-2026-00004")).toBe(
@@ -98,6 +128,14 @@ describe("data sanity", () => {
     expect(new Set(appIds).size).toBe(appIds.length);
     const codes = RECIPIENT_BANKS.map((b) => b.code);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it("mọi bank đều có BIN Napas hợp lệ (6 chữ số) và không trùng", () => {
+    for (const bank of RECIPIENT_BANKS) {
+      expect(bank.bin, `bin của ${bank.code}`).toMatch(/^\d{6}$/);
+    }
+    const bins = RECIPIENT_BANKS.map((b) => b.bin);
+    expect(new Set(bins).size).toBe(bins.length);
   });
 
   it("mỗi bank tự khớp shortName của chính nó", () => {

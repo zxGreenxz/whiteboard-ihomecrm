@@ -8,8 +8,10 @@ import { normalizeVietnamese } from "@/lib/utils";
 // - `app`  = app ngân hàng NGƯỜI CHUYỂN muốn mở (danh sách VIETQR_BANK_APPS,
 //            nguồn: https://api.vietqr.io/v2/android-app-deeplinks).
 // - `ba`   = tài khoản NGƯỜI NHẬN dạng <số tk>@<mã bank> (RECIPIENT_BANKS).
-// - Mức độ tự điền sẵn tuỳ app ngân hàng hỗ trợ; các app lớn (VCB, MB,
-//   VietinBank, BIDV, ACB, TCB...) đều đã hỗ trợ.
+// - LƯU Ý thực tế: deeplink mới chỉ MỞ ĐƯỢC APP, đa số app bank chưa nhận
+//   payload tự điền (VietQR docs xác nhận). Luồng điền sẵn tin cậy là ẢNH
+//   VietQR (img.vietqr.io, xem buildVietQRImageUrl): lưu ảnh → mở app →
+//   quét QR từ thư viện → app tự điền đủ bank/STK/số tiền/nội dung.
 // =============================================================
 
 /** App ngân hàng hỗ trợ mở qua VietQR deeplink (param `app`). */
@@ -58,6 +60,8 @@ export const VIETQR_BANK_APPS: VietQRBankApp[] = [
 /** Ngân hàng nhận tiền — `code` dùng trong param `ba` (<stk>@<code>). */
 export interface RecipientBank {
   code: string;
+  /** Mã BIN Napas (dùng cho ảnh VietQR img.vietqr.io). */
+  bin: string;
   shortName: string;
   /**
    * Alias đã chuẩn hoá (không dấu, lowercase, viết liền).
@@ -72,62 +76,62 @@ export interface RecipientBank {
 /** Thứ tự = độ ưu tiên khi khớp (bank phổ biến/alias đặc trưng đứng trước). */
 export const RECIPIENT_BANKS: RecipientBank[] = [
   // "viettinbank"/"viettin" = lỗi chính tả phổ biến của VietinBank trong dữ liệu thực
-  { code: "icb", shortName: "VietinBank", aliases: ["vietinbank", "viettinbank", "vietin", "viettin", "congthuong", "ipay", "icb"] },
-  { code: "vcb", shortName: "Vietcombank", aliases: ["vietcombank", "ngoaithuong", "vcb"] },
-  { code: "bidv", shortName: "BIDV", aliases: ["bidv", "dautuvaphattrien"] },
-  { code: "vba", shortName: "Agribank", aliases: ["agribank", "nongnghiep", "vba"] },
-  { code: "mb", shortName: "MB Bank", aliases: ["mbbank", "quandoi", "mb"] },
-  { code: "tcb", shortName: "Techcombank", aliases: ["techcombank", "kythuong", "tcb"] },
-  { code: "acb", shortName: "ACB", aliases: ["achau", "acb"] },
-  { code: "vpb", shortName: "VPBank", aliases: ["vpbank", "thinhvuong", "vpb"] },
-  { code: "tpb", shortName: "TPBank", aliases: ["tpbank", "tienphong", "tpb"] },
-  { code: "stb", shortName: "Sacombank", aliases: ["sacombank", "saigonthuongtin", "stb"] },
-  { code: "hdb", shortName: "HDBank", aliases: ["hdbank", "hdb"] },
-  { code: "vib", shortName: "VIB", aliases: ["myvib", "vib"] },
-  { code: "shb", shortName: "SHB", aliases: ["saigonhanoi", "shb"] },
-  { code: "eib", shortName: "Eximbank", aliases: ["eximbank", "eib"] },
-  { code: "msb", shortName: "MSB", aliases: ["maritime", "hanghai", "msb"] },
-  { code: "scb", shortName: "SCB", aliases: ["scb"] },
-  { code: "seab", shortName: "SeABank", aliases: ["seabank", "dongnama", "seab"] },
-  { code: "ocb", shortName: "OCB", aliases: ["phuongdong", "ocb"] },
-  { code: "nab", shortName: "Nam Á Bank", aliases: ["namabank", "nama", "nab"] },
-  { code: "lpb", shortName: "LPBank", aliases: ["lpbank", "lienviet", "locphat", "buudien", "lpb"] },
-  { code: "klb", shortName: "KienlongBank", aliases: ["kienlong", "klb"] },
-  { code: "ncb", shortName: "NCB", aliases: ["quocdan", "ncb"] },
-  { code: "abb", shortName: "ABBANK", aliases: ["abbank", "anbinh", "abb"] },
-  { code: "bvb", shortName: "BaoViet Bank", aliases: ["baoviet", "bvb"] },
-  { code: "vab", shortName: "VietABank", aliases: ["vietabank", "vieta", "vab"] },
-  { code: "pvcb", shortName: "PVcomBank", aliases: ["pvcombank", "daichung", "pvcb"] },
-  { code: "bab", shortName: "BacABank", aliases: ["bacabank", "baca", "bab"] },
-  { code: "pgb", shortName: "PGBank", aliases: ["pgbank", "pgb"] },
+  { code: "icb", bin: "970415", shortName: "VietinBank", aliases: ["vietinbank", "viettinbank", "vietin", "viettin", "congthuong", "ipay", "icb"] },
+  { code: "vcb", bin: "970436", shortName: "Vietcombank", aliases: ["vietcombank", "ngoaithuong", "vcb"] },
+  { code: "bidv", bin: "970418", shortName: "BIDV", aliases: ["bidv", "dautuvaphattrien"] },
+  { code: "vba", bin: "970405", shortName: "Agribank", aliases: ["agribank", "nongnghiep", "vba"] },
+  { code: "mb", bin: "970422", shortName: "MB Bank", aliases: ["mbbank", "quandoi", "mb"] },
+  { code: "tcb", bin: "970407", shortName: "Techcombank", aliases: ["techcombank", "kythuong", "tcb"] },
+  { code: "acb", bin: "970416", shortName: "ACB", aliases: ["achau", "acb"] },
+  { code: "vpb", bin: "970432", shortName: "VPBank", aliases: ["vpbank", "thinhvuong", "vpb"] },
+  { code: "tpb", bin: "970423", shortName: "TPBank", aliases: ["tpbank", "tienphong", "tpb"] },
+  { code: "stb", bin: "970403", shortName: "Sacombank", aliases: ["sacombank", "saigonthuongtin", "stb"] },
+  { code: "hdb", bin: "970437", shortName: "HDBank", aliases: ["hdbank", "hdb"] },
+  { code: "vib", bin: "970441", shortName: "VIB", aliases: ["myvib", "vib"] },
+  { code: "shb", bin: "970443", shortName: "SHB", aliases: ["saigonhanoi", "shb"] },
+  { code: "eib", bin: "970431", shortName: "Eximbank", aliases: ["eximbank", "eib"] },
+  { code: "msb", bin: "970426", shortName: "MSB", aliases: ["maritime", "hanghai", "msb"] },
+  { code: "scb", bin: "970429", shortName: "SCB", aliases: ["scb"] },
+  { code: "seab", bin: "970440", shortName: "SeABank", aliases: ["seabank", "dongnama", "seab"] },
+  { code: "ocb", bin: "970448", shortName: "OCB", aliases: ["phuongdong", "ocb"] },
+  { code: "nab", bin: "970428", shortName: "Nam Á Bank", aliases: ["namabank", "nama", "nab"] },
+  { code: "lpb", bin: "970449", shortName: "LPBank", aliases: ["lpbank", "lienviet", "locphat", "buudien", "lpb"] },
+  { code: "klb", bin: "970452", shortName: "KienlongBank", aliases: ["kienlong", "klb"] },
+  { code: "ncb", bin: "970419", shortName: "NCB", aliases: ["quocdan", "ncb"] },
+  { code: "abb", bin: "970425", shortName: "ABBANK", aliases: ["abbank", "anbinh", "abb"] },
+  { code: "bvb", bin: "970438", shortName: "BaoViet Bank", aliases: ["baoviet", "bvb"] },
+  { code: "vab", bin: "970427", shortName: "VietABank", aliases: ["vietabank", "vieta", "vab"] },
+  { code: "pvcb", bin: "970412", shortName: "PVcomBank", aliases: ["pvcombank", "daichung", "pvcb"] },
+  { code: "bab", bin: "970409", shortName: "BacABank", aliases: ["bacabank", "baca", "bab"] },
+  { code: "pgb", bin: "970430", shortName: "PGBank", aliases: ["pgbank", "pgb"] },
   // cake/timo/momo đứng trước vccb: "Timo by Ban Viet Bank" phải ra Timo, không phải Bản Việt
-  { code: "cake", shortName: "CAKE", aliases: ["cake"] },
-  { code: "timo", shortName: "Timo", aliases: ["timo"] },
-  { code: "momo", shortName: "MoMo", aliases: ["momo"] },
-  { code: "vccb", shortName: "BVBank (Bản Việt)", aliases: ["banviet", "vietcapital", "bvbank", "vccb"] },
-  { code: "sgicb", shortName: "SaigonBank", aliases: ["saigonbank", "saigoncongthuong", "sgicb"] },
-  { code: "vietbank", shortName: "Vietbank", aliases: ["vietbank", "vietnamthuongtin"] },
-  { code: "coopbank", shortName: "Co-opBank", aliases: ["coopbank", "hoptacxa"] },
-  { code: "shbvn", shortName: "Shinhan Bank", aliases: ["shinhan"] },
-  { code: "wvn", shortName: "Woori Bank", aliases: ["woori", "wvn"] },
-  { code: "vikki", shortName: "Vikki (Đông Á)", aliases: ["vikki", "dongabank", "donga"] },
-  { code: "mbv", shortName: "MBV (OceanBank)", aliases: ["oceanbank", "daiduong", "mbv"] },
-  { code: "cbb", shortName: "CBBank", aliases: ["cbbank", "xaydung", "cbb"] },
-  { code: "gpb", shortName: "GPBank", aliases: ["gpbank", "gpb"] },
-  { code: "kbank", shortName: "KBank", aliases: ["kbank", "kasikorn"] },
-  { code: "hlbvn", shortName: "Hong Leong", aliases: ["hongleong"] },
-  { code: "cimb", shortName: "CIMB", aliases: ["cimb", "octo"] },
-  { code: "ivb", shortName: "Indovina", aliases: ["indovina", "ivb"] },
-  { code: "uob", shortName: "UOB", aliases: ["unitedoverseas", "uob"] },
-  { code: "scvn", shortName: "Standard Chartered", aliases: ["standardchartered"] },
-  { code: "pbvn", shortName: "Public Bank", aliases: ["publicbank"] },
-  { code: "hsbc", shortName: "HSBC", aliases: ["hsbc"] },
-  { code: "citibank", shortName: "Citibank", aliases: ["citibank", "citi"] },
-  { code: "vrb", shortName: "Việt - Nga (VRB)", aliases: ["vietnga", "vrb"] },
-  { code: "ubank", shortName: "Ubank", aliases: ["ubank"] },
-  { code: "vtlmoney", shortName: "Viettel Money", aliases: ["viettelmoney", "viettelpay"] },
-  { code: "vnptmoney", shortName: "VNPT Money", aliases: ["vnptmoney"] },
-  { code: "vbsp", shortName: "NH Chính sách XH", aliases: ["chinhsach", "vbsp"] },
+  { code: "cake", bin: "546034", shortName: "CAKE", aliases: ["cake"] },
+  { code: "timo", bin: "963388", shortName: "Timo", aliases: ["timo"] },
+  { code: "momo", bin: "971025", shortName: "MoMo", aliases: ["momo"] },
+  { code: "vccb", bin: "970454", shortName: "BVBank (Bản Việt)", aliases: ["banviet", "vietcapital", "bvbank", "vccb"] },
+  { code: "sgicb", bin: "970400", shortName: "SaigonBank", aliases: ["saigonbank", "saigoncongthuong", "sgicb"] },
+  { code: "vietbank", bin: "970433", shortName: "Vietbank", aliases: ["vietbank", "vietnamthuongtin"] },
+  { code: "coopbank", bin: "970446", shortName: "Co-opBank", aliases: ["coopbank", "hoptacxa"] },
+  { code: "shbvn", bin: "970424", shortName: "Shinhan Bank", aliases: ["shinhan"] },
+  { code: "wvn", bin: "970457", shortName: "Woori Bank", aliases: ["woori", "wvn"] },
+  { code: "vikki", bin: "970406", shortName: "Vikki (Đông Á)", aliases: ["vikki", "dongabank", "donga"] },
+  { code: "mbv", bin: "970414", shortName: "MBV (OceanBank)", aliases: ["oceanbank", "daiduong", "mbv"] },
+  { code: "cbb", bin: "970444", shortName: "CBBank", aliases: ["cbbank", "xaydung", "cbb"] },
+  { code: "gpb", bin: "970408", shortName: "GPBank", aliases: ["gpbank", "gpb"] },
+  { code: "kbank", bin: "668888", shortName: "KBank", aliases: ["kbank", "kasikorn"] },
+  { code: "hlbvn", bin: "970442", shortName: "Hong Leong", aliases: ["hongleong"] },
+  { code: "cimb", bin: "422589", shortName: "CIMB", aliases: ["cimb", "octo"] },
+  { code: "ivb", bin: "970434", shortName: "Indovina", aliases: ["indovina", "ivb"] },
+  { code: "uob", bin: "970458", shortName: "UOB", aliases: ["unitedoverseas", "uob"] },
+  { code: "scvn", bin: "970410", shortName: "Standard Chartered", aliases: ["standardchartered"] },
+  { code: "pbvn", bin: "970439", shortName: "Public Bank", aliases: ["publicbank"] },
+  { code: "hsbc", bin: "458761", shortName: "HSBC", aliases: ["hsbc"] },
+  { code: "citibank", bin: "533948", shortName: "Citibank", aliases: ["citibank", "citi"] },
+  { code: "vrb", bin: "970421", shortName: "Việt - Nga (VRB)", aliases: ["vietnga", "vrb"] },
+  { code: "ubank", bin: "546035", shortName: "Ubank", aliases: ["ubank"] },
+  { code: "vtlmoney", bin: "971005", shortName: "Viettel Money", aliases: ["viettelmoney", "viettelpay"] },
+  { code: "vnptmoney", bin: "971011", shortName: "VNPT Money", aliases: ["vnptmoney"] },
+  { code: "vbsp", bin: "999888", shortName: "NH Chính sách XH", aliases: ["chinhsach", "vbsp"] },
 ];
 
 /**
@@ -192,6 +196,33 @@ export function buildVietQRDeeplink(p: VietQRDeeplinkParams): string {
   if (p.note) qs.set("tn", sanitizeTransferText(p.note));
   if (p.recipientName) qs.set("bn", sanitizeTransferText(p.recipientName));
   return `https://dl.vietqr.io/pay?${qs.toString()}`;
+}
+
+export interface VietQRImageParams {
+  /** Mã BIN Napas của ngân hàng nhận (RECIPIENT_BANKS.bin). */
+  bin: string;
+  accountNumber: string;
+  amount?: number | null;
+  /** Nội dung chuyển khoản (addInfo). */
+  note?: string | null;
+  /** Tên chủ tài khoản nhận. */
+  accountName?: string | null;
+}
+
+/**
+ * Ảnh VietQR động (img.vietqr.io) — quét là app bank tự điền đủ
+ * bank/STK/số tiền/nội dung. Template compact2 = QR + logo + số tiền + tên.
+ */
+export function buildVietQRImageUrl(p: VietQRImageParams): string {
+  const account = p.accountNumber.replace(/[^0-9a-zA-Z]/g, "");
+  const qs = new URLSearchParams();
+  if (p.amount && p.amount > 0) qs.set("amount", String(Math.round(p.amount)));
+  if (p.note) qs.set("addInfo", sanitizeTransferText(p.note));
+  if (p.accountName) qs.set("accountName", sanitizeTransferText(p.accountName));
+  const query = qs.toString();
+  return `https://img.vietqr.io/image/${p.bin}-${account}-compact2.png${
+    query ? `?${query}` : ""
+  }`;
 }
 
 /**

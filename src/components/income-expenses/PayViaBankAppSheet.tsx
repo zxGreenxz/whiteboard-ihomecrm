@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { Download, Copy } from "lucide-react";
+import { toast } from "sonner";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import {
@@ -12,6 +15,7 @@ import {
   RECIPIENT_BANKS,
   matchRecipientBankCode,
   buildVietQRDeeplink,
+  buildVietQRImageUrl,
   extractRecipientFromNotes,
 } from "@/lib/vietqrDeeplink";
 
@@ -24,9 +28,12 @@ interface Props {
 const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 
 /**
- * Bottom sheet "Chi tiền qua app ngân hàng" (mobile):
- * tóm tắt người nhận + grid app ngân hàng. Bấm app → mở VietQR deeplink
- * (dl.vietqr.io) → app bank mở màn hình chuyển tiền điền sẵn STK/số tiền/nội dung.
+ * Bottom sheet "Chi tiền qua app ngân hàng" (mobile).
+ *
+ * Luồng chính = ẢNH VietQR: lưu ảnh QR → mở app bank → quét QR từ thư viện
+ * → app tự điền đủ bank/STK/số tiền/nội dung (mọi app bank VN đều hỗ trợ).
+ * Deeplink dl.vietqr.io chỉ MỞ app (đa số app chưa nhận payload tự điền)
+ * nên grid app đặt sau bước lưu QR.
  */
 export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
   const detectedBankCode = useMemo(
@@ -43,6 +50,7 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
   const recipientName =
     extractRecipientFromNotes(voucher.notes) || voucher.payer_name || null;
   const accountNumber = voucher.receive_bank_account ?? "";
+  const transferNote = `${voucher.code} ${voucher.name}`;
 
   const bankOptions = useMemo(
     () =>
@@ -56,6 +64,49 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
 
   const selectedBank = RECIPIENT_BANKS.find((b) => b.code === bankCode);
 
+  const qrUrl = selectedBank
+    ? buildVietQRImageUrl({
+        bin: selectedBank.bin,
+        accountNumber,
+        amount: voucher.total_amount,
+        note: transferNote,
+        accountName: recipientName,
+      })
+    : null;
+
+  const downloadQR = async () => {
+    if (!qrUrl) return;
+    try {
+      const res = await fetch(qrUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `VietQR-${voucher.code}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Đã lưu ảnh QR — mở app ngân hàng, quét QR từ thư viện ảnh");
+    } catch {
+      // CORS chặn fetch → mở tab mới để user nhấn giữ lưu ảnh
+      window.open(qrUrl, "_blank", "noopener");
+      toast.info("Nhấn giữ ảnh QR để lưu về máy");
+    }
+  };
+
+  const copyAccount = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        accountNumber.replace(/[^0-9a-zA-Z]/g, "")
+      );
+      toast.success("Đã copy số tài khoản");
+    } catch {
+      toast.error("Không copy được — chép tay giúp nhé");
+    }
+  };
+
   const openBankApp = (appId: string) => {
     if (!bankCode) return;
     const url = buildVietQRDeeplink({
@@ -63,10 +114,9 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
       bankCode,
       accountNumber,
       amount: voucher.total_amount,
-      note: `${voucher.code} ${voucher.name}`,
+      note: transferNote,
       recipientName,
     });
-    // Điều hướng cùng tab: dl.vietqr.io redirect sang URL scheme của app bank.
     window.location.href = url;
   };
 
@@ -91,9 +141,21 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
               {recipientName || "—"}
             </span>
           </div>
-          <div className="flex justify-between px-3 py-2">
-            <span className="text-muted-foreground">Số TK</span>
-            <span className="font-medium">{accountNumber || "—"}</span>
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            <span className="text-muted-foreground shrink-0">Số TK</span>
+            <span className="flex items-center gap-1.5 font-medium">
+              {accountNumber || "—"}
+              {accountNumber && (
+                <button
+                  type="button"
+                  onClick={copyAccount}
+                  className="p-1 rounded hover:bg-zinc-100 text-muted-foreground"
+                  title="Copy số tài khoản"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </span>
           </div>
           <div className="flex items-center justify-between gap-3 px-3 py-2">
             <span className="text-muted-foreground shrink-0">Ngân hàng</span>
@@ -136,8 +198,37 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
           </p>
         )}
 
+        {/* Cách 1: QR — app nào quét cũng tự điền đủ thông tin */}
+        {qrUrl && (
+          <div className="mt-4">
+            <p className="text-sm font-medium mb-2">
+              Cách 1 (khuyến nghị): Quét mã VietQR
+            </p>
+            <div className="flex flex-col items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+              <img
+                src={qrUrl}
+                alt={`VietQR chuyển tiền phiếu ${voucher.code}`}
+                className="w-56 max-w-full rounded-md bg-white"
+              />
+              <Button
+                type="button"
+                onClick={downloadQR}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Lưu ảnh QR
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Lưu ảnh → mở app ngân hàng → bấm <b>Quét QR</b> → chọn ảnh từ{" "}
+                <b>thư viện</b>. App tự điền đủ STK, số tiền, nội dung.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Cách 2: mở app (deeplink chỉ mở app — tuỳ app mới tự điền) */}
         <p className="mt-4 mb-2 text-sm font-medium">
-          Chọn app ngân hàng của bạn để mở:
+          {qrUrl ? "Cách 2: Mở app ngân hàng" : "Mở app ngân hàng"}
         </p>
         <div className="grid grid-cols-3 gap-2">
           {VIETQR_BANK_APPS.map((app) => (
@@ -152,11 +243,10 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
             </button>
           ))}
         </div>
-
-        <p className="mt-3 text-xs text-muted-foreground">
-          App sẽ mở màn hình chuyển tiền với thông tin điền sẵn. Kiểm tra lại
-          STK và số tiền trước khi xác nhận. Sau khi chuyển xong, quay lại đây
-          bấm <span className="font-medium">Duyệt phiếu</span> để ghi nhận.
+        <p className="mt-2 text-xs text-muted-foreground">
+          Đa số app chỉ mở lên chứ chưa tự điền thông tin — hãy lưu ảnh QR ở
+          Cách 1 rồi quét từ thư viện. Chuyển xong, quay lại bấm{" "}
+          <span className="font-medium">Duyệt phiếu</span> để ghi nhận.
         </p>
       </SheetContent>
     </Sheet>
