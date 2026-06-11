@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isChunkLoadError, reloadOnceForStaleChunk } from "@/lib/chunkReload";
 
 interface Props {
   children: ReactNode;
@@ -25,6 +26,11 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Chunk lazy 404 sau deploy mới (Vite emit bare import() cho chunk không có
+    // dep nên không qua vite:preloadError) → tự reload 1 lần lấy bản mới.
+    if (isChunkLoadError(error) && reloadOnceForStaleChunk()) {
+      return;
+    }
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({ errorInfo });
   }
