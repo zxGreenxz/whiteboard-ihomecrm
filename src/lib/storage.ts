@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { createSignedUrlBatched } from "./signedUrlBatcher";
 
 export { sanitizeStorageFileName } from "./storageKey";
 
@@ -72,11 +73,10 @@ export async function createSignedUrlFromStored(
 ): Promise<string> {
   const ref = parseStorageRef(value);
   if (!ref) return value;
-  const { data, error } = await supabase.storage
-    .from(ref.bucket)
-    .createSignedUrl(ref.path, expiresIn);
-  if (error || !data?.signedUrl) return value;
-  return data.signedUrl;
+  // Ký theo BATCH: các yêu cầu trong cùng tick gom thành 1 request / bucket
+  // (trang nhiều ảnh từng bắn 20-50 POST /object/sign riêng lẻ).
+  const signed = await createSignedUrlBatched(ref.bucket, ref.path, expiresIn);
+  return signed ?? value;
 }
 
 /**

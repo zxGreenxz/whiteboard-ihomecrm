@@ -46,7 +46,17 @@ export function StorageImage({
     );
   }
 
-  return <img src={src} alt={alt} className={className} {...imgProps} />;
+  // loading/decoding đặt TRƯỚC {...imgProps} để call site override được khi cần
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      className={className}
+      {...imgProps}
+    />
+  );
 }
 
 export default StorageImage;
