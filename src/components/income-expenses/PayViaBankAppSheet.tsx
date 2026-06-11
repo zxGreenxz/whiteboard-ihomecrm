@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Download, Copy } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Copy, Zap } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -15,6 +15,7 @@ import {
   RECIPIENT_BANKS,
   matchRecipientBankCode,
   buildVietQRDeeplink,
+  buildVietQRSchemeLink,
   buildVietQRImageUrl,
   extractRecipientFromNotes,
 } from "@/lib/vietqrDeeplink";
@@ -118,6 +119,45 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
       recipientName,
     });
     window.location.href = url;
+  };
+
+  // Thử scheme vietqr:// (đặc tả kỳ vọng của VietQR — app hỗ trợ sẽ mở
+  // màn hình CK điền sẵn). Nếu sau 2s trang vẫn visible = không app nào
+  // bắt scheme → hướng user sang quét QR.
+  const schemeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onHide = () => {
+      if (schemeTimerRef.current) {
+        clearTimeout(schemeTimerRef.current);
+        schemeTimerRef.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      onHide();
+    };
+  }, []);
+
+  const quickPay = () => {
+    if (!bankCode) return;
+    const link = buildVietQRSchemeLink({
+      bankCode,
+      accountNumber,
+      amount: voucher.total_amount,
+      note: transferNote,
+      recipientName,
+    });
+    if (schemeTimerRef.current) clearTimeout(schemeTimerRef.current);
+    schemeTimerRef.current = setTimeout(() => {
+      schemeTimerRef.current = null;
+      if (document.visibilityState === "visible") {
+        toast.info(
+          "Chưa có app ngân hàng nào trên máy hỗ trợ tự điền qua vietqr:// — dùng Cách 1 (lưu ảnh QR rồi quét từ thư viện) nhé."
+        );
+      }
+    }, 2000);
+    window.location.href = link;
   };
 
   return (
@@ -230,6 +270,16 @@ export function PayViaBankAppSheet({ open, onOpenChange, voucher }: Props) {
         <p className="mt-4 mb-2 text-sm font-medium">
           {qrUrl ? "Cách 2: Mở app ngân hàng" : "Mở app ngân hàng"}
         </p>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!bankCode}
+          onClick={quickPay}
+          className="w-full mb-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+        >
+          <Zap className="h-4 w-4 mr-2" />
+          Chuyển khoản nhanh (app hỗ trợ sẽ tự điền)
+        </Button>
         <div className="grid grid-cols-3 gap-2">
           {VIETQR_BANK_APPS.map((app) => (
             <button

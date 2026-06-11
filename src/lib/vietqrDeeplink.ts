@@ -187,15 +187,36 @@ export interface VietQRDeeplinkParams {
   recipientName?: string | null;
 }
 
-export function buildVietQRDeeplink(p: VietQRDeeplinkParams): string {
+/** Query chung cho cả 2 dạng deeplink (ba/am/tn/bn). */
+function buildPayQuery(p: Omit<VietQRDeeplinkParams, "appId">): URLSearchParams {
   const account = p.accountNumber.replace(/[^0-9a-zA-Z]/g, "");
   const qs = new URLSearchParams();
-  qs.set("app", p.appId);
   qs.set("ba", `${account}@${p.bankCode}`);
   if (p.amount && p.amount > 0) qs.set("am", String(Math.round(p.amount)));
   if (p.note) qs.set("tn", sanitizeTransferText(p.note));
   if (p.recipientName) qs.set("bn", sanitizeTransferText(p.recipientName));
+  return qs;
+}
+
+export function buildVietQRDeeplink(p: VietQRDeeplinkParams): string {
+  const qs = buildPayQuery(p);
+  qs.set("app", p.appId);
   return `https://dl.vietqr.io/pay?${qs.toString()}`;
+}
+
+/**
+ * Deeplink scheme `vietqr://pay?...` theo đặc tả KỲ VỌNG của VietQR
+ * (mô phỏng UPI Ấn Độ): OS hiện danh sách app bank đã đăng ký scheme,
+ * app mở thẳng màn hình chuyển tiền ĐIỀN SẴN ba/am/tn.
+ * Mức hỗ trợ 2026 còn thưa — caller phải tự phát hiện "không app nào
+ * bắt scheme" (trang vẫn visible sau ~2s) và hướng user sang quét QR.
+ */
+export function buildVietQRSchemeLink(
+  p: Omit<VietQRDeeplinkParams, "appId"> & { appId?: string }
+): string {
+  const qs = buildPayQuery(p);
+  if (p.appId) qs.set("app", p.appId);
+  return `vietqr://pay?${qs.toString()}`;
 }
 
 export interface VietQRImageParams {

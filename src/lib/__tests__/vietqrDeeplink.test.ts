@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   matchRecipientBankCode,
   buildVietQRDeeplink,
+  buildVietQRSchemeLink,
   buildVietQRImageUrl,
   sanitizeTransferText,
   extractRecipientFromNotes,
@@ -71,6 +72,35 @@ describe("buildVietQRDeeplink", () => {
     expect(parsed.searchParams.get("ba")).toBe("1343064469@vcb");
     expect(parsed.searchParams.get("am")).toBeNull();
     expect(parsed.searchParams.get("tn")).toBeNull();
+  });
+});
+
+describe("buildVietQRSchemeLink", () => {
+  it("scheme vietqr://pay với ba/am/tn/bn, không có app khi bỏ trống", () => {
+    const link = buildVietQRSchemeLink({
+      bankCode: "icb",
+      accountNumber: "60535688",
+      amount: 1800000,
+      note: "PC2606003 Hoa hồng",
+      recipientName: "ĐẶNG LỮ ÁI QUYÊN",
+    });
+    expect(link.startsWith("vietqr://pay?")).toBe(true);
+    const qs = new URLSearchParams(link.slice("vietqr://pay?".length));
+    expect(qs.get("ba")).toBe("60535688@icb");
+    expect(qs.get("am")).toBe("1800000");
+    expect(qs.get("tn")).toBe("pc2606003 hoa hong");
+    expect(qs.get("bn")).toBe("dang lu ai quyen");
+    expect(qs.get("app")).toBeNull();
+  });
+
+  it("kèm app ưu tiên khi truyền appId", () => {
+    const link = buildVietQRSchemeLink({
+      bankCode: "vcb",
+      accountNumber: "123",
+      appId: "ocb",
+    });
+    const qs = new URLSearchParams(link.slice("vietqr://pay?".length));
+    expect(qs.get("app")).toBe("ocb");
   });
 });
 
