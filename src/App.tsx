@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import ErrorBoundary from "./components/errors/ErrorBoundary";
+import { supabase } from "@/integrations/supabase/client";
 
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
@@ -155,6 +156,16 @@ const queryClient = new QueryClient({
       retry: 1,
     },
   },
+});
+
+// Listener auth DUY NHẤT giữ cache ['auth','user'] / ['auth','session'] tươi
+// (INITIAL_SESSION khi boot, SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT, cross-tab)
+// → useAuth/useSession dùng staleTime: Infinity, không round-trip mạng.
+// CẢNH BÁO: chỉ được code SYNC trong callback này — `await supabase.*` ở đây
+// gây deadlock (supabase-js giữ lock nội bộ khi dispatch sự kiện auth).
+supabase.auth.onAuthStateChange((_event, session) => {
+  queryClient.setQueryData(['auth', 'user'], session?.user ?? null);
+  queryClient.setQueryData(['auth', 'session'], session ?? null);
 });
 
 const App = () => (

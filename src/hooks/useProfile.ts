@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUserId } from '@/lib/authSession';
 import { toast } from 'sonner';
 
 // =============================================
@@ -43,13 +44,13 @@ export const useProfile = () => {
   return useQuery({
     queryKey: ['profile'],
     queryFn: async (): Promise<Profile | null> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+      const userId = await getSessionUserId();
+      if (!userId) return null;
 
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user.id)
+        .eq('id', userId)
         .single();
 
       if (error) throw error;

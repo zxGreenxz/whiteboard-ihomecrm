@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUserId } from "@/lib/authSession";
 import { toast } from "sonner";
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { getRepresentativeName } from "@/lib/contractCustomerHelpers";
@@ -66,10 +67,10 @@ export const useDashboardStats = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["dashboard-stats", buildingId],
     queryFn: async (): Promise<DashboardStats> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const userId = await getSessionUserId();
+      if (!userId) throw new Error('Not authenticated');
 
-      const buildingIds = await getBuildingIds(user.id, buildingId);
+      const buildingIds = await getBuildingIds(userId, buildingId);
 
       const monthStart = startOfMonth(new Date());
       const monthEnd = endOfMonth(new Date());
@@ -193,8 +194,8 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
   return useQuery({
     queryKey: ["revenue-chart", months, buildingId],
     queryFn: async (): Promise<RevenueData[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const userId = await getSessionUserId();
+      if (!userId) throw new Error('Not authenticated');
 
       const rangeStart = startOfMonth(subMonths(new Date(), months - 1));
       const rangeEnd = endOfMonth(new Date());
@@ -252,10 +253,10 @@ export const useOccupancyChart = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["occupancy-chart", buildingId],
     queryFn: async (): Promise<OccupancyData[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const userId = await getSessionUserId();
+      if (!userId) throw new Error('Not authenticated');
 
-      const buildingIds = await getBuildingIds(user.id, buildingId);
+      const buildingIds = await getBuildingIds(userId, buildingId);
 
       let totalRooms = 0;
       if (buildingIds.length > 0) {
@@ -326,8 +327,8 @@ export const useAlerts = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["dashboard-alerts", buildingId],
     queryFn: async (): Promise<Alert[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const userId = await getSessionUserId();
+      if (!userId) throw new Error('Not authenticated');
 
       const alerts: Alert[] = [];
 
@@ -473,8 +474,8 @@ export const useRecentActivities = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["recent-activities", buildingId],
     queryFn: async (): Promise<RecentActivity[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const userId = await getSessionUserId();
+      if (!userId) throw new Error('Not authenticated');
 
       const activities: RecentActivity[] = [];
 

@@ -81,11 +81,16 @@ const normalizeIdentifier = (identifier: string): string => {
 export const useAuth = () => {
   return useQuery({
     queryKey: ['auth', 'user'],
+    // Đọc session LOCAL thay vì getUser() (round-trip mạng chặn first render).
+    // Cache được giữ tươi bởi listener onAuthStateChange toàn cục trong App.tsx
+    // (INITIAL_SESSION / SIGNED_IN / TOKEN_REFRESHED / SIGNED_OUT) nên
+    // staleTime: Infinity an toàn. RLS vẫn kiểm server-side mọi request dữ liệu.
     queryFn: async (): Promise<User | null> => {
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const { data: { session }, error } = await supabase.auth.getSession();
       if (error) throw error;
-      return user;
+      return session?.user ?? null;
     },
+    staleTime: Infinity,
     retry: 1,
   });
 };
@@ -102,6 +107,7 @@ export const useSession = () => {
       if (error) throw error;
       return session;
     },
+    staleTime: Infinity, // listener toàn cục trong App.tsx giữ cache tươi
     retry: 1,
   });
 };
