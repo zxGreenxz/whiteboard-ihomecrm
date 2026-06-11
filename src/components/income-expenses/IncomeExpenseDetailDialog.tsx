@@ -18,7 +18,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Banknote,
 } from "lucide-react";
+import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import { supabase } from "@/integrations/supabase/client";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
@@ -75,6 +77,7 @@ export function IncomeExpenseDetailDialog({
   onApprove,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [paySheetOpen, setPaySheetOpen] = useState(false);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
   const { data: authUser } = useAuth();
@@ -405,6 +408,17 @@ export function IncomeExpenseDetailDialog({
             {voucher.notes && <Row label="Ghi chú" value={voucher.notes} />}
           </div>
 
+          {/* Chi tiền qua app ngân hàng — mobile, phiếu chi có STK người nhận */}
+          {isMobile && isExpense && !isCancelled && voucher.receive_bank_account && (
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setPaySheetOpen(true)}
+            >
+              <Banknote className="h-4 w-4 mr-2" />
+              Chi tiền qua app ngân hàng
+            </Button>
+          )}
+
           {/* Hạng mục */}
           {voucher.items && voucher.items.length > 0 && (
             <>
@@ -470,6 +484,13 @@ export function IncomeExpenseDetailDialog({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Sheet chọn app ngân hàng để chi tiền */}
+      <PayViaBankAppSheet
+        open={paySheetOpen}
+        onOpenChange={setPaySheetOpen}
+        voucher={voucher}
+      />
 
       {/* Lightbox */}
       {lightboxUrl && (
