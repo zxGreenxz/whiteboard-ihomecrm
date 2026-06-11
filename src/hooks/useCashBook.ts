@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 export interface CashBookEntry {
@@ -20,7 +21,7 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
   return useQuery({
     queryKey: ["cash-book", start_date, end_date],
     queryFn: async (): Promise<CashBookEntry[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let ieQuery = supabase
@@ -83,7 +84,7 @@ export const useCashBookSummary = (
   return useQuery({
     queryKey: ["cash-book-summary", start_date, end_date, buildingId, accountId],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const sumByType = (rows: Array<{ type: string; total_amount: number | string | null }> | null) => {
@@ -154,7 +155,7 @@ export const useCashFlowByDay = (
   return useQuery({
     queryKey: ["cash-flow-by-day", start_date, end_date, buildingId, accountId],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let ieQuery = supabase

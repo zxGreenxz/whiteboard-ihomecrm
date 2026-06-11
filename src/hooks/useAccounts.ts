@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -138,7 +139,7 @@ export const useCreateAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (values: AccountFormValues) => {
-      const { data: authData } = await supabase.auth.getUser();
+      const authData = { user: await getSessionUser() };
       if (!authData.user) throw new Error("User not authenticated");
 
       const payload: any = {

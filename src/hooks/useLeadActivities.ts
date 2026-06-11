@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { LeadActivityType } from "@/lib/leadHelpers";
 
@@ -35,7 +36,7 @@ export const useLeadActivities = (leadId?: string) => {
     queryFn: async (): Promise<LeadActivity[]> => {
       if (!leadId) return [];
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -57,7 +58,7 @@ export const useCreateLeadActivity = () => {
 
   return useMutation({
     mutationFn: async (data: CreateLeadActivityData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: activity, error } = await supabase
@@ -113,7 +114,7 @@ export const logLeadStatusChange = async (
   oldStatus: string,
   newStatus: string
 ) => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) return;
 
   await supabase.from("lead_activities").insert({

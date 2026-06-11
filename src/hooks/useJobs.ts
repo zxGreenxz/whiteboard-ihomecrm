@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { TaskFilters } from "@/types/jobs";
 
@@ -62,9 +63,7 @@ export const useCreateJob = () => {
 
   return useMutation({
     mutationFn: async (job: any) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 

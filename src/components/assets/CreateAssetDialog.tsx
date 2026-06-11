@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCreateAsset } from "@/hooks/useAssets";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 
@@ -80,7 +81,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
 
   const onSubmit = async (data: AssetFormValues) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       await createAsset.mutateAsync({

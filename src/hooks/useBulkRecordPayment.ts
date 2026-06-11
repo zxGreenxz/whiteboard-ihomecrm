@@ -23,6 +23,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 
@@ -71,7 +72,7 @@ export const useBulkRecordPayment = () => {
 
   return useMutation({
     mutationFn: async (params: BulkPaymentParams): Promise<BulkPaymentResult> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       // ── Cache income/expense types 1 lần cho cả batch ──

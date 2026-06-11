@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 export interface PersonalTransaction {
@@ -50,7 +51,7 @@ export const useCreatePersonalTransaction = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (values: PersonalTransactionFormValues) => {
-      const { data: auth } = await supabase.auth.getUser();
+      const auth = { user: await getSessionUser() };
       if (!auth.user) throw new Error("User not authenticated");
       const { data, error } = await supabase
         .from("personal_transactions" as any)

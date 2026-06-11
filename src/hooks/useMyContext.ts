@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 
 /**
  * Phân loại user hiện tại để FE biết nên hiển thị gì:
@@ -22,7 +23,7 @@ export const useMyContext = () => {
   return useQuery<MyContext>({
     queryKey: ['my-context'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return { isSuper: false, isStaff: false, ownerId: null, defaultAreaId: null };
 
       // RLS của staff_assignments chỉ cho owner đọc — dùng RPC SECURITY DEFINER

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -90,9 +91,7 @@ export const useCreateStaffAssignment = () => {
 
   return useMutation({
     mutationFn: async (assignment: Omit<StaffAssignmentInsert, "user_id">) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -332,7 +331,7 @@ export const useUpdateStaffMember = () => {
 
   return useMutation({
     mutationFn: async (input: UpdateStaffMemberInput) => {
-      const { data: { user: owner } } = await supabase.auth.getUser();
+      const owner = await getSessionUser();
       if (!owner) throw new Error("Bạn chưa đăng nhập");
 
       // 1) Sync profile fields. Admin RLS policy (profiles_admin_update,

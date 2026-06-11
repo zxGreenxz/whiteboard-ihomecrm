@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type {
   Vehicle,
@@ -24,9 +25,7 @@ export const useVehicles = (
   return useQuery({
     queryKey: ["vehicles", filters, pagination],
     queryFn: async (): Promise<PaginatedData<VehicleWithRelations>> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       let query = (supabase
@@ -173,9 +172,7 @@ export const useVehicle = (id: string) => {
   return useQuery({
     queryKey: ["vehicles", id],
     queryFn: async (): Promise<VehicleWithRelations | null> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase
@@ -218,9 +215,7 @@ export const useCreateVehicle = () => {
 
   return useMutation({
     mutationFn: async (formData: VehicleFormData) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase

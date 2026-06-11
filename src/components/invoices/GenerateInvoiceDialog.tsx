@@ -34,6 +34,7 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpers';
@@ -468,7 +469,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         .is('deleted_at', null)
         .limit(1);
       if (!existing || existing.length === 0) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         if (user) {
           const { error: readingErr } = await supabase
             .from('meter_readings')

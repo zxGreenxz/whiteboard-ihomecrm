@@ -38,6 +38,7 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { useCreateInvoice } from '@/hooks/useInvoices';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import type { InvoiceFormData } from '@/types/invoice';
 
 interface Props {
@@ -534,7 +535,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         const consumption =
           (Number(row.current_reading) || 0) - (Number(row.prev_reading) || 0);
         if (row.meter_id && row.current_reading !== '' && consumption >= 0) {
-          const { data: { user } } = await supabase.auth.getUser();
+          const user = await getSessionUser();
           if (user) {
             await supabase.from('meter_readings').insert({
               user_id: user.id,

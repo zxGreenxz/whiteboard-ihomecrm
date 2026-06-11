@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -62,9 +63,7 @@ export const useCreateArea = () => {
 
   return useMutation({
     mutationFn: async (area: Omit<AreaInsert, "user_id">) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) {
         throw new Error("User not authenticated");
@@ -168,9 +167,7 @@ export const useAssignBuildingsToArea = () => {
         }
       }
       if (toAddIds.length > 0) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         const rows = toAddIds.map((building_id) => ({
           area_id: areaId,
           building_id,

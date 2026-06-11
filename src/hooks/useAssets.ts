@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -89,7 +90,7 @@ export const useAssets = (filters?: {
   return useQuery({
     queryKey: ["assets", filters],
     queryFn: async (): Promise<AssetWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -139,7 +140,7 @@ export const useAsset = (id: string) => {
   return useQuery({
     queryKey: ["assets", id],
     queryFn: async (): Promise<AssetWithRelations> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -180,7 +181,7 @@ export const useCreateAsset = () => {
 
   return useMutation({
     mutationFn: async (data: AssetInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: asset, error } = await supabase
@@ -259,7 +260,7 @@ export const useAssetHandovers = (contract_id?: string) => {
   return useQuery({
     queryKey: ["asset-handovers", contract_id],
     queryFn: async (): Promise<AssetHandoverWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -297,7 +298,7 @@ export const useCreateAssetHandover = () => {
 
   return useMutation({
     mutationFn: async (data: AssetHandoverInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: handover, error } = await supabase
@@ -327,7 +328,7 @@ export const useAssetMovements = (asset_id?: string) => {
   return useQuery({
     queryKey: ["asset-movements", asset_id],
     queryFn: async (): Promise<AssetMovementWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -374,7 +375,7 @@ export const useCreateAssetMovement = () => {
 
   return useMutation({
     mutationFn: async (data: AssetMovementInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: movement, error } = await supabase
@@ -407,7 +408,7 @@ export const useAssetMaintenance = (filters?: {
   return useQuery({
     queryKey: ["asset-maintenance", filters],
     queryFn: async (): Promise<AssetMaintenanceWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -448,7 +449,7 @@ export const useCreateAssetMaintenance = () => {
 
   return useMutation({
     mutationFn: async (data: AssetMaintenanceInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: maintenance, error } = await supabase

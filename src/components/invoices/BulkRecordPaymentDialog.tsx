@@ -39,6 +39,7 @@ import { useAccounts } from '@/hooks/useAccounts';
 import { changeAccountOptions, ownChangeAccountName } from '@/lib/changeAccounts';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import {
   useBulkRecordPayment,
   type BulkPaymentItem,
@@ -421,7 +422,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   };
 
   const uploadReceipt = async (file: File): Promise<string | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return null;
     const fileExt = file.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}_receipt.${fileExt}`;

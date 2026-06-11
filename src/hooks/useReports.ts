@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import {
   addDays,
   differenceInDays,
@@ -437,9 +438,7 @@ export function useExpenseRatioReport(
       for (const m of months) revenueByMonth[m] = 0;
 
       // --- Auth + date range cho cả revenue (INCOME) và expense (EXPENSE)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) {
         return {
           summary: {

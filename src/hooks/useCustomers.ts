@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type {
   Customer,
@@ -46,9 +47,7 @@ export const useCustomers = (
   return useQuery({
     queryKey: ["customers", filters, pagination],
     queryFn: async (): Promise<PaginatedData<Customer>> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       let query = (supabase
@@ -167,9 +166,7 @@ export const useCustomer = (id: string) => {
   return useQuery({
     queryKey: ["customers", id],
     queryFn: async (): Promise<Customer | null> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase
@@ -199,9 +196,7 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
   return useQuery({
     queryKey: ["customer-stats", filters],
     queryFn: async (): Promise<CustomerStats> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       let baseQuery = supabase
@@ -266,9 +261,7 @@ export const useCreateCustomer = () => {
 
   return useMutation({
     mutationFn: async (formData: CustomerFormData) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       // Separate inline vehicles from customer data

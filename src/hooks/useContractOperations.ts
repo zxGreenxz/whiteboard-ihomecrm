@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 // =============================================
@@ -93,9 +94,7 @@ export const useRegisterMoveOut = () => {
       expectedMoveOutDate: string;
       notes?: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const updateData: Record<string, any> = {
@@ -224,7 +223,7 @@ async function consumeRemainingCredit(
   contractId: string,
   description: string,
 ): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) return;
 
   const { data: rows, error: queryErr } = await (supabase

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -30,9 +31,7 @@ export const useIncomeExpenseTypes = (filterType?: "income" | "expense") => {
       // tên ("Hoa hồng môi giới", "Thưởng nóng Sale", ...) → dedup
       // client-side theo (lower(name), type), ưu tiên row của user hiện
       // tại để pencil/sửa thao tác đúng record của họ.
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       const currentUserId = user?.id ?? null;
 
       let query = supabase
@@ -126,9 +125,7 @@ export const useCreateIncomeExpenseType = () => {
       description?: string | null;
       is_default?: boolean;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 

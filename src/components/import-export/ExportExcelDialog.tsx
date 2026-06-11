@@ -23,6 +23,7 @@ import {
   exportPayments,
 } from '@/lib/excelHelpers';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 
 interface ExportExcelDialogProps {
   open: boolean;
@@ -76,7 +77,7 @@ const ExportExcelDialog = ({
   const currentConfig = config[exportType];
 
   const fetchData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) throw new Error('Not authenticated');
 
     let query;

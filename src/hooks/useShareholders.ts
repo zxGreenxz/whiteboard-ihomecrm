@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -57,7 +58,7 @@ export const useMyShareholder = () => {
     queryKey: ["my-shareholder"],
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const { data: auth } = await supabase.auth.getUser();
+      const auth = { user: await getSessionUser() };
       if (!auth.user) return null;
       const { data, error } = await (supabase
         .from("shareholders" as any)
@@ -97,7 +98,7 @@ export const useCreateShareholder = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (values: ShareholderFormValues) => {
-      const { data: auth } = await supabase.auth.getUser();
+      const auth = { user: await getSessionUser() };
       if (!auth.user) throw new Error("User not authenticated");
       const { data, error } = await supabase
         .from("shareholders" as any)
@@ -180,7 +181,7 @@ export const useUpsertBuildingShare = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { building_id: string; shareholder_id: string; percent: number }) => {
-      const { data: auth } = await supabase.auth.getUser();
+      const auth = { user: await getSessionUser() };
       if (!auth.user) throw new Error("User not authenticated");
       const { error } = await supabase
         .from("building_shareholders" as any)
@@ -213,7 +214,7 @@ export const useSyncShareholderBuildings = () => {
       shareholder_id: string;
       rows: Array<{ building_id: string; percent: number }>;
     }) => {
-      const { data: auth } = await supabase.auth.getUser();
+      const auth = { user: await getSessionUser() };
       if (!auth.user) throw new Error("User not authenticated");
 
       const { data: existing } = await (supabase

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 /**
@@ -43,7 +44,7 @@ export function useUpsertPublicRoomSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (values: PublicRoomSettings) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
       const { error } = await supabase
         .from("public_room_settings")

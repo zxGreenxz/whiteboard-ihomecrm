@@ -6,6 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import type { PaginatedData } from '@/hooks/usePagination';
 import type {
@@ -64,7 +65,7 @@ export const useInvoices = (
   return useQuery({
     queryKey: ['invoices', filters, pagination],
     queryFn: async (): Promise<PaginatedData<InvoiceWithRelations>> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = (supabase
@@ -144,7 +145,7 @@ export const useInvoicesLegacy = (filters?: {
   return useQuery({
     queryKey: ['invoices-legacy', filters],
     queryFn: async (): Promise<InvoiceWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = (supabase
@@ -181,7 +182,7 @@ export const useInvoice = (invoiceId?: string) => {
     queryFn: async (): Promise<InvoiceWithRelations | null> => {
       if (!invoiceId) return null;
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await (supabase
@@ -208,7 +209,7 @@ export const useCreateInvoice = () => {
 
   return useMutation({
     mutationFn: async (formData: InvoiceFormData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { items, ...invoiceFields } = formData;
@@ -343,7 +344,7 @@ export const useUpdateInvoice = () => {
 
   return useMutation({
     mutationFn: async ({ id, formData }: UpdateInvoiceData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       // Fetch current invoice to check status
@@ -462,7 +463,7 @@ export const useDeleteInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       // Fetch current invoice to check status
@@ -516,7 +517,7 @@ export const useBulkDeleteInvoices = () => {
 
   return useMutation({
     mutationFn: async (invoiceIds: string[]) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       if (invoiceIds.length === 0) return;
@@ -559,7 +560,7 @@ export const useApproveInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -609,7 +610,7 @@ export const useUnapproveInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -659,7 +660,7 @@ export const useBulkApproveInvoices = () => {
 
   return useMutation({
     mutationFn: async (invoiceIds: string[]) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       if (invoiceIds.length === 0) return;
@@ -742,7 +743,7 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
   return useQuery({
     queryKey: ['invoice-statistics', filters],
     queryFn: async (): Promise<InvoiceStatistics> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       // RBAC v2: không truyền p_user_id; quyền xác định qua can_access_building().
@@ -795,7 +796,7 @@ export const useCheckOverdueInvoices = () => {
 
   return useMutation({
     mutationFn: async (): Promise<number> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const today = new Date().toISOString().split('T')[0];
@@ -851,7 +852,7 @@ export const useExcessAmount = (contractId?: string) => {
     queryFn: async (): Promise<number> => {
       if (!contractId) return 0;
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await (supabase
@@ -896,7 +897,7 @@ export const useRecordPayment = () => {
 
   return useMutation({
     mutationFn: async (data: RecordPaymentData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: payment, error: paymentError } = await supabase
@@ -987,7 +988,7 @@ export const useRecordMeterReading = () => {
 
   return useMutation({
     mutationFn: async (data: MeterReadingData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: reading, error } = await supabase
@@ -1031,7 +1032,7 @@ export const useMeterReadings = (contractId?: string) => {
   return useQuery({
     queryKey: ['meter_readings', contractId],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -1080,7 +1081,7 @@ export const useBulkCreateMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (readings: BulkMeterReadingData[]) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const readingsToInsert = readings.map((reading) => ({
@@ -1137,7 +1138,7 @@ export const useRestoreInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -1226,7 +1227,7 @@ export const useCancelInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase

@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 
 // =============================================
 // Props
@@ -126,7 +127,7 @@ export function ContractImportExportDialog({
     const results = { success: 0, failed: 0, errors: [] as Array<{ row: number; message: string }> };
 
     // Get user
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) {
       toast.error('Chưa đăng nhập');
       setIsImporting(false);

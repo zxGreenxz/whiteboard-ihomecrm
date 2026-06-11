@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -34,9 +35,7 @@ export const useUserSubscription = () => {
   return useQuery({
     queryKey: ["user_subscriptions", "current"],
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) return null;
 
@@ -67,9 +66,7 @@ export const useCreateUserSubscription = () => {
 
   return useMutation({
     mutationFn: async (subscription: Omit<UserSubscriptionInsert, "user_id">) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 

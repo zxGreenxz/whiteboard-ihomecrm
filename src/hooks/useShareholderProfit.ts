@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import {
   computeShareholderSummary,
@@ -173,7 +174,7 @@ export const useLockProfitMonth = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: LockProfitInput) => {
-      const { data: auth } = await supabase.auth.getUser();
+      const auth = { user: await getSessionUser() };
       if (!auth.user) throw new Error("User not authenticated");
       const uid = auth.user.id;
       const nowIso = new Date().toISOString();

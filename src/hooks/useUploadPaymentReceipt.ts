@@ -9,6 +9,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 
 interface UploadPaymentReceiptData {
@@ -17,7 +18,7 @@ interface UploadPaymentReceiptData {
 }
 
 const uploadToStorage = async (file: File): Promise<string> => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const ext = (file.name.split('.').pop() || 'png').toLowerCase();

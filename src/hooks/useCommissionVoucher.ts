@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { differenceInMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { CommissionTier } from "@/types/building";
 
@@ -169,9 +170,7 @@ export const useCreateCommissionVoucher = () => {
 
   return useMutation({
     mutationFn: async (input: CreateCommissionVoucherInput) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
 
       // Tìm income_expense_type_id theo tên + user_id

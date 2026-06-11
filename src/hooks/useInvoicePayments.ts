@@ -6,6 +6,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 
@@ -50,7 +51,7 @@ export const useRecordPaymentRPC = () => {
 
   return useMutation({
     mutationFn: async (data: RecordPaymentRPCData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       // RBAC v2: bỏ p_user_id; quyền xác định qua can_do_on_building.
@@ -215,7 +216,7 @@ export const useRecordRefundRPC = () => {
 
   return useMutation({
     mutationFn: async (data: RecordRefundRPCData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       if (data.amount <= 0) throw new Error('Số tiền hoàn trả phải > 0');

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { CT01Declaration, CT01FormData } from "@/types/customer";
 
@@ -12,9 +13,7 @@ export const useCT01Declarations = (customerId: string) => {
   return useQuery({
     queryKey: ["ct01-declarations", customerId],
     queryFn: async (): Promise<CT01Declaration[]> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await (supabase
@@ -50,9 +49,7 @@ export const useCreateCT01Declaration = () => {
       customerId: string;
       data: CT01FormData;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await (supabase

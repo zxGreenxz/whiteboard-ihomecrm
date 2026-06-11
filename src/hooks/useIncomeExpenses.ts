@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type {
   IncomeExpenseFormValues,
@@ -643,9 +644,7 @@ export const useCreateIncomeExpense = () => {
 
   return useMutation({
     mutationFn: async (input: CreateIncomeExpenseInput) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -742,9 +741,7 @@ export const useCreateProfitDistribution = () => {
 
   return useMutation({
     mutationFn: async (input: CreateProfitDistributionInput) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
@@ -1100,9 +1097,7 @@ export const useImportIncomeExpenses = () => {
       failedCount: number;
       errors: Array<{ row: number; message: string }>;
     }> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -1208,9 +1203,7 @@ export const useCreateIncomeExpenseBatch = () => {
 
   return useMutation({
     mutationFn: async (input: IncomeExpenseBatchFormValues) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
       const meta = (user.user_metadata ?? {}) as Record<string, any>;

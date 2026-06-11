@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -82,9 +83,7 @@ export const useCreateService = () => {
     mutationFn: async (
       params: Omit<ServiceInsert, "user_id"> & { building_ids?: string[] }
     ) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
       const { building_ids, ...serviceData } = params;
@@ -296,9 +295,7 @@ export const useCreateServiceQuota = () => {
       description?: string | null;
       tiers: { tier_number: number; from_value: number; to_value: number | null; unit_price: number }[];
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
       const { data, error } = await supabase

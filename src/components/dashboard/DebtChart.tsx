@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { formatCurrency } from "@/lib/utils";
 import { subMonths, startOfMonth, endOfMonth, format } from "date-fns";
 
@@ -14,7 +15,7 @@ export function DebtChart() {
   const { data: debtData = [], isLoading } = useQuery({
     queryKey: ["debt-chart"],
     queryFn: async (): Promise<DebtData[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const data: DebtData[] = [];

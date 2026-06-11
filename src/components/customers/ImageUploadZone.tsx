@@ -5,6 +5,7 @@ import { imageValidation } from '@/lib/vehicleValidation';
 import { uploadFile } from '@/lib/storage';
 import { StorageImage } from '@/components/ui/storage-image';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 
@@ -54,7 +55,7 @@ export default function ImageUploadZone({
       setIsUploading(true);
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         if (!user) throw new Error('Not authenticated');
 
         const ext = file.name.split('.').pop() || 'jpg';

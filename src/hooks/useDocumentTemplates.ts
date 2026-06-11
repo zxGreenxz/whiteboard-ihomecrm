@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 export type TemplateCategory =
@@ -180,9 +181,7 @@ export const useDocumentTemplates = (category?: TemplateCategory) => {
   return useQuery({
     queryKey: ["document-templates", category],
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) {
         throw new Error("User not authenticated");
@@ -215,9 +214,7 @@ export const useDocumentTemplatesByType = (type?: TemplateType) => {
   return useQuery({
     queryKey: ["document-templates", "by-type", type],
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) {
         throw new Error("User not authenticated");
@@ -283,9 +280,7 @@ export const useCreateDocumentTemplate = () => {
       variables?: Record<string, unknown>[] | null;
       content?: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) {
         throw new Error("User not authenticated");
@@ -395,9 +390,7 @@ export const useUpdateDocumentTemplate = () => {
       variables?: Record<string, unknown>[] | null;
       content?: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) {
         throw new Error("User not authenticated");

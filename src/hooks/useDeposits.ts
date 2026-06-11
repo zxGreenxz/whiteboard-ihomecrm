@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -86,7 +87,7 @@ export const useDeposits = (filters?: {
   return useQuery({
     queryKey: ['deposits', filters],
     queryFn: async (): Promise<DepositWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -123,7 +124,7 @@ export const useCreateDeposit = () => {
 
   return useMutation({
     mutationFn: async (data: DepositInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: deposit, error } = await supabase

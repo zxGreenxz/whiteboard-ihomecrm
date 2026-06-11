@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -34,7 +35,7 @@ export const usePayments = (filters?: {
   return useQuery({
     queryKey: ["payments", filters],
     queryFn: async (): Promise<PaymentWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -80,7 +81,7 @@ export const usePayment = (id: string) => {
   return useQuery({
     queryKey: ["payments", id],
     queryFn: async (): Promise<PaymentWithRelations> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -117,7 +118,7 @@ export const useCreatePayment = () => {
 
   return useMutation({
     mutationFn: async (data: PaymentInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       // Create payment
@@ -174,7 +175,7 @@ export const usePaymentsSummary = (start_date?: string, end_date?: string) => {
   return useQuery({
     queryKey: ["payments-summary", start_date, end_date],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase

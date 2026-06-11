@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 export interface AccountSharedUser {
@@ -62,7 +63,7 @@ export const useSyncAccountSharedUsers = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { accountId: string; userIds: string[] }) => {
-      const { data: authData } = await supabase.auth.getUser();
+      const authData = { user: await getSessionUser() };
       const creator = authData.user?.id ?? null;
 
       // 1. Lấy hiện trạng

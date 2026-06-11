@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import type { PaginatedData } from "@/hooks/usePagination";
@@ -107,9 +108,7 @@ export const useCreateTenant = () => {
 
   return useMutation({
     mutationFn: async (tenant: Omit<TenantInsert, "user_id">) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) {
         throw new Error("User not authenticated");

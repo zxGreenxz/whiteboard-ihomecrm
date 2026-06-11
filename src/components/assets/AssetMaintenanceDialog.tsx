@@ -13,6 +13,7 @@ import { useCreateAssetMaintenance } from "@/hooks/useAssets";
 import { useAssets } from "@/hooks/useAssets";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 
 const maintenanceSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
@@ -39,7 +40,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -67,7 +68,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
 
   const onSubmit = async (data: MaintenanceFormValues) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       await createMaintenance.mutateAsync({

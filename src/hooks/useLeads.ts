@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -31,7 +32,7 @@ export const useLeads = (filters?: {
   return useQuery({
     queryKey: ["leads", filters],
     queryFn: async (): Promise<LeadWithRelations[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       let query = supabase
@@ -74,7 +75,7 @@ export const useLead = (id: string) => {
   return useQuery({
     queryKey: ["leads", id],
     queryFn: async (): Promise<LeadWithRelations> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -111,7 +112,7 @@ export const useCreateLead = () => {
 
   return useMutation({
     mutationFn: async (data: LeadInsert) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: lead, error } = await supabase

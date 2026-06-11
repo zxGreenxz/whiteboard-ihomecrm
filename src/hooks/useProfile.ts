@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { getSessionUserId } from '@/lib/authSession';
+import { getSessionUser, getSessionUserId } from '@/lib/authSession';
 import { toast } from 'sonner';
 
 // =============================================
@@ -69,7 +69,7 @@ export const useUpdateProfile = () => {
 
   return useMutation({
     mutationFn: async (data: UpdateProfileData) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: profile, error } = await supabase
@@ -101,7 +101,7 @@ export const useUploadAvatar = () => {
 
   return useMutation({
     mutationFn: async (file: File) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const fileExt = file.name.split('.').pop();

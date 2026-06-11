@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -60,9 +61,7 @@ export const useCreateIncomeExpenseTemplate = () => {
       is_income_template?: boolean;
       field_mappings?: Record<string, string> | null;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -177,9 +176,7 @@ export const useToggleDefaultTemplate = () => {
       is_default: boolean;
       is_income_template: boolean;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 

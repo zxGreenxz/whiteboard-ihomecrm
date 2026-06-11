@@ -31,6 +31,7 @@ import { useAuth } from '@/hooks/useAuth';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { DollarSign, CheckCircle, Upload, X, Image, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUser } from "@/lib/authSession";
 import { Checkbox } from '@/components/ui/checkbox';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { toast } from 'sonner';
@@ -365,7 +366,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const uploadReceiptImage = async (): Promise<string | null> => {
     if (!receiptImage) return null;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) throw new Error('Not authenticated');
 
     const fileExt = receiptImage.name.split('.').pop();

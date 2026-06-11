@@ -10,6 +10,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useCreateAssetHandover } from "@/hooks/useAssets";
 import { useContracts } from "@/hooks/useContracts";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 
 const handoverSchema = z.object({
   contract_id: z.string().min(1, "Phải chọn hợp đồng"),
@@ -44,7 +45,7 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
 
   const onSubmit = async (data: HandoverFormValues) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       await createHandover.mutateAsync({

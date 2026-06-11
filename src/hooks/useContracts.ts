@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
 import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
@@ -139,9 +140,7 @@ export const useContracts = (opts?: { statuses?: ContractStatus[] }) => {
       ? ["contracts", { statuses: opts.statuses }]
       : ["contracts"],
     queryFn: async (): Promise<ContractWithRelations[]> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       let query = (supabase as any)
@@ -274,9 +273,7 @@ async function fetchContractsPagedOnce(
   filters: ContractPagedFilters | undefined,
   range: { from: number; to: number } | null,
 ): Promise<PaginatedData<ContractWithRelations>> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
 
   const needInnerRoom = !!(
@@ -422,9 +419,7 @@ export const useContractStats = (buildingIds?: string[]) => {
     queryKey: ["contracts", "stats", buildingIds ?? []],
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<ContractStats> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const today = toLocalISODate(new Date());
@@ -482,9 +477,7 @@ export const useContractDashboardCounts = (buildingId?: string | null) => {
   return useQuery({
     queryKey: ["contracts", "dashboard-counts", buildingId ?? null],
     queryFn: async (): Promise<ContractDashboardCounts> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const buildingIds = buildingId ? [buildingId] : undefined;
@@ -538,9 +531,7 @@ export const useContract = (id?: string) => {
     queryFn: async (): Promise<ContractWithRelations | null> => {
       if (!id) return null;
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await (supabase as any)
@@ -671,9 +662,7 @@ export const useCreateContract = () => {
 
   return useMutation({
     mutationFn: async (payload: CreateContractPayload) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { contract: contractData, customers, services } = payload;
@@ -850,9 +839,7 @@ export const useUpdateContract = () => {
       id: string;
       updates: UpdateContractPayload;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase
@@ -991,9 +978,7 @@ export const useDeleteContract = () => {
 
   return useMutation({
     mutationFn: async (contractId: string) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       // Check for associated invoices
@@ -1183,9 +1168,7 @@ export const useContractsLegacy = (filters?: {
   return useQuery({
     queryKey: ["contracts-legacy", filters],
     queryFn: async (): Promise<LegacyContractWithRelations[]> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       let query = supabase
@@ -1223,9 +1206,7 @@ export const useUnpaidInvoices = (contractId?: string) => {
     queryKey: ["unpaid-invoices", contractId],
     queryFn: async () => {
       if (!contractId) return [];
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase
@@ -1252,9 +1233,7 @@ export const useUploadContractFile = () => {
       file: File;
       contractId?: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const timestamp = Date.now();
@@ -1318,9 +1297,7 @@ export const usePendingTerminations = () => {
   return useQuery({
     queryKey: ["pending-terminations"],
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data, error } = await supabase
@@ -1357,9 +1334,7 @@ export const useApproveTermination = () => {
       payment_method?: string;
       notes?: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { error: termError } = await supabase
@@ -1458,9 +1433,7 @@ export const useRejectTermination = () => {
       termination_id: string;
       rejection_reason?: string;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { error } = await supabase
@@ -1522,9 +1495,7 @@ export const useBulkCreateContracts = () => {
       building_id: string;
       contracts: BulkContractImportRow[];
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data: rooms } = await (supabase as any)
@@ -1681,9 +1652,7 @@ export const useEstimateTerminationCosts = () => {
       early_termination_fee?: number;
       other_fees?: number;
     }) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
       const { data: contract, error: contractError } = await supabase

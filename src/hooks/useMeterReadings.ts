@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -264,9 +265,7 @@ export const useCreateMeterReading = () => {
 
   return useMutation({
     mutationFn: async (input: CreateMeterReadingInput) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -313,9 +312,7 @@ export const useBulkCreateMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (inputs: BulkCreateMeterReadingInput[]) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 
@@ -364,9 +361,7 @@ export const useImportMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (input: ImportMeterReadingsInput) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
 

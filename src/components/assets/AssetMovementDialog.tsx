@@ -13,6 +13,7 @@ import { useCreateAssetMovement } from "@/hooks/useAssets";
 import { useAssets } from "@/hooks/useAssets";
 import { useRooms } from "@/hooks/useRooms";
 import { supabase } from "@/integrations/supabase/client";
+import { getSessionUser } from "@/lib/authSession";
 
 const movementSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
@@ -52,7 +53,7 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
 
   const onSubmit = async (data: MovementFormValues) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       await createMovement.mutateAsync({
