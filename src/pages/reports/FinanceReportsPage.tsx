@@ -8,6 +8,7 @@ import {
   Calendar,
   Coins,
   Wallet,
+  BarChart3,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
@@ -15,6 +16,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 
 const reports = [
+  {
+    title: "Phân tích tài chính",
+    description: "Doanh thu, chi phí, lợi nhuận, KPI vận hành — biểu đồ & bảng phân tích toàn diện",
+    icon: BarChart3,
+    path: "/report/finance/analysis",
+    color: "text-violet-600",
+    bgColor: "bg-violet-50",
+  },
   {
     title: "Sổ quỹ theo ngày",
     description: "Thu chi hàng ngày, số dư đầu kỳ, tổng thu, tổng chi, số dư cuối kỳ",
@@ -98,7 +107,7 @@ const FinanceReportsPage = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
             <p className="text-muted-foreground">
-              9 loại báo cáo phân tích tài chính và dòng tiền
+              10 loại báo cáo phân tích tài chính và dòng tiền
             </p>
           </div>
         </div>

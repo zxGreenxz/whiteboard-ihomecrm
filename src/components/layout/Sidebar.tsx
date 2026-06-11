@@ -125,6 +125,7 @@ const navigationGroups: NavGroup[] = [
         title: 'Báo cáo tài chính',
         icon: CreditCard,
         items: [
+          { title: 'Phân tích tài chính', href: '/report/finance/analysis', icon: BarChart3 },
           { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book },
           { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp },
           { title: 'Phân bổ lợi nhuận', href: '/report/finance-by-month', icon: PieChart },

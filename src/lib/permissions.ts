@@ -85,7 +85,8 @@ export type ActionKey =
   | "customer_debt"
   | "payment_schedule"
   | "overpayment"
-  | "deposits_report";
+  | "deposits_report"
+  | "analysis";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -196,7 +197,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "reports_finance",
         label: "Báo cáo tài chính",
         core: ["view"],
-        extra: ["daily_cashbook", "cash_flow", "profit_distribution", "debt", "customer_debt", "payment_schedule", "overpayment", "deposits_report", "export"],
+        extra: ["analysis", "daily_cashbook", "cash_flow", "profit_distribution", "debt", "customer_debt", "payment_schedule", "overpayment", "deposits_report", "export"],
       },
     ],
   },
@@ -285,6 +286,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   payment_schedule: "BC Lịch thanh toán",
   overpayment:    "BC Tiền thừa",
   deposits_report: "BC Danh sách cọc",
+  analysis:       "BC Phân tích tài chính",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */
@@ -437,6 +439,7 @@ const MANAGE_ACTIONS = new Set<ActionKey>([
   "new_leases", "terminations", "expense_ratio",
   "daily_cashbook", "cash_flow", "profit_distribution", "debt",
   "customer_debt", "payment_schedule", "overpayment", "deposits_report",
+  "analysis",
 ]);
 
 export function applyGlobalPreset(_perms: PermissionsMap, preset: Preset): PermissionsMap {

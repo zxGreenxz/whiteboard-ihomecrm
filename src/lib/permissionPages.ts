@@ -457,6 +457,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Bật/tắt từng báo cáo tài chính.",
         features: [
           f("reports_finance", "view", "Vào trang báo cáo tài chính", "view"),
+          f("reports_finance", "analysis", "Báo cáo Phân tích tài chính", "view", { fallback: { action: "view" } }),
           f("reports_finance", "daily_cashbook", "Báo cáo Sổ quỹ ngày", "view", { fallback: { action: "view" } }),
           f("reports_finance", "cash_flow", "Báo cáo Dòng tiền", "view", { fallback: { action: "view" } }),
           f("reports_finance", "profit_distribution", "Báo cáo Phân bổ lợi nhuận (KQKD)", "view", { fallback: { action: "view" } }),

@@ -89,6 +89,7 @@ const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/Payment
 const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
 const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
 const ProfitDistributionReport = lazy(() => import("./pages/reports/finance/ProfitDistributionReport"));
+const FinancialAnalysisReport = lazy(() => import("./pages/reports/finance/FinancialAnalysisReport"));
 
 // Cài đặt
 const GeneralSettingsPage = lazy(() => import("./pages/settings/GeneralSettingsPage"));
@@ -311,6 +312,7 @@ const App = () => (
 
           {/* === BÁO CÁO TÀI CHÍNH === */}
           {/* Resident-style URLs (canonical) */}
+          <Route path="/report/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance/cashbook" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance-by-month" element={<ProtectedRoute><RequirePermission module="reports_finance" action="profit_distribution"><ProfitDistributionReport /></RequirePermission></ProtectedRoute>} />
@@ -330,6 +332,7 @@ const App = () => (
           <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><RequirePermission module="reports_finance" action="payment_schedule"><PaymentScheduleReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/overpayment" element={<ProtectedRoute><RequirePermission module="reports_finance" action="overpayment"><OverpaymentReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><RequirePermission module="reports_finance" action="deposits_report"><DepositsReport /></RequirePermission></ProtectedRoute>} />
+          <Route path="/reports/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
 
           {/* === CHIA LỢI NHUẬN CỔ ĐÔNG + VÍ THU CHI CÁ NHÂN === */}
           <Route path="/finance/shareholder-profit" element={<ProtectedRoute><RequirePermission module="shareholder_profit" action="view"><ShareholderProfitPage /></RequirePermission></ProtectedRoute>} />
