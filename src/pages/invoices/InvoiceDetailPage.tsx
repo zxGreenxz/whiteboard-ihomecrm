@@ -34,7 +34,8 @@ import {
 } from 'lucide-react';
 import { useInvoice, useCancelInvoice, useRestoreInvoice } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
-import { useMyPermissions, can } from '@/hooks/useMyPermissions';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -62,9 +63,10 @@ const InvoiceDetailPage = () => {
   const restoreMutation = useRestoreInvoice();
   const { data: ctx } = useMyContext();
   const { data: perms } = useMyPermissions();
-  const canEditPerm = can(perms, 'invoices', 'edit');
-  const canDeletePerm = can(perms, 'invoices', 'delete');
-  const canRecordPaymentPerm = can(perms, 'invoices', 'record_payment');
+  const canEditPerm = canUse(perms, 'invoices', 'edit');
+  const canDeletePerm = canUse(perms, 'invoices', 'delete');
+  const canRecordPaymentPerm = canUse(perms, 'invoices', 'record_payment');
+  const canCancelPerm = canUse(perms, 'invoices', 'cancel');
 
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
   // returns để giữ thứ tự hooks ổn định giữa các render).
@@ -234,7 +236,7 @@ const InvoiceDetailPage = () => {
           </Button>
         )}
 
-        {canDeletePerm && (invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
+        {canCancelPerm && (invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
           <Button
             variant="destructive"
             size="icon"

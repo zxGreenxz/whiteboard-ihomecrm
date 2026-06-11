@@ -1,31 +1,103 @@
-// Central registry of permission modules + groups + actions.
+// Central registry of permission modules + actions.
 //
-// 37 modules thực thi (35 gốc + shareholder_profit/personal_finance cho module
-// Chia lợi nhuận cổ đông + Ví thu chi cá nhân).
-// Tổ chức theo 8 nhóm UI để hiển thị accordion trong PermissionMatrix.
+// Từ 2026-06-11 (redesign trang phân quyền): registry mở rộng thành ~40 module
+// với action CHI TIẾT theo từng chức năng trên từng trang (gia hạn/chuyển
+// nhượng/thanh lý HĐ, duyệt/huỷ hoá đơn, chốt/chi lợi nhuận, từng báo cáo…).
+//
+// - Lưu trữ: vẫn là JSONB { "<module>": { "<action>": true } } trong
+//   roles.permissions / staff_assignments.permissions — KHÔNG đổi schema DB.
+// - RLS chỉ enforce 4 action chuẩn (view/create/edit/delete) + vài action cũ;
+//   các action chi tiết mới là gate phía FE. Khi key chi tiết CHƯA tồn tại
+//   trong JSONB cũ, FE fallback về action gốc (xem canFeature) để nhân viên
+//   hiện hữu không mất quyền.
+// - Tổ chức hiển thị theo TRANG nằm ở src/lib/permissionPages.ts (catalog).
 
 import type { Json } from "@/integrations/supabase/types";
 
 export type ActionKey =
+  // 4 action chuẩn
   | "view"
   | "create"
   | "edit"
   | "delete"
+  // action chung cũ
   | "record_payment"
   | "approve"
   | "print"
   | "export"
-  // Cờ phạm vi (không phải action chuẩn): cho phép thấy + ghi thu chi cho MỌI
-  // toà của chủ ngay trong form thu chi, vượt giới hạn toà quản lý. Chỉ gắn cho
-  // module income_expenses.
-  | "all_buildings";
+  // Cờ phạm vi: thấy + ghi thu chi cho MỌI toà ngay trong form thu chi
+  // (chỉ module income_expenses).
+  | "all_buildings"
+  // sale_phong: tạo nhanh phiếu cọc trên trang công khai /r/:token.
+  | "create_deposit"
+  // ===== Action chi tiết theo chức năng (2026-06-11) =====
+  // Bảng tin
+  | "view_finance"
+  // Sale phòng
+  | "manage_tokens"
+  | "manage_settings"
+  | "manage_images"
+  | "edit_floor_plan"
+  // Lead / Cọc
+  | "convert"
+  | "refund"
+  // Hợp đồng
+  | "renew"
+  | "transfer"
+  | "terminate"
+  | "handover"
+  // Cư dân
+  | "import"
+  // Sổ quỹ
+  | "share"
+  // Hoá đơn / Thu chi
+  | "cancel"
+  // Thu tiền (mobile)
+  | "collect"
+  | "undo"
+  | "report"
+  // Lợi nhuận cổ đông
+  | "lock"
+  | "unlock"
+  | "distribute"
+  | "manage_shareholders"
+  // Tài sản
+  | "move"
+  | "maintain"
+  // Công việc
+  | "complete"
+  // Phân quyền nhân viên
+  | "manage_templates"
+  // Báo cáo BĐS (từng báo cáo)
+  | "vacant_rooms"
+  | "expiring"
+  | "renewals_transfers"
+  | "occupancy"
+  | "promotions"
+  | "new_leases"
+  | "terminations"
+  | "expense_ratio"
+  // Báo cáo tài chính (từng báo cáo)
+  | "daily_cashbook"
+  | "cash_flow"
+  | "profit_distribution"
+  | "debt"
+  | "customer_debt"
+  | "payment_schedule"
+  | "overpayment"
+  | "deposits_report";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
 export interface ModuleDef {
   key: string;
   label: string;
-  /** Special actions (ngoài 4 action chuẩn view/create/edit/delete) */
+  /**
+   * Override 4 action chuẩn — module nào không có đủ CRUD (vd dashboard chỉ
+   * view) khai báo ở đây. Mặc định = view/create/edit/delete.
+   */
+  core?: ActionKey[];
+  /** Action chi tiết ngoài core. */
   extra?: ActionKey[];
 }
 
@@ -35,14 +107,14 @@ export interface GroupDef {
   modules: ModuleDef[];
 }
 
-/** 8 nhóm UI × 37 module. Thứ tự = thứ tự hiển thị trong matrix. */
+/** Nhóm UI × module. Thứ tự = thứ tự hiển thị. */
 export const PERMISSION_GROUPS: GroupDef[] = [
   {
     key: "core",
     label: "Tổng quan",
     modules: [
-      { key: "dashboard",     label: "Bảng tin" },
-      { key: "notifications", label: "Thông báo" },
+      { key: "dashboard",     label: "Bảng tin", core: ["view"], extra: ["view_finance"] },
+      { key: "notifications", label: "Thông báo", core: ["view", "delete"] },
     ],
   },
   {
@@ -53,17 +125,22 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "buildings", label: "Toà nhà" },
       { key: "rooms",     label: "Căn hộ / Phòng" },
       { key: "services",  label: "Dịch vụ" },
-      { key: "sale_phong", label: "Sale Phòng" },
+      {
+        key: "sale_phong",
+        label: "Sale Phòng",
+        core: ["view"],
+        extra: ["manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "create_deposit"],
+      },
     ],
   },
   {
     key: "customers",
     label: "Khách hàng",
     modules: [
-      { key: "leads",     label: "Khách hẹn",  extra: ["export"] },
-      { key: "deposits",  label: "Đặt cọc",    extra: ["print"] },
-      { key: "contracts", label: "Hợp đồng",   extra: ["approve", "print", "export"] },
-      { key: "customers", label: "Cư dân",     extra: ["print", "export"] },
+      { key: "leads",     label: "Khách hẹn",  extra: ["convert", "export"] },
+      { key: "deposits",  label: "Đặt cọc",    extra: ["convert", "refund", "print"] },
+      { key: "contracts", label: "Hợp đồng",   extra: ["approve", "renew", "transfer", "terminate", "handover", "print", "export"] },
+      { key: "customers", label: "Cư dân",     extra: ["import", "print", "export"] },
       { key: "vehicles",  label: "Phương tiện" },
     ],
   },
@@ -71,10 +148,11 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "finance",
     label: "Tài chính",
     modules: [
-      { key: "cashbooks",       label: "Sổ quỹ" },
+      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share"] },
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
-      { key: "invoices",        label: "Hoá đơn",    extra: ["record_payment", "print", "export"] },
-      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "print", "export", "all_buildings"] },
+      { key: "invoices",        label: "Hoá đơn",    extra: ["approve", "cancel", "record_payment", "print", "export"] },
+      { key: "thu_tien",        label: "Thu tiền (mobile)", core: ["view"], extra: ["collect", "undo", "report"] },
+      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "cancel", "print", "export", "all_buildings"] },
       { key: "excess_amounts",  label: "Tiền thừa" },
     ],
   },
@@ -82,15 +160,21 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "shareholder",
     label: "Cổ đông & Cá nhân",
     modules: [
-      { key: "shareholder_profit", label: "Lợi nhuận cổ đông", extra: ["export"] },
-      { key: "personal_finance",   label: "Ví thu chi cá nhân" },
+      {
+        key: "shareholder_profit",
+        label: "Lợi nhuận cổ đông",
+        core: ["view"],
+        extra: ["lock", "unlock", "distribute", "manage_shareholders", "export"],
+      },
+      { key: "personal_finance", label: "Ví thu chi cá nhân" },
     ],
   },
   {
     key: "assets",
-    label: "Tài sản",
+    label: "Tài sản & Kho",
     modules: [
-      { key: "assets",      label: "Tài sản" },
+      { key: "assets",      label: "Tài sản", extra: ["move", "maintain"] },
+      { key: "materials",   label: "Vật tư" },
       { key: "asset_types", label: "Loại tài sản" },
       { key: "warehouses",  label: "Kho" },
       { key: "suppliers",   label: "Nhà cung cấp" },
@@ -100,10 +184,20 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "ops",
     label: "Vận hành & Báo cáo",
     modules: [
-      { key: "tasks",               label: "Công việc",      extra: ["approve"] },
-      { key: "task_types",          label: "Loại công việc" },
-      { key: "reports_real_estate", label: "Báo cáo BĐS",    extra: ["export"] },
-      { key: "reports_finance",     label: "Báo cáo tài chính", extra: ["export"] },
+      { key: "tasks",      label: "Công việc", extra: ["complete", "approve"] },
+      { key: "task_types", label: "Loại công việc" },
+      {
+        key: "reports_real_estate",
+        label: "Báo cáo BĐS",
+        core: ["view"],
+        extra: ["vacant_rooms", "expiring", "renewals_transfers", "occupancy", "promotions", "new_leases", "terminations", "expense_ratio", "export"],
+      },
+      {
+        key: "reports_finance",
+        label: "Báo cáo tài chính",
+        core: ["view"],
+        extra: ["daily_cashbook", "cash_flow", "profit_distribution", "debt", "customer_debt", "payment_schedule", "overpayment", "deposits_report", "export"],
+      },
     ],
   },
   {
@@ -116,12 +210,13 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "hotline",        label: "Hotline" },
       { key: "categories",     label: "Danh mục khác" },
       { key: "templates",      label: "Biểu mẫu / Chữ ký" },
-      { key: "settings",       label: "Cài đặt chung" },
+      { key: "settings",       label: "Cài đặt chung", core: ["view", "edit"] },
+      { key: "users",          label: "Phân quyền nhân viên", extra: ["manage_templates"] },
     ],
   },
 ];
 
-/** Flat module list (35 modules total). */
+/** Flat module list. */
 export const ALL_MODULES: ModuleDef[] = PERMISSION_GROUPS.flatMap((g) => g.modules);
 
 /** Map key → ModuleDef for O(1) lookup. */
@@ -129,13 +224,13 @@ export const MODULE_BY_KEY: Record<string, ModuleDef> = Object.fromEntries(
   ALL_MODULES.map((m) => [m.key, m]),
 );
 
-/** Chuẩn 4 action mọi module đều có. */
+/** Chuẩn 4 action mặc định. */
 export const CORE_ACTIONS: ActionKey[] = ["view", "create", "edit", "delete"];
 
-/** Actions hiển thị cho 1 module = 4 core + extras tuỳ module. */
+/** Actions hiển thị cho 1 module = core (hoặc override) + extras. */
 export function actionsForModule(moduleKey: string): ActionKey[] {
   const def = MODULE_BY_KEY[moduleKey];
-  return [...CORE_ACTIONS, ...(def?.extra ?? [])];
+  return [...(def?.core ?? CORE_ACTIONS), ...(def?.extra ?? [])];
 }
 
 export const ACTION_LABELS: Record<ActionKey, string> = {
@@ -148,6 +243,48 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   print:          "In",
   export:         "Xuất",
   all_buildings:  "Mọi toà nhà",
+  create_deposit: "Tạo cọc nhanh",
+  view_finance:   "Xem số liệu tài chính",
+  manage_tokens:  "Link chia sẻ",
+  manage_settings: "Cài đặt hiển thị",
+  manage_images:  "Ảnh sale",
+  edit_floor_plan: "Sơ đồ toạ độ",
+  convert:        "Chuyển đổi",
+  refund:         "Hoàn / bỏ cọc",
+  renew:          "Gia hạn",
+  transfer:       "Chuyển nhượng",
+  terminate:      "Thanh lý",
+  handover:       "Bàn giao tài sản",
+  import:         "Nhập file",
+  share:          "Chia sẻ",
+  cancel:         "Huỷ",
+  collect:        "Thu tiền",
+  undo:           "Hoàn tác",
+  report:         "Báo cáo",
+  lock:           "Chốt tháng",
+  unlock:         "Mở khoá",
+  distribute:     "Chi lợi nhuận",
+  manage_shareholders: "Quản lý cổ đông",
+  move:           "Di chuyển",
+  maintain:       "Bảo trì",
+  complete:       "Hoàn thành",
+  manage_templates: "Quản lý mẫu",
+  vacant_rooms:   "BC Phòng trống",
+  expiring:       "BC HĐ sắp hết hạn",
+  renewals_transfers: "BC Gia hạn & CN",
+  occupancy:      "BC Lấp đầy",
+  promotions:     "BC Khuyến mãi",
+  new_leases:     "BC Cho thuê mới",
+  terminations:   "BC Bỏ trả / thanh lý",
+  expense_ratio:  "BC Tỉ lệ chi phí",
+  daily_cashbook: "BC Sổ quỹ ngày",
+  cash_flow:      "BC Dòng tiền",
+  profit_distribution: "BC Phân bổ LN",
+  debt:           "BC Công nợ HĐ mới",
+  customer_debt:  "BC Khách nợ tiền",
+  payment_schedule: "BC Lịch thanh toán",
+  overpayment:    "BC Tiền thừa",
+  deposits_report: "BC Danh sách cọc",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */
@@ -170,10 +307,11 @@ export function buildViewOnlyPermissions(): PermissionsMap {
 
 /** Build "full access" permissions (mọi module mọi action = true, kèm __superadmin). */
 export function buildFullPermissions(): PermissionsMap & { __superadmin?: boolean } {
-  const out: PermissionsMap & { __superadmin?: boolean } = { __superadmin: true };
+  const out: PermissionsMap = {};
   for (const m of ALL_MODULES) {
     out[m.key] = Object.fromEntries(actionsForModule(m.key).map((a) => [a, true])) as Partial<Record<ActionKey, boolean>>;
   }
+  (out as any).__superadmin = true;
   return out;
 }
 
@@ -199,6 +337,30 @@ export function can(
   if (!perms) return false;
   if ((perms as any).__superadmin) return true;
   return !!perms[moduleKey]?.[action];
+}
+
+/**
+ * Check 1 action chi tiết với fallback legacy.
+ *
+ * Permissions cũ (trước redesign 2026-06-11) KHÔNG có các key chi tiết
+ * (renew/convert/lock…). Để nhân viên hiện hữu không mất quyền, khi key chi
+ * tiết CHƯA tồn tại trong JSONB (undefined) thì rơi về action gốc (thường là
+ * edit/create/view của cùng module, hoặc module khác — vd thu_tien.view rơi về
+ * invoices.record_payment). Key đã được set tường minh (true/false) thì dùng
+ * đúng giá trị đó.
+ */
+export function canFeature(
+  perms: PermissionsMap | null | undefined,
+  moduleKey: string,
+  action: ActionKey,
+  fallback?: { module?: string; action: ActionKey },
+): boolean {
+  if (!perms) return false;
+  if ((perms as any).__superadmin) return true;
+  const v = perms[moduleKey]?.[action];
+  if (v !== undefined) return !!v;
+  if (!fallback) return false;
+  return !!perms[fallback.module ?? moduleKey]?.[fallback.action];
 }
 
 /** Đếm số (module, action) = true. Loại sentinel __superadmin khỏi đếm. */
@@ -259,15 +421,36 @@ export function setModuleAction(
 /** Apply preset cho TOÀN BỘ matrix: "none" / "view" / "manage" / "all". */
 export type Preset = "none" | "view" | "manage" | "all";
 
+/**
+ * Action thuộc nhóm "quản lý" (preset manage): CRUD + các thao tác nghiệp vụ
+ * thường ngày. Các action nhạy cảm (duyệt, chốt/mở khoá LN, mọi-toà, phân
+ * quyền nhân viên…) KHÔNG nằm trong preset manage — xem ELEVATED bên catalog.
+ */
+const MANAGE_ACTIONS = new Set<ActionKey>([
+  "view", "create", "edit", "delete",
+  "record_payment", "print", "export",
+  "view_finance",
+  "manage_tokens", "manage_settings", "manage_images", "edit_floor_plan",
+  "convert", "refund", "renew", "transfer", "handover", "import", "share",
+  "cancel", "collect", "undo", "report", "move", "maintain", "complete",
+  "vacant_rooms", "expiring", "renewals_transfers", "occupancy", "promotions",
+  "new_leases", "terminations", "expense_ratio",
+  "daily_cashbook", "cash_flow", "profit_distribution", "debt",
+  "customer_debt", "payment_schedule", "overpayment", "deposits_report",
+]);
+
 export function applyGlobalPreset(_perms: PermissionsMap, preset: Preset): PermissionsMap {
   const out: PermissionsMap = {};
   for (const m of ALL_MODULES) {
     const row: Partial<Record<ActionKey, boolean>> = {};
+    // Module "users" (phân quyền nhân viên) là quyền nhạy cảm — preset
+    // view/manage không tự cấp, chỉ preset "all" (hoặc tick tay) mới mở.
+    const sensitiveModule = m.key === "users";
     for (const a of actionsForModule(m.key)) {
       switch (preset) {
         case "none":   row[a] = false; break;
-        case "view":   row[a] = a === "view"; break;
-        case "manage": row[a] = a === "view" || a === "create" || a === "edit" || a === "delete"; break;
+        case "view":   row[a] = !sensitiveModule && a === "view"; break;
+        case "manage": row[a] = !sensitiveModule && MANAGE_ACTIONS.has(a); break;
         case "all":    row[a] = true; break;
       }
     }

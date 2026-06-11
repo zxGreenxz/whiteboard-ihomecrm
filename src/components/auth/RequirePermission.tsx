@@ -8,14 +8,19 @@
 //   </ProtectedRoute>} />
 //
 // Super admin & owner (__superadmin sentinel) tự động pass.
+// Check qua canUse (catalog permissionPages.ts) — key chi tiết chưa tồn tại
+// trong JSONB cũ sẽ fallback về quyền legacy, nhân viên hiện hữu không bị
+// khoá đột ngột.
 
 import { Navigate } from "react-router-dom";
-import { useMyPermissions, can } from "@/hooks/useMyPermissions";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import type { ActionKey } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface RequirePermissionProps {
   module: string;
-  action?: string;
+  action?: ActionKey;
   /** Redirect path khi thiếu quyền. Mặc định `/`. */
   fallbackPath?: string;
   children: React.ReactNode;
@@ -38,7 +43,7 @@ export function RequirePermission({
     );
   }
 
-  if (!can(perms, module, action)) {
+  if (!canUse(perms, module, action)) {
     return <Navigate to={fallbackPath} replace />;
   }
 

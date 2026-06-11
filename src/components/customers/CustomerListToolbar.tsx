@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 
 export type ViewMode = 'list' | 'grid';
 
@@ -28,6 +30,7 @@ export default function CustomerListToolbar({
   onViewModeChange,
 }: CustomerListToolbarProps) {
   const { hasAnyScope } = useMyBuildingScope();
+  const { data: perms } = useMyPermissions();
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
       {/* Search */}
@@ -43,22 +46,26 @@ export default function CustomerListToolbar({
 
       {/* Actions */}
       <div className="flex items-center gap-2">
-        {hasAnyScope && (
+        {hasAnyScope && canUse(perms, 'customers', 'create') && (
           <Button size="sm" onClick={onAdd} className="bg-green-600 hover:bg-green-700">
             <Plus className="h-4 w-4" />
           </Button>
         )}
-        <Button size="sm" variant="outline" onClick={onExport}>
-          <Download className="h-4 w-4" />
-        </Button>
-        {hasAnyScope && (
+        {canUse(perms, 'customers', 'export') && (
+          <Button size="sm" variant="outline" onClick={onExport}>
+            <Download className="h-4 w-4" />
+          </Button>
+        )}
+        {hasAnyScope && canUse(perms, 'customers', 'import') && (
           <Button size="sm" variant="outline" onClick={onImport}>
             <Upload className="h-4 w-4" />
           </Button>
         )}
-        <Button size="sm" variant="outline" onClick={onPrint}>
-          <Printer className="h-4 w-4" />
-        </Button>
+        {canUse(perms, 'customers', 'print') && (
+          <Button size="sm" variant="outline" onClick={onPrint}>
+            <Printer className="h-4 w-4" />
+          </Button>
+        )}
 
         {/* View toggle */}
         <div className="flex items-center border rounded-md">

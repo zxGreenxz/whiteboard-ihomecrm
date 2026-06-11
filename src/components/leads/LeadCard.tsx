@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Phone, Mail, MapPin, Building2, Edit, ArrowRight, Trash2, Eye, UserPlus, Users, Search as SearchIcon } from "lucide-react";
 import type { LeadWithRelations } from "@/hooks/useLeads";
 import { formatDate } from "@/lib/utils";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 
 interface LeadCardProps {
   lead: LeadWithRelations;
@@ -24,6 +26,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export function LeadCard({ lead, onEdit, onConvert, onDelete, onViewDetail }: LeadCardProps) {
+  const { data: perms } = useMyPermissions();
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
@@ -113,16 +116,20 @@ export function LeadCard({ lead, onEdit, onConvert, onDelete, onViewDetail }: Le
         >
           <Eye className="w-3 h-3" />
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1"
-          onClick={() => onEdit(lead)}
-          title="Chỉnh sửa"
-        >
-          <Edit className="w-3 h-3" />
-        </Button>
-        {lead.status !== "CONVERTED" && lead.status !== "FAILED" && (
+        {canUse(perms, "leads", "edit") && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            onClick={() => onEdit(lead)}
+            title="Chỉnh sửa"
+          >
+            <Edit className="w-3 h-3" />
+          </Button>
+        )}
+        {canUse(perms, "leads", "convert") &&
+          lead.status !== "CONVERTED" &&
+          lead.status !== "FAILED" && (
           <Button
             size="sm"
             className="flex-1"
@@ -133,15 +140,17 @@ export function LeadCard({ lead, onEdit, onConvert, onDelete, onViewDetail }: Le
             Cọc
           </Button>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-          onClick={() => onDelete(lead)}
-          title="Xóa"
-        >
-          <Trash2 className="w-3 h-3" />
-        </Button>
+        {canUse(perms, "leads", "delete") && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={() => onDelete(lead)}
+            title="Xóa"
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );

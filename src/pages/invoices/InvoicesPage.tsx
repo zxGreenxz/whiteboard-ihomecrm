@@ -15,7 +15,8 @@ import {
   useForceCancelInvoice,
 } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
-import { useMyPermissions, can } from '@/hooks/useMyPermissions';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
 import InvoiceStatsSummary from '@/components/invoices/InvoiceStatsSummary';
@@ -47,10 +48,10 @@ const InvoicesPage = () => {
   // (nguồn useBuildings đã bị RLS cắt) tự nhiên chỉ hiện toà staff được quản.
   const { data: ctx } = useMyContext();
   const { data: perms } = useMyPermissions();
-  const canCreate = can(perms, 'invoices', 'create');
-  const canEdit = can(perms, 'invoices', 'edit');
-  const canDelete = can(perms, 'invoices', 'delete');
-  const canRecordPayment = can(perms, 'invoices', 'record_payment');
+  const canCreate = canUse(perms, 'invoices', 'create');
+  const canEdit = canUse(perms, 'invoices', 'edit');
+  const canDelete = canUse(perms, 'invoices', 'delete');
+  const canRecordPayment = canUse(perms, 'invoices', 'record_payment');
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');

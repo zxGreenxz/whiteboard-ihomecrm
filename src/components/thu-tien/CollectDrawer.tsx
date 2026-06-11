@@ -29,6 +29,8 @@ interface Props {
   /** Lịch sử ai thu bao nhiêu của hoá đơn đang mở. */
   collectors?: CollectorEntry[];
   canRecordPayment: boolean;
+  /** Quyền hoàn tác phiếu thu (mặc định = canRecordPayment). */
+  canUndo?: boolean;
   prev: InvoiceWithRelations | null;
   next: InvoiceWithRelations | null;
   onClose: () => void;
@@ -41,6 +43,7 @@ export function CollectDrawer({
   mode,
   collectors = [],
   canRecordPayment,
+  canUndo = canRecordPayment,
   prev,
   next,
   onClose,
@@ -206,7 +209,7 @@ export function CollectDrawer({
               <StickyNote />
               Ghi chú
             </button>
-            {canRecordPayment && (invoice.paid_amount ?? 0) > 0 && (
+            {canUndo && (invoice.paid_amount ?? 0) > 0 && (
               <button
                 type="button"
                 className="is-sub-btn undo"

@@ -21,6 +21,8 @@ import {
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import {
   Eye,
   Ban,
@@ -151,7 +153,12 @@ const IncomeExpenseList = ({
   );
   const { data: isAdmin = false } = useIsAdmin();
   const { data: authUser } = useAuth();
+  const { data: perms } = useMyPermissions();
   const currentUserId = authUser?.id ?? null;
+  // Quyền chi tiết: duyệt / huỷ phiếu thu chi (fallback legacy: approve cũ,
+  // cancel rơi về edit).
+  const canApproveVoucher = canUse(perms, 'income_expenses', 'approve');
+  const canCancelVoucher = canUse(perms, 'income_expenses', 'cancel');
 
   if (isLoading) {
     return (
@@ -273,7 +280,7 @@ const IncomeExpenseList = ({
                     )}
 
                     {/* Duyệt (chỉ khi nháp) */}
-                    {isUnapproved && onApprove && (
+                    {canApproveVoucher && isUnapproved && onApprove && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -286,7 +293,7 @@ const IncomeExpenseList = ({
                     )}
 
                     {/* Huỷ phiếu (chỉ khi chưa huỷ) */}
-                    {!isCancelled && (
+                    {canCancelVoucher && !isCancelled && (
                       <Button
                         variant="ghost"
                         size="icon"

@@ -1,7 +1,8 @@
 import MainLayout from "@/components/layout/MainLayout";
 import { PieChart } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useMyPermissions, can } from "@/hooks/useMyPermissions";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 import { useMyShareholder } from "@/hooks/useShareholders";
 import ProfitOverviewTab from "@/components/shareholders/ProfitOverviewTab";
 import ProfitLockTab from "@/components/shareholders/ProfitLockTab";
@@ -12,10 +13,13 @@ export default function ShareholderProfitPage() {
   const { data: perms } = useMyPermissions();
   const { data: me, isLoading: meLoading } = useMyShareholder();
 
-  const isManager =
-    !!perms?.__superadmin ||
-    can(perms, "shareholder_profit", "create") ||
-    can(perms, "shareholder_profit", "edit");
+  // Quyền chi tiết theo catalog (fallback legacy: create/edit cũ của module).
+  const canLock = canUse(perms, "shareholder_profit", "lock");
+  const canDistribute = canUse(perms, "shareholder_profit", "distribute");
+  const canManageShareholders = canUse(perms, "shareholder_profit", "manage_shareholders");
+
+  // "Quản lý" = có ít nhất 1 quyền thao tác — còn lại rơi về view cổ đông.
+  const isManager = !!perms?.__superadmin || canLock || canDistribute || canManageShareholders;
 
   return (
     <MainLayout title="Chia lợi nhuận cổ đông" subtitle="Tài chính → Cổ đông" icon={PieChart}>
@@ -23,12 +27,16 @@ export default function ShareholderProfitPage() {
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList>
             <TabsTrigger value="overview">Tổng quan</TabsTrigger>
-            <TabsTrigger value="lock">Chốt LN tháng</TabsTrigger>
-            <TabsTrigger value="config">Cổ đông &amp; tỷ lệ</TabsTrigger>
+            {canLock && <TabsTrigger value="lock">Chốt LN tháng</TabsTrigger>}
+            {canManageShareholders && (
+              <TabsTrigger value="config">Cổ đông &amp; tỷ lệ</TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="overview"><ProfitOverviewTab /></TabsContent>
-          <TabsContent value="lock"><ProfitLockTab /></TabsContent>
-          <TabsContent value="config"><ShareConfigTab /></TabsContent>
+          {canLock && <TabsContent value="lock"><ProfitLockTab /></TabsContent>}
+          {canManageShareholders && (
+            <TabsContent value="config"><ShareConfigTab /></TabsContent>
+          )}
         </Tabs>
       ) : me ? (
         <ShareholderSelfView me={me} />

@@ -172,16 +172,32 @@ Domain này **không** sở hữu enum riêng (các bảng dùng `boolean`/`json
 Permissions không phải enum mà là JSONB tự do với khoá module/action do FE quy
 định trong [permissions.ts](src/lib/permissions.ts).
 
-- **Registry**: `PERMISSION_GROUPS` hiện có **34 module trong 8 nhóm UI** —
-  Tổng quan (2) · Bất động sản (5, gồm `sale_phong`) · Khách hàng (5) ·
-  Tài chính (5) · Cổ đông & Cá nhân (2) · Tài sản (4) · Vận hành & Báo cáo (4) ·
-  Cấu hình hệ thống (7). ⚠️ Các comment trong code ghi "37 modules"/"35 modules"
-  và UI StaffPage ghi "35 quyền" đều **lệch** — số đúng đếm từ registry là 34.
-- **Action chuẩn**: `view · create · edit · delete` + extras tuỳ module:
-  `record_payment · approve · print · export`; cờ phạm vi `all_buildings`
-  (chỉ module `income_expenses` — xem 4.6); và `create_deposit` (module
-  `sale_phong` — **WIP chưa commit**, working tree 2026-06-10, xem mục 6).
-  `ACTION_LABELS` có đủ 10 action.
+- **Registry (redesign 2026-06-11)**: `PERMISSION_GROUPS` có **37 module trong
+  8 nhóm UI**, tổng ~190 khoá quyền `module.action`. Module mới: `thu_tien`
+  (trang Thu tiền mobile, FE-only), `materials` (Vật tư — RLS đã dùng khoá này
+  từ trước nhưng registry cũ THIẾU), `users` (trang Phân quyền — trước là khoá
+  "ma", nay là module thật cấp được qua matrix). Một số module đổi bộ action:
+  `sale_phong`/`shareholder_profit`/`reports_*` bỏ CRUD chuẩn, dùng action chi
+  tiết riêng (`ModuleDef.core` override).
+- **Action chi tiết theo chức năng**: ngoài 4 action chuẩn + extras cũ
+  (`record_payment · approve · print · export · all_buildings · create_deposit`),
+  registry thêm ~40 action mới: vòng đời HĐ (`renew · transfer · terminate ·
+  handover`), cọc (`convert · refund`), hoá đơn (`cancel`), thu tiền (`collect ·
+  undo · report`), lợi nhuận (`lock · unlock · distribute · manage_shareholders`),
+  sale phòng (`manage_tokens · manage_settings · manage_images ·
+  edit_floor_plan`), tài sản (`move · maintain`), từng báo cáo riêng lẻ
+  (8 BC BĐS + 8 BC tài chính), v.v.
+- **Catalog theo TRANG**: [permissionPages.ts](src/lib/permissionPages.ts) là
+  nguồn sự thật cho UI phân quyền mới — `PAGE_GROUPS` (9 nhóm × ~38 trang), mỗi
+  trang liệt kê từng chức năng (`PageFeature` gồm `tier` view/manage/elevated +
+  `fallback` legacy). **Fallback legacy**: JSONB cũ chưa có key chi tiết →
+  `canFeature`/`canUse` rơi về quyền gốc (vd `contracts.renew` rơi về
+  `contracts.edit`; `thu_tien.*` rơi về `invoices.record_payment`) nên nhân viên
+  hiện hữu không mất quyền. Test bất biến (catalog phủ đủ registry, fallback,
+  preset) ở [permissionPages.test.ts](src/lib/__tests__/permissionPages.test.ts).
+- **Diff "khác mẫu"** từ 2026-06-11 so theo **giá trị hiệu lực** từng chức năng
+  (`diffFeatures`), không so key thô — tránh diff ảo khi staff materialize key
+  chi tiết mà template cũ chưa có.
 
 ---
 
@@ -482,14 +498,16 @@ Lớp guard route/UI mirror các helper DB (gate FE chỉ là UX — enforcement
   [useMyPermissions](src/hooks/useMyPermissions.ts) (RPC `get_my_permissions`,
   staleTime 5 phút).
 
-  > ⚠️ **Module "users" là phantom key**: route `/settings/staff` được gate bằng
-  > `RequirePermission module="users"` — key này **không tồn tại** trong registry
-  > [permissions.ts](src/lib/permissions.ts), không hiện trong PermissionMatrix,
-  > không template nào cấp. Hệ quả: chỉ caller có sentinel `__superadmin`
-  > (owner gốc / super admin / tenant admin) vào được trang Phân quyền; KHÔNG có
-  > cách uỷ quyền quản lý nhân sự cho một staff thường qua matrix. Muốn uỷ quyền
-  > phải thêm module `users` vào `PERMISSION_GROUPS` hoặc đổi guard sang module
-  > có thật.
+  > ✅ **Module "users" đã là module thật** (2026-06-11): có trong registry
+  > (nhóm Cấu hình, actions view/create/edit/delete/manage_templates, tier
+  > elevated) — owner có thể uỷ quyền quản lý nhân sự cho staff qua matrix.
+  > Preset view/manage KHÔNG tự cấp module này (chỉ preset "all" hoặc tick tay).
+  > Trong StaffPage, nút Thêm/Sửa/Xoá nhân viên gate theo `users.create/edit/
+  > delete`; tab Mẫu phân quyền gate theo `users.manage_templates`.
+  >
+  > Từ 2026-06-11 `RequirePermission` check qua `canUse` (catalog + fallback
+  > legacy) và **hầu hết route nghiệp vụ trong App.tsx đã được gate** theo
+  > `module.view` (kể cả từng báo cáo riêng: `reports_finance.daily_cashbook`…).
 
 - [AdminOnlyRoute](src/components/auth/AdminOnlyRoute.tsx) — guard `/admin/users`,
   dựa [useIsAdmin](src/hooks/useIsAdmin.ts) (mirror RPC `is_admin()`, staleTime
@@ -587,12 +605,20 @@ này (xem cảnh báo 4.8).
 
 #### Tab "Nhân viên" — thêm/sửa qua Sheet 4 bước
 
+> **UI bước ④ đổi 2026-06-11**: `PermissionMatrix` (accordion module × action)
+> đã bị XOÁ, thay bằng [PagePermissionMatrix](src/components/staff/PagePermissionMatrix.tsx) —
+> nav dọc theo TRANG (9 nhóm × ~38 trang, badge bật/tổng + chấm diff), panel
+> phải liệt kê TỪNG CHỨC NĂNG của trang (checkbox + mô tả + badge "Nhạy cảm"
+> cho tier elevated), search xuyên trang, nút nhanh per-page (Bỏ hết / Chỉ xem /
+> Tất cả) + preset toàn cục. Checkbox hiển thị GIÁ TRỊ HIỆU LỰC (key tường minh
+> hoặc fallback legacy); toggle ghi key tường minh (materialize).
+
 ```mermaid
 flowchart TD
     F1["① Thông tin NV<br/>username/password (khi tạo)<br/>full_name/phone/email/job_title/is_active"] --> F2
     F2["② Cài đặt nhanh — chọn 1 mẫu<br/>applyTemplateToDraft: copy role.permissions vào draft"] --> F3
     F3["③ Phạm vi toà<br/>all_buildings? hay chọn N toà<br/>(BuildingMultiSelect — click khu = cả nhóm)"] --> F4
-    F4["④ Tinh chỉnh từng quyền<br/>PermissionMatrix, baseline=role.permissions<br/>đếm diff vs mẫu"] --> SAVE{"Lưu"}
+    F4["④ Tinh chỉnh từng quyền<br/>PagePermissionMatrix theo trang, baseline=role.permissions<br/>đếm diff HIỆU LỰC (diffFeatures) vs mẫu"] --> SAVE{"Lưu"}
     SAVE -- "Tạo mới" --> P["useProvisionStaff"]
     SAVE -- "Sửa" --> U["useUpdateStaffMember"]
     P --> PD{"draft khác mẫu?"} -- "có" --> UP["useUpdateStaffPermissions"]

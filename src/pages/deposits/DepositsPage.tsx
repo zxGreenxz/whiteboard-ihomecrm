@@ -39,6 +39,8 @@ import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
 import { EditDepositDialog } from "@/components/deposits/EditDepositDialog";
 import { ConvertToContractDialog } from "@/components/deposits/ConvertToContractDialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 
 const STATUS_CONFIG = {
   PENDING: { label: "Chờ xác nhận", color: "bg-yellow-100 text-yellow-800" },
@@ -85,6 +87,10 @@ function KpiCard({
 
 const DepositsPage = () => {
   const [tab, setTab] = useState("overview");
+  const { data: perms } = useMyPermissions();
+  const canCreateDeposit = canUse(perms, "deposits", "create");
+  const canEditDeposit = canUse(perms, "deposits", "edit");
+  const canConvertDeposit = canUse(perms, "deposits", "convert");
 
   // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
   const [buildingIds, setBuildingIds] = useState<string[]>([]);
@@ -212,10 +218,12 @@ const DepositsPage = () => {
               giữ chỗ
             </p>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Tạo đặt cọc
-          </Button>
+          {canCreateDeposit && (
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Tạo đặt cọc
+            </Button>
+          )}
         </div>
 
         {/* Bộ lọc toà nhà (gom theo khu vực) — dùng chung mọi tab */}
@@ -543,8 +551,8 @@ const DepositsPage = () => {
                             icon={DollarSign}
                             title="Chưa có phiếu đặt cọc nào"
                             description="Hãy tạo phiếu đặt cọc đầu tiên để bắt đầu quản lý"
-                            actionLabel="Tạo đặt cọc"
-                            onAction={() => setCreateDialogOpen(true)}
+                            actionLabel={canCreateDeposit ? "Tạo đặt cọc" : undefined}
+                            onAction={canCreateDeposit ? () => setCreateDialogOpen(true) : undefined}
                           />
                         ) : (
                           <div className="text-center py-8 text-muted-foreground">
@@ -584,10 +592,12 @@ const DepositsPage = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleEdit(deposit)}>
-                              Sửa
-                            </Button>
-                            {deposit.status === "CONFIRMED" && (
+                            {canEditDeposit && (
+                              <Button size="sm" variant="outline" onClick={() => handleEdit(deposit)}>
+                                Sửa
+                              </Button>
+                            )}
+                            {canConvertDeposit && deposit.status === "CONFIRMED" && (
                               <Button size="sm" onClick={() => handleConvert(deposit)}>
                                 Tạo HĐ
                               </Button>

@@ -27,6 +27,8 @@ import { AssetHandoverDialog } from "@/components/assets/AssetHandoverDialog";
 import { AssetMovementDialog } from "@/components/assets/AssetMovementDialog";
 import { AssetMaintenanceDialog } from "@/components/assets/AssetMaintenanceDialog";
 import { formatCurrency } from "@/lib/utils";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 
 const CONDITION_CONFIG = {
   NEW: { label: "Mới", color: "bg-green-100 text-green-800" },
@@ -43,6 +45,7 @@ const MAINTENANCE_STATUS_CONFIG: Record<string, { label: string; color: string }
 };
 
 const AssetsPage = () => {
+  const { data: perms } = useMyPermissions();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [handoverDialogOpen, setHandoverDialogOpen] = useState(false);
@@ -123,22 +126,30 @@ const AssetsPage = () => {
     >
       {/* Action Buttons */}
       <div className="flex justify-end gap-2 mb-6">
-        <Button variant="outline" size="sm" onClick={() => setMovementDialogOpen(true)}>
-          <ArrowRightLeft className="w-4 h-4 mr-2" />
-          Di chuyển
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setMaintenanceDialogOpen(true)}>
-          <Wrench className="w-4 h-4 mr-2" />
-          Bảo trì
-        </Button>
-        <Button variant="outline" onClick={() => setHandoverDialogOpen(true)}>
-          <FileText className="w-4 h-4 mr-2" />
-          Biên bản bàn giao
-        </Button>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Tạo tài sản
-        </Button>
+        {canUse(perms, "assets", "move") && (
+          <Button variant="outline" size="sm" onClick={() => setMovementDialogOpen(true)}>
+            <ArrowRightLeft className="w-4 h-4 mr-2" />
+            Di chuyển
+          </Button>
+        )}
+        {canUse(perms, "assets", "maintain") && (
+          <Button variant="outline" size="sm" onClick={() => setMaintenanceDialogOpen(true)}>
+            <Wrench className="w-4 h-4 mr-2" />
+            Bảo trì
+          </Button>
+        )}
+        {canUse(perms, "contracts", "handover") && (
+          <Button variant="outline" onClick={() => setHandoverDialogOpen(true)}>
+            <FileText className="w-4 h-4 mr-2" />
+            Biên bản bàn giao
+          </Button>
+        )}
+        {canUse(perms, "assets", "create") && (
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Tạo tài sản
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}

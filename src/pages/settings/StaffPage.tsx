@@ -90,16 +90,16 @@ import {
   type AreaLite,
 } from "@/lib/buildingGroups";
 import { AreaMultiSelect } from "@/components/areas/AreaMultiSelect";
-import { PermissionMatrix } from "@/components/staff/PermissionMatrix";
+import { PagePermissionMatrix } from "@/components/staff/PagePermissionMatrix";
 import {
-  ALL_MODULES,
   buildEmptyPermissions,
   countTrueActions,
-  diffPermissions,
   isSuperAdminPerms,
   parsePermissions,
   type PermissionsMap,
 } from "@/lib/permissions";
+import { canUse, diffFeatures } from "@/lib/permissionPages";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
 import type { Json } from "@/integrations/supabase/types";
 
 // =============================================================
@@ -132,6 +132,8 @@ const metaForRole = (name: string): TemplateMeta => TEMPLATE_META[name] ?? DEFAU
 function TemplatesTab() {
   const { data: roles, isLoading } = useRoles();
   const { data: assignments } = useStaffAssignments();
+  const { data: myPerms } = useMyPermissions();
+  const canManageTemplates = canUse(myPerms, "users", "manage_templates");
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
   const deleteRole = useDeleteRole();
@@ -154,7 +156,7 @@ function TemplatesTab() {
   const systemRoles = (roles || []).filter((r: any) => r.is_system);
   const customRoles = (roles || []).filter((r: any) => !r.is_system);
 
-  const openView = (role: any) => setViewSheet({ role, editable: !role.is_system });
+  const openView = (role: any) => setViewSheet({ role, editable: !role.is_system && canManageTemplates });
   const openCreate = () => {
     setDraft({ name: "", description: "", permissions: buildEmptyPermissions() });
     setCreateDialogOpen(true);
@@ -264,10 +266,12 @@ function TemplatesTab() {
             <h3 className="text-sm font-semibold">Mẫu tuỳ chỉnh ({customRoles.length})</h3>
             <p className="text-xs text-muted-foreground">Mẫu riêng cho team của bạn.</p>
           </div>
-          <Button onClick={openCreate} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Tạo mẫu mới
-          </Button>
+          {canManageTemplates && (
+            <Button onClick={openCreate} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+              <Plus className="h-4 w-4 mr-1.5" />
+              Tạo mẫu mới
+            </Button>
+          )}
         </div>
         {customRoles.length === 0 ? (
           <Card className="border-dashed">
@@ -295,19 +299,21 @@ function TemplatesTab() {
                       <div className={cn("rounded-lg p-2", meta.iconBg)}>
                         <Icon className="h-5 w-5" />
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => setDeleteId(r.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      {canManageTemplates && (
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(r)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => setDeleteId(r.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h4 className="font-semibold text-sm">{r.name}</h4>
@@ -331,7 +337,7 @@ function TemplatesTab() {
 
       {/* View / Edit sheet */}
       <Sheet open={!!viewSheet} onOpenChange={(o) => !o && (setViewSheet(null), setDraft(null))}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-4xl overflow-y-auto">
           {viewSheet && (
             <>
               <SheetHeader>
@@ -359,7 +365,7 @@ function TemplatesTab() {
                   </>
                 )}
 
-                <PermissionMatrix
+                <PagePermissionMatrix
                   value={draft?.permissions ?? parsePermissions(viewSheet.role.permissions)}
                   onChange={(p) => draft && setDraft({ ...draft, permissions: p })}
                   disabled={!viewSheet.editable}
@@ -370,10 +376,12 @@ function TemplatesTab() {
                 {viewSheet.role.is_system ? (
                   <>
                     <p className="text-xs text-muted-foreground">Mẫu hệ thống — chỉ xem.</p>
-                    <Button variant="outline" onClick={() => openCloneAsNew(viewSheet.role)}>
-                      <Sparkles className="h-4 w-4 mr-1.5" />
-                      Tạo bản sao
-                    </Button>
+                    {canManageTemplates && (
+                      <Button variant="outline" onClick={() => openCloneAsNew(viewSheet.role)}>
+                        <Sparkles className="h-4 w-4 mr-1.5" />
+                        Tạo bản sao
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -396,7 +404,7 @@ function TemplatesTab() {
 
       {/* Create dialog */}
       <Dialog open={createDialogOpen} onOpenChange={(o) => !o && (setCreateDialogOpen(false), setDraft(null))}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Tạo mẫu phân quyền mới</DialogTitle>
             <DialogDescription>
@@ -415,7 +423,7 @@ function TemplatesTab() {
                   <Input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="(không bắt buộc)" />
                 </div>
               </div>
-              <PermissionMatrix
+              <PagePermissionMatrix
                 value={draft.permissions}
                 onChange={(p) => setDraft({ ...draft, permissions: p })}
               />
@@ -545,6 +553,10 @@ function StaffTab() {
   const { data: roles, isLoading: loadingR } = useRoles();
   const { data: buildings, isLoading: loadingB } = useBuildings();
   const { data: areas } = useAreas();
+  const { data: myPerms } = useMyPermissions();
+  const canCreateStaff = canUse(myPerms, "users", "create");
+  const canEditStaff = canUse(myPerms, "users", "edit");
+  const canDeleteStaff = canUse(myPerms, "users", "delete");
   const provisionStaff = useProvisionStaff();
   const updateStaff = useUpdateStaffMember();
   const removeStaff = useRemoveStaffMember();
@@ -673,10 +685,10 @@ function StaffTab() {
         },
       });
       // Sau khi update role, permissions đã re-snapshot từ role.permissions.
-      // Nếu user tinh chỉnh thêm → save lại snapshot mới.
+      // Nếu user tinh chỉnh thêm (so theo GIÁ TRỊ HIỆU LỰC) → save snapshot mới.
       const roleObj = (roles || []).find((r: any) => r.id === form.role_id);
       const rolePerms = parsePermissions(roleObj?.permissions);
-      const draftDiffs = diffPermissions(rolePerms, form.permissions);
+      const draftDiffs = diffFeatures(rolePerms, form.permissions);
       if (draftDiffs.length > 0) {
         await updatePerms.mutateAsync({ staffId: form.staff_id, permissions: form.permissions });
       }
@@ -709,7 +721,7 @@ function StaffTab() {
       // Nếu user đã tinh chỉnh permissions khác với template gốc → save override
       const roleObj = (roles || []).find((r: any) => r.id === form.role_id);
       const rolePerms = parsePermissions(roleObj?.permissions);
-      const draftDiffs = diffPermissions(rolePerms, form.permissions);
+      const draftDiffs = diffFeatures(rolePerms, form.permissions);
       if (draftDiffs.length > 0 && result && result[0]?.staff_id) {
         await updatePerms.mutateAsync({ staffId: result[0].staff_id, permissions: form.permissions });
       }
@@ -735,7 +747,7 @@ function StaffTab() {
 
   const selectedRole = form ? (roles || []).find((r: any) => r.id === form.role_id) : null;
   const selectedRolePerms = parsePermissions(selectedRole?.permissions);
-  const formDiffCount = form ? diffPermissions(selectedRolePerms, form.permissions).length : 0;
+  const formDiffCount = form ? diffFeatures(selectedRolePerms, form.permissions).length : 0;
 
   return (
     <div className="space-y-4">
@@ -762,10 +774,12 @@ function StaffTab() {
             ))}
           </select>
         </div>
-        <Button onClick={openCreate} className="bg-green-600 hover:bg-green-700 text-white">
-          <UserPlus className="h-4 w-4 mr-1.5" />
-          Thêm nhân viên
-        </Button>
+        {canCreateStaff && (
+          <Button onClick={openCreate} className="bg-green-600 hover:bg-green-700 text-white">
+            <UserPlus className="h-4 w-4 mr-1.5" />
+            Thêm nhân viên
+          </Button>
+        )}
       </div>
 
       {/* Staff list */}
@@ -786,10 +800,10 @@ function StaffTab() {
             const profile = m.profile || {};
             const initials = (profile.full_name || profile.email || "?").split(/\s+/).map((s: string) => s[0]).slice(-2).join("").toUpperCase();
 
-            // Diff vs template
+            // Diff vs template (theo giá trị hiệu lực của từng chức năng)
             const isSuper = isSuperAdminPerms(m.current_permissions);
             const diffs = m.current_permissions && !isSuper
-              ? diffPermissions(parsePermissions(m.role?.permissions), m.current_permissions)
+              ? diffFeatures(parsePermissions(m.role?.permissions), m.current_permissions)
               : [];
             const diffCount = diffs.length;
             const scopeLabel = m.has_global
@@ -827,18 +841,22 @@ function StaffTab() {
                           </p>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
-                            <Pencil className="h-3.5 w-3.5 mr-1" />
-                            Sửa quyền
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => setDeletingId(m.staff_id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canEditStaff && (
+                            <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
+                              <Pencil className="h-3.5 w-3.5 mr-1" />
+                              Sửa quyền
+                            </Button>
+                          )}
+                          {canDeleteStaff && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => setDeletingId(m.staff_id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 mt-2 flex-wrap text-xs">
@@ -877,7 +895,7 @@ function StaffTab() {
 
       {/* Add / Edit Sheet */}
       <Sheet open={sheetOpen} onOpenChange={(o) => !o && (setSheetOpen(false), setForm(null))}>
-        <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-4xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{isEdit ? "Sửa phân quyền nhân viên" : "Thêm nhân viên mới"}</SheetTitle>
             <SheetDescription>
@@ -963,7 +981,7 @@ function StaffTab() {
                   <h3 className="font-semibold text-sm">Cài đặt nhanh — chọn mẫu</h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Bấm 1 mẫu để khởi tạo nhanh 35 quyền. Sau đó có thể tinh chỉnh thêm/bớt từng quyền ở bước 4.
+                  Bấm 1 mẫu để khởi tạo nhanh toàn bộ quyền. Sau đó tinh chỉnh chi tiết từng chức năng theo từng trang ở bước 4.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {(roles || []).map((r: any) => {
@@ -1072,7 +1090,7 @@ function StaffTab() {
                 <p className="text-xs text-muted-foreground">
                   Bỏ tick hoặc thêm quyền so với mẫu gốc. Lưu sẽ tạo bản tinh chỉnh riêng cho nhân viên này.
                 </p>
-                <PermissionMatrix
+                <PagePermissionMatrix
                   value={form.permissions}
                   onChange={(p) => setForm({ ...form, permissions: p })}
                   baseline={form.role_id ? selectedRolePerms : null}

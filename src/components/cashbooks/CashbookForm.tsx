@@ -38,6 +38,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAuth } from "@/hooks/useAuth";
@@ -75,6 +77,7 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const isMobile = useIsMobile();
   const { data: isAdmin } = useIsAdmin();
   const { data: currentUser } = useAuth();
+  const { data: myPerms } = useMyPermissions();
   const { data: staffUsers } = useStaffUsers();
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: existingShared } = useAccountSharedUsers(account?.id);
@@ -82,8 +85,11 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   // Người phụ trách hiện tại của form (theo dõi để loại trừ khỏi list shared).
   const ownerId = account?.user_id ?? currentUser?.id ?? "";
 
-  // Chỉ owner của sổ hoặc admin được sửa danh sách shared.
-  const canEditShared = !!isAdmin || (!!currentUser?.id && ownerId === currentUser.id);
+  // Chỉ owner của sổ hoặc admin được sửa danh sách shared, VÀ phải có quyền
+  // chi tiết cashbooks.share (fallback legacy: cashbooks.edit).
+  const canEditShared =
+    (!!isAdmin || (!!currentUser?.id && ownerId === currentUser.id)) &&
+    canUse(myPerms, "cashbooks", "share");
 
   // Local state cho list shared users (multi-select).
   const [sharedIds, setSharedIds] = useState<string[]>([]);

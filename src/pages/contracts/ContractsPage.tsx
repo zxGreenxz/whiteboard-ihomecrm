@@ -30,6 +30,8 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import { compareBuildingThenRoom } from '@/lib/roomSort';
 import { toast } from 'sonner';
 import type {
@@ -135,7 +137,11 @@ export default function ContractsPage() {
   );
 
   const { data: profile } = useProfile();
-  const { hasAnyScope } = useMyBuildingScope();
+  const { hasAnyScope: hasBuildingScope } = useMyBuildingScope();
+  const { data: perms } = useMyPermissions();
+  // Tạo HĐ cần cả scope toà lẫn quyền contracts.create; nhập file đi theo create.
+  const hasAnyScope = hasBuildingScope && canUse(perms, 'contracts', 'create');
+  const canExport = canUse(perms, 'contracts', 'export');
 
   // =============================================
   // Compute areas from buildings
@@ -394,9 +400,11 @@ export default function ContractsPage() {
                 <Upload className="h-4 w-4" />
               </Button>
             )}
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleExport} disabled={isExporting} title="Xuất">
-              <Download className="h-4 w-4" />
-            </Button>
+            {canExport && (
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleExport} disabled={isExporting} title="Xuất">
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant={showFilters ? 'secondary' : 'ghost'}
               size="icon"

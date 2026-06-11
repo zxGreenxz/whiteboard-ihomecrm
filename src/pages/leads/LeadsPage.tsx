@@ -13,6 +13,8 @@ import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { LeadDetailDialog } from "@/components/leads/LeadDetailDialog";
 import ExportExcelDialog from "@/components/import-export/ExportExcelDialog";
 import type { LeadWithRelations } from "@/hooks/useLeads";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
 
 const LEAD_STATUSES = [
   { value: "B1_LEAD", label: "Mới", color: "bg-blue-100 text-blue-800" },
@@ -33,6 +35,9 @@ const LeadsPage = () => {
 
   const { data: leads = [], isLoading } = useLeads();
   const deleteMutation = useDeleteLead();
+  const { data: perms } = useMyPermissions();
+  const canCreateLead = canUse(perms, "leads", "create");
+  const canExportLeads = canUse(perms, "leads", "export");
 
   // Lọc khách hẹn theo từ khóa tìm kiếm
   const filteredLeads = useMemo(() => {
@@ -95,14 +100,18 @@ const LeadsPage = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
-              <Download className="w-4 h-4 mr-2" />
-              Xuất Excel
-            </Button>
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Tạo khách hẹn
-            </Button>
+            {canExportLeads && (
+              <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+                <Download className="w-4 h-4 mr-2" />
+                Xuất Excel
+              </Button>
+            )}
+            {canCreateLead && (
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Tạo khách hẹn
+              </Button>
+            )}
           </div>
         </div>
 
@@ -140,8 +149,8 @@ const LeadsPage = () => {
             icon={UserPlus}
             title="Chưa có khách hẹn nào"
             description="Hãy tạo khách hẹn đầu tiên để bắt đầu theo dõi khách hàng tiềm năng"
-            actionLabel="Tạo khách hẹn"
-            onAction={() => setCreateDialogOpen(true)}
+            actionLabel={canCreateLead ? "Tạo khách hẹn" : undefined}
+            onAction={canCreateLead ? () => setCreateDialogOpen(true) : undefined}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">

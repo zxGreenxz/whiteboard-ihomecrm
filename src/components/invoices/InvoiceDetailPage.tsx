@@ -35,7 +35,8 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useInvoice } from '@/hooks/useInvoices';
-import { useMyPermissions, can } from '@/hooks/useMyPermissions';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import type { InvoiceItem, Payment, PaymentMethod } from '@/types/invoice';
 import RecordPaymentDialog from './RecordPaymentDialog';
@@ -88,8 +89,8 @@ const InvoiceDetailPage = () => {
 
   const { data: invoice, isLoading } = useInvoice(id);
   const { data: perms } = useMyPermissions();
-  const canEditPerm = can(perms, 'invoices', 'edit');
-  const canRecordPaymentPerm = can(perms, 'invoices', 'record_payment');
+  const canEditPerm = canUse(perms, 'invoices', 'edit');
+  const canRecordPaymentPerm = canUse(perms, 'invoices', 'record_payment');
 
   // ---- Loading / Error states ----
 

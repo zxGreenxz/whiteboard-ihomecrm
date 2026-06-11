@@ -68,6 +68,8 @@ import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
 import { PrintContractDialog } from '@/components/contracts/PrintContractDialog';
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 
 // Types for contract services and history
 interface ContractService {
@@ -94,6 +96,7 @@ interface ContractHistoryItem {
 const ContractDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { data: perms } = useMyPermissions();
 
   // Dialog states
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
@@ -469,7 +472,7 @@ const ContractDetailPage = () => {
 
         <div className="flex-1" />
 
-        {contract.status !== 'TERMINATED' && (
+        {contract.status !== 'TERMINATED' && canUse(perms, 'contracts', 'edit') && (
           <Button
             variant="outline"
             onClick={() => setEditDialogOpen(true)}
@@ -479,13 +482,15 @@ const ContractDetailPage = () => {
           </Button>
         )}
 
-        <Button
-          variant="outline"
-          onClick={() => setPrintDialogOpen(true)}
-        >
-          <Printer className="h-4 w-4 mr-2" />
-          In hợp đồng
-        </Button>
+        {canUse(perms, 'contracts', 'print') && (
+          <Button
+            variant="outline"
+            onClick={() => setPrintDialogOpen(true)}
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            In hợp đồng
+          </Button>
+        )}
 
         {contract.status !== 'TERMINATED' && contract.status !== 'DRAFT' && (
           <Button
@@ -500,49 +505,59 @@ const ContractDetailPage = () => {
 
         {isActive && (
           <>
-            <Button
-              variant="outline"
-              onClick={() => setExtendDialogOpen(true)}
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Gia hạn
-            </Button>
+            {canUse(perms, 'contracts', 'renew') && (
+              <Button
+                variant="outline"
+                onClick={() => setExtendDialogOpen(true)}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Gia hạn
+              </Button>
+            )}
 
-            <Button
-              variant="outline"
-              onClick={() => setTransferRoomDialogOpen(true)}
-            >
-              <ArrowRightLeft className="h-4 w-4 mr-2" />
-              Chuyển phòng
-            </Button>
+            {canUse(perms, 'contracts', 'transfer') && (
+              <Button
+                variant="outline"
+                onClick={() => setTransferRoomDialogOpen(true)}
+              >
+                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                Chuyển phòng
+              </Button>
+            )}
 
-            <Button
-              variant="outline"
-              onClick={() => setTransferDialogOpen(true)}
-            >
-              <MoveRight className="h-4 w-4 mr-2" />
-              Nhượng HĐ
-            </Button>
+            {canUse(perms, 'contracts', 'transfer') && (
+              <Button
+                variant="outline"
+                onClick={() => setTransferDialogOpen(true)}
+              >
+                <MoveRight className="h-4 w-4 mr-2" />
+                Nhượng HĐ
+              </Button>
+            )}
 
-            <Button
-              variant="outline"
-              onClick={() => setMoveOutDialogOpen(true)}
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              Đăng ký chuyển đi
-            </Button>
+            {canUse(perms, 'contracts', 'terminate') && (
+              <Button
+                variant="outline"
+                onClick={() => setMoveOutDialogOpen(true)}
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Đăng ký chuyển đi
+              </Button>
+            )}
 
-            <Button
-              variant="destructive"
-              onClick={() => setTerminateDialogOpen(true)}
-            >
-              <XCircle className="h-4 w-4 mr-2" />
-              Thanh lý
-            </Button>
+            {canUse(perms, 'contracts', 'terminate') && (
+              <Button
+                variant="destructive"
+                onClick={() => setTerminateDialogOpen(true)}
+              >
+                <XCircle className="h-4 w-4 mr-2" />
+                Thanh lý
+              </Button>
+            )}
           </>
         )}
 
-        {contract.status === 'DRAFT' && (
+        {contract.status === 'DRAFT' && canUse(perms, 'contracts', 'delete') && (
           <Button
             variant="destructive"
             onClick={() => setDeleteDialogOpen(true)}

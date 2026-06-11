@@ -5,7 +5,8 @@ import { ArrowLeft, HandCoins } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useInvoices } from '@/hooks/useInvoices';
-import { useMyPermissions, can } from '@/hooks/useMyPermissions';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import { useQuickCollect } from '@/hooks/useQuickCollect';
 import {
   collectStatus,
@@ -41,7 +42,9 @@ const ThuTien = () => {
   const navigate = useNavigate();
   const { data: buildings = [] } = useBuildings();
   const { data: perms } = useMyPermissions();
-  const canRecordPayment = can(perms, 'invoices', 'record_payment');
+  // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
+  const canRecordPayment = canUse(perms, 'thu_tien', 'collect');
+  const canViewReport = canUse(perms, 'thu_tien', 'report');
   const { collect } = useQuickCollect();
 
   const [buildingId, setBuildingId] = useState('');
@@ -212,6 +215,7 @@ const ThuTien = () => {
     closeConfirm();
   };
   const openReport = () => {
+    if (!canViewReport) return;
     setReport({ mounted: true, show: false });
     requestAnimationFrame(() => setReport({ mounted: true, show: true }));
   };
@@ -332,6 +336,7 @@ const ThuTien = () => {
           mode={drawer.mode}
           collectors={openInvoice ? collectorsMap[openInvoice.id] ?? [] : []}
           canRecordPayment={canRecordPayment}
+          canUndo={canUse(perms, 'thu_tien', 'undo')}
           prev={prev}
           next={next}
           onClose={closeDrawer}
