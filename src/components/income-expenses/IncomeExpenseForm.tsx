@@ -59,6 +59,8 @@ import { useContractsLegacy } from '@/hooks/useContracts';
 import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
+import BankSelect from './BankSelect';
+import { matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -165,6 +167,8 @@ const IncomeExpenseForm = ({
       tenant_id: null,
       contract_id: null,
       payer_name: '',
+      receive_bank_account: '',
+      receive_bank_name: '',
       account_id: '',
       voucher_date: new Date().toISOString().split('T')[0],
       business_result_accounting: null,
@@ -209,6 +213,16 @@ const IncomeExpenseForm = ({
         tenant_id: voucher.tenant_id ?? null,
         contract_id: voucher.contract_id ?? null,
         payer_name: voucher.payer_name ?? '',
+        receive_bank_account: voucher.receive_bank_account ?? '',
+        // Bank cũ là text gõ tay ("VIETTINBANK") → chuẩn hoá về shortName
+        // trong danh sách dropdown; không nhận diện được thì giữ nguyên.
+        receive_bank_name: (() => {
+          const legacy = voucher.receive_bank_name ?? '';
+          const code = matchRecipientBankCode(legacy);
+          return code
+            ? RECIPIENT_BANKS.find((b) => b.code === code)!.shortName
+            : legacy;
+        })(),
         account_id: voucher.account_id ?? '',
         voucher_date: voucher.voucher_date,
         business_result_accounting: voucher.business_result_accounting ?? null,
@@ -273,6 +287,8 @@ const IncomeExpenseForm = ({
         tenant_id: null,
         contract_id: null,
         payer_name: '',
+        receive_bank_account: '',
+        receive_bank_name: '',
         account_id: '',
         voucher_date: today,
         business_result_accounting: null,
@@ -737,6 +753,48 @@ const IncomeExpenseForm = ({
                   )}
                 />
               </div>
+
+              {/* Row 2b: (chỉ EXPENSE) STK + ngân hàng người nhận — phục vụ QR chi tiền */}
+              {voucherType === 'EXPENSE' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="receive_bank_account"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Số TK người nhận</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Số tài khoản"
+                            inputMode="numeric"
+                            {...field}
+                            value={field.value ?? ''}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="receive_bank_name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ngân hàng người nhận</FormLabel>
+                        <FormControl>
+                          <BankSelect
+                            value={field.value}
+                            onChange={field.onChange}
+                            disabled={!canEdit}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
               {/* Row 3: Tên phiếu (textarea lớn — gộp tên + ghi chú) */}
               <FormField

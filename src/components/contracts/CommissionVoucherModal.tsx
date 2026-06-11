@@ -28,6 +28,7 @@ import {
   useCreateCommissionVoucher,
 } from "@/hooks/useCommissionVoucher";
 import { useAccounts } from "@/hooks/useAccounts";
+import BankSelect from "@/components/income-expenses/BankSelect";
 
 interface CommissionVoucherModalProps {
   open: boolean;
@@ -309,9 +310,10 @@ export function CommissionVoucherModal({
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <Label className="text-xs">Ngân hàng</Label>
-                    <Input
+                    <BankSelect
                       value={brokerBank}
-                      onChange={(e) => setBrokerBank(e.target.value)}
+                      onChange={setBrokerBank}
+                      className="h-10"
                     />
                   </div>
                 </div>
@@ -364,9 +366,10 @@ export function CommissionVoucherModal({
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <Label className="text-xs">Ngân hàng</Label>
-                    <Input
+                    <BankSelect
                       value={saleBank}
-                      onChange={(e) => setSaleBank(e.target.value)}
+                      onChange={setSaleBank}
+                      className="h-10"
                     />
                   </div>
                 </div>

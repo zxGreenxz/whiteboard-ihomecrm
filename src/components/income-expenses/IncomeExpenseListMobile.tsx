@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { StorageImage } from "@/components/ui/storage-image";
-import { Receipt, Image as ImageIcon } from "lucide-react";
+import { Receipt, Image as ImageIcon, Share2 } from "lucide-react";
 import { format } from "date-fns";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 
@@ -9,6 +9,8 @@ interface Props {
   vouchers: IncomeExpenseWithRelations[];
   isLoading: boolean;
   onView: (v: IncomeExpenseWithRelations) => void;
+  /** Mở sheet QR chi tiền — chỉ hiện icon trên phiếu CHI có STK người nhận. */
+  onShareQR?: (v: IncomeExpenseWithRelations) => void;
   /** Pull-to-refresh handler — optional */
   onRefresh?: () => void;
 }
@@ -25,6 +27,7 @@ export function IncomeExpenseListMobile({
   vouchers,
   isLoading,
   onView,
+  onShareQR,
 }: Props) {
   if (isLoading) {
     return (
@@ -56,6 +59,11 @@ export function IncomeExpenseListMobile({
         const isIncome = v.type === "INCOME";
         const accentColor = isIncome ? "#10b981" : "#ef4444";
         const firstAttachment = v.attachments?.[0];
+        const canShareQR =
+          !!onShareQR &&
+          v.type === "EXPENSE" &&
+          !isCancelled &&
+          !!v.receive_bank_account;
 
         return (
           <li key={v.id}>
@@ -144,6 +152,20 @@ export function IncomeExpenseListMobile({
                     </>
                   )}
                 </div>
+                {canShareQR && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onShareQR!(v);
+                    }}
+                    className="shrink-0 w-8 h-8 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 flex items-center justify-center active:scale-90 transition-transform"
+                    title="Gửi/lưu QR chuyển khoản"
+                    aria-label="Gửi hoặc lưu QR chuyển khoản"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </button>
+                )}
                 {firstAttachment && (
                   <div className="shrink-0 w-8 h-8 rounded-md border border-zinc-200 bg-zinc-50 overflow-hidden flex items-center justify-center">
                     {/\.pdf(\?|$)/i.test(firstAttachment) ? (

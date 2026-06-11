@@ -33,6 +33,7 @@ import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
+import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
@@ -124,6 +125,9 @@ const IncomeExpensePage = () => {
   const [quickEditVoucher, setQuickEditVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [verifyVoucher, setVerifyVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  // Phiếu chi đang mở sheet QR chi tiền (icon share trên card mobile).
+  const [shareVoucher, setShareVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
@@ -359,6 +363,7 @@ const IncomeExpensePage = () => {
               vouchers={vouchers}
               isLoading={isLoading}
               onView={handleView}
+              onShareQR={setShareVoucher}
             />
           ) : (
             <div className="px-3 pt-2">
@@ -436,6 +441,15 @@ const IncomeExpensePage = () => {
           onOpenChange={handleQuickEditClose}
           voucher={quickEditVoucher}
         />
+        {shareVoucher && (
+          <PayViaBankAppSheet
+            open
+            onOpenChange={(o) => {
+              if (!o) setShareVoucher(null);
+            }}
+            voucher={shareVoucher}
+          />
+        )}
         <IncomeExpenseBatchDetailDialog
           open={!!detailBatch}
           onOpenChange={(o) => {

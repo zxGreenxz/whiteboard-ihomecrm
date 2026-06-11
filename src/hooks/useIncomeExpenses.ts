@@ -665,6 +665,8 @@ export const useCreateIncomeExpense = () => {
           tenant_id: input.tenant_id ?? null,
           contract_id: input.contract_id ?? null,
           payer_name: input.payer_name ?? null,
+          receive_bank_account: input.receive_bank_account || null,
+          receive_bank_name: input.receive_bank_name || null,
           account_id: input.account_id ?? null,
           attachments: input.attachments ?? [],
           // null = tự động (DB suy theo hạng mục cọc); false/true = override tay.
@@ -870,6 +872,8 @@ export const useUpdateIncomeExpense = () => {
           tenant_id: data.tenant_id ?? null,
           contract_id: data.contract_id ?? null,
           payer_name: data.payer_name ?? null,
+          receive_bank_account: data.receive_bank_account || null,
+          receive_bank_name: data.receive_bank_name || null,
           account_id: data.account_id ?? null,
           attachments: data.attachments ?? [],
           business_result_accounting: data.business_result_accounting ?? null,

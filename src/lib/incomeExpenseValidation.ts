@@ -28,6 +28,9 @@ export const incomeExpenseFormSchema = z.object({
   // được tạo.
   contract_id: z.string().nullable().optional(),
   payer_name: z.string().nullable().optional(),
+  // Thông tin chuyển khoản người nhận (chỉ phiếu CHI) — phục vụ QR chi tiền.
+  receive_bank_account: z.string().nullable().optional(),
+  receive_bank_name: z.string().nullable().optional(),
   account_id: z.string().min(1, 'Vui lòng chọn tài khoản'),
   voucher_date: z.string().min(1, 'Vui lòng chọn ngày'),
   // null = tự động (DB suy theo hạng mục cọc → cọc không tính KQKD);
