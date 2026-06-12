@@ -9,43 +9,13 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
+import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
 
 interface UploadPaymentReceiptData {
   payment_id: string;
   file: File;
 }
-
-const uploadToStorage = async (file: File): Promise<string> => {
-  const user = await getSessionUser();
-  if (!user) throw new Error('Not authenticated');
-
-  const ext = (file.name.split('.').pop() || 'png').toLowerCase();
-  const fileName = `${user.id}/${Date.now()}_receipt.${ext}`;
-
-  const { error } = await supabase.storage
-    .from('payment-receipts')
-    .upload(fileName, file, { cacheControl: '3600', upsert: false });
-
-  if (error) {
-    // Fallback bucket nếu payment-receipts không tồn tại / không có quyền.
-    const fallbackPath = `receipts/${fileName}`;
-    const { error: fbErr } = await supabase.storage
-      .from('documents')
-      .upload(fallbackPath, file, { cacheControl: '3600', upsert: false });
-    if (fbErr) throw fbErr;
-    const { data: urlData } = supabase.storage
-      .from('documents')
-      .getPublicUrl(fallbackPath);
-    return urlData.publicUrl;
-  }
-
-  const { data: urlData } = supabase.storage
-    .from('payment-receipts')
-    .getPublicUrl(fileName);
-  return urlData.publicUrl;
-};
 
 export const useUploadPaymentReceipt = () => {
   const queryClient = useQueryClient();
@@ -53,14 +23,10 @@ export const useUploadPaymentReceipt = () => {
 
   return useMutation({
     mutationFn: async ({ payment_id, file }: UploadPaymentReceiptData) => {
-      if (!file.type.startsWith('image/')) {
-        throw new Error('Vui lòng chọn file ảnh (jpg, png, gif…)');
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        throw new Error('Kích thước file không được vượt quá 5MB');
-      }
+      const invalid = validateReceiptFile(file);
+      if (invalid) throw new Error(invalid);
 
-      const url = await uploadToStorage(file);
+      const url = await uploadReceiptToStorage(file);
 
       // 1. Cập nhật payments.receipt_image_url (ảnh hiển thị trên popup).
       const { data: updated, error: updPErr } = await (supabase as any)

@@ -46,3 +46,41 @@ export const resolveTmAccountId = <T extends CashAccountLite>(
   if (bn) return accounts.find((a) => (a.name ?? '').trim() === bn)?.id ?? '';
   return '';
 };
+
+// ── Resolve theo PHƯƠNG THỨC (mirror accountIdForMethod của RecordPaymentDialog) ──
+
+export type CollectMethod = 'TM' | 'TK' | 'TT';
+
+export interface BuildingAccountDefaults {
+  name?: string | null;
+  default_account_id_tt?: string | null;
+  default_account_id_tk?: string | null;
+}
+
+const byBuildingName = <T extends CashAccountLite>(
+  accounts: T[],
+  buildingName?: string | null,
+): string => {
+  const bn = (buildingName ?? '').trim();
+  if (!bn) return '';
+  return accounts.find((a) => (a.name ?? '').trim() === bn)?.id ?? '';
+};
+
+/**
+ * Sổ quỹ nhận tiền theo phương thức:
+ *  - TM → resolveTmAccountId (own "…Thu" → "Chung" → tên toà)
+ *  - TK → buildings.default_account_id_tk → sổ trùng tên toà
+ *  - TT → buildings.default_account_id_tt → sổ trùng tên toà
+ * '' nếu không resolve được (UI disable / throw chặn ghi).
+ */
+export const resolveAccountIdForMethod = <T extends CashAccountLite>(
+  method: CollectMethod,
+  accounts: T[],
+  userId?: string | null,
+  building?: BuildingAccountDefaults | null,
+): string => {
+  if (method === 'TM') return resolveTmAccountId(accounts, userId, building?.name);
+  const preferred =
+    method === 'TK' ? building?.default_account_id_tk : building?.default_account_id_tt;
+  return preferred || byBuildingName(accounts, building?.name);
+};

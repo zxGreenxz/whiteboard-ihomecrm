@@ -15,8 +15,11 @@ import {
 import { useQuickCollect } from '@/hooks/useQuickCollect';
 import { useDeletePayment } from '@/hooks/useDeletePayment';
 import { useUpdateInvoiceNote } from '@/hooks/useUpdateInvoiceNote';
+import { uploadReceiptToStorage } from '@/lib/receiptUpload';
+import type { CollectMethod } from '@/lib/cashAccount';
 import { InvoiceDetailCard } from './InvoiceDetailCard';
 import { CollectKeypad } from './CollectKeypad';
+import { CollectPayForm, type PayFormSubmit } from './CollectPayForm';
 import { NoteEditor } from './NoteEditor';
 import type { CollectorEntry } from '@/hooks/useInvoiceCollectors';
 import type { InvoiceWithRelations } from '@/types/invoice';
@@ -49,15 +52,16 @@ export function CollectDrawer({
   onClose,
   onNavigate,
 }: Props) {
-  const { collect, isCollecting } = useQuickCollect();
+  const { collect, accountIdFor, isCollecting } = useQuickCollect();
   const deletePayment = useDeletePayment();
   const updateNote = useUpdateInvoiceNote();
 
   const compact = mode === 'keypad';
-  const [subMode, setSubMode] = useState<'view' | 'keypad'>('view');
+  const [subMode, setSubMode] = useState<'view' | 'pay'>('view');
   const [entered, setEntered] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     setSubMode('view');
@@ -109,6 +113,43 @@ export function CollectDrawer({
 
   const doCall = () => {
     if (rep.phone) window.location.href = telUrl(rep.phone);
+  };
+
+  // Form thu tiền (TM/TK/TT + ảnh): upload ảnh trước (fail → vẫn thu, báo
+  // warning — precedent RecordPaymentDialog), rồi gọi collect như Thu đủ.
+  const methodAvailable = {
+    TM: !!accountIdFor(invoice, 'TM'),
+    TK: !!accountIdFor(invoice, 'TK'),
+    TT: !!accountIdFor(invoice, 'TT'),
+  } as Record<CollectMethod, boolean>;
+
+  const runPayForm = async ({ amount, method, paymentDate, receiptFile }: PayFormSubmit) => {
+    try {
+      let url: string | null = null;
+      if (receiptFile) {
+        setUploading(true);
+        try {
+          url = await uploadReceiptToStorage(receiptFile);
+        } catch {
+          toast.warning(
+            'Không tải được ảnh chứng từ — phiếu thu sẽ ghi KHÔNG kèm ảnh (bổ sung sau ở trang Hoá đơn).',
+          );
+        } finally {
+          setUploading(false);
+        }
+      }
+      const res = await collect({
+        invoice,
+        amount,
+        notes: noteDraft,
+        method,
+        receiptImageUrl: url,
+        paymentDate,
+      });
+      if (res.failures.length === 0) setSubMode('view');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const keypad = (
@@ -174,10 +215,10 @@ export function CollectDrawer({
 
           <InvoiceDetailCard invoice={invoice} collectors={collectors} />
 
-          {(noteOpen || noteDraft) && (
+          {(noteOpen || noteDraft || subMode === 'pay') && (
             <div className="is-note">
               <div className="ib-lbl">Ghi chú</div>
-              {noteOpen ? (
+              {noteOpen || subMode === 'pay' ? (
                 <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
               ) : (
                 <div className="note-display">
@@ -188,17 +229,25 @@ export function CollectDrawer({
             </div>
           )}
 
-          {subMode === 'keypad' && canRecordPayment && keypad}
+          {subMode === 'pay' && canRecordPayment && (
+            <CollectPayForm
+              key={invoice.id}
+              remaining={remaining}
+              methodAvailable={methodAvailable}
+              submitting={uploading || isCollecting}
+              onSubmit={runPayForm}
+            />
+          )}
 
           <div className="is-sub-actions">
             {canRecordPayment && (
               <button
                 type="button"
-                className={'is-sub-btn' + (subMode === 'keypad' ? ' on' : '')}
-                onClick={() => setSubMode((m) => (m === 'keypad' ? 'view' : 'keypad'))}
+                className={'is-sub-btn' + (subMode === 'pay' ? ' on' : '')}
+                onClick={() => setSubMode((m) => (m === 'pay' ? 'view' : 'pay'))}
               >
                 <Wallet />
-                Thu một phần
+                Thu tiền
               </button>
             )}
             <button

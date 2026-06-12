@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ownCashAccountId, resolveTmAccountId, type CashAccountLite } from '../cashAccount';
+import {
+  ownCashAccountId,
+  resolveAccountIdForMethod,
+  resolveTmAccountId,
+  type CashAccountLite,
+} from '../cashAccount';
 
 const TAM = '90450d5f-29b6-4897-bdef-cdb5fb53f339';
 const JOEY = 'd45a7506-5250-4d99-ac94-9f73cbd4df17';
@@ -54,5 +59,38 @@ describe('resolveTmAccountId (own → Chung → tên toà)', () => {
   it('không resolve được → ""', () => {
     const accts: CashAccountLite[] = [{ id: 'x', name: 'Khác', user_id: 'o', is_default: false }];
     expect(resolveTmAccountId(accts, 'staff-x', 'TòaA')).toBe('');
+  });
+});
+
+describe('resolveAccountIdForMethod (TM/TK/TT)', () => {
+  const BLD = {
+    name: '102LVT',
+    default_account_id_tk: 'acc-tk',
+    default_account_id_tt: 'acc-tt',
+  };
+
+  it('TM delegate resolveTmAccountId', () => {
+    expect(resolveAccountIdForMethod('TM', ACCOUNTS, JOEY, BLD)).toBe('hien-thu');
+  });
+
+  it('TK/TT ưu tiên sổ mặc định của tòa', () => {
+    expect(resolveAccountIdForMethod('TK', ACCOUNTS, JOEY, BLD)).toBe('acc-tk');
+    expect(resolveAccountIdForMethod('TT', ACCOUNTS, JOEY, BLD)).toBe('acc-tt');
+  });
+
+  it('tòa thiếu sổ mặc định → fallback sổ trùng tên tòa', () => {
+    const accts: CashAccountLite[] = [
+      ...ACCOUNTS,
+      { id: 'b-102', name: '102LVT', user_id: TAM, is_default: false },
+    ];
+    const bld = { name: '102LVT', default_account_id_tk: null, default_account_id_tt: null };
+    expect(resolveAccountIdForMethod('TK', accts, JOEY, bld)).toBe('b-102');
+    expect(resolveAccountIdForMethod('TT', accts, JOEY, bld)).toBe('b-102');
+  });
+
+  it('không có gì để fallback → ""', () => {
+    const bld = { name: 'TòaLạ', default_account_id_tk: null, default_account_id_tt: null };
+    expect(resolveAccountIdForMethod('TK', ACCOUNTS, JOEY, bld)).toBe('');
+    expect(resolveAccountIdForMethod('TT', ACCOUNTS, JOEY, null)).toBe('');
   });
 });

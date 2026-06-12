@@ -236,6 +236,29 @@
 .tt-page .kp-confirm:disabled { opacity: .4; }
 .tt-page .kp-confirm:active:not(:disabled) { filter: brightness(.95); }
 
+/* ===== Form thu tiền TM/TK/TT (CollectPayForm) ===== */
+.tt-page .pf-form { margin: 14px 18px 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.tt-page .pf-form .cfilters { margin-bottom: 0; }
+.tt-page .pf-form .cchip { font-family: var(--mono); background: var(--surface); }
+.tt-page .pf-form .cchip.on { background: var(--ink); }
+.tt-page .pf-form .cchip.dis { opacity: .4; cursor: default; }
+.tt-page .pf-hint { margin: -4px 2px 0; font-size: 11px; font-weight: 600; color: var(--ink-3); line-height: 1.4; }
+.tt-page .pf-amt { width: 100%; font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: -.5px; text-align: right; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 13px; outline: none; }
+.tt-page .pf-amt:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-page .pf-form .kp-presets { padding: 0; }
+.tt-page .pf-row { display: flex; align-items: center; gap: 10px; }
+.tt-page .pf-lbl { font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+.tt-page .pf-date { flex: 1; min-width: 0; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 11px; outline: none; }
+.tt-page .pf-date:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-page .pf-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 1.5px dashed var(--line); background: var(--surface); border-radius: var(--r); padding: 16px 12px; cursor: pointer; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--ink-3); transition: .15s; }
+.tt-page .pf-drop svg { width: 19px; height: 19px; opacity: .6; }
+.tt-page .pf-drop.over, .tt-page .pf-drop:active { border-color: var(--brand); background: var(--brand-50); color: var(--brand-600); }
+.tt-page .pf-preview { position: relative; }
+.tt-page .pf-preview img { display: block; width: 100%; max-height: 160px; object-fit: cover; border-radius: var(--r); border: 1px solid var(--line); }
+.tt-page .pf-del { position: absolute; top: 7px; right: 7px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(27,24,19,.72); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.tt-page .pf-del svg { width: 14px; height: 14px; }
+.tt-page .pf-form .kp-confirm { margin-top: 2px; }
+
 /* sheet action bar */
 .tt-page .is-actions { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); padding: 11px 14px calc(11px + env(safe-area-inset-bottom)); display: flex; gap: 9px; align-items: stretch; }
 .tt-page .is-nav { flex: 0 0 auto; width: 44px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); border-radius: 13px; cursor: pointer; display: grid; place-items: center; }
