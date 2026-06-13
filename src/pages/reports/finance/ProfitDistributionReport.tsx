@@ -60,7 +60,8 @@ export default function ProfitDistributionReport() {
   const [pnlOnly, setPnlOnly] = useState<boolean>(true);
   // Ghi nhận: false = theo Ngày phiếu (voucher_date, hành vi cũ);
   // true = theo Kỳ phân bổ (accrual — chia đều số tiền item ra các tháng trong kỳ).
-  const [accrualMode, setAccrualMode] = useState<boolean>(false);
+  // Mặc định BẬT — đúng tên trang "Phân bổ lợi nhuận"; tắt toggle để xem theo ngày phiếu.
+  const [accrualMode, setAccrualMode] = useState<boolean>(true);
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
