@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react';
 import { ArrowLeft, Smartphone } from 'lucide-react';
 import { useCollectionReport } from '@/hooks/useCollectionReport';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
-import { handoverStatusLabel } from '@/lib/handover';
+import { fmtDateTime, handoverStatusLabel } from '@/lib/handover';
 import {
   collectStatus,
   fmtBillingMonth,
@@ -340,7 +340,14 @@ export function ManagePanel({
                           {handoverStatusLabel(h, myId)}
                         </span>
                       </td>
-                      <td className="tm-bcell">{(h.created_at ?? '').slice(0, 10).split('-').reverse().join('/')}</td>
+                      <td className="tm-bcell">
+                        {(h.created_at ?? '').slice(0, 10).split('-').reverse().join('/')}
+                        {h.status === 'CONFIRMED' && h.confirmed_at && (
+                          <span style={{ display: 'block', opacity: 0.6, fontSize: 11 }}>
+                            nhận {fmtDateTime(h.confirmed_at)}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

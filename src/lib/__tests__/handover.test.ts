@@ -6,6 +6,7 @@ import {
   handoverStatusLabel,
   needsMyAction,
   isOpenHandover,
+  fmtDateTime,
   type HandoverLite,
 } from '../handover';
 
@@ -119,5 +120,19 @@ describe('isOpenHandover', () => {
     expect(isOpenHandover(h({ status: 'CONFIRMED' }))).toBe(false);
     expect(isOpenHandover(h({ status: 'CONFIRMED', cancel_requested_by: GIVER }))).toBe(true);
     expect(isOpenHandover(h({ status: 'CANCELLED' }))).toBe(false);
+  });
+});
+
+describe('fmtDateTime', () => {
+  it('null/undefined/không hợp lệ → ""', () => {
+    expect(fmtDateTime(null)).toBe('');
+    expect(fmtDateTime(undefined)).toBe('');
+    expect(fmtDateTime('not-a-date')).toBe('');
+  });
+
+  it('định dạng dd/mm hh:mm (giờ địa phương, không phụ thuộc TZ test)', () => {
+    // Input không offset → parse theo giờ địa phương → giá trị xác định.
+    expect(fmtDateTime('2026-06-13T08:05:00')).toBe('13/06 08:05');
+    expect(fmtDateTime('2026-12-01T23:09:00')).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2}$/);
   });
 });

@@ -77,3 +77,12 @@ export const needsMyAction = (h: HandoverLite, myId?: string | null): boolean =>
 /** Phiên còn "sống" (hiện ở khu Phiên chờ thay vì Lịch sử). */
 export const isOpenHandover = (h: HandoverLite): boolean =>
   h.status === 'PENDING' || (h.status === 'CONFIRMED' && !!h.cancel_requested_by);
+
+/** Ngày + giờ ngắn gọn "dd/mm hh:mm" (giờ địa phương) — cho "giờ nhận bàn giao". */
+export const fmtDateTime = (d?: string | null): string => {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(dt.getDate())}/${p(dt.getMonth() + 1)} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+};

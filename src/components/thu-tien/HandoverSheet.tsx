@@ -30,6 +30,7 @@ import {
 import { ownCashAccountId } from '@/lib/cashAccount';
 import { fmtFull } from '@/lib/collect';
 import {
+  fmtDateTime,
   handoverStatusLabel,
   isOpenHandover,
   myRole,
@@ -202,6 +203,7 @@ export function HandoverSheet({ show, onClose }: Props) {
         </div>
         <div className="ho-meta">
           {h.voucher_count} phiếu · tạo {fmtDate(h.created_at)}
+          {h.status === 'CONFIRMED' && h.confirmed_at ? ` · nhận ${fmtDateTime(h.confirmed_at)}` : ''}
           {h.note ? ` · ${h.note}` : ''}
         </div>
 
