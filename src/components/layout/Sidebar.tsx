@@ -3,6 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import type { ActionKey } from '@/lib/permissions';
 import {
   Collapsible,
   CollapsibleContent,
@@ -49,6 +53,15 @@ interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  /**
+   * Quyền cần để THẤY mục này trên sidebar — phải khớp đúng (module, action)
+   * mà route guard <RequirePermission> dùng trong App.tsx. Thiếu quyền → ẩn
+   * khỏi sidebar (không hiện rồi bấm-bị-đá-về-trang-chủ). Bỏ trống `module` =
+   * luôn hiện (vd Bảng tin, trang tài khoản cá nhân).
+   */
+  module?: string;
+  /** Action cần — mặc định "view". */
+  action?: ActionKey;
 }
 
 interface NavSection {
@@ -63,12 +76,18 @@ interface NavGroup {
 }
 
 // Navigation configuration - khớp 100% SUMMARY.md
+//
+// Mỗi mục khai báo (module, action) ĐÚNG bằng quyền route guard
+// <RequirePermission> trong App.tsx kiểm — sidebar tự ẩn mục thiếu quyền (xem
+// useMyPermissions + canUse bên dưới). Mục KHÔNG có guard ở route (Bảng tin,
+// trang tài khoản cá nhân, FAQ…) thì bỏ `module` để luôn hiện.
 const navigationGroups: NavGroup[] = [
   {
     label: 'THEO DÕI NHANH',
     items: [
+      // Bảng tin = trang chủ kiêm fallback của RequirePermission → luôn hiện.
       { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
-      { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map },
+      { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, module: 'buildings' },
     ],
   },
   {
@@ -81,59 +100,61 @@ const navigationGroups: NavGroup[] = [
           // "Khu vực" không còn trang riêng — chỉ là nhãn nhóm toà nhà, quản lý
           // bằng dialog trong trang Toà nhà; mọi ô lọc chọn theo khu vực qua
           // BuildingMultiSelect (click tên khu = chọn cả nhóm toà).
-          { title: 'Toà nhà', href: '/buildings', icon: Building2 },
-          { title: 'Căn hộ', href: '/apartments', icon: Home },
-          { title: 'Dịch vụ', href: '/services', icon: Wrench },
-          { title: 'Sale Phòng', href: '/sale-phong', icon: Share2 },
-          { title: 'Tài sản', href: '/assets', icon: Package },
-          { title: 'Kho vật tư', href: '/materials', icon: Package },
+          { title: 'Toà nhà', href: '/buildings', icon: Building2, module: 'buildings' },
+          { title: 'Căn hộ', href: '/apartments', icon: Home, module: 'rooms' },
+          { title: 'Dịch vụ', href: '/services', icon: Wrench, module: 'services' },
+          { title: 'Sale Phòng', href: '/sale-phong', icon: Share2, module: 'sale_phong' },
+          { title: 'Tài sản', href: '/assets', icon: Package, module: 'assets' },
+          { title: 'Kho vật tư', href: '/materials', icon: Package, module: 'materials' },
         ],
       },
       {
         title: 'Khách hàng',
         icon: Users,
         items: [
-          { title: 'Khách hẹn', href: '/leads', icon: UserPlus },
-          { title: 'Đặt cọc', href: '/deposits', icon: DollarSign },
-          { title: 'Hợp đồng', href: '/contracts', icon: FileText },
-          { title: 'Khách hàng', href: '/customers', icon: User },
-          { title: 'Phương tiện', href: '/vehicles', icon: Car },
+          { title: 'Khách hẹn', href: '/leads', icon: UserPlus, module: 'leads' },
+          { title: 'Đặt cọc', href: '/deposits', icon: DollarSign, module: 'deposits' },
+          { title: 'Hợp đồng', href: '/contracts', icon: FileText, module: 'contracts' },
+          { title: 'Khách hàng', href: '/customers', icon: User, module: 'customers' },
+          { title: 'Phương tiện', href: '/vehicles', icon: Car, module: 'vehicles' },
         ],
       },
       {
         title: 'Tài chính',
         icon: CreditCard,
         items: [
-          { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge },
-          { title: 'Hoá đơn', href: '/invoices', icon: Receipt },
-          { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins },
-          { title: 'Thu chi', href: '/income-expense', icon: CreditCard },
-          { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet },
-          { title: 'Chia lợi nhuận', href: '/finance/shareholder-profit', icon: PieChart },
-          { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins },
+          { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, module: 'meter_readings' },
+          { title: 'Hoá đơn', href: '/invoices', icon: Receipt, module: 'invoices' },
+          { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
+          { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
+          { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
+          { title: 'Chia lợi nhuận', href: '/finance/shareholder-profit', icon: PieChart, module: 'shareholder_profit' },
+          { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
-      { title: 'Công việc', href: '/tasks', icon: ClipboardList },
-      { title: 'Thông báo', href: '/notifications', icon: Bell },
+      { title: 'Công việc', href: '/tasks', icon: ClipboardList, module: 'tasks' },
+      { title: 'Thông báo', href: '/notifications', icon: Bell, module: 'notifications' },
     ],
   },
   {
     label: 'BÁO CÁO',
     items: [
-      { title: 'Báo cáo bất động sản', href: '/reports/real-estate', icon: BarChart3 },
+      { title: 'Báo cáo bất động sản', href: '/reports/real-estate', icon: BarChart3, module: 'reports_real_estate' },
       {
         title: 'Báo cáo tài chính',
         icon: CreditCard,
         items: [
-          { title: 'Phân tích tài chính', href: '/report/finance/analysis', icon: BarChart3 },
-          { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book },
-          { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp },
-          { title: 'Phân bổ lợi nhuận', href: '/report/finance-by-month', icon: PieChart },
-          { title: 'Công nợ hợp đồng mới', href: '/reports/finance/new-contract-debt', icon: FileText },
-          { title: 'Khách nợ tiền', href: '/report/finance/debt', icon: Users },
-          { title: 'Lịch thanh toán', href: '/report/finance/billing-calendar', icon: Calendar },
-          { title: 'Tiền thừa', href: '/report/finance/prepaid', icon: Coins },
-          { title: 'Danh sách tiền cọc', href: '/report/finance/deposit', icon: Wallet },
+          // Mỗi báo cáo gate theo action riêng của module reports_finance —
+          // khớp đúng RequirePermission của route tương ứng trong App.tsx.
+          { title: 'Phân tích tài chính', href: '/report/finance/analysis', icon: BarChart3, module: 'reports_finance', action: 'analysis' },
+          { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book, module: 'reports_finance', action: 'daily_cashbook' },
+          { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
+          { title: 'Phân bổ lợi nhuận', href: '/report/finance-by-month', icon: PieChart, module: 'reports_finance', action: 'profit_distribution' },
+          { title: 'Công nợ hợp đồng mới', href: '/reports/finance/new-contract-debt', icon: FileText, module: 'reports_finance', action: 'debt' },
+          { title: 'Khách nợ tiền', href: '/report/finance/debt', icon: Users, module: 'reports_finance', action: 'customer_debt' },
+          { title: 'Lịch thanh toán', href: '/report/finance/billing-calendar', icon: Calendar, module: 'reports_finance', action: 'payment_schedule' },
+          { title: 'Tiền thừa', href: '/report/finance/prepaid', icon: Coins, module: 'reports_finance', action: 'overpayment' },
+          { title: 'Danh sách tiền cọc', href: '/report/finance/deposit', icon: Wallet, module: 'reports_finance', action: 'deposits_report' },
         ],
       },
     ],
@@ -145,10 +166,10 @@ const navigationGroups: NavGroup[] = [
         title: 'Cài đặt hệ thống',
         icon: Settings,
         items: [
-          { title: 'Cài đặt chung', href: '/settings/general', icon: Settings },
-          { title: 'Danh mục khác', href: '/settings/categories', icon: List },
-          { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText },
-          { title: 'Nhân viên', href: '/settings/staff', icon: UserCog },
+          { title: 'Cài đặt chung', href: '/settings/general', icon: Settings, module: 'settings' },
+          { title: 'Danh mục khác', href: '/settings/categories', icon: List, module: 'categories' },
+          { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText, module: 'templates' },
+          { title: 'Nhân viên', href: '/settings/staff', icon: UserCog, module: 'users' },
         ],
       },
     ],
@@ -160,6 +181,7 @@ const navigationGroups: NavGroup[] = [
         title: 'Tài khoản',
         icon: UserCircle,
         items: [
+          // Trang cá nhân — không gate quyền, luôn hiện.
           { title: 'Thông tin cá nhân', href: '/account/profile', icon: User },
           { title: 'Gói cước', href: '/account/subscription', icon: CreditCard },
         ],
@@ -174,6 +196,30 @@ interface SidebarProps {
 
 const Sidebar = ({ className }: SidebarProps) => {
   const location = useLocation();
+  const { data: perms, isLoading: permsLoading } = useMyPermissions();
+
+  // Mục chỉ hiện khi có quyền XEM tương ứng (đúng quyền route guard kiểm).
+  // Mục không khai báo `module` (Bảng tin, trang cá nhân) luôn hiện.
+  const canShow = (item: NavItem) =>
+    !item.module || canUse(perms, item.module, item.action ?? 'view');
+
+  // Lọc cây điều hướng theo quyền: ẩn mục thiếu quyền, ẩn luôn section/nhóm
+  // rỗng (không còn mục con nào để hiện).
+  const visibleGroups: NavGroup[] = navigationGroups
+    .map((group) => {
+      const items = group.items.reduce<(NavItem | NavSection)[]>((acc, entry) => {
+        if ('items' in entry) {
+          const children = entry.items.filter(canShow);
+          if (children.length) acc.push({ ...entry, items: children });
+        } else if (canShow(entry)) {
+          acc.push(entry);
+        }
+        return acc;
+      }, []);
+      return { ...group, items };
+    })
+    .filter((group) => group.items.length > 0);
+
   const [openSections, setOpenSections] = useState<string[]>(() => {
     // Auto-open sections that contain the current active route
     const active: string[] = [];
@@ -271,20 +317,29 @@ const Sidebar = ({ className }: SidebarProps) => {
       )}
     >
       <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-4">
-          {navigationGroups.map((group) => (
-            <div key={group.label}>
-              <p className="px-3 mb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-                {group.label}
-              </p>
-              <div className="space-y-1">
-                {group.items.map((section) =>
-                  'items' in section ? renderSection(section) : renderNavItem(section)
-                )}
+        {permsLoading ? (
+          // Chưa biết quyền — hiện skeleton thay vì nháy toàn bộ menu rồi co lại.
+          <div className="space-y-2 px-1">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : (
+          <nav className="space-y-4">
+            {visibleGroups.map((group) => (
+              <div key={group.label}>
+                <p className="px-3 mb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+                  {group.label}
+                </p>
+                <div className="space-y-1">
+                  {group.items.map((section) =>
+                    'items' in section ? renderSection(section) : renderNavItem(section)
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-        </nav>
+            ))}
+          </nav>
+        )}
       </ScrollArea>
 
       {/* Footer info */}
