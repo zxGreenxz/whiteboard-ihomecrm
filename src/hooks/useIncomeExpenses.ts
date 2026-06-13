@@ -117,17 +117,21 @@ export interface IncomeExpenseWithRelations {
 
 // --- Helpers ---
 
-// Trả về danh sách voucher_id thoả 2 filter hạng mục (union nếu cả 2 cùng có).
-// Trả về null nếu không có filter hạng mục nào (caller bỏ qua bước này).
-// Trả về [] (rỗng) nếu có filter nhưng không có voucher nào match → caller nên
-// trả kết quả rỗng ngay.
+// Resolve filter hạng mục (income_type_id/expense_type_id) → tập type_id "sibling"
+// cùng (name, type). Trả null nếu không có filter hạng mục; [] nếu có filter
+// nhưng không type nào khớp (caller trả rỗng ngay).
 //
-// LƯU Ý: bảng income_expense_types có nhiều row trùng (name, type) do mỗi user
-// được seed riêng. Dropdown đã dedup client-side và chỉ chuyển một id đại diện.
-// Nhưng items của voucher có thể tham chiếu tới bất kỳ id "sibling" nào cùng
-// (name, type). Vì vậy ta expand selected id → tất cả id cùng (name, type)
-// trước khi query items, nếu không sẽ bỏ sót voucher của user khác.
-async function getVoucherIdsByItemTypes(
+// TRƯỚC ĐÂY hàm này còn join thêm income_expense_items để ra danh sách voucher_id
+// rồi caller `.in("id", [...])`. Với hạng mục có hàng trăm phiếu (vd "Thu tiền
+// hoá đơn") danh sách UUID làm URL GET dài chục KB → PostgREST trả 400 → list
+// rỗng oan. Nay chỉ trả type_id (tập NHỎ) để caller lọc qua embedded inner-join
+// `income_expense_items!inner` — xem ITEM_TYPE_INNER_JOIN / planItemFilters.
+//
+// LƯU Ý: income_expense_types có nhiều row trùng (name, type) do mỗi user được
+// seed riêng; items của phiếu có thể trỏ tới bất kỳ id "sibling" nào cùng
+// (name, type). Vì vậy phải expand selected id → tất cả id cùng (name, type),
+// nếu không sẽ bỏ sót phiếu của user khác.
+async function getItemTypeSiblingIds(
   filters: Pick<IncomeExpenseFilters, "income_type_id" | "expense_type_id">
 ): Promise<string[] | null> {
   const selectedIds: string[] = [];
@@ -141,10 +145,10 @@ async function getVoucherIdsByItemTypes(
     .select("id, name, type")
     .in("id", selectedIds);
   if (selErr) {
-    console.error("getVoucherIdsByItemTypes selectedRows error:", selErr);
+    console.error("getItemTypeSiblingIds selectedRows error:", selErr);
     return [];
   }
-  const selRows = (selectedRows ?? []) as Array<{
+  const selRows = (selectedRows ?? []) as unknown as Array<{
     id: string;
     name: string;
     type: "income" | "expense";
@@ -159,25 +163,11 @@ async function getVoucherIdsByItemTypes(
       .select("id")
       .eq("type", row.type)
       .eq("name", row.name);
-    for (const s of (siblings ?? []) as Array<{ id: string }>) {
+    for (const s of (siblings ?? []) as unknown as Array<{ id: string }>) {
       expandedIds.add(s.id);
     }
   }
-
-  // Bước 3: lấy voucher_id từ items
-  const { data, error } = await supabase
-    .from("income_expense_items" as any)
-    .select("income_expense_id")
-    .in("income_expense_type_id", Array.from(expandedIds));
-
-  if (error) {
-    console.error("getVoucherIdsByItemTypes items error:", error);
-    return [];
-  }
-  const ids = Array.from(
-    new Set(((data ?? []) as any[]).map((r) => r.income_expense_id))
-  );
-  return ids;
+  return Array.from(expandedIds);
 }
 
 // Trả về danh sách voucher_id có ÍT NHẤT 1 item mà kỳ áp dụng [start_date,
@@ -214,31 +204,55 @@ async function getVoucherIdsByItemPeriod(
   return ids;
 }
 
-// Giao (intersection) hai tập voucher_id của các filter cấp item.
-// null = "filter này không áp dụng". Quy ước:
-//  - cả hai null → null (không lọc item).
-//  - một null → trả cái còn lại (chỉ 1 filter áp dụng).
-//  - cả hai có giá trị → GIAO (phiếu phải thoả CẢ hai filter item).
-function intersectVoucherIdFilters(
-  a: string[] | null,
-  b: string[] | null
-): string[] | null {
-  if (a === null && b === null) return null;
-  if (a === null) return b;
-  if (b === null) return a;
-  const setB = new Set(b);
-  return a.filter((id) => setB.has(id));
-}
+// Fragment thêm vào select để lọc hạng mục qua embedded INNER join trên
+// income_expense_items: phiếu chỉ lọt khi có ≥1 item thuộc type sibling đã chọn.
+// Embed KHÔNG nhân đôi dòng cha (PostgREST trả nested) và KHÔNG nhồi UUID vào URL
+// → tránh hẳn lỗi 400 "URL quá dài" của cách `.in("id", [hàng trăm id])` cũ.
+const ITEM_TYPE_INNER_JOIN =
+  ", _itemTypeFilter:income_expense_items!inner(income_expense_type_id)";
 
-// Gộp toàn bộ filter cấp item (loại hạng mục + kỳ áp dụng) → tập voucher_id.
-async function resolveItemVoucherIds(
+// Kế hoạch lọc cấp item (hạng mục + kỳ áp dụng) cho query income_expenses.
+type ItemFilterPlan = {
+  // true = filter cấp item chắc chắn rỗng → caller trả kết quả rỗng ngay.
+  empty: boolean;
+  // null = không lọc hạng mục; ngược lại tập type_id sibling (NHỎ) áp qua
+  // embedded inner-join (_itemTypeFilter.income_expense_type_id).
+  typeSiblingIds: string[] | null;
+  // null = không lọc kỳ; ngược lại voucher_id thoả kỳ, áp .in("id", ...).
+  // (Kỳ áp dụng hiếm dùng & tập thường nhỏ nên vẫn resolve ra voucher_id.)
+  periodVoucherIds: string[] | null;
+};
+
+// Gộp filter cấp item. Kết hợp hạng mục (inner-join) + kỳ (.in id) trên cùng
+// query = GIAO, giữ đúng ngữ nghĩa intersection của bản cũ.
+async function planItemFilters(
   filters: IncomeExpenseFilters
-): Promise<string[] | null> {
-  const [typeIds, periodIds] = await Promise.all([
-    getVoucherIdsByItemTypes(filters),
+): Promise<ItemFilterPlan> {
+  const [typeSiblingIds, periodVoucherIds] = await Promise.all([
+    getItemTypeSiblingIds(filters),
     getVoucherIdsByItemPeriod(filters.period_start_month, filters.period_end_month),
   ]);
-  return intersectVoucherIdFilters(typeIds, periodIds);
+  const empty =
+    (typeSiblingIds !== null && typeSiblingIds.length === 0) ||
+    (periodVoucherIds !== null && periodVoucherIds.length === 0);
+  return { empty, typeSiblingIds, periodVoucherIds };
+}
+
+// Phần nối thêm vào chuỗi select khi có lọc hạng mục.
+function itemFilterJoinSelect(plan: ItemFilterPlan): string {
+  return plan.typeSiblingIds !== null ? ITEM_TYPE_INNER_JOIN : "";
+}
+
+// Áp filter cấp item lên một query income_expenses đã khởi tạo.
+function applyItemFilterToQuery<T>(query: T, plan: ItemFilterPlan): T {
+  let q = query as any;
+  if (plan.typeSiblingIds !== null) {
+    q = q.in("_itemTypeFilter.income_expense_type_id", plan.typeSiblingIds);
+  }
+  if (plan.periodVoucherIds !== null) {
+    q = q.in("id", plan.periodVoucherIds);
+  }
+  return q as T;
 }
 
 // --- Query Hooks ---
@@ -279,13 +293,13 @@ export const useIncomeExpenses = (
     }> => {
       const hasSearch = searchQuery && searchQuery.trim().length > 0;
 
-      // Lọc theo hạng mục item + kỳ áp dụng (nếu có) — lấy voucher_id trước
-      const itemFilterIds = await resolveItemVoucherIds(filters);
-      if (itemFilterIds !== null && itemFilterIds.length === 0) {
+      // Lọc theo hạng mục item + kỳ áp dụng (nếu có).
+      const itemPlan = await planItemFilters(filters);
+      if (itemPlan.empty) {
         return { data: [], totalCount: 0 };
       }
 
-      // Build the main query with joins
+      // Build the main query with joins (kèm inner-join lọc hạng mục nếu có)
       let query = supabase
         .from("income_expenses" as any)
         .select(
@@ -293,15 +307,13 @@ export const useIncomeExpenses = (
           *,
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
-          account:accounts!income_expenses_account_id_fkey ( id, name )
+          account:accounts!income_expenses_account_id_fkey ( id, name )${itemFilterJoinSelect(itemPlan)}
         `,
           { count: "exact" }
         )
         .is("deleted_at", null);
 
-      if (itemFilterIds !== null) {
-        query = query.in("id", itemFilterIds);
-      }
+      query = applyItemFilterToQuery(query, itemPlan);
 
       // Apply filters
       // building_ids: mảng toà từ BuildingMultiSelect (khu vực = phím tắt chọn
@@ -524,19 +536,17 @@ export const useIncomeExpenseStats = (
       totalExpense: number;
       difference: number;
     }> => {
-      const itemFilterIds = await resolveItemVoucherIds(filters);
-      if (itemFilterIds !== null && itemFilterIds.length === 0) {
+      const itemPlan = await planItemFilters(filters);
+      if (itemPlan.empty) {
         return { totalIncome: 0, totalExpense: 0, difference: 0 };
       }
 
       let query = supabase
         .from("income_expenses" as any)
-        .select("type, total_amount")
+        .select("type, total_amount" + itemFilterJoinSelect(itemPlan))
         .is("deleted_at", null);
 
-      if (itemFilterIds !== null) {
-        query = query.in("id", itemFilterIds);
-      }
+      query = applyItemFilterToQuery(query, itemPlan);
 
       // Apply same filters as useIncomeExpenses
       if (filters.building_ids?.length) {
@@ -1356,8 +1366,8 @@ export const useIncomeExpenseBatches = (
       data: IncomeExpenseBatchSummary[];
       totalCount: number;
     }> => {
-      const itemFilterIds = await resolveItemVoucherIds(filters);
-      if (itemFilterIds !== null && itemFilterIds.length === 0) {
+      const itemPlan = await planItemFilters(filters);
+      if (itemPlan.empty) {
         return { data: [], totalCount: 0 };
       }
 
@@ -1405,13 +1415,13 @@ export const useIncomeExpenseBatches = (
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),
           tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
-          account:accounts!income_expenses_account_id_fkey ( id, name )
+          account:accounts!income_expenses_account_id_fkey ( id, name )${itemFilterJoinSelect(itemPlan)}
         `
         )
         .is("deleted_at", null)
         .in("id", voucherIds);
 
-      if (itemFilterIds !== null) voucherQuery = voucherQuery.in("id", itemFilterIds);
+      voucherQuery = applyItemFilterToQuery(voucherQuery, itemPlan);
       if (filters.building_ids?.length) {
         voucherQuery = voucherQuery.in("building_id", filters.building_ids);
       }
