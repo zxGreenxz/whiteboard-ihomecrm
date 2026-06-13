@@ -98,6 +98,27 @@ type ShareNav = Navigator & {
   share?: (d: { title?: string; text?: string; files?: File[] }) => Promise<void>;
 };
 
+function roomImages(r: Room): string[] {
+  return r.images && r.images.length
+    ? r.images
+    : Array.from({ length: r.imgCount }, (_, i) => `https://picsum.photos/seed/${r.code}-${i}/900/650`);
+}
+
+// Tải TOÀN BỘ ảnh phòng thành File[] (tên theo Tòa-Phòng-STT) để chia sẻ / tải về.
+// allSettled: 1 ảnh lỗi không làm hỏng cả batch.
+async function fetchImageFiles(r: Room): Promise<File[]> {
+  const results = await Promise.allSettled(roomImages(r).map(async (src, i) => {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
+    const name = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;
+    return new File([blob], name, { type: blob.type || "image/jpeg" });
+  }));
+  return results.filter((s): s is PromiseFulfilledResult<File> => s.status === "fulfilled").map((s) => s.value);
+}
+
+type FilesCacheEntry = { key: string; promise: Promise<File[]>; done: boolean };
+
 export function DetailSheet({
   room, show, onClose, onToast, saved, toggleSave, onGo, buildings,
 }: {
@@ -113,12 +134,33 @@ export function DetailSheet({
   const [lb, setLb] = useState<number | null>(null);
   const rid = room ? room.id : null;
   useEffect(() => { setLb(null); }, [rid]);
+  // Cache File[] ảnh theo phòng: Android/iOS đòi navigator.share chạy TRONG user
+  // gesture (~5s); tải 10+ ảnh xong mới share là quá hạn → share bị từ chối.
+  // Lần bấm đầu lo tải + cache, bấm lại thì share ngay lập tức từ cache.
+  const filesCache = useRef<FilesCacheEntry | null>(null);
+  const ensureFiles = (rm: Room): FilesCacheEntry => {
+    if (!filesCache.current || filesCache.current.key !== rm.id) {
+      const entry: FilesCacheEntry = { key: rm.id, promise: Promise.resolve([]), done: false };
+      entry.promise = fetchImageFiles(rm).then((fs) => {
+        entry.done = true;
+        if (!fs.length && filesCache.current === entry) filesCache.current = null; // lỗi hết -> cho phép thử lại
+        return fs;
+      });
+      filesCache.current = entry;
+    }
+    return filesCache.current;
+  };
+  // Tải sẵn ảnh ngay khi mở sheet → cú chạm "Tải ảnh"/"Chia sẻ" đầu tiên thường đã có
+  // ảnh trong cache, share/download chạy gọn trong cửa sổ user-gesture (~5s) nên không
+  // bị Android/iOS từ chối. Mạng quá chậm chưa kịp -> fallback "bấm lại" bên dưới.
+  useEffect(() => {
+    if (show && room) ensureFiles(room);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rid, show]);
   if (!room) return null;
   const r = room;
   const isSaved = saved.includes(r.id);
-  const images = r.images && r.images.length
-    ? r.images
-    : Array.from({ length: r.imgCount }, (_, i) => `https://picsum.photos/seed/${r.code}-${i}/900/650`);
+  const images = roomImages(r);
 
   // Phong cung toa (con trong) de chuyen nhanh truoc/sau
   const building = buildings.find((b) => b.id === r.buildingId);
@@ -147,35 +189,33 @@ export function DetailSheet({
       || "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr);
     window.open(url, "_blank");
   };
-  // Tải TOÀN BỘ ảnh phòng thành File[] (tên theo Tòa-Phòng-STT) để chia sẻ / tải về.
-  const fetchImageFiles = (): Promise<File[]> =>
-    Promise.all(images.map(async (src, i) => {
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
-      const name = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;
-      return new File([blob], name, { type: blob.type || "image/jpeg" });
-    }));
-
-  // Gửi khách: KÈM TOÀN BỘ ảnh + text (Web Share API level 2). Dùng chung cho
-  // "Copy gửi khách" và "Chia sẻ"; máy không hỗ trợ -> copy text vào clipboard.
+  // Gửi khách: KÈM TOÀN BỘ ảnh + text (Web Share API level 2). Máy không hỗ trợ
+  // -> copy text vào clipboard. Mạng chậm làm hết hạn gesture (NotAllowedError)
+  // -> ảnh đã nằm trong cache, toast mời bấm lại; lần 2 share ngay không chờ.
   const shareRoom = async (copyFallbackMsg: string) => {
     const text = buildShareText(r, building);
     const title = r.buildingName + " · " + r.code;
     const nav = navigator as ShareNav;
-    try {
-      onToast("Đang chuẩn bị ảnh + thông tin nhà…");
-      const files = await fetchImageFiles();
-      if (nav.share && nav.canShare && nav.canShare({ files })) {
+    const entry = ensureFiles(r);
+    if (!entry.done) onToast("Đang chuẩn bị ảnh + thông tin nhà…");
+    const files = await entry.promise;
+    if (files.length && nav.share && nav.canShare && nav.canShare({ files })) {
+      try {
         await nav.share({ title, text, files });
         return;
+      } catch (e) {
+        const name = (e as DOMException)?.name;
+        if (name === "AbortError") return; // user tự huỷ share sheet
+        if (name === "NotAllowedError") { onToast("Ảnh đã sẵn sàng — bấm Chia sẻ lần nữa"); return; }
+        // lỗi khác -> rơi xuống share text
       }
-    } catch { /* ảnh lỗi / thiết bị không hỗ trợ -> rơi xuống text */ }
-    if (nav.share) {
-      try { await nav.share({ title, text }); return; } catch { /* */ }
     }
-    try { await navigator.clipboard.writeText(text); } catch { /* */ }
-    onToast(copyFallbackMsg);
+    if (nav.share) {
+      try { await nav.share({ title, text }); return; }
+      catch (e) { if ((e as DOMException)?.name === "AbortError") return; }
+    }
+    try { await navigator.clipboard.writeText(text); onToast(copyFallbackMsg); return; } catch { /* */ }
+    onToast("Không chia sẻ được — bấm thử lại");
   };
   const doShare = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
 
@@ -184,9 +224,9 @@ export function DetailSheet({
   // Desktop / máy không hỗ trợ share file → tải từng ảnh bằng <a download>.
   const doDownload = async () => {
     const nav = navigator as ShareNav;
-    onToast("Đang chuẩn bị ảnh…");
-    let files: File[] = [];
-    try { files = await fetchImageFiles(); } catch { /* */ }
+    const entry = ensureFiles(r);
+    if (!entry.done) onToast("Đang chuẩn bị ảnh…");
+    const files = await entry.promise;
     if (!files.length) { onToast("Không tải được ảnh"); return; }
 
     if (nav.share && nav.canShare && nav.canShare({ files })) {
@@ -194,12 +234,16 @@ export function DetailSheet({
         await nav.share({ files }); // chỉ ảnh → share sheet nổi bật "Lưu N ảnh" vào Ảnh
         return;
       } catch (e) {
+        const name = (e as DOMException)?.name;
         // Người dùng bấm Huỷ trên share sheet → dừng, không tải đè hàng loạt.
-        if ((e as DOMException)?.name === "AbortError") { onToast("Đã huỷ tải ảnh"); return; }
+        if (name === "AbortError") { onToast("Đã huỷ tải ảnh"); return; }
+        // Gesture hết hạn vì chờ tải ảnh → cache đã có, mời bấm lại (lần 2 mở ngay).
+        if (name === "NotAllowedError") { onToast("Ảnh đã sẵn sàng — bấm Tải ảnh lần nữa"); return; }
         // Lỗi khác → rơi xuống tải <a download> bên dưới.
       }
     }
 
+    // Desktop / không hỗ trợ share file: tải lần lượt bằng <a download>.
     let ok = 0;
     for (let i = 0; i < files.length; i++) {
       try {
