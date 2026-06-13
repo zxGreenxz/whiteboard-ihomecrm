@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Check, ChevronRight, Phone, StickyNote, Undo2, Wallet } from 'lucide-react';
+import { Check, ChevronRight, Phone, StickyNote, Undo2 } from 'lucide-react';
 import {
   collectStatus,
   STATUS_META,
@@ -19,7 +19,7 @@ import { uploadReceiptToStorage } from '@/lib/receiptUpload';
 import type { CollectMethod } from '@/lib/cashAccount';
 import { InvoiceDetailCard } from './InvoiceDetailCard';
 import { CollectKeypad } from './CollectKeypad';
-import { CollectPayForm, type PayFormSubmit } from './CollectPayForm';
+import { CollectPayForm, type PayFormState, type PayFormSubmit } from './CollectPayForm';
 import { NoteEditor } from './NoteEditor';
 import type { CollectorEntry } from '@/hooks/useInvoiceCollectors';
 import type { InvoiceWithRelations } from '@/types/invoice';
@@ -57,16 +57,15 @@ export function CollectDrawer({
   const updateNote = useUpdateInvoiceNote();
 
   const compact = mode === 'keypad';
-  const [subMode, setSubMode] = useState<'view' | 'pay'>('view');
   const [entered, setEntered] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
-  const [noteOpen, setNoteOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Trạng thái form thu (báo lên từ CollectPayForm) — nút xanh dưới cùng submit.
+  const [payState, setPayState] = useState<PayFormState | null>(null);
 
   useEffect(() => {
-    setSubMode('view');
     setEntered('');
-    setNoteOpen(false);
+    setPayState(null);
     setNoteDraft(invoice?.notes ?? '');
   }, [invoice?.id, mode]);
 
@@ -138,7 +137,7 @@ export function CollectDrawer({
           setUploading(false);
         }
       }
-      const res = await collect({
+      await collect({
         invoice,
         lines,
         keepAsCredit,
@@ -146,7 +145,7 @@ export function CollectDrawer({
         receiptImageUrl: url,
         paymentDate,
       });
-      if (res.failures.length === 0) setSubMode('view');
+      // Thu xong → invoice cập nhật (remaining 0) → form tự ẩn, hiện "Đã thu đủ".
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -215,52 +214,36 @@ export function CollectDrawer({
 
           <InvoiceDetailCard invoice={invoice} collectors={collectors} />
 
-          {(noteOpen || noteDraft || subMode === 'pay') && (
+          {canRecordPayment && st !== 'paid' && (
+            <>
+              <div className="is-note">
+                <div className="ib-lbl">Ghi chú</div>
+                <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
+              </div>
+              <CollectPayForm
+                key={invoice.id}
+                remaining={remaining}
+                methodAvailable={methodAvailable}
+                changeAccountName={changeAccountName}
+                canCredit={!!invoice.contract_id}
+                onChange={setPayState}
+              />
+            </>
+          )}
+
+          {/* Ghi chú chỉ-đọc khi đã thu đủ / không có quyền thu */}
+          {(!canRecordPayment || st === 'paid') && noteDraft && (
             <div className="is-note">
               <div className="ib-lbl">Ghi chú</div>
-              {noteOpen || subMode === 'pay' ? (
-                <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
-              ) : (
-                <div className="note-display">
-                  <StickyNote />
-                  {noteDraft}
-                </div>
-              )}
+              <div className="note-display">
+                <StickyNote />
+                {noteDraft}
+              </div>
             </div>
           )}
 
-          {subMode === 'pay' && canRecordPayment && (
-            <CollectPayForm
-              key={invoice.id}
-              remaining={remaining}
-              methodAvailable={methodAvailable}
-              changeAccountName={changeAccountName}
-              canCredit={!!invoice.contract_id}
-              submitting={uploading || isCollecting}
-              onSubmit={runPayForm}
-            />
-          )}
-
-          <div className="is-sub-actions">
-            {canRecordPayment && (
-              <button
-                type="button"
-                className={'is-sub-btn' + (subMode === 'pay' ? ' on' : '')}
-                onClick={() => setSubMode((m) => (m === 'pay' ? 'view' : 'pay'))}
-              >
-                <Wallet />
-                Thu tiền
-              </button>
-            )}
-            <button
-              type="button"
-              className={'is-sub-btn' + (noteOpen ? ' on' : '')}
-              onClick={() => setNoteOpen((v) => !v)}
-            >
-              <StickyNote />
-              Ghi chú
-            </button>
-            {canUndo && (invoice.paid_amount ?? 0) > 0 && (
+          {canUndo && (invoice.paid_amount ?? 0) > 0 && (
+            <div className="is-sub-actions">
               <button
                 type="button"
                 className="is-sub-btn undo"
@@ -270,8 +253,8 @@ export function CollectDrawer({
                 <Undo2 />
                 Hoàn tác
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="is-actions">
@@ -292,11 +275,16 @@ export function CollectDrawer({
             <button
               type="button"
               className="btn-collect"
-              disabled={!canRecordPayment || isCollecting}
-              onClick={() => runCollect(remaining, () => {})}
+              disabled={!canRecordPayment || !payState?.canSubmit || isCollecting || uploading}
+              onClick={() => payState?.payload && runPayForm(payState.payload)}
             >
-              Thu đủ
-              <small>{fmtShort(remaining)}</small>
+              {uploading || isCollecting ? 'Đang ghi…' : `Thu ${fmtShort(payState?.total ?? remaining)}`}
+              {payState && payState.overpay > 0 && (
+                <small>
+                  {payState.keepAsCredit ? 'nợ khách ' : 'thối '}
+                  {fmtShort(payState.overpay)}
+                </small>
+              )}
             </button>
           )}
           <button type="button" className="is-icon call" disabled={!rep.phone} onClick={doCall}>

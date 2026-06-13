@@ -35,6 +35,17 @@ export interface PayFormSubmit {
   receiptFile: File | null;
 }
 
+/** Trạng thái form báo lên drawer — nút xanh dưới cùng dùng để hiển thị + submit. */
+export interface PayFormState {
+  total: number;
+  overpay: number;
+  /** Đang giữ nợ khách (đã có overpay). */
+  keepAsCredit: boolean;
+  canSubmit: boolean;
+  /** Payload để thu; null nếu chưa hợp lệ. */
+  payload: PayFormSubmit | null;
+}
+
 interface Props {
   remaining: number;
   methodAvailable: Record<CollectMethod, boolean>;
@@ -42,8 +53,8 @@ interface Props {
   changeAccountName?: string;
   /** Hoá đơn có hợp đồng → cho phép "Nợ khách". */
   canCredit: boolean;
-  submitting: boolean;
-  onSubmit: (data: PayFormSubmit) => void;
+  /** Báo trạng thái lên drawer (nút xanh dưới cùng submit). */
+  onChange: (state: PayFormState) => void;
 }
 
 const ALL: CollectMethod[] = ['TM', 'TK', 'TT'];
@@ -53,8 +64,7 @@ export function CollectPayForm({
   methodAvailable,
   changeAccountName,
   canCredit,
-  submitting,
-  onSubmit,
+  onChange,
 }: Props) {
   const available = useMemo(() => ALL.filter((m) => methodAvailable[m]), [methodAvailable]);
   const firstMethod = available[0] ?? 'TM';
@@ -94,6 +104,19 @@ export function CollectPayForm({
   const overByNonCash = nonCash > remaining;
   const overWithoutTm = overpay > 0 && tmTotal <= 0;
   const canAddLine = lines.length < available.length;
+  const canSubmit = total > 0 && !overByNonCash && !overWithoutTm;
+
+  // Báo trạng thái lên drawer (nút xanh dưới cùng hiển thị tổng + submit).
+  useEffect(() => {
+    onChange({
+      total,
+      overpay,
+      keepAsCredit: keepAsCredit && overpay > 0,
+      canSubmit,
+      payload: canSubmit ? { lines, keepAsCredit, paymentDate, receiptFile } : null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, overpay, keepAsCredit, canSubmit, lines, paymentDate, receiptFile]);
 
   // Phương thức chọn được cho 1 dòng = available chưa dùng ở dòng khác + chính nó.
   // Luôn union method hiện tại để <select> không bao giờ có value ngoài options.
@@ -133,7 +156,6 @@ export function CollectPayForm({
     enabled: !receiptPreview,
   });
 
-  const canSubmit = total > 0 && !submitting && !overByNonCash && !overWithoutTm;
   const netToInvoice = keepAsCredit ? total : total - overpay; // hiển thị
 
   return (
@@ -259,15 +281,6 @@ export function CollectPayForm({
         </div>
       )}
       <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
-
-      <button
-        type="button"
-        className="kp-confirm"
-        disabled={!canSubmit}
-        onClick={() => onSubmit({ lines, keepAsCredit, paymentDate, receiptFile })}
-      >
-        {submitting ? 'Đang ghi…' : `Xác nhận thu ${total > 0 ? fmtShort(total) : ''}`}
-      </button>
     </div>
   );
 }
