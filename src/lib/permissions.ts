@@ -28,6 +28,11 @@ export type ActionKey =
   // Cờ phạm vi: thấy + ghi thu chi cho MỌI toà ngay trong form thu chi
   // (chỉ module income_expenses).
   | "all_buildings"
+  // Hạng mục thu chi HẠN CHẾ (vd Quản Lý) — chỉ module income_expenses:
+  //   restricted_create: thấy & chọn hạng mục hạn chế khi TẠO phiếu.
+  //   restricted_view:   thấy & sửa phiếu hạng mục hạn chế trong BẢNG.
+  | "restricted_create"
+  | "restricted_view"
   // sale_phong: tạo nhanh phiếu cọc trên trang công khai /r/:token.
   | "create_deposit"
   // ===== Action chi tiết theo chức năng (2026-06-11) =====
@@ -153,7 +158,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
       { key: "invoices",        label: "Hoá đơn",    extra: ["approve", "cancel", "record_payment", "print", "export"] },
       { key: "thu_tien",        label: "Thu tiền (mobile)", core: ["view"], extra: ["collect", "undo", "report"] },
-      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "cancel", "print", "export", "all_buildings"] },
+      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "cancel", "print", "export", "all_buildings", "restricted_create", "restricted_view"] },
       { key: "excess_amounts",  label: "Tiền thừa" },
     ],
   },
@@ -244,6 +249,8 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   print:          "In",
   export:         "Xuất",
   all_buildings:  "Mọi toà nhà",
+  restricted_create: "Tạo phiếu hạng mục hạn chế",
+  restricted_view:   "Xem/sửa phiếu hạng mục hạn chế",
   create_deposit: "Tạo cọc nhanh",
   view_finance:   "Xem số liệu tài chính",
   manage_tokens:  "Link chia sẻ",

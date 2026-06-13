@@ -2612,6 +2612,7 @@ export type Database = {
           id: string
           is_default: boolean | null
           is_deposit: boolean
+          is_restricted: boolean
           name: string
           type: string
           updated_at: string
@@ -2624,6 +2625,7 @@ export type Database = {
           id?: string
           is_default?: boolean | null
           is_deposit?: boolean
+          is_restricted?: boolean
           name: string
           type: string
           updated_at?: string
@@ -2636,6 +2638,7 @@ export type Database = {
           id?: string
           is_default?: boolean | null
           is_deposit?: boolean
+          is_restricted?: boolean
           name?: string
           type?: string
           updated_at?: string
@@ -2661,6 +2664,7 @@ export type Database = {
           creator_name: string | null
           deleted_at: string | null
           handover_id: string | null
+          has_restricted_item: boolean
           id: string
           invoice_id: string | null
           name: string
@@ -2707,6 +2711,7 @@ export type Database = {
           creator_name?: string | null
           deleted_at?: string | null
           handover_id?: string | null
+          has_restricted_item?: boolean
           id?: string
           invoice_id?: string | null
           name: string
@@ -2753,6 +2758,7 @@ export type Database = {
           creator_name?: string | null
           deleted_at?: string | null
           handover_id?: string | null
+          has_restricted_item?: boolean
           id?: string
           invoice_id?: string | null
           name?: string
@@ -6793,6 +6799,7 @@ export type Database = {
           creator_name: string | null
           deleted_at: string | null
           handover_id: string | null
+          has_restricted_item: boolean
           id: string
           invoice_id: string | null
           name: string

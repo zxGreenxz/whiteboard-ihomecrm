@@ -17,6 +17,8 @@ import {
   useIncomeExpenseTypes,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import IncomeExpenseTypeForm from '@/components/income-expense-types/IncomeExpenseTypeForm';
 import EditIncomeExpenseTypeDialog from '@/components/income-expense-types/EditIncomeExpenseTypeDialog';
 
@@ -37,6 +39,13 @@ const IncomeExpenseItemSelector = ({
 }: IncomeExpenseItemSelectorProps) => {
   const filterType = voucherType === 'INCOME' ? 'income' : 'expense';
   const { data: types = [], isLoading } = useIncomeExpenseTypes(filterType);
+  const { data: perms } = useMyPermissions();
+  const canPickRestricted = canUse(perms, 'income_expenses', 'restricted_create');
+  // Ẩn hạng mục "hạn chế" khỏi danh sách CHỌN nếu không có quyền tạo (A). Vẫn giữ
+  // những hạng mục đã được chọn sẵn (edit) vì handleConfirm map trên `types` đầy đủ.
+  const visibleTypes = canPickRestricted
+    ? types
+    : types.filter((t) => !t.is_restricted);
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isTypeFormOpen, setIsTypeFormOpen] = useState(false);
@@ -96,13 +105,13 @@ const IncomeExpenseItemSelector = ({
               <p className="text-sm text-muted-foreground py-4 text-center">
                 Đang tải...
               </p>
-            ) : types.length === 0 ? (
+            ) : visibleTypes.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 Chưa có loại {voucherType === 'INCOME' ? 'thu' : 'chi'} nào.
                 Hãy thêm mới.
               </p>
             ) : (
-              types.map((t) => (
+              visibleTypes.map((t) => (
                 <div
                   key={t.id}
                   className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent"

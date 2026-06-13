@@ -75,6 +75,8 @@ export const incomeExpenseTypeFormSchema = z.object({
     .pipe(z.string().min(1, 'Vui lòng chọn nhóm Thu/Chi')),
   description: z.string().nullable().optional(),
   is_default: z.boolean().optional().default(false),
+  // Cờ "hạng mục hạn chế" — chỉ người có quyền income_expenses.restricted_* thấy.
+  is_restricted: z.boolean().optional().default(false),
 });
 
 export type IncomeExpenseTypeFormValues = z.infer<typeof incomeExpenseTypeFormSchema>;

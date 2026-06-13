@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -45,6 +46,8 @@ import {
   useUpdateIncomeExpenseType,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import CategoryCombobox from './CategoryCombobox';
 
 interface EditIncomeExpenseTypeDialogProps {
@@ -64,6 +67,9 @@ const EditIncomeExpenseTypeDialog = ({
   const updateType = useUpdateIncomeExpenseType();
   const deleteType = useDeleteIncomeExpenseType();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { data: perms } = useMyPermissions();
+  // Chỉ người có quyền xem/sửa hạng mục hạn chế mới được đánh dấu "hạn chế".
+  const canManageRestricted = canUse(perms, 'income_expenses', 'restricted_view');
 
   const form = useForm<IncomeExpenseTypeFormValues>({
     resolver: zodResolver(incomeExpenseTypeFormSchema),
@@ -73,6 +79,7 @@ const EditIncomeExpenseTypeDialog = ({
       category: '',
       description: '',
       is_default: false,
+      is_restricted: false,
     },
   });
 
@@ -84,6 +91,7 @@ const EditIncomeExpenseTypeDialog = ({
         category: type.category ?? '',
         description: type.description ?? '',
         is_default: type.is_default ?? false,
+        is_restricted: type.is_restricted ?? false,
       });
     }
   }, [open, type, form]);
@@ -101,6 +109,8 @@ const EditIncomeExpenseTypeDialog = ({
           category: data.category?.trim() ? data.category.trim() : null,
           description: data.description || null,
           is_default: data.is_default ?? false,
+          // Chỉ ghi is_restricted khi có quyền — tránh staff vô tình gỡ cờ.
+          ...(canManageRestricted ? { is_restricted: data.is_restricted ?? false } : {}),
         },
       });
       onOpenChange(false);
@@ -210,6 +220,32 @@ const EditIncomeExpenseTypeDialog = ({
                   </FormItem>
                 )}
               />
+
+              {canManageRestricted && (
+                <FormField
+                  control={form.control}
+                  name="is_restricted"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start gap-2 rounded-md border p-3">
+                      <FormControl>
+                        <Checkbox
+                          checked={!!field.value}
+                          onCheckedChange={(v) => field.onChange(v === true)}
+                        />
+                      </FormControl>
+                      <div className="space-y-0.5 leading-tight">
+                        <FormLabel className="cursor-pointer">
+                          Hạng mục hạn chế
+                        </FormLabel>
+                        <p className="text-xs text-muted-foreground">
+                          Chỉ người có quyền mới thấy hạng mục này và các phiếu
+                          thuộc hạng mục — ẩn khỏi nhân viên khác.
+                        </p>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <div className="flex items-center justify-between pt-2">
                 <Button

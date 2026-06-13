@@ -315,6 +315,12 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("income_expenses", "all_buildings", "Ghi thu chi cho MỌI toà nhà", "elevated", {
             desc: "Vượt phạm vi toà được giao — chỉ trong form thu chi (vd kế toán).",
           }),
+          f("income_expenses", "restricted_create", "Tạo phiếu với hạng mục HẠN CHẾ", "elevated", {
+            desc: "Thấy & chọn hạng mục đánh dấu 'hạn chế' (vd Quản Lý) trong picker khi tạo phiếu. Mặc định ẩn.",
+          }),
+          f("income_expenses", "restricted_view", "Xem & sửa phiếu hạng mục HẠN CHẾ", "elevated", {
+            desc: "Thấy & sửa các phiếu thuộc hạng mục 'hạn chế' trong bảng + cộng vào tổng. Người khác bị ẩn hoàn toàn (kể cả truy vấn trực tiếp).",
+          }),
         ],
       },
       {

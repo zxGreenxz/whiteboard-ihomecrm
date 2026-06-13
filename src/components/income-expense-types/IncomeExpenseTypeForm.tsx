@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -27,6 +28,8 @@ import {
   useCreateIncomeExpenseType,
   type IncomeExpenseType,
 } from '@/hooks/useIncomeExpenseTypes';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import CategoryCombobox from './CategoryCombobox';
 
 interface IncomeExpenseTypeFormProps {
@@ -41,6 +44,9 @@ const IncomeExpenseTypeForm = ({
   onCancel,
 }: IncomeExpenseTypeFormProps) => {
   const createType = useCreateIncomeExpenseType();
+  const { data: perms } = useMyPermissions();
+  // Chỉ người có quyền xem/sửa hạng mục hạn chế mới được đánh dấu "hạn chế".
+  const canManageRestricted = canUse(perms, 'income_expenses', 'restricted_view');
   // Khi form được nhúng vào dialog chọn hạng mục thu/chi, defaultType được
   // truyền sẵn → người dùng không cần (và không nên) đổi lại Thu/Chi.
   const lockType = !!defaultType;
@@ -53,6 +59,7 @@ const IncomeExpenseTypeForm = ({
       category: '',
       description: '',
       is_default: false,
+      is_restricted: false,
     },
   });
 
@@ -63,6 +70,7 @@ const IncomeExpenseTypeForm = ({
       category: '',
       description: '',
       is_default: false,
+      is_restricted: false,
     });
   }, [defaultType, form]);
 
@@ -74,6 +82,7 @@ const IncomeExpenseTypeForm = ({
         category: data.category?.trim() ? data.category.trim() : null,
         description: data.description || null,
         is_default: data.is_default ?? false,
+        is_restricted: canManageRestricted ? (data.is_restricted ?? false) : false,
       });
       form.reset();
       onCreated?.(result as unknown as IncomeExpenseType);
@@ -164,6 +173,30 @@ const IncomeExpenseTypeForm = ({
             </FormItem>
           )}
         />
+
+        {canManageRestricted && (
+          <FormField
+            control={form.control}
+            name="is_restricted"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start gap-2 rounded-md border p-3">
+                <FormControl>
+                  <Checkbox
+                    checked={!!field.value}
+                    onCheckedChange={(v) => field.onChange(v === true)}
+                  />
+                </FormControl>
+                <div className="space-y-0.5 leading-tight">
+                  <FormLabel className="cursor-pointer">Hạng mục hạn chế</FormLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Chỉ người có quyền mới thấy hạng mục này và các phiếu thuộc
+                    hạng mục — ẩn khỏi nhân viên khác.
+                  </p>
+                </div>
+              </FormItem>
+            )}
+          />
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           {onCancel && (

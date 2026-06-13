@@ -16,6 +16,10 @@ export interface IncomeExpenseType {
   // Cờ "đây có phải loại Tiền cọc" — bật → ảnh hưởng contracts.deposit_paid
   // và stats "Cọc đã thu". Set DB-side, FE chỉ đọc.
   is_deposit: boolean;
+  // Cờ "hạng mục hạn chế": bật → chỉ người có quyền income_expenses.restricted_*
+  // mới thấy hạng mục (picker) và các phiếu thuộc hạng mục này (bảng + tổng).
+  // RLS enforce; FE thêm lọc picker theo restricted_create.
+  is_restricted: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -124,6 +128,7 @@ export const useCreateIncomeExpenseType = () => {
       category?: string | null;
       description?: string | null;
       is_default?: boolean;
+      is_restricted?: boolean;
     }) => {
       const user = await getSessionUser();
 
@@ -138,6 +143,7 @@ export const useCreateIncomeExpenseType = () => {
           category: input.category ?? null,
           description: input.description ?? null,
           is_default: input.is_default ?? false,
+          is_restricted: input.is_restricted ?? false,
         })
         .select()
         .single();
@@ -177,6 +183,7 @@ export const useUpdateIncomeExpenseType = () => {
         category?: string | null;
         description?: string | null;
         is_default?: boolean;
+        is_restricted?: boolean;
       };
     }) => {
       const { data, error } = await supabase
