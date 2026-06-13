@@ -1,21 +1,20 @@
 // =============================================
-// CollectPayForm — form thu tiền gọn trong drawer chi tiết phòng.
-// Bản rút gọn của "Ghi nhận thanh toán" (trang Hoá đơn): chọn phương thức
-// TM/TK/TT + số tiền + ngày + ảnh chứng từ. KHÔNG có tiền thối/nợ khách
-// (trang thu-tien cap số thu ≤ remaining). Ghi chú dùng NoteEditor chung
-// của drawer (noteDraft) — form này không tự chứa ô ghi chú.
+// CollectPayForm — form thu tiền trong drawer chi tiết phòng.
+// Tách nhiều dòng phương thức (TM/TK/TT, mỗi dòng vào đúng sổ riêng) +
+// tiền thối / nợ khách khi tiền mặt thu DƯ (đúng như trang Hoá đơn) +
+// ngày + ảnh chứng từ. Ghi chú dùng NoteEditor chung của drawer.
 //
-// Presentational: KHÔNG gọi mutation/upload — drawer orchestrate qua
-// onSubmit({amount, method, paymentDate, receiptFile}).
+// Presentational: KHÔNG gọi mutation/upload. Tính tiền cuối cùng + validate
+// nằm ở planCollect (drawer → useQuickCollect); form chỉ thu input + gợi ý.
 // =============================================
 
-import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ImagePlus, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { validateReceiptFile } from '@/lib/receiptUpload';
 import type { CollectMethod } from '@/lib/cashAccount';
-import { fmtShort, todayISO } from '@/lib/collect';
+import { fmtFull, fmtShort, todayISO } from '@/lib/collect';
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
 const parseVN = (s: string): number => {
@@ -23,9 +22,14 @@ const parseVN = (s: string): number => {
   return digits ? parseInt(digits, 10) : 0;
 };
 
-export interface PayFormSubmit {
-  amount: number;
+interface PayLine {
   method: CollectMethod;
+  amount: number;
+}
+
+export interface PayFormSubmit {
+  lines: PayLine[];
+  keepAsCredit: boolean;
   paymentDate: string;
   /** CHƯA upload — drawer upload trước khi gọi collect. */
   receiptFile: File | null;
@@ -34,35 +38,86 @@ export interface PayFormSubmit {
 interface Props {
   remaining: number;
   methodAvailable: Record<CollectMethod, boolean>;
+  /** Tên sổ "…Thối" để hiển thị; '' nếu chưa có. */
+  changeAccountName?: string;
+  /** Hoá đơn có hợp đồng → cho phép "Nợ khách". */
+  canCredit: boolean;
   submitting: boolean;
   onSubmit: (data: PayFormSubmit) => void;
 }
 
-const METHODS: CollectMethod[] = ['TM', 'TK', 'TT'];
+const ALL: CollectMethod[] = ['TM', 'TK', 'TT'];
 
-export function CollectPayForm({ remaining, methodAvailable, submitting, onSubmit }: Props) {
-  const [method, setMethod] = useState<CollectMethod>('TM');
-  const [amountText, setAmountText] = useState(formatVN(remaining));
+export function CollectPayForm({
+  remaining,
+  methodAvailable,
+  changeAccountName,
+  canCredit,
+  submitting,
+  onSubmit,
+}: Props) {
+  const available = useMemo(() => ALL.filter((m) => methodAvailable[m]), [methodAvailable]);
+  const firstMethod = available[0] ?? 'TM';
+
+  const [lines, setLines] = useState<PayLine[]>([{ method: firstMethod, amount: remaining }]);
+  const [keepAsCredit, setKeepAsCredit] = useState(false);
   const [paymentDate, setPaymentDate] = useState(todayISO());
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Revoke objectURL khi đổi ảnh / unmount.
   useEffect(() => () => { if (receiptPreview) URL.revokeObjectURL(receiptPreview); }, [receiptPreview]);
 
-  const amount = parseVN(amountText);
+  // Đồng bộ method khi danh sách sổ khả dụng nạp trễ (accounts load sau mount):
+  // dòng nào mang method không còn hợp lệ → kéo về method khả dụng đầu tiên.
+  // Dep theo chuỗi join để tránh vòng lặp (available là mảng mới mỗi render).
+  const availableKey = available.join(',');
+  useEffect(() => {
+    if (!available.length) return;
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((l) => {
+        if (available.includes(l.method)) return l;
+        changed = true;
+        return { ...l, method: available[0] };
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableKey]);
 
-  const setAmount = (n: number) => setAmountText(formatVN(Math.max(0, n)));
+  const total = lines.reduce((s, l) => s + (l.amount || 0), 0);
+  const tmTotal = lines.filter((l) => l.method === 'TM').reduce((s, l) => s + (l.amount || 0), 0);
+  const nonCash = lines.filter((l) => l.method !== 'TM').reduce((s, l) => s + (l.amount || 0), 0);
+  const overpay = Math.max(0, total - remaining);
+  const overByNonCash = nonCash > remaining;
+  const overWithoutTm = overpay > 0 && tmTotal <= 0;
+  const canAddLine = lines.length < available.length;
+
+  // Phương thức chọn được cho 1 dòng = available chưa dùng ở dòng khác + chính nó.
+  // Luôn union method hiện tại để <select> không bao giờ có value ngoài options.
+  const methodsForRow = (idx: number): CollectMethod[] => {
+    const usedOther = new Set(lines.filter((_, i) => i !== idx).map((l) => l.method));
+    const opts = available.filter((m) => !usedOther.has(m) || m === lines[idx].method);
+    return opts.includes(lines[idx].method) ? opts : [lines[idx].method, ...opts];
+  };
+
+  const setLine = (idx: number, patch: Partial<PayLine>) =>
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  const removeLine = (idx: number) => setLines((prev) => prev.filter((_, i) => i !== idx));
+  const addLine = () => {
+    const used = new Set(lines.map((l) => l.method));
+    const next = available.find((m) => !used.has(m));
+    if (!next) return;
+    const gap = Math.max(0, remaining - total);
+    setLines((prev) => [...prev, { method: next, amount: gap }]);
+  };
 
   const pickFile = (file?: File | null) => {
     if (!file) return;
     const invalid = validateReceiptFile(file);
-    if (invalid) {
-      toast.error(invalid);
-      return;
-    }
+    if (invalid) return toast.error(invalid);
     if (receiptPreview) URL.revokeObjectURL(receiptPreview);
     setReceiptFile(file);
     setReceiptPreview(URL.createObjectURL(file));
@@ -73,60 +128,105 @@ export function CollectPayForm({ remaining, methodAvailable, submitting, onSubmi
     setReceiptPreview('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
   const pasteHandlers = useClipboardImagePaste({
     onFiles: (files) => pickFile(files[0]),
     enabled: !receiptPreview,
   });
 
-  const unavailableSelected = !methodAvailable[method];
-  const canSubmit = amount > 0 && !submitting && !unavailableSelected;
+  const canSubmit = total > 0 && !submitting && !overByNonCash && !overWithoutTm;
+  const netToInvoice = keepAsCredit ? total : total - overpay; // hiển thị
 
   return (
     <div className="pf-form">
-      <div className="pf-methods cfilters">
-        {METHODS.map((m) => (
-          <button
-            key={m}
-            type="button"
-            className={'cchip' + (method === m ? ' on' : '') + (methodAvailable[m] ? '' : ' dis')}
-            onClick={() => methodAvailable[m] && setMethod(m)}
-          >
-            {m}
-          </button>
+      {/* Danh sách dòng thanh toán */}
+      <div className="pf-lines">
+        {lines.map((line, idx) => (
+          <div className="pf-line" key={idx}>
+            <select
+              className="pf-method"
+              value={line.method}
+              onChange={(e) => setLine(idx, { method: e.target.value as CollectMethod })}
+            >
+              {methodsForRow(idx).map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <input
+              className="pf-amt"
+              type="text"
+              inputMode="numeric"
+              placeholder="Số tiền"
+              value={formatVN(line.amount)}
+              onChange={(e) => setLine(idx, { amount: parseVN(e.target.value) })}
+            />
+            {lines.length > 1 && (
+              <button type="button" className="pf-rm" title="Bỏ dòng" onClick={() => removeLine(idx)}>
+                <X />
+              </button>
+            )}
+          </div>
         ))}
+        {canAddLine && (
+          <button type="button" className="pf-add" onClick={addLine}>
+            <Plus /> Thêm phương thức
+          </button>
+        )}
       </div>
-      {(!methodAvailable.TK || !methodAvailable.TT) && (
-        <p className="pf-hint">
-          {[!methodAvailable.TK ? 'TK' : null, !methodAvailable.TT ? 'TT' : null]
-            .filter(Boolean)
-            .join(' & ')}{' '}
-          chưa dùng được — tòa chưa cấu hình sổ quỹ mặc định (Cài đặt → Tòa nhà).
-        </p>
+
+      {/* Preset chỉ cho 1 dòng — tách nhiều phương thức thì gõ tay từng dòng,
+          tránh preset ghi nhầm dòng 0 (sai phân bổ TM/TK/TT vào sổ). */}
+      {lines.length === 1 && (
+        <div className="kp-presets">
+          <button type="button" className="kp-preset due" onClick={() => setLine(0, { amount: remaining })}>
+            Đủ {fmtShort(remaining)}
+          </button>
+          {[500_000, 1_000_000, 2_000_000].map((v) => (
+            <button key={v} type="button" className="kp-preset" onClick={() => setLine(0, { amount: v })}>
+              {fmtShort(v)}
+            </button>
+          ))}
+          <button type="button" className="kp-preset" onClick={() => setLine(0, { amount: 0 })}>
+            Xóa
+          </button>
+        </div>
       )}
 
-      <input
-        className="pf-amt"
-        type="text"
-        inputMode="numeric"
-        placeholder="Số tiền thu"
-        value={amountText}
-        onChange={(e) => setAmountText(formatVN(parseVN(e.target.value)))}
-        onBlur={() => amount > remaining && setAmount(remaining)}
-      />
-      <div className="kp-presets">
-        <button type="button" className="kp-preset due" onClick={() => setAmount(remaining)}>
-          Đủ {fmtShort(remaining)}
-        </button>
-        {[500_000, 1_000_000, 2_000_000].map((v) => (
-          <button key={v} type="button" className="kp-preset" onClick={() => setAmount(v)}>
-            {fmtShort(v)}
-          </button>
-        ))}
-        <button type="button" className="kp-preset" onClick={() => setAmount(0)}>
-          Xóa
-        </button>
+      {/* Tổng + đối chiếu */}
+      <div className="pf-total">
+        <span>Tổng thu</span>
+        <b className={total > remaining ? 'over' : total < remaining ? 'under' : ''}>
+          {fmtFull(total)} / {fmtFull(remaining)}
+        </b>
       </div>
+
+      {/* Cảnh báo / tiền thối / nợ khách */}
+      {overByNonCash ? (
+        <p className="pf-hint err">TK/TT vượt quá còn phải thu — chỉ tiền mặt mới được thu dư.</p>
+      ) : overWithoutTm ? (
+        <p className="pf-hint err">Thu dư chỉ áp dụng khi có dòng tiền mặt (TM).</p>
+      ) : overpay > 0 ? (
+        <div className="pf-change">
+          <div className="pf-change-row">
+            <span>{keepAsCredit ? 'Giữ nợ khách' : 'Tiền thối'}</span>
+            <b>{fmtFull(overpay)}</b>
+          </div>
+          {canCredit && (
+            <label className="pf-credit">
+              <input
+                type="checkbox"
+                checked={keepAsCredit}
+                onChange={(e) => setKeepAsCredit(e.target.checked)}
+              />
+              <span>Nợ khách (trừ kỳ sau) thay vì thối lại</span>
+            </label>
+          )}
+          <p className="pf-hint">
+            {keepAsCredit
+              ? `Thu đủ ${fmtFull(netToInvoice)} cho hoá đơn, giữ ${fmtFull(overpay)} làm credit trừ kỳ sau.`
+              : `Thối lại khách ${fmtFull(overpay)}${changeAccountName ? ` · ghi sổ "${changeAccountName}"` : ''}.`}
+          </p>
+        </div>
+      ) : null}
 
       <label className="pf-row">
         <span className="pf-lbl">Ngày thanh toán</span>
@@ -149,37 +249,24 @@ export function CollectPayForm({ remaining, methodAvailable, submitting, onSubmi
         <div
           className={'pf-drop' + (dragOver ? ' over' : '')}
           onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            pickFile(e.dataTransfer.files?.[0]);
-          }}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files?.[0]); }}
           {...pasteHandlers}
         >
           <ImagePlus />
           <span>Ảnh chứng từ — bấm chọn, kéo thả hoặc Ctrl+V</span>
         </div>
       )}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(e) => pickFile(e.target.files?.[0])}
-      />
+      <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
 
       <button
         type="button"
         className="kp-confirm"
         disabled={!canSubmit}
-        onClick={() => onSubmit({ amount, method, paymentDate, receiptFile })}
+        onClick={() => onSubmit({ lines, keepAsCredit, paymentDate, receiptFile })}
       >
-        {submitting ? 'Đang ghi…' : `Xác nhận thu ${amount > 0 ? fmtShort(amount) : ''} ${method}`}
+        {submitting ? 'Đang ghi…' : `Xác nhận thu ${total > 0 ? fmtShort(total) : ''}`}
       </button>
     </div>
   );

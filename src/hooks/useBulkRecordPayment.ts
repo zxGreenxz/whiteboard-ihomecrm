@@ -26,6 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
+import { planConflictsWithRemaining } from '@/lib/collectPlan';
 
 export interface BulkPaymentItem {
   invoice_id: string;
@@ -36,6 +37,9 @@ export interface BulkPaymentItem {
   amount_tt: number;
   change_amount: number;
   account_id: string;
+  /** Sổ quỹ RIÊNG cho từng phương thức (thu tách TM/TK/TT vào đúng sổ).
+   *  Thiếu key nào → dùng account_id chung (giữ tương thích caller cũ). */
+  accounts?: Partial<Record<'TM' | 'TK' | 'TT', string>>;
   change_account_id: string | null;
   /** Nếu true: change_amount được giữ làm credit cho contract (excess_amounts),
    *  KHÔNG khấu trừ vào TM, KHÔNG tạo phiếu chi thối. */
@@ -146,6 +150,26 @@ export const useBulkRecordPayment = () => {
           // và sẽ INSERT excess_amounts row sau loop.
           const change = item.change_amount || 0;
           const keepAsCredit = !!item.keep_as_credit && change > 0;
+
+          // ── Chốt lại theo remaining VỪA ĐỌC (chống race thu song song) ──
+          // Plan (change/credit/rounding) được tính phía client theo remaining
+          // có thể đã cũ. Nếu giữa lúc đó người khác vừa thu, ghi mù theo plan
+          // cũ sẽ làm paid_amount vượt total (overpay phantom) hoặc lệch credit.
+          // Đối chiếu với `remaining` fresh: phần dồn vào hoá đơn không được
+          // vượt remaining; với nợ khách, phần giữ phải đúng bằng phần dư thực.
+          const totalGross =
+            (item.amount_tm || 0) + (item.amount_tk || 0) + (item.amount_tt || 0);
+          if (planConflictsWithRemaining(totalGross, change, keepAsCredit, remaining)) {
+            failures.push({
+              invoice_id: item.invoice_id,
+              invoice_number: item.invoice_number,
+              room_name: item.room_name,
+              message:
+                'Số dư hoá đơn đã thay đổi (người khác vừa thu) — vui lòng mở lại và thu theo số mới.',
+            });
+            continue;
+          }
+
           let tmDeductIdx = -1;
           if (change > 0 && !keepAsCredit) {
             for (let i = subLines.length - 1; i >= 0; i--) {
@@ -233,7 +257,8 @@ export const useBulkRecordPayment = () => {
                 building_id: (inv as any).building_id,
                 room_id: (inv as any).room_id,
                 contract_id: (inv as any).contract_id,
-                account_id: item.account_id,
+                account_id:
+                  item.accounts?.[line.method as 'TM' | 'TK' | 'TT'] ?? item.account_id,
                 invoice_id: (inv as any).id,
                 payment_id: newPaymentId,
                 voucher_date: params.payment_date,

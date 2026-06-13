@@ -52,7 +52,7 @@ export function CollectDrawer({
   onClose,
   onNavigate,
 }: Props) {
-  const { collect, accountIdFor, isCollecting } = useQuickCollect();
+  const { collect, accountIdFor, changeAccountName, isCollecting } = useQuickCollect();
   const deletePayment = useDeletePayment();
   const updateNote = useUpdateInvoiceNote();
 
@@ -123,7 +123,7 @@ export function CollectDrawer({
     TT: !!accountIdFor(invoice, 'TT'),
   } as Record<CollectMethod, boolean>;
 
-  const runPayForm = async ({ amount, method, paymentDate, receiptFile }: PayFormSubmit) => {
+  const runPayForm = async ({ lines, keepAsCredit, paymentDate, receiptFile }: PayFormSubmit) => {
     try {
       let url: string | null = null;
       if (receiptFile) {
@@ -140,9 +140,9 @@ export function CollectDrawer({
       }
       const res = await collect({
         invoice,
-        amount,
+        lines,
+        keepAsCredit,
         notes: noteDraft,
-        method,
         receiptImageUrl: url,
         paymentDate,
       });
@@ -234,6 +234,8 @@ export function CollectDrawer({
               key={invoice.id}
               remaining={remaining}
               methodAvailable={methodAvailable}
+              changeAccountName={changeAccountName}
+              canCredit={!!invoice.contract_id}
               submitting={uploading || isCollecting}
               onSubmit={runPayForm}
             />
