@@ -144,6 +144,8 @@
 .tt-page .cell-btn.full:active { background: var(--c-paid-d); }
 .tt-page .cell-btn.part { background: var(--surface); color: var(--ink-2); border-color: var(--line); }
 .tt-page .cell-btn.part:active { background: var(--surface-2); }
+.tt-page .cell-btn.collect { flex-shrink: 0; background: var(--c-paid); color: #fff; border-color: var(--c-paid); box-shadow: 0 1px 2px rgba(31,157,87,.25); letter-spacing: .3px; }
+.tt-page .cell-btn.collect:active { background: var(--c-paid-d); }
 .tt-page .cell-done { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--c-paid); flex-shrink: 0; }
 .tt-page .cell-done svg { width: 15px; height: 15px; }
 
@@ -233,8 +235,16 @@
 .tt-page .kp-key:active { background: var(--line-2); transform: scale(.96); }
 .tt-page .kp-key svg { width: 20px; height: 20px; }
 .tt-page .kp-confirm { width: 100%; margin-top: 10px; border: 0; cursor: pointer; font-family: var(--font); font-weight: 700; font-size: 14px; color: #fff; background: var(--c-partial); padding: 13px 0; border-radius: 12px; }
+.tt-page .kp-confirm.full { background: var(--c-paid); }
+.tt-page .kp-confirm small { display: block; font-size: 11px; font-weight: 600; opacity: .85; margin-top: 1px; }
 .tt-page .kp-confirm:disabled { opacity: .4; }
 .tt-page .kp-confirm:active:not(:disabled) { filter: brightness(.95); }
+/* Thông báo thiếu/làm tròn trong bàn phím thu */
+.tt-page .kp-warn { margin: 10px 2px 0; font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+.tt-page .kp-warn b { font-family: var(--mono); font-weight: 700; }
+.tt-page .kp-warn.under { color: var(--c-unpaid); }
+.tt-page .kp-warn.round { color: var(--ink-3); }
+.tt-page .kp-change { margin-top: 10px; }
 
 /* ===== Form thu tiền TM/TK/TT tách dòng (CollectPayForm) ===== */
 .tt-page .pf-form { margin: 14px 18px 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px; display: flex; flex-direction: column; gap: 10px; }

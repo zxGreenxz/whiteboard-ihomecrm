@@ -57,14 +57,17 @@ export function CollectDrawer({
   const updateNote = useUpdateInvoiceNote();
 
   const compact = mode === 'keypad';
-  const [entered, setEntered] = useState('');
+  // entered = null → mặc định "điền sẵn đúng số còn phải thu"; chuỗi = số (nghìn) tự nhập.
+  const [entered, setEntered] = useState<string | null>(null);
+  const [keepAsCredit, setKeepAsCredit] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [uploading, setUploading] = useState(false);
   // Trạng thái form thu (báo lên từ CollectPayForm) — nút xanh dưới cùng submit.
   const [payState, setPayState] = useState<PayFormState | null>(null);
 
   useEffect(() => {
-    setEntered('');
+    setEntered(null);
+    setKeepAsCredit(false);
     setPayState(null);
     setNoteDraft(invoice?.notes ?? '');
   }, [invoice?.id, mode]);
@@ -91,10 +94,25 @@ export function CollectDrawer({
     border: `1px solid var(--c-${st}-line)`,
   };
 
-  const runCollect = async (amount: number, onDone: () => void) => {
+  // Thu nhanh từ bàn phím (TM). Đúng/thiếu → đường 1-chạm (cap, tự làm tròn);
+  // dư → đường nhiều dòng để cho phép thối lại / giữ nợ khách.
+  const pristine = entered === null;
+  const enteredVal = pristine
+    ? Math.max(0, Math.round(remaining))
+    : (parseInt(entered, 10) || 0) * 1000;
+  const submitKeypad = async () => {
+    if (enteredVal <= 0) return;
     try {
-      const res = await collect({ invoice, amount, notes: noteDraft });
-      if (res.failures.length === 0) onDone();
+      const res =
+        enteredVal > remaining
+          ? await collect({
+              invoice,
+              lines: [{ method: 'TM' as const, amount: enteredVal }],
+              keepAsCredit: keepAsCredit && !!invoice.contract_id,
+              notes: noteDraft,
+            })
+          : await collect({ invoice, amount: enteredVal, notes: noteDraft });
+      if (res.failures.length === 0) onClose();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -156,16 +174,12 @@ export function CollectDrawer({
       remaining={remaining}
       entered={entered}
       onEntered={setEntered}
+      keepAsCredit={keepAsCredit}
+      onKeepAsCreditChange={setKeepAsCredit}
+      canCredit={!!invoice.contract_id}
+      changeAccountName={changeAccountName}
       confirming={isCollecting}
-      onConfirm={() =>
-        runCollect((parseInt(entered, 10) || 0) * 1000, () => {
-          if (compact) onClose();
-          else {
-            setSubMode('view');
-            setEntered('');
-          }
-        })
-      }
+      onConfirm={submitKeypad}
     />
   );
 

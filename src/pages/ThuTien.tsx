@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { ArrowLeft, HandCoins } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useInvoices } from '@/hooks/useInvoices';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import { useQuickCollect } from '@/hooks/useQuickCollect';
 import {
   collectStatus,
   paidAsOf,
@@ -26,7 +24,6 @@ import { DatePanel, type CollectDateRange } from '@/components/thu-tien/DatePane
 import { StatusFilter, type StatusFilterValue } from '@/components/thu-tien/StatusFilter';
 import { RoomCellGrid } from '@/components/thu-tien/RoomCellGrid';
 import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
-import { ConfirmCollectDialog } from '@/components/thu-tien/ConfirmCollectDialog';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
@@ -45,7 +42,6 @@ const ThuTien = () => {
   // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
   const canRecordPayment = canUse(perms, 'thu_tien', 'collect');
   const canViewReport = canUse(perms, 'thu_tien', 'report');
-  const { collect } = useQuickCollect();
 
   const [buildingId, setBuildingId] = useState('');
   const [billingMonth, setBillingMonth] = useState(currentMonth());
@@ -58,10 +54,6 @@ const ThuTien = () => {
   const [drawer, setDrawer] = useState<{ id: string | null; mode: 'view' | 'keypad'; show: boolean }>({
     id: null,
     mode: 'view',
-    show: false,
-  });
-  const [confirm, setConfirm] = useState<{ inv: InvoiceWithRelations | null; show: boolean }>({
-    inv: null,
     show: false,
   });
   const [report, setReport] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
@@ -197,23 +189,6 @@ const ThuTien = () => {
     setDrawer((d) => ({ ...d, show: false }));
     window.setTimeout(() => setDrawer((d) => ({ ...d, id: null })), 320);
   };
-  const askConfirm = (inv: InvoiceWithRelations) => {
-    setConfirm({ inv, show: false });
-    requestAnimationFrame(() => setConfirm((c) => ({ ...c, show: true })));
-  };
-  const closeConfirm = () => {
-    setConfirm((c) => ({ ...c, show: false }));
-    window.setTimeout(() => setConfirm({ inv: null, show: false }), 240);
-  };
-  const confirmFull = async () => {
-    if (!confirm.inv) return;
-    try {
-      await collect({ invoice: confirm.inv, amount: remainingOf(confirm.inv) });
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-    closeConfirm();
-  };
   const openReport = () => {
     if (!canViewReport) return;
     setReport({ mounted: true, show: false });
@@ -323,7 +298,6 @@ const ThuTien = () => {
                 emptyIcon={emptyIcon}
                 emptyMessage={emptyMessage}
                 onOpen={(inv) => openRoom(inv, 'view')}
-                onFull={(inv) => askConfirm(inv)}
                 onPart={(inv) => openRoom(inv, 'keypad')}
               />
             )}
@@ -341,13 +315,6 @@ const ThuTien = () => {
           next={next}
           onClose={closeDrawer}
           onNavigate={(inv) => setDrawer((d) => ({ ...d, id: inv.id, mode: 'view' }))}
-        />
-
-        <ConfirmCollectDialog
-          invoice={confirm.inv}
-          show={confirm.show}
-          onConfirm={confirmFull}
-          onCancel={closeConfirm}
         />
 
         {report.mounted && (

@@ -9,7 +9,6 @@ interface Props {
   emptyIcon: string;
   emptyMessage: string;
   onOpen: (inv: InvoiceWithRelations) => void;
-  onFull: (inv: InvoiceWithRelations) => void;
   onPart: (inv: InvoiceWithRelations) => void;
 }
 
@@ -20,7 +19,6 @@ export function RoomCellGrid({
   emptyIcon,
   emptyMessage,
   onOpen,
-  onFull,
   onPart,
 }: Props) {
   return (
@@ -39,7 +37,6 @@ export function RoomCellGrid({
               collectors={collectorsByInvoice[inv.id]}
               canRecordPayment={canRecordPayment}
               onOpen={onOpen}
-              onFull={onFull}
               onPart={onPart}
             />
           ))}

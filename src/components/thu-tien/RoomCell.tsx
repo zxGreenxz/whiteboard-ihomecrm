@@ -8,12 +8,11 @@ interface Props {
   collectors?: string[];
   canRecordPayment: boolean;
   onOpen: (inv: InvoiceWithRelations) => void;
-  onFull: (inv: InvoiceWithRelations) => void;
   onPart: (inv: InvoiceWithRelations) => void;
 }
 
 /** Ô phòng = 1 hoá đơn (layout "Ô vừa" — .icell). Nền tô theo trạng thái thu. */
-export function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onFull, onPart }: Props) {
+export function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onPart }: Props) {
   const st = collectStatus(inv);
   const rep = repCustomer(inv);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
@@ -47,28 +46,16 @@ export function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onFul
             Đủ
           </span>
         ) : canRecordPayment ? (
-          <div className="cell-acts">
-            <button
-              type="button"
-              className="cell-btn full"
-              onClick={(e) => {
-                stop(e);
-                onFull(inv);
-              }}
-            >
-              Thu đủ
-            </button>
-            <button
-              type="button"
-              className="cell-btn part"
-              onClick={(e) => {
-                stop(e);
-                onPart(inv);
-              }}
-            >
-              Thu 1P
-            </button>
-          </div>
+          <button
+            type="button"
+            className="cell-btn collect"
+            onClick={(e) => {
+              stop(e);
+              onPart(inv);
+            }}
+          >
+            THU
+          </button>
         ) : null}
       </div>
     </div>
