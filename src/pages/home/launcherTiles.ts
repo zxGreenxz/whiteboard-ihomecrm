@@ -22,6 +22,9 @@ import {
   BarChart3,
   Settings,
   UserCircle,
+  ClipboardList,
+  Car,
+  Wallet,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
 
@@ -57,6 +60,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'map', title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, accent: '#2563eb', module: 'buildings' },
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
       { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
+      { id: 'tasks', title: 'Công việc', href: '/tasks', icon: ClipboardList, accent: '#0ea5e9', module: 'tasks' },
     ],
   },
   {
@@ -64,6 +68,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     items: [
       { id: 'customers', title: 'Khách hàng', href: '/customers', icon: User, accent: '#7c3aed', module: 'customers' },
       { id: 'contracts', title: 'Hợp đồng', href: '/contracts', icon: FileText, accent: '#4f46e5', module: 'contracts' },
+      { id: 'vehicles', title: 'Phương tiện', href: '/vehicles', icon: Car, accent: '#ea580c', module: 'vehicles' },
     ],
   },
   {
@@ -73,6 +78,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'invoices', title: 'Hoá đơn', href: '/invoices', icon: Receipt, accent: '#d6453f', module: 'invoices' },
       { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
       { id: 'cashbook', title: 'Thu chi', href: '/income-expense', icon: CreditCard, accent: '#7c3aed', module: 'income_expenses' },
+      { id: 'funds', title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, accent: '#ca8a04', module: 'cashbooks' },
       { id: 'reports', title: 'Báo cáo', href: '/reports/real-estate', icon: BarChart3, accent: '#475569', module: 'reports_real_estate' },
     ],
   },
