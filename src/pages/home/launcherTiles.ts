@@ -1,0 +1,86 @@
+/* =============================================================
+   Catalog các ô (tile) cho Home launcher (mobile web-app).
+   4 phân mục đúng theo handoff Claude Design (ui_kits/mobile-app/data.js):
+   Vận hành · Khách hàng & Hợp đồng · Tài chính · Hệ thống.
+
+   `href` + (`module`,`action`) sao y navigationGroups của Sidebar.tsx để
+   gating khớp 100% RequirePermission ở App.tsx (thiếu quyền → ẩn ô, ẩn luôn
+   section rỗng). `icon` dùng đúng glyph Lucide Sidebar đang dùng. `accent` là
+   màu nền ô icon (theo data.js của design).
+   ============================================================= */
+import {
+  LayoutDashboard,
+  Map,
+  Home,
+  UserPlus,
+  User,
+  FileText,
+  HandCoins,
+  Receipt,
+  Gauge,
+  CreditCard,
+  BarChart3,
+  Settings,
+  UserCircle,
+} from 'lucide-react';
+import type { ActionKey } from '@/lib/permissions';
+
+/** Nguồn số badge — chỉ những count "rẻ" đã có sẵn ở Home (không over-fetch). */
+export type BadgeSource = 'totalRooms';
+
+export interface LauncherTile {
+  id: string;
+  title: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  /** Màu nền ô icon. */
+  accent: string;
+  /** Quyền cần để THẤY ô — khớp đúng (module, action) route guard kiểm. Bỏ trống = luôn hiện. */
+  module?: string;
+  action?: ActionKey;
+  /** Ô "nổi bật" (Thu tiền) — nhãn tô màu brand. */
+  hot?: boolean;
+  /** Nguồn số badge (tuỳ chọn). */
+  badge?: BadgeSource;
+}
+
+export interface LauncherSection {
+  label: string;
+  items: LauncherTile[];
+}
+
+export const LAUNCHER_SECTIONS: LauncherSection[] = [
+  {
+    label: 'Vận hành',
+    items: [
+      { id: 'dashboard', title: 'Bảng tin', href: '/', icon: LayoutDashboard, accent: '#1f7a52' },
+      { id: 'map', title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, accent: '#2563eb', module: 'buildings' },
+      { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
+      { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
+    ],
+  },
+  {
+    label: 'Khách hàng & Hợp đồng',
+    items: [
+      { id: 'customers', title: 'Khách hàng', href: '/customers', icon: User, accent: '#7c3aed', module: 'customers' },
+      { id: 'contracts', title: 'Hợp đồng', href: '/contracts', icon: FileText, accent: '#4f46e5', module: 'contracts' },
+    ],
+  },
+  {
+    label: 'Tài chính',
+    items: [
+      { id: 'thu-tien', title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, accent: '#1f9d57', module: 'thu_tien', hot: true },
+      { id: 'invoices', title: 'Hoá đơn', href: '/invoices', icon: Receipt, accent: '#d6453f', module: 'invoices' },
+      { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
+      { id: 'cashbook', title: 'Thu chi', href: '/income-expense', icon: CreditCard, accent: '#7c3aed', module: 'income_expenses' },
+      { id: 'reports', title: 'Báo cáo', href: '/reports/real-estate', icon: BarChart3, accent: '#475569', module: 'reports_real_estate' },
+    ],
+  },
+  {
+    label: 'Hệ thống',
+    items: [
+      { id: 'settings', title: 'Cài đặt', href: '/settings/general', icon: Settings, accent: '#6b7280', module: 'settings' },
+      { id: 'account', title: 'Tài khoản', href: '/account/profile', icon: UserCircle, accent: '#6b7280' },
+    ],
+  },
+];

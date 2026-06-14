@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Building2, User, Settings, LogOut, Menu } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
@@ -51,8 +52,8 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Logo */}
-        <div className="flex items-center gap-2 font-semibold">
+        {/* Logo — bấm để về trang chủ (trên mobile là Home launcher). */}
+        <Link to="/" className="flex items-center gap-2 font-semibold" aria-label="Về trang chủ">
           <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shadow-sm">
             <Building2 className="h-5 w-5 text-white" />
           </div>
@@ -60,7 +61,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             <span className="text-lg font-bold text-primary">CRM</span>
             <span className="text-[10px] text-muted-foreground -mt-1">Quản lý bất động sản</span>
           </div>
-        </div>
+        </Link>
 
         {/* Spacer */}
         <div className="flex-1" />

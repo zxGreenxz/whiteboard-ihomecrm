@@ -1,0 +1,122 @@
+/* =============================================================
+   Home Launcher — stylesheet ĐỘC LẬP, scope dưới .hl-stage/.hl-app.
+   Dựng lại từ handoff Claude Design (ui_kits/mobile-app: app.css +
+   styles.css tokens). Cùng "ngôn ngữ Thu tiền" (warm-neutral + emerald,
+   Be Vietnam Pro + Space Mono, khung điện thoại 432px). KHÔNG kế thừa
+   theme/màu/font của site; ngược lại cũng không rò ra ngoài (mọi rule
+   prefix .hl-stage/.hl-app). Lazy-load qua route → CSS + font chỉ nạp
+   khi mở launcher (mobile "/").
+   ============================================================= */
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+
+/* ===== Outer stage + tokens (nền "bàn", canh giữa khung điện thoại) ===== */
+.hl-stage {
+  /* Surfaces & ink (warm neutral) */
+  --bg: #f5f3ee; --surface: #ffffff; --surface-2: #faf8f4;
+  --line: #e7e3da; --line-2: #efece4;
+  --ink: #1b1813; --ink-2: #514c42; --ink-3: #8d8678; --ink-faint: #b6b0a3;
+  /* Brand accent — emerald */
+  --brand: #1f7a52; --brand-600: #1a6645; --brand-50: #e8f3ec; --brand-100: #d2e8da;
+  /* Status (unpaid → badge/nợ/chấm thông báo) */
+  --c-unpaid: #d6453f; --c-unpaid-bg: #fcebe9; --c-unpaid-line: #f2c8c4;
+  /* Type */
+  --font: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  --mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Shape */
+  --r-sm: 8px; --r: 13px; --r-lg: 20px; --r-xl: 26px;
+  /* Shadow */
+  --sh-1: 0 1px 2px rgba(27,24,19,.05), 0 1px 1px rgba(27,24,19,.04);
+  --sh-2: 0 4px 14px rgba(27,24,19,.08), 0 1px 3px rgba(27,24,19,.05);
+  --sh-3: 0 12px 38px rgba(27,24,19,.16), 0 4px 12px rgba(27,24,19,.10);
+  --app-w: 432px;
+
+  position: fixed; inset: 0; z-index: 0; overflow: auto;
+  display: flex; justify-content: center; align-items: stretch;
+  background:
+    radial-gradient(120% 60% at 50% -10%, #ece8df 0%, transparent 60%),
+    #e9e5dc;
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+.hl-stage * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+.hl-app a { text-decoration: none; color: inherit; }
+
+/* ===== Khung điện thoại (mobile: full-bleed; desktop ≥480px: khung bo góc) ===== */
+.hl-app {
+  width: 100%; max-width: var(--app-w);
+  background: var(--bg); color: var(--ink);
+  position: relative; height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+@media (min-width: 480px) {
+  .hl-stage { padding: 26px 0 40px; align-items: flex-start; }
+  .hl-app {
+    min-height: min(880px, calc(100vh - 66px));
+    height: min(880px, calc(100vh - 66px));
+    border-radius: 38px;
+    box-shadow: 0 30px 80px rgba(27,24,19,.22), 0 8px 24px rgba(27,24,19,.12);
+    border: 1px solid rgba(255,255,255,.6);
+  }
+}
+
+.hl-app .route { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+
+/* ============ HOME LAUNCHER ============ */
+.hl-app .home-hdr { background: var(--surface); border-bottom: 1px solid var(--line); padding: calc(15px + env(safe-area-inset-top)) 18px 15px; position: sticky; top: 0; z-index: 20; }
+.hl-app .hh-top { display: flex; align-items: center; gap: 12px; }
+.hl-app .hh-mark { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(150deg, var(--brand), var(--brand-600)); display: grid; place-items: center; flex-shrink: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,.25), var(--sh-1); color: #fff; }
+.hl-app .hh-mark svg { width: 22px; height: 22px; }
+.hl-app .hh-greet { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.hl-app .hh-hello { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.hl-app .hh-name { font-size: 16px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-app .hh-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.hl-app .hh-icbtn { position: relative; width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; transition: .14s; }
+.hl-app .hh-icbtn:active { background: var(--line-2); transform: scale(.94); }
+.hl-app .hh-icbtn svg { width: 19px; height: 19px; }
+.hl-app .hh-icbtn .nt { position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--c-unpaid); border: 2px solid var(--surface-2); }
+.hl-app .hh-avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; cursor: pointer; flex-shrink: 0; }
+
+/* search pill */
+.hl-app .hh-search { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 14px; margin-top: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; color: var(--ink-3); cursor: text; }
+.hl-app .hh-search svg { width: 17px; height: 17px; flex-shrink: 0; }
+.hl-app .hh-search span { font-size: 13.5px; font-weight: 500; }
+
+/* hero today strip */
+.hl-app .home-body { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 16px 16px 30px; }
+.hl-app .home-body::-webkit-scrollbar { display: none; }
+.hl-app .hero { display: flex; gap: 11px; margin-bottom: 22px; }
+.hl-app .hero-card { flex: 1; border-radius: var(--r-lg); padding: 14px 15px; border: 1px solid; position: relative; overflow: hidden; }
+.hl-app .hero-card.rev { background: linear-gradient(155deg, var(--brand), var(--brand-600)); border-color: var(--brand-600); color: #fff; }
+.hl-app .hero-card.debt { background: var(--surface); border-color: var(--line); box-shadow: var(--sh-1); }
+.hl-app .hero-l { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 700; letter-spacing: .2px; }
+.hl-app .hero-card.rev .hero-l { color: rgba(255,255,255,.85); }
+.hl-app .hero-card.debt .hero-l { color: var(--ink-3); }
+.hl-app .hero-l svg { width: 14px; height: 14px; }
+.hl-app .hero-v { font-family: var(--mono); font-weight: 700; font-size: 26px; letter-spacing: -.8px; margin-top: 9px; line-height: 1; }
+.hl-app .hero-card.rev .hero-v { color: #fff; }
+.hl-app .hero-card.debt .hero-v { color: var(--c-unpaid); }
+.hl-app .hero-s { font-size: 11.5px; font-weight: 600; margin-top: 6px; }
+.hl-app .hero-card.rev .hero-s { color: rgba(255,255,255,.8); }
+.hl-app .hero-card.debt .hero-s { color: var(--ink-3); }
+.hl-app .hero-v small { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+
+/* launcher sections */
+.hl-app .lsec { margin-bottom: 22px; }
+.hl-app .lsec-lbl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); margin: 0 2px 12px; }
+.hl-app .lgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px 6px; }
+.hl-app .tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 2px; border: 0; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hl-app .tile-ic { position: relative; width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; color: #fff; box-shadow: var(--sh-1); transition: transform .14s; }
+.hl-app .tile:active .tile-ic { transform: scale(.9); }
+.hl-app .tile-ic svg { width: 26px; height: 26px; }
+.hl-app .tile-ic::after { content: ""; position: absolute; inset: 0; border-radius: 18px; box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -2px 6px rgba(0,0,0,.12); }
+.hl-app .tile-badge { position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: var(--c-unpaid); color: #fff; font-family: var(--mono); font-size: 10.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--bg); }
+.hl-app .tile-badge.soft { background: var(--ink); }
+.hl-app .tile-lbl { font-size: 11.5px; font-weight: 600; color: var(--ink-2); text-align: center; line-height: 1.25; letter-spacing: -.1px; }
+.hl-app .tile.hot .tile-lbl { color: var(--brand-600); font-weight: 700; }
+
+/* Entrance là enhancement-only: base state hiển thị đầy đủ, nếu animation
+   bị throttle/tắt thì nội dung vẫn hiện. */
+@media (prefers-reduced-motion: no-preference) {
+  .hl-app .route-anim { animation: hlRouteIn .26s cubic-bezier(.22,.61,.36,1) both; }
+  @keyframes hlRouteIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+}

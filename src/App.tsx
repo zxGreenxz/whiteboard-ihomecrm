@@ -20,7 +20,7 @@ import Register from "./pages/auth/Register";
 import Login from "./pages/auth/Login";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
-import Dashboard from "./pages/Dashboard";
+import HomeRoute from "./pages/home/HomeRoute";
 import NotFound from "./pages/NotFound";
 
 // Route Guards
@@ -233,11 +233,12 @@ const App = () => (
               ======================================== */}
 
           {/* === THEO DÕI NHANH === */}
+          {/* "/" tách nhánh: mobile → Home launcher (web-app), desktop → Dashboard. */}
           <Route
             path="/"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <HomeRoute />
               </ProtectedRoute>
             }
           />
