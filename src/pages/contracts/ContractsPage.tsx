@@ -1,6 +1,10 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { FileText, Plus, Upload, Download, Filter, Search } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
+
+// Mobile: trang Hợp đồng dạng app full-screen (CSS + font scope riêng) — lazy
+// để chỉ nạp trên điện thoại, không kéo vào bundle desktop.
+const ContractsMobilePage = lazy(() => import('./ContractsMobilePage'));
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import EmptyState from '@/components/ui/EmptyState';
@@ -43,7 +47,7 @@ import type {
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
 
-export default function ContractsPage() {
+function ContractsDesktopPage() {
   // =============================================
   // State
   // =============================================
@@ -562,4 +566,34 @@ export default function ContractsPage() {
       </div>
     </MainLayout>
   );
+}
+
+// Mobile (≤767px): màn hình app full-screen riêng. Khởi tạo ĐỒNG BỘ từ
+// matchMedia (như HomeRoute) để không nháy bảng desktop / không mount query
+// nặng của desktop trên điện thoại. Wrapper giữ số hook cố định → an toàn
+// rules-of-hooks khi đổi kích thước.
+function usePhoneViewport() {
+  const [phone, setPhone] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const onChange = () => setPhone(mql.matches);
+    mql.addEventListener('change', onChange);
+    onChange();
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return phone;
+}
+
+export default function ContractsPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <ContractsMobilePage />
+      </Suspense>
+    );
+  }
+  return <ContractsDesktopPage />;
 }
