@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Filter, Search, Clock, X } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Clock } from 'lucide-react';
 import './contractsMobile.css';
 import { useContractsPaged, useContractStats } from '@/hooks/useContracts';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -83,7 +83,6 @@ export default function ContractsMobilePage() {
   const [buildingId, setBuildingId] = useState(''); // '' = tất cả toà
   const [roomName, setRoomName] = useState('all');
   const [stat, setStat] = useState<ContractStatFilter>('ALL');
-  const [showFilter, setShowFilter] = useState(false);
   const [pageSize, setPageSize] = useState(30);
   const [formOpen, setFormOpen] = useState(false);
 
@@ -92,9 +91,10 @@ export default function ContractsMobilePage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // lifecycle suy từ tab trạng thái — khớp handleStatFilterChange của desktop.
+  // Mặc định "Còn hạn" = LOẠI BỎ hợp đồng đã thanh lý (lifecycle ACTIVE). Chỉ
+  // tab "Đã thanh lý" mới xem nhóm terminated. (Bỏ chế độ "Tất cả" gồm cả thanh lý.)
   const lifecycle: ContractLifecycleFilter =
-    stat === 'TERMINATED' ? 'TERMINATED' : stat === 'ALL' ? 'ALL' : 'ACTIVE';
+    stat === 'TERMINATED' ? 'TERMINATED' : 'ACTIVE';
   const buildingIds = buildingId ? [buildingId] : undefined;
 
   const { data: paged, isLoading } = useContractsPaged(
@@ -142,23 +142,13 @@ export default function ContractsMobilePage() {
   const { data: perms } = useMyPermissions();
   const canCreate = hasBuildingScope && canUse(perms, 'contracts', 'create');
 
+  // Tab đầu "Còn hạn" (mặc định) = tổng trừ đã thanh lý.
   const statTabs: { id: ContractStatFilter; label: string; n: number }[] = [
-    { id: 'ALL', label: 'Tất cả', n: stats.total },
+    { id: 'ALL', label: 'Còn hạn', n: Math.max(0, stats.total - stats.terminated) },
     { id: 'EXPIRING', label: 'Sắp hết hạn', n: stats.expiring },
     { id: 'EXPIRED', label: 'Quá hạn', n: stats.expired },
     { id: 'TERMINATED', label: 'Đã thanh lý', n: stats.terminated },
   ];
-
-  const activeCount = (buildingId ? 1 : 0) + (roomName !== 'all' ? 1 : 0) + (debounced ? 1 : 0);
-
-  const chips: { label: string; clear: () => void }[] = [];
-  if (buildingId) {
-    const b = buildings.find((x) => x.id === buildingId);
-    chips.push({ label: 'Toà: ' + (b?.name ?? ''), clear: () => { setBuildingId(''); setRoomName('all'); } });
-  }
-  if (roomName !== 'all') chips.push({ label: 'Phòng ' + roomName, clear: () => setRoomName('all') });
-  if (debounced) chips.push({ label: '“' + debounced + '”', clear: () => setSearch('') });
-  const clearAll = () => { setBuildingId(''); setRoomName('all'); setSearch(''); };
 
   return (
     <div className="cm-stage">
@@ -172,81 +162,16 @@ export default function ContractsMobilePage() {
               <h1>Hợp đồng</h1>
               <p>{stats.total} hợp đồng thuê</p>
             </div>
-            <div className="mtop-act">
-              <button
-                className={'mtop-btn ghost fbtn' + (activeCount ? ' act' : '')}
-                onClick={() => setShowFilter((v) => !v)}
-                aria-label="Bộ lọc"
-              >
-                <Filter />
-                {activeCount ? <span className="fbadge">{activeCount}</span> : null}
-              </button>
-              {canCreate && (
+            {canCreate && (
+              <div className="mtop-act">
                 <button className="mtop-btn" onClick={() => setFormOpen(true)}>
                   <Plus />Tạo
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <div className="mbody">
-            {showFilter && (
-              <div className="fpanel">
-                <div className="fsearchbar">
-                  <Search />
-                  <input
-                    placeholder="Tìm mã HĐ, khách, SĐT, phòng…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <div className="fgroup">
-                  <span className="fglabel">Toà nhà</span>
-                  <div className="fchips">
-                    <button
-                      className={'fpchip' + (!buildingId ? ' on' : '')}
-                      onClick={() => { setBuildingId(''); setRoomName('all'); }}
-                    >
-                      Tất cả toà
-                    </button>
-                    {buildings.map((b) => (
-                      <button
-                        key={b.id}
-                        className={'fpchip' + (buildingId === b.id ? ' on' : '')}
-                        onClick={() => { setBuildingId(b.id); setRoomName('all'); }}
-                      >
-                        {b.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="fgroup">
-                  <span className="fglabel">Phòng</span>
-                  <div className="fchips">
-                    <button
-                      className={'fpchip' + (roomName === 'all' ? ' on' : '')}
-                      onClick={() => setRoomName('all')}
-                    >
-                      Tất cả phòng
-                    </button>
-                    {roomOpts.map((rn) => (
-                      <button
-                        key={rn}
-                        className={'fpchip' + (roomName === rn ? ' on' : '')}
-                        onClick={() => setRoomName(rn)}
-                      >
-                        {rn}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="fp-apply">
-                  <button className="fp-btn reset" onClick={clearAll}>Xoá lọc</button>
-                  <button className="fp-btn apply" onClick={() => setShowFilter(false)}>Xong</button>
-                </div>
-              </div>
-            )}
-
             <div className="lfilter">
               {statTabs.map((t) => (
                 <button
@@ -259,16 +184,41 @@ export default function ContractsMobilePage() {
               ))}
             </div>
 
-            {chips.length > 0 && (
-              <div className="achips">
-                {chips.map((c, i) => (
-                  <button key={i} className="achip" onClick={c.clear}>{c.label}<X /></button>
+            {/* Bộ lọc thường trực: dropdown Toà nhà · Phòng (1 dòng) + ô tìm kiếm
+                nhanh — chạy server như ô tìm kiếm desktop. */}
+            <div className="cm-filterbar">
+              <select
+                className="cm-select"
+                value={buildingId}
+                onChange={(e) => { setBuildingId(e.target.value); setRoomName('all'); }}
+                aria-label="Toà nhà"
+              >
+                <option value="">Tất cả toà</option>
+                {buildings.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
-                {chips.length > 1 && (
-                  <button className="achip clear" onClick={clearAll}>Xoá tất cả</button>
-                )}
-              </div>
-            )}
+              </select>
+              <select
+                className="cm-select"
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                aria-label="Phòng"
+              >
+                <option value="all">Tất cả phòng</option>
+                {roomOpts.map((rn) => (
+                  <option key={rn} value={rn}>{rn}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="cm-search">
+              <Search />
+              <input
+                placeholder="Tìm mã HĐ, tên khách, SĐT, tên phòng…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
 
             {isLoading ? (
               <div className="stub"><p>Đang tải hợp đồng…</p></div>
