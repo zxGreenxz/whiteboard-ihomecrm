@@ -242,7 +242,7 @@ export default function ContractsMobilePage() {
                       <span className="ctr-bar" style={{ background: sc.c }} />
                       <div className="ctr-body">
                         <div className="ctr-l1">
-                          <span className="lrow-code">{c.contract_number || c.id.slice(0, 8)}</span>
+                          <span className="ctr-loc">P.{c.room?.name ?? '—'} · {c.room?.building?.name ?? '—'}</span>
                           <div className="ctr-badges">
                             {renewed && (
                               <span className="pill" style={{ color: '#2563eb', background: '#e7eefc', borderColor: '#c9dafa' }}>
@@ -254,10 +254,7 @@ export default function ContractsMobilePage() {
                             </span>
                           </div>
                         </div>
-                        <div className="ctr-tenant">
-                          {getRepresentativeName(c)} ·{' '}
-                          <span className="ctr-room">P.{c.room?.name ?? '—'} · {c.room?.building?.name ?? '—'}</span>
-                        </div>
+                        <div className="ctr-tenant">{getRepresentativeName(c)}</div>
                         <div className="ctr-meta">
                           <span className="ctr-rent">{fmtNum(c.rent_price || 0)}<small>₫/th</small></span>
                           <span className="ctr-dates"><Clock />{fmtDate(c.start_date)} → {fmtDate(c.end_date)}</span>
