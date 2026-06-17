@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import {
@@ -104,6 +105,16 @@ interface FormItemRow {
   end_date: string;
 }
 
+/** Nhãn tiếng Việt cho contracts.status thô (dùng hiển thị trong dropdown HĐ). */
+const CONTRACT_STATUS_VI: Record<string, string> = {
+  ACTIVE: 'Đang hiệu lực',
+  EXTENDED: 'Đã gia hạn',
+  TRANSFERRED: 'Đã nhượng',
+  TERMINATED: 'Đã thanh lý',
+  EXPIRED: 'Quá hạn',
+  DRAFT: 'Nháp',
+};
+
 const IncomeExpenseForm = ({
   open,
   onOpenChange,
@@ -122,6 +133,9 @@ const IncomeExpenseForm = ({
   // Cascade dropdown state
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | undefined>(undefined);
   const [selectedRoomId, setSelectedRoomId] = useState<string | undefined>(undefined);
+  // Dropdown HĐ mặc định CHỈ hiện HĐ đang hiệu lực (ACTIVE); bật cờ này để hiện
+  // thêm HĐ đã thanh lý/nhượng/hết hạn khi cần gắn phiếu vào HĐ cũ.
+  const [showInactiveContracts, setShowInactiveContracts] = useState(false);
 
   // Item selector dialog
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
@@ -306,6 +320,7 @@ const IncomeExpenseForm = ({
   const handleBuildingChange = (buildingId: string) => {
     setSelectedBuildingId(buildingId);
     setSelectedRoomId(undefined);
+    setShowInactiveContracts(false);
     form.setValue('building_id', buildingId);
     form.setValue('room_id', null);
     form.setValue('tenant_id', null);
@@ -316,6 +331,7 @@ const IncomeExpenseForm = ({
   const handleRoomChange = (roomId: string) => {
     const value = roomId === '__none__' ? null : roomId;
     setSelectedRoomId(value ?? undefined);
+    setShowInactiveContracts(false);
     form.setValue('room_id', value);
     form.setValue('tenant_id', null);
     form.setValue('contract_id', null);
@@ -664,11 +680,38 @@ const IncomeExpenseForm = ({
                 <FormField
                   control={form.control}
                   name="contract_id"
-                  render={({ field }) => (
+                  render={({ field }) => {
+                    // Mặc định CHỈ hiện HĐ đang hiệu lực (ACTIVE). HĐ đã thanh lý/
+                    // nhượng/hết hạn chỉ hiện khi tick "Hiện HĐ đã thanh lý". Luôn
+                    // giữ HĐ đang chọn trong danh sách (vd phiếu cũ gắn HĐ thanh lý)
+                    // để Select hiển thị đúng giá trị.
+                    const inactiveContracts = roomContracts.filter(
+                      (c: any) => c.status !== 'ACTIVE',
+                    );
+                    const visibleContracts = roomContracts.filter(
+                      (c: any) =>
+                        c.status === 'ACTIVE' ||
+                        showInactiveContracts ||
+                        c.id === field.value,
+                    );
+                    return (
                     <FormItem>
-                      <FormLabel>
-                        Hợp đồng {hasDepositItem ? '(cọc)' : '(tuỳ chọn)'}
-                      </FormLabel>
+                      <div className="flex items-center justify-between gap-2">
+                        <FormLabel>
+                          Hợp đồng {hasDepositItem ? '(cọc)' : '(tuỳ chọn)'}
+                        </FormLabel>
+                        {inactiveContracts.length > 0 && (
+                          <label className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground cursor-pointer select-none">
+                            <Checkbox
+                              checked={showInactiveContracts}
+                              onCheckedChange={(v) =>
+                                setShowInactiveContracts(v === true)
+                              }
+                            />
+                            Hiện HĐ đã thanh lý
+                          </label>
+                        )}
+                      </div>
                       <Select
                         onValueChange={(v) =>
                           field.onChange(v === '__none__' ? null : v)
@@ -685,15 +728,24 @@ const IncomeExpenseForm = ({
                           <SelectItem value="__none__">
                             -- Không gắn HĐ --
                           </SelectItem>
-                          {roomContracts.map((c: any) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.contract_number}
-                              {c.status ? ` · ${c.status}` : ''}
-                              {c.tenant?.full_name
-                                ? ` · ${c.tenant.full_name}`
-                                : ''}
-                            </SelectItem>
-                          ))}
+                          {visibleContracts.map((c: any) => {
+                            const isActive = c.status === 'ACTIVE';
+                            const statusVi =
+                              CONTRACT_STATUS_VI[c.status] ?? c.status;
+                            return (
+                              <SelectItem
+                                key={c.id}
+                                value={c.id}
+                                className={isActive ? undefined : 'opacity-60'}
+                              >
+                                {c.contract_number}
+                                {c.tenant?.full_name
+                                  ? ` · ${c.tenant.full_name}`
+                                  : ''}
+                                {statusVi ? ` · ${statusVi}` : ''}
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                       {hasDepositItem && !field.value && (
@@ -704,7 +756,8 @@ const IncomeExpenseForm = ({
                       )}
                       <FormMessage />
                     </FormItem>
-                  )}
+                    );
+                  }}
                 />
               )}
 
