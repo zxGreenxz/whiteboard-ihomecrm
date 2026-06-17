@@ -33,6 +33,8 @@ export interface AccrualReportRow {
   income: number;
   expense: number;
   countsInBusinessResult: boolean;
+  /** Hoá đơn nguồn (phiếu thu sinh từ thanh toán HĐ) — gộp khoản thu cùng HĐ. */
+  invoiceId: string | null;
 }
 
 export interface AccrualReportResult {
@@ -69,7 +71,7 @@ const PARENT_PAGE = 1000;
 // loại phiếu không có item khớp & mảng items[] chỉ chứa item khớp kỳ. Embed luôn
 // tên+nhóm loại để khỏi query income_expense_types riêng.
 const ACCRUAL_SELECT = `
-  id, name, type, voucher_date, counts_in_business_result, building_id, room_id,
+  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items!inner (
@@ -200,6 +202,7 @@ export const useAccrualMonthReport = (
             income: isIncome ? portion : 0,
             expense: isIncome ? 0 : portion,
             countsInBusinessResult: voucher.counts_in_business_result ?? false,
+            invoiceId: voucher.invoice_id ?? null,
           });
         }
       }

@@ -200,6 +200,51 @@ export const useInvoice = (invoiceId?: string) => {
 };
 
 // =============================================
+// useInvoiceTotalsByIds — lấy GỌN tổng/đã trả/còn lại của nhiều hoá đơn theo id.
+// Dùng cho báo cáo gộp khoản thu theo hoá đơn (note thiếu/thừa so với HĐ) —
+// chỉ cần vài cột số, không kéo cả quan hệ như useInvoice.
+// =============================================
+
+export interface InvoiceTotalLite {
+  id: string;
+  total_amount: number;
+  paid_amount: number;
+  remaining_amount: number;
+}
+
+export const useInvoiceTotalsByIds = (ids: string[]) => {
+  // Dedupe + sort để queryKey ổn định (không refetch oan khi thứ tự đổi).
+  const sortedIds = Array.from(new Set(ids.filter(Boolean))).sort();
+  return useQuery({
+    queryKey: ['invoice-totals-by-ids', sortedIds],
+    enabled: sortedIds.length > 0,
+    queryFn: async (): Promise<Map<string, InvoiceTotalLite>> => {
+      const map = new Map<string, InvoiceTotalLite>();
+      // Chunk để tránh URL .in() quá dài (PostgREST 400 khi danh sách id lớn).
+      const CHUNK = 200;
+      for (let i = 0; i < sortedIds.length; i += CHUNK) {
+        const slice = sortedIds.slice(i, i + CHUNK);
+        const { data, error } = await (supabase as any)
+          .from('invoices')
+          .select('id, total_amount, paid_amount, remaining_amount')
+          .in('id', slice)
+          .is('deleted_at', null);
+        if (error) throw error;
+        for (const row of (data ?? []) as any[]) {
+          map.set(row.id, {
+            id: row.id,
+            total_amount: Number(row.total_amount) || 0,
+            paid_amount: Number(row.paid_amount) || 0,
+            remaining_amount: Number(row.remaining_amount) || 0,
+          });
+        }
+      }
+      return map;
+    },
+  });
+};
+
+// =============================================
 // useCreateInvoice - Create invoice + invoice_items, status = APPROVED (mặc định đã duyệt)
 // =============================================
 

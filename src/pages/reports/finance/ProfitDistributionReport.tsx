@@ -7,6 +7,8 @@ import {
   useIncomeExpenseStats,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
+import { useInvoice, useInvoiceTotalsByIds } from "@/hooks/useInvoices";
+import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -39,6 +41,11 @@ interface DisplayRow {
   typeName: string;
   amount: number;
   notKqkd: boolean;
+  // Khoản THU sinh từ thanh toán hoá đơn: gộp các khoản cùng 1 HĐ thành 1 dòng.
+  // invoiceId != null ⇒ dòng có thể nhấp đôi xem chi tiết + note thiếu/thừa.
+  invoiceId?: string | null;
+  // Số lần thu được gộp (>1 ⇒ hiện "(N lần)").
+  groupCount?: number;
 }
 
 // Các cột CÓ THỂ ẩn/hiện. "Mô tả" + cột số tiền luôn hiển thị (lõi).
@@ -185,7 +192,7 @@ export default function ProfitDistributionReport() {
 
   // Chuẩn hoá dữ liệu thành 2 danh sách thu/chi + sắp theo thứ tự phòng.
   const { incomeRows, expenseRows } = useMemo(() => {
-    const inc: DisplayRow[] = [];
+    const rawInc: DisplayRow[] = [];
     const exp: DisplayRow[] = [];
 
     if (accrualMode) {
@@ -199,7 +206,8 @@ export default function ProfitDistributionReport() {
           notKqkd: r.countsInBusinessResult === false,
           monthLabel,
         };
-        if (r.income > 0) inc.push({ ...base, key: r.itemId, amount: r.income });
+        if (r.income > 0)
+          rawInc.push({ ...base, key: r.itemId, amount: r.income, invoiceId: r.invoiceId ?? null });
         else if (r.expense > 0) exp.push({ ...base, key: r.itemId, amount: r.expense });
       }
     } else {
@@ -215,8 +223,36 @@ export default function ProfitDistributionReport() {
           notKqkd: r.counts_in_business_result === false,
           monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
         };
-        if (r.type === "INCOME") inc.push({ ...base, key: r.id, amount: Number(r.total_amount) });
+        if (r.type === "INCOME")
+          rawInc.push({ ...base, key: r.id, amount: Number(r.total_amount), invoiceId: r.invoice_id ?? null });
         else exp.push({ ...base, key: r.id, amount: Number(r.total_amount) });
+      }
+    }
+
+    // Gộp các khoản THU cùng 1 hoá đơn (invoice_id) thành 1 dòng tổng. Khoản
+    // không gắn hoá đơn giữ nguyên từng dòng.
+    const groups = new Map<string, DisplayRow[]>();
+    const inc: DisplayRow[] = [];
+    for (const r of rawInc) {
+      if (r.invoiceId) {
+        const g = groups.get(r.invoiceId);
+        if (g) g.push(r);
+        else groups.set(r.invoiceId, [r]);
+      } else {
+        inc.push(r);
+      }
+    }
+    for (const [invoiceId, list] of groups) {
+      if (list.length === 1) {
+        inc.push({ ...list[0], groupCount: 1 });
+      } else {
+        inc.push({
+          ...list[0],
+          key: `inv-${invoiceId}`,
+          amount: list.reduce((s, x) => s + x.amount, 0),
+          notKqkd: list.some((x) => x.notKqkd),
+          groupCount: list.length,
+        });
       }
     }
 
@@ -226,6 +262,34 @@ export default function ProfitDistributionReport() {
     exp.sort(sorter);
     return { incomeRows: inc, expenseRows: exp };
   }, [accrualMode, accrual, result, monthLabel]);
+
+  // Tổng/đã trả của các hoá đơn xuất hiện trong cột Thu → tính note thiếu/thừa.
+  const invoiceIds = useMemo(
+    () => Array.from(new Set(incomeRows.filter((r) => r.invoiceId).map((r) => r.invoiceId!))),
+    [incomeRows]
+  );
+  const { data: invoiceTotals } = useInvoiceTotalsByIds(invoiceIds);
+
+  // Chi tiết các lần thu của 1 hoá đơn (nhấp đôi vào dòng) — dùng lại dialog
+  // "Các lần thanh toán" (hiện số tiền + ngày giờ từng lần).
+  const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const { data: detailInvoice } = useInvoice(detailInvoiceId ?? undefined);
+  const openDetail = (invoiceId: string) => {
+    setDetailInvoiceId(invoiceId);
+    setDetailOpen(true);
+  };
+
+  // Note "thiếu/thừa so với hoá đơn": so tổng khoản thu (đã gộp) với total HĐ.
+  const noteFor = (row: DisplayRow): { text: string; cls: string } | null => {
+    if (!row.invoiceId) return null;
+    const inv = invoiceTotals?.get(row.invoiceId);
+    if (!inv || !inv.total_amount) return null;
+    const diff = Math.round(row.amount - inv.total_amount);
+    if (diff <= -1) return { text: `thiếu ${formatCurrency(-diff)}`, cls: "text-amber-600" };
+    if (diff >= 1) return { text: `thừa ${formatCurrency(diff)}`, cls: "text-rose-600" };
+    return null;
+  };
 
   // Mặc định ẩn/hiện cột: ẩn cột mà MỌI dòng (gộp cả 2 bên để 2 bảng đồng cột)
   // có cùng giá trị — tức cột đã bị bộ lọc ghim (tháng/toà/phòng/kỳ…).
@@ -301,26 +365,39 @@ export default function ProfitDistributionReport() {
                 </TableCell>
               </TableRow>
             ) : (
-              data.map((r) => (
-                <TableRow key={r.key}>
-                  {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
-                  <TableCell>
-                    {r.description}
-                    {r.notKqkd && (
-                      <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
+              data.map((r) => {
+                const clickable = !!r.invoiceId;
+                const note = noteFor(r);
+                return (
+                  <TableRow
+                    key={r.key}
+                    className={clickable ? "cursor-pointer select-none hover:bg-muted/50" : undefined}
+                    onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
+                    title={clickable ? "Nhấp đôi để xem các lần thu của hoá đơn này" : undefined}
+                  >
+                    {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
+                    <TableCell>
+                      {r.description}
+                      {r.groupCount && r.groupCount > 1 && (
+                        <span className="ml-1 text-xs text-muted-foreground">({r.groupCount} lần)</span>
+                      )}
+                      {r.notKqkd && (
+                        <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
+                      )}
+                    </TableCell>
+                    {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
+                    {visible("phong") && <TableCell>{r.roomName || "—"}</TableCell>}
+                    {visible("ky") && (
+                      <TableCell className="whitespace-nowrap">{r.periodLabel}</TableCell>
                     )}
-                  </TableCell>
-                  {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
-                  {visible("phong") && <TableCell>{r.roomName || "—"}</TableCell>}
-                  {visible("ky") && (
-                    <TableCell className="whitespace-nowrap">{r.periodLabel}</TableCell>
-                  )}
-                  {visible("phan_loai") && <TableCell>{r.typeName}</TableCell>}
-                  <TableCell className={`text-right whitespace-nowrap font-medium ${accentText}`}>
-                    {formatCurrency(r.amount)}
-                  </TableCell>
-                </TableRow>
-              ))
+                    {visible("phan_loai") && <TableCell>{r.typeName}</TableCell>}
+                    <TableCell className={`text-right whitespace-nowrap font-medium ${accentText}`}>
+                      {formatCurrency(r.amount)}
+                      {note && <div className={`text-xs font-normal ${note.cls}`}>{note.text}</div>}
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -459,6 +536,16 @@ export default function ProfitDistributionReport() {
           )}
         </div>
       </div>
+
+      {/* Nhấp đôi dòng thu theo HĐ → chi tiết các lần thu (số tiền + ngày giờ) */}
+      <PaymentsSummaryDialog
+        open={detailOpen}
+        onOpenChange={(v) => {
+          setDetailOpen(v);
+          if (!v) setDetailInvoiceId(null);
+        }}
+        invoice={detailInvoice ?? null}
+      />
     </MainLayout>
   );
 }
