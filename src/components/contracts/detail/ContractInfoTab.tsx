@@ -1,121 +1,167 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { FileText, User, Settings, Zap, ExternalLink, Car } from 'lucide-react';
-import { format } from 'date-fns';
+import { FileText, User, DoorOpen, Coins, Package, Clock, Phone, Mail, CreditCard, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { formatCurrency } from '@/lib/utils';
-import type { ContractWithRelations } from '@/types/contract';
-import type { ContractServiceItem, ContractVehicle } from './types';
+import {
+  getContractDisplayStatus,
+  CONTRACT_STATUS_CONFIG,
+  type ContractWithRelations,
+  type ContractDisplayStatus,
+} from '@/types/contract';
+import type { ContractServiceItem, ContractDepositVoucher } from './types';
 
-const CYCLE: Record<string, string> = {
-  MONTHLY: 'Hàng tháng', QUARTERLY: 'Hàng quý', SEMI_ANNUAL: '6 tháng', ANNUAL: 'Hàng năm',
+const fmtNum = (n: number) => new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
+const fmtDate = (d?: string | null) => (d ? format(new Date(d), 'dd/MM/yyyy', { locale: vi }) : '—');
+
+const STATUS_HEX: Record<ContractDisplayStatus, { c: string; bg: string; line: string }> = {
+  ACTIVE: { c: '#1f9d57', bg: '#e6f5ec', line: '#bfe6cd' },
+  EXPIRING: { c: '#d97706', bg: '#fbf1da', line: '#f0dca8' },
+  EXPIRED: { c: '#d6453f', bg: '#fcebe9', line: '#f2c8c4' },
+  MOVING_OUT: { c: '#d97706', bg: '#fbf1da', line: '#f0dca8' },
+  TERMINATED: { c: '#8a8377', bg: '#efece6', line: '#ddd8cd' },
+  TRANSFERRED: { c: '#8a8377', bg: '#efece6', line: '#ddd8cd' },
+  DRAFT: { c: '#8d8678', bg: '#efece6', line: '#ddd8cd' },
 };
+const CYCLE: Record<string, string> = { MONTHLY: 'Hàng tháng', QUARTERLY: 'Hàng quý', SEMI_ANNUAL: '6 tháng', ANNUAL: 'Hàng năm' };
+const SVC_META: Record<string, string> = { METER_READING: 'Theo chỉ số đồng hồ', FIXED: 'Cố định hàng tháng', PER_PERSON: 'Theo số người', PER_ROOM: 'Theo căn hộ' };
 
-function Row({ label, value, valueClass }: { label: string; value: React.ReactNode; valueClass?: string }) {
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-sm font-medium ${valueClass ?? ''}`}>{value}</div>
-    </div>
-  );
-}
+const KV = ({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) => (
+  <div className="cd-kv"><span className="cd-kv-l">{label}</span><span className="cd-kv-v" style={accent ? { color: accent } : undefined}>{value}</span></div>
+);
 
-/** Tab "Thông tin": Hợp đồng + Khách hàng + Dịch vụ áp dụng (KHÔNG có "Tóm tắt hoá đơn"). */
 export function ContractInfoTab({
-  contract, services, customers, vehiclesByCustomer,
+  contract, services, customers, depositVouchers, onOpenCustomer,
 }: {
   contract: ContractWithRelations;
   services: ContractServiceItem[];
   customers: NonNullable<ContractWithRelations['contract_customers']>;
-  vehiclesByCustomer: Map<string, ContractVehicle[]>;
+  depositVouchers: ContractDepositVoucher[];
+  onOpenCustomer: (customerId: string) => void;
 }) {
-  const fmt = (d?: string | null) => (d ? format(new Date(d), 'dd/MM/yyyy', { locale: vi }) : 'N/A');
-  const depLeft = contract.deposit_remaining || 0;
+  const ds = getContractDisplayStatus(contract);
+  const sc = STATUS_HEX[ds] ?? STATUS_HEX.ACTIVE;
+  const label = CONTRACT_STATUS_CONFIG[ds]?.label ?? '';
+
+  // Tiến độ + thời gian (ngày)
+  const start = new Date(contract.start_date);
+  const end = new Date(contract.end_date);
+  const total = Math.max(1, differenceInDays(end, start));
+  const elapsed = Math.min(total, Math.max(0, differenceInDays(new Date(), start)));
+  const remaining = Math.max(0, total - elapsed);
+  const progress = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+
+  // Tiền cọc
+  const depTotal = contract.total_deposit || 0;
+  const depPaid = contract.deposit_paid || 0;
+  const depLeft = contract.deposit_remaining ?? depTotal - depPaid;
+
+  // Khách đại diện
+  const rep = customers.find((cc) => cc.is_representative) ?? customers[0];
+  const repName = rep?.customer?.full_name || '—';
+  const initials = repName.trim().split(/\s+/).slice(-1)[0]?.[0]?.toUpperCase() || '?';
+
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />Hợp đồng</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-3">
-          <Row label="Ngày ký" value={fmt(contract.signed_date)} />
-          <Row label="Chu kỳ" value={CYCLE[contract.payment_cycle] ?? contract.payment_cycle} />
-          <Row label="Bắt đầu" value={fmt(contract.start_date)} />
-          <Row label="Kết thúc" value={fmt(contract.end_date)} />
-          <Row label="Giá thuê" value={formatCurrency(contract.rent_price || 0)} valueClass="text-green-600" />
-          <Row label="Tiền cọc" value={formatCurrency(contract.total_deposit || 0)} />
-          <Row label="Đã thu cọc" value={formatCurrency(contract.deposit_paid || 0)} valueClass="text-green-600" />
-          <Row label="Còn lại cọc" value={formatCurrency(depLeft)} valueClass={depLeft > 0 ? 'text-orange-600' : ''} />
-          {contract.notes && (
-            <div className="col-span-2">
-              <div className="text-xs text-muted-foreground mb-1">Ghi chú</div>
-              <div className="text-sm bg-muted/50 rounded p-2 whitespace-pre-wrap">{contract.notes}</div>
-            </div>
-          )}
-          {contract.contract_file_url && (
-            <a className="col-span-2 inline-flex items-center gap-1.5 text-sm text-blue-600" href={contract.contract_file_url} target="_blank" rel="noopener noreferrer">
-              <FileText className="h-4 w-4" />Xem file hợp đồng<ExternalLink className="h-3 w-3" />
-            </a>
-          )}
-        </CardContent>
-      </Card>
+    <>
+      <div className="cd-card">
+        <div className="cd-card-h">
+          <span className="cd-card-t"><FileText size={16} />Thông tin hợp đồng</span>
+          <span className="pill" style={{ color: sc.c, background: sc.bg, borderColor: sc.line }}><span className="bd" style={{ background: sc.c }} />{label}</span>
+        </div>
+        <div className="cd-grid">
+          <KV label="Số hợp đồng" value={contract.contract_number || contract.id.slice(0, 8)} />
+          <KV label="Ngày ký" value={fmtDate(contract.signed_date)} />
+          <KV label="Ngày bắt đầu" value={fmtDate(contract.start_date)} />
+          <KV label="Ngày kết thúc" value={fmtDate(contract.end_date)} />
+          <KV label="Giá thuê" value={`${fmtNum(contract.rent_price || 0)} ₫`} accent="var(--brand-600)" />
+          <KV label="Chu kỳ thanh toán" value={CYCLE[contract.payment_cycle] ?? contract.payment_cycle} />
+        </div>
+        <div className="cd-prog">
+          <div className="cd-prog-h"><span>Tiến độ hợp đồng</span><span className="cd-prog-pct">{progress}%</span></div>
+          <div className="cd-prog-track"><div className="cd-prog-fill" style={{ width: progress + '%' }} /></div>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4" />Khách hàng</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {customers.length ? customers.map((cc, i) => {
-            const vs = vehiclesByCustomer.get(cc.customer_id) ?? [];
-            return (
-              <div key={cc.id} className={i > 0 ? 'pt-3 border-t' : ''}>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{cc.customer?.full_name || 'N/A'}</span>
-                  {cc.is_representative && <Badge className="text-[10px] bg-green-500 hover:bg-green-600">Đại diện</Badge>}
-                </div>
-                <div className="text-[13px] text-muted-foreground">{cc.customer?.phone || 'N/A'}</div>
-                {vs.map((v) => (
-                  <div key={v.id} className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Car className="h-3 w-3 shrink-0" />
-                    <span className="truncate">
-                      {v.license_plate || 'Chưa có biển số'}{v.vehicle_name ? ` · ${v.vehicle_name}` : ''}
-                      {v.parking_fee ? ` · ${formatCurrency(v.parking_fee)}/th` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          }) : <div className="text-sm text-muted-foreground text-center py-2">Chưa có khách hàng.</div>}
-        </CardContent>
-      </Card>
+      <div className="cd-card">
+        <div className="cd-card-h"><span className="cd-card-t"><User size={16} />Thông tin khách hàng</span></div>
+        <div className="cd-cust">
+          <span className="cd-cust-av">{initials}</span>
+          <div className="cd-cust-body">
+            <div className="cd-cust-name">{repName}<span className="cd-rep">Đại diện</span></div>
+            <div className="cd-cust-sub">Khách thuê chính</div>
+          </div>
+        </div>
+        <div className="cd-contact">
+          <div className="cd-ct"><span className="cd-ct-l"><Phone size={13} />Số điện thoại</span><span className="cd-ct-v">{rep?.customer?.phone || '—'}</span></div>
+          <div className="cd-ct"><span className="cd-ct-l"><Mail size={13} />Email</span><span className="cd-ct-v">{rep?.customer?.email || '—'}</span></div>
+          <div className="cd-ct"><span className="cd-ct-l"><CreditCard size={13} />CCCD/CMND</span><span className="cd-ct-v">{rep?.customer?.id_number || '—'}</span></div>
+        </div>
+        {rep?.customer_id && (
+          <button className="cd-link" onClick={() => onOpenCustomer(rep.customer_id)}>Xem chi tiết khách hàng<ChevronRight size={15} /></button>
+        )}
+      </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><Settings className="h-4 w-4" />Dịch vụ áp dụng</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2.5">
-          {services.length ? services.map((s) => {
-            const meter = s.service.type === 'METER_READING';
-            return (
-              <div key={s.id} className="flex items-center justify-between gap-3 text-sm">
-                <div className="min-w-0 flex items-center gap-2">
-                  {meter ? <Zap className="h-4 w-4 text-yellow-500 shrink-0" /> : <Settings className="h-4 w-4 text-muted-foreground shrink-0" />}
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{s.service.name}</div>
-                    {meter && s.initial_reading != null && (
-                      <div className="text-xs text-muted-foreground">Chỉ số đầu: {s.initial_reading} {s.service.unit}</div>
-                    )}
-                  </div>
+      <div className="cd-card">
+        <div className="cd-card-h"><span className="cd-card-t"><DoorOpen size={16} />Thông tin căn hộ</span></div>
+        <div className="cd-grid">
+          <KV label="Vị trí" value={`P.${contract.room?.name ?? '—'}`} />
+          <KV label="Toà nhà" value={contract.room?.building?.name ?? '—'} />
+        </div>
+      </div>
+
+      <div className="cd-card">
+        <div className="cd-card-h"><span className="cd-card-t"><Coins size={16} />Tiền cọc</span></div>
+        <div className="cd-money">
+          <div className="cd-money-row"><span>Tổng tiền cọc</span><b>{fmtNum(depTotal)} ₫</b></div>
+          <div className="cd-money-row"><span>Đã thu</span><b className="pos">{fmtNum(depPaid)} ₫</b></div>
+          <div className="cd-money-row total"><span>Còn lại</span><b style={{ color: depLeft > 0 ? '#d6453f' : 'var(--ink)' }}>{fmtNum(depLeft)} ₫</b></div>
+        </div>
+        <div className={'cd-banner ' + (depLeft > 0 ? 'warn' : 'ok')}>
+          {depLeft > 0 ? <AlertCircle size={15} /> : <CheckCircle size={15} />}
+          {depLeft > 0 ? `Còn thiếu ${fmtNum(depLeft)}₫ tiền cọc` : 'Đã thu đủ tiền cọc'}
+        </div>
+        {depositVouchers.length > 0 && (
+          <>
+            <div className="cd-rcpt-h">Phiếu thu cọc đã ghi nhận</div>
+            {depositVouchers.map((r) => (
+              <div className="cd-rcpt" key={r.id}>
+                <div className="cd-rcpt-l">
+                  <span className="lrow-code">{r.code || r.id.slice(0, 8)}</span>
+                  <span className="cd-rcpt-sub">{fmtDate(r.voucher_date)}{r.account?.name ? ` · ${r.account.name}` : ''}</span>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="font-medium">{formatCurrency(s.unit_price)}</div>
-                  <div className="text-xs text-muted-foreground">/{s.service.unit || '—'}</div>
-                </div>
+                <span className="cd-rcpt-amt">{fmtNum(r.total_amount)} ₫</span>
               </div>
-            );
-          }) : <div className="text-sm text-muted-foreground text-center py-2">Không có dịch vụ.</div>}
-        </CardContent>
-      </Card>
-    </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      <div className="cd-card">
+        <div className="cd-card-h"><span className="cd-card-t"><Package size={16} />Dịch vụ áp dụng</span><span className="cd-count">{services.length}</span></div>
+        {services.length ? (
+          <div className="cd-svc-list">
+            {services.map((sv) => {
+              const meter = sv.service.type === 'METER_READING';
+              let meta = SVC_META[sv.service.type] ?? sv.service.type;
+              if (meter && sv.initial_reading != null) meta += ` · đầu kỳ ${sv.initial_reading}`;
+              return (
+                <div className="cd-svc" key={sv.id}>
+                  <div className="cd-svc-body"><div className="cd-svc-name">{sv.service.name}</div><div className="cd-svc-meta">{meta}</div></div>
+                  <div className="cd-svc-price">{fmtNum(sv.unit_price)}<small>đ/{sv.service.unit || 'đv'}</small></div>
+                </div>
+              );
+            })}
+          </div>
+        ) : <div className="cd-svc-meta">Không có dịch vụ.</div>}
+      </div>
+
+      <div className="cd-card" style={{ marginBottom: 4 }}>
+        <div className="cd-card-h"><span className="cd-card-t"><Clock size={16} />Thời gian</span></div>
+        <div className="cd-time">
+          <div className="cd-time-it"><span className="cd-time-n">{total}</span><span className="cd-time-l">Tổng thời hạn</span></div>
+          <div className="cd-time-it"><span className="cd-time-n" style={{ color: 'var(--brand-600)' }}>{elapsed}</span><span className="cd-time-l">Đã thuê</span></div>
+          <div className="cd-time-it"><span className="cd-time-n">{remaining}</span><span className="cd-time-l">Còn lại</span></div>
+        </div>
+        <div className="cd-time-unit">đơn vị: ngày</div>
+      </div>
+    </>
   );
 }

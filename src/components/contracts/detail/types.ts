@@ -33,3 +33,13 @@ export interface ContractVehicle {
   color: string | null;
   parking_fee: number | null;
 }
+
+// Phiếu thu cọc (IE INCOME có item is_deposit) — minh bạch nguồn deposit_paid.
+export interface ContractDepositVoucher {
+  id: string;
+  code: string | null;
+  total_amount: number;
+  voucher_date: string;
+  approval_status?: string | null;
+  account?: { name?: string | null } | null;
+}

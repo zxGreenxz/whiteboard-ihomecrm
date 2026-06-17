@@ -53,7 +53,7 @@ import { isContractInEffect } from '@/types/contract';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -71,9 +71,14 @@ import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialo
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { ContractDetailMobile } from '@/components/contracts/detail/ContractDetailMobile';
 // Types dùng chung với nhánh mobile (trước đây khai cục bộ ở đây).
 import type { ContractServiceItem as ContractService, ContractHistoryItem } from '@/components/contracts/detail/types';
+
+// Trang chi tiết HĐ mobile (warm-neutral, CSS + font scope riêng) — lazy để chỉ
+// nạp trên điện thoại, không kéo font/CSS vào bản desktop.
+const ContractDetailMobile = lazy(() =>
+  import('@/components/contracts/detail/ContractDetailMobile').then((m) => ({ default: m.ContractDetailMobile })),
+);
 
 const ContractDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -437,33 +442,64 @@ const ContractDetailPage = () => {
   const totalPaid = invoices?.reduce((sum, inv) => sum + (inv.paid_amount || 0), 0) || 0;
   const outstandingAmount = totalInvoiced - totalPaid;
 
+  // Dialog hành động — render chung cho cả mobile & desktop (state ở trên).
+  const dialogs = (
+    <>
+      <RenewDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen} contract={contract} />
+      <TransferContractDialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen} contract={contract} />
+      <TerminateDialog open={terminateDialogOpen} onOpenChange={setTerminateDialogOpen} contract={contract} />
+      <RegisterMoveOutDialog open={moveOutDialogOpen} onOpenChange={setMoveOutDialogOpen} contract={contract} />
+      <ContractQRDialog
+        open={qrDialogOpen}
+        onOpenChange={setQrDialogOpen}
+        publicCode={contract.public_code}
+        contractLabel={contract.contract_number || contract.id.slice(0, 8)}
+        buildingName={contract.room?.building?.name}
+        roomName={contract.room?.name}
+      />
+      <ContractFormDialog open={editDialogOpen} onOpenChange={setEditDialogOpen} contract={contract} />
+      <PrintContractDialog open={printDialogOpen} onOpenChange={setPrintDialogOpen} contract={contract} />
+      <TransferRoomDialog open={transferRoomDialogOpen} onOpenChange={setTransferRoomDialogOpen} contract={contract} />
+      <DeleteContractDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen} contract={contract} />
+    </>
+  );
+
+  // Mobile: trang chi tiết full-screen (scope CSS riêng, NGOÀI MainLayout) — giống design.
+  if (isMobile) {
+    return (
+      <>
+        <Suspense fallback={null}>
+          <ContractDetailMobile
+            contract={contract}
+            services={contractServices}
+            invoices={invoices ?? []}
+            history={contractHistory}
+            depositVouchers={depositVouchers}
+            perms={perms}
+            customers={contractCustomers}
+            onBack={() => navigate('/contracts')}
+            onEdit={() => setEditDialogOpen(true)}
+            onPrint={() => setPrintDialogOpen(true)}
+            onShowQR={() => setQrDialogOpen(true)}
+            onRenew={() => setExtendDialogOpen(true)}
+            onTransferRoom={() => setTransferRoomDialogOpen(true)}
+            onTransferContract={() => setTransferDialogOpen(true)}
+            onMoveOut={() => setMoveOutDialogOpen(true)}
+            onTerminate={() => setTerminateDialogOpen(true)}
+            onDelete={() => setDeleteDialogOpen(true)}
+          />
+        </Suspense>
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <MainLayout
-      title={isMobile ? undefined : `Hợp đồng ${contract.contract_number || contract.id.slice(0, 8)}`}
-      subtitle={isMobile ? undefined : 'Chi tiết hợp đồng'}
+      title={`Hợp đồng ${contract.contract_number || contract.id.slice(0, 8)}`}
+      subtitle="Chi tiết hợp đồng"
       icon={FileText}
     >
-      {isMobile ? (
-        <ContractDetailMobile
-          contract={contract}
-          services={contractServices}
-          invoices={invoices ?? []}
-          history={contractHistory}
-          perms={perms}
-          customers={contractCustomers}
-          vehiclesByCustomer={vehiclesByCustomer}
-          onEdit={() => setEditDialogOpen(true)}
-          onPrint={() => setPrintDialogOpen(true)}
-          onShowQR={() => setQrDialogOpen(true)}
-          onRenew={() => setExtendDialogOpen(true)}
-          onTransferRoom={() => setTransferRoomDialogOpen(true)}
-          onTransferContract={() => setTransferDialogOpen(true)}
-          onMoveOut={() => setMoveOutDialogOpen(true)}
-          onTerminate={() => setTerminateDialogOpen(true)}
-          onDelete={() => setDeleteDialogOpen(true)}
-        />
-      ) : (
-      <>
       {/* Header Actions */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <Button
@@ -1378,69 +1414,7 @@ const ContractDetailPage = () => {
           </Card>
         </TabsContent>
       </Tabs>
-      </>
-      )}
-
-      {/* Dialogs — Gia hạn/Thanh lý dùng chung RenewDialog/TerminateDialog
-          (RPC renew_contract / terminate_contract_*) với trang danh sách.
-          KHÔNG dùng ExtendContractDialog/TerminateContractDialog cũ: chúng chỉ
-          tạo bản ghi DRAFT/PENDING không có UI duyệt → no-op âm thầm. */}
-      <RenewDialog
-        open={extendDialogOpen}
-        onOpenChange={setExtendDialogOpen}
-        contract={contract}
-      />
-
-      <TransferContractDialog
-        open={transferDialogOpen}
-        onOpenChange={setTransferDialogOpen}
-        contract={contract}
-      />
-
-      <TerminateDialog
-        open={terminateDialogOpen}
-        onOpenChange={setTerminateDialogOpen}
-        contract={contract}
-      />
-
-      <RegisterMoveOutDialog
-        open={moveOutDialogOpen}
-        onOpenChange={setMoveOutDialogOpen}
-        contract={contract}
-      />
-
-      <ContractQRDialog
-        open={qrDialogOpen}
-        onOpenChange={setQrDialogOpen}
-        publicCode={contract.public_code}
-        contractLabel={contract.contract_number || contract.id.slice(0, 8)}
-        buildingName={contract.room?.building?.name}
-        roomName={contract.room?.name}
-      />
-
-      <ContractFormDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        contract={contract}
-      />
-
-      <PrintContractDialog
-        open={printDialogOpen}
-        onOpenChange={setPrintDialogOpen}
-        contract={contract}
-      />
-
-      <TransferRoomDialog
-        open={transferRoomDialogOpen}
-        onOpenChange={setTransferRoomDialogOpen}
-        contract={contract}
-      />
-
-      <DeleteContractDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        contract={contract}
-      />
+      {dialogs}
     </MainLayout>
   );
 };

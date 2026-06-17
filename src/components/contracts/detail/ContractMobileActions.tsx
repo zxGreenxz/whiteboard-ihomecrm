@@ -1,14 +1,13 @@
 import { useRef } from 'react';
-import { Button } from '@/components/ui/button';
 import {
   Pencil,
   Printer,
   QrCode,
   RefreshCw,
   ArrowRightLeft,
-  MoveRight,
-  Calendar,
-  XCircle,
+  Users,
+  LogOut,
+  Ban,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
@@ -28,8 +27,8 @@ interface ActionHandlers {
   onDelete: () => void;
 }
 
-/** Hàng nút hành động cuộn ngang (kéo-để-cuộn, không vô tình bấm nút). Ẩn/hiện
- *  từng nút theo quyền + trạng thái — Y HỆT desktop. */
+/** Hàng nút hành động (icon vuông + nhãn) cuộn ngang kéo-để-cuộn — theo design
+ *  `.cd-acts`/`.cd-act`. Ẩn/hiện từng nút theo quyền + trạng thái như desktop. */
 export function ContractMobileActions({
   contract,
   perms,
@@ -40,38 +39,29 @@ export function ContractMobileActions({
   const status = contract.status;
   const isActive = isContractInEffect(status);
 
-  const items: { show: boolean; label: string; icon: LucideIcon; onClick: () => void; destructive?: boolean }[] = [
+  const items: { show: boolean; label: string; icon: LucideIcon; onClick: () => void; danger?: boolean }[] = [
     { show: status !== 'TERMINATED' && canUse(perms, 'contracts', 'edit'), label: 'Cập nhật', icon: Pencil, onClick: h.onEdit },
     { show: canUse(perms, 'contracts', 'print'), label: 'In HĐ', icon: Printer, onClick: h.onPrint },
-    { show: status !== 'TERMINATED' && status !== 'DRAFT', label: 'QR', icon: QrCode, onClick: h.onShowQR },
+    { show: status !== 'TERMINATED' && status !== 'DRAFT', label: 'Mã QR', icon: QrCode, onClick: h.onShowQR },
     { show: isActive && canUse(perms, 'contracts', 'renew'), label: 'Gia hạn', icon: RefreshCw, onClick: h.onRenew },
     { show: isActive && canUse(perms, 'contracts', 'transfer'), label: 'Chuyển phòng', icon: ArrowRightLeft, onClick: h.onTransferRoom },
-    { show: isActive && canUse(perms, 'contracts', 'transfer'), label: 'Nhượng HĐ', icon: MoveRight, onClick: h.onTransferContract },
-    { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Đăng ký trả phòng', icon: Calendar, onClick: h.onMoveOut },
-    { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Thanh lý', icon: XCircle, onClick: h.onTerminate, destructive: true },
-    { show: status === 'DRAFT' && canUse(perms, 'contracts', 'delete'), label: 'Xoá', icon: Trash2, onClick: h.onDelete, destructive: true },
+    { show: isActive && canUse(perms, 'contracts', 'transfer'), label: 'Nhượng HĐ', icon: Users, onClick: h.onTransferContract },
+    { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Chuyển đi', icon: LogOut, onClick: h.onMoveOut },
+    { show: isActive && canUse(perms, 'contracts', 'terminate'), label: 'Thanh lý', icon: Ban, onClick: h.onTerminate, danger: true },
+    { show: status === 'DRAFT' && canUse(perms, 'contracts', 'delete'), label: 'Xoá', icon: Trash2, onClick: h.onDelete, danger: true },
   ];
   const visible = items.filter((i) => i.show);
   if (!visible.length) return null;
 
   return (
-    <div
-      ref={ref}
-      className="flex gap-2 overflow-x-auto pb-2 mb-4 cursor-grab select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
+    <div className="cd-acts" ref={ref}>
       {visible.map((it) => {
         const Icon = it.icon;
         return (
-          <Button
-            key={it.label}
-            variant={it.destructive ? 'destructive' : 'outline'}
-            size="sm"
-            className="shrink-0 h-9"
-            onClick={it.onClick}
-          >
-            <Icon className="h-4 w-4 mr-1.5" />
-            {it.label}
-          </Button>
+          <button className={'cd-act' + (it.danger ? ' danger' : '')} key={it.label} onClick={it.onClick}>
+            <span className="cd-act-ic"><Icon size={18} /></span>
+            <span className="cd-act-l">{it.label}</span>
+          </button>
         );
       })}
     </div>

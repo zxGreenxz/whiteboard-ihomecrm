@@ -1,41 +1,40 @@
-import { Card, CardContent } from '@/components/ui/card';
+import { Wallet, Coins } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { formatCurrency } from '@/lib/utils';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
-/** Tab "Thanh toán" — gom payments từ các hoá đơn, hiển thị thẻ dọc. Mã phương
- *  thức giữ NGUYÊN TM/TK/TT (không dịch, không icon) theo quy ước dự án. */
+const fmtNum = (n: number) => new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
+
+/** Tab "Thanh toán" — gom payments từ các hoá đơn (không truy vấn lại); danh
+ *  sách .cd-pay. Mã phương thức giữ NGUYÊN TM/TK/TT theo quy ước dự án. */
 export function ContractPaymentsTab({ invoices }: { invoices: InvoiceWithRelations[] }) {
   const payments = invoices
     .flatMap((inv) =>
       (inv.payments || []).map((p) => ({
         ...p,
-        invoiceLabel: (inv as { title?: string | null }).title || inv.invoice_number || inv.id.slice(0, 8),
+        invLabel: (inv as { title?: string | null }).title || inv.invoice_number || inv.id.slice(0, 8),
       })),
     )
     .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime());
 
-  if (!payments.length) {
-    return <div className="text-center py-10 text-sm text-muted-foreground">Chưa có thanh toán nào</div>;
-  }
+  if (!payments.length) return <div className="stub">Chưa có thanh toán nào.</div>;
   return (
-    <div className="space-y-2.5">
-      {payments.map((p) => (
-        <Card key={p.id}>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-green-600 text-sm">{formatCurrency(p.amount)}</span>
-              <span className="text-xs font-semibold rounded bg-muted px-1.5 py-0.5">{p.payment_method}</span>
+    <div className="cd-card" style={{ marginBottom: 4 }}>
+      <div className="cd-card-h"><span className="cd-card-t"><Wallet size={16} />Lịch sử thanh toán</span><span className="cd-count">{payments.length}</span></div>
+      <div className="cd-pay-list">
+        {payments.map((p) => (
+          <div className="cd-pay" key={p.id}>
+            <span className="cd-pay-ic"><Coins size={16} /></span>
+            <div className="cd-pay-body">
+              <div className="cd-pay-note">{p.invLabel}</div>
+              <div className="cd-pay-sub">
+                {p.receipt_number ? `${p.receipt_number} · ` : ''}{p.payment_method} · {format(new Date(p.payment_date), 'dd/MM/yyyy', { locale: vi })}
+              </div>
             </div>
-            <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span className="truncate">{p.invoiceLabel}</span>
-              <span className="shrink-0">{format(new Date(p.payment_date), 'dd/MM/yyyy HH:mm', { locale: vi })}</span>
-            </div>
-            {p.notes && <div className="mt-1 text-xs text-muted-foreground">{p.notes}</div>}
-          </CardContent>
-        </Card>
-      ))}
+            <span className="cd-pay-amt">+{fmtNum(p.amount)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

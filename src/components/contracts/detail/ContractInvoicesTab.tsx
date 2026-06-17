@@ -1,59 +1,44 @@
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { formatCurrency } from '@/lib/utils';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
-const INV_STATUS: Record<string, { label: string; cls: string }> = {
-  DRAFT: { label: 'Nháp', cls: 'bg-gray-100 text-gray-700' },
-  APPROVED: { label: 'Đã duyệt', cls: 'bg-blue-100 text-blue-700' },
-  PARTIAL_PAID: { label: 'Trả 1 phần', cls: 'bg-amber-100 text-amber-700' },
-  PAID: { label: 'Đã thanh toán', cls: 'bg-green-100 text-green-700' },
-  OVERDUE: { label: 'Quá hạn', cls: 'bg-red-100 text-red-700' },
-  CANCELLED: { label: 'Đã hủy', cls: 'bg-zinc-200 text-zinc-600' },
+const fmtNum = (n: number) => new Intl.NumberFormat('vi-VN').format(Math.round(n || 0));
+const INV: Record<string, { label: string; c: string; bg: string; line: string }> = {
+  DRAFT: { label: 'Nháp', c: '#8d8678', bg: '#efece6', line: '#ddd8cd' },
+  APPROVED: { label: 'Đã duyệt', c: '#2563eb', bg: '#e7eefc', line: '#c9dafa' },
+  PARTIAL_PAID: { label: 'Trả 1 phần', c: '#c97a10', bg: '#fbf1da', line: '#f0dca8' },
+  PAID: { label: 'Đã thanh toán', c: '#1f9d57', bg: '#e6f5ec', line: '#bfe6cd' },
+  OVERDUE: { label: 'Quá hạn', c: '#d6453f', bg: '#fcebe9', line: '#f2c8c4' },
+  CANCELLED: { label: 'Đã huỷ', c: '#8d8678', bg: '#efece6', line: '#ddd8cd' },
 };
 
-/** Tab "Hoá đơn" — danh sách thẻ dọc, chạm mở chi tiết hoá đơn. */
+/** Tab "Hoá đơn" — thẻ dọc .cd-inv, chạm mở chi tiết hoá đơn. */
 export function ContractInvoicesTab({ invoices }: { invoices: InvoiceWithRelations[] }) {
   const navigate = useNavigate();
-  if (!invoices.length) {
-    return <div className="text-center py-10 text-sm text-muted-foreground">Chưa có hóa đơn nào</div>;
-  }
+  if (!invoices.length) return <div className="stub">Chưa có hoá đơn nào.</div>;
   return (
-    <div className="space-y-2.5">
+    <div className="rowlist" style={{ marginBottom: 4 }}>
       {invoices.map((inv) => {
-        const remaining = (inv.total_amount || 0) - (inv.paid_amount || 0);
-        const st = INV_STATUS[inv.status] ?? { label: inv.status, cls: 'bg-gray-100 text-gray-700' };
+        const st = INV[inv.status] ?? { label: inv.status, c: '#8d8678', bg: '#efece6', line: '#ddd8cd' };
+        const ps = (inv as { billing_period_start?: string | null }).billing_period_start;
+        const pe = (inv as { billing_period_end?: string | null }).billing_period_end;
+        const period = ps && pe
+          ? `${format(new Date(ps), 'dd/MM', { locale: vi })} - ${format(new Date(pe), 'dd/MM/yyyy', { locale: vi })}`
+          : inv.billing_month ? `Kỳ ${inv.billing_month}` : '';
+        const date = inv.due_date ? format(new Date(inv.due_date), 'dd/MM/yyyy', { locale: vi }) : '';
         return (
-          <Card
-            key={inv.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate(`/invoices/${inv.id}`)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/invoices/${inv.id}`); }}
-            className="cursor-pointer active:scale-[0.99] transition-transform"
-          >
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm truncate">
-                  {(inv as { title?: string | null }).title || inv.invoice_number || inv.id.slice(0, 8)}
-                </span>
-                <Badge variant="outline" className={`shrink-0 ${st.cls}`}>{st.label}</Badge>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-sm">
-                <span className="font-semibold">{formatCurrency(inv.total_amount || 0)}</span>
-                <span className="text-xs text-muted-foreground">
-                  {inv.due_date ? `Hạn ${format(new Date(inv.due_date), 'dd/MM/yyyy', { locale: vi })}` : ''}
-                </span>
-              </div>
-              <div className="mt-0.5 flex items-center justify-between text-xs">
-                <span className="text-green-600">Đã thu {formatCurrency(inv.paid_amount || 0)}</span>
-                {remaining > 0 && <span className="text-orange-600">Còn {formatCurrency(remaining)}</span>}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="cd-inv" key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}>
+            <div className="cd-inv-l1">
+              <span className="lrow-code">{(inv as { title?: string | null }).title || inv.invoice_number || inv.id.slice(0, 8)}</span>
+              <span className="pill" style={{ color: st.c, background: st.bg, borderColor: st.line }}><span className="bd" style={{ background: st.c }} />{st.label}</span>
+            </div>
+            <div className="cd-inv-period">{period}{period && date ? ' · ' : ''}{date}</div>
+            <div className="cd-inv-foot">
+              <span className="cd-inv-amt">{fmtNum(inv.total_amount || 0)} ₫</span>
+              <span className="cd-inv-paid">Đã trả {fmtNum(inv.paid_amount || 0)} ₫</span>
+            </div>
+          </div>
         );
       })}
     </div>
