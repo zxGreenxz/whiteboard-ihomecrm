@@ -86,13 +86,14 @@ RLS owner-only như trên. Thiếu dòng → RPC dùng mặc định (30 ngày, 
 
 | RPC | Grant | Vai trò |
 |---|---|---|
-| `get_public_available_rooms(p_token)` | **anon** + authenticated | API đọc duy nhất của trang công khai. SECURITY DEFINER: token → `owner_id` → trả jsonb `{areas, buildings, rooms, contact}`. Token sai/`revoked` → **NULL**. Đã qua nhiều vòng CREATE OR REPLACE: bản gốc `20260606120000` → v2 `20260607090400` (soon_days/hotline/floor_layouts/ảnh toà) → `…120000` (sale_note) → `…130000` (room_type) → `…140000` (sale_bonus_note + public_contact_* + map_url) → bản **mới nhất [20260607150000_building_public_elec_lift.sql](supabase/migrations/20260607150000_building_public_elec_lift.sql)** (+ `public_lift_type`, `elec_rate` suy từ `building_services` join `services` có `unit ILIKE 'kwh'`). |
+| `get_public_available_rooms(p_token)` | **anon** + authenticated | API đọc duy nhất của trang công khai. SECURITY DEFINER: token → `owner_id` → trả jsonb `{areas, buildings, rooms, contact}`. Token sai/`revoked` → **NULL**. Đã qua nhiều vòng CREATE OR REPLACE: bản gốc `20260606120000` → v2 `20260607090400` (soon_days/hotline/floor_layouts/ảnh toà) → `…120000` (sale_note) → `…130000` (room_type) → `…140000` (sale_bonus_note + public_contact_* + map_url) → `…150000` (`public_lift_type`, `elec_rate` từ `building_services` join `services` có `unit ILIKE 'kwh'`) → `20260611120000` (**`area_ids[]`** từ `area_buildings` sau khi `buildings.area_id` bị DROP, xem [11 Phân quyền/Khu vực]) → bản **mới nhất [20260617090100_get_public_available_rooms_pass.sql](supabase/migrations/20260617090100_get_public_available_rooms_pass.sql)** (`status_public='pass'` cho `room_pass_listings`, §2.7). ⚠️ Khi sửa tiếp phải base trên bản `…090100`, KHÔNG phải `…150000` (bản đó còn `b.area_id` đã DROP → lỗi). |
+| `upsert_room_pass_listing` / `set_room_pass_listing_active` / `delete_room_pass_listing` / `pass_listing_form_rooms` | authenticated (REVOKE anon) | Ghi/đọc-form "phòng khách nhờ sale" (§2.7). SECURITY DEFINER tự gán `user_id`=owner + guard quyền theo scope tòa. Migration [20260617090000](supabase/migrations/20260617090000_room_pass_listings.sql). |
 | `create_public_room_token(p_label)` | authenticated (REVOKE anon) | Tạo token cho owner hiện tại: tái dùng `gen_contract_public_code(6)` (base-57, không ký tự dễ nhầm), retry chống trùng 10 lần rồi bump 8 ký tự. Migration [20260607090300](supabase/migrations/20260607090300_create_public_room_token_rpc.sql). |
 | `recompute_room_reservation(room_id)` | (trigger gọi) | Nguồn sự thật cờ "cọc giữ chỗ": phòng `AVAILABLE` có cọc chưa-link-HĐ (kể cả phiếu **chưa duyệt**, chỉ loại `CANCELLED`/đã xoá) → `RESERVED`, và ngược lại. Migration [20260608000000](supabase/migrations/20260608000000_room_reservation_reconcile.sql) — xem chi tiết [04 Cọc](04-coc-giu-cho.md). |
 | `ensure_room_deposit_type()` **(WIP)** | authenticated | Get-or-create loại thu "Tiền cọc" của caller, **ép `is_deposit = TRUE`** (tái dùng helper `_termination_ensure_type`) — để `ie_has_deposit_item()` nhận diện phiếu cọc → trigger khoá phòng. Migration `20260608100000_ensure_room_deposit_type_rpc.sql` (chưa commit). |
 | `get_or_create_deposit_account()` | authenticated | Sổ quỹ hệ thống **"CỌC (giữ hộ khách)"** (sẵn có từ module thanh lý, migration `20260603000022`) — QuickDepositModal dùng làm sổ nhận mặc định. |
 
-> `get_public_available_rooms` + `create_public_room_token` đã có trong [types.ts](src/integrations/supabase/types.ts) (regen 2026-06-07). **`ensure_room_deposit_type` chưa có trong types.ts** (migration sau ngày regen) — FE đang gọi qua cast `supabase.rpc` untyped. Tương tự, nhóm cột sale mới (`rooms.sale_note`, `rooms.sale_bonus_note`, `buildings.public_contact_*`, `buildings.public_map_url`… — chuỗi migration `20260607120000`→`150000`) **cũng chưa có trong types.ts**; nguồn tra cứu cho nhóm cột này là migrations. Nên regen types.ts từ live DB ở lần làm việc code tiếp theo.
+> [types.ts](src/integrations/supabase/types.ts) **đã regen từ live DB 2026-06-17** — nay gồm đủ nhóm cột sale (`rooms.sale_note`/`sale_bonus_note`, `buildings.public_contact_*`/`public_map_url`/`public_lift_type`), bảng `room_pass_listings` + các RPC pass, và `ensure_room_deposit_type`. (Trước đó types.ts dừng ở 2026-06-07 nên thiếu các nhóm này.)
 
 ### 2.5. Bucket Storage `room-sale-images` — **PUBLIC** (ngoại lệ duy ý)
 
@@ -101,6 +102,24 @@ Migration [20260607090200_room_sale_images_bucket.sql](supabase/migrations/20260
 ### 2.6. Thu tiền — không có schema riêng
 
 `/thu-tien` chỉ đọc/ghi các bảng sẵn có: `invoices` + `invoice_items` + `payments` (domain 07), `income_expenses` + `income_expense_types` + `accounts` (domain 08), `excess_amounts` (khi hoàn tác). Toàn bộ logic FE thuần nằm ở [src/lib/collect.ts](src/lib/collect.ts) (pure helpers: `collectStatus`, `remainingOf`, `paymentsInRange`, `latestPaymentId`, format tiền/Zalo/tel — có test được).
+
+### 2.7. Bảng `room_pass_listings` — "phòng khách nhờ sale / pass" (2026-06-17)
+
+Khách đang thuê nhờ công ty **sale / pass / sang phòng giùm**. Phòng đó đang có HĐ `ACTIVE` nên bị `status_public='rented'` và không lên kênh. Bảng này là **lớp overlay ĐỘC LẬP** đánh dấu phòng cần đăng lại — **KHÔNG đụng `rooms.status` / hợp đồng** (tránh `recompute_room_reservation`). Migration [20260617090000_room_pass_listings.sql](supabase/migrations/20260617090000_room_pass_listings.sql).
+
+| Cột | Ý nghĩa |
+|---|---|
+| `user_id` | = `buildings.user_id` (OWNER tòa — để trang public match owner-của-token), **KHÔNG** phải `auth.uid()` của nhân viên tạo. |
+| `building_id`, `room_id` | Phòng nội bộ được pass (FK). Partial unique `(room_id) WHERE active` — mỗi phòng tối đa 1 listing bật. |
+| `contact_name` / `contact_phone` | **SĐT + tên KHÁCH** — hiển thị công khai thay hotline/QL. **Expose CÓ Ý** qua RPC (opt-in nhập tay; ngoại lệ so với quy tắc "anon không thấy khách thuê"). |
+| `sale_policy` | Chính sách sale **do khách đặt** (vd "Giảm khách 500k tháng đầu…"). |
+| `pass_price` | Giá pass (NULL → fallback `rooms.rent_price`). |
+| `active`, `created_by` | Bật/tắt hiển thị; audit người tạo. |
+
+- **RLS**: SELECT = owner OR `can_access_building(building_id)`; **KHÔNG có policy ghi** → ghi trực tiếp bị chặn, ép qua RPC.
+- **RPC ghi SECURITY DEFINER**: `upsert_room_pass_listing` / `set_room_pass_listing_active` / `delete_room_pass_listing` — gán `user_id`=owner, guard `can_manage_pass_listing` (owner OR `can_do_on_building('sale_phong','manage_pass_listings'|'edit', building)`). RPC form `pass_listing_form_rooms()` trả phòng trong scope nhân viên (KHÔNG lọc AVAILABLE). REVOKE anon, GRANT authenticated.
+- **Nhân viên có quyền** quản lý được (scope tòa qua RBAC như `income_expenses`), không chỉ owner. Quyền catalog: `sale_phong.manage_pass_listings` (fallback `edit`).
+- **FE**: tab "Khách nhờ sale" trong `/sale-phong` ([PassListingsTab](src/components/sale-phong/PassListingsTab.tsx) + [usePassListings](src/hooks/usePassListings.ts)); trang công khai render `RoomStatus='pass'` (hồng, [phongTrong.css](src/pages/phong-trong/phongTrong.css) `--st-pass`) với contact + chính sách của khách, DetailSheet nút "Gọi khách". Xem MEMORY `project_room_pass_listings`.
 
 ---
 
@@ -169,11 +188,12 @@ RPC tự tính cho từng phòng (vì cờ `rooms.status` có thể stale — ph
 
 | Giá trị | Điều kiện |
 |---|---|
+| `pass` | Phòng có **listing `room_pass_listings` đang `active`** (khách nhờ sale, §2.7) — nhánh này đặt **TRƯỚC** mọi nhánh khác nên phòng đang có HĐ vẫn ra `pass`. RPC trả kèm `pass_contact_name/phone`, `pass_sale_policy`, `pass_price`. |
 | `soon` | Có HĐ hiệu lực có `COALESCE(actual_end_date, end_date)` trong `[CURRENT_DATE, CURRENT_DATE + soon_days]` → kèm `avail_date` = ngày hết hạn sớm nhất. |
 | `rented` | Có HĐ hiệu lực (không sắp hết) — **kể cả** khi `rooms.status='AVAILABLE'`; HOẶC không HĐ nhưng `rooms.status` ∉ `AVAILABLE` (gồm `RESERVED`/`MAINTENANCE`…). |
 | `free` | Không có HĐ hiệu lực **và** `rooms.status = 'AVAILABLE'`. |
 
-- Chỉ trả **toà có ≥1 phòng `free`/`soon`**, nhưng trả **đủ phòng** của toà đó để vẽ sơ đồ tầng (phòng `rented` hiện mờ).
+- Chỉ trả **toà có ≥1 phòng `free`/`soon`/`pass`**, nhưng trả **đủ phòng** của toà đó để vẽ sơ đồ tầng (phòng `rented` hiện mờ). → toà full phòng đã thuê vẫn lên kênh nếu có phòng `pass`.
 - **Phòng `RESERVED` (đã cọc giữ chỗ) hiện như "Đã thuê"** → tự ẩn khỏi bucket trống. Đây chính là cơ chế "khoá phòng realtime" của Tạo cọc nhanh (§4.6).
 - ⚠️ **Ghi chú EXTENDED**: SQL của RPC vẫn viết `c.status IN ('ACTIVE','EXTENDED')` — vô hại vì từ 2026-06-06 status `EXTENDED` **đã ngưng dùng** (HĐ gia hạn giữ `ACTIVE`, xem [05 Hợp đồng](05-hop-dong.md)); điều kiện thực tế chỉ match `ACTIVE`. Nếu viết RPC mới, chỉ cần `ACTIVE`.
 
