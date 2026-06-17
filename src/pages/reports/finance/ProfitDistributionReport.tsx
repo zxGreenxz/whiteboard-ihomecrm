@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
-import { ChevronRight, DollarSign } from "lucide-react";
+import { ChevronRight, DollarSign, LayoutGrid } from "lucide-react";
 import {
   useIncomeExpenses,
   useIncomeExpenseStats,
@@ -14,17 +14,74 @@ import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+
+// Dòng đã chuẩn hoá cho 1 bên (thu HOẶC chi) của sổ phân bổ.
+interface DisplayRow {
+  key: string;
+  monthLabel: string;
+  description: string;
+  buildingName: string;
+  roomName: string | null;
+  periodLabel: string;
+  typeName: string;
+  amount: number;
+  notKqkd: boolean;
+}
+
+// Các cột CÓ THỂ ẩn/hiện. "Mô tả" + cột số tiền luôn hiển thị (lõi).
+type ColKey = "thang" | "toa_nha" | "phong" | "ky" | "phan_loai";
+const TOGGLE_COLUMNS: { key: ColKey; label: string }[] = [
+  { key: "thang", label: "Tháng" },
+  { key: "toa_nha", label: "Tòa nhà" },
+  { key: "phong", label: "Phòng" },
+  { key: "ky", label: "Kỳ" },
+  { key: "phan_loai", label: "Phân loại" },
+];
+
+// PostgREST trả tối đa 1000 dòng/trang. Sổ 2 cột hiển thị TẤT CẢ khoản trong
+// tháng (cuộn riêng từng bên) thay vì phân trang → fetch 1 lần với hạn mức này.
+// Tổng 3 thẻ vẫn lấy từ stats/accrual (đủ chính xác) nên dù list chạm trần
+// 1000 thì con số tổng không sai.
+const LIST_LIMIT = 1000;
+
+// So sánh tên phòng theo thứ tự TỰ NHIÊN (101 < 102 < 201…); phòng trống (null)
+// dồn xuống cuối.
+const compareRoom = (a: string | null, b: string | null): number => {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+};
+
+// true khi MỌI dòng cùng một giá trị cho cột → cột không phân biệt được gì
+// (đã bị bộ lọc ghim, vd lọc 1 toà / 1 tháng) → ẩn mặc định. <2 dòng: không ẩn.
+const allSame = (rows: DisplayRow[], get: (r: DisplayRow) => string): boolean => {
+  if (rows.length < 2) return false;
+  const first = get(rows[0]);
+  for (let i = 1; i < rows.length; i++) if (get(rows[i]) !== first) return false;
+  return true;
+};
+
+const COL_VALUE: Record<ColKey, (r: DisplayRow) => string> = {
+  thang: (r) => r.monthLabel,
+  toa_nha: (r) => r.buildingName || "—",
+  phong: (r) => r.roomName || "—",
+  ky: (r) => r.periodLabel,
+  phan_loai: (r) => r.typeName,
+};
 
 const StatCard = ({
   label,
@@ -62,8 +119,9 @@ export default function ProfitDistributionReport() {
   // true = theo Kỳ phân bổ (accrual — chia đều số tiền item ra các tháng trong kỳ).
   // Mặc định BẬT — đúng tên trang "Phân bổ lợi nhuận"; tắt toggle để xem theo ngày phiếu.
   const [accrualMode, setAccrualMode] = useState<boolean>(true);
-  const [page, setPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  // Người dùng tự ép ẩn/hiện 1 cột — ghi đè lên mặc định tự-suy-từ-bộ-lọc.
+  // Trống = theo mặc định (nút "Đặt lại mặc định" xoá hết override).
+  const [colOverrides, setColOverrides] = useState<Partial<Record<ColKey, boolean>>>({});
 
   // Parse monthStr "MM-yyyy" → start/end date + 'YYYY-MM'
   const [mm, yyyy] = monthStr.split("-").map((s) => parseInt(s, 10));
@@ -71,6 +129,7 @@ export default function ProfitDistributionReport() {
   const startDate = format(startOfMonth(monthDate), "yyyy-MM-dd");
   const endDate = format(endOfMonth(monthDate), "yyyy-MM-dd");
   const ym = `${yyyy}-${String(mm || 1).padStart(2, "0")}`;
+  const monthLabel = `${String(mm || 1).padStart(2, "0")}/${yyyy}`;
 
   // Trang này cần cả toà ảo "Chung" (phiếu chia LN cổ đông) → tự fetch
   // includeVirtual và truyền vào BuildingMultiSelect thay vì để nó tự fetch.
@@ -96,8 +155,12 @@ export default function ProfitDistributionReport() {
     business_result_only: pnlOnly,
   };
 
-  const { data: result, isLoading } = useIncomeExpenses(filters, { page, pageSize });
-  // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter (không phụ thuộc phân trang).
+  // Sổ 2 cột hiển thị TẤT CẢ khoản trong tháng → fetch 1 trang lớn (không phân trang).
+  const { data: result, isLoading } = useIncomeExpenses(filters, {
+    page: 1,
+    pageSize: LIST_LIMIT,
+  });
+  // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter.
   // businessResultOnly đồng bộ với toggle → loại tiền cọc khỏi Doanh thu/Lợi nhuận.
   const { data: stats } = useIncomeExpenseStats(filters, {
     businessResultOnly: pnlOnly,
@@ -113,17 +176,77 @@ export default function ProfitDistributionReport() {
     { businessResultOnly: pnlOnly }
   );
 
-  // Giá trị 3 thẻ + bảng theo chế độ ghi nhận.
+  // Giá trị 3 thẻ + tổng mỗi bên theo chế độ ghi nhận.
   const displayIncome = accrualMode ? accrual?.totalIncome ?? 0 : stats?.totalIncome ?? 0;
   const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : stats?.totalExpense ?? 0;
   const displayDiff = accrualMode ? accrual?.difference ?? 0 : stats?.difference ?? 0;
 
-  const accrualRows = accrual?.rows ?? [];
-  const rows = accrualMode
-    ? accrualRows.slice((page - 1) * pageSize, page * pageSize)
-    : result?.data ?? [];
-  const totalCount = accrualMode ? accrualRows.length : result?.totalCount ?? 0;
   const loading = accrualMode ? accrualLoading : isLoading;
+
+  // Chuẩn hoá dữ liệu thành 2 danh sách thu/chi + sắp theo thứ tự phòng.
+  const { incomeRows, expenseRows } = useMemo(() => {
+    const inc: DisplayRow[] = [];
+    const exp: DisplayRow[] = [];
+
+    if (accrualMode) {
+      for (const r of (accrual?.rows ?? []) as any[]) {
+        const base = {
+          description: r.voucherName ?? "",
+          buildingName: r.buildingName ?? "",
+          roomName: r.roomName ?? null,
+          periodLabel: formatPeriod(r.startDate, r.endDate) || "—",
+          typeName: r.typeName || "—",
+          notKqkd: r.countsInBusinessResult === false,
+          monthLabel,
+        };
+        if (r.income > 0) inc.push({ ...base, key: r.itemId, amount: r.income });
+        else if (r.expense > 0) exp.push({ ...base, key: r.itemId, amount: r.expense });
+      }
+    } else {
+      for (const r of (result?.data ?? []) as any[]) {
+        const typeName =
+          (r.items || []).map((it: any) => it.type_name).filter(Boolean).join(", ") || "—";
+        const base = {
+          description: r.name ?? "",
+          buildingName: r.building_name ?? "",
+          roomName: r.room_name ?? null,
+          periodLabel: "—",
+          typeName,
+          notKqkd: r.counts_in_business_result === false,
+          monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
+        };
+        if (r.type === "INCOME") inc.push({ ...base, key: r.id, amount: Number(r.total_amount) });
+        else exp.push({ ...base, key: r.id, amount: Number(r.total_amount) });
+      }
+    }
+
+    const sorter = (a: DisplayRow, b: DisplayRow) =>
+      compareRoom(a.roomName, b.roomName) || a.description.localeCompare(b.description, "vi");
+    inc.sort(sorter);
+    exp.sort(sorter);
+    return { incomeRows: inc, expenseRows: exp };
+  }, [accrualMode, accrual, result, monthLabel]);
+
+  // Mặc định ẩn/hiện cột: ẩn cột mà MỌI dòng (gộp cả 2 bên để 2 bảng đồng cột)
+  // có cùng giá trị — tức cột đã bị bộ lọc ghim (tháng/toà/phòng/kỳ…).
+  const autoVisible = useMemo(() => {
+    const all = [...incomeRows, ...expenseRows];
+    const m = {} as Record<ColKey, boolean>;
+    for (const c of TOGGLE_COLUMNS) m[c.key] = !allSame(all, COL_VALUE[c.key]);
+    return m;
+  }, [incomeRows, expenseRows]);
+
+  const visible = (k: ColKey) => colOverrides[k] ?? autoVisible[k];
+  const toggleCol = (k: ColKey) =>
+    setColOverrides((o) => ({ ...o, [k]: !(o[k] ?? autoVisible[k]) }));
+  const resetCols = () => setColOverrides({});
+
+  const visibleToggleCols = TOGGLE_COLUMNS.filter((c) => visible(c.key));
+  const colCount = visibleToggleCols.length + 2; // Mô tả + cột số tiền
+
+  // Bộ lọc "Loại" ghim 1 bên → ẩn hẳn panel còn lại.
+  const showThu = voucherType !== "EXPENSE";
+  const showChi = voucherType !== "INCOME";
 
   const monthOptions = useMemo(() => {
     const out: string[] = [];
@@ -134,6 +257,76 @@ export default function ProfitDistributionReport() {
     }
     return out;
   }, []);
+
+  const renderPanel = (
+    title: string,
+    amountLabel: string,
+    total: number,
+    data: DisplayRow[],
+    accentText: string,
+    accentHeader: string,
+  ) => (
+    <div className="rounded-md border flex flex-col min-w-0">
+      <div className={`flex items-center justify-between gap-2 px-4 py-2.5 border-b ${accentHeader}`}>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{title}</span>
+          <span className="text-xs text-muted-foreground">{data.length} khoản</span>
+        </div>
+        <span className={`font-semibold ${accentText}`}>{formatCurrency(total)}</span>
+      </div>
+      <div className="overflow-auto max-h-[60vh]">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {visible("thang") && <TableHead className="whitespace-nowrap">Tháng</TableHead>}
+              <TableHead>Mô tả</TableHead>
+              {visible("toa_nha") && <TableHead>Tòa nhà</TableHead>}
+              {visible("phong") && <TableHead>Phòng</TableHead>}
+              {visible("ky") && <TableHead className="whitespace-nowrap">Kỳ</TableHead>}
+              {visible("phan_loai") && <TableHead>Phân loại</TableHead>}
+              <TableHead className="text-right whitespace-nowrap">{amountLabel}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={colCount}><Skeleton className="h-6 w-full" /></TableCell>
+                </TableRow>
+              ))
+            ) : data.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={colCount} className="text-center py-8 text-muted-foreground">
+                  Không có khoản nào
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.map((r) => (
+                <TableRow key={r.key}>
+                  {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
+                  <TableCell>
+                    {r.description}
+                    {r.notKqkd && (
+                      <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
+                    )}
+                  </TableCell>
+                  {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
+                  {visible("phong") && <TableCell>{r.roomName || "—"}</TableCell>}
+                  {visible("ky") && (
+                    <TableCell className="whitespace-nowrap">{r.periodLabel}</TableCell>
+                  )}
+                  {visible("phan_loai") && <TableCell>{r.typeName}</TableCell>}
+                  <TableCell className={`text-right whitespace-nowrap font-medium ${accentText}`}>
+                    {formatCurrency(r.amount)}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
 
   return (
     <MainLayout>
@@ -164,10 +357,7 @@ export default function ProfitDistributionReport() {
 
           <BuildingMultiSelect
             value={buildingIds}
-            onChange={(ids) => {
-              setBuildingIds(ids);
-              setPage(1);
-            }}
+            onChange={(ids) => setBuildingIds(ids)}
             buildings={buildingOptions}
             className="w-[260px]"
             placeholder="Tất cả toà nhà"
@@ -199,10 +389,7 @@ export default function ProfitDistributionReport() {
             <Switch
               id="pnl-only"
               checked={!pnlOnly}
-              onCheckedChange={(v) => {
-                setPnlOnly(!v);
-                setPage(1);
-              }}
+              onCheckedChange={(v) => setPnlOnly(!v)}
             />
             <Label htmlFor="pnl-only" className="text-sm text-muted-foreground whitespace-nowrap">
               Hiện cả khoản không hạch toán KQKD (cọc…)
@@ -213,115 +400,63 @@ export default function ProfitDistributionReport() {
             <Switch
               id="accrual-mode"
               checked={accrualMode}
-              onCheckedChange={(v) => {
-                setAccrualMode(v);
-                setPage(1);
-              }}
+              onCheckedChange={(v) => setAccrualMode(v)}
             />
             <Label htmlFor="accrual-mode" className="text-sm text-muted-foreground whitespace-nowrap">
               Phân bổ theo kỳ áp dụng
             </Label>
           </div>
+
+          {/* Ẩn/hiện cột */}
+          <div className="ml-auto">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-2" aria-label="Hiển thị cột">
+                  <LayoutGrid className="h-4 w-4" />
+                  Cột ({visibleToggleCols.length}/{TOGGLE_COLUMNS.length})
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-3">
+                <div className="text-sm font-medium mb-2">Hiển thị cột</div>
+                <div className="space-y-1.5">
+                  {TOGGLE_COLUMNS.map((col) => (
+                    <Label
+                      key={col.key}
+                      htmlFor={`pdcol-${col.key}`}
+                      className="flex items-center gap-2 py-1 px-1 rounded hover:bg-accent cursor-pointer text-sm font-normal"
+                    >
+                      <Checkbox
+                        id={`pdcol-${col.key}`}
+                        checked={visible(col.key)}
+                        onCheckedChange={() => toggleCol(col.key)}
+                      />
+                      <span>{col.label}</span>
+                    </Label>
+                  ))}
+                </div>
+                <div className="mt-3 pt-2 border-t flex justify-end">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetCols}>
+                    Đặt lại mặc định
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
 
-        {/* Table */}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tháng</TableHead>
-                <TableHead>Mô tả</TableHead>
-                <TableHead>Tòa nhà</TableHead>
-                <TableHead>Phòng</TableHead>
-                <TableHead className="text-right">Doanh thu</TableHead>
-                <TableHead className="text-right">Chi phí</TableHead>
-                <TableHead>Kỳ</TableHead>
-                <TableHead>Phân loại</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell colSpan={8}><Skeleton className="h-6 w-full" /></TableCell>
-                  </TableRow>
-                ))
-              ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    Không có dữ liệu nào để hiển thị
-                  </TableCell>
-                </TableRow>
-              ) : accrualMode ? (
-                (rows as any[]).map((r) => (
-                  <TableRow key={r.itemId}>
-                    <TableCell>{`${String(mm || 1).padStart(2, "0")}/${yyyy}`}</TableCell>
-                    <TableCell>{r.voucherName}</TableCell>
-                    <TableCell>{r.buildingName || "—"}</TableCell>
-                    <TableCell>{r.roomName || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      {r.income > 0 ? formatCurrency(r.income) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {r.expense > 0 ? formatCurrency(r.expense) : "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatPeriod(r.startDate, r.endDate) || "—"}
-                    </TableCell>
-                    <TableCell>
-                      {r.typeName || "—"}
-                      {r.countsInBusinessResult === false && (
-                        <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                (rows as any[]).map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>{format(new Date(r.voucher_date), "MM/yyyy")}</TableCell>
-                    <TableCell>{r.name}</TableCell>
-                    <TableCell>{r.building_name || "—"}</TableCell>
-                    <TableCell>{r.room_name || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      {r.type === "INCOME" ? formatCurrency(r.total_amount) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {r.type === "EXPENSE" ? formatCurrency(r.total_amount) : "—"}
-                    </TableCell>
-                    <TableCell>—</TableCell>
-                    <TableCell>
-                      {(r.items || []).map((it: any) => it.type_name).filter(Boolean).join(", ") || "—"}
-                      {r.counts_in_business_result === false && (
-                        <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+        {/* Sổ 2 cột: Thu | Chi */}
+        <div className={`grid gap-4 ${showThu && showChi ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+          {showThu && renderPanel("Khoản thu", "Doanh thu", displayIncome, incomeRows, "text-emerald-700", "bg-emerald-50")}
+          {showChi && renderPanel("Khoản chi", "Chi phí", displayExpense, expenseRows, "text-orange-700", "bg-orange-50")}
         </div>
 
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span>Số bản ghi</span>
-            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(parseInt(v, 10)); setPage(1); }}>
-              <SelectTrigger className="w-[80px] h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[10, 20, 50, 100].map((n) => (
-                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            {totalCount === 0
-              ? "1 - 0 trên tổng số 0 bản ghi"
-              : `${(page - 1) * pageSize + 1} - ${Math.min(page * pageSize, totalCount)} trên tổng số ${totalCount} bản ghi`}
-          </div>
+        <div className="text-sm text-muted-foreground">
+          Tổng {incomeRows.length + expenseRows.length} khoản
+          {!accrualMode && (result?.totalCount ?? 0) > LIST_LIMIT && (
+            <span className="ml-1 text-amber-600">
+              (hiển thị {LIST_LIMIT} đầu trên tổng {result?.totalCount} — số tổng ở thẻ vẫn đủ)
+            </span>
+          )}
         </div>
       </div>
     </MainLayout>
