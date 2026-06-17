@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Home, DoorOpen, Phone, MessageCircle } from 'lucide-react';
 import '@/styles/mobileApp.css';
-import { useCustomers, useCustomerStats } from '@/hooks/useCustomers';
+import { useCustomers } from '@/hooks/useCustomers';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import type { Customer, CustomerStatus, StatFilterType, CustomerFilters } from '@/types/customer';
+import type { Customer, CustomerStatus, CustomerFilters } from '@/types/customer';
 import type { BuildingWithRelations } from '@/types/building';
 
 const fmtDate = (s: string | null | undefined) => {
@@ -26,19 +26,12 @@ const STATUS_TABS: { id: CustomerStatus; label: string }[] = [
   { id: 'MOVED_OUT', label: 'Đã rời đi' },
   { id: 'WALK_IN', label: 'Vãng lai' },
 ];
-const STAT_CHIPS: { id: StatFilterType; label: string }[] = [
-  { id: 'ALL', label: 'Tất cả' },
-  { id: 'INDIVIDUAL', label: 'Cá nhân' },
-  { id: 'ORGANIZATION', label: 'Tổ chức' },
-  { id: 'FOREIGN', label: 'Nước ngoài' },
-];
-
 /**
  * Khách hàng — màn hình app full-screen trên mobile (web-app).
  * Dựng theo handoff Claude Design (ui_kits/mobile-app: CustomersScreen) nhưng nối
- * dữ liệu THẬT: useCustomers + useCustomerStats như desktop, lọc toà client-side
- * theo current_building_id (đúng cách desktop CustomersPage làm). CSS scope riêng
- * (.cm-stage/.cm-app), ngoài MainLayout — ← về trang chủ, chạm thẻ → chi tiết.
+ * dữ liệu THẬT: useCustomers như desktop, lọc toà client-side theo current_building_id
+ * (đúng cách desktop CustomersPage làm). CSS scope riêng (.cm-stage/.cm-app), ngoài
+ * MainLayout — ← về trang chủ, chạm thẻ → chi tiết.
  */
 export default function CustomersMobilePage() {
   const navigate = useNavigate();
@@ -46,7 +39,6 @@ export default function CustomersMobilePage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [status, setStatus] = useState<CustomerStatus>('RENTING');
-  const [statFilter, setStatFilter] = useState<StatFilterType>('ALL');
   const [buildingId, setBuildingId] = useState('');
   const [pageSize, setPageSize] = useState(30);
 
@@ -56,15 +48,11 @@ export default function CustomersMobilePage() {
   }, [search]);
 
   const filters = useMemo<CustomerFilters>(
-    () => ({ status, statFilter, search: debounced || undefined }),
-    [status, statFilter, debounced],
+    () => ({ status, search: debounced || undefined }),
+    [status, debounced],
   );
 
   const { data: paged, isLoading } = useCustomers(filters, { page: 1, pageSize });
-  const { data: statsData } = useCustomerStats(
-    useMemo<CustomerFilters>(() => ({ status, search: debounced || undefined }), [status, debounced]),
-  );
-  const stats = statsData ?? { total: 0, individual: 0, organization: 0, foreign: 0 };
 
   const allRows = (paged?.data ?? []) as Customer[];
   // Lọc toà nhà client-side theo current_building_id (enrich sẵn trong useCustomers).
@@ -94,7 +82,7 @@ export default function CustomersMobilePage() {
             </button>
             <div className="mtitle">
               <h1>Khách hàng</h1>
-              <p>{stats.total} khách · {STATUS_TABS.find((t) => t.id === status)?.label.toLowerCase()}</p>
+              <p>{totalCount} khách · {STATUS_TABS.find((t) => t.id === status)?.label.toLowerCase()}</p>
             </div>
             {canCreate && (
               <div className="mtop-act">
@@ -114,27 +102,6 @@ export default function CustomersMobilePage() {
                   onClick={() => setStatus(t.id)}
                 >
                   {t.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="lfilter">
-              {STAT_CHIPS.map((c) => (
-                <button
-                  key={c.id}
-                  className={'lchip' + (statFilter === c.id ? ' on' : '')}
-                  onClick={() => setStatFilter(c.id)}
-                >
-                  {c.label}
-                  <span className="cnt">
-                    {c.id === 'ALL'
-                      ? stats.total
-                      : c.id === 'INDIVIDUAL'
-                        ? stats.individual
-                        : c.id === 'ORGANIZATION'
-                          ? stats.organization
-                          : stats.foreign}
-                  </span>
                 </button>
               ))}
             </div>
