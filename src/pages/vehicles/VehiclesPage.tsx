@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Search, Car, SlidersHorizontal } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile, usePhoneViewport } from '@/hooks/use-mobile';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import VehicleListToolbar, { type ViewMode } from '@/components/vehicles/VehicleListToolbar';
@@ -19,7 +19,23 @@ import type { VehicleWithRelations, VehicleFilters } from '@/types/vehicle';
 
 const EMPTY_FILTERS: VehicleFilters = { vehicle_type: 'MOTORBIKE' };
 
+const VehiclesMobilePage = lazy(() => import('./VehiclesMobilePage'));
+
+// Mobile (≤767px): màn hình app full-screen riêng (khởi tạo đồng bộ → không nháy
+// bảng desktop). Desktop giữ nguyên bên dưới.
 export default function VehiclesPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <VehiclesMobilePage />
+      </Suspense>
+    );
+  }
+  return <VehiclesDesktopPage />;
+}
+
+function VehiclesDesktopPage() {
   // State
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { usePhoneViewport } from '@/hooks/use-mobile';
 import {
   ArrowLeft,
   Copy,
@@ -40,6 +41,8 @@ import type { VehicleWithRelations } from '@/types/vehicle';
 import { supabase } from '@/integrations/supabase/client';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
 
+const CustomerDetailMobilePage = lazy(() => import('./CustomerDetailMobilePage'));
+
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: 'Xe máy',
   CAR: 'Ô tô',
@@ -74,6 +77,19 @@ const CONTRACT_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 };
 
 export default function CustomerDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const isPhone = usePhoneViewport();
+  if (isPhone && id) {
+    return (
+      <Suspense fallback={null}>
+        <CustomerDetailMobilePage id={id} />
+      </Suspense>
+    );
+  }
+  return <CustomerDetailDesktopPage />;
+}
+
+function CustomerDetailDesktopPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);

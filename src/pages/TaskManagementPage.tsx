@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ClipboardList, Plus, SlidersHorizontal, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,21 +13,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { useJobs, useDeleteJob } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile, usePhoneViewport } from "@/hooks/use-mobile";
 import { usePagination } from "@/hooks/usePagination";
 import { paginateJobs } from "@/lib/jobValidation";
 import { TaskStatusStats } from "@/components/tasks/TaskStatusStats";
 import { TaskFiltersPanel } from "@/components/tasks/TaskFiltersPanel";
 import TaskTable from "@/components/tasks/TaskTable";
-import TaskListMobile from "@/components/tasks/TaskListMobile";
 import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
 import TaskDetailDialog from "@/components/tasks/TaskDetailDialog";
 import TaskEditDialog from "@/components/tasks/TaskEditDialog";
@@ -36,10 +29,26 @@ import TaskCompleteDialog from "@/components/tasks/TaskCompleteDialog";
 import type { TaskFilters, JobWithRelations } from "@/types/jobs";
 import { defaultTaskFilters } from "@/types/jobs";
 
+const TasksMobilePage = lazy(() => import("./TasksMobilePage"));
+
 type TaskTab = "ALL" | "MINE" | "WATCHING";
 type StatusFilter = "IN_PROGRESS" | "COMPLETED" | null;
 
+// Mobile (≤767px): màn hình app full-screen riêng (TasksMobilePage), khởi tạo
+// đồng bộ để không nháy/không mount query desktop. Desktop giữ nguyên bên dưới.
 export default function TaskManagementPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <TasksMobilePage />
+      </Suspense>
+    );
+  }
+  return <TaskManagementDesktopPage />;
+}
+
+function TaskManagementDesktopPage() {
   const { data: authUser } = useAuth();
   const isMobile = useIsMobile();
   // State management
@@ -263,146 +272,6 @@ export default function TaskManagementPage() {
       </AlertDialog>
     </>
   );
-
-  // ============== MOBILE LAYOUT ==============
-  if (isMobile) {
-    return (
-      <MainLayout
-        title="Công việc"
-        subtitle="Quản lý công việc vận hành"
-        icon={ClipboardList}
-      >
-        <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
-          {/* Search + filter + Stats trên 1 dải */}
-          <div className="px-3 pt-2 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Tìm công việc, người thực hiện..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-9 h-9 bg-white"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setShowFilters(!showFilters)}
-                className="h-9 w-9 shrink-0 bg-white"
-                title="Lọc dữ liệu"
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Tabs + Stats: gộp 1 dải compact */}
-            <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1">
-              {([
-                ["ALL", "Tất cả"],
-                ["MINE", "Của tôi"],
-                ["WATCHING", "Theo dõi"],
-              ] as const).map(([key, label]) => {
-                const active = activeTab === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setActiveTab(key as TaskTab);
-                      pagination.setPage(1);
-                    }}
-                    className={`shrink-0 px-2.5 py-1 text-[12px] font-medium rounded-full flex items-center gap-1 transition-colors ${
-                      active
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-white text-zinc-600 border border-zinc-200"
-                    }`}
-                  >
-                    {label}
-                    <span
-                      className={`inline-flex items-center rounded-full px-1 text-[10px] ${
-                        active
-                          ? "bg-white/25 text-white"
-                          : "bg-zinc-100 text-zinc-600"
-                      }`}
-                    >
-                      {tabCounts[key]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Stats compact */}
-          <div className="px-3 pt-2">
-            <TaskStatusStats
-              jobs={tabFiltered}
-              activeFilter={statusFilter}
-              onFilterChange={handleStatusCardClick}
-            />
-          </div>
-
-          {/* Filters Panel — bottom sheet trên mobile (giống thu chi) */}
-          <Sheet open={showFilters} onOpenChange={setShowFilters}>
-            <SheetContent side="bottom" className="h-[85vh] overflow-y-auto p-0">
-              <SheetHeader className="px-4 py-3 border-b">
-                <SheetTitle>Bộ lọc</SheetTitle>
-              </SheetHeader>
-              <div className="p-4">
-                <TaskFiltersPanel
-                  filters={filters}
-                  onChange={setFilters}
-                  onApply={() => {
-                    handleApplyFilters();
-                    setShowFilters(false);
-                  }}
-                  onClear={() => {
-                    handleClearFilters();
-                    setShowFilters(false);
-                  }}
-                />
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          {/* List */}
-          <TaskListMobile
-            jobs={paginatedData}
-            isLoading={isLoading}
-            onView={handleViewDetail}
-          />
-
-          {/* Pagination summary */}
-          {totalCount > pagination.pageSize && (
-            <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
-              Hiển thị {paginatedData.length} / {totalCount} công việc
-              {pagination.page * pagination.pageSize < totalCount && (
-                <button
-                  className="ml-2 text-blue-600 font-medium"
-                  onClick={() => pagination.setPage(pagination.page + 1)}
-                >
-                  Xem thêm →
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* FAB */}
-        <button
-          type="button"
-          onClick={() => setIsCreateOpen(true)}
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg flex items-center justify-center z-40"
-          aria-label="Thêm công việc"
-        >
-          <Plus className="h-6 w-6" />
-        </button>
-
-        {dialogs}
-      </MainLayout>
-    );
-  }
 
   // ============== DESKTOP LAYOUT ==============
   return (

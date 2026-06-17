@@ -1,7 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
+import { usePhoneViewport } from '@/hooks/use-mobile';
 import MainLayout from '@/components/layout/MainLayout';
+
+const CustomersMobilePage = lazy(() => import('./CustomersMobilePage'));
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
@@ -28,7 +31,7 @@ import CustomerDetailModal from '@/components/customers/CustomerDetailModal';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
 import { CustomerImportExportDialog } from '@/components/customers/CustomerImportExportDialog';
 
-export default function CustomersPage() {
+function CustomersDesktopPage() {
   const navigate = useNavigate();
 
   // State
@@ -386,4 +389,18 @@ export default function CustomersPage() {
       </div>
     </MainLayout>
   );
+}
+
+// Mobile (≤767px): màn hình app full-screen riêng (khởi tạo đồng bộ → không nháy
+// bảng desktop / không mount query nặng của desktop trên điện thoại).
+export default function CustomersPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <CustomersMobilePage />
+      </Suspense>
+    );
+  }
+  return <CustomersDesktopPage />;
 }
