@@ -129,6 +129,12 @@
 .cdt-app .cd-ct-v { font-size: 13px; font-weight: 600; color: var(--ink); font-family: var(--mono); text-align: right; word-break: break-all; }
 .cdt-app .cd-link { width: 100%; margin-top: 6px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; cursor: pointer; font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--brand-600); }
 .cdt-app .cd-link:active { background: var(--line-2); }
+/* Avatar bấm được = nút mở chi tiết khách (icon bên trái tên). Nhiều khách →
+   mỗi khối cách nhau bằng đường kẻ. */
+.cdt-app .cd-cust-av-btn { padding: 0; border: 0; cursor: pointer; font-family: var(--font); position: relative; transition: transform .12s; }
+.cdt-app .cd-cust-av-btn::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--brand-100); }
+.cdt-app .cd-cust-av-btn:active { transform: scale(.92); }
+.cdt-app .cd-cust-block.sep { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 14px; }
 
 .cdt-app .cd-money { display: flex; flex-direction: column; }
 .cdt-app .cd-money-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 13px; font-weight: 500; color: var(--ink-2); }

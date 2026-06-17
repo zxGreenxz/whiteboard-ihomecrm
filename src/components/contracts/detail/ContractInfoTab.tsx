@@ -1,4 +1,4 @@
-import { FileText, User, DoorOpen, Coins, Package, Clock, Phone, Mail, CreditCard, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react';
+import { FileText, User, DoorOpen, Coins, Package, Clock, Phone, Mail, CreditCard, AlertCircle, CheckCircle } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import {
@@ -54,11 +54,6 @@ export function ContractInfoTab({
   const depPaid = contract.deposit_paid || 0;
   const depLeft = contract.deposit_remaining ?? depTotal - depPaid;
 
-  // Khách đại diện
-  const rep = customers.find((cc) => cc.is_representative) ?? customers[0];
-  const repName = rep?.customer?.full_name || '—';
-  const initials = repName.trim().split(/\s+/).slice(-1)[0]?.[0]?.toUpperCase() || '?';
-
   return (
     <>
       <div className="cd-card">
@@ -81,22 +76,37 @@ export function ContractInfoTab({
       </div>
 
       <div className="cd-card">
-        <div className="cd-card-h"><span className="cd-card-t"><User size={16} />Thông tin khách hàng</span></div>
-        <div className="cd-cust">
-          <span className="cd-cust-av">{initials}</span>
-          <div className="cd-cust-body">
-            <div className="cd-cust-name">{repName}<span className="cd-rep">Đại diện</span></div>
-            <div className="cd-cust-sub">Khách thuê chính</div>
-          </div>
+        <div className="cd-card-h">
+          <span className="cd-card-t"><User size={16} />Thông tin khách hàng</span>
+          {customers.length > 1 && <span className="cd-count">{customers.length}</span>}
         </div>
-        <div className="cd-contact">
-          <div className="cd-ct"><span className="cd-ct-l"><Phone size={13} />Số điện thoại</span><span className="cd-ct-v">{rep?.customer?.phone || '—'}</span></div>
-          <div className="cd-ct"><span className="cd-ct-l"><Mail size={13} />Email</span><span className="cd-ct-v">{rep?.customer?.email || '—'}</span></div>
-          <div className="cd-ct"><span className="cd-ct-l"><CreditCard size={13} />CCCD/CMND</span><span className="cd-ct-v">{rep?.customer?.id_number || '—'}</span></div>
-        </div>
-        {rep?.customer_id && (
-          <button className="cd-link" onClick={() => onOpenCustomer(rep.customer_id)}>Xem chi tiết khách hàng<ChevronRight size={15} /></button>
-        )}
+        {customers.length ? customers.map((cc, i) => {
+          const name = cc.customer?.full_name || '—';
+          const ini = name.trim().split(/\s+/).slice(-1)[0]?.[0]?.toUpperCase() || '?';
+          return (
+            <div className={'cd-cust-block' + (i > 0 ? ' sep' : '')} key={cc.id}>
+              <div className="cd-cust">
+                <button
+                  className="cd-cust-av cd-cust-av-btn"
+                  onClick={() => onOpenCustomer(cc.customer_id)}
+                  title="Xem chi tiết khách hàng"
+                  aria-label={'Xem chi tiết ' + name}
+                >
+                  {ini}
+                </button>
+                <div className="cd-cust-body">
+                  <div className="cd-cust-name">{name}{cc.is_representative && <span className="cd-rep">Đại diện</span>}</div>
+                  <div className="cd-cust-sub">{cc.is_representative ? 'Khách thuê chính' : 'Khách ở cùng'}</div>
+                </div>
+              </div>
+              <div className="cd-contact">
+                <div className="cd-ct"><span className="cd-ct-l"><Phone size={13} />Số điện thoại</span><span className="cd-ct-v">{cc.customer?.phone || '—'}</span></div>
+                <div className="cd-ct"><span className="cd-ct-l"><Mail size={13} />Email</span><span className="cd-ct-v">{cc.customer?.email || '—'}</span></div>
+                <div className="cd-ct"><span className="cd-ct-l"><CreditCard size={13} />CCCD/CMND</span><span className="cd-ct-v">{cc.customer?.id_number || '—'}</span></div>
+              </div>
+            </div>
+          );
+        }) : <div className="cd-cust-sub">Chưa có khách hàng.</div>}
       </div>
 
       <div className="cd-card">
