@@ -169,3 +169,32 @@
 
 /* tinh chỉnh hàng action chi tiết hoá đơn — căn trái, cho phép cuộn ngang */
 .cm-app .cd-acts.inv { gap: 8px; }
+
+/* ===== Thu chi — thẻ phiếu tổng (batch card) ===== */
+.cm-app .bvch { background: var(--surface); border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--r); padding: 12px 13px; box-shadow: var(--sh-1); cursor: pointer; transition: transform .12s; }
+.cm-app .bvch:active { transform: scale(.99); }
+.cm-app .bvch-l1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cm-app .bvch-plus { font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); padding: 1px 7px; border-radius: 999px; }
+.cm-app .bvch-name { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .bvch-meta { font-size: 11.5px; font-weight: 500; color: var(--ink-faint); margin-top: 5px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .bvch-foot { display: flex; align-items: center; gap: 7px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line-2); flex-wrap: wrap; }
+.cm-app .bvch-bld { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.cm-app .bvch-bld svg { opacity: .8; }
+.cm-app .bvch-cnt { margin-left: auto; font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--brand-600); background: var(--brand-50); border: 1px solid var(--brand-100); padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+
+/* ===== Chi tiết phiếu tổng — danh sách phiếu con ===== */
+.cm-app .bchild-list { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cm-app .bchild { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-top: 1px solid var(--line-2); }
+.cm-app .bchild:first-child { border-top: 0; }
+.cm-app .bchild.off { opacity: .6; }
+.cm-app .bchild-main { flex: 1; min-width: 0; cursor: pointer; }
+.cm-app .bchild-l1 { display: flex; align-items: center; gap: 7px; }
+.cm-app .bchild-code { font-family: var(--mono); font-weight: 700; font-size: 12.5px; color: var(--ink); }
+.cm-app .bchild-code.off { text-decoration: line-through; }
+.cm-app .bchild-loc { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .bchild-sub { font-size: 10.5px; font-weight: 500; color: var(--ink-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .bchild-r { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.cm-app .bchild-amt { font-family: var(--mono); font-weight: 700; font-size: 13px; white-space: nowrap; }
+.cm-app .bchild-edit { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: #b45309; display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.cm-app .bchild-edit:active { transform: scale(.92); }
+.cm-app .vd-accsel { width: 100%; }

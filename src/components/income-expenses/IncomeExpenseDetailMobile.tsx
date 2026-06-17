@@ -112,7 +112,10 @@ export function IncomeExpenseDetailMobile({
   );
 
   return (
-    <div className="sheet-ov" onClick={onClose}>
+    // stopPropagation: khi sheet này lồng trong sheet khác (vd phiếu con trong
+    // chi tiết phiếu tổng), chạm nền KHÔNG được nổi bọt lên overlay cha → tránh
+    // đóng luôn cả 2 lớp.
+    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grab" />
         <div className="vd-hd">

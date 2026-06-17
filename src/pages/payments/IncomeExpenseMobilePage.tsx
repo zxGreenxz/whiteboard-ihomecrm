@@ -46,8 +46,8 @@ import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
-import IncomeExpenseBatchList from "@/components/income-expenses/IncomeExpenseBatchList";
-import IncomeExpenseBatchDetailDialog from "@/components/income-expenses/IncomeExpenseBatchDetailDialog";
+import IncomeExpenseBatchListMobile from "@/components/income-expenses/IncomeExpenseBatchListMobile";
+import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeExpenseBatchDetailMobile";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
@@ -415,7 +415,9 @@ export default function IncomeExpenseMobilePage() {
                   {totalCount > vouchers.length && (
                     <button
                       className="loadmore"
-                      onClick={() => pagination.setPage(pagination.page + 1)}
+                      onClick={() =>
+                        pagination.setPageSize(pagination.pageSize + 50)
+                      }
                     >
                       Xem thêm ({totalCount - vouchers.length})
                     </button>
@@ -423,14 +425,14 @@ export default function IncomeExpenseMobilePage() {
                 </div>
               )
             ) : (
-              <IncomeExpenseBatchList
+              <IncomeExpenseBatchListMobile
                 batches={batches}
                 isLoading={isBatchLoading}
                 onView={setDetailBatchId}
-                onCancel={setCancelBatchTarget}
-                onEdit={setDetailBatchId}
-                pagination={pagination}
                 totalCount={batchTotalCount}
+                onLoadMore={() =>
+                  pagination.setPageSize(pagination.pageSize + 50)
+                }
               />
             )}
           </div>
@@ -444,6 +446,18 @@ export default function IncomeExpenseMobilePage() {
               onQuickEdit={(v) => setQuickEditVoucher(v)}
               onApprove={(id) => setApproveTarget(id)}
               onCancel={(id) => setCancelTarget(id)}
+            />
+          )}
+
+          {/* Chi tiết phiếu tổng — bottom sheet */}
+          {detailBatch && (
+            <IncomeExpenseBatchDetailMobile
+              batch={detailBatch}
+              onClose={() => setDetailBatchId(null)}
+              onCancelBatch={setCancelBatchTarget}
+              onEditVoucher={(v) => setEditingVoucher(v)}
+              onCancelVoucher={setCancelTarget}
+              onApproveVoucher={setApproveTarget}
             />
           )}
 
@@ -596,18 +610,6 @@ export default function IncomeExpenseMobilePage() {
           voucher={shareVoucher}
         />
       )}
-      <IncomeExpenseBatchDetailDialog
-        open={!!detailBatch}
-        onOpenChange={(o) => {
-          if (!o) setDetailBatchId(null);
-        }}
-        batch={detailBatch}
-        onCancel={setCancelBatchTarget}
-        onEditVoucher={(v) => setEditingVoucher(v)}
-        onCancelVoucher={setCancelTarget}
-        onApproveVoucher={setApproveTarget}
-      />
-
       {/* Xác nhận huỷ / duyệt */}
       <AlertDialog
         open={!!cancelTarget}
