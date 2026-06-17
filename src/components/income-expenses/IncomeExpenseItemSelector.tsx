@@ -7,7 +7,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Plus, ChevronDown, ChevronUp, Pencil, Search, X } from 'lucide-react';
+import { normalizeLoose } from '@/lib/textMatch';
 import {
   Collapsible,
   CollapsibleContent,
@@ -49,15 +51,25 @@ const IncomeExpenseItemSelector = ({
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [isTypeFormOpen, setIsTypeFormOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [editingType, setEditingType] = useState<IncomeExpenseType | null>(
     null
   );
+
+  // Lọc nhanh theo tên, bỏ dấu + không phân biệt hoa/thường.
+  const normalizedQuery = normalizeLoose(query);
+  const filteredTypes = normalizedQuery
+    ? visibleTypes.filter((t) =>
+        normalizeLoose(t.name).includes(normalizedQuery)
+      )
+    : visibleTypes;
 
   // Sync checkedIds with selectedTypeIds when dialog opens
   useEffect(() => {
     if (open) {
       setCheckedIds(new Set(selectedTypeIds));
       setIsTypeFormOpen(false);
+      setQuery('');
     }
   }, [open, selectedTypeIds]);
 
@@ -99,6 +111,29 @@ const IncomeExpenseItemSelector = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Ô lọc nhanh hạng mục theo tên */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Tìm hạng mục ${voucherType === 'INCOME' ? 'thu' : 'chi'}...`}
+              className="pl-9 pr-9"
+              aria-label="Tìm hạng mục"
+            />
+            {query && (
+              <button
+                type="button"
+                aria-label="Xoá tìm kiếm"
+                onClick={() => setQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
           {/* Type list with checkboxes */}
           <div className="max-h-[300px] overflow-y-auto space-y-2">
             {isLoading ? (
@@ -110,8 +145,12 @@ const IncomeExpenseItemSelector = ({
                 Chưa có loại {voucherType === 'INCOME' ? 'thu' : 'chi'} nào.
                 Hãy thêm mới.
               </p>
+            ) : filteredTypes.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Không tìm thấy hạng mục khớp với "{query}".
+              </p>
             ) : (
-              visibleTypes.map((t) => (
+              filteredTypes.map((t) => (
                 <div
                   key={t.id}
                   className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent"
