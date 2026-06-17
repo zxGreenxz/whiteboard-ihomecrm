@@ -18,18 +18,17 @@ import {
 import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { NumberInput } from '@/components/ui/number-input';
-import { DateInput } from '@/components/ui/date-input';
+import { DateSegmentInput } from '@/components/ui/date-segment-input';
 import { MonthInput } from '@/components/ui/month-input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -568,45 +567,34 @@ const IncomeExpenseForm = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tòa nhà *</FormLabel>
-                      <Select
-                        onValueChange={handleBuildingChange}
-                        value={field.value || ''}
-                        disabled={!canEdit}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn tòa nhà" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {showBuildingGroups ? (
-                            <>
-                              <SelectGroup>
-                                <SelectLabel>Toà quản lý</SelectLabel>
-                                {managedBuildings.map((b) => (
-                                  <SelectItem key={b.id} value={b.id}>
-                                    {b.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                              <SelectGroup>
-                                <SelectLabel>Toà khác</SelectLabel>
-                                {otherBuildings.map((b) => (
-                                  <SelectItem key={b.id} value={b.id}>
-                                    {b.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </>
-                          ) : (
-                            buildings.map((b) => (
-                              <SelectItem key={b.id} value={b.id}>
-                                {b.name}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <SearchableSelect
+                          value={field.value || undefined}
+                          onValueChange={handleBuildingChange}
+                          disabled={!canEdit}
+                          placeholder="Chọn tòa nhà"
+                          searchPlaceholder="Tìm tòa nhà..."
+                          options={
+                            showBuildingGroups
+                              ? [
+                                  ...managedBuildings.map((b) => ({
+                                    value: b.id,
+                                    label: b.name ?? '',
+                                    group: 'Toà quản lý',
+                                  })),
+                                  ...otherBuildings.map((b) => ({
+                                    value: b.id,
+                                    label: b.name ?? '',
+                                    group: 'Toà khác',
+                                  })),
+                                ]
+                              : buildings.map((b) => ({
+                                  value: b.id,
+                                  label: b.name ?? '',
+                                }))
+                          }
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -618,25 +606,22 @@ const IncomeExpenseForm = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Phòng</FormLabel>
-                      <Select
-                        onValueChange={handleRoomChange}
-                        value={field.value ?? '__none__'}
-                        disabled={!canEdit || !selectedBuildingId}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn phòng" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                          {rooms.map((r) => (
-                            <SelectItem key={r.id} value={r.id}>
-                              {r.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <SearchableSelect
+                          value={field.value ?? '__none__'}
+                          onValueChange={handleRoomChange}
+                          disabled={!canEdit || !selectedBuildingId}
+                          placeholder="Chọn phòng"
+                          searchPlaceholder="Tìm phòng..."
+                          options={[
+                            { value: '__none__', label: '-- Không chọn --' },
+                            ...rooms.map((r) => ({
+                              value: r.id,
+                              label: r.name ?? '',
+                            })),
+                          ]}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -648,24 +633,19 @@ const IncomeExpenseForm = ({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Sổ quỹ *</FormLabel>
-                      <Select
-                        onValueChange={handleAccountChange}
-                        value={field.value || ''}
-                        disabled={!canEdit}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn sổ quỹ" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {accounts.map((a) => (
-                            <SelectItem key={a.id} value={a.id}>
-                              {a.name}{a.bank_name ? ` (${a.bank_name})` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <SearchableSelect
+                          value={field.value || undefined}
+                          onValueChange={handleAccountChange}
+                          disabled={!canEdit}
+                          placeholder="Chọn sổ quỹ"
+                          searchPlaceholder="Tìm sổ quỹ..."
+                          options={accounts.map((a) => ({
+                            value: a.id,
+                            label: `${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`,
+                          }))}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -793,7 +773,7 @@ const IncomeExpenseForm = ({
                         {voucherType === 'EXPENSE' ? 'Ngày thực chi' : 'Ngày thực thu'} *
                       </FormLabel>
                       <FormControl>
-                        <DateInput
+                        <DateSegmentInput
                           value={field.value || ''}
                           onChange={field.onChange}
                           onBlur={field.onBlur}

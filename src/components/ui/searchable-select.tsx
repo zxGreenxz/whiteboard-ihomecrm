@@ -24,6 +24,12 @@ export interface SearchableSelectOption {
   /** Text tìm kiếm thêm/thay thế. Mặc định lấy từ `label` nếu label là string. */
   keywords?: string | string[];
   disabled?: boolean;
+  /**
+   * Nhãn nhóm tuỳ chọn. Khi ít nhất một option có `group`, danh sách được gom
+   * theo nhóm (heading hiển thị, thứ tự nhóm theo lần xuất hiện đầu tiên). cmdk
+   * tự ẩn nhóm rỗng khi lọc.
+   */
+  group?: string;
 }
 
 export interface SearchableSelectProps {
@@ -107,11 +113,46 @@ export function SearchableSelect({
     [options, value],
   );
 
+  // Gom theo nhóm khi có `group`; giữ thứ tự nhóm theo lần xuất hiện đầu tiên.
+  const grouped = React.useMemo(() => {
+    if (!options.some((o) => o.group)) return null;
+    const order: string[] = [];
+    const map = new Map<string, SearchableSelectOption[]>();
+    for (const o of options) {
+      const g = o.group ?? "";
+      if (!map.has(g)) {
+        map.set(g, []);
+        order.push(g);
+      }
+      map.get(g)!.push(o);
+    }
+    return order.map((g) => [g, map.get(g)!] as const);
+  }, [options]);
+
   const handleSelect = (next: string) => {
     onValueChange(next);
     setOpen(false);
     setQuery("");
   };
+
+  const renderItem = (opt: SearchableSelectOption) => (
+    <CommandItem
+      key={opt.value}
+      value={opt.value}
+      keywords={optionSearchText(opt)}
+      disabled={opt.disabled}
+      onSelect={() => handleSelect(opt.value)}
+      className="cursor-pointer"
+    >
+      <Check
+        className={cn(
+          "mr-2 h-4 w-4 shrink-0",
+          value === opt.value ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <span className="line-clamp-1">{opt.label}</span>
+    </CommandItem>
+  );
 
   return (
     <Popover
@@ -157,26 +198,18 @@ export function SearchableSelect({
           )}
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
-            <CommandGroup>
-              {options.map((opt) => (
-                <CommandItem
-                  key={opt.value}
-                  value={opt.value}
-                  keywords={optionSearchText(opt)}
-                  disabled={opt.disabled}
-                  onSelect={() => handleSelect(opt.value)}
-                  className="cursor-pointer"
+            {grouped ? (
+              grouped.map(([heading, opts]) => (
+                <CommandGroup
+                  key={heading || "__ungrouped"}
+                  heading={heading || undefined}
                 >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === opt.value ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  <span className="line-clamp-1">{opt.label}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+                  {opts.map(renderItem)}
+                </CommandGroup>
+              ))
+            ) : (
+              <CommandGroup>{options.map(renderItem)}</CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
