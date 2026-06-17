@@ -212,20 +212,52 @@ export default function ProfitDistributionReport() {
       }
     } else {
       for (const r of (result?.data ?? []) as any[]) {
-        const typeName =
-          (r.items || []).map((it: any) => it.type_name).filter(Boolean).join(", ") || "—";
         const base = {
           description: r.name ?? "",
           buildingName: r.building_name ?? "",
           roomName: r.room_name ?? null,
           periodLabel: "—",
-          typeName,
           notKqkd: r.counts_in_business_result === false,
           monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
         };
-        if (r.type === "INCOME")
-          rawInc.push({ ...base, key: r.id, amount: Number(r.total_amount), invoiceId: r.invoice_id ?? null });
-        else exp.push({ ...base, key: r.id, amount: Number(r.total_amount) });
+        const items = (r.items || []) as any[];
+
+        // CHỈ phiếu thu tiền nhà hằng tháng (gắn hoá đơn) mới giữ nguyên 1
+        // dòng/phiếu để gộp theo hoá đơn ở bước sau.
+        if (r.type === "INCOME" && r.invoice_id) {
+          const typeName =
+            items.map((it) => it.type_name).filter(Boolean).join(", ") || "—";
+          rawInc.push({
+            ...base,
+            key: r.id,
+            typeName,
+            amount: Number(r.total_amount),
+            invoiceId: r.invoice_id,
+          });
+          continue;
+        }
+
+        // Phiếu thu/chi KHÁC → KHÔNG gộp, tách theo từng hạng mục (item).
+        const rows =
+          items.length > 0
+            ? items.map((it) => {
+                const amt = Number(it.amount);
+                const safe = Number.isFinite(amt)
+                  ? amt
+                  : Number(it.quantity) * Number(it.unit_price) || 0;
+                return {
+                  ...base,
+                  key: `${r.id}:${it.id}`,
+                  typeName: it.type_name || "—",
+                  amount: safe,
+                };
+              })
+            : [{ ...base, key: r.id, typeName: "—", amount: Number(r.total_amount) }];
+
+        for (const row of rows) {
+          if (r.type === "INCOME") rawInc.push({ ...row, invoiceId: null });
+          else exp.push(row);
+        }
       }
     }
 
