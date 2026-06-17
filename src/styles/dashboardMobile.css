@@ -1,0 +1,134 @@
+/* =============================================================
+   Mobile web-app — Bảng tin (Dashboard) + Bản tin (Notifications).
+   Bổ sung cho mobileApp.css (cùng scope .cm-stage/.cm-app, cùng token
+   warm-neutral + emerald). Dựng lại từ handoff Claude Design
+   (ui_kits/mobile-app: DashboardScreen + NotificationsScreen trong
+   screens.jsx + app.css). Chỉ chứa các class CHƯA có trong mobileApp.css
+   (KPI, tỷ lệ lấp đầy, biểu đồ doanh thu, tổng quan vận hành, cảnh báo,
+   hoạt động gần đây, danh sách + chi tiết bản tin).
+   ============================================================= */
+
+/* ===== Dashboard — period + building row ===== */
+.cm-app .dash-toprow { display: flex; gap: 10px; margin-bottom: 14px; }
+.cm-app .dash-period { flex: 1; display: flex; align-items: center; gap: 7px; height: 44px; padding: 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-1); font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.cm-app .dash-period svg { color: var(--brand-600); flex-shrink: 0; }
+.cm-app .dash-bld { width: 150px; flex-shrink: 0; }
+.cm-app .dash-sec { font-size: 13px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; margin: 18px 0 11px; }
+
+/* ===== KPI cards ===== */
+.cm-app .kgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 14px; }
+.cm-app .kcard { background: var(--surface); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--r); padding: 13px 14px; box-shadow: var(--sh-1); }
+.cm-app .kc-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cm-app .kc-lbl { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.cm-app .kc-ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .kc-ic svg { width: 17px; height: 17px; }
+.cm-app .kc-val { font-family: var(--mono); font-weight: 700; font-size: 24px; letter-spacing: -.6px; margin-top: 9px; line-height: 1; color: var(--ink); }
+.cm-app .kc-val small { font-size: 13px; font-weight: 700; margin-left: 1px; }
+.cm-app .kc-sub { font-size: 11px; font-weight: 600; color: var(--ink-3); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ===== Occupancy (tỷ lệ lấp đầy) ===== */
+.cm-app .occ-growth { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: #1f9d57; background: #e6f5ec; border: 1px solid #bfe6cd; padding: 2px 8px; border-radius: 999px; }
+.cm-app .occ-growth.down { color: #d6453f; background: #fcebe9; border-color: #f2c8c4; }
+.cm-app .occ-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; gap: 2px; background: var(--surface-2); }
+.cm-app .occ-bar > div { transition: width .3s; }
+.cm-app .occ-bar > div:first-child { border-radius: 999px 0 0 999px; }
+.cm-app .occ-bar > div:last-child { border-radius: 0 999px 999px 0; }
+.cm-app .occ-legend { display: flex; flex-direction: column; gap: 9px; margin-top: 14px; }
+.cm-app .occ-leg { display: flex; align-items: center; gap: 9px; }
+.cm-app .occ-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.cm-app .occ-leg-l { font-size: 13px; font-weight: 600; color: var(--ink-2); flex: 1; }
+.cm-app .occ-leg-v { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--ink); }
+.cm-app .occ-leg-v small { font-weight: 600; color: var(--ink-3); font-size: 12px; }
+
+/* ===== Revenue chart ===== */
+.cm-app .chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; }
+.cm-app .chart-bw { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.cm-app .chart-bar { width: 100%; max-width: 18px; background: linear-gradient(var(--brand), var(--brand-600)); border-radius: 4px 4px 0 0; min-height: 2px; }
+.cm-app .chart-x { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
+.cm-app .panel-s { font-size: 11.5px; font-weight: 500; color: var(--ink-3); margin: 8px 0 0; }
+
+/* ===== Operations summary (tổng quan vận hành) ===== */
+.cm-app .ops { display: flex; flex-direction: column; gap: 11px; margin-bottom: 14px; }
+.cm-app .opsb { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px; box-shadow: var(--sh-1); }
+.cm-app .opsb-h { display: flex; align-items: center; gap: 10px; }
+.cm-app .opsb-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .opsb-t { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); letter-spacing: -.2px; }
+.cm-app .opsb-go { display: inline-flex; align-items: center; gap: 1px; border: 0; background: transparent; color: var(--brand-600); font-family: var(--font); font-size: 12.5px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.cm-app .opsb-go svg { width: 13px; height: 13px; }
+.cm-app .opsb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 10px; margin-top: 14px; }
+.cm-app .opsb-stat { display: flex; flex-direction: column; gap: 2px; }
+.cm-app .opsb-v { font-family: var(--mono); font-weight: 700; font-size: 21px; letter-spacing: -.5px; line-height: 1; }
+.cm-app .opsb-l { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+
+/* ===== Alerts (cảnh báo & thông báo) ===== */
+.cm-app .alerts { display: flex; flex-direction: column; gap: 11px; }
+.cm-app .alert { display: flex; gap: 11px; align-items: flex-start; padding: 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); transition: transform .12s; }
+.cm-app .alert.tap { cursor: pointer; }
+.cm-app .alert.tap:active { transform: scale(.99); }
+.cm-app .alert-ic { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .alert-body { flex: 1; min-width: 0; }
+.cm-app .alert-top { display: flex; align-items: center; gap: 8px; }
+.cm-app .alert-t { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--ink); }
+.cm-app .alert-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+.cm-app .alert-desc { font-size: 12.5px; font-weight: 500; color: var(--ink-2); margin-top: 4px; line-height: 1.45; }
+.cm-app .alert-date { font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--ink-faint); margin-top: 5px; }
+
+/* ===== Recent activity feed (hoạt động gần đây) ===== */
+.cm-app .feed { display: flex; flex-direction: column; gap: 14px; }
+.cm-app .feed-it { display: flex; gap: 11px; align-items: flex-start; }
+.cm-app .feed-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .feed-body { flex: 1; min-width: 0; }
+.cm-app .feed-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cm-app .feed-t { font-size: 13px; font-weight: 700; color: var(--ink); }
+.cm-app .feed-amt { font-family: var(--mono); font-weight: 700; font-size: 12.5px; color: #1f9d57; white-space: nowrap; }
+.cm-app .feed-amt small { font-size: 9px; font-weight: 700; margin-left: 1px; }
+.cm-app .feed-desc { font-size: 12.5px; font-weight: 500; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .feed-w { font-size: 11px; color: var(--ink-faint); font-weight: 600; margin-top: 3px; display: inline-block; }
+
+/* ============================================================
+   Bản tin / Thông báo (Notifications) — danh sách + chi tiết
+   ============================================================ */
+.cm-app .ntseg { display: flex; gap: 7px; margin-bottom: 12px; }
+.cm-app .ntseg-b { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-3); cursor: pointer; transition: .14s; }
+.cm-app .ntseg-b.on { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: var(--sh-1); }
+.cm-app .ntseg-n { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: rgba(0,0,0,.06); }
+.cm-app .ntseg-b.on .ntseg-n { background: rgba(255,255,255,.22); }
+
+.cm-app .ntfilter { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; margin-bottom: 14px; padding-bottom: 2px; }
+.cm-app .ntfilter::-webkit-scrollbar { display: none; }
+.cm-app .ntfchip { flex-shrink: 0; height: 32px; padding: 0 13px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; transition: .14s; white-space: nowrap; }
+.cm-app .ntfchip.on { background: var(--brand-50); border-color: var(--brand); color: var(--brand-600); font-weight: 700; }
+
+.cm-app .ntcard { display: flex; align-items: flex-start; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 13px; box-shadow: var(--sh-1); cursor: pointer; transition: transform .12s; }
+.cm-app .ntcard:active { transform: scale(.99); }
+.cm-app .ntcard.unread { background: #f6f9ff; border-color: #d9e4fb; }
+.cm-app .ntcard-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .ntcard-ic svg { width: 18px; height: 18px; }
+.cm-app .ntcard-body { flex: 1; min-width: 0; }
+.cm-app .ntcard-top { display: flex; align-items: center; gap: 8px; }
+.cm-app .ntcard-badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.cm-app .ntcard-ago { font-size: 11px; font-weight: 600; color: var(--ink-faint); }
+.cm-app .ntcard-dot { width: 8px; height: 8px; border-radius: 50%; background: #2563eb; margin-left: auto; flex-shrink: 0; }
+.cm-app .ntcard-subj { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-top: 7px; line-height: 1.35; letter-spacing: -.2px; }
+.cm-app .ntcard-snip { font-size: 12.5px; font-weight: 500; color: var(--ink-3); margin-top: 4px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cm-app .ntcard-x { flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; border: 0; background: transparent; color: var(--ink-faint); display: grid; place-items: center; cursor: pointer; transition: .14s; }
+.cm-app .ntcard-x:active { background: #fcebe9; color: #d6453f; }
+
+.cm-app .ntd-hero { border: 1px solid; border-radius: var(--r-lg); padding: 18px 16px; margin-bottom: 16px; }
+.cm-app .ntd-hero-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 12px; }
+.cm-app .ntd-hero-ic svg { width: 24px; height: 24px; }
+.cm-app .ntd-hero-badge { font-size: 12px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+.cm-app .ntd-subj { font-size: 19px; font-weight: 700; letter-spacing: -.4px; line-height: 1.3; color: var(--ink); margin: 8px 0 0; text-wrap: pretty; }
+.cm-app .ntd-time { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-3); margin-top: 11px; }
+.cm-app .ntd-time svg { opacity: .7; }
+.cm-app .ntd-content { font-size: 14.5px; font-weight: 500; line-height: 1.65; color: var(--ink-2); margin-bottom: 18px; }
+.cm-app .ntd-content p { margin: 0 0 8px; text-wrap: pretty; }
+.cm-app .ntd-content p:last-child { margin-bottom: 0; }
+.cm-app .ntd-acts { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.cm-app .ntd-cta { display: inline-flex; align-items: center; gap: 9px; height: 50px; padding: 0 16px; border-radius: 13px; background: var(--brand); border: 0; color: #fff; font-family: var(--font); font-size: 14.5px; font-weight: 700; cursor: pointer; box-shadow: var(--sh-1); }
+.cm-app .ntd-cta:active { background: var(--brand-600); }
+.cm-app .ntd-cta svg { width: 17px; height: 17px; }
+.cm-app .ntd-cta-code { font-family: var(--mono); font-size: 12.5px; font-weight: 700; padding: 2px 9px; border-radius: 7px; background: rgba(255,255,255,.2); }
+.cm-app .ntd-del { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; border-radius: 12px; background: var(--surface); border: 1px solid #f2c8c4; color: #d6453f; font-family: var(--font); font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.cm-app .ntd-del:active { transform: scale(.99); }
+.cm-app .ntd-del svg { width: 16px; height: 16px; }

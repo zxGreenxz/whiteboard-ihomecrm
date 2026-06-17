@@ -56,7 +56,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
   {
     label: 'Vận hành',
     items: [
-      { id: 'dashboard', title: 'Bảng tin', href: '/', icon: LayoutDashboard, accent: '#1f7a52' },
+      { id: 'dashboard', title: 'Bảng tin', href: '/dashboard', icon: LayoutDashboard, accent: '#1f7a52' },
       { id: 'map', title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, accent: '#2563eb', module: 'buildings' },
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
       { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },

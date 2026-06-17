@@ -21,6 +21,7 @@ import Login from "./pages/auth/Login";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 import HomeRoute from "./pages/home/HomeRoute";
+import DashboardRoute from "./pages/home/DashboardRoute";
 import NotFound from "./pages/NotFound";
 
 // Route Guards
@@ -242,6 +243,8 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+          {/* /dashboard: Bảng tin — mobile mở màn web-app riêng, desktop về "/". */}
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
           <Route path="/building-map" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingMapPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
 

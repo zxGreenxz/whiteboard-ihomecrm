@@ -11,6 +11,7 @@ export type NotificationType =
   | 'CONTRACT_EXPIRING'
   | 'ISSUE_RESOLVED'
   | 'GENERAL_ANNOUNCEMENT'
+  | 'DEPOSIT_SHORTFALL'
   | 'CUSTOM';
 
 export type NotificationChannel =

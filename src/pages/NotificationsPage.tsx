@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
+import { usePhoneViewport } from '@/hooks/use-mobile';
 import { Bell, CheckCheck, Trash2, Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,7 +20,10 @@ import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 
-const NotificationsPage = () => {
+// Bản tin mobile: web-app full-screen riêng (scope CSS .cm-app) — lazy.
+const NotificationsMobilePage = lazy(() => import('./NotificationsMobilePage'));
+
+const NotificationsDesktopPage = () => {
   const navigate = useNavigate();
   const [selectedTab, setSelectedTab] = useState<'all' | 'unread'>('all');
   const [selectedType, setSelectedType] = useState<NotificationType | 'all'>(
@@ -303,6 +307,23 @@ const NotificationsPage = () => {
       </div>
     </MainLayout>
   );
+};
+
+/**
+ * "/notifications" tách nhánh theo bề ngang màn hình:
+ *  - Mobile  → Bản tin web-app (danh sách + chi tiết, dạng app).
+ *  - Desktop → trang Thông báo như cũ (MainLayout), KHÔNG đổi.
+ */
+const NotificationsPage = () => {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <NotificationsMobilePage />
+      </Suspense>
+    );
+  }
+  return <NotificationsDesktopPage />;
 };
 
 export default NotificationsPage;
