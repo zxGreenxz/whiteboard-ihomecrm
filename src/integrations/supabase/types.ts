@@ -1053,7 +1053,9 @@ export type Database = {
           status: string
           to_account_id: string | null
           total_amount: number
+          transfer_expense_batch_id: string | null
           transfer_expense_id: string | null
+          transfer_income_batch_id: string | null
           transfer_income_id: string | null
           updated_at: string
           voucher_count: number
@@ -1077,7 +1079,9 @@ export type Database = {
           status?: string
           to_account_id?: string | null
           total_amount: number
+          transfer_expense_batch_id?: string | null
           transfer_expense_id?: string | null
+          transfer_income_batch_id?: string | null
           transfer_income_id?: string | null
           updated_at?: string
           voucher_count: number
@@ -1101,7 +1105,9 @@ export type Database = {
           status?: string
           to_account_id?: string | null
           total_amount?: number
+          transfer_expense_batch_id?: string | null
           transfer_expense_id?: string | null
+          transfer_income_batch_id?: string | null
           transfer_income_id?: string | null
           updated_at?: string
           voucher_count?: number
@@ -1136,10 +1142,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_handovers_transfer_expense_batch_id_fkey"
+            columns: ["transfer_expense_batch_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_batches"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_handovers_transfer_expense_id_fkey"
             columns: ["transfer_expense_id"]
             isOneToOne: false
             referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_transfer_income_batch_id_fkey"
+            columns: ["transfer_income_batch_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_batches"
             referencedColumns: ["id"]
           },
           {
@@ -2664,6 +2684,7 @@ export type Database = {
           creator_name: string | null
           deleted_at: string | null
           handover_id: string | null
+          handover_transfer_id: string | null
           has_restricted_item: boolean
           id: string
           invoice_id: string | null
@@ -2711,6 +2732,7 @@ export type Database = {
           creator_name?: string | null
           deleted_at?: string | null
           handover_id?: string | null
+          handover_transfer_id?: string | null
           has_restricted_item?: boolean
           id?: string
           invoice_id?: string | null
@@ -2758,6 +2780,7 @@ export type Database = {
           creator_name?: string | null
           deleted_at?: string | null
           handover_id?: string | null
+          handover_transfer_id?: string | null
           has_restricted_item?: boolean
           id?: string
           invoice_id?: string | null
@@ -2834,6 +2857,13 @@ export type Database = {
           {
             foreignKeyName: "income_expenses_handover_id_fkey"
             columns: ["handover_id"]
+            isOneToOne: false
+            referencedRelation: "cash_handovers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_handover_transfer_id_fkey"
+            columns: ["handover_transfer_id"]
             isOneToOne: false
             referencedRelation: "cash_handovers"
             referencedColumns: ["id"]
@@ -5043,6 +5073,66 @@ export type Database = {
         }
         Relationships: []
       }
+      room_pass_listings: {
+        Row: {
+          active: boolean
+          building_id: string
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          pass_price: number | null
+          room_id: string
+          sale_policy: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          building_id: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pass_price?: number | null
+          room_id: string
+          sale_policy?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          building_id?: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pass_price?: number | null
+          room_id?: string
+          sale_policy?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_pass_listings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_pass_listings_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rooms: {
         Row: {
           amenities: Json | null
@@ -6310,6 +6400,7 @@ export type Database = {
         Args: { _action: string; _resource: string }
         Returns: boolean
       }
+      can_create_restricted_ie: { Args: never; Returns: boolean }
       can_do_on_building: {
         Args: { _action: string; _building_id: string; _table: string }
         Returns: boolean
@@ -6318,6 +6409,11 @@ export type Database = {
         Args: { _action: string; _building_id: string }
         Returns: boolean
       }
+      can_manage_pass_listing: {
+        Args: { _building_id: string; _owner: string }
+        Returns: boolean
+      }
+      can_view_restricted_ie: { Args: never; Returns: boolean }
       cashbook_opening_balance: {
         Args: {
           p_account_id?: string
@@ -6393,6 +6489,7 @@ export type Database = {
         Args: { _customer_id: string; _owner: string }
         Returns: boolean
       }
+      delete_room_pass_listing: { Args: { p_id: string }; Returns: undefined }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
       ensure_room_deposit_type: { Args: never; Returns: string }
       estimate_termination_costs: {
@@ -6410,6 +6507,113 @@ export type Database = {
           refund_amount: number
           total_deposit: number
           total_fees: number
+        }[]
+      }
+      fa_invoice_collection: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_month: string
+          p_start_month: string
+        }
+        Returns: {
+          approved_count: number
+          billed: number
+          billing_month: string
+          building_id: string
+          building_name: string
+          collected: number
+          draft_count: number
+          invoice_count: number
+          overdue_count: number
+          paid_count: number
+          partial_count: number
+          pending_count: number
+          remaining: number
+        }[]
+      }
+      fa_lease_events: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          month: string
+          new_contracts: number
+          renewals: number
+          terminations: number
+        }[]
+      }
+      fa_monthly_pnl: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          expense: number
+          is_virtual: boolean
+          month: string
+          net: number
+          revenue: number
+        }[]
+      }
+      fa_occupancy_monthly: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          month: string
+          occupancy_pct: number
+          occupied_rooms: number
+          total_rooms: number
+        }[]
+      }
+      fa_snapshot_kpis: {
+        Args: { p_building_ids?: string[] }
+        Returns: {
+          active_contracts: number
+          aging_1_30: number
+          aging_31_60: number
+          aging_61_90: number
+          aging_not_due: number
+          aging_over_90: number
+          avg_rent: number
+          building_id: string
+          building_name: string
+          deposit_held: number
+          receivable_total: number
+          rooms_available: number
+          rooms_maintenance: number
+          rooms_occupied: number
+          rooms_reserved: number
+          rooms_unavailable: number
+          total_rooms: number
+          vacancy_loss_month: number
+        }[]
+      }
+      fa_type_breakdown: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          category: string
+          month: string
+          side: string
+          total_amount: number
+          type_id: string
+          type_name: string
+          voucher_count: number
         }[]
       }
       gen_contract_public_code: { Args: { len?: number }; Returns: string }
@@ -6593,6 +6797,8 @@ export type Database = {
         }
       }
       ie_has_deposit_item: { Args: { p_ie_id: string }; Returns: boolean }
+      ie_item_restricted_visible: { Args: { _ie_id: string }; Returns: boolean }
+      ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_account_shared_with_me: {
         Args: { p_account_id: string }
@@ -6609,6 +6815,20 @@ export type Database = {
           net_profit: number
           total_expense: number
           total_income: number
+        }[]
+      }
+      pass_listing_form_rooms: {
+        Args: never
+        Returns: {
+          building_id: string
+          building_name: string
+          current_listing_id: string
+          has_active_contract: boolean
+          owner_id: string
+          rent_price: number
+          room_code: string
+          room_id: string
+          room_name: string
         }[]
       }
       recompute_contract_deposit_paid: {
@@ -6691,6 +6911,29 @@ export type Database = {
         Returns: undefined
       }
       seed_default_settings: { Args: { p_user_id: string }; Returns: undefined }
+      set_room_pass_listing_active: {
+        Args: { p_active: boolean; p_id: string }
+        Returns: {
+          active: boolean
+          building_id: string
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          pass_price: number | null
+          room_id: string
+          sale_policy: string | null
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "room_pass_listings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       soft_delete_customer: {
@@ -6799,6 +7042,7 @@ export type Database = {
           creator_name: string | null
           deleted_at: string | null
           handover_id: string | null
+          handover_transfer_id: string | null
           has_restricted_item: boolean
           id: string
           invoice_id: string | null
@@ -6832,6 +7076,37 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "income_expenses"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      upsert_room_pass_listing: {
+        Args: {
+          p_active: boolean
+          p_contact_name: string
+          p_contact_phone: string
+          p_id: string
+          p_pass_price: number
+          p_room_id: string
+          p_sale_policy: string
+        }
+        Returns: {
+          active: boolean
+          building_id: string
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          pass_price: number | null
+          room_id: string
+          sale_policy: string | null
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "room_pass_listings"
           isOneToOne: true
           isSetofReturn: false
         }

@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
-import { Share2, SlidersHorizontal, Image as ImageIcon, LayoutGrid } from "lucide-react";
+import { Share2, SlidersHorizontal, Image as ImageIcon, LayoutGrid, Repeat } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ShareTokensTab from "@/components/sale-phong/ShareTokensTab";
 import DisplaySettingsTab from "@/components/sale-phong/DisplaySettingsTab";
 import SaleImagesTab from "@/components/sale-phong/SaleImagesTab";
+import PassListingsTab from "@/components/sale-phong/PassListingsTab";
 import FloorPlanEditorTab from "@/components/sale-phong/floor-editor/FloorPlanEditorTab";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 
-type TabKey = "tokens" | "settings" | "images" | "floorplan";
+type TabKey = "tokens" | "settings" | "images" | "pass" | "floorplan";
 
 /**
  * Trang quản trị "SALE PHÒNG": vận hành trang công khai "Phòng trống" (/r/:token).
@@ -25,6 +26,7 @@ export default function SalePhongPage() {
         { key: "tokens" as TabKey, allowed: canUse(perms, "sale_phong", "manage_tokens") },
         { key: "settings" as TabKey, allowed: canUse(perms, "sale_phong", "manage_settings") },
         { key: "images" as TabKey, allowed: canUse(perms, "sale_phong", "manage_images") },
+        { key: "pass" as TabKey, allowed: canUse(perms, "sale_phong", "manage_pass_listings") },
         { key: "floorplan" as TabKey, allowed: canUse(perms, "sale_phong", "edit_floor_plan") },
       ].filter((t) => t.allowed),
     [perms],
@@ -67,6 +69,11 @@ export default function SalePhongPage() {
                   <ImageIcon className="h-4 w-4" />Hình ảnh sale
                 </TabsTrigger>
               )}
+              {tabs.some((t) => t.key === "pass") && (
+                <TabsTrigger value="pass" className="gap-1.5">
+                  <Repeat className="h-4 w-4" />Khách nhờ sale
+                </TabsTrigger>
+              )}
               {tabs.some((t) => t.key === "floorplan") && (
                 <TabsTrigger value="floorplan" className="gap-1.5">
                   <LayoutGrid className="h-4 w-4" />Sơ đồ tòa nhà
@@ -77,6 +84,7 @@ export default function SalePhongPage() {
             <TabsContent value="tokens" className="mt-4"><ShareTokensTab /></TabsContent>
             <TabsContent value="settings" className="mt-4"><DisplaySettingsTab /></TabsContent>
             <TabsContent value="images" className="mt-4"><SaleImagesTab /></TabsContent>
+            <TabsContent value="pass" className="mt-4"><PassListingsTab /></TabsContent>
             <TabsContent value="floorplan" className="mt-4"><FloorPlanEditorTab /></TabsContent>
           </Tabs>
         )}

@@ -6,6 +6,9 @@ import { FloorPlan, ListView, OverviewView } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
 import { SAMPLE_BUILDINGS, type Room } from "./sampleData";
 import { usePhongTrong } from "./usePhongTrong";
+import { QuickDepositModal } from "./QuickDepositModal";
+import { useSession } from "@/hooks/useAuth";
+import { useMyPermissions, can } from "@/hooks/useMyPermissions";
 
 /** Giá trị đặc biệt cho chip "Tổng hợp" trong hàng chọn tòa nhà (xem tất cả tòa). */
 const OVERVIEW = "__overview__";
@@ -29,6 +32,12 @@ export default function PhongTrongPage() {
 
   const [room, setRoom] = useState<Room | null>(null);
   const [sheetShow, setSheetShow] = useState(false);
+  // "Tạo cọc nhanh": chỉ cho user ĐANG ĐĂNG NHẬP có quyền sale_phong.create_deposit.
+  const { data: session } = useSession();
+  const { data: perms } = useMyPermissions();
+  const canQuickDeposit = !!session?.user && can(perms, "sale_phong", "create_deposit");
+  const [depositRoom, setDepositRoom] = useState<Room | null>(null);
+  const openDeposit = (r: Room) => setDepositRoom(r);
   const [toast, setToast] = useState({ msg: "", show: false });
   const toastTimer = useRef<number | undefined>(undefined);
   const propsRef = useRef<HTMLDivElement>(null);
@@ -173,11 +182,12 @@ export default function PhongTrongPage() {
                   ))
                 : <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />)
             : (isOverview
-                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
+                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onQuickDeposit={canQuickDeposit ? openDeposit : undefined} />
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
-        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={setRoom} buildings={buildings} />
+        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={setRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
+        <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
         <Toast msg={toast.msg} show={toast.show} />
       </div>
     </div>

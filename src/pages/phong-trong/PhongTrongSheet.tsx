@@ -88,11 +88,15 @@ function shortAddr(addr: string): string {
   return parts.join(", ");
 }
 function buildShareText(r: Room, building?: Building): string {
+  const isPass = r.status === "pass";
   return [
     `🏠 ${r.buildingName} — Phòng ${r.code}${r.type ? ` · ${r.type}` : ""}`,
     `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
-    `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
+    isPass
+      ? `• Tình trạng: Khách pass phòng${r.passContactPhone ? " — LH " + r.passContactPhone + (r.passContactName ? " (" + r.passContactName + ")" : "") : ""}`
+      : `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
     `• Nội thất: ${r.amenities.join(", ")}`,
+    ...(isPass && r.passSalePolicy ? [`• Chính sách sale: ${r.passSalePolicy}`] : []),
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
     `• Địa chỉ: ${shortAddr(r.buildingAddr)}`,
     "",
@@ -129,7 +133,7 @@ async function fetchImageFiles(r: Room): Promise<File[]> {
 type FilesCacheEntry = { key: string; promise: Promise<File[]>; done: boolean };
 
 export function DetailSheet({
-  room, show, onClose, onToast, saved, toggleSave, onGo, buildings,
+  room, show, onClose, onToast, saved, toggleSave, onGo, buildings, onQuickDeposit,
 }: {
   room: Room | null;
   show: boolean;
@@ -139,6 +143,8 @@ export function DetailSheet({
   toggleSave: (id: string) => void;
   onGo: (r: Room) => void;
   buildings: Building[];
+  /** Có quyền tạo cọc nhanh → hiện nút "Tạo cọc giữ phòng" (phòng chưa thuê). */
+  onQuickDeposit?: (r: Room) => void;
 }) {
   const [lb, setLb] = useState<number | null>(null);
   const rid = room ? room.id : null;
@@ -180,9 +186,14 @@ export function DetailSheet({
   const prev = idx > 0 ? siblings[idx - 1] : null;
   const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
 
-  // Liên hệ riêng từng tòa (đã map ở supabaseData); chưa có -> hotline/owner chung.
-  const contactName = building?.manager || MANAGER.name;
-  const contactPhone = building?.phone || MANAGER.phone;
+  // Phòng "khách nhờ sale / pass": liên hệ là CỦA KHÁCH (không phải QL/hotline tòa).
+  const isPass = r.status === "pass";
+  const contactName = isPass
+    ? (r.passContactName?.trim() || "khách")
+    : (building?.manager || MANAGER.name);
+  const contactPhone = isPass
+    ? (r.passContactPhone?.trim() || building?.phone || MANAGER.phone)
+    : (building?.phone || MANAGER.phone);
   const contactDigits = contactPhone.replace(/\D/g, "") || MANAGER.zalo;
 
   const doCall = () => {
@@ -330,6 +341,12 @@ export function DetailSheet({
               </span>
             </div>
 
+            {onQuickDeposit && r.status !== "rented" && r.status !== "pass" && (
+              <button className="qd-trigger" onClick={() => onQuickDeposit(r)}>
+                <Icon.Money />Tạo cọc giữ phòng
+              </button>
+            )}
+
             <div className="specs">
               <div className="spec"><div className="sp-lbl">Diện tích</div><div className="sp-val">{r.area}<small>m²</small></div></div>
               <div className="spec"><div className="sp-lbl">Loại phòng</div><div className="sp-val">{r.type || "—"}</div></div>
@@ -354,6 +371,19 @@ export function DetailSheet({
               <div className="note-box" style={{ background: "var(--st-soon-bg)", borderColor: "var(--st-soon-line)", color: "var(--st-soon)" }}>
                 <Icon.Tag />
                 <span><b>Thưởng sale:</b> {r.saleBonus}</span>
+              </div>
+            )}
+
+            {isPass && (r.passContactPhone || r.passContactName || r.passSalePolicy) && (
+              <div className="note-box" style={{ background: "var(--st-pass-bg)", borderColor: "var(--st-pass-line)", color: "var(--st-pass)" }}>
+                <Icon.Tag />
+                <span>
+                  <b>Khách pass phòng</b>
+                  {(r.passContactPhone || r.passContactName) && (
+                    <> — Liên hệ: {r.passContactPhone || "—"}{r.passContactName ? ` (${r.passContactName})` : ""}</>
+                  )}
+                  {r.passSalePolicy && <><br />{r.passSalePolicy}</>}
+                </span>
               </div>
             )}
 
@@ -384,7 +414,7 @@ export function DetailSheet({
         </div>
 
         <div className="sh-actions">
-          <button className="btn btn-primary btn-half" onClick={doCall}><Icon.Phone />Gọi Quản Lý</button>
+          <button className="btn btn-primary btn-half" onClick={doCall}><Icon.Phone />{isPass ? "Gọi khách" : "Gọi Quản Lý"}</button>
           <button className="btn btn-zalo btn-half" onClick={doZalo}><Icon.Chat />Zalo</button>
           <button className="btn btn-nav prev" disabled={!prev} onClick={() => prev && onGo(prev)} title="Phòng trước">
             <Icon.Chevron />

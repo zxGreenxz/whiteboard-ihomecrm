@@ -152,6 +152,10 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("sale_phong", "edit_floor_plan", "Sửa sơ đồ toạ độ phòng", "manage", {
             fallback: { action: "edit" },
           }),
+          f("sale_phong", "manage_pass_listings", "Quản lý phòng khách nhờ sale (pass)", "manage", {
+            desc: "Đăng phòng đang có khách lên trang công khai với SĐT khách + chính sách sale riêng.",
+            fallback: { action: "edit" },
+          }),
           f("sale_phong", "create_deposit", "Tạo cọc nhanh trên trang công khai", "elevated", {
             desc: "Nút 'Tạo cọc giữ phòng' trên /r/:token khi đăng nhập — phòng tự chuyển ĐÃ CỌC.",
           }),

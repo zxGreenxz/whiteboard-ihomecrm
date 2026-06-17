@@ -3,7 +3,7 @@
  * Tọa độ phòng (x,y,w,h) sau này lấy từ editor sơ đồ kéo-thả (layout_x/y/w/h).
  */
 
-export type RoomStatus = "free" | "soon" | "rented";
+export type RoomStatus = "free" | "soon" | "rented" | "pass";
 
 export interface Box { x: number; y: number; w: number; h: number; }
 
@@ -28,6 +28,10 @@ export interface Room extends Box {
   description?: string | null; // mô tả/ghi chú phòng (vd "cửa sổ hành lang", "ban công")
   saleNote?: string | null;    // ô "Khuyến mãi" (promo riêng của phòng, gửi khách được)
   saleBonus?: string | null;   // ô "Thưởng sale" (nội bộ — KHÔNG đưa vào text gửi khách)
+  // Phòng "khách nhờ sale / pass" (status === "pass"): liên hệ + chính sách là CỦA KHÁCH
+  passContactName?: string | null;
+  passContactPhone?: string | null;
+  passSalePolicy?: string | null;
 }
 
 export interface Fixture extends Box {
@@ -85,6 +89,7 @@ export const STATUS_META: Record<RoomStatus, { label: string; short: string }> =
   free:   { label: "Trống sẵn", short: "Trống" },
   soon:   { label: "Sắp trống", short: "Sắp trống" },
   rented: { label: "Đã thuê",   short: "Đã thuê" },
+  pass:   { label: "Khách pass phòng", short: "Khách pass" },
 };
 
 export const fmtPrice = (p: number): string =>

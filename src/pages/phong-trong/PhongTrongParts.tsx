@@ -10,9 +10,9 @@ const stColor = (s: RoomStatus | string) => `var(--st-${s})`;
 
 /* ===== Summary strip ===== */
 export function Summary({ rooms }: { rooms: Room[] }) {
-  const c: Record<string, number> = { free: 0, soon: 0, rented: 0 };
+  const c: Record<string, number> = { free: 0, soon: 0, rented: 0, pass: 0 };
   rooms.forEach((r) => { c[r.status]++; });
-  const items: [RoomStatus, string][] = [["free", "Trống sẵn"], ["soon", "Sắp trống"], ["rented", "Đã thuê"]];
+  const items: [RoomStatus, string][] = [["free", "Trống sẵn"], ["soon", "Sắp trống"], ["pass", "Khách pass"], ["rented", "Đã thuê"]];
   return (
     <div className="summary">
       {items.map(([k, lbl]) => (
@@ -105,12 +105,14 @@ function priceTr(p: number): string {
 }
 
 export function OverviewView({
-  buildings, showRented, bandTest, onOpen,
+  buildings, showRented, bandTest, onOpen, onQuickDeposit,
 }: {
   buildings: Building[];
   showRented: boolean;
   bandTest: (p: number) => boolean;
   onOpen: (r: Room) => void;
+  /** Có quyền tạo cọc nhanh → click ô xanh (phòng trống) mở modal tạo cọc. */
+  onQuickDeposit?: (r: Room) => void;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
@@ -119,7 +121,7 @@ export function OverviewView({
     .map((b) => ({
       b,
       rooms: b.rooms
-        .filter((r) => (r.status === "free" || r.status === "soon" || (showRented && r.status === "rented")) && bandTest(r.price))
+        .filter((r) => (r.status === "free" || r.status === "soon" || r.status === "pass" || (showRented && r.status === "rented")) && bandTest(r.price))
         .sort((a, z) => z.floor - a.floor || a.no - z.no),
     }))
     .filter((g) => g.rooms.length);
@@ -174,19 +176,27 @@ export function OverviewView({
                 {b.policy && <span className="ovh-policy"><Icon.Tag />{b.policy}</span>}
               </div>
               <div className="ov-quick">
-                {rooms.slice(0, QUICK).map((r) => (
-                  <span className="ovq" key={r.id}
-                    style={{ color: stColor(r.status), background: `var(--st-${r.status}-bg)`, borderColor: `var(--st-${r.status}-line)` }}>
-                    {r.no}·{priceTr(r.price)}
-                  </span>
-                ))}
+                {rooms.slice(0, QUICK).map((r) => {
+                  const depositable = !!onQuickDeposit && r.status === "free";
+                  return (
+                    <span
+                      className={"ovq" + (depositable ? " ovq-dep" : "")}
+                      key={r.id}
+                      style={{ color: stColor(r.status), background: `var(--st-${r.status}-bg)`, borderColor: `var(--st-${r.status}-line)` }}
+                      onClick={depositable ? (e) => { e.stopPropagation(); onQuickDeposit!(r); } : undefined}
+                      title={depositable ? "Tạo cọc giữ phòng" : undefined}
+                    >
+                      {r.no}·{priceTr(r.price)}
+                    </span>
+                  );
+                })}
                 {rooms.length > QUICK && <span className="ovq more">+{rooms.length - QUICK}</span>}
               </div>
             </div>
             {isOpen && (
               <div className="ov-rows">
                 {rooms.map((r) => (
-                  <div className="ov-row" key={r.id} onClick={() => onOpen(r)}>
+                  <div className={"ov-row" + (r.status === "pass" ? " pass" : "")} key={r.id} onClick={() => onOpen(r)}>
                     <span className="ovr-bar" style={{ background: stColor(r.status) }} />
                     <div className="ovr-body">
                       <div className="ovr-l1">
@@ -200,6 +210,19 @@ export function OverviewView({
                           <i style={{ background: stColor(r.status) }} />{SM[r.status].label}
                         </span>
                       </div>
+                      {r.status === "pass" && (r.passContactPhone || r.passContactName || r.passSalePolicy) && (
+                        <div className="ovr-pass">
+                          {(r.passContactPhone || r.passContactName) && (
+                            <span className="ovr-pass-contact">
+                              <Icon.Phone />KHÁCH PASS PHÒNG — LIÊN HỆ: {r.passContactPhone || "—"}
+                              {r.passContactName ? ` (${r.passContactName})` : ""}
+                            </span>
+                          )}
+                          {r.passSalePolicy && (
+                            <span className="ovr-pass-policy"><Icon.Tag />{r.passSalePolicy}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span className="ov-chevron"><Icon.Chevron /></span>
                   </div>

@@ -57,8 +57,13 @@ export interface RpcRoom {
   sale_note?: string | null;        // ô "Khuyến mãi" (promo riêng phòng, gửi khách được)
   sale_bonus_note?: string | null;  // ô "Thưởng sale" (nội bộ — KHÔNG gửi khách)
   room_type?: string | null;    // "Loại phòng" (Gác, Cửa kính, Ban công, Studio…)
-  status_public: RoomStatus;    // 'free' | 'soon' | 'rented' (RPC tính sẵn)
+  status_public: RoomStatus;    // 'free' | 'soon' | 'rented' | 'pass' (RPC tính sẵn)
   avail_date: string | null;    // 'YYYY-MM-DD' cho phòng 'soon'
+  // Phòng "khách nhờ sale / pass" (status_public='pass'): liên hệ + chính sách CỦA KHÁCH
+  pass_contact_name?: string | null;
+  pass_contact_phone?: string | null;
+  pass_sale_policy?: string | null;
+  pass_price?: number | null;       // giá pass (VND) — override rent_price nếu có
 }
 export interface RpcContact { name: string; phone: string }
 export interface RpcPayload {
@@ -148,7 +153,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         buildingAddr: address,
         floor: rr.floor ?? 1,
         type: rr.room_type?.trim() || "",   // chưa có loại phòng -> để trống
-        price: (rr.rent_price ?? 0) / 1_000_000,                 // VND -> triệu/tháng
+        // Phòng pass: ưu tiên giá khách đặt (pass_price) nếu có.
+        price: ((status === "pass" && rr.pass_price != null ? rr.pass_price : rr.rent_price) ?? 0) / 1_000_000,
         area: Math.round(rr.area ?? 0),
         status,
         amenities: toAmenities(rr.amenities),
@@ -161,6 +167,9 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         description: rr.description || null,
         saleNote: rr.sale_note || null,
         saleBonus: rr.sale_bonus_note || null,
+        passContactName: rr.pass_contact_name || null,
+        passContactPhone: rr.pass_contact_phone || null,
+        passSalePolicy: rr.pass_sale_policy || null,
         x: 0, y: 0, w: 0, h: 0,
       };
     });
@@ -168,9 +177,9 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
     // Nhóm theo tầng (cao -> thấp). Có sơ đồ thủ công cho tầng -> dùng (applyStoredLayout),
     // không thì tự sinh layoutFloor (fallback). Phòng chưa đặt được applyStoredLayout xếp tạm.
     const stored = b.floor_layouts ?? null;
-    // Chỉ giữ tầng có ≥1 phòng trống/sắp trống (ẩn tầng đã full khỏi Sơ đồ).
+    // Chỉ giữ tầng có ≥1 phòng trống/sắp trống/khách-pass (ẩn tầng đã full khỏi Sơ đồ).
     const floorNums = Array.from(new Set(rooms.map((r) => r.floor)))
-      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon")))
+      .filter((f) => rooms.some((r) => r.floor === f && (r.status === "free" || r.status === "soon" || r.status === "pass")))
       .sort((a, z) => z - a);
     const floors = floorNums.map((f) => {
       const floorRooms = rooms.filter((r) => r.floor === f).sort((a, z) => a.no - z.no);

@@ -43,6 +43,7 @@ export type ActionKey =
   | "manage_settings"
   | "manage_images"
   | "edit_floor_plan"
+  | "manage_pass_listings"
   // Lead / Cọc
   | "convert"
   | "refund"
@@ -135,7 +136,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "sale_phong",
         label: "Sale Phòng",
         core: ["view"],
-        extra: ["manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "create_deposit"],
+        extra: ["manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings", "create_deposit"],
       },
     ],
   },
@@ -257,6 +258,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   manage_settings: "Cài đặt hiển thị",
   manage_images:  "Ảnh sale",
   edit_floor_plan: "Sơ đồ toạ độ",
+  manage_pass_listings: "Khách nhờ sale (pass)",
   convert:        "Chuyển đổi",
   refund:         "Hoàn / bỏ cọc",
   renew:          "Gia hạn",
@@ -439,7 +441,7 @@ const MANAGE_ACTIONS = new Set<ActionKey>([
   "view", "create", "edit", "delete",
   "record_payment", "print", "export",
   "view_finance",
-  "manage_tokens", "manage_settings", "manage_images", "edit_floor_plan",
+  "manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings",
   "convert", "refund", "renew", "transfer", "handover", "import", "share",
   "cancel", "collect", "undo", "report", "move", "maintain", "complete",
   "vacant_rooms", "expiring", "renewals_transfers", "occupancy", "promotions",
