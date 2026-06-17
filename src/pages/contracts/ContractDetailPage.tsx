@@ -53,7 +53,7 @@ import { isContractInEffect } from '@/types/contract';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -70,21 +70,18 @@ import { PrintContractDialog } from '@/components/contracts/PrintContractDialog'
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { usePhoneViewport } from '@/hooks/use-mobile';
+import { ContractDetailMobile } from '@/components/contracts/detail/ContractDetailMobile';
 // Types dùng chung với nhánh mobile (trước đây khai cục bộ ở đây).
 import type { ContractServiceItem as ContractService, ContractHistoryItem } from '@/components/contracts/detail/types';
-
-// Trang chi tiết HĐ mobile (warm-neutral, CSS + font scope riêng) — lazy để chỉ
-// nạp trên điện thoại, không kéo font/CSS vào bản desktop.
-const ContractDetailMobile = lazy(() =>
-  import('@/components/contracts/detail/ContractDetailMobile').then((m) => ({ default: m.ContractDetailMobile })),
-);
 
 const ContractDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
-  const isMobile = useIsMobile();
+  // Khởi tạo ĐỒNG BỘ (matchMedia) để render thẳng bản mobile ở frame đầu — không
+  // nháy 1 frame bản desktop rồi mới đổi (useIsMobile bị undefined→false).
+  const isMobile = usePhoneViewport();
 
   // Dialog states
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
@@ -464,31 +461,31 @@ const ContractDetailPage = () => {
     </>
   );
 
-  // Mobile: trang chi tiết full-screen (scope CSS riêng, NGOÀI MainLayout) — giống design.
+  // Mobile: trang chi tiết full-screen (scope CSS riêng, NGOÀI MainLayout) — giống
+  // design. Import TĨNH (không lazy/Suspense) để không nháy frame trống khi mở;
+  // CSS .cdt-* scope riêng nên không ảnh hưởng desktop.
   if (isMobile) {
     return (
       <>
-        <Suspense fallback={null}>
-          <ContractDetailMobile
-            contract={contract}
-            services={contractServices}
-            invoices={invoices ?? []}
-            history={contractHistory}
-            depositVouchers={depositVouchers}
-            perms={perms}
-            customers={contractCustomers}
-            onBack={() => navigate('/contracts')}
-            onEdit={() => setEditDialogOpen(true)}
-            onPrint={() => setPrintDialogOpen(true)}
-            onShowQR={() => setQrDialogOpen(true)}
-            onRenew={() => setExtendDialogOpen(true)}
-            onTransferRoom={() => setTransferRoomDialogOpen(true)}
-            onTransferContract={() => setTransferDialogOpen(true)}
-            onMoveOut={() => setMoveOutDialogOpen(true)}
-            onTerminate={() => setTerminateDialogOpen(true)}
-            onDelete={() => setDeleteDialogOpen(true)}
-          />
-        </Suspense>
+        <ContractDetailMobile
+          contract={contract}
+          services={contractServices}
+          invoices={invoices ?? []}
+          history={contractHistory}
+          depositVouchers={depositVouchers}
+          perms={perms}
+          customers={contractCustomers}
+          onBack={() => navigate('/contracts')}
+          onEdit={() => setEditDialogOpen(true)}
+          onPrint={() => setPrintDialogOpen(true)}
+          onShowQR={() => setQrDialogOpen(true)}
+          onRenew={() => setExtendDialogOpen(true)}
+          onTransferRoom={() => setTransferRoomDialogOpen(true)}
+          onTransferContract={() => setTransferDialogOpen(true)}
+          onMoveOut={() => setMoveOutDialogOpen(true)}
+          onTerminate={() => setTerminateDialogOpen(true)}
+          onDelete={() => setDeleteDialogOpen(true)}
+        />
         {dialogs}
       </>
     );
