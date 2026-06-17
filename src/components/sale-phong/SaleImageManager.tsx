@@ -70,7 +70,9 @@ export default function SaleImageManager({
       <ImageUploadZone
         label="Thêm ảnh"
         value=""
+        multiple
         onChange={(url) => { if (url) onChange([...imgs, url]); }}
+        onAddMany={(urls) => { if (urls.length) onChange([...imgs, ...urls]); }}
         bucket={bucket}
         accept="image/png,image/jpeg,image/jpg,image/webp"
         maxSizeMB={5}

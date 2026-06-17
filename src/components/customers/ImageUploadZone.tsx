@@ -16,6 +16,15 @@ interface ImageUploadZoneProps {
   accept?: string;
   maxSizeMB?: number;
   bucket?: string;
+  /** Cho phép chọn / kéo thả / dán nhiều ảnh cùng lúc. */
+  multiple?: boolean;
+  /**
+   * Chỉ dùng khi multiple: gọi MỘT lần với tất cả URL upload thành công.
+   * Bắt buộc dùng callback gộp (không gọi onChange nhiều lần) để tránh clobber
+   * state khi caller append vào mảng (`[...imgs, url]`) — các lần gọi liên tiếp
+   * sẽ ghi đè nhau vì cùng đọc một `imgs` cũ.
+   */
+  onAddMany?: (urls: string[]) => void;
 }
 
 export default function ImageUploadZone({
@@ -25,8 +34,11 @@ export default function ImageUploadZone({
   accept = 'image/png,image/jpeg,image/jpg',
   maxSizeMB = 10,
   bucket = 'customer-images',
+  multiple = false,
+  onAddMany,
 }: ImageUploadZoneProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,40 +56,69 @@ export default function ImageUploadZone({
   );
 
   const handleUpload = useCallback(
-    async (file: File) => {
-      const validationError = validateFile(file);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
+    async (files: File[]) => {
+      // Lọc theo chế độ: single chỉ lấy file đầu.
+      const picked = multiple ? files : files.slice(0, 1);
+      if (picked.length === 0) return;
 
-      setError(null);
+      // Validate trước; báo lỗi đầu tiên nhưng vẫn upload các file hợp lệ.
+      const valid: File[] = [];
+      let firstError: string | null = null;
+      for (const f of picked) {
+        const err = validateFile(f);
+        if (err) {
+          if (!firstError) firstError = err;
+        } else {
+          valid.push(f);
+        }
+      }
+      setError(firstError);
+      if (valid.length === 0) return;
+
       setIsUploading(true);
+      setUploadingCount(valid.length);
 
       try {
         const user = await getSessionUser();
         if (!user) throw new Error('Not authenticated');
 
-        const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${user.id}/${Date.now()}.${ext}`;
-        const publicUrl = await uploadFile(bucket, path, file);
-        onChange(publicUrl);
+        const urls: string[] = [];
+        for (let i = 0; i < valid.length; i++) {
+          const file = valid[i];
+          const ext = file.name.split('.').pop() || 'jpg';
+          // Hậu tố index để không trùng path khi upload nhiều file trong cùng ms.
+          const path = `${user.id}/${Date.now()}-${i}.${ext}`;
+          try {
+            urls.push(await uploadFile(bucket, path, file));
+          } catch (err) {
+            console.error('Upload error:', err);
+            toast.error(
+              valid.length > 1
+                ? `Không thể tải lên "${file.name}".`
+                : 'Không thể tải ảnh lên. Vui lòng thử lại.'
+            );
+          }
+        }
+
+        if (urls.length === 0) return;
+        if (multiple && onAddMany) onAddMany(urls);
+        else onChange(urls[0]);
       } catch (err) {
         console.error('Upload error:', err);
         toast.error('Không thể tải ảnh lên. Vui lòng thử lại.');
       } finally {
         setIsUploading(false);
+        setUploadingCount(0);
       }
     },
-    [bucket, onChange, validateFile]
+    [bucket, multiple, onAddMany, onChange, validateFile]
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) handleUpload(file);
+      handleUpload(Array.from(e.dataTransfer.files));
     },
     [handleUpload]
   );
@@ -93,8 +134,7 @@ export default function ImageUploadZone({
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) handleUpload(file);
+      handleUpload(Array.from(e.target.files ?? []));
       if (inputRef.current) inputRef.current.value = '';
     },
     [handleUpload]
@@ -106,8 +146,9 @@ export default function ImageUploadZone({
   }, [onChange]);
 
   const pasteHandlers = useClipboardImagePaste({
-    onFiles: (files) => handleUpload(files[0]),
+    onFiles: (files) => handleUpload(files),
     enabled: !value && !isUploading,
+    multiple,
   });
 
   return (
@@ -146,12 +187,18 @@ export default function ImageUploadZone({
           {isUploading ? (
             <div className="flex flex-col items-center gap-1 text-muted-foreground">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <span className="text-xs">Đang tải...</span>
+              <span className="text-xs">
+                {uploadingCount > 1 ? `Đang tải ${uploadingCount} ảnh...` : 'Đang tải...'}
+              </span>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-1 text-muted-foreground">
               <ImageIcon className="h-6 w-6" />
-              <span className="text-xs text-center px-2">Kéo thả, click hoặc Ctrl+V để tải ảnh</span>
+              <span className="text-xs text-center px-2">
+                {multiple
+                  ? 'Kéo thả, click hoặc Ctrl+V để tải nhiều ảnh'
+                  : 'Kéo thả, click hoặc Ctrl+V để tải ảnh'}
+              </span>
             </div>
           )}
         </div>
@@ -160,6 +207,7 @@ export default function ImageUploadZone({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         onChange={handleFileChange}
         className="hidden"
       />
