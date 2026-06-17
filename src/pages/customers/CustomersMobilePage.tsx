@@ -1,14 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Search, Home, DoorOpen, Phone, MessageCircle } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Plus, Search, Home, DoorOpen, Phone, MessageCircle, Copy, Car } from 'lucide-react';
+import { toast } from 'sonner';
 import '@/styles/mobileApp.css';
 import { useCustomers } from '@/hooks/useCustomers';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { supabase } from '@/integrations/supabase/client';
 import type { Customer, CustomerStatus, CustomerFilters } from '@/types/customer';
 import type { BuildingWithRelations } from '@/types/building';
+
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  MOTORBIKE: 'Xe máy',
+  CAR: 'Ô tô',
+  BICYCLE: 'Xe đạp',
+  ELECTRIC_BIKE: 'Xe điện',
+  OTHER: 'Khác',
+};
+
+const copyPhone = (phone: string, e: React.MouseEvent) => {
+  e.stopPropagation();
+  navigator.clipboard.writeText(phone);
+  toast.success('Đã sao chép SĐT');
+};
 
 const fmtDate = (s: string | null | undefined) => {
   if (!s) return '';
@@ -64,6 +81,28 @@ export default function CustomersMobilePage() {
     [allRows, buildingId],
   );
   const totalCount = paged?.count ?? 0;
+
+  // Lấy phương tiện (loại + biển số) của các KH trên trang hiện tại — 1 truy vấn
+  // gộp theo customer_id, map về xe đầu tiên mỗi khách (để hiện kế bên phòng).
+  const custIds = useMemo(() => allRows.map((c) => c.id), [allRows]);
+  const { data: vehMap } = useQuery({
+    queryKey: ['customers-mobile-vehicles', custIds],
+    enabled: custIds.length > 0,
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from('vehicles')
+        .select('customer_id, vehicle_type, license_plate')
+        .in('customer_id', custIds)
+        .is('deleted_at', null);
+      const m = new Map<string, { type: string | null; plate: string | null }>();
+      for (const v of (data ?? []) as any[]) {
+        if (v.customer_id && !m.has(v.customer_id)) {
+          m.set(v.customer_id, { type: v.vehicle_type, plate: v.license_plate });
+        }
+      }
+      return m;
+    },
+  });
 
   const { data: buildingsData } = useBuildings();
   const buildings = (Array.isArray(buildingsData) ? buildingsData : []) as unknown as BuildingWithRelations[];
@@ -139,6 +178,7 @@ export default function CustomersMobilePage() {
                   const room = (c as any).current_room_name as string | null;
                   const bld = (c as any).current_building_name as string | null;
                   const addr = c.detailed_address || c.current_residence || c.permanent_address;
+                  const veh = vehMap?.get(c.id);
                   return (
                     <div className="cust" key={c.id} onClick={() => navigate('/customers/' + c.id)}>
                       <div className="cust-body">
@@ -167,10 +207,21 @@ export default function CustomersMobilePage() {
                             </span>
                           )}
                         </div>
-                        {(c.id_number || c.date_of_birth) && (
+                        {(c.phone || c.id_number || c.date_of_birth) && (
                           <div className="cust-idline">
+                            {c.phone && (
+                              <button
+                                className="cust-copy"
+                                onClick={(e) => copyPhone(c.phone, e)}
+                                aria-label={'Sao chép SĐT ' + c.full_name}
+                              >
+                                <span className="cust-mono cust-phone">{c.phone}</span>
+                                <Copy size={12} />
+                              </button>
+                            )}
+                            {c.phone && c.id_number && <span className="cust-dot">·</span>}
                             {c.id_number && <span className="cust-mono">{c.id_number}</span>}
-                            {c.id_number && c.date_of_birth && <span className="cust-dot">·</span>}
+                            {(c.phone || c.id_number) && c.date_of_birth && <span className="cust-dot">·</span>}
                             {c.date_of_birth && <span className="cust-meta">{fmtDate(c.date_of_birth)}</span>}
                           </div>
                         )}
@@ -180,12 +231,21 @@ export default function CustomersMobilePage() {
                             <span>{addr}</span>
                           </div>
                         )}
-                        {(room || bld) && (
+                        {(room || bld || veh?.plate || veh?.type) && (
                           <div className="cust-l3">
-                            <span className="cust-room">
-                              <DoorOpen size={12} />
-                              {room ? `P.${room}` : ''}{room && bld ? ' · ' : ''}{bld || ''}
-                            </span>
+                            {(room || bld) && (
+                              <span className="cust-room">
+                                <DoorOpen size={12} />
+                                {room ? `P.${room}` : ''}{room && bld ? ' · ' : ''}{bld || ''}
+                              </span>
+                            )}
+                            {veh?.type && (
+                              <span className="cust-veh">
+                                <Car size={12} />
+                                {VEHICLE_TYPE_LABELS[veh.type] || veh.type}
+                              </span>
+                            )}
+                            {veh?.plate && <span className="cust-plate">{veh.plate}</span>}
                           </div>
                         )}
                       </div>
