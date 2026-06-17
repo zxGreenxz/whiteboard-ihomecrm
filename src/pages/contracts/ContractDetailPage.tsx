@@ -70,33 +70,16 @@ import { PrintContractDialog } from '@/components/contracts/PrintContractDialog'
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-
-// Types for contract services and history
-interface ContractService {
-  id: string;
-  service_id: string;
-  unit_price: number;
-  initial_reading: number | null;
-  service: {
-    id: string;
-    name: string;
-    type: string;
-    unit: string;
-  };
-}
-
-interface ContractHistoryItem {
-  id: string;
-  type: 'extension' | 'transfer' | 'termination';
-  created_at: string;
-  status: string;
-  details: Record<string, any>;
-}
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ContractDetailMobile } from '@/components/contracts/detail/ContractDetailMobile';
+// Types dùng chung với nhánh mobile (trước đây khai cục bộ ở đây).
+import type { ContractServiceItem as ContractService, ContractHistoryItem } from '@/components/contracts/detail/types';
 
 const ContractDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
+  const isMobile = useIsMobile();
 
   // Dialog states
   const [extendDialogOpen, setExtendDialogOpen] = useState(false);
@@ -456,10 +439,31 @@ const ContractDetailPage = () => {
 
   return (
     <MainLayout
-      title={`Hợp đồng ${contract.contract_number || contract.id.slice(0, 8)}`}
-      subtitle="Chi tiết hợp đồng"
+      title={isMobile ? undefined : `Hợp đồng ${contract.contract_number || contract.id.slice(0, 8)}`}
+      subtitle={isMobile ? undefined : 'Chi tiết hợp đồng'}
       icon={FileText}
     >
+      {isMobile ? (
+        <ContractDetailMobile
+          contract={contract}
+          services={contractServices}
+          invoices={invoices ?? []}
+          history={contractHistory}
+          perms={perms}
+          customers={contractCustomers}
+          vehiclesByCustomer={vehiclesByCustomer}
+          onEdit={() => setEditDialogOpen(true)}
+          onPrint={() => setPrintDialogOpen(true)}
+          onShowQR={() => setQrDialogOpen(true)}
+          onRenew={() => setExtendDialogOpen(true)}
+          onTransferRoom={() => setTransferRoomDialogOpen(true)}
+          onTransferContract={() => setTransferDialogOpen(true)}
+          onMoveOut={() => setMoveOutDialogOpen(true)}
+          onTerminate={() => setTerminateDialogOpen(true)}
+          onDelete={() => setDeleteDialogOpen(true)}
+        />
+      ) : (
+      <>
       {/* Header Actions */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <Button
@@ -1374,6 +1378,8 @@ const ContractDetailPage = () => {
           </Card>
         </TabsContent>
       </Tabs>
+      </>
+      )}
 
       {/* Dialogs — Gia hạn/Thanh lý dùng chung RenewDialog/TerminateDialog
           (RPC renew_contract / terminate_contract_*) với trang danh sách.
