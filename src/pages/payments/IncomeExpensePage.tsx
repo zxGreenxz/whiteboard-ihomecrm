@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Upload, Search, Receipt, ListFilter, SlidersHorizontal, RefreshCcw, ChevronDown, Layers, FileText } from "lucide-react";
+import { Plus, Upload, Search, Receipt, ListFilter, RefreshCcw, ChevronDown, Layers, FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -22,18 +22,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { IncomeExpenseStats } from "@/components/income-expenses/IncomeExpenseStats";
-import { IncomeExpenseStatsMobile } from "@/components/income-expenses/IncomeExpenseStatsMobile";
 import { IncomeExpenseFiltersBar } from "@/components/income-expenses/IncomeExpenseFilters";
 import IncomeExpenseFilterPanel from "@/components/income-expenses/IncomeExpenseFilterPanel";
 import IncomeExpenseList from "@/components/income-expenses/IncomeExpenseList";
-import IncomeExpenseListMobile from "@/components/income-expenses/IncomeExpenseListMobile";
-import IncomeExpenseFAB from "@/components/income-expenses/IncomeExpenseFAB";
-import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpenseFilterChips";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
-import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
-import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
@@ -52,7 +46,9 @@ import {
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import { usePagination } from "@/hooks/usePagination";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { usePhoneViewport } from "@/hooks/use-mobile";
+
+const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
   // Lọc nhiều toà (BuildingMultiSelect) — [] = tất cả toà.
@@ -87,8 +83,7 @@ function parseSearchInput(raw: string): { amount?: number; text?: string } {
   return { text: trimmed };
 }
 
-const IncomeExpensePage = () => {
-  const isMobile = useIsMobile();
+const IncomeExpenseDesktopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [filters, setFilters] = useState<IncomeExpenseFilters>(() => {
@@ -114,7 +109,6 @@ const IncomeExpensePage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"individual" | "batch">("individual");
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isQuickOpen, setIsQuickOpen] = useState(false);
   const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -126,16 +120,13 @@ const IncomeExpensePage = () => {
     useState<IncomeExpenseWithRelations | null>(null);
   const [verifyVoucher, setVerifyVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
-  // Phiếu chi đang mở sheet QR chi tiền (icon share trên card mobile).
-  const [shareVoucher, setShareVoucher] =
-    useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
-  const pagination = usePagination(isMobile ? 50 : 20);
+  const pagination = usePagination(20);
 
   // Parse search input: số → amount filter (±5.000đ), chữ → text search
   const parsedSearch = parseSearchInput(searchQuery);
@@ -307,245 +298,6 @@ const IncomeExpensePage = () => {
     difference: 0,
   };
 
-  // ============== MOBILE LAYOUT ==============
-  if (isMobile) {
-    return (
-      <MainLayout title="Thu chi" subtitle="Tài chính → Thu chi" icon={Receipt}>
-        <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
-          {/* Search + filter row */}
-          <div className="flex items-center gap-2 px-3 pt-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Theo mã phiếu, tên..."
-                value={searchQuery}
-                onChange={handleSearchChange}
-                className="pl-9 h-10 bg-white"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setIsFilterPanelOpen(true)}
-              className="h-10 w-10 shrink-0 bg-white"
-              title="Lọc dữ liệu"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Stats */}
-          <IncomeExpenseStatsMobile
-            stats={statsData}
-            isLoading={isStatsLoading}
-          />
-
-          {/* Filter chips (active filters) */}
-          <IncomeExpenseFilterChips
-            filters={filters}
-            emptyFilters={EMPTY_FILTERS}
-            onChange={handleFiltersChange}
-          />
-
-          {/* View mode toggle */}
-          <div className="px-3 pt-1">
-            <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="individual">Phiếu lẻ</TabsTrigger>
-                <TabsTrigger value="batch">Phiếu tổng</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {/* List */}
-          {viewMode === "individual" ? (
-            <IncomeExpenseListMobile
-              vouchers={vouchers}
-              isLoading={isLoading}
-              onView={handleView}
-              onShareQR={setShareVoucher}
-            />
-          ) : (
-            <div className="px-3 pt-2">
-              <IncomeExpenseBatchList
-                batches={batches}
-                isLoading={isBatchLoading}
-                onView={handleViewBatch}
-                onCancel={handleCancelBatch}
-                onEdit={handleViewBatch}
-                pagination={pagination}
-                totalCount={batchTotalCount}
-              />
-            </div>
-          )}
-
-          {/* Pagination summary (mobile) — chỉ cho view phiếu lẻ */}
-          {viewMode === "individual" && totalCount > pagination.pageSize && (
-            <div className="px-3 pb-2 text-center text-xs text-muted-foreground">
-              Hiển thị {vouchers.length} / {totalCount} phiếu
-              {pagination.page * pagination.pageSize < totalCount && (
-                <button
-                  className="ml-2 text-blue-600 font-medium"
-                  onClick={() => pagination.setPage(pagination.page + 1)}
-                >
-                  Xem thêm →
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* FAB */}
-        <IncomeExpenseFAB
-          onCreateQuick={() => setIsQuickOpen(true)}
-          onCreateIncome={handleAddIncome}
-          onCreateExpense={handleAddExpense}
-          onCreateBatch={() => handleAddBatch("EXPENSE")}
-        />
-
-        {/* Dialogs */}
-        <IncomeExpenseQuickCreateDialog
-          open={isQuickOpen}
-          onOpenChange={setIsQuickOpen}
-          defaultType="EXPENSE"
-        />
-        <IncomeExpenseForm
-          open={isFormOpen}
-          onOpenChange={handleFormClose}
-          voucher={null}
-          defaultType={formType}
-        />
-        <IncomeExpenseBatchForm
-          open={isBatchFormOpen}
-          onOpenChange={setIsBatchFormOpen}
-          defaultType={formType}
-        />
-        <IncomeExpenseForm
-          open={!!editingVoucher}
-          onOpenChange={handleEditFormClose}
-          voucher={editingVoucher}
-        />
-        <IncomeExpenseDetailDialog
-          open={!!detailVoucher}
-          onOpenChange={(o) => {
-            if (!o) setDetailVoucher(null);
-          }}
-          voucher={detailVoucher}
-          onCancel={handleCancelVoucher}
-          onEdit={handleEditVoucher}
-          onQuickEdit={handleQuickEditVoucher}
-          onApprove={handleApproveVoucher}
-        />
-        <IncomeExpenseQuickEditDialog
-          open={!!quickEditVoucher}
-          onOpenChange={handleQuickEditClose}
-          voucher={quickEditVoucher}
-        />
-        {shareVoucher && (
-          <PayViaBankAppSheet
-            open
-            onOpenChange={(o) => {
-              if (!o) setShareVoucher(null);
-            }}
-            voucher={shareVoucher}
-          />
-        )}
-        <IncomeExpenseBatchDetailDialog
-          open={!!detailBatch}
-          onOpenChange={(o) => {
-            if (!o) setDetailBatchId(null);
-          }}
-          batch={detailBatch}
-          onCancel={handleCancelBatch}
-          onEditVoucher={handleEditVoucher}
-          onCancelVoucher={handleCancelVoucher}
-          onApproveVoucher={handleApproveVoucher}
-        />
-        <IncomeExpenseImportDialog
-          open={isImportOpen}
-          onOpenChange={setIsImportOpen}
-        />
-        <IncomeExpenseFilterPanel
-          open={isFilterPanelOpen}
-          onOpenChange={setIsFilterPanelOpen}
-          filters={filters}
-          emptyFilters={EMPTY_FILTERS}
-          onApply={handleFiltersChange}
-          side="bottom"
-        />
-        <AlertDialog
-          open={!!cancelTarget}
-          onOpenChange={() => setCancelTarget(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Xác nhận huỷ phiếu</AlertDialogTitle>
-              <AlertDialogDescription>
-                Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến
-                tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Đóng</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmCancel}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                Huỷ phiếu
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={!!approveTarget}
-          onOpenChange={() => setApproveTarget(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
-              <AlertDialogDescription>
-                Sau khi duyệt, phiếu sẽ được tính vào <b>tồn quỹ</b> và không
-                còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Đóng</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmApprove}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                Duyệt phiếu
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={!!cancelBatchTarget}
-          onOpenChange={() => setCancelBatchTarget(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Xác nhận huỷ cả đợt</AlertDialogTitle>
-              <AlertDialogDescription>
-                Tất cả phiếu trong đợt sẽ được đánh dấu <b>Đã huỷ</b> cùng lúc
-                và không còn ảnh hưởng đến tồn quỹ. Các phiếu vẫn được lưu lại
-                trong lịch sử.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Đóng</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmCancelBatch}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                Huỷ cả đợt
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </MainLayout>
-    );
-  }
 
   // ============== DESKTOP LAYOUT ==============
   return (
@@ -800,4 +552,16 @@ const IncomeExpensePage = () => {
   );
 };
 
-export default IncomeExpensePage;
+// Mobile (≤767px): trang app full-screen riêng (warm-neutral) — khởi tạo đồng bộ
+// từ matchMedia để không nháy desktop / không mount query nặng trên điện thoại.
+export default function IncomeExpensePage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <IncomeExpenseMobilePage />
+      </Suspense>
+    );
+  }
+  return <IncomeExpenseDesktopPage />;
+}

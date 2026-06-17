@@ -1,0 +1,171 @@
+/* =============================================================
+   Tài chính (mobile) — lớp bổ sung cho mobileApp.css.
+   Thêm các thành phần cho 4 màn hình Thu chi / Chi tiết phiếu / Hoá đơn /
+   Chi tiết hoá đơn theo handoff Claude Design (ui_kits/mobile-app: CashbookScreen
+   + VoucherDetailSheet + InvoicesScreen + InvoiceDetailScreen, app.css).
+   Cùng "ngôn ngữ Thu tiền" (warm-neutral + emerald). Scope dưới .cm-app/.cm-stage
+   nên không rò ra theme site. Nạp kèm '@/styles/mobileApp.css' (đã có tokens +
+   top bar + lfilter + cm-select + fpanel + cd-card + cd-grid + cd-kv …).
+   ============================================================= */
+
+/* ===== Thu chi — bộ chỉ số (TỔNG THU / TỔNG CHI / THU−CHI) ===== */
+.cm-app .iestats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 12px; }
+.cm-app .iestat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--sh-1); }
+.cm-app .iestat-l { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; color: var(--ink-3); }
+.cm-app .iestat-l svg { flex-shrink: 0; width: 13px; height: 13px; }
+.cm-app .iestat-v { font-family: var(--mono); font-weight: 700; font-size: 21px; letter-spacing: -.6px; line-height: 1; }
+.cm-app .iediff { grid-column: 1 / -1; border-radius: var(--r); padding: 12px 14px; text-align: center; border: 1px solid; }
+.cm-app .iediff.pos { background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%); border-color: #bbf7d0; }
+.cm-app .iediff.neg { background: linear-gradient(135deg, #fff7ed 0%, #fef2f2 100%); border-color: #fecaca; }
+.cm-app .iediff-l { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; color: var(--ink-3); margin-bottom: 5px; }
+.cm-app .iediff-l svg { width: 13px; height: 13px; }
+.cm-app .iediff-v { font-family: var(--mono); font-weight: 700; font-size: 25px; letter-spacing: -.8px; line-height: 1; }
+
+/* ===== Thu chi — chuyển chế độ Phiếu lẻ / Phiếu tổng ===== */
+.cm-app .ieseg { display: flex; gap: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 3px; margin-bottom: 14px; }
+.cm-app .ieseg-b { flex: 1; height: 36px; border: 0; background: transparent; border-radius: 8px; font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-3); cursor: pointer; transition: .14s; }
+.cm-app .ieseg-b.on { background: var(--surface); color: var(--brand-600); box-shadow: var(--sh-1); }
+
+/* ===== Thu chi — thẻ phiếu (voucher card) ===== */
+.cm-app .vch { background: var(--surface); border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--r); padding: 12px 13px; box-shadow: var(--sh-1); cursor: pointer; transition: transform .12s; }
+.cm-app .vch:active { transform: scale(.99); }
+.cm-app .vch-l1 { display: flex; align-items: center; gap: 8px; }
+.cm-app .vch-chip { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.cm-app .vch-tag { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.cm-app .vch-amt { font-family: var(--mono); font-weight: 700; font-size: 15px; letter-spacing: -.3px; white-space: nowrap; }
+.cm-app .vch-amt small { font-size: 10px; font-weight: 700; }
+.cm-app .vch-name { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .vch-name b { font-weight: 700; color: var(--ink); }
+.cm-app .vch-payer { color: var(--ink-3); font-weight: 500; }
+.cm-app .vch-meta { font-size: 11.5px; font-weight: 500; color: var(--ink-faint); margin-top: 4px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .vch-qr { margin-left: auto; flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; border: 1px solid #bfe6cd; background: #e6f5ec; color: #1f9d57; display: grid; place-items: center; cursor: pointer; transition: transform .12s; }
+.cm-app .vch-qr:active { transform: scale(.9); }
+
+/* ===== Bottom sheet (đặt tuyệt đối trong khung điện thoại .cm-app) ===== */
+.cm-app .sheet-ov { position: absolute; inset: 0; z-index: 40; background: rgba(20,18,14,.42); display: flex; align-items: flex-end; justify-content: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .cm-app .sheet-ov { animation: cmOvIn .18s ease; }
+  .cm-app .sheet { animation: cmShIn .26s cubic-bezier(.22,.61,.36,1); }
+  @keyframes cmOvIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes cmShIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+}
+.cm-app .sheet { width: 100%; max-height: 90%; overflow-y: auto; scrollbar-width: none; background: var(--surface); border-radius: 22px 22px 0 0; padding: 10px 18px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 32px rgba(0,0,0,.18); }
+.cm-app .sheet::-webkit-scrollbar { display: none; }
+.cm-app .sheet-grab { width: 40px; height: 4px; border-radius: 99px; background: var(--line-2); margin: 0 auto 14px; }
+.cm-app .sheet-x { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+
+/* menu tạo phiếu (bottom-sheet) */
+.cm-app .cmenu-hd { display: flex; align-items: center; gap: 9px; padding-bottom: 4px; }
+.cm-app .cmenu-hd-t { font-size: 15px; font-weight: 700; color: var(--ink); }
+.cm-app .cmenu { display: flex; flex-direction: column; gap: 9px; margin-top: 12px; }
+.cm-app .cmenu-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; font-family: var(--font); text-align: left; transition: .12s; }
+.cm-app .cmenu-opt:active { transform: scale(.99); background: var(--line-2); }
+.cm-app .cmenu-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .cmenu-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cm-app .cmenu-t { font-size: 14px; font-weight: 700; color: var(--ink); }
+.cm-app .cmenu-s { font-size: 11.5px; font-weight: 500; color: var(--ink-3); }
+
+/* ===== Chi tiết phiếu thu/chi (voucher detail) ===== */
+.cm-app .vd-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.cm-app .vd-hd-t { font-size: 14px; font-weight: 700; letter-spacing: .6px; color: var(--brand-600); }
+.cm-app .vd-sec { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 16px 0 9px; }
+.cm-app .vd-sec-t { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.cm-app .vd-acts { display: flex; gap: 7px; }
+.cm-app .vd-act { width: 32px; height: 32px; border-radius: 9px; border: 0; color: #fff; display: grid; place-items: center; cursor: pointer; transition: transform .12s; }
+.cm-app .vd-act:active { transform: scale(.92); }
+.cm-app .vd-table { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cm-app .vd-row { display: grid; grid-template-columns: 132px 1fr; border-bottom: 1px solid var(--line-2); }
+.cm-app .vd-row:last-child { border-bottom: 0; }
+.cm-app .vd-row-l { padding: 10px 12px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; color: var(--ink-3); border-right: 1px solid var(--line-2); }
+.cm-app .vd-row-v { padding: 10px 12px; font-size: 13px; font-weight: 600; color: var(--ink); display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; word-break: break-word; }
+.cm-app .vd-row-v b { font-weight: 700; }
+.cm-app .vd-tag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 5px; }
+.cm-app .vd-link { display: inline-flex; align-items: center; gap: 2px; color: #2563eb; font-weight: 700; font-family: var(--mono); font-size: 12.5px; cursor: pointer; border: 0; background: transparent; padding: 0; }
+.cm-app .vd-pay { width: 100%; margin-top: 14px; height: 46px; border: 0; border-radius: 12px; background: #059669; color: #fff; font-family: var(--font); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: var(--sh-1); }
+.cm-app .vd-pay:active { transform: scale(.99); }
+.cm-app .vd-irow { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 11px 12px; border-top: 1px solid var(--line-2); }
+.cm-app .vd-irow:first-child { border-top: 0; }
+.cm-app .vd-irow-l { font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0; }
+.cm-app .vd-irow-desc { color: var(--ink-3); font-weight: 500; }
+.cm-app .vd-irow-amt { font-family: var(--mono); font-weight: 700; font-size: 13.5px; letter-spacing: -.3px; color: var(--ink); white-space: nowrap; }
+.cm-app .vd-atts { display: flex; flex-wrap: wrap; gap: 10px; }
+.cm-app .vd-att { width: 76px; height: 76px; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; background: var(--surface-2); display: grid; place-items: center; cursor: zoom-in; color: var(--ink-faint); }
+.cm-app .vd-att img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ===== Hoá đơn — hàng danh sách (list rows) ===== */
+.cm-app .lrow { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 13px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: var(--sh-1); transition: transform .12s; }
+.cm-app .lrow:active { transform: scale(.99); }
+.cm-app .lrow.off { opacity: .6; }
+.cm-app .lrow-bar { width: 4px; align-self: stretch; border-radius: 99px; flex-shrink: 0; }
+.cm-app .lrow-body { flex: 1; min-width: 0; }
+.cm-app .lrow-l1 { display: flex; align-items: baseline; gap: 8px; }
+.cm-app .lrow-name { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cm-app .lrow-sub { font-size: 12px; font-weight: 500; color: var(--ink-3); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .lrow-r { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+.cm-app .lrow-amt { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--ink); letter-spacing: -.3px; }
+.cm-app .lrow-amt small { font-size: 10px; font-weight: 600; color: var(--ink-3); }
+
+/* tiêu đề top-bar bấm được (mở báo cáo) */
+.cm-app .mtitle-btn { border: 0; background: transparent; padding: 0; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.cm-app .mtitle-btn h1 { display: inline-flex; align-items: center; gap: 4px; }
+.cm-app .mtitle-btn h1 svg { color: var(--ink-3); flex-shrink: 0; }
+
+/* ===== Chi tiết hoá đơn — hàng nút thao tác (action row) ===== */
+.cm-app .invbtn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 16px; border-radius: 11px; font-family: var(--font); font-size: 13.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--line); transition: .14s; white-space: nowrap; color: var(--ink-2); background: var(--surface); }
+.cm-app .invbtn:active { transform: scale(.97); }
+.cm-app .invbtn.primary { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: var(--sh-1); }
+.cm-app .invbtn.warn { background: #e0691f; border-color: #e0691f; color: #fff; box-shadow: var(--sh-1); }
+.cm-app .invbtn.danger { background: #fcebe9; border-color: #f2c8c4; color: #d6453f; }
+
+/* ===== Chi tiết hoá đơn — bảng khoản thu ===== */
+.cm-app .invitems { display: flex; flex-direction: column; }
+.cm-app .invitem-h, .cm-app .invitem { display: grid; grid-template-columns: 1fr 34px 78px 88px; gap: 8px; align-items: start; padding: 10px 0; }
+.cm-app .invitem-h { border-bottom: 1px solid var(--line); padding-top: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--ink-3); }
+.cm-app .invitem { border-bottom: 1px solid var(--line-2); font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.cm-app .invitem .r { text-align: right; }
+.cm-app .invitem .mono { font-family: var(--mono); font-size: 12px; }
+.cm-app .invitem .bold { font-weight: 700; }
+.cm-app .invitem-desc { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cm-app .invitem-desc b { font-weight: 700; line-height: 1.35; }
+.cm-app .invitem-desc small { font-size: 10.5px; font-weight: 600; color: var(--ink-faint); text-transform: capitalize; }
+.cm-app .invitem.total { grid-template-columns: 1fr auto; background: var(--surface-2); margin: 4px -15px -15px; padding: 13px 15px; border-bottom: 0; border-radius: 0 0 var(--r-lg) var(--r-lg); font-weight: 700; font-size: 13px; }
+.cm-app .invitem.total .r { font-size: 15px; letter-spacing: -.3px; }
+.cm-app .invitem.total small { font-size: 10px; font-weight: 700; color: var(--ink-3); margin-left: 1px; }
+
+/* ===== Chi tiết hoá đơn — tóm tắt thanh toán ===== */
+.cm-app .invsum { display: flex; flex-direction: column; }
+.cm-app .invsum-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.cm-app .invsum-row b { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: -.3px; color: var(--ink); }
+.cm-app .invsum-row b small { font-size: 10px; font-weight: 700; margin-left: 1px; }
+.cm-app .invsum-vch { border-top: 1px solid var(--line-2); margin-top: 2px; padding-top: 9px; display: flex; flex-direction: column; gap: 8px; }
+.cm-app .invsum-vchrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.cm-app .invsum-vchrow .l { min-width: 0; }
+.cm-app .invsum-vchrow .code { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.cm-app .invsum-vchrow .sub { font-size: 10.5px; font-weight: 500; color: var(--ink-faint); margin-top: 2px; }
+.cm-app .invsum-vchrow .amt { font-family: var(--mono); font-weight: 700; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.cm-app .invsum-row.total { border-top: 1px solid var(--line-2); margin-top: 2px; padding-top: 12px; }
+.cm-app .invsum-row.total span { font-size: 14px; font-weight: 700; color: var(--ink); }
+.cm-app .invsum-row.total b { font-size: 20px; }
+.cm-app .inv-alert { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 12px 13px; border-radius: 11px; font-size: 12.5px; font-weight: 600; }
+.cm-app .inv-alert svg { flex-shrink: 0; }
+.cm-app .inv-alert.ok { background: #e6f5ec; border: 1px solid #bfe6cd; color: #1f7a52; }
+.cm-app .inv-alert.ok svg { color: #1f9d57; }
+.cm-app .inv-alert.bad { background: #fcebe9; border: 1px solid #f2c8c4; color: #c0392f; }
+.cm-app .inv-alert.bad svg { color: #d6453f; }
+.cm-app .inv-note { margin-top: 14px; }
+.cm-app .inv-note-l { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 6px; }
+.cm-app .inv-note-box { font-size: 13px; font-weight: 500; line-height: 1.55; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 11px 13px; }
+
+/* ===== Chi tiết hoá đơn — lịch sử thanh toán ===== */
+.cm-app .cd-pay-list { display: flex; flex-direction: column; }
+.cm-app .cd-pay { display: flex; align-items: center; gap: 11px; padding: 11px 0; border-top: 1px solid var(--line-2); }
+.cm-app .cd-pay:first-child { border-top: 0; padding-top: 0; }
+.cm-app .cd-pay-ic { width: 32px; height: 32px; border-radius: 9px; background: #e6f7f0; color: #10b981; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .cd-pay-body { flex: 1; min-width: 0; }
+.cm-app .cd-pay-note { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .cd-pay-sub { font-size: 11px; font-weight: 500; color: var(--ink-faint); font-family: var(--mono); margin-top: 2px; }
+.cm-app .cd-pay-amt { font-family: var(--mono); font-weight: 700; font-size: 13.5px; color: #10b981; flex-shrink: 0; }
+.cm-app .cd-pay-link { color: #2563eb; cursor: pointer; }
+
+/* tinh chỉnh hàng action chi tiết hoá đơn — căn trái, cho phép cuộn ngang */
+.cm-app .cd-acts.inv { gap: 8px; }

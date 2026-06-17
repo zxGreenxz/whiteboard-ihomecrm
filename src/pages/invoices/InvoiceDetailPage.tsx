@@ -39,7 +39,8 @@ import { canUse } from '@/lib/permissionPages';
 import { canEditInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { useState } from 'react';
+import { useState, Suspense, lazy } from 'react';
+import { usePhoneViewport } from '@/hooks/use-mobile';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StorageImage } from '@/components/ui/storage-image';
@@ -50,9 +51,16 @@ import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
 import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
 
+const InvoiceDetailMobile = lazy(() =>
+  import('@/components/invoices/InvoiceDetailMobile').then((m) => ({
+    default: m.InvoiceDetailMobile,
+  })),
+);
+
 const InvoiceDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isPhone = usePhoneViewport();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -204,6 +212,88 @@ const InvoiceDetailPage = () => {
     titleParts.length > 0
       ? titleParts.join(' - ')
       : invoice.invoice_number || invoice.id.slice(0, 8);
+
+  // Điều kiện hiển thị nút thao tác (dùng chung desktop + mobile).
+  const payTotal = invoice.total_amount || 0;
+  const payPaid = invoice.paid_amount || 0;
+  const payIsRefund = payTotal < 0 || payPaid > payTotal;
+  const showPay =
+    canRecordPaymentPerm &&
+    (invoice.status === 'APPROVED' ||
+      invoice.status === 'PARTIAL_PAID' ||
+      invoice.status === 'OVERDUE');
+  const showEditBtn = canEditPerm && canEditInvoice(invoice);
+  const showCancelBtn =
+    canCancelPerm && (invoice.status === 'DRAFT' || invoice.status === 'APPROVED');
+  const showRestoreBtn = invoice.status === 'CANCELLED' && !!ctx?.isSuper;
+  const showQR = !!invoice.contract_id && invoice.contract?.status !== 'TERMINATED';
+
+  // Dialog thanh toán / in / sửa / QR — dùng chung cả 2 layout.
+  const dialogs = (
+    <>
+      {payIsRefund ? (
+        <RecordRefundDialog
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
+          invoice={invoice}
+        />
+      ) : (
+        <RecordPaymentDialog
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
+          invoice={invoice}
+        />
+      )}
+      <PrintInvoiceDialog
+        open={printDialogOpen}
+        onOpenChange={setPrintDialogOpen}
+        invoice={invoice}
+      />
+      <EditInvoiceDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        invoice={invoice}
+      />
+      {invoice.contract?.public_code && (
+        <ContractQRDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          publicCode={invoice.contract.public_code}
+          contractLabel={
+            invoice.contract?.contract_number || apartmentLabel || invoice.contract_id?.slice(0, 8) || ''
+          }
+          buildingName={invoice.building?.name}
+          roomName={invoice.room?.name}
+        />
+      )}
+    </>
+  );
+
+  // Mobile (≤767px): trang chi tiết app full-screen (warm-neutral).
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <InvoiceDetailMobile
+          invoice={invoice}
+          relatedVouchers={relatedVouchers as never}
+          onBack={() => navigate('/invoices')}
+          showPay={showPay}
+          payIsRefund={payIsRefund}
+          onRecordPayment={() => setPaymentDialogOpen(true)}
+          onPrint={() => setPrintDialogOpen(true)}
+          showEdit={showEditBtn}
+          onEdit={() => setEditDialogOpen(true)}
+          showCancel={showCancelBtn}
+          onCancel={handleCancel}
+          showRestore={showRestoreBtn}
+          onRestore={handleRestore}
+          showQR={showQR}
+          onShowQR={() => setQrDialogOpen(true)}
+        />
+        {dialogs}
+      </Suspense>
+    );
+  }
 
   return (
     <MainLayout
@@ -620,53 +710,8 @@ const InvoiceDetailPage = () => {
         </div>
       </div>
 
-      {/* Payment / Refund Dialog — switches based on outstanding sign */}
-      {(() => {
-        const total = invoice.total_amount || 0;
-        const paid = invoice.paid_amount || 0;
-        const isRefund = total < 0 || paid > total;
-        return isRefund ? (
-          <RecordRefundDialog
-            open={paymentDialogOpen}
-            onOpenChange={setPaymentDialogOpen}
-            invoice={invoice}
-          />
-        ) : (
-          <RecordPaymentDialog
-            open={paymentDialogOpen}
-            onOpenChange={setPaymentDialogOpen}
-            invoice={invoice}
-          />
-        );
-      })()}
-
-      {/* Print Dialog */}
-      <PrintInvoiceDialog
-        open={printDialogOpen}
-        onOpenChange={setPrintDialogOpen}
-        invoice={invoice}
-      />
-
-      {/* Edit Dialog */}
-      <EditInvoiceDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        invoice={invoice}
-      />
-
-      {/* QR Hợp đồng Dialog */}
-      {invoice.contract?.public_code && (
-        <ContractQRDialog
-          open={qrDialogOpen}
-          onOpenChange={setQrDialogOpen}
-          publicCode={invoice.contract.public_code}
-          contractLabel={
-            invoice.contract?.contract_number || apartmentLabel || invoice.contract_id?.slice(0, 8) || ''
-          }
-          buildingName={invoice.building?.name}
-          roomName={invoice.room?.name}
-        />
-      )}
+      {/* Dialog thanh toán / in / sửa / QR (dùng chung) */}
+      {dialogs}
     </MainLayout>
   );
 };

@@ -1,11 +1,13 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { Receipt } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { usePhoneViewport } from '@/hooks/use-mobile';
+
+const InvoicesMobilePage = lazy(() => import('./InvoicesMobilePage'));
 import {
   useInvoices,
   useDeleteInvoice,
@@ -23,7 +25,6 @@ import InvoiceStatsSummary from '@/components/invoices/InvoiceStatsSummary';
 import InvoiceListFilters from '@/components/invoices/InvoiceListFilters';
 import InvoiceListToolbar from '@/components/invoices/InvoiceListToolbar';
 import InvoiceListTable from '@/components/invoices/InvoiceListTable';
-import InvoiceListMobile from '@/components/invoices/InvoiceListMobile';
 import { useInvoiceColumnVisibility } from '@/components/invoices/invoiceListColumns';
 import GenerateInvoiceDialog from '@/components/invoices/GenerateInvoiceDialog';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
@@ -35,9 +36,8 @@ import PaymentsSummaryDialog from '@/components/invoices/PaymentsSummaryDialog';
 import InvoiceHistoryDialog from '@/components/invoices/InvoiceHistoryDialog';
 import SuperAdminForceDeleteDialog from '@/components/invoices/SuperAdminForceDeleteDialog';
 
-const InvoicesPage = () => {
+const InvoicesDesktopPage = () => {
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
 
   // Filters
   const [filters, setFilters] = useState<InvoiceFilters>({});
@@ -239,53 +239,7 @@ const InvoicesPage = () => {
       subtitle="Quản lý hoá đơn và thanh toán"
       icon={Receipt}
     >
-      {isMobile ? (
-        <div className="-mx-4 -my-4 sm:-mx-6 sm:-my-6 bg-zinc-50 min-h-[calc(100vh-120px)]">
-          {/* Statistics */}
-          <InvoiceStatsSummary filters={statsFilters} />
-
-          {/* Filters — compact: chỉ Toà nhà · Phòng · Tháng */}
-          <InvoiceListFilters filters={filters} onFiltersChange={handleFiltersChange} compact />
-
-          {/* Toolbar */}
-          <InvoiceListToolbar
-            selectedCount={selectedIds.length}
-            searchQuery={searchQuery}
-            onSearch={handleSearch}
-            onAdd={() => setCreateDialogOpen(true)}
-            onExcelMode={() => setExcelModeDialogOpen(true)}
-            onBulkRecordPayment={() => setBulkPayDialogOpen(true)}
-            onBulkDelete={handleBulkDelete}
-            columnVisibility={columnVisibility}
-            onToggleColumn={toggleColumn}
-            onResetColumns={resetColumns}
-            canCreate={canCreate}
-            canRecordPayment={canRecordPayment}
-            canDelete={canDelete}
-            compact
-          />
-
-          {/* Mobile list */}
-          <InvoiceListMobile
-            invoices={invoices}
-            isLoading={isLoading}
-            onViewDetail={handleViewDetail}
-          />
-
-          {!isLoading && invoices.length > 0 && (
-            <div className="px-3 pb-6">
-              <DataTablePagination
-                paginationInfo={paginationInfo}
-                onPageChange={setPage}
-                onPageSizeChange={setPageSize}
-                showPageSizeSelector
-                showItemCount
-              />
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
+      <>
           {/* Statistics */}
           <InvoiceStatsSummary filters={statsFilters} />
 
@@ -351,7 +305,6 @@ const InvoicesPage = () => {
             )}
           </div>
         </>
-      )}
 
       {/* Dialogs */}
       <GenerateInvoiceDialog
@@ -421,4 +374,15 @@ const InvoicesPage = () => {
   );
 };
 
-export default InvoicesPage;
+// Mobile (≤767px): trang app full-screen riêng (warm-neutral).
+export default function InvoicesPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <InvoicesMobilePage />
+      </Suspense>
+    );
+  }
+  return <InvoicesDesktopPage />;
+}
