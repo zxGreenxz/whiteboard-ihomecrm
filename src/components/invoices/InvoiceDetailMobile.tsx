@@ -2,7 +2,6 @@ import { useRef } from "react";
 import {
   ArrowLeft,
   DollarSign,
-  Printer,
   QrCode,
   Pencil,
   XCircle,
@@ -38,7 +37,6 @@ interface Props {
   showPay: boolean;
   payIsRefund: boolean;
   onRecordPayment: () => void;
-  onPrint: () => void;
   showEdit: boolean;
   onEdit: () => void;
   showCancel: boolean;
@@ -91,7 +89,6 @@ export function InvoiceDetailMobile({
   showPay,
   payIsRefund,
   onRecordPayment,
-  onPrint,
   showEdit,
   onEdit,
   showCancel,
@@ -164,10 +161,6 @@ export function InvoiceDetailMobile({
                   {payIsRefund ? "Hoàn trả khách" : "Ghi nhận thanh toán"}
                 </button>
               )}
-              <button className="invbtn" onClick={onPrint}>
-                <Printer size={16} />
-                In hóa đơn
-              </button>
               {showQR && (
                 <button className="invbtn" onClick={onShowQR}>
                   <QrCode size={16} />

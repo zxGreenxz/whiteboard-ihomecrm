@@ -280,7 +280,6 @@ const InvoiceDetailPage = () => {
           showPay={showPay}
           payIsRefund={payIsRefund}
           onRecordPayment={() => setPaymentDialogOpen(true)}
-          onPrint={() => setPrintDialogOpen(true)}
           showEdit={showEditBtn}
           onEdit={() => setEditDialogOpen(true)}
           showCancel={showCancelBtn}
