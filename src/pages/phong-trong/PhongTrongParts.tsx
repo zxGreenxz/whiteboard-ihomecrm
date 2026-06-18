@@ -210,13 +210,16 @@ export function OverviewView({
                           <i style={{ background: stColor(r.status) }} />{SM[r.status].label}
                         </span>
                       </div>
-                      {r.status === "pass" && (r.passContactPhone || r.passContactName || r.passSalePolicy) && (
+                      {r.status === "pass" && (r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
                         <div className="ovr-pass">
                           {(r.passContactPhone || r.passContactName) && (
                             <span className="ovr-pass-contact">
                               <Icon.Phone />KHÁCH PASS PHÒNG — LIÊN HỆ: {r.passContactPhone || "—"}
                               {r.passContactName ? ` (${r.passContactName})` : ""}
                             </span>
+                          )}
+                          {r.passAvailDate && (
+                            <span className="ovr-pass-avail"><Icon.Calendar />Dự kiến trống từ {r.passAvailDate}</span>
                           )}
                           {r.passSalePolicy && (
                             <span className="ovr-pass-policy"><Icon.Tag />{r.passSalePolicy}</span>

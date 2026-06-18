@@ -32,6 +32,7 @@ export interface Room extends Box {
   passContactName?: string | null;
   passContactPhone?: string | null;
   passSalePolicy?: string | null;
+  passAvailDate?: string | null;  // "dd/mm" — ngày dự kiến trống (tuỳ chọn)
 }
 
 export interface Fixture extends Box {

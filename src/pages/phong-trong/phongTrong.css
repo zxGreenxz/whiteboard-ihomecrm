@@ -629,6 +629,11 @@ body {
   font-size: 11.5px; font-weight: 700; color: var(--st-pass);
 }
 .ovr-pass-contact svg { width: 12px; height: 12px; flex-shrink: 0; }
+.ovr-pass-avail {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; color: var(--ink-2);
+}
+.ovr-pass-avail svg { width: 12px; height: 12px; flex-shrink: 0; }
 .ovr-pass-policy {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 11.5px; font-weight: 600; color: #9a3060;

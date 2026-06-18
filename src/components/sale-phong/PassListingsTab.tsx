@@ -17,15 +17,22 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, Eye, EyeOff, TriangleAlert } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  usePassListings, usePassListingFormRooms, useUpsertPassListing,
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
+import { Plus, Pencil, Trash2, Eye, EyeOff, TriangleAlert, Users } from "lucide-react";
+import {
+  usePassListings, usePassListingFormRooms, usePassListingRoomCustomers, useUpsertPassListing,
   useSetPassListingActive, useDeletePassListing,
   type PassListing, type PassListingFormRoom,
 } from "@/hooks/usePassListings";
 
 const fmtVnd = (n: number | null | undefined) =>
   n == null ? "" : Math.round(n).toLocaleString("vi-VN");
+// 'YYYY-MM-DD' -> 'DD/MM/YYYY' (không qua Date để tránh lệch múi giờ)
+const fmtDateStr = (s: string | null | undefined) =>
+  s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split("-").reverse().join("/") : "";
 
 interface FormState {
   id: string | null;
@@ -34,12 +41,13 @@ interface FormState {
   contactPhone: string;
   salePolicy: string;
   passPrice: string; // chuỗi nhập tay → parse khi lưu
+  availDate: string; // 'YYYY-MM-DD' (input type=date)
   active: boolean;
 }
 
 const emptyForm: FormState = {
   id: null, roomId: "", contactName: "", contactPhone: "",
-  salePolicy: "", passPrice: "", active: true,
+  salePolicy: "", passPrice: "", availDate: "", active: true,
 };
 
 export default function PassListingsTab() {
@@ -52,6 +60,21 @@ export default function PassListingsTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [deleting, setDeleting] = useState<PassListing | null>(null);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+
+  // Khách thuê của phòng đang chọn (để điền sẵn đại diện + cho chọn khách khác).
+  const { data: roomCustomers = [] } = usePassListingRoomCustomers(open ? form.roomId : null);
+
+  // Đổi phòng → điền sẵn SĐT/tên khách ĐẠI DIỆN nếu contact đang trống.
+  useEffect(() => {
+    if (!open || !form.roomId || roomCustomers.length === 0) return;
+    setForm((f) => {
+      if (f.contactName.trim() || f.contactPhone.trim()) return f; // không ghi đè khi đã có
+      const rep = roomCustomers.find((c) => c.is_representative) ?? roomCustomers[0];
+      return { ...f, contactName: rep.full_name ?? "", contactPhone: rep.phone ?? "" };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCustomers, form.roomId, open]);
 
   // Tra cứu tên phòng/tòa từ danh sách form (listings chỉ lưu id).
   const roomById = useMemo(() => {
@@ -81,6 +104,7 @@ export default function PassListingsTab() {
       contactPhone: l.contact_phone ?? "",
       salePolicy: l.sale_policy ?? "",
       passPrice: l.pass_price != null ? String(l.pass_price) : "",
+      availDate: l.avail_date ?? "",
       active: l.active,
     });
     setOpen(true);
@@ -97,6 +121,7 @@ export default function PassListingsTab() {
         contactPhone: form.contactPhone.trim() || null,
         salePolicy: form.salePolicy.trim() || null,
         passPrice: price ? Number(price) : null,
+        availDate: form.availDate || null,
         active: form.active,
       },
       { onSuccess: () => setOpen(false) },
@@ -111,6 +136,9 @@ export default function PassListingsTab() {
         <div className="font-medium">{r.building_name} · {r.room_name}</div>
         {r.room_code && r.room_code !== r.room_name && (
           <div className="text-xs text-muted-foreground">{r.room_code}</div>
+        )}
+        {l.avail_date && (
+          <div className="text-xs text-muted-foreground">Trống từ {fmtDateStr(l.avail_date)}</div>
         )}
       </div>
     );
@@ -205,7 +233,7 @@ export default function PassListingsTab() {
               <Label>Phòng</Label>
               <SearchableSelect
                 value={form.roomId}
-                onValueChange={(v) => setForm((f) => ({ ...f, roomId: v }))}
+                onValueChange={(v) => setForm((f) => ({ ...f, roomId: v, contactName: "", contactPhone: "" }))}
                 options={roomOpts}
                 placeholder="Chọn phòng (gõ để tìm tòa/mã phòng)"
                 emptyText="Không có phòng trong phạm vi"
@@ -220,9 +248,45 @@ export default function PassListingsTab() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pass-phone">SĐT khách</Label>
-                <Input id="pass-phone" inputMode="tel" placeholder="VD: 0354058160"
-                  value={form.contactPhone}
-                  onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))} />
+                <div className="relative">
+                  <Input id="pass-phone" inputMode="tel" placeholder="VD: 0354058160" className="pr-9"
+                    value={form.contactPhone}
+                    onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))} />
+                  <Popover open={contactPickerOpen} onOpenChange={setContactPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <button type="button" disabled={roomCustomers.length === 0}
+                        title={roomCustomers.length ? "Chọn từ khách thuê phòng" : "Phòng chưa có khách thuê"}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed">
+                        <Users className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="p-0 w-[280px]">
+                      <Command>
+                        <CommandInput placeholder="Tìm khách thuê..." />
+                        <CommandList>
+                          <CommandEmpty>Không có khách thuê</CommandEmpty>
+                          <CommandGroup heading="Khách thuê của phòng">
+                            {roomCustomers.map((c, i) => (
+                              <CommandItem
+                                key={i}
+                                value={`${c.full_name ?? ""} ${c.phone ?? ""}`}
+                                onSelect={() => {
+                                  setForm((f) => ({ ...f, contactPhone: c.phone ?? "", contactName: c.full_name ?? "" }));
+                                  setContactPickerOpen(false);
+                                }}
+                              >
+                                <span className="font-medium truncate">{c.full_name || "—"}</span>
+                                {c.is_representative && <Badge variant="secondary" className="ml-1.5 shrink-0">Đại diện</Badge>}
+                                <span className="ml-auto pl-2 text-xs text-muted-foreground shrink-0">{c.phone || "—"}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <p className="text-xs text-muted-foreground">Tự điền khách đại diện khi chọn phòng; bấm <Users className="inline h-3 w-3" /> để chọn khách khác.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pass-name">Tên khách</Label>
@@ -231,11 +295,19 @@ export default function PassListingsTab() {
                   onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="pass-price">Giá pass (đ/tháng) — để trống nếu dùng giá phòng</Label>
-              <Input id="pass-price" inputMode="numeric" placeholder="VD: 3300000"
-                value={form.passPrice}
-                onChange={(e) => setForm((f) => ({ ...f, passPrice: e.target.value }))} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="pass-price">Giá pass (đ/tháng)</Label>
+                <Input id="pass-price" inputMode="numeric" placeholder="Để trống = giá phòng"
+                  value={form.passPrice}
+                  onChange={(e) => setForm((f) => ({ ...f, passPrice: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pass-avail">Ngày trống phòng (tuỳ chọn)</Label>
+                <Input id="pass-avail" type="date"
+                  value={form.availDate}
+                  onChange={(e) => setForm((f) => ({ ...f, availDate: e.target.value }))} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pass-policy">Chính sách sale (của khách)</Label>

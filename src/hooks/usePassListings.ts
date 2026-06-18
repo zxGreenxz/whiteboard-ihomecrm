@@ -12,6 +12,8 @@ import { toast } from "sonner";
 export type PassListing = Database["public"]["Tables"]["room_pass_listings"]["Row"];
 export type PassListingFormRoom =
   Database["public"]["Functions"]["pass_listing_form_rooms"]["Returns"][number];
+export type PassListingRoomCustomer =
+  Database["public"]["Functions"]["pass_listing_room_customers"]["Returns"][number];
 
 const KEY = ["pass-listings"] as const;
 const FORM_ROOMS_KEY = ["pass-listing-form-rooms"] as const;
@@ -42,6 +44,19 @@ export function usePassListingFormRooms() {
   });
 }
 
+/** Khách thuê của phòng (HĐ active) — để điền sẵn SĐT/tên đại diện + cho chọn. */
+export function usePassListingRoomCustomers(roomId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pass-listing-room-customers", roomId],
+    enabled: !!roomId,
+    queryFn: async (): Promise<PassListingRoomCustomer[]> => {
+      const { data, error } = await supabase.rpc("pass_listing_room_customers", { p_room_id: roomId! });
+      if (error) throw error;
+      return (data ?? []) as PassListingRoomCustomer[];
+    },
+  });
+}
+
 export interface UpsertPassListingInput {
   id?: string | null;
   roomId: string;
@@ -49,6 +64,7 @@ export interface UpsertPassListingInput {
   contactPhone?: string | null;
   salePolicy?: string | null;
   passPrice?: number | null;
+  availDate?: string | null;   // 'YYYY-MM-DD'
   active?: boolean;
 }
 
@@ -63,6 +79,7 @@ export function useUpsertPassListing() {
         p_contact_phone: input.contactPhone ?? null,
         p_sale_policy: input.salePolicy ?? null,
         p_pass_price: input.passPrice ?? null,
+        p_avail_date: input.availDate ?? null,
         p_active: input.active ?? true,
       });
       if (error) throw error;

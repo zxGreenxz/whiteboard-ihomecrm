@@ -96,6 +96,7 @@ function buildShareText(r: Room, building?: Building): string {
       ? `• Tình trạng: Khách pass phòng${r.passContactPhone ? " — LH " + r.passContactPhone + (r.passContactName ? " (" + r.passContactName + ")" : "") : ""}`
       : `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
     `• Nội thất: ${r.amenities.join(", ")}`,
+    ...(isPass && r.passAvailDate ? [`• Dự kiến trống từ: ${r.passAvailDate}`] : []),
     ...(isPass && r.passSalePolicy ? [`• Chính sách sale: ${r.passSalePolicy}`] : []),
     ...(r.saleNote ? [`• Khuyến mãi: ${r.saleNote}`] : []),
     `• Địa chỉ: ${shortAddr(r.buildingAddr)}`,
@@ -374,7 +375,7 @@ export function DetailSheet({
               </div>
             )}
 
-            {isPass && (r.passContactPhone || r.passContactName || r.passSalePolicy) && (
+            {isPass && (r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
               <div className="note-box" style={{ background: "var(--st-pass-bg)", borderColor: "var(--st-pass-line)", color: "var(--st-pass)" }}>
                 <Icon.Tag />
                 <span>
@@ -382,6 +383,7 @@ export function DetailSheet({
                   {(r.passContactPhone || r.passContactName) && (
                     <> — Liên hệ: {r.passContactPhone || "—"}{r.passContactName ? ` (${r.passContactName})` : ""}</>
                   )}
+                  {r.passAvailDate && <><br />Dự kiến trống từ {r.passAvailDate}</>}
                   {r.passSalePolicy && <><br />{r.passSalePolicy}</>}
                 </span>
               </div>

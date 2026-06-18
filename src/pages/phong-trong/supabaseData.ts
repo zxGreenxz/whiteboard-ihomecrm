@@ -64,6 +64,7 @@ export interface RpcRoom {
   pass_contact_phone?: string | null;
   pass_sale_policy?: string | null;
   pass_price?: number | null;       // giá pass (VND) — override rent_price nếu có
+  pass_avail_date?: string | null;  // 'YYYY-MM-DD' — ngày dự kiến trống (pass)
 }
 export interface RpcContact { name: string; phone: string }
 export interface RpcPayload {
@@ -170,6 +171,7 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
         passContactName: rr.pass_contact_name || null,
         passContactPhone: rr.pass_contact_phone || null,
         passSalePolicy: rr.pass_sale_policy || null,
+        passAvailDate: status === "pass" ? fmtAvail(rr.pass_avail_date) : null,
         x: 0, y: 0, w: 0, h: 0,
       };
     });

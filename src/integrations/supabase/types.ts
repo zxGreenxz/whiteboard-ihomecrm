@@ -5076,6 +5076,7 @@ export type Database = {
       room_pass_listings: {
         Row: {
           active: boolean
+          avail_date: string | null
           building_id: string
           contact_name: string | null
           contact_phone: string | null
@@ -5090,6 +5091,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          avail_date?: string | null
           building_id: string
           contact_name?: string | null
           contact_phone?: string | null
@@ -5104,6 +5106,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          avail_date?: string | null
           building_id?: string
           contact_name?: string | null
           contact_phone?: string | null
@@ -6831,6 +6834,14 @@ export type Database = {
           room_name: string
         }[]
       }
+      pass_listing_room_customers: {
+        Args: { p_room_id: string }
+        Returns: {
+          full_name: string
+          is_representative: boolean
+          phone: string
+        }[]
+      }
       recompute_contract_deposit_paid: {
         Args: { p_contract_id: string }
         Returns: undefined
@@ -6915,6 +6926,7 @@ export type Database = {
         Args: { p_active: boolean; p_id: string }
         Returns: {
           active: boolean
+          avail_date: string | null
           building_id: string
           contact_name: string | null
           contact_phone: string | null
@@ -7083,6 +7095,7 @@ export type Database = {
       upsert_room_pass_listing: {
         Args: {
           p_active: boolean
+          p_avail_date?: string
           p_contact_name: string
           p_contact_phone: string
           p_id: string
@@ -7092,6 +7105,7 @@ export type Database = {
         }
         Returns: {
           active: boolean
+          avail_date: string | null
           building_id: string
           contact_name: string | null
           contact_phone: string | null
