@@ -241,6 +241,33 @@ export async function calculateLateFee(
  */
 export const PREVIOUS_DEBT_ROUND_THRESHOLD = 10000;
 
+/**
+ * Phân bổ một lần thu hoá đơn (đã từng gộp cọc) thành phần CỌC và phần DOANH THU.
+ * Quy ước: cọc-trước, doanh-thu-sau — mỗi đồng thu lấp phần cọc còn thiếu của
+ * hoá đơn trước, phần dư mới tính doanh thu (để deposit_paid tiến nhanh về đủ).
+ *
+ * Bất biến (property): với mọi chuỗi thanh toán cộng dồn không vượt tổng HĐ,
+ *  Σ depositPortion = min(Σ thu, depositInInvoice); Σ revenuePortion = phần còn lại.
+ *
+ * @param paymentAmount  số tiền của LẦN thu hiện tại (≥ 0)
+ * @param depositInInvoice  tổng phần cọc gộp trong hoá đơn (≥ 0)
+ * @param paidBefore  số đã thu của hoá đơn TRƯỚC lần này (≥ 0)
+ */
+export function allocateDepositPortion(opts: {
+  paymentAmount: number;
+  depositInInvoice: number;
+  paidBefore: number;
+}): { depositPortion: number; revenuePortion: number } {
+  const paymentAmount = Math.max(0, opts.paymentAmount || 0);
+  const depositInInvoice = Math.max(0, opts.depositInInvoice || 0);
+  const paidBefore = Math.max(0, opts.paidBefore || 0);
+  const depositCoveredBefore = Math.min(paidBefore, depositInInvoice);
+  const depositRemainingOnInvoice = Math.max(0, depositInInvoice - depositCoveredBefore);
+  const depositPortion = Math.min(paymentAmount, depositRemainingOnInvoice);
+  const revenuePortion = paymentAmount - depositPortion;
+  return { depositPortion, revenuePortion };
+}
+
 export interface PreviousDebtBreakdown {
   total: number;
   sources: PreviousDebtSource[];
@@ -252,9 +279,11 @@ export interface ComputePreviousDebtOptions {
 }
 
 /**
- * Tính nợ cũ cho một hợp đồng — gồm:
- *  1. Remaining của các HĐ APPROVED/PARTIAL_PAID/OVERDUE (loại bỏ residual < ngưỡng).
- *  2. Cọc còn thiếu = contracts.total_deposit - contracts.deposit_paid (nếu > ngưỡng).
+ * Tính nợ cũ cho một hợp đồng = Remaining của các HĐ APPROVED/PARTIAL_PAID/
+ * OVERDUE (loại bỏ residual < ngưỡng).
+ *
+ * LƯU Ý: KHÔNG còn gộp "cọc còn thiếu" vào nợ cũ (đường rò rỉ cũ → cọc lọt
+ * vào KQKD khi thu hoá đơn). Cọc thiếu theo dõi ở contracts.deposit_remaining.
  *
  * Trả về breakdown để UI hiển thị tooltip + lưu vào invoices.previous_debt_sources.
  */
@@ -289,14 +318,11 @@ export async function computePreviousDebt(
   // Build set "đã được HĐ khác carry-over" để không cộng đúp:
   //  - carriedInvoiceIds: HĐ X xuất hiện trong previous_debt_sources của HĐ Y
   //    (mở) → HĐ X không tính riêng nữa.
-  //  - depositAlreadyCarried: nếu có HĐ Y mở đã gánh cọc → cọc không tính lại.
   const carriedInvoiceIds = new Set<string>();
-  let depositAlreadyCarried = false;
   for (const inv of (oldInvoices ?? []) as any[]) {
     const srcs = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
     for (const s of srcs) {
       if (s?.type === 'invoice' && s?.id) carriedInvoiceIds.add(String(s.id));
-      if (s?.type === 'deposit') depositAlreadyCarried = true;
     }
   }
 
@@ -313,27 +339,10 @@ export async function computePreviousDebt(
     });
   }
 
-  // 2) Cọc còn thiếu — skip nếu đã được HĐ khác carry-over.
-  if (!depositAlreadyCarried) {
-    const { data: contract } = await (supabase
-      .from('contracts') as any)
-      .select('id, total_deposit, deposit_paid, deposit_remaining')
-      .eq('id', contractId)
-      .maybeSingle();
-    if (contract) {
-      const depositRemaining =
-        Number(contract.deposit_remaining ??
-          ((Number(contract.total_deposit) || 0) - (Number(contract.deposit_paid) || 0)));
-      if (depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD) {
-        sources.push({
-          type: 'deposit',
-          contract_id: contract.id,
-          amount: depositRemaining,
-          label: 'Cọc còn thiếu',
-        });
-      }
-    }
-  }
+  // 2) Cọc còn thiếu — KHÔNG còn đẩy vào "Nợ cũ" của hoá đơn doanh thu.
+  // (Đường rò rỉ cũ: cọc gộp vào hoá đơn → khi thu bị tính nhầm vào KQKD.)
+  // Cọc thiếu nay theo dõi ở contracts.deposit_remaining + trang /deposits;
+  // thu cọc bằng phiếu thu cọc riêng (hạng mục "Tiền cọc", is_deposit).
 
   const total = sources.reduce((sum, s) => sum + (s.amount || 0), 0);
   return { total, sources };

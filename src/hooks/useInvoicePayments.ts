@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
+import { allocateDepositPortion } from '@/lib/invoiceHelpers';
 
 // =============================================
 // Types
@@ -54,6 +55,18 @@ export const useRecordPaymentRPC = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Fetch invoice TRƯỚC khi gọi RPC để có paid_amount chính xác (RPC sẽ
+      // cộng payment vào paid_amount). Cần previous_debt_sources +
+      // invoice_items(description, amount) để phát hiện cọc gộp trong HĐ cũ.
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select(
+          'id, invoice_number, building_id, room_id, contract_id, billing_month, tenant_id:contract_id, notes, paid_amount, previous_debt_sources, invoice_items(type, description, amount), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)'
+        )
+        .eq('id', data.invoice_id)
+        .single() as any;
+      const paidBefore = Number(inv?.paid_amount) || 0;
+
       // RBAC v2: bỏ p_user_id; quyền xác định qua can_do_on_building.
       const { data: result, error } = await (supabase.rpc as any)(
         'record_invoice_payment_v2',
@@ -74,31 +87,33 @@ export const useRecordPaymentRPC = () => {
       // ─────────────────────────────────────────────────────
       // Mirror Resident: every invoice payment ⇒ 1 phiếu thu
       // ─────────────────────────────────────────────────────
-      // Fetch the invoice details we need to seed the voucher.
-      const { data: inv } = await supabase
-        .from('invoices')
-        .select(
-          'id, invoice_number, building_id, room_id, contract_id, billing_month, tenant_id:contract_id, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)'
-        )
-        .eq('id', data.invoice_id)
-        .single() as any;
-
+      // (inv đã fetch ở trên — trước RPC — để có paid_amount.)
+      // Lấy loại thu: doanh thu (KHÔNG cọc) + cọc (is_deposit). Tách rõ để phiếu
+      // doanh thu KHÔNG bao giờ dính is_deposit (DB hiện có 0 is_default → phải
+      // lọc is_deposit=false tường minh + sắp xếp ổn định + THROW nếu thiếu).
       const { data: incTypes, error: incTypesErr } = await supabase
         .from('income_expense_types' as any)
-        .select('id, is_default, type, name')
+        .select('id, is_default, type, name, is_deposit')
         .eq('type', 'income')
-        .limit(50) as any;
+        .limit(100) as any;
       if (incTypesErr) throw incTypesErr;
-      const types = (incTypes ?? []) as Array<{ id: string; is_default?: boolean }>;
-      const incomeTypeId = types.find((t) => t.is_default)?.id || types[0]?.id;
+      const allInc = (incTypes ?? []) as Array<{
+        id: string; is_default?: boolean; name?: string; is_deposit?: boolean;
+      }>;
+      // Ưu tiên: is_default → hạng mục quy ước "Thu tiền hoá đơn" → đầu danh
+      // sách (sort theo tên cho ổn định). DB hiện KHÔNG có is_default income type.
+      const revenueTypes = allInc.filter((t) => !t.is_deposit);
+      const norm = (s?: string) => (s ?? '').trim().toLowerCase();
+      const incomeTypeId =
+        revenueTypes.find((t) => t.is_default)?.id ||
+        revenueTypes.find((t) => norm(t.name) === 'thu tiền hoá đơn' || norm(t.name) === 'thu tiền hóa đơn')?.id ||
+        [...revenueTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))[0]?.id;
+      const depositTypes = allInc.filter((t) => t.is_deposit);
+      const depositTypeId =
+        depositTypes.find((t) => (t.name ?? '').trim().toLowerCase() === 'tiền cọc')?.id ||
+        depositTypes[0]?.id;
 
-      if (inv && data.account_id) {
-        if (!incomeTypeId) {
-          throw new Error(
-            'Chưa có loại thu nào trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
-          );
-        }
-
+      if (inv && data.account_id && data.amount > 0) {
         const meta = (user.user_metadata ?? {}) as Record<string, any>;
         const creatorName: string =
           meta.full_name || meta.name || user.email || 'Người dùng';
@@ -118,45 +133,139 @@ export const useRecordPaymentRPC = () => {
           .filter(Boolean)
           .join(' — ') || null;
 
-        const { data: voucher, error: vErr } = await supabase
-          .from('income_expenses' as any)
-          .insert({
-            user_id: user.id,
-            type: 'INCOME',
-            name: `Thu tiền theo HĐ ${getInvoiceShortTitle(inv as any)}`,
-            building_id: inv.building_id,
-            room_id: inv.room_id,            contract_id: inv.contract_id,
-            account_id: data.account_id,
-            invoice_id: inv.id,
-            payment_id: newPaymentId,
-            voucher_date: data.payment_date,
-            payer_name: data.notes ?? null,
-            notes: composedNotes,
-            attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
-            approval_status: 'APPROVED',
-            creator_name: creatorName,
-            change_amount: change,
-            change_account_id: data.change_account_id ?? null,
-            rounding_amount: rounding,
-            rounding_account_id: rounding > 0 ? (data.rounding_account_id ?? null) : null,
-          } as any)
-          .select()
-          .single();
+        // Phần cọc gộp trong HĐ cũ: item OTHER đúng nhãn "Tiền cọc" (chuỗi cố
+        // định firstInvoiceBuilder cũ phát ra) + nguồn nợ cũ type 'deposit'.
+        // Dùng so khớp CHÍNH XÁC 'tiền cọc' để KHÔNG bắt nhầm khoản thật như
+        // "Cọc xe máy"/"Cọc thẻ". (Khớp đúng 2 đường gộp cọc cũ; HĐ mới = 0.)
+        const invItems = (inv.invoice_items ?? []) as Array<{ type?: string; description?: string; amount?: number }>;
+        const itemDeposit = invItems
+          .filter(
+            (it) =>
+              it.type === 'OTHER' &&
+              typeof it.description === 'string' &&
+              it.description.trim().toLowerCase() === 'tiền cọc',
+          )
+          .reduce((s, it) => s + (Number(it.amount) || 0), 0);
+        const pdSources = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
+        const pdDeposit = (pdSources as any[])
+          .filter((s) => s?.type === 'deposit')
+          .reduce((s, x) => s + (Number(x.amount) || 0), 0);
+        const depositInInvoice = itemDeposit + pdDeposit;
 
-        if (vErr) throw vErr;
+        // Chỉ tách khi HĐ thực sự gộp cọc + có HĐ/contract. Bỏ qua khi có
+        // rounding/credit (paid_amount không cộng đúng data.amount → tách lệch).
+        const canSplit = depositInInvoice > 0 && !!inv.contract_id && rounding === 0 && credit === 0;
+        // Cọc-trước, doanh-thu-sau (hàm thuần allocateDepositPortion + property test).
+        const { depositPortion, revenuePortion } = canSplit
+          ? allocateDepositPortion({
+              paymentAmount: data.amount,
+              depositInInvoice,
+              paidBefore,
+            })
+          : { depositPortion: 0, revenuePortion: data.amount };
 
-        const { error: itemErr } = await supabase
-          .from('income_expense_items' as any)
-          .insert({
-            income_expense_id: (voucher as any).id,
-            income_expense_type_id: incomeTypeId,
-            description: `Thanh toán HĐ ${getInvoiceShortTitle(inv as any)}`,
-            quantity: 1,
-            unit_price: data.amount,
-            start_date: data.payment_date,
-            end_date: data.payment_date,
-          });
-        if (itemErr) throw itemErr;
+        const shortTitle = getInvoiceShortTitle(inv as any);
+        const pairMarker = depositPortion > 0 && revenuePortion > 0
+          ? `[THU TACH COC ${newPaymentId ?? inv.id}]`
+          : null;
+        const withMarker = (n: string | null) =>
+          pairMarker ? [pairMarker, n].filter(Boolean).join(' ') : n;
+
+        // Idempotency: nếu đã có phiếu thu gắn payment_id này (retry) → bỏ qua.
+        let alreadyMirrored = false;
+        if (newPaymentId) {
+          const { data: existingV } = await supabase
+            .from('income_expenses' as any)
+            .select('id')
+            .eq('payment_id', newPaymentId)
+            .limit(1) as any;
+          alreadyMirrored = !!(existingV && existingV.length > 0);
+        }
+
+        // payment_id chỉ gắn 1 phiếu "chính" (huỷ phiếu đó mới rollback payment);
+        // metadata thối/làm tròn cũng chỉ gắn 1 lần ở phiếu chính.
+        const createVoucher = async (opts: {
+          name: string; typeId: string; amount: number;
+          itemDescription: string; isMain: boolean; notes: string | null;
+        }) => {
+          const { data: voucher, error: vErr } = await supabase
+            .from('income_expenses' as any)
+            .insert({
+              user_id: user.id,
+              type: 'INCOME',
+              name: opts.name,
+              building_id: inv.building_id,
+              room_id: inv.room_id,
+              contract_id: inv.contract_id,
+              account_id: data.account_id,
+              invoice_id: inv.id,
+              payment_id: opts.isMain ? newPaymentId : null,
+              voucher_date: data.payment_date,
+              payer_name: data.notes ?? null,
+              notes: opts.notes,
+              attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
+              approval_status: 'APPROVED',
+              creator_name: creatorName,
+              // null = tự động: phiếu cọc (item is_deposit) tự loại khỏi KQKD.
+              business_result_accounting: null,
+              change_amount: opts.isMain ? change : 0,
+              change_account_id: opts.isMain ? (data.change_account_id ?? null) : null,
+              rounding_amount: opts.isMain ? rounding : 0,
+              rounding_account_id: opts.isMain && rounding > 0 ? (data.rounding_account_id ?? null) : null,
+            } as any)
+            .select()
+            .single();
+          if (vErr) throw vErr;
+          const { error: itemErr } = await supabase
+            .from('income_expense_items' as any)
+            .insert({
+              income_expense_id: (voucher as any).id,
+              income_expense_type_id: opts.typeId,
+              description: opts.itemDescription,
+              quantity: 1,
+              unit_price: opts.amount,
+              start_date: data.payment_date,
+              end_date: data.payment_date,
+            });
+          if (itemErr) throw itemErr;
+        };
+
+        if (!alreadyMirrored) {
+          // Pre-check loại thu TRƯỚC khi tạo phiếu nào (tránh tạo phiếu lẻ rồi throw).
+          if (depositPortion > 0 && !depositTypeId) {
+            throw new Error(
+              'Hoá đơn có phần cọc nhưng chưa có loại thu cọc (is_deposit). Vào Cài đặt → Loại thu/chi tạo loại "Tiền cọc".',
+            );
+          }
+          if (revenuePortion > 0 && !incomeTypeId) {
+            throw new Error(
+              'Chưa có loại thu (không phải cọc) trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
+            );
+          }
+          // Tạo phiếu DOANH THU (phiếu chính mang payment_id) TRƯỚC; nếu lỗi giữa
+          // chừng + user retry thì idempotency theo payment_id bắt được → tránh
+          // nhân đôi phiếu cọc (phiếu cọc không mang payment_id).
+          if (revenuePortion > 0) {
+            await createVoucher({
+              name: `Thu tiền theo HĐ ${shortTitle}`,
+              typeId: incomeTypeId!,
+              amount: revenuePortion,
+              itemDescription: `Thanh toán HĐ ${shortTitle}`,
+              isMain: true,
+              notes: withMarker(composedNotes),
+            });
+          }
+          if (depositPortion > 0) {
+            await createVoucher({
+              name: `Thu cọc theo HĐ ${shortTitle}`,
+              typeId: depositTypeId!,
+              amount: depositPortion,
+              itemDescription: `Tiền cọc theo HĐ ${shortTitle}`,
+              isMain: revenuePortion <= 0,
+              notes: withMarker(composedNotes),
+            });
+          }
+        }
       }
       // ─────────────────────────────────────────────────────
 
@@ -272,7 +381,8 @@ export const useRecordRefundRPC = () => {
           type: 'EXPENSE',
           name: `Hoàn trả khách thanh lý — HĐ ${getInvoiceShortTitle(inv as any)}`,
           building_id: inv.building_id,
-          room_id: inv.room_id,          contract_id: inv.contract_id,
+          room_id: inv.room_id,
+          contract_id: inv.contract_id,
           account_id: data.account_id,
           invoice_id: inv.id,
           voucher_date: data.payment_date,

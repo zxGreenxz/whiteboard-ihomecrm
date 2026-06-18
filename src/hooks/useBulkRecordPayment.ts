@@ -82,15 +82,24 @@ export const useBulkRecordPayment = () => {
       // ── Cache income/expense types 1 lần cho cả batch ──
       const { data: incTypes, error: incTypesErr } = await (supabase
         .from('income_expense_types' as any)
-        .select('id, is_default, type, name') as any)
+        .select('id, is_default, type, name, is_deposit') as any)
         .eq('type', 'income')
-        .limit(50);
+        .limit(100);
       if (incTypesErr) throw incTypesErr;
-      const types = (incTypes ?? []) as Array<{ id: string; is_default?: boolean }>;
-      const incomeTypeId = types.find((t) => t.is_default)?.id || types[0]?.id;
+      const allInc = (incTypes ?? []) as Array<{
+        id: string; is_default?: boolean; name?: string; is_deposit?: boolean;
+      }>;
+      // Loại thu DOANH THU phải KHÔNG phải cọc — tránh chọn nhầm "Tiền Cọc" làm
+      // loại mặc định (DB hiện có 0 is_default) → doanh thu bị loại khỏi KQKD.
+      const revenueTypes = allInc.filter((t) => !t.is_deposit);
+      const normT = (s?: string) => (s ?? '').trim().toLowerCase();
+      const incomeTypeId =
+        revenueTypes.find((t) => t.is_default)?.id ||
+        revenueTypes.find((t) => normT(t.name) === 'thu tiền hoá đơn' || normT(t.name) === 'thu tiền hóa đơn')?.id ||
+        [...revenueTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))[0]?.id;
       if (!incomeTypeId) {
         throw new Error(
-          'Chưa có loại thu nào trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
+          'Chưa có loại thu (không phải cọc) trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
         );
       }
 
@@ -107,7 +116,7 @@ export const useBulkRecordPayment = () => {
           const { data: inv, error: invErr } = await (supabase
             .from('invoices')
             .select(
-              'id, user_id, invoice_number, building_id, room_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)',
+              'id, user_id, invoice_number, building_id, room_id, contract_id, billing_month, total_amount, paid_amount, remaining_amount, notes, previous_debt_sources, invoice_items(type, description, amount), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)',
             )
             .eq('id', item.invoice_id)
             .single() as any);
@@ -125,6 +134,28 @@ export const useBulkRecordPayment = () => {
               invoice_number: item.invoice_number,
               room_name: item.room_name,
               message: 'Đã được thanh toán bởi người khác',
+            });
+            continue;
+          }
+
+          // HĐ CŨ gộp cọc (item OTHER "Tiền cọc" hoặc previous_debt_sources type
+          // 'deposit') → KHÔNG thu hàng loạt (đường này không tách cọc theo từng
+          // sub-line). Báo thu qua màn hình hoá đơn (RecordPaymentDialog tự tách
+          // cọc thành phiếu is_deposit). Tránh cọc lọt vào KQKD.
+          const invItems2 = ((inv as any).invoice_items ?? []) as Array<{ type?: string; description?: string; amount?: number }>;
+          const itemDeposit = invItems2
+            .filter((it) => it.type === 'OTHER' && typeof it.description === 'string' && it.description.trim().toLowerCase() === 'tiền cọc')
+            .reduce((s, it) => s + (Number(it.amount) || 0), 0);
+          const pdSrc = Array.isArray((inv as any).previous_debt_sources) ? (inv as any).previous_debt_sources : [];
+          const pdDeposit = (pdSrc as any[])
+            .filter((s) => s?.type === 'deposit')
+            .reduce((s, x) => s + (Number(x.amount) || 0), 0);
+          if (itemDeposit + pdDeposit > 0) {
+            failures.push({
+              invoice_id: item.invoice_id,
+              invoice_number: item.invoice_number,
+              room_name: item.room_name,
+              message: 'Hoá đơn có gộp tiền cọc — vui lòng thu qua màn hình hoá đơn để tách cọc đúng (không thu hàng loạt).',
             });
             continue;
           }

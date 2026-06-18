@@ -6,7 +6,10 @@
 //   - DISCOUNT: khuyến mãi tháng đầu (nếu có discounts)
 //   - SERVICE: dịch vụ tính cố định (theo tháng/phòng/người).
 //     Bỏ qua dịch vụ tính theo đồng hồ (đợi chốt chỉ số).
-//   - OTHER: tiền cọc phải đóng (total_deposit − deposit_paid) nếu > 0
+//
+// LƯU Ý: Tiền cọc KHÔNG còn nằm trong hoá đơn (trước đây là item OTHER
+// "Tiền cọc"). Cọc lọt vào hoá đơn rồi thu → bị tính nhầm vào KQKD. Nay cọc
+// được thu bằng PHIẾU THU CỌC riêng (hạng mục "Tiền cọc", is_deposit).
 // =============================================
 
 export type FirstInvoiceItemType = "RENT" | "SERVICE" | "DISCOUNT" | "OTHER";
@@ -149,21 +152,9 @@ export function buildFirstInvoiceItems(
     });
   }
 
-  // OTHER — tiền cọc phải đóng.
-  const depositRemaining = Math.max(
-    0,
-    (input.total_deposit ?? 0) - (input.deposit_paid ?? 0),
-  );
-  if (depositRemaining > 0) {
-    items.push({
-      id: nextId("deposit"),
-      type: "OTHER",
-      description: "Tiền cọc",
-      unit_price: depositRemaining,
-      quantity: 1,
-    });
-  }
-
+  // NOTE: Tiền cọc KHÔNG còn nằm trong hoá đơn (đường rò rỉ cũ → cọc lọt vào
+  // KQKD khi thu hoá đơn). Cọc còn thiếu lúc ký được thu bằng PHIẾU THU CỌC
+  // riêng (hạng mục "Tiền cọc", is_deposit) — xem ContractFormDialog.
   return items;
 }
 

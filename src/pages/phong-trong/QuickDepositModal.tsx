@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
+import { useAccounts } from "@/hooks/useAccounts";
+import { getSessionUser } from "@/lib/authSession";
 import { Icon } from "./icons";
 import { fmtPrice, type Room } from "./sampleData";
 
@@ -11,7 +13,8 @@ import { fmtPrice, type Room } from "./sampleData";
  * realtime ngay (tạo phiếu thu cọc → trigger recompute_room_reservation tự set
  * rooms.status='RESERVED' → phòng rời danh sách "trống").
  *
- * Sổ quỹ MẶC ĐỊNH = "CỌC (giữ hộ khách)" (RPC get_or_create_deposit_account).
+ * Sổ quỹ: cọc THẬT (>1đ) ghi vào sổ thu của chính staff (RLS-safe); giữ chỗ
+ * 1đ / không có sổ riêng → sổ ảo "CỌC (giữ hộ khách)" (get_or_create_deposit_account).
  * Hạng mục = "Tiền cọc" (RPC ensure_room_deposit_type — đảm bảo is_deposit=TRUE).
  * Nội dung = "Cọc phòng {x} tòa {y}". Ô số tiền để trống → mặc định 1đ.
  * "Ngày bổ sung cọc" + "Ngày vào" là thông tin thêm; điền thì ghi vào nội dung.
@@ -45,10 +48,28 @@ export function QuickDepositModal({
 }) {
   const qc = useQueryClient();
   const createIE = useCreateIncomeExpense();
+  const { data: accounts = [] } = useAccounts();
   const [amount, setAmount] = useState(""); // chuỗi chữ số (đã bỏ separator)
   const [topupDate, setTopupDate] = useState(""); // ngày bổ sung cọc (YYYY-MM-DD)
   const [moveInDate, setMoveInDate] = useState(""); // ngày vào (YYYY-MM-DD)
   const [submitting, setSubmitting] = useState(false);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  // Sổ thu THẬT của chính staff (user_id = auth.uid()) — RLS cho phép ghi.
+  // Tiền cọc thật vào sổ này; sổ CỌC chỉ là sổ ảo (fallback / giữ chỗ 1đ).
+  useEffect(() => {
+    let active = true;
+    getSessionUser().then((u) => {
+      if (active) setMyUserId(u?.id ?? null);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const myDefaultAccount = useMemo(() => {
+    const mine = accounts.filter((a) => a.user_id === myUserId);
+    return mine.find((a) => a.is_default) ?? mine[0] ?? null;
+  }, [accounts, myUserId]);
 
   // Reset form mỗi khi mở phòng mới.
   const roomId = room?.id ?? null;
@@ -61,6 +82,12 @@ export function QuickDepositModal({
 
   const roomLabel = room ? room.code || String(room.no) : "";
   const baseContent = room ? `Cọc phòng ${roomLabel} tòa ${room.buildingName}` : "";
+
+  // Nhãn sổ quỹ hiển thị: cọc thật → sổ thu của staff; giữ chỗ → sổ CỌC ảo.
+  const accountLabel =
+    Number(digitsOnly(amount)) > 1 && myDefaultAccount
+      ? myDefaultAccount.name
+      : "CỌC (giữ hộ khách) — sổ ảo";
 
   // Nội dung phiếu (preview) — gắn thêm ngày nếu có.
   const contentPreview = useMemo(() => {
@@ -89,9 +116,16 @@ export function QuickDepositModal({
       if (typeErr || !typeId) {
         throw new Error("Không lấy được hạng mục \"Tiền cọc\".");
       }
-      const { data: accId, error: accErr } = await rpc("get_or_create_deposit_account");
-      if (accErr || !accId) {
-        throw new Error("Không lấy được sổ \"CỌC (giữ hộ khách)\".");
+      // Cọc THẬT (>1đ) → sổ thu của chính staff (RLS-safe). Giữ chỗ 1đ / không
+      // có sổ riêng → sổ CỌC ảo (get_or_create_deposit_account, theo auth.uid()).
+      let accId: string | null =
+        unitPrice > 1 && myDefaultAccount ? myDefaultAccount.id : null;
+      if (!accId) {
+        const { data: depAcc, error: accErr } = await rpc("get_or_create_deposit_account");
+        if (accErr || !depAcc) {
+          throw new Error("Không lấy được sổ quỹ để ghi cọc.");
+        }
+        accId = depAcc as string;
       }
 
       const today = new Date().toISOString().slice(0, 10);
@@ -162,7 +196,7 @@ export function QuickDepositModal({
           <div className="qd-fixed">
             <div className="qd-fixed-row">
               <span className="qd-fixed-lbl">Sổ quỹ</span>
-              <span className="qd-fixed-val">CỌC (giữ hộ khách)</span>
+              <span className="qd-fixed-val">{accountLabel}</span>
             </div>
             <div className="qd-fixed-row">
               <span className="qd-fixed-lbl">Hạng mục</span>

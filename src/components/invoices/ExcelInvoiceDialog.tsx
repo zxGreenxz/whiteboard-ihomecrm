@@ -259,12 +259,12 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
         }
       }
 
-      // 5) Nợ cũ (khách nợ mình) per contract: HĐ APPROVED/PARTIAL_PAID/OVERDUE chưa tất toán + cọc còn thiếu.
+      // 5) Nợ cũ (khách nợ mình) per contract: HĐ APPROVED/PARTIAL_PAID/OVERDUE chưa tất toán.
+      // LƯU Ý: KHÔNG còn gộp "cọc còn thiếu" vào hoá đơn (đường rò rỉ cũ → cọc
+      // lọt vào KQKD). Cọc thiếu theo dõi ở contracts.deposit_remaining + /deposits.
       const previousDebtByContract = new Map<string, { total: number; sources: PreviousDebtSource[] }>();
       // carriedInvoiceIds per contract: HĐ đã được HĐ khác carry-over → bỏ.
-      // depositCarriedByContract: contract đã có HĐ mở gánh cọc → bỏ cọc.
       const carriedInvoiceIdsByContract = new Map<string, Set<string>>();
-      const depositCarriedByContract = new Set<string>();
       let oldInvoicesData: any[] = [];
       if (contractIds.length > 0) {
         const { data: oldInvoices } = await (supabase as any)
@@ -289,9 +289,6 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
               set.add(String(s.id));
               carriedInvoiceIdsByContract.set(inv.contract_id, set);
             }
-            if (s?.type === 'deposit') {
-              depositCarriedByContract.add(inv.contract_id);
-            }
           }
         }
         // Pass 2: push as sources, skip carried.
@@ -307,23 +304,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           previousDebtByContract.set(inv.contract_id, entry);
         }
       }
-      // Cộng cọc còn thiếu — skip nếu đã được HĐ khác gánh.
-      for (const c of buildingContracts) {
-        if (depositCarriedByContract.has(c.id)) continue;
-        const depositRemaining = Number(
-          c.deposit_remaining ?? ((Number(c.total_deposit) || 0) - (Number(c.deposit_paid) || 0))
-        );
-        if (depositRemaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;
-        const entry = previousDebtByContract.get(c.id) || { total: 0, sources: [] };
-        entry.sources.push({
-          type: 'deposit',
-          contract_id: c.id,
-          amount: depositRemaining,
-          label: 'Cọc còn thiếu',
-        });
-        entry.total += depositRemaining;
-        previousDebtByContract.set(c.id, entry);
-      }
+      // (Cọc còn thiếu KHÔNG còn gộp vào hoá đơn — xem ghi chú ở trên.)
 
       const next: RowData[] = buildingContracts
         .map((c: any) => {
