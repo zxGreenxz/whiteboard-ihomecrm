@@ -27,6 +27,7 @@ import {
   UserCog,
   UserPlus,
   Users,
+  UsersRound,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -91,6 +92,7 @@ import {
 } from "@/lib/buildingGroups";
 import { AreaMultiSelect } from "@/components/areas/AreaMultiSelect";
 import { PagePermissionMatrix } from "@/components/staff/PagePermissionMatrix";
+import { TeamsTab } from "@/components/staff/TeamsTab";
 import {
   buildEmptyPermissions,
   countTrueActions,
@@ -1169,12 +1171,17 @@ const StaffPage = () => {
               <Users className="h-4 w-4" />
               Nhân viên
             </TabsTrigger>
+            <TabsTrigger value="teams" className="flex items-center gap-1.5">
+              <UsersRound className="h-4 w-4" />
+              Đội ngũ
+            </TabsTrigger>
             <TabsTrigger value="templates" className="flex items-center gap-1.5">
               <Shield className="h-4 w-4" />
               Mẫu phân quyền
             </TabsTrigger>
           </TabsList>
           <TabsContent value="staff"><StaffTab /></TabsContent>
+          <TabsContent value="teams"><TeamsTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
         </Tabs>
       </div>
