@@ -70,6 +70,7 @@ const PAYMENT_METHOD: Record<string, string> = {
   TM: "Tiền mặt",
   TK: "Chuyển khoản",
   TT: "Thanh toán",
+  CT: "Cấn trừ",
 };
 
 const voucherAmount = (v: RelatedVoucher): number =>

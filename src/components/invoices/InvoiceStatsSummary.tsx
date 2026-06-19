@@ -55,6 +55,7 @@ const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
     payment_tm: stats?.payment_tm ?? 0,
     payment_tk: stats?.payment_tk ?? 0,
     payment_tt: stats?.payment_tt ?? 0,
+    payment_ct: stats?.payment_ct ?? 0,
     change_amount: stats?.change_amount ?? 0,
     deposit_collected: stats?.deposit_collected ?? 0,
   };
@@ -79,6 +80,7 @@ type StatValues = {
   payment_tm: number;
   payment_tk: number;
   payment_tt: number;
+  payment_ct: number;
   change_amount: number;
   deposit_collected: number;
 };
@@ -124,6 +126,7 @@ const MobileStats = ({
       <PlainMobileCard label="TM" value={s.payment_tm} />
       <PlainMobileCard label="TK" value={s.payment_tk} />
       <PlainMobileCard label="TT" value={s.payment_tt} />
+      <PlainMobileCard label="Cấn trừ" value={s.payment_ct} />
       <PlainMobileCard label="Tiền Thối" value={s.change_amount} />
       <PlainMobileCard label="Cọc đã thu" value={s.deposit_collected} />
     </section>
@@ -246,6 +249,7 @@ const DesktopStats = ({
     { label: 'TM', value: s.payment_tm },
     { label: 'TK', value: s.payment_tk },
     { label: 'TT', value: s.payment_tt },
+    { label: 'Cấn trừ', value: s.payment_ct },
     { label: 'Tiền Thối', value: s.change_amount },
     { label: 'Cọc đã thu', value: s.deposit_collected },
   ];
@@ -290,7 +294,7 @@ const DesktopStats = ({
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{row1.map(renderCard)}</div>
       )}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">{row2.map(renderCard)}</div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">{row3.map(renderPlainCard)}</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">{row3.map(renderPlainCard)}</div>
     </div>
   );
 };

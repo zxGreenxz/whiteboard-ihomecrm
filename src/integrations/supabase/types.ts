@@ -7215,7 +7215,7 @@ export type Database = {
         | "CUSTOM"
         | "DEPOSIT_SHORTFALL"
       payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
-      payment_method: "TM" | "TK" | "TT"
+      payment_method: "TM" | "TK" | "TT" | "CT"
       pricing_type:
         | "DON_GIA_CO_DINH_THANG"
         | "DON_GIA_CO_DINH_DONG_HO"
@@ -7465,7 +7465,7 @@ export const Constants = {
         "DEPOSIT_SHORTFALL",
       ],
       payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
-      payment_method: ["TM", "TK", "TT"],
+      payment_method: ["TM", "TK", "TT", "CT"],
       pricing_type: [
         "DON_GIA_CO_DINH_THANG",
         "DON_GIA_CO_DINH_DONG_HO",

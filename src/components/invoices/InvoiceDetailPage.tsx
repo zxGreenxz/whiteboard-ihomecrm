@@ -72,6 +72,7 @@ const paymentMethodLabels: Record<PaymentMethod, string> = {
   TM: 'TM',
   TK: 'TK',
   TT: 'TT',
+  CT: 'Cấn trừ',
 };
 
 // ---------------------------------------------------------------------------

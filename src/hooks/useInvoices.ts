@@ -777,6 +777,9 @@ export interface InvoiceStatistics {
   payment_tm: number;
   payment_tk: number;
   payment_tt: number;
+  /** Cấn trừ — payments method='CT' do thanh lý tự sinh (cấn cọc/đối trừ công
+   *  nợ), KHÔNG phải tiền mặt. Tách riêng để TM không bị phồng. */
+  payment_ct: number;
   change_amount: number;
   /** Cọc đã thu — tổng IE INCOME APPROVED có item is_deposit, filter theo
    *  area/building/room/billing_month tương tự các stat khác. Tách riêng để
@@ -822,6 +825,7 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
         payment_tm: Number(result?.payment_tm ?? 0),
         payment_tk: Number(result?.payment_tk ?? 0),
         payment_tt: Number(result?.payment_tt ?? 0),
+        payment_ct: Number(result?.payment_ct ?? 0),
         change_amount: Number(result?.change_amount ?? 0),
         deposit_collected: Number(result?.deposit_collected ?? 0),
       };

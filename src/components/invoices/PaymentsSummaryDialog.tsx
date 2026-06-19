@@ -117,6 +117,7 @@ const METHOD_BADGE: Record<string, string> = {
   TM: 'bg-amber-50 text-amber-700 border-amber-200',
   TK: 'bg-blue-50 text-blue-700 border-blue-200',
   TT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  CT: 'bg-violet-50 text-violet-700 border-violet-200',
 };
 
 const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {

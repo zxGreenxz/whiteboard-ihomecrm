@@ -23,6 +23,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   TM: "TM",
   TK: "TK",
   TT: "TT",
+  CT: "Cấn trừ",
 };
 
 export function PaymentReceiptDialog({

@@ -23,7 +23,10 @@ export type InvoiceItemType =
   | 'DISCOUNT'
   | 'OTHER';
 
-export type PaymentMethod = 'TM' | 'TK' | 'TT';
+// 'CT' = Cấn trừ — phương thức "ảo" chỉ do RPC thanh lý tự sinh (cấn cọc/đối trừ
+// công nợ), KHÔNG cho nhân viên chọn tay. Tách khỏi 3 method tiền thật TM/TK/TT
+// để không lẫn vào thống kê tiền mặt.
+export type PaymentMethod = 'TM' | 'TK' | 'TT' | 'CT';
 
 // =============================================
 // Core Entities (matching database tables)
