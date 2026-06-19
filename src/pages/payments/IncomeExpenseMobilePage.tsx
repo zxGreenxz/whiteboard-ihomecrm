@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Plus,
@@ -122,10 +122,30 @@ function countActiveFilters(f: IncomeExpenseFilters): number {
  */
 export default function IncomeExpenseMobilePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [filters, setFilters] = useState<IncomeExpenseFilters>(EMPTY_FILTERS);
+  // Vào /income-expense?account_id=xxx (vd "Xem thu chi" từ 1 sổ quỹ) → lọc sẵn
+  // theo sổ đó, ĐỒNG BỘ với desktop. Không có param → xem tất cả (RLS lọc).
+  const [filters, setFilters] = useState<IncomeExpenseFilters>(() => {
+    const accountId = searchParams.get("account_id");
+    return accountId
+      ? { ...EMPTY_FILTERS, account_id: accountId }
+      : EMPTY_FILTERS;
+  });
+
+  // Đọc xong thì xoá query để URL sạch — filter chip vẫn hiển thị sổ đang lọc.
+  useEffect(() => {
+    const accountId = searchParams.get("account_id");
+    if (accountId) {
+      setFilters((f) => ({ ...f, account_id: accountId }));
+      const next = new URLSearchParams(searchParams);
+      next.delete("account_id");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [viewMode, setViewMode] = useState<"individual" | "batch">("individual");
   const [filterOpen, setFilterOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
