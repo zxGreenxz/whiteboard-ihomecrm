@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowLeft,
   DollarSign,
@@ -12,12 +12,14 @@ import {
   CheckCircle,
   AlertCircle,
   Image as ImageIcon,
+  X,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
-import { openStoredFile } from "@/lib/storage";
+import { createSignedUrlFromStored } from "@/lib/storage";
 import { useDragScroll } from "@/components/contracts/detail/useDragScroll";
 import type { InvoiceWithRelations } from "@/types/invoice";
 
@@ -100,6 +102,20 @@ export function InvoiceDetailMobile({
 }: Props) {
   const actsRef = useRef<HTMLDivElement>(null);
   useDragScroll(actsRef);
+
+  // Xem ảnh đính kèm khoản thu ngay trên trang (overlay), không mở tab mới.
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+
+  const showReceipt = async (stored: string) => {
+    setReceiptUrl(null);
+    setReceiptOpen(true);
+    setReceiptUrl(await createSignedUrlFromStored(stored));
+  };
+  const closeReceipt = () => {
+    setReceiptOpen(false);
+    setReceiptUrl(null);
+  };
 
   const st = STATUS[invoice.status] ?? STATUS.DRAFT;
   const showStatusBadge = invoice.status !== "APPROVED";
@@ -449,7 +465,7 @@ export function InvoiceDetailMobile({
                               type="button"
                               className="cd-pay-link"
                               style={{ marginLeft: 8, border: 0, background: "transparent", padding: 0, font: "inherit" }}
-                              onClick={() => openStoredFile(p.receipt_image_url!)}
+                              onClick={() => showReceipt(p.receipt_image_url!)}
                             >
                               <ImageIcon size={13} style={{ verticalAlign: "-2px" }} /> Xem ảnh
                             </button>
@@ -467,6 +483,30 @@ export function InvoiceDetailMobile({
             )}
           </div>
         </div>
+
+        {receiptOpen && (
+          <div
+            className="rcpt-ov"
+            onClick={closeReceipt}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Ảnh đính kèm khoản thu"
+          >
+            <button className="rcpt-x" onClick={closeReceipt} aria-label="Đóng">
+              <X size={20} />
+            </button>
+            {receiptUrl ? (
+              <img
+                className="rcpt-img"
+                src={receiptUrl}
+                alt="Ảnh đính kèm khoản thu"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <Loader2 className="rcpt-spin" size={32} />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
