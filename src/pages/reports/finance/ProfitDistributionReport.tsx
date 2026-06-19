@@ -39,6 +39,8 @@ interface DisplayRow {
   roomName: string | null;
   periodLabel: string;
   typeName: string;
+  // Nhóm hạng mục (income_expense_types.category) — dùng sắp xếp ưu tiên cột Chi.
+  category: string | null;
   amount: number;
   notKqkd: boolean;
   // Khoản THU sinh từ thanh toán hoá đơn: gộp các khoản cùng 1 HĐ thành 1 dòng.
@@ -71,6 +73,44 @@ const compareRoom = (a: string | null, b: string | null): number => {
   if (!a) return 1;
   if (!b) return -1;
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+};
+
+// Bỏ dấu + thường hoá để khớp hạng mục bất kể cách gõ ("Vệ Sinh" ≈ "vệ sinh").
+const nrm = (s: string | null | undefined): string =>
+  (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    // toLowerCase TRƯỚC khi thay đ→d: đảo lại sẽ bỏ sót Đ hoa (U+0110) → "đien".
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .trim();
+
+// Thứ tự ƯU TIÊN hiển thị KHOẢN CHI: các hạng mục cố định hằng tháng nổi lên
+// đầu sổ đúng thứ tự nghiệp vụ; phần còn lại giữ thứ tự cũ (phòng → mô tả) ở dưới.
+// Khớp chủ yếu theo CATEGORY của loại thu chi (chuẩn hơn tên):
+//   - "Vệ Sinh" và "Rác" tách riêng dù chung category "Vệ sinh".
+//   - "vệ sinh máy lạnh"/"Vệ sinh máy giặt" (category Bảo Trì) KHÔNG lọt nhóm Vệ Sinh.
+// Mỗi vị có thêm fallback theo TÊN để chịu được loại trùng bị thiếu category.
+const EXPENSE_PRIORITY: ((cat: string, name: string) => boolean)[] = [
+  (c, n) => c === "tien nha" || n.includes("tien nha"),          // 1. Tiền nhà
+  (c, n) => c === "dien" || n.includes("tien dien"),             // 2. Điện
+  (c, n) => c === "nuoc" || n.includes("tien nuoc"),             // 3. Nước
+  (c, n) => c === "internet" || n.includes("internet"),          // 4. Internet
+  (_c, n) => n.includes("quan ly"),                              // 5. Quản Lý (loại "văn phòng")
+  (c, n) => c === "ve sinh" && !n.includes("rac"),               // 6. Vệ Sinh (trừ rác)
+  (c, n) => c === "ca" || n.includes("cong an"),                 // 7. Công an
+  (_c, n) => n.includes("rac"),                                  // 8. Rác
+  (_c, n) => n.includes("thang may"),                            // 9. Bảo Trì Thang Máy
+];
+
+// Thứ hạng ưu tiên (0 = lên đầu). Không khớp hạng mục nào → xuống cuối.
+const expenseRank = (r: DisplayRow): number => {
+  const c = nrm(r.category);
+  const n = nrm(r.typeName);
+  for (let i = 0; i < EXPENSE_PRIORITY.length; i++) {
+    if (EXPENSE_PRIORITY[i](c, n)) return i;
+  }
+  return EXPENSE_PRIORITY.length;
 };
 
 // true khi MỌI dòng cùng một giá trị cho cột → cột không phân biệt được gì
@@ -203,6 +243,7 @@ export default function ProfitDistributionReport() {
           roomName: r.roomName ?? null,
           periodLabel: formatPeriod(r.startDate, r.endDate) || "—",
           typeName: r.typeName || "—",
+          category: r.category ?? null,
           notKqkd: r.countsInBusinessResult === false,
           monthLabel,
         };
@@ -217,6 +258,8 @@ export default function ProfitDistributionReport() {
           buildingName: r.building_name ?? "",
           roomName: r.room_name ?? null,
           periodLabel: "—",
+          // Mặc định null — gán đúng category theo từng item bên dưới (cột Chi).
+          category: null as string | null,
           notKqkd: r.counts_in_business_result === false,
           monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
         };
@@ -249,6 +292,7 @@ export default function ProfitDistributionReport() {
                   ...base,
                   key: `${r.id}:${it.id}`,
                   typeName: it.type_name || "—",
+                  category: it.category ?? null,
                   amount: safe,
                 };
               })
@@ -291,7 +335,11 @@ export default function ProfitDistributionReport() {
     const sorter = (a: DisplayRow, b: DisplayRow) =>
       compareRoom(a.roomName, b.roomName) || a.description.localeCompare(b.description, "vi");
     inc.sort(sorter);
-    exp.sort(sorter);
+    // Cột Chi: hạng mục cố định (Tiền nhà → Điện → … → Thang máy) lên đầu,
+    // trong cùng nhóm vẫn theo phòng → mô tả như cũ.
+    exp.sort(
+      (a, b) => expenseRank(a) - expenseRank(b) || sorter(a, b)
+    );
     return { incomeRows: inc, expenseRows: exp };
   }, [accrualMode, accrual, result, monthLabel]);
 

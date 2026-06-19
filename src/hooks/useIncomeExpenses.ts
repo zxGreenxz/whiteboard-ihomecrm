@@ -60,6 +60,9 @@ export interface IncomeExpenseItem {
   income_expense_id: string;
   income_expense_type_id: string;
   type_name: string;
+  // Nhóm hạng mục (income_expense_types.category) — dùng để sắp xếp ưu tiên
+  // khoản chi trong báo cáo Phân bổ lợi nhuận. Có thể null.
+  category: string | null;
   description: string | null;
   quantity: number;
   unit_price: number;
@@ -417,7 +420,7 @@ export const useIncomeExpenses = (
         .select(
           `
           *,
-          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name )
+          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
         `
         )
         .in("income_expense_id", voucherIds);
@@ -439,6 +442,7 @@ export const useIncomeExpenses = (
             income_expense_id: item.income_expense_id,
             income_expense_type_id: item.income_expense_type_id,
             type_name: item.income_expense_type?.name ?? "",
+            category: item.income_expense_type?.category ?? null,
             description: item.description,
             quantity: item.quantity,
             unit_price: Number(item.unit_price),
@@ -1460,7 +1464,7 @@ export const useIncomeExpenseBatches = (
                 .select(
                   `
           *,
-          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name )
+          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
         `
                 )
                 .in("income_expense_id", fetchedVoucherIds)
@@ -1475,6 +1479,7 @@ export const useIncomeExpenseBatches = (
           income_expense_id: item.income_expense_id,
           income_expense_type_id: item.income_expense_type_id,
           type_name: item.income_expense_type?.name ?? "",
+          category: item.income_expense_type?.category ?? null,
           description: item.description,
           quantity: item.quantity,
           unit_price: Number(item.unit_price),
