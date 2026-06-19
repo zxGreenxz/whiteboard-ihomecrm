@@ -522,6 +522,62 @@
 .tt-page .tt-handover:active { background: var(--line-2); }
 .tt-page .tt-handover .ho-badge { position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--c-unpaid); color: #fff; font-family: var(--mono); font-size: 10.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); line-height: 1; }
 
+/* ===== Đóng tiền điện nước — nút mở (mobile header) ===== */
+.tt-page .tt-utility { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-page .tt-utility svg { width: 17px; height: 17px; }
+.tt-page .tt-utility:active { background: var(--line-2); }
+
+/* ===== Đóng tiền điện nước — nút mở (desktop ManagePanel) ===== */
+.tt-manage .tm-utility { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 8px 14px; cursor: pointer; transition: .14s; white-space: nowrap; }
+.tt-manage .tm-utility svg { width: 16px; height: 16px; }
+.tt-manage .tm-utility:hover { background: var(--surface-2); }
+.tt-manage .tm-utility:active { transform: scale(.98); }
+
+/* ===== Đóng tiền điện nước — sheet "Đóng tiền" ===== */
+.tt-page .ub-list { padding: 14px 18px 0; display: flex; flex-direction: column; gap: 14px; }
+.tt-page .ub-bld { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--sh-1); overflow: hidden; }
+.tt-page .ub-bld-name { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); padding: 11px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line-2); }
+
+.tt-page .ub-row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border-top: 1px solid var(--line-2); }
+.tt-page .ub-row:first-of-type { border-top: 0; }
+.tt-page .ub-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
+.tt-page .ub-ic svg { width: 16px; height: 16px; }
+.tt-page .ub-row.electric .ub-ic { background: var(--c-partial-bg); color: var(--c-partial); }
+.tt-page .ub-row.water .ub-ic { background: #e7f1fb; color: #2563c9; }
+
+.tt-page .ub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.tt-page .ub-codeline { display: flex; gap: 7px; }
+.tt-page .ub-code, .tt-page .ub-holder { min-width: 0; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 7px 10px; outline: none; }
+.tt-page .ub-code { flex: 0 0 42%; font-family: var(--mono); font-weight: 700; letter-spacing: -.2px; }
+.tt-page .ub-holder { flex: 1; }
+.tt-page .ub-code:focus, .tt-page .ub-holder:focus, .tt-page .ub-amt:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-page .ub-paid { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; font-size: 11.5px; font-weight: 700; color: var(--c-paid); background: var(--c-paid-bg); border: 1px solid var(--c-paid-line); border-radius: 999px; padding: 3px 9px; }
+.tt-page .ub-paid svg { width: 13px; height: 13px; }
+
+.tt-page .ub-pay { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.tt-page .ub-amt { width: 104px; font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: -.3px; text-align: right; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; outline: none; }
+.tt-page .ub-paybtn { width: 40px; height: 38px; flex-shrink: 0; border: 0; border-radius: var(--r-sm); background: var(--c-paid); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 1px 2px rgba(31,157,87,.25); transition: .12s; }
+.tt-page .ub-paybtn svg { width: 18px; height: 18px; }
+.tt-page .ub-paybtn:active:not(:disabled) { background: var(--c-paid-d); transform: scale(.96); }
+.tt-page .ub-paybtn:disabled { opacity: .4; cursor: default; box-shadow: none; }
+.tt-page .ub-spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: ub-spin .7s linear infinite; }
+@keyframes ub-spin { to { transform: rotate(360deg); } }
+
+/* ===== Đóng tiền điện nước — báo cáo theo ngày ===== */
+.tt-page .ub-report { padding: 14px 18px 0; display: flex; flex-direction: column; gap: 12px; }
+.tt-page .ub-day { border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
+.tt-page .ub-day-head { display: flex; align-items: center; padding: 9px 13px; background: var(--ink); }
+.tt-page .ub-day-d { font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
+.tt-page .ub-day-s { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
+.tt-page .ub-day-row { display: flex; align-items: center; gap: 9px; padding: 10px 13px; border-top: 1px solid var(--line-2); }
+.tt-page .ub-day-ic { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+.tt-page .ub-day-ic svg { width: 13px; height: 13px; }
+.tt-page .ub-day-ic.electric { background: var(--c-partial-bg); color: var(--c-partial); }
+.tt-page .ub-day-ic.water { background: #e7f1fb; color: #2563c9; }
+.tt-page .ub-day-b { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.2px; }
+.tt-page .ub-day-t { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.tt-page .ub-day-amt { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.3px; }
+
 /* ===== Toast ===== */
 .tt-page .toast { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; padding: 11px 18px; border-radius: 999px; z-index: 90; box-shadow: var(--sh-3); opacity: 0; transition: .24s; pointer-events: none; display: flex; align-items: center; gap: 8px; }
 .tt-page .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

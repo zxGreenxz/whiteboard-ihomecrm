@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HandCoins } from 'lucide-react';
+import { ArrowLeft, HandCoins, Plug } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useInvoices } from '@/hooks/useInvoices';
@@ -26,6 +26,7 @@ import { RoomCellGrid } from '@/components/thu-tien/RoomCellGrid';
 import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
+import { UtilityBillSheet } from '@/components/thu-tien/UtilityBillSheet';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
@@ -58,6 +59,7 @@ const ThuTien = () => {
   });
   const [report, setReport] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
   const [handover, setHandover] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
+  const [utility, setUtility] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
   const { actionCount: handoverActionCount } = useCashHandoverList();
 
   useEffect(() => {
@@ -206,6 +208,14 @@ const ThuTien = () => {
     setHandover((h) => ({ ...h, show: false }));
     window.setTimeout(() => setHandover({ mounted: false, show: false }), 320);
   };
+  const openUtility = () => {
+    setUtility({ mounted: true, show: false });
+    requestAnimationFrame(() => setUtility({ mounted: true, show: true }));
+  };
+  const closeUtility = () => {
+    setUtility((u) => ({ ...u, show: false }));
+    window.setTimeout(() => setUtility({ mounted: false, show: false }), 320);
+  };
 
   const emptyIcon = statusFilter === 'paid' || allRooms.length === 0 ? '🔍' : '🎉';
   const emptyMessage =
@@ -234,6 +244,8 @@ const ThuTien = () => {
         phoneBuildingId={buildingId}
         onPickBuilding={setBuildingId}
         onBack={() => navigate(-1)}
+        onOpenUtility={openUtility}
+        canRecordPayment={canRecordPayment}
       />
       <div className="tt-phone-col">
         <div className="tt-page">
@@ -246,6 +258,11 @@ const ThuTien = () => {
               <button type="button" className="tt-handover" title="Bàn giao tiền mặt" onClick={openHandover}>
                 <HandCoins />
                 {handoverActionCount > 0 && <span className="ho-badge">{handoverActionCount}</span>}
+              </button>
+            )}
+            {canRecordPayment && (
+              <button type="button" className="tt-utility" title="Đóng tiền điện nước" onClick={openUtility}>
+                <Plug />
               </button>
             )}
             <div className="hdr-period">
@@ -328,6 +345,14 @@ const ThuTien = () => {
         )}
 
         {handover.mounted && <HandoverSheet show={handover.show} onClose={closeHandover} />}
+        {utility.mounted && (
+          <UtilityBillSheet
+            show={utility.show}
+            onClose={closeUtility}
+            billingMonth={billingMonth}
+            canRecordPayment={canRecordPayment}
+          />
+        )}
         </div>
       </div>
     </div>

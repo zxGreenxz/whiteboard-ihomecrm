@@ -8,7 +8,7 @@
 // =============================================
 
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Smartphone } from 'lucide-react';
+import { ArrowLeft, Plug, Smartphone } from 'lucide-react';
 import { useCollectionReport } from '@/hooks/useCollectionReport';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { fmtDateTime, handoverStatusLabel } from '@/lib/handover';
@@ -31,6 +31,8 @@ interface Props {
   phoneBuildingId: string;
   onPickBuilding: (id: string) => void;
   onBack: () => void;
+  onOpenUtility: () => void;
+  canRecordPayment: boolean;
 }
 
 type TimeSel = 'all' | 'today' | 'date';
@@ -48,6 +50,8 @@ export function ManagePanel({
   phoneBuildingId,
   onPickBuilding,
   onBack,
+  onOpenUtility,
+  canRecordPayment,
 }: Props) {
   const [bSel, setBSel] = useState('all');
   const [tSel, setTSel] = useState<TimeSel>('all');
@@ -127,6 +131,11 @@ export function ManagePanel({
           <h1>Thu tiền</h1>
           <p>Quản lý &amp; báo cáo thu tiền mặt · thao tác thu trên khung mobile bên phải</p>
         </div>
+        {canRecordPayment && (
+          <button type="button" className="tm-utility" title="Đóng tiền điện nước" onClick={onOpenUtility}>
+            <Plug /> Điện nước
+          </button>
+        )}
         <input
           className="ky-input"
           type="month"
