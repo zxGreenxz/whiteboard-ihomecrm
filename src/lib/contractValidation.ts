@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateFirstBillingPeriod } from '@/lib/firstInvoiceBuilder';
 
 export const contractFormSchema = z.object({
   room_id: z.string().uuid('Vui lòng chọn phòng'),
@@ -26,7 +27,22 @@ export const contractFormSchema = z.object({
 }).refine(
   (data) => new Date(data.end_date) > new Date(data.start_date),
   { message: 'Ngày kết thúc phải sau ngày bắt đầu', path: ['end_date'] }
-);
+).superRefine((data, ctx) => {
+  // Kỳ tính tiền tháng đầu phải đủ tới hết tháng từ ngày bắt đầu tính tiền
+  // (chỉ chặn khi quản lý đã chọn "Đến ngày").
+  if (!data.end_billing_date) return;
+  const res = validateFirstBillingPeriod(
+    data.start_billing_date || data.start_date,
+    data.end_billing_date,
+  );
+  if (!res.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: res.message ?? 'Kỳ tính tiền tháng đầu không hợp lệ',
+      path: ['end_billing_date'],
+    });
+  }
+});
 
 export const renewFormSchema = z.object({
   new_end_date: z.string().min(1, 'Ngày kết thúc mới không được để trống'),

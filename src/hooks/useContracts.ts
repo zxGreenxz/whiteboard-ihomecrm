@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
 import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
+import { computeFirstBillingMonth } from "@/lib/firstInvoiceBuilder";
 import type {
   Contract,
   ContractWithRelations,
@@ -587,7 +588,12 @@ async function createFirstInvoiceForContract(args: {
   const startBilling = contractData.start_billing_date || contractData.start_date;
   const issue_date = new Date().toISOString().split("T")[0];
   const due_date = contractData.end_billing_date || startBilling;
-  const billing_month = startBilling.substring(0, 7);
+  // Kỳ thanh toán HĐ đầu theo quy tắc "tháng phủ trọn muộn nhất" (vào-muộn
+  // 28/5–30/6 → T6, không phải T5). Doanh thu ghi nhận theo billing_month này.
+  const billing_month = computeFirstBillingMonth(
+    startBilling,
+    contractData.end_billing_date,
+  );
 
   const subtotal = invoiceItems.reduce(
     (sum, it) => sum + it.unit_price * it.quantity,

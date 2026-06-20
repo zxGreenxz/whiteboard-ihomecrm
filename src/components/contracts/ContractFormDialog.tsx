@@ -64,6 +64,8 @@ import { CommissionVoucherModal } from "./CommissionVoucherModal";
 import {
   buildFirstInvoiceItems,
   buildFirstInvoiceDiscount,
+  computeFirstBillingMonth,
+  validateFirstBillingPeriod,
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
@@ -810,6 +812,25 @@ export function ContractFormDialog({
       );
     } else {
       // Create mode
+
+      // Kỳ HĐ đầu phải tính đủ đến hết tháng của ngày bắt đầu tính tiền (vd
+      // 20/5–30/5 → lỗi vì tháng 5 chưa đủ tới 31/5). Chặn trước khi tạo HĐ.
+      const billCheck = validateFirstBillingPeriod(
+        data.start_billing_date || data.start_date,
+        data.end_billing_date,
+      );
+      if (!billCheck.ok) {
+        form.setError("end_billing_date", {
+          type: "manual",
+          message: billCheck.message,
+        });
+        toast.error("Không thể lưu hợp đồng", { description: billCheck.message });
+        try {
+          const el = document.querySelector('[data-slot="dialog-content"]');
+          if (el) el.scrollTop = 0;
+        } catch {}
+        return;
+      }
 
       // Cọc đã đặt = tổng dòng user nhập + phiếu cọc cũ ĐÃ DUYỆT (khớp recompute
       // DB). Cọc thiếu KHÔNG còn vào hoá đơn; theo dõi ở mục cọc của HĐ.
@@ -1882,6 +1903,23 @@ export function ContractFormDialog({
                       Thêm dòng
                     </Button>
                   </div>
+
+                  {(() => {
+                    // Kỳ thanh toán doanh thu của HĐ đầu (theo quy tắc tháng phủ
+                    // trọn) — cho quản lý thấy trước HĐ rơi vào tháng nào.
+                    const bm = computeFirstBillingMonth(
+                      startBilling || form.watch("start_date"),
+                      endBilling,
+                    );
+                    if (!bm) return null;
+                    const [yy, mm] = bm.split("-");
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        Kỳ thanh toán (ghi nhận doanh thu):{" "}
+                        <span className="font-medium text-foreground">{mm}/{yy}</span>
+                      </p>
+                    );
+                  })()}
 
                   {invoiceItems.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">

@@ -80,6 +80,22 @@ const ACCRUAL_SELECT = `
   )
 `;
 
+// Phiếu THU/CHI gắn hoá đơn: doanh thu ghi nhận theo KỲ CỦA HOÁ ĐƠN
+// (invoices.billing_month) — không theo ngày thu tiền. Lọc parent theo
+// billing_month qua embedded inner-join (1 giá trị → tránh `.in([hàng trăm id])`
+// như cách gom invoice_id). items KHÔNG `!inner`/không lọc kỳ → lấy mọi hạng mục
+// của phiếu (kỳ của item = ngày thu, không dùng để xếp tháng ở nhánh này).
+const ACCRUAL_SELECT_INV = `
+  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id,
+  building:buildings!income_expenses_building_id_fkey ( id, name ),
+  room:rooms!income_expenses_room_id_fkey ( id, name ),
+  invoice:invoices!income_expenses_invoice_id_fkey!inner ( billing_month ),
+  items:income_expense_items (
+    id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date,
+    income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
+  )
+`;
+
 /**
  * @param month 'YYYY-MM' tháng cần xem báo cáo accrual.
  */
@@ -107,21 +123,14 @@ export const useAccrualMonthReport = (
       const firstOfMonth = monthToStartDate(month); // 'YYYY-MM-01'
       const lastOfMonth = monthToEndDate(month); // ngày cuối tháng
 
-      // Lọc kỳ ở embedded item: kỳ giao tháng YM HOẶC item null-period (nhận lại
-      // theo voucher_date ở bước transform). `!inner` ⇒ ràng buộc luôn phiếu cha.
+      // Phiếu KHÔNG gắn hoá đơn: lọc theo KỲ của item — kỳ giao tháng YM HOẶC
+      // item null-period (nhận lại theo voucher_date ở bước transform).
       const periodOr =
         `and(start_date.lte.${lastOfMonth},end_date.gte.${firstOfMonth}),` +
         `and(start_date.is.null,end_date.is.null)`;
 
-      // Query builder là thenable DÙNG-MỘT-LẦN → dựng mới mỗi trang. KHÔNG lọc
-      // voucher_date (kỳ áp dụng có thể nằm ngoài tháng lập phiếu).
-      const buildQuery = (from: number, to: number) => {
-        let q = supabase
-          .from("income_expenses" as any)
-          .select(ACCRUAL_SELECT)
-          .is("deleted_at", null)
-          .or(periodOr, { referencedTable: "items" });
-
+      // Bộ lọc chung (toà/phòng/loại/duyệt/KQKD) áp cho cả 2 truy vấn.
+      const applyFilters = (q: any) => {
         if (filters.building_ids?.length) {
           // building_ids: mảng toà từ BuildingMultiSelect — không round-trip.
           q = q.in("building_id", filters.building_ids);
@@ -139,7 +148,19 @@ export const useAccrualMonthReport = (
           q = q.eq("approval_status", filters.approval_status);
         }
         if (businessResultOnly) q = q.eq("counts_in_business_result", true);
+        return q;
+      };
 
+      // Query builder là thenable DÙNG-MỘT-LẦN → dựng mới mỗi trang.
+      // (1) Phiếu KHÔNG gắn hoá đơn: xếp tháng theo KỲ của item (hành vi cũ).
+      const buildNonInvoice = (from: number, to: number) => {
+        let q = supabase
+          .from("income_expenses" as any)
+          .select(ACCRUAL_SELECT)
+          .is("deleted_at", null)
+          .is("invoice_id", null)
+          .or(periodOr, { referencedTable: "items" });
+        q = applyFilters(q);
         // Tiebreaker `id` để phân trang không sót/trùng ở ranh giới trang.
         return q
           .order("voucher_date", { ascending: false })
@@ -147,27 +168,82 @@ export const useAccrualMonthReport = (
           .range(from, to);
       };
 
+      // (2) Phiếu GẮN hoá đơn: xếp tháng theo billing_month của HOÁ ĐƠN (kỳ
+      // doanh thu) — KHÔNG theo ngày thu tiền. `invoice!inner` đã ràng invoice_id
+      // not null; lọc 1 giá trị billing_month.
+      const buildInvoice = (from: number, to: number) => {
+        let q = supabase
+          .from("income_expenses" as any)
+          .select(ACCRUAL_SELECT_INV)
+          .is("deleted_at", null)
+          .eq("invoice.billing_month", month);
+        q = applyFilters(q);
+        return q
+          .order("voucher_date", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to);
+      };
+
       // Fetch-all: lặp từng trang 1000 tới khi trang ngắn hơn PARENT_PAGE.
-      const vouchers: any[] = [];
-      for (let from = 0; ; from += PARENT_PAGE) {
-        const { data, error } = await buildQuery(from, from + PARENT_PAGE - 1);
-        if (error) {
-          console.error("useAccrualMonthReport error:", error);
-          return EMPTY;
+      const fetchAll = async (
+        build: (f: number, t: number) => any,
+      ): Promise<any[] | null> => {
+        const out: any[] = [];
+        for (let from = 0; ; from += PARENT_PAGE) {
+          const { data, error } = await build(from, from + PARENT_PAGE - 1);
+          if (error) {
+            console.error("useAccrualMonthReport error:", error);
+            return null;
+          }
+          const pageRows = (data ?? []) as any[];
+          out.push(...pageRows);
+          if (pageRows.length < PARENT_PAGE) break;
         }
-        const pageRows = (data ?? []) as any[];
-        vouchers.push(...pageRows);
-        if (pageRows.length < PARENT_PAGE) break;
-      }
-      if (vouchers.length === 0) return EMPTY;
+        return out;
+      };
+
+      const [nonInv, inv] = await Promise.all([
+        fetchAll(buildNonInvoice),
+        fetchAll(buildInvoice),
+      ]);
+      if (nonInv === null || inv === null) return EMPTY;
 
       // Transform: phân bổ từng item vào tháng YM (client-side).
       let totalIncome = 0;
       let totalExpense = 0;
       const rows: AccrualReportRow[] = [];
 
-      for (const voucher of vouchers) {
+      const pushRow = (
+        voucher: any,
+        it: any,
+        portion: number,
+        startDate: string | null,
+        endDate: string | null,
+      ) => {
         const isIncome = voucher.type === "INCOME";
+        if (isIncome) totalIncome += portion;
+        else totalExpense += portion;
+        const t = it.income_expense_type;
+        rows.push({
+          itemId: it.id,
+          voucherId: voucher.id,
+          voucherName: voucher.name ?? "",
+          buildingName: voucher.building?.name ?? null,
+          roomName: voucher.room?.name ?? null,
+          typeName: t?.name ?? "",
+          category: t?.category ?? null,
+          startDate,
+          endDate,
+          income: isIncome ? portion : 0,
+          expense: isIncome ? 0 : portion,
+          countsInBusinessResult: voucher.counts_in_business_result ?? false,
+          invoiceId: voucher.invoice_id ?? null,
+        });
+      };
+
+      // (1) Phiếu KHÔNG gắn hoá đơn: phân bổ theo kỳ của item; null-period →
+      // ghi nhận trọn vào tháng của voucher_date.
+      for (const voucher of nonInv) {
         const vMonth = (voucher.voucher_date ?? "").slice(0, 7);
         for (const it of (voucher.items ?? []) as any[]) {
           const amount = Number(it.amount);
@@ -180,30 +256,23 @@ export const useAccrualMonthReport = (
             const alloc = allocateAmountByMonth(itemAmount, it.start_date, it.end_date);
             portion = alloc.find((p) => p.month === month)?.amount ?? 0;
           } else {
-            // Null-period: ghi nhận trọn vào tháng của voucher_date.
             portion = vMonth === month ? itemAmount : 0;
           }
           if (portion === 0) continue;
+          pushRow(voucher, it, portion, it.start_date ?? null, it.end_date ?? null);
+        }
+      }
 
-          if (isIncome) totalIncome += portion;
-          else totalExpense += portion;
-
-          const t = it.income_expense_type;
-          rows.push({
-            itemId: it.id,
-            voucherId: voucher.id,
-            voucherName: voucher.name ?? "",
-            buildingName: voucher.building?.name ?? null,
-            roomName: voucher.room?.name ?? null,
-            typeName: t?.name ?? "",
-            category: t?.category ?? null,
-            startDate: it.start_date ?? null,
-            endDate: it.end_date ?? null,
-            income: isIncome ? portion : 0,
-            expense: isIncome ? 0 : portion,
-            countsInBusinessResult: voucher.counts_in_business_result ?? false,
-            invoiceId: voucher.invoice_id ?? null,
-          });
+      // (2) Phiếu GẮN hoá đơn: doanh thu nhận TRỌN vào tháng kỳ hoá đơn
+      // (billing_month đã lọc = month), bất kể ngày thu. Kỳ hiển thị = tháng HĐ.
+      for (const voucher of inv) {
+        for (const it of (voucher.items ?? []) as any[]) {
+          const amount = Number(it.amount);
+          const itemAmount = Number.isFinite(amount)
+            ? amount
+            : Number(it.quantity) * Number(it.unit_price) || 0;
+          if (itemAmount === 0) continue;
+          pushRow(voucher, it, itemAmount, firstOfMonth, lastOfMonth);
         }
       }
 
