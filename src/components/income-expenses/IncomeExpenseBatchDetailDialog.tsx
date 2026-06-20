@@ -4,7 +4,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DIALOG_CLOSE_RED,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -117,9 +116,8 @@ export function IncomeExpenseBatchDetailDialog({
           className={
             isMobile
               ? 'max-w-full w-full h-[95vh] !top-auto !bottom-0 !left-0 !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none p-4 overflow-y-auto'
-              : 'left-0 top-0 h-screen w-screen max-w-none max-h-screen translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 sm:rounded-none [&>*]:mx-auto [&>*]:max-w-4xl'
+              : 'sm:max-w-[820px] max-h-[90vh] overflow-y-auto'
           }
-          closeClassName={isMobile ? undefined : DIALOG_CLOSE_RED}
           onPointerDownOutside={(e) => {
             if (isLightboxOpen) e.preventDefault();
           }}
