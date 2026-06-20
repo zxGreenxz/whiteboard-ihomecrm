@@ -2,10 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>CRM</title>
     <meta name="description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
     <meta name="author" content="CRM" />
+
+    <!-- PWA / Thêm vào màn hình chính → chạy full-screen như app (ẩn thanh
+         địa chỉ + thanh công cụ trình duyệt). viewport-fit=cover bật các
+         env(safe-area-inset-*) mà các trang mobile đã dùng sẵn. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="CRM" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192.png" />
 
     <meta property="og:title" content="Danh sách phòng trống realtime" />
     <meta property="og:description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
