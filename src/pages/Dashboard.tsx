@@ -1,5 +1,6 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
+import { hideAppSplash } from '@/lib/appSplash';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Building2, Home, DollarSign, AlertTriangle, BarChart3, Wallet, CheckSquare, ArrowRight, DoorOpen } from 'lucide-react';
@@ -34,6 +35,11 @@ const Dashboard = () => {
   const [vacantOpen, setVacantOpen] = useState(false);
   const buildingId = selectedBuilding === 'all' ? null : selectedBuilding;
   const navigate = useNavigate();
+
+  // Dashboard là trang chủ desktop → ẩn splash khi mount.
+  useEffect(() => {
+    hideAppSplash();
+  }, []);
 
   const { data: stats, isLoading } = useDashboardStats(buildingId);
   const { data: buildings = [] } = useBuildings();

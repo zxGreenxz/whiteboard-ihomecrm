@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLogin } from '@/hooks/useAuth';
+import { hideAppSplash } from '@/lib/appSplash';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,11 @@ const Login = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Trang đăng nhập là nội dung đầu khi chưa auth → ẩn splash khi đã hiện form.
+  useEffect(() => {
+    hideAppSplash();
+  }, []);
 
   const loginMutation = useLogin();
 

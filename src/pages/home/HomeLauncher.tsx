@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, Search, TrendingUp, Wallet, Building2 } from 'lucide-react';
 import './homeLauncher.css';
+import { hideAppSplash } from '@/lib/appSplash';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useDashboardStats } from '@/hooks/useDashboard';
@@ -46,12 +48,42 @@ const avatarInitial = (name?: string | null, email?: string | null): string => {
  * mỗi ô là <Link> tới đúng route đang có. CSS scope riêng (.hl-stage/.hl-app),
  * KHÔNG bọc MainLayout — đây là shell độc lập như Thu tiền.
  */
+// Skeleton trong lúc tải perms/stats — tránh "nháy" lưới rỗng (chỉ 2 ô) rồi mới
+// đủ. Giữ bố cục giống thật để chuyển mượt.
+const LauncherSkeleton = () => (
+  <>
+    <div className="hero">
+      <div className="sk sk-hero" />
+      <div className="sk sk-hero" />
+    </div>
+    {[0, 1].map((s) => (
+      <section className="lsec" key={s}>
+        <div className="sk sk-lbl-sec" />
+        <div className="lgrid">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div className="sk-tile" key={i}>
+              <span className="sk sk-ic" />
+              <span className="sk sk-lbl" />
+            </div>
+          ))}
+        </div>
+      </section>
+    ))}
+  </>
+);
+
 const HomeLauncher = () => {
   const { data: user } = useAuth();
   const { data: profile } = useProfile();
-  const { data: stats } = useDashboardStats(null);
-  const { data: perms } = useMyPermissions();
+  const { data: stats, isLoading: statsLoading } = useDashboardStats(null);
+  const { data: perms, isLoading: permsLoading } = useMyPermissions();
 
+  // Ẩn splash tức thì ngay khi launcher mount (skeleton bên dưới lo phần dữ liệu).
+  useEffect(() => {
+    hideAppSplash();
+  }, []);
+
+  const booting = permsLoading || statsLoading;
   const name = profile?.full_name || user?.email || 'Bạn';
 
   // Ô chỉ hiện khi có quyền XEM tương ứng (khớp đúng route guard). Section rỗng → ẩn.
@@ -92,6 +124,10 @@ const HomeLauncher = () => {
           </header>
 
           <div className="home-body">
+            {booting ? (
+              <LauncherSkeleton />
+            ) : (
+            <>
             <InstallHint />
             <div className="hero">
               <div className="hero-card rev">
@@ -129,6 +165,8 @@ const HomeLauncher = () => {
                 </div>
               </section>
             ))}
+            </>
+            )}
           </div>
         </div>
       </div>

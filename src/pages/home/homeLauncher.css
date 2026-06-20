@@ -113,6 +113,16 @@
 .hl-app .ihint-x svg { width: 16px; height: 16px; }
 .hl-app .ihint-x:active { background: var(--line-2); }
 
+/* Skeleton loading (tránh nháy lưới rỗng khi tải perms/stats) */
+.hl-app .sk { position: relative; overflow: hidden; background: var(--line-2); }
+.hl-app .sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent); animation: hlSk 1.3s ease-in-out infinite; }
+@keyframes hlSk { 100% { transform: translateX(100%); } }
+.hl-app .sk-hero { flex: 1; height: 92px; border-radius: var(--r-lg); }
+.hl-app .sk-lbl-sec { width: 88px; height: 12px; border-radius: 6px; margin: 0 2px 12px; }
+.hl-app .sk-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 2px; }
+.hl-app .sk-tile .sk-ic { width: 58px; height: 58px; border-radius: 18px; }
+.hl-app .sk-tile .sk-lbl { width: 76%; height: 10px; border-radius: 5px; }
+
 /* launcher sections */
 .hl-app .lsec { margin-bottom: 22px; }
 .hl-app .lsec-lbl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); margin: 0 2px 12px; }
