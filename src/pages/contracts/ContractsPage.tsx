@@ -21,6 +21,7 @@ import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialo
 import { ContractImportExportDialog } from '@/components/contracts/ContractImportExportDialog';
 import { PrintContractDialog } from '@/components/contracts/PrintContractDialog';
 import ContractQRDialog from '@/components/contracts/ContractQRDialog';
+import ContractDetailModal from '@/components/contracts/ContractDetailModal';
 import { exportContracts } from '@/lib/contractExcelHelpers';
 
 import {
@@ -46,6 +47,17 @@ import type {
 } from '@/types/contract';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
+
+// Tiêu đề thanh modal: "Toà Phòng · Khách đại diện" (fallback số HĐ).
+function contractModalTitle(c: ContractWithRelations): string {
+  const rep =
+    c.contract_customers?.find((cc) => cc.is_representative)?.customer?.full_name ||
+    c.contract_customers?.[0]?.customer?.full_name ||
+    '';
+  const loc = [c.room?.building?.name, c.room?.name].filter(Boolean).join(' ');
+  const base = [loc, rep].filter(Boolean).join(' · ');
+  return base || `Hợp đồng ${c.contract_number || c.id.slice(0, 8)}`;
+}
 
 function ContractsDesktopPage() {
   // =============================================
@@ -92,6 +104,10 @@ function ContractsDesktopPage() {
   // Selection
   const [selectedContract, setSelectedContract] = useState<ContractWithRelations | null>(null);
   const [selectedContractIds, setSelectedContractIds] = useState<string[]>([]);
+
+  // Modal xem chi tiết — mở ngay tại trang để KHÔNG mất bộ lọc đang dò.
+  const [detailContract, setDetailContract] = useState<ContractWithRelations | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   // =============================================
   // Data fetching — phân trang + lọc SERVER-SIDE (useContractsPaged)
@@ -315,6 +331,11 @@ function ContractsDesktopPage() {
     setPrintDialogOpen(true);
   }, []);
 
+  const handleView = useCallback((contract: ContractWithRelations) => {
+    setDetailContract(contract);
+    setDetailModalOpen(true);
+  }, []);
+
   // Xuất Excel: kéo TOÀN BỘ kết quả theo filter hiện tại (loop .range từng
   // khúc 1000) — không chỉ trang đang xem.
   const handleExport = useCallback(async () => {
@@ -444,6 +465,7 @@ function ContractsDesktopPage() {
               contracts={sortedContracts}
               selectedIds={selectedContractIds}
               onSelectionChange={setSelectedContractIds}
+              onView={handleView}
               onEdit={handleEdit}
               onRenew={handleRenew}
               onTransferRoom={handleTransferRoom}
@@ -563,6 +585,14 @@ function ContractsDesktopPage() {
             roomName={dialogContract.room?.name}
           />
         )}
+
+        {/* Xem chi tiết hợp đồng — modal full-screen (giữ nguyên bộ lọc danh sách) */}
+        <ContractDetailModal
+          contractId={detailContract?.id ?? null}
+          title={detailContract ? contractModalTitle(detailContract) : ''}
+          open={detailModalOpen}
+          onOpenChange={setDetailModalOpen}
+        />
       </div>
     </MainLayout>
   );

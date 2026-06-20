@@ -39,7 +39,6 @@ import {
   Copy,
   Loader2,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
 import type { ContractWithRelations } from '@/types/contract';
 import {
   getContractDisplayStatus,
@@ -56,6 +55,7 @@ interface ContractListTableProps {
   contracts: ContractWithRelations[];
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
+  onView: (contract: ContractWithRelations) => void;
   onEdit: (contract: ContractWithRelations) => void;
   onRenew: (contract: ContractWithRelations) => void;
   onTransferRoom: (contract: ContractWithRelations) => void;
@@ -177,6 +177,7 @@ export default function ContractListTable({
   contracts,
   selectedIds,
   onSelectionChange,
+  onView,
   onEdit,
   onRenew,
   onTransferRoom,
@@ -338,12 +339,19 @@ export default function ContractListTable({
                       </button>
                     </TableCell>
                     <TableCell className="text-sm">
-                      <Link
-                        to={`/contracts/${contract.id}`}
+                      {/* Click thường → mở modal tại chỗ (giữ bộ lọc); Ctrl/Cmd/
+                          middle-click → trình duyệt tự mở deep-link tab mới. */}
+                      <a
+                        href={`/contracts/${contract.id}`}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+                          e.preventDefault();
+                          onView(contract);
+                        }}
                         className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         {customerName}
-                      </Link>
+                      </a>
                       {customerPhone && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs text-muted-foreground">{customerPhone}</span>
@@ -381,6 +389,7 @@ export default function ContractListTable({
                         canManage={canManageBuilding(
                           contract.room?.building_id ?? contract.room?.building?.id
                         )}
+                        onView={onView}
                         onEdit={onEdit}
                         onRenew={onRenew}
                         onTransferRoom={onTransferRoom}
@@ -457,6 +466,7 @@ interface ActionButtonsProps {
   actions: ReturnType<typeof getActionButtonStates>;
   /** false → ẩn các nút sửa/xoá/gia hạn/chuyển/thanh lý. Vẫn giữ xem/in/QR. */
   canManage: boolean;
+  onView: (contract: ContractWithRelations) => void;
   onEdit: (contract: ContractWithRelations) => void;
   onRenew: (contract: ContractWithRelations) => void;
   onTransferRoom: (contract: ContractWithRelations) => void;
@@ -472,6 +482,7 @@ function ActionButtons({
   contract,
   actions,
   canManage,
+  onView,
   onEdit,
   onRenew,
   onTransferRoom,
@@ -482,7 +493,6 @@ function ActionButtons({
   onPrint,
   onShowQR,
 }: ActionButtonsProps) {
-  const navigate = useNavigate();
   // Gate theo quyền chi tiết từng chức năng (catalog permissionPages) — kết
   // hợp với scope toà (canManage). JSONB cũ chưa có key chi tiết sẽ fallback
   // về contracts.edit.
@@ -491,7 +501,7 @@ function ActionButtons({
     {
       label: 'Xem chi tiết',
       icon: Eye,
-      onClick: () => navigate(`/contracts/${contract.id}`),
+      onClick: () => onView(contract),
       disabled: false,
       hidden: false,
       bg: 'bg-slate-500 hover:bg-slate-600',
