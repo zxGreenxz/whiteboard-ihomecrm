@@ -34,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StorageImage } from '@/components/ui/storage-image';
 import { openStoredFile } from '@/lib/storage';
 import { supabase } from '@/integrations/supabase/client';
+import { useFirstInvoiceDetails } from '@/hooks/useInvoices';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
 import { useDeletePayment } from '@/hooks/useDeletePayment';
@@ -113,6 +114,12 @@ const ReceiptUploadSlot = ({ paymentId }: { paymentId: string }) => {
 const fmtVND = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 
+const fmtDay = (iso?: string | null): string => {
+  if (!iso) return '—';
+  const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+  return Number.isNaN(d.getTime()) ? '—' : format(d, 'dd/MM/yyyy');
+};
+
 const METHOD_BADGE: Record<string, string> = {
   TM: 'bg-amber-50 text-amber-700 border-amber-200',
   TK: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -122,6 +129,11 @@ const METHOD_BADGE: Record<string, string> = {
 
 const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
   const invoiceId = invoice?.id ?? '';
+  // Chi tiết "hoá đơn tháng đầu" (ký HĐ): kỳ tiền phòng + đã thu/tổng HĐ & cọc.
+  // Trả map rỗng nếu HĐ này không phải hoá đơn tháng đầu.
+  const { data: firstInvoiceDetails } = useFirstInvoiceDetails(
+    invoiceId ? [invoiceId] : [],
+  );
   const { data: payments, isLoading } = useQuery({
     queryKey: ['invoice-payments-summary', invoiceId],
     enabled: open && !!invoiceId,
@@ -214,6 +226,37 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
             {getInvoiceTitle(invoice)}
           </span>
         </div>
+
+        {(() => {
+          const fd = firstInvoiceDetails?.get(invoiceId);
+          if (!fd) return null;
+          return (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm space-y-1">
+              <div className="font-medium text-emerald-900">
+                Hoá đơn tháng đầu (ký hợp đồng)
+              </div>
+              {(fd.rentFrom || fd.rentTo) && (
+                <div className="text-emerald-900/80">
+                  Kỳ tiền phòng: {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-emerald-900/80">
+                <span>
+                  Tiền phòng (HĐ): đã thu{' '}
+                  <b className="text-emerald-700">{fmtVND(fd.invoicePaid)}</b> /{' '}
+                  {fmtVND(fd.invoiceTotal)}
+                </span>
+                {fd.depositTotal > 0 && (
+                  <span>
+                    Cọc: đã đóng{' '}
+                    <b className="text-emerald-700">{fmtVND(fd.depositPaid)}</b> /{' '}
+                    {fmtVND(fd.depositTotal)}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {isLoading ? (
           <div className="space-y-2">

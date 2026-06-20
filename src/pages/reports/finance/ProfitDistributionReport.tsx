@@ -7,7 +7,7 @@ import {
   useIncomeExpenseStats,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
-import { useInvoice, useInvoiceTotalsByIds } from "@/hooks/useInvoices";
+import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { formatPeriod } from "@/lib/monthPeriod";
@@ -29,6 +29,17 @@ import { format, startOfMonth, endOfMonth } from "date-fns";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+
+// Số tiền gọn cho dòng phụ "hoá đơn tháng đầu" (không ký hiệu ₫ rườm rà).
+const fmtCompact = (n: number) =>
+  new Intl.NumberFormat("vi-VN").format(Math.round(n || 0)) + "đ";
+
+// Ngày 'YYYY-MM-DD' → 'dd/MM/yyyy' (kỳ tiền phòng); null → "—".
+const fmtDay = (iso?: string | null): string => {
+  if (!iso) return "—";
+  const d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+  return Number.isNaN(d.getTime()) ? "—" : format(d, "dd/MM/yyyy");
+};
 
 // Dòng đã chuẩn hoá cho 1 bên (thu HOẶC chi) của sổ phân bổ.
 interface DisplayRow {
@@ -349,6 +360,9 @@ export default function ProfitDistributionReport() {
     [incomeRows]
   );
   const { data: invoiceTotals } = useInvoiceTotalsByIds(invoiceIds);
+  // Chi tiết "hoá đơn tháng đầu" (HĐ tự sinh khi ký HĐ) cho các HĐ trong cột Thu:
+  // kỳ tiền phòng + đã thu/tổng HĐ + cọc đã đóng/tổng. Chỉ trả về HĐ tháng đầu.
+  const { data: firstInvoiceDetails } = useFirstInvoiceDetails(invoiceIds);
 
   // Chi tiết các lần thu của 1 hoá đơn (nhấp đôi vào dòng) — dùng lại dialog
   // "Các lần thanh toán" (hiện số tiền + ngày giờ từng lần).
@@ -464,6 +478,32 @@ export default function ProfitDistributionReport() {
                       {r.notKqkd && (
                         <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
                       )}
+                      {(() => {
+                        // HĐ tháng đầu (ký HĐ): hiện kỳ tiền phòng + đã thu/tổng
+                        // của HĐ và của cọc — gọn dưới mô tả.
+                        const fd = r.invoiceId ? firstInvoiceDetails?.get(r.invoiceId) : null;
+                        if (!fd) return null;
+                        return (
+                          <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                            {(fd.rentFrom || fd.rentTo) && (
+                              <div>
+                                <span className="text-foreground/70">Kỳ phòng:</span>{" "}
+                                {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-foreground/70">Tiền phòng (HĐ):</span>{" "}
+                              đã thu {fmtCompact(fd.invoicePaid)} / {fmtCompact(fd.invoiceTotal)}
+                            </div>
+                            {fd.depositTotal > 0 && (
+                              <div>
+                                <span className="text-foreground/70">Cọc:</span>{" "}
+                                đã đóng {fmtCompact(fd.depositPaid)} / {fmtCompact(fd.depositTotal)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
                     {visible("phong") && <TableCell>{r.roomName || "—"}</TableCell>}

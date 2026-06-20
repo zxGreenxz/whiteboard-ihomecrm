@@ -245,6 +245,85 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
 };
 
 // =============================================
+// useFirstInvoiceDetails — chi tiết "hoá đơn tháng đầu" (HĐ tự sinh khi ký HĐ).
+// Cho mỗi invoice id, NẾU nó là hoá đơn tháng đầu của hợp đồng — nhận diện theo:
+//   • kỳ tiền phòng (item RENT) bắt đầu ĐÚNG contracts.start_billing_date, HOẶC
+//   • notes tự động chứa "… tháng đầu" (fallback cho HĐ thiếu start_billing_date)
+// thì trả về:
+//   • kỳ tiền phòng (from→to của item RENT)
+//   • đã thu / tổng của hoá đơn (paid_amount / total_amount)
+//   • cọc đã đóng / tổng cọc (contracts.deposit_paid / total_deposit)
+// Dùng cho trang Phân bổ lợi nhuận + dialog "Các lần thanh toán".
+// Invoice KHÔNG phải tháng đầu sẽ không có trong map.
+// =============================================
+
+export interface FirstInvoiceDetail {
+  invoiceId: string;
+  rentFrom: string | null;
+  rentTo: string | null;
+  invoicePaid: number;
+  invoiceTotal: number;
+  depositPaid: number;
+  depositTotal: number;
+}
+
+export const useFirstInvoiceDetails = (ids: string[]) => {
+  const sortedIds = Array.from(new Set(ids.filter(Boolean))).sort();
+  return useQuery({
+    queryKey: ['first-invoice-details', sortedIds],
+    enabled: sortedIds.length > 0,
+    queryFn: async (): Promise<Map<string, FirstInvoiceDetail>> => {
+      const map = new Map<string, FirstInvoiceDetail>();
+      const CHUNK = 200;
+      for (let i = 0; i < sortedIds.length; i += CHUNK) {
+        const slice = sortedIds.slice(i, i + CHUNK);
+        const { data, error } = await (supabase as any)
+          .from('invoices')
+          .select(
+            `id, total_amount, paid_amount, notes,
+             contract:contracts!invoices_contract_id_fkey (start_billing_date, total_deposit, deposit_paid),
+             invoice_items (type, from_date, to_date, amount)`,
+          )
+          .in('id', slice)
+          .is('deleted_at', null);
+        if (error) throw error;
+        for (const inv of (data ?? []) as any[]) {
+          const items = (inv.invoice_items ?? []) as any[];
+          // Item RENT có from_date sớm nhất là dòng tiền phòng tháng đầu.
+          const rent =
+            items
+              .filter((it) => it.type === 'RENT' && it.from_date)
+              .sort((a, b) =>
+                String(a.from_date).localeCompare(String(b.from_date)),
+              )[0] ??
+            items.find((it) => it.type === 'RENT') ??
+            null;
+          const contract = inv.contract ?? null;
+          const startBilling: string | null = contract?.start_billing_date ?? null;
+          const sameStart =
+            !!rent?.from_date &&
+            !!startBilling &&
+            String(rent.from_date).slice(0, 10) === String(startBilling).slice(0, 10);
+          const byNotes =
+            typeof inv.notes === 'string' && /th[aá]ng[\s_]?đầu/i.test(inv.notes);
+          if (!sameStart && !byNotes) continue;
+          map.set(inv.id, {
+            invoiceId: inv.id,
+            rentFrom: rent?.from_date ?? null,
+            rentTo: rent?.to_date ?? null,
+            invoicePaid: Number(inv.paid_amount) || 0,
+            invoiceTotal: Number(inv.total_amount) || 0,
+            depositPaid: Number(contract?.deposit_paid) || 0,
+            depositTotal: Number(contract?.total_deposit) || 0,
+          });
+        }
+      }
+      return map;
+    },
+  });
+};
+
+// =============================================
 // useCreateInvoice - Create invoice + invoice_items, status = APPROVED (mặc định đã duyệt)
 // =============================================
 
