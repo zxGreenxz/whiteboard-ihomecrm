@@ -40,7 +40,7 @@ import { usePhoneViewport } from '@/hooks/use-mobile';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StorageImage } from '@/components/ui/storage-image';
-import { openStoredFile } from '@/lib/storage';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import RecordPaymentDialog from '@/components/invoices/RecordPaymentDialog';
 import RecordRefundDialog from '@/components/invoices/RecordRefundDialog';
 import PrintInvoiceDialog from '@/components/invoices/PrintInvoiceDialog';
@@ -77,6 +77,8 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  // Xem ảnh chứng từ thanh toán bằng lightbox tại chỗ (không mở tab mới).
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const { data: invoice, isLoading } = useInvoice(id || '');
   const cancelMutation = useCancelInvoice();
@@ -273,6 +275,12 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
       </Suspense>
     );
   }
+
+  // Ảnh chứng từ thanh toán — gom các phiếu có ảnh để xem bằng lightbox tại chỗ
+  // (không mở tab mới làm rời trang). Index = vị trí trong danh sách ảnh.
+  const receiptPayments = (invoice.payments ?? []).filter((p) => p.receipt_image_url);
+  const receiptUrls = receiptPayments.map((p) => p.receipt_image_url as string);
+  const receiptIdxById = new Map(receiptPayments.map((p, i) => [p.id, i]));
 
   return (
     <>
@@ -529,12 +537,11 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                           {payment.receipt_image_url ? (
                             <button
                               type="button"
-                              onClick={() => openStoredFile(payment.receipt_image_url!)}
+                              onClick={() => setLightboxIdx(receiptIdxById.get(payment.id) ?? 0)}
                               className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
                             >
                               <Image className="h-4 w-4" />
                               <span>Xem ảnh</span>
-                              <ExternalLink className="h-3 w-3" />
                             </button>
                           ) : (
                             <span className="text-gray-400 text-sm">Không có</span>
@@ -550,13 +557,11 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                   <div className="mt-4 pt-4 border-t">
                     <h4 className="text-sm font-medium text-gray-700 mb-3">Ảnh chứng từ thanh toán</h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {invoice.payments
-                        .filter(p => p.receipt_image_url)
-                        .map((payment) => (
+                      {receiptPayments.map((payment, idx) => (
                           <button
                             key={payment.id}
                             type="button"
-                            onClick={() => openStoredFile(payment.receipt_image_url!)}
+                            onClick={() => setLightboxIdx(idx)}
                             className="group relative aspect-video rounded-lg overflow-hidden border bg-gray-100 hover:ring-2 hover:ring-blue-500 transition-all"
                           >
                             <StorageImage
@@ -689,6 +694,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
       {/* Dialog thanh toán / in / sửa / QR (dùng chung) */}
       {dialogs}
+
+      {/* Lightbox xem ảnh chứng từ — overlay tại chỗ, không mở tab mới */}
+      <AttachmentLightbox
+        attachments={receiptUrls}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
+      />
     </>
   );
 };

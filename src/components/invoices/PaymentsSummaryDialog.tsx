@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StorageImage } from '@/components/ui/storage-image';
-import { openStoredFile } from '@/lib/storage';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useFirstInvoiceDetails, useContractDepositVouchers } from '@/hooks/useInvoices';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
@@ -185,6 +185,15 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // Xem ảnh chứng từ bằng lightbox tại chỗ (không mở tab mới). images = nhóm ảnh
+  // đang xem (các lần thu, hoặc ảnh của 1 phiếu cọc); index null = đóng.
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number | null }>({
+    images: [],
+    index: null,
+  });
+  const paymentReceiptUrls = (payments ?? [])
+    .filter((p) => p.receipt_image_url)
+    .map((p) => p.receipt_image_url as string);
 
   const handleChangeMethod = (paymentId: string, newMethod: PaymentMethod) => {
     setEditingId(paymentId);
@@ -400,7 +409,12 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                         <HoverCardTrigger asChild>
                           <button
                             type="button"
-                            onClick={() => openStoredFile(p.receipt_image_url!)}
+                            onClick={() =>
+                              setLightbox({
+                                images: paymentReceiptUrls,
+                                index: paymentReceiptUrls.indexOf(p.receipt_image_url!),
+                              })
+                            }
                             className="shrink-0 block"
                             title="Click mở ảnh lớn"
                           >
@@ -497,7 +511,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                           <HoverCardTrigger asChild>
                             <button
                               type="button"
-                              onClick={() => openStoredFile(img)}
+                              onClick={() => setLightbox({ images: v.images, index: i })}
                               className="block shrink-0"
                               title="Click mở ảnh lớn"
                             >
@@ -535,6 +549,13 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
             </div>
           </div>
         )}
+
+        {/* Lightbox xem ảnh chứng từ — overlay tại chỗ, không mở tab mới */}
+        <AttachmentLightbox
+          attachments={lightbox.images}
+          index={lightbox.index}
+          onIndexChange={(index) => setLightbox((s) => ({ ...s, index }))}
+        />
       </DialogContent>
 
       <AlertDialog
