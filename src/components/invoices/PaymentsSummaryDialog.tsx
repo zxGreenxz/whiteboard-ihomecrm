@@ -465,27 +465,31 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
             <div className="text-sm font-medium text-violet-900">
               Cọc bổ sung bằng phiếu thu (ngoài HĐ)
             </div>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {depositVouchers.map((v) => (
-                <li key={v.id} className="flex items-center gap-3 text-sm">
-                  <a
-                    href={`/income-expense/print/${v.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition"
-                    title="Mở phiếu thu cọc (trang in)"
-                  >
-                    <Receipt className="h-3 w-3" />
-                    {v.code ?? 'Phiếu thu'}
-                  </a>
-                  <span className="text-xs text-muted-foreground">
+                <li key={v.id} className="text-sm">
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={`/income-expense/print/${v.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition"
+                      title="Mở phiếu thu cọc (trang in)"
+                    >
+                      <Receipt className="h-3 w-3" />
+                      {v.code ?? 'Phiếu thu'}
+                    </a>
+                    <span className="ml-auto font-semibold text-violet-700">
+                      {fmtVND(v.totalAmount)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
                     {v.voucherDate
                       ? format(new Date(v.voucherDate), 'dd/MM/yyyy')
                       : '—'}
-                  </span>
-                  <span className="ml-auto font-semibold text-violet-700">
-                    {fmtVND(v.totalAmount)}
-                  </span>
+                    {v.creatorName ? ` · ${v.creatorName}` : ''}
+                    {v.accountName ? ` · sổ ${v.accountName}` : ''}
+                  </div>
                 </li>
               ))}
             </ul>

@@ -364,6 +364,9 @@ export interface ContractDepositVoucher {
   code: string | null;
   totalAmount: number;
   voucherDate: string | null;
+  // Ai tạo phiếu + thu vào sổ quỹ nào (account) — để biết nguồn cọc bổ sung.
+  creatorName: string | null;
+  accountName: string | null;
 }
 
 export const useContractDepositVouchers = (contractId?: string | null) => {
@@ -375,7 +378,8 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
       const { data, error } = await (supabase as any)
         .from('income_expenses')
         .select(
-          `id, code, total_amount, voucher_date,
+          `id, code, total_amount, voucher_date, creator_name,
+           account:accounts!income_expenses_account_id_fkey ( name ),
            income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
         )
         .eq('contract_id', contractId)
@@ -394,6 +398,8 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
           code: v.code ?? null,
           totalAmount: Number(v.total_amount) || 0,
           voucherDate: v.voucher_date ?? null,
+          creatorName: v.creator_name ?? null,
+          accountName: v.account?.name ?? null,
         });
       }
       return Array.from(map.values());
