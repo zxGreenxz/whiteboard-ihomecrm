@@ -14,7 +14,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { StorageImage } from "@/components/ui/storage-image";
-import { openStoredFile } from "@/lib/storage";
+import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
@@ -60,6 +60,8 @@ export function IncomeExpenseDetailMobile({
 }: Props) {
   const navigate = useNavigate();
   const [paySheetOpen, setPaySheetOpen] = useState(false);
+  // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
@@ -353,12 +355,12 @@ export function IncomeExpenseDetailMobile({
               <span className="vd-sec-t">Đính kèm</span>
             </div>
             <div className="vd-atts">
-              {v.attachments.map((url) => (
+              {v.attachments.map((url, idx) => (
                 <button
                   type="button"
                   key={url}
                   className="vd-att"
-                  onClick={() => openStoredFile(url)}
+                  onClick={() => setLightboxIdx(idx)}
                   title="Xem ảnh / tệp"
                 >
                   {isPdf(url) ? (
@@ -377,6 +379,12 @@ export function IncomeExpenseDetailMobile({
         open={paySheetOpen}
         onOpenChange={setPaySheetOpen}
         voucher={v}
+      />
+
+      <AttachmentLightbox
+        attachments={v.attachments ?? []}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
       />
     </div>
   );

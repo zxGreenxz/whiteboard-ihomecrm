@@ -3,7 +3,7 @@ import { X, Ban, Layers, ChevronRight, Pencil, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { StorageImage } from "@/components/ui/storage-image";
-import { openStoredFile } from "@/lib/storage";
+import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useUpdateBatchAccount } from "@/hooks/useIncomeExpenses";
@@ -40,6 +40,8 @@ export function IncomeExpenseBatchDetailMobile({
   onApproveVoucher,
 }: Props) {
   const [child, setChild] = useState<IncomeExpenseWithRelations | null>(null);
+  // Xem ảnh đính kèm dùng chung ngay trên trang (overlay), KHÔNG mở tab mới.
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
   const { data: accounts = [] } = useAccounts();
   const updateBatchAccount = useUpdateBatchAccount();
@@ -185,12 +187,12 @@ export function IncomeExpenseBatchDetailMobile({
               <span className="vd-sec-t">Đính kèm (dùng chung)</span>
             </div>
             <div className="vd-atts">
-              {batch.attachments.map((url) => (
+              {batch.attachments.map((url, idx) => (
                 <button
                   type="button"
                   key={url}
                   className="vd-att"
-                  onClick={() => openStoredFile(url)}
+                  onClick={() => setLightboxIdx(idx)}
                   title="Xem ảnh / tệp"
                 >
                   {isPdf(url) ? (
@@ -301,6 +303,12 @@ export function IncomeExpenseBatchDetailMobile({
           }
         />
       )}
+
+      <AttachmentLightbox
+        attachments={batch.attachments ?? []}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
+      />
     </div>
   );
 }

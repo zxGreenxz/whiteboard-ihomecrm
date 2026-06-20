@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Table,
   TableBody,
@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { StorageImage } from '@/components/ui/storage-image';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { openStoredFile } from '@/lib/storage';
 import {
   calculatePaginationInfo,
@@ -73,6 +74,9 @@ interface AttachmentPreviewProps {
 // Thumbnail nhỏ ảnh đính kèm + hover hiện kích thước thật. Nếu có nhiều file,
 // chỉ hiện cái đầu — chi tiết đầy đủ vẫn xem được trong dialog chi tiết.
 const AttachmentPreview = ({ urls }: AttachmentPreviewProps) => {
+  // Xem ảnh ngay trên trang (overlay lightbox), KHÔNG mở tab mới làm mất trang.
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
   if (!urls || urls.length === 0) return null;
   const first = urls[0];
   const isImg = isImageUrl(first);
@@ -96,41 +100,50 @@ const AttachmentPreview = ({ urls }: AttachmentPreviewProps) => {
   }
 
   return (
-    <HoverCard openDelay={120} closeDelay={80}>
-      <HoverCardTrigger asChild>
-        <button
-          type="button"
-          className="ml-1 inline-flex items-center"
-          onClick={(e) => {
-            e.stopPropagation();
-            openStoredFile(first);
-          }}
+    <>
+      <HoverCard openDelay={120} closeDelay={80}>
+        <HoverCardTrigger asChild>
+          <button
+            type="button"
+            className="ml-1 inline-flex items-center"
+            title="Bấm để xem lớn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxIdx(0);
+            }}
+          >
+            <StorageImage
+              value={first}
+              alt="Đính kèm"
+              className="h-7 w-7 rounded border border-zinc-200 object-cover hover:ring-2 hover:ring-blue-300"
+              loading="lazy"
+            />
+            {extra > 0 && (
+              <span className="ml-0.5 text-[10px] text-muted-foreground">
+                +{extra}
+              </span>
+            )}
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent
+          side="left"
+          align="center"
+          className="p-1 w-auto max-w-[480px]"
         >
           <StorageImage
             value={first}
-            alt="Đính kèm"
-            className="h-7 w-7 rounded border border-zinc-200 object-cover hover:ring-2 hover:ring-blue-300"
-            loading="lazy"
+            alt="Đính kèm full-size"
+            className="max-h-[420px] max-w-[460px] object-contain rounded"
           />
-          {extra > 0 && (
-            <span className="ml-0.5 text-[10px] text-muted-foreground">
-              +{extra}
-            </span>
-          )}
-        </button>
-      </HoverCardTrigger>
-      <HoverCardContent
-        side="left"
-        align="center"
-        className="p-1 w-auto max-w-[480px]"
-      >
-        <StorageImage
-          value={first}
-          alt="Đính kèm full-size"
-          className="max-h-[420px] max-w-[460px] object-contain rounded"
-        />
-      </HoverCardContent>
-    </HoverCard>
+        </HoverCardContent>
+      </HoverCard>
+
+      <AttachmentLightbox
+        attachments={urls}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
+      />
+    </>
   );
 };
 

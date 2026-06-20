@@ -10,16 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import {
   Ban,
   FileText,
-  X,
   Eye,
   Layers,
-  ChevronLeft,
-  ChevronRight,
   Pencil,
 } from 'lucide-react';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
-import { useSignedUrl } from '@/hooks/useSignedUrl';
 import { StorageImage } from '@/components/ui/storage-image';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
@@ -102,46 +99,11 @@ export function IncomeExpenseBatchDetailDialog({
   const canEditAccount = isAdmin && allSameAccount && !!batch && !batch.all_cancelled;
 
   const attachments = batch?.attachments ?? [];
-  const lightboxUrl =
-    lightboxIdx !== null ? attachments[lightboxIdx] ?? null : null;
-  const lightboxSignedUrl = useSignedUrl(lightboxUrl);
-  const hasMultiple = attachments.length > 1;
   const isLightboxOpen = lightboxIdx !== null;
-
-  const closeLightbox = () => setLightboxIdx(null);
-  const goPrev = () =>
-    setLightboxIdx((i) =>
-      i === null || attachments.length === 0
-        ? i
-        : (i - 1 + attachments.length) % attachments.length
-    );
-  const goNext = () =>
-    setLightboxIdx((i) =>
-      i === null || attachments.length === 0 ? i : (i + 1) % attachments.length
-    );
 
   useEffect(() => {
     if (!open) setLightboxIdx(null);
   }, [open]);
-
-  useEffect(() => {
-    if (!isLightboxOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        closeLightbox();
-      } else if (e.key === 'ArrowLeft' && hasMultiple) {
-        e.preventDefault();
-        goPrev();
-      } else if (e.key === 'ArrowRight' && hasMultiple) {
-        e.preventDefault();
-        goNext();
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [isLightboxOpen, hasMultiple]);
 
   if (!batch) return null;
 
@@ -484,68 +446,12 @@ export function IncomeExpenseBatchDetailDialog({
         }
       />
 
-      {/* Lightbox */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
-          onClick={closeLightbox}
-        >
-          <button
-            type="button"
-            className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
-            onClick={(e) => {
-              e.stopPropagation();
-              closeLightbox();
-            }}
-            title="Đóng (Esc)"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {hasMultiple && (
-            <>
-              <button
-                type="button"
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  goPrev();
-                }}
-                title="Ảnh trước (←)"
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </button>
-              <button
-                type="button"
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  goNext();
-                }}
-                title="Ảnh sau (→)"
-              >
-                <ChevronRight className="h-6 w-6" />
-              </button>
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/90 text-sm bg-black/40 rounded-full px-3 py-1">
-                {(lightboxIdx ?? 0) + 1} / {attachments.length}
-              </div>
-            </>
-          )}
-          {isPdf(lightboxUrl) ? (
-            <iframe
-              src={lightboxSignedUrl}
-              className="w-full h-full max-w-5xl max-h-[90vh] bg-white rounded-md"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <StorageImage
-              value={lightboxUrl}
-              alt="Đính kèm phóng lớn"
-              className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-        </div>
-      )}
+      {/* Lightbox xem ảnh/PDF — overlay tại chỗ, không mở tab mới */}
+      <AttachmentLightbox
+        attachments={attachments}
+        index={lightboxIdx}
+        onIndexChange={setLightboxIdx}
+      />
     </>
   );
 }
