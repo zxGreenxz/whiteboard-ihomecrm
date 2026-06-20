@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
@@ -19,6 +18,7 @@ import {
 import { useMyContext } from '@/hooks/useMyContext';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { getInvoiceTitle } from '@/lib/invoiceUtils';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
 import InvoiceStatsSummary from '@/components/invoices/InvoiceStatsSummary';
@@ -35,10 +35,9 @@ import BulkRecordPaymentDialog from '@/components/invoices/BulkRecordPaymentDial
 import PaymentsSummaryDialog from '@/components/invoices/PaymentsSummaryDialog';
 import InvoiceHistoryDialog from '@/components/invoices/InvoiceHistoryDialog';
 import SuperAdminForceDeleteDialog from '@/components/invoices/SuperAdminForceDeleteDialog';
+import InvoiceDetailModal from '@/components/invoices/InvoiceDetailModal';
 
 const InvoicesDesktopPage = () => {
-  const navigate = useNavigate();
-
   // Filters
   const [filters, setFilters] = useState<InvoiceFilters>({});
 
@@ -76,6 +75,10 @@ const InvoicesDesktopPage = () => {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithRelations | null>(null);
   const [forceDeleteTarget, setForceDeleteTarget] = useState<InvoiceWithRelations | null>(null);
+
+  // Modal xem chi tiết — mở ngay tại trang để KHÔNG mất bộ lọc đang dò.
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailInvoice, setDetailInvoice] = useState<InvoiceWithRelations | null>(null);
 
   // Merge search into filters
   const effectiveFilters = useMemo(
@@ -180,12 +183,10 @@ const InvoicesDesktopPage = () => {
     setPaymentDialogOpen(true);
   }, []);
 
-  const handleViewDetail = useCallback(
-    (invoice: InvoiceWithRelations) => {
-      navigate(`/invoices/${invoice.id}`);
-    },
-    [navigate],
-  );
+  const handleViewDetail = useCallback((invoice: InvoiceWithRelations) => {
+    setDetailInvoice(invoice);
+    setDetailModalOpen(true);
+  }, []);
 
 
   const handleViewHistory = useCallback(
@@ -369,6 +370,14 @@ const InvoicesDesktopPage = () => {
         invoice={forceDeleteTarget}
         onConfirm={handleConfirmForceCancel}
         isPending={forceCancelMutation.isPending}
+      />
+
+      {/* Xem chi tiết hoá đơn — modal full-screen (giữ nguyên bộ lọc danh sách) */}
+      <InvoiceDetailModal
+        invoiceId={detailInvoice?.id ?? null}
+        title={detailInvoice ? getInvoiceTitle(detailInvoice) : ''}
+        open={detailModalOpen}
+        onOpenChange={setDetailModalOpen}
       />
     </MainLayout>
   );
