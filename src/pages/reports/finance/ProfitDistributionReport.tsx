@@ -504,7 +504,9 @@ export default function ProfitDistributionReport() {
                             </div>
                           )}
                           <div>
-                            <span className="text-foreground/70">Tiền phòng (HĐ):</span>{" "}
+                            {/* invoiceTotal = tiền phòng + dịch vụ (đã trừ giảm
+                                trừ), KHÔNG gồm cọc — cọc là phiếu thu riêng. */}
+                            <span className="text-foreground/70">Tiền Phòng + Dịch Vụ:</span>{" "}
                             đã thu{" "}
                             <span className={`font-medium ${invFull ? "text-emerald-600" : "text-rose-600"}`}>
                               {fmtCompact(fd.invoicePaid)}

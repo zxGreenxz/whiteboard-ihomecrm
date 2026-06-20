@@ -249,7 +249,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
               )}
               <div className={`flex flex-wrap gap-x-5 gap-y-0.5 ${tone.sub}`}>
                 <span>
-                  Tiền phòng (HĐ): đã thu{' '}
+                  Tiền Phòng + Dịch Vụ: đã thu{' '}
                   <b className={invFull ? 'text-emerald-700' : 'text-rose-700'}>
                     {fmtVND(fd.invoicePaid)}
                   </b>{' '}
