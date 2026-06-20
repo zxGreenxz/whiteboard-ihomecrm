@@ -490,6 +490,40 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                     {v.creatorName ? ` · ${v.creatorName}` : ''}
                     {v.accountName ? ` · sổ ${v.accountName}` : ''}
                   </div>
+                  {v.images.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {v.images.map((img, i) => (
+                        <HoverCard key={i} openDelay={120} closeDelay={80}>
+                          <HoverCardTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => openStoredFile(img)}
+                              className="block shrink-0"
+                              title="Click mở ảnh lớn"
+                            >
+                              <StorageImage
+                                value={img}
+                                alt="Chứng từ cọc"
+                                className="h-10 w-10 object-cover rounded border border-violet-200 hover:border-violet-400 transition-colors"
+                              />
+                            </button>
+                          </HoverCardTrigger>
+                          <HoverCardContent
+                            side="left"
+                            align="center"
+                            sideOffset={12}
+                            className="p-1 w-auto border-zinc-200 shadow-2xl"
+                          >
+                            <StorageImage
+                              value={img}
+                              alt="Chứng từ cọc"
+                              className="max-w-[min(80vw,720px)] max-h-[80vh] object-contain rounded"
+                            />
+                          </HoverCardContent>
+                        </HoverCard>
+                      ))}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
