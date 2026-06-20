@@ -261,10 +261,25 @@ export interface FirstInvoiceDetail {
   invoiceId: string;
   rentFrom: string | null;
   rentTo: string | null;
+  // Tiền phòng + dịch vụ = total hoá đơn TRỪ phần cọc bị nhồi vào hoá đơn (HĐ cũ
+  // có item OTHER "Tiền cọc"); HĐ mới không nhồi cọc nên = total. Cọc tính riêng.
+  rentServicePaid: number;
+  rentServiceTotal: number;
   invoicePaid: number;
   invoiceTotal: number;
   depositPaid: number;
   depositTotal: number;
+}
+
+// Item cọc bị nhồi vào hoá đơn (HĐ cũ): luôn là type OTHER mô tả "Tiền cọc".
+function depositAmountInInvoice(items: any[]): number {
+  return (items ?? []).reduce((sum, it) => {
+    if (it?.type !== 'OTHER') return sum;
+    const raw = String(it?.description ?? '').toLowerCase();
+    const norm = raw.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const isCoc = raw.includes('cọc') || raw.includes('cược') || norm.includes('coc');
+    return isCoc ? sum + (Number(it.amount) || 0) : sum;
+  }, 0);
 }
 
 export const useFirstInvoiceDetails = (ids: string[]) => {
@@ -282,7 +297,7 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
           .select(
             `id, total_amount, paid_amount, notes,
              contract:contracts!invoices_contract_id_fkey (start_billing_date, total_deposit, deposit_paid),
-             invoice_items (type, from_date, to_date, amount)`,
+             invoice_items (type, description, from_date, to_date, amount)`,
           )
           .in('id', slice)
           .is('deleted_at', null);
@@ -307,12 +322,21 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
           const byNotes =
             typeof inv.notes === 'string' && /th[aá]ng[\s_]?đầu/i.test(inv.notes);
           if (!sameStart && !byNotes) continue;
+          const invoiceTotal = Number(inv.total_amount) || 0;
+          const invoicePaid = Number(inv.paid_amount) || 0;
+          // Bỏ phần cọc nhồi trong HĐ → còn tiền phòng + dịch vụ (đã trừ giảm
+          // trừ). Quy ước: tiền thu phủ phần phòng/dịch vụ TRƯỚC, cọc sau.
+          const depositInInvoice = depositAmountInInvoice(items);
+          const rentServiceTotal = Math.max(0, invoiceTotal - depositInInvoice);
+          const rentServicePaid = Math.max(0, Math.min(invoicePaid, rentServiceTotal));
           map.set(inv.id, {
             invoiceId: inv.id,
             rentFrom: rent?.from_date ?? null,
             rentTo: rent?.to_date ?? null,
-            invoicePaid: Number(inv.paid_amount) || 0,
-            invoiceTotal: Number(inv.total_amount) || 0,
+            rentServicePaid,
+            rentServiceTotal,
+            invoicePaid,
+            invoiceTotal,
             depositPaid: Number(contract?.deposit_paid) || 0,
             depositTotal: Number(contract?.total_deposit) || 0,
           });

@@ -465,7 +465,7 @@ export default function ProfitDistributionReport() {
                 // HĐ tháng đầu: tô NỀN NHẠT cả dòng theo trạng thái — xanh khi HĐ
                 // & cọc đều đủ, đỏ khi còn thiếu (dung sai 1đ cho làm tròn).
                 const fd = r.invoiceId ? firstInvoiceDetails?.get(r.invoiceId) : null;
-                const invFull = fd ? fd.invoiceTotal - fd.invoicePaid < 1 : false;
+                const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
                 const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
                 const firstFull = invFull && depFull;
                 const rowClass = fd
@@ -509,9 +509,9 @@ export default function ProfitDistributionReport() {
                             <span className="text-foreground/70">Tiền Phòng + Dịch Vụ:</span>{" "}
                             đã thu{" "}
                             <span className={`font-medium ${invFull ? "text-emerald-600" : "text-rose-600"}`}>
-                              {fmtCompact(fd.invoicePaid)}
+                              {fmtCompact(fd.rentServicePaid)}
                             </span>{" "}
-                            / {fmtCompact(fd.invoiceTotal)}
+                            / {fmtCompact(fd.rentServiceTotal)}
                           </div>
                           {fd.depositTotal > 0 && (
                             <div>

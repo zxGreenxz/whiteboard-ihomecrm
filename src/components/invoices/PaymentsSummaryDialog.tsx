@@ -230,7 +230,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
         {(() => {
           const fd = firstInvoiceDetails?.get(invoiceId);
           if (!fd) return null;
-          const invFull = fd.invoiceTotal - fd.invoicePaid < 1;
+          const invFull = fd.rentServiceTotal - fd.rentServicePaid < 1;
           const depFull = fd.depositTotal - fd.depositPaid < 1;
           const full = invFull && depFull;
           // Nền NHẠT theo trạng thái: xanh khi HĐ & cọc đều đủ, đỏ khi còn thiếu.
@@ -251,9 +251,9 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 <span>
                   Tiền Phòng + Dịch Vụ: đã thu{' '}
                   <b className={invFull ? 'text-emerald-700' : 'text-rose-700'}>
-                    {fmtVND(fd.invoicePaid)}
+                    {fmtVND(fd.rentServicePaid)}
                   </b>{' '}
-                  / {fmtVND(fd.invoiceTotal)}
+                  / {fmtVND(fd.rentServiceTotal)}
                 </span>
                 {fd.depositTotal > 0 && (
                   <span>
