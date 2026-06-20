@@ -34,7 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StorageImage } from '@/components/ui/storage-image';
 import { openStoredFile } from '@/lib/storage';
 import { supabase } from '@/integrations/supabase/client';
-import { useFirstInvoiceDetails } from '@/hooks/useInvoices';
+import { useFirstInvoiceDetails, useContractDepositVouchers } from '@/hooks/useInvoices';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
 import { useDeletePayment } from '@/hooks/useDeletePayment';
@@ -133,6 +133,12 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
   // Trả map rỗng nếu HĐ này không phải hoá đơn tháng đầu.
   const { data: firstInvoiceDetails } = useFirstInvoiceDetails(
     invoiceId ? [invoiceId] : [],
+  );
+  // Phiếu thu cọc RIÊNG (ngoài HĐ) của hợp đồng — hiện ở ô tách dưới cùng popup
+  // để không lẫn với các lần thu của hoá đơn.
+  const firstDetail = firstInvoiceDetails?.get(invoiceId);
+  const { data: depositVouchers } = useContractDepositVouchers(
+    firstDetail?.contractId ?? null,
   );
   const { data: payments, isLoading } = useQuery({
     queryKey: ['invoice-payments-summary', invoiceId],
@@ -262,6 +268,11 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                       {fmtVND(fd.depositPaid)}
                     </b>{' '}
                     / {fmtVND(fd.depositTotal)}
+                    {fd.depositInInvoice > 0 && (
+                      <span className="opacity-80">
+                        {' '}({fmtVND(fd.depositInInvoice)} trong HĐ)
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
@@ -445,6 +456,46 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
               </span>
             </div>
           </>
+        )}
+
+        {/* Ô TÁCH RIÊNG dưới cùng: cọc đóng bằng phiếu thu riêng (ngoài HĐ),
+            để không nhầm với các lần thu của hoá đơn ở trên. */}
+        {depositVouchers && depositVouchers.length > 0 && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 space-y-2">
+            <div className="text-sm font-medium text-violet-900">
+              Cọc bổ sung bằng phiếu thu (ngoài HĐ)
+            </div>
+            <ul className="space-y-1.5">
+              {depositVouchers.map((v) => (
+                <li key={v.id} className="flex items-center gap-3 text-sm">
+                  <a
+                    href={`/income-expense/print/${v.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition"
+                    title="Mở phiếu thu cọc (trang in)"
+                  >
+                    <Receipt className="h-3 w-3" />
+                    {v.code ?? 'Phiếu thu'}
+                  </a>
+                  <span className="text-xs text-muted-foreground">
+                    {v.voucherDate
+                      ? format(new Date(v.voucherDate), 'dd/MM/yyyy')
+                      : '—'}
+                  </span>
+                  <span className="ml-auto font-semibold text-violet-700">
+                    {fmtVND(v.totalAmount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center justify-between border-t border-violet-200 pt-1.5 text-sm">
+              <span className="font-medium text-violet-900">Tổng cọc ngoài HĐ</span>
+              <span className="font-bold text-violet-700">
+                {fmtVND(depositVouchers.reduce((s, v) => s + v.totalAmount, 0))}
+              </span>
+            </div>
+          </div>
         )}
       </DialogContent>
 

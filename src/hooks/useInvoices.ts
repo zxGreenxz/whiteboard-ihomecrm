@@ -259,6 +259,7 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
 
 export interface FirstInvoiceDetail {
   invoiceId: string;
+  contractId: string | null;
   rentFrom: string | null;
   rentTo: string | null;
   // Tiền phòng + dịch vụ = total hoá đơn TRỪ phần cọc bị nhồi vào hoá đơn (HĐ cũ
@@ -269,6 +270,8 @@ export interface FirstInvoiceDetail {
   invoiceTotal: number;
   depositPaid: number;
   depositTotal: number;
+  // Phần cọc nằm NGAY TRONG hoá đơn này (item OTHER "Tiền cọc"); 0 với HĐ mới.
+  depositInInvoice: number;
 }
 
 // Item cọc bị nhồi vào hoá đơn (HĐ cũ): luôn là type OTHER mô tả "Tiền cọc".
@@ -296,7 +299,7 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
           .from('invoices')
           .select(
             `id, total_amount, paid_amount, notes,
-             contract:contracts!invoices_contract_id_fkey (start_billing_date, total_deposit, deposit_paid),
+             contract:contracts!invoices_contract_id_fkey (id, start_billing_date, total_deposit, deposit_paid),
              invoice_items (type, description, from_date, to_date, amount)`,
           )
           .in('id', slice)
@@ -331,6 +334,7 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
           const rentServicePaid = Math.max(0, Math.min(invoicePaid, rentServiceTotal));
           map.set(inv.id, {
             invoiceId: inv.id,
+            contractId: contract?.id ?? null,
             rentFrom: rent?.from_date ?? null,
             rentTo: rent?.to_date ?? null,
             rentServicePaid,
@@ -339,10 +343,60 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
             invoiceTotal,
             depositPaid: Number(contract?.deposit_paid) || 0,
             depositTotal: Number(contract?.total_deposit) || 0,
+            depositInInvoice,
           });
         }
       }
       return map;
+    },
+  });
+};
+
+// =============================================
+// useContractDepositVouchers — phiếu thu CỌC RIÊNG của hợp đồng (ngoài hoá đơn).
+// = income_expenses INCOME đã duyệt, có item is_deposit, gắn contract_id. Đây là
+// phần cọc đóng bằng phiếu thu riêng — TÁCH khỏi phần cọc nhồi trong hoá đơn
+// (depositInInvoice) để popup hiển thị rạch ròi, không nhầm với tiền thu HĐ.
+// =============================================
+
+export interface ContractDepositVoucher {
+  id: string;
+  code: string | null;
+  totalAmount: number;
+  voucherDate: string | null;
+}
+
+export const useContractDepositVouchers = (contractId?: string | null) => {
+  return useQuery({
+    queryKey: ['contract-deposit-vouchers', contractId],
+    enabled: !!contractId,
+    queryFn: async (): Promise<ContractDepositVoucher[]> => {
+      if (!contractId) return [];
+      const { data, error } = await (supabase as any)
+        .from('income_expenses')
+        .select(
+          `id, code, total_amount, voucher_date,
+           income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
+        )
+        .eq('contract_id', contractId)
+        .eq('type', 'INCOME')
+        .eq('approval_status', 'APPROVED')
+        .is('deleted_at', null)
+        .eq('income_expense_items.income_expense_types.is_deposit', true)
+        .order('voucher_date', { ascending: true });
+      if (error) throw error;
+      // Dedupe theo id (phòng khi 1 phiếu có >1 item cọc → !inner nhân dòng).
+      const map = new Map<string, ContractDepositVoucher>();
+      for (const v of (data ?? []) as any[]) {
+        if (map.has(v.id)) continue;
+        map.set(v.id, {
+          id: v.id,
+          code: v.code ?? null,
+          totalAmount: Number(v.total_amount) || 0,
+          voucherDate: v.voucher_date ?? null,
+        });
+      }
+      return Array.from(map.values());
     },
   });
 };

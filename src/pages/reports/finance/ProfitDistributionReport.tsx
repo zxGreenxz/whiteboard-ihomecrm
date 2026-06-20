@@ -521,6 +521,9 @@ export default function ProfitDistributionReport() {
                                 {fmtCompact(fd.depositPaid)}
                               </span>{" "}
                               / {fmtCompact(fd.depositTotal)}
+                              {fd.depositInInvoice > 0 && (
+                                <span> ({fmtCompact(fd.depositInInvoice)} trong HĐ)</span>
+                              )}
                             </div>
                           )}
                         </div>
