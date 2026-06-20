@@ -462,10 +462,25 @@ export default function ProfitDistributionReport() {
               data.map((r) => {
                 const clickable = !!r.invoiceId;
                 const note = noteFor(r);
+                // HĐ tháng đầu: tô NỀN NHẠT cả dòng theo trạng thái — xanh khi HĐ
+                // & cọc đều đủ, đỏ khi còn thiếu (dung sai 1đ cho làm tròn).
+                const fd = r.invoiceId ? firstInvoiceDetails?.get(r.invoiceId) : null;
+                const invFull = fd ? fd.invoiceTotal - fd.invoicePaid < 1 : false;
+                const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
+                const firstFull = invFull && depFull;
+                const rowClass = fd
+                  ? `${clickable ? "cursor-pointer select-none " : ""}${
+                      firstFull
+                        ? "bg-emerald-50 hover:bg-emerald-100"
+                        : "bg-rose-50 hover:bg-rose-100"
+                    }`
+                  : clickable
+                    ? "cursor-pointer select-none hover:bg-muted/50"
+                    : undefined;
                 return (
                   <TableRow
                     key={r.key}
-                    className={clickable ? "cursor-pointer select-none hover:bg-muted/50" : undefined}
+                    className={rowClass}
                     onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
                     title={clickable ? "Nhấp đôi để xem các lần thu của hoá đơn này" : undefined}
                   >
@@ -478,32 +493,36 @@ export default function ProfitDistributionReport() {
                       {r.notKqkd && (
                         <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
                       )}
-                      {(() => {
-                        // HĐ tháng đầu (ký HĐ): hiện kỳ tiền phòng + đã thu/tổng
-                        // của HĐ và của cọc — gọn dưới mô tả.
-                        const fd = r.invoiceId ? firstInvoiceDetails?.get(r.invoiceId) : null;
-                        if (!fd) return null;
-                        return (
-                          <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                            {(fd.rentFrom || fd.rentTo) && (
-                              <div>
-                                <span className="text-foreground/70">Kỳ phòng:</span>{" "}
-                                {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
-                              </div>
-                            )}
+                      {fd && (
+                        // HĐ tháng đầu (ký HĐ): kỳ tiền phòng + đã thu/tổng của HĐ
+                        // và của cọc; số "đã thu" tô xanh khi đủ, đỏ khi thiếu.
+                        <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                          {(fd.rentFrom || fd.rentTo) && (
                             <div>
-                              <span className="text-foreground/70">Tiền phòng (HĐ):</span>{" "}
-                              đã thu {fmtCompact(fd.invoicePaid)} / {fmtCompact(fd.invoiceTotal)}
+                              <span className="text-foreground/70">Kỳ phòng:</span>{" "}
+                              {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
                             </div>
-                            {fd.depositTotal > 0 && (
-                              <div>
-                                <span className="text-foreground/70">Cọc:</span>{" "}
-                                đã đóng {fmtCompact(fd.depositPaid)} / {fmtCompact(fd.depositTotal)}
-                              </div>
-                            )}
+                          )}
+                          <div>
+                            <span className="text-foreground/70">Tiền phòng (HĐ):</span>{" "}
+                            đã thu{" "}
+                            <span className={`font-medium ${invFull ? "text-emerald-600" : "text-rose-600"}`}>
+                              {fmtCompact(fd.invoicePaid)}
+                            </span>{" "}
+                            / {fmtCompact(fd.invoiceTotal)}
                           </div>
-                        );
-                      })()}
+                          {fd.depositTotal > 0 && (
+                            <div>
+                              <span className="text-foreground/70">Cọc:</span>{" "}
+                              đã đóng{" "}
+                              <span className={`font-medium ${depFull ? "text-emerald-600" : "text-rose-600"}`}>
+                                {fmtCompact(fd.depositPaid)}
+                              </span>{" "}
+                              / {fmtCompact(fd.depositTotal)}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                     {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
                     {visible("phong") && <TableCell>{r.roomName || "—"}</TableCell>}

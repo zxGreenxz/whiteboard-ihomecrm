@@ -230,27 +230,38 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
         {(() => {
           const fd = firstInvoiceDetails?.get(invoiceId);
           if (!fd) return null;
+          const invFull = fd.invoiceTotal - fd.invoicePaid < 1;
+          const depFull = fd.depositTotal - fd.depositPaid < 1;
+          const full = invFull && depFull;
+          // Nền NHẠT theo trạng thái: xanh khi HĐ & cọc đều đủ, đỏ khi còn thiếu.
+          const tone = full
+            ? { box: 'border-emerald-200 bg-emerald-50/70', title: 'text-emerald-900', sub: 'text-emerald-900/80' }
+            : { box: 'border-rose-200 bg-rose-50/70', title: 'text-rose-900', sub: 'text-rose-900/80' };
           return (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm space-y-1">
-              <div className="font-medium text-emerald-900">
+            <div className={`rounded-lg border px-3 py-2 text-sm space-y-1 ${tone.box}`}>
+              <div className={`font-medium ${tone.title}`}>
                 Hoá đơn tháng đầu (ký hợp đồng)
               </div>
               {(fd.rentFrom || fd.rentTo) && (
-                <div className="text-emerald-900/80">
+                <div className={tone.sub}>
                   Kỳ tiền phòng: {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
                 </div>
               )}
-              <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-emerald-900/80">
+              <div className={`flex flex-wrap gap-x-5 gap-y-0.5 ${tone.sub}`}>
                 <span>
                   Tiền phòng (HĐ): đã thu{' '}
-                  <b className="text-emerald-700">{fmtVND(fd.invoicePaid)}</b> /{' '}
-                  {fmtVND(fd.invoiceTotal)}
+                  <b className={invFull ? 'text-emerald-700' : 'text-rose-700'}>
+                    {fmtVND(fd.invoicePaid)}
+                  </b>{' '}
+                  / {fmtVND(fd.invoiceTotal)}
                 </span>
                 {fd.depositTotal > 0 && (
                   <span>
                     Cọc: đã đóng{' '}
-                    <b className="text-emerald-700">{fmtVND(fd.depositPaid)}</b> /{' '}
-                    {fmtVND(fd.depositTotal)}
+                    <b className={depFull ? 'text-emerald-700' : 'text-rose-700'}>
+                      {fmtVND(fd.depositPaid)}
+                    </b>{' '}
+                    / {fmtVND(fd.depositTotal)}
                   </span>
                 )}
               </div>
