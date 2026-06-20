@@ -113,3 +113,8 @@
 .cm-app .loadmore:active { background: var(--surface-2); }
 .cm-app .stub { text-align: center; padding: 52px 28px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .cm-app .stub p { font-size: 13.5px; font-weight: 500; color: var(--ink-3); line-height: 1.55; margin: 0; max-width: 260px; }
+/* Skeleton shimmer cho danh sách (MobileListSkeleton) — đỡ cảm giác giật khi
+   data lần đầu chưa về. */
+.cm-app .sk { background: linear-gradient(90deg, var(--line-2) 25%, var(--surface-2) 37%, var(--line-2) 63%); background-size: 400% 100%; animation: cmSk 1.2s ease infinite; border-radius: 6px; }
+@keyframes cmSk { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .cm-app .sk { animation: none; } }

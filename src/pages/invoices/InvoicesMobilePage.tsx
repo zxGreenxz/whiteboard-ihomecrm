@@ -19,6 +19,7 @@ import type { BuildingWithRelations } from "@/types/building";
 import type { RoomWithRelations } from "@/types/room";
 import InvoiceStatsSummary from "@/components/invoices/InvoiceStatsSummary";
 import GenerateInvoiceDialog from "@/components/invoices/GenerateInvoiceDialog";
+import MobileListSkeleton from "@/components/mobile/MobileListSkeleton";
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -213,10 +214,8 @@ export default function InvoicesMobilePage() {
               />
             </div>
 
-            {isLoading ? (
-              <div className="stub">
-                <p>Đang tải hoá đơn…</p>
-              </div>
+            {isLoading && !result ? (
+              <MobileListSkeleton variant="invoice" />
             ) : rows.length === 0 ? (
               <div className="stub">
                 <p>Không có hoá đơn nào phù hợp bộ lọc.</p>

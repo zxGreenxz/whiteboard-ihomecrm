@@ -26,6 +26,7 @@ import type {
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
 import { ContractFormDialog } from '@/components/contracts/ContractFormDialog';
+import MobileListSkeleton from '@/components/mobile/MobileListSkeleton';
 
 // Định dạng tiền gọn (khớp DepositBadge desktop): "1.250.000 đ".
 const fmtVND = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + ' đ';
@@ -220,8 +221,8 @@ export default function ContractsMobilePage() {
               />
             </div>
 
-            {isLoading ? (
-              <div className="stub"><p>Đang tải hợp đồng…</p></div>
+            {isLoading && !paged ? (
+              <MobileListSkeleton variant="contract" />
             ) : rows.length === 0 ? (
               <div className="stub"><p>Không có hợp đồng nào phù hợp bộ lọc.</p></div>
             ) : (

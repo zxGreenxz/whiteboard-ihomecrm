@@ -12,6 +12,7 @@ import { canUse } from '@/lib/permissionPages';
 import { supabase } from '@/integrations/supabase/client';
 import type { Customer, CustomerStatus, CustomerFilters } from '@/types/customer';
 import type { BuildingWithRelations } from '@/types/building';
+import MobileListSkeleton from '@/components/mobile/MobileListSkeleton';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   MOTORBIKE: 'Xe máy',
@@ -168,8 +169,8 @@ export default function CustomersMobilePage() {
               />
             </div>
 
-            {isLoading ? (
-              <div className="stub"><p>Đang tải khách hàng…</p></div>
+            {isLoading && !paged ? (
+              <MobileListSkeleton variant="customer" />
             ) : rows.length === 0 ? (
               <div className="stub"><p>Không tìm thấy khách hàng phù hợp.</p></div>
             ) : (

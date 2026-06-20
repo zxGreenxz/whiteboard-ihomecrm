@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { RoomWithRelations } from "@/types/room";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
+import { STALE_SLOW } from "./queryStale";
 import { toast } from "sonner";
 
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
@@ -10,45 +11,49 @@ type RoomInsert = Database["public"]["Tables"]["rooms"]["Insert"];
 type RoomUpdate = Database["public"]["Tables"]["rooms"]["Update"];
 
 // Fetch all rooms (optionally filtered by building)
+// queryFn tách thành roomsQueryOptions để prefetch (HomeLauncher) dùng chung key/fn.
+export const roomsQueryOptions = (buildingId?: string) => ({
+  queryKey: (buildingId ? ["rooms", "building", buildingId] : ["rooms"]) as const,
+  staleTime: STALE_SLOW,
+  queryFn: async () => {
+    let query = supabase
+      .from("rooms")
+      .select(`
+        *,
+        building:buildings(id, name, code)
+      `)
+      .is("deleted_at", null)
+      .order("building_id", { ascending: true })
+      .order("floor", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (buildingId) {
+      query = query.eq("building_id", buildingId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('useRooms error:', error);
+      return [] as RoomWithRelations[];
+    }
+
+    // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...) — áp dụng
+    // cho mọi nơi dùng useRooms: dropdown chọn phòng, sơ đồ toà nhà, danh sách...
+    const rooms = (data || []) as unknown as RoomWithRelations[];
+    return [...rooms].sort((a, b) =>
+      compareBuildingThenRoom(
+        a.building?.name ?? "",
+        a.name ?? "",
+        b.building?.name ?? "",
+        b.name ?? "",
+      ),
+    );
+  },
+});
+
 export const useRooms = (buildingId?: string) => {
-  return useQuery({
-    queryKey: buildingId ? ["rooms", "building", buildingId] : ["rooms"],
-    queryFn: async () => {
-      let query = supabase
-        .from("rooms")
-        .select(`
-          *,
-          building:buildings(id, name, code)
-        `)
-        .is("deleted_at", null)
-        .order("building_id", { ascending: true })
-        .order("floor", { ascending: true })
-        .order("name", { ascending: true });
-
-      if (buildingId) {
-        query = query.eq("building_id", buildingId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('useRooms error:', error);
-        return [] as RoomWithRelations[];
-      }
-
-      // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...) — áp dụng
-      // cho mọi nơi dùng useRooms: dropdown chọn phòng, sơ đồ toà nhà, danh sách...
-      const rooms = (data || []) as unknown as RoomWithRelations[];
-      return [...rooms].sort((a, b) =>
-        compareBuildingThenRoom(
-          a.building?.name ?? "",
-          a.name ?? "",
-          b.building?.name ?? "",
-          b.name ?? "",
-        ),
-      );
-    },
-  });
+  return useQuery(roomsQueryOptions(buildingId));
 };
 
 // Fetch single room by ID

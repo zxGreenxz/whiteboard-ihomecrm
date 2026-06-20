@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import type {
 } from "@/types/customer";
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
 import { isContractInEffect } from "@/types/contract";
+import { STALE_LIVE } from "./queryStale";
 
 // Resolve building/room filter → customer IDs.
 // contracts has no customer_id (link is via contract_customers) and no
@@ -40,13 +41,16 @@ async function resolveCustomerIdsByLocation(filters: {
 // Requirements: 1.1, 1.5, 1.6, 1.9
 // =============================================
 
-export const useCustomers = (
+// queryFn tách thành factory để prefetch (HomeLauncher) dùng chung key/fn.
+export const customersQueryOptions = (
   filters?: CustomerFilters,
   pagination?: { page: number; pageSize: number }
-) => {
-  return useQuery({
-    queryKey: ["customers", filters, pagination],
-    queryFn: async (): Promise<PaginatedData<Customer>> => {
+) => ({
+  queryKey: ["customers", filters, pagination] as const,
+  // Giữ danh sách cũ khi đổi bộ lọc/tab để không nháy về skeleton.
+  placeholderData: keepPreviousData,
+  staleTime: STALE_LIVE,
+  queryFn: async (): Promise<PaginatedData<Customer>> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -155,7 +159,17 @@ export const useCustomers = (
         count: count || 0,
       };
     },
-  });
+});
+
+/** Bộ lọc/phân trang mặc định trang Khách hàng mobile lần render đầu (cho prefetch). */
+export const CUSTOMERS_MOBILE_DEFAULT_FILTERS: CustomerFilters = { status: "RENTING" };
+export const CUSTOMERS_MOBILE_DEFAULT_PAGINATION = { page: 1, pageSize: 30 };
+
+export const useCustomers = (
+  filters?: CustomerFilters,
+  pagination?: { page: number; pageSize: number }
+) => {
+  return useQuery(customersQueryOptions(filters, pagination));
 };
 
 // =============================================

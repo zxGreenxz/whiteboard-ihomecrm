@@ -349,24 +349,39 @@ async function fetchContractsPagedOnce(
   };
 }
 
+// queryFn tách thành factory để prefetch (HomeLauncher) dùng chung key/fn.
+export const contractsPagedQueryOptions = (
+  filters?: ContractPagedFilters,
+  pagination?: ContractPagedParams,
+) => ({
+  queryKey: ["contracts", "paged", filters ?? null, pagination ?? null] as const,
+  // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về "Đang tải".
+  placeholderData: keepPreviousData,
+  queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
+    const range = pagination
+      ? {
+          from: (pagination.page - 1) * pagination.pageSize,
+          to: (pagination.page - 1) * pagination.pageSize + pagination.pageSize - 1,
+        }
+      : null;
+    return fetchContractsPagedOnce(filters, range);
+  },
+});
+
+/** Bộ lọc/phân trang mặc định trang Hợp đồng mobile lần render đầu — dùng cho
+ *  prefetch để băm queryKey trùng khít (JSON.stringify bỏ key undefined). */
+export const CONTRACTS_MOBILE_DEFAULT_FILTERS: ContractPagedFilters = {
+  lifecycle: "ACTIVE",
+  stat: "ALL",
+};
+export const CONTRACTS_MOBILE_DEFAULT_PAGINATION: ContractPagedParams = { page: 1, pageSize: 30 };
+export const CONTRACTS_STATS_DEFAULT_BUILDING_IDS: string[] = [];
+
 export const useContractsPaged = (
   filters?: ContractPagedFilters,
   pagination?: ContractPagedParams,
 ) => {
-  return useQuery({
-    queryKey: ["contracts", "paged", filters ?? null, pagination ?? null],
-    // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về "Đang tải".
-    placeholderData: keepPreviousData,
-    queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
-      const range = pagination
-        ? {
-            from: (pagination.page - 1) * pagination.pageSize,
-            to: (pagination.page - 1) * pagination.pageSize + pagination.pageSize - 1,
-          }
-        : null;
-      return fetchContractsPagedOnce(filters, range);
-    },
-  });
+  return useQuery(contractsPagedQueryOptions(filters, pagination));
 };
 
 /**
@@ -414,11 +429,10 @@ const contractHeadCountBase = (buildingIds?: string[]) => {
   return q;
 };
 
-export const useContractStats = (buildingIds?: string[]) => {
-  return useQuery({
-    queryKey: ["contracts", "stats", buildingIds ?? []],
-    placeholderData: keepPreviousData,
-    queryFn: async (): Promise<ContractStats> => {
+export const contractStatsQueryOptions = (buildingIds?: string[]) => ({
+  queryKey: ["contracts", "stats", buildingIds ?? []] as const,
+  placeholderData: keepPreviousData,
+  queryFn: async (): Promise<ContractStats> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -456,7 +470,10 @@ export const useContractStats = (buildingIds?: string[]) => {
         terminated: terminated.count ?? 0,
       };
     },
-  });
+});
+
+export const useContractStats = (buildingIds?: string[]) => {
+  return useQuery(contractStatsQueryOptions(buildingIds));
 };
 
 // =============================================

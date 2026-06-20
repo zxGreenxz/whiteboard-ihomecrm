@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import type { BuildingStatus, BuildingWithRelations } from "@/types/building";
+import { STALE_SLOW } from "./queryStale";
 import { toast } from "sonner";
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
@@ -12,10 +13,13 @@ type BuildingUpdate = Database["public"]["Tables"]["buildings"]["Update"];
 // Fetch all buildings with areas (N-N qua area_buildings) and non-deleted rooms count.
 // Mặc định ẩn tòa ảo (is_virtual=true) — chỉ form thu/chi mới truyền { includeVirtual: true }
 // để cho phép chọn mục "Chung" (tòa ảo đại diện chi phí không thuộc tòa thật).
-export const useBuildings = (options?: { includeVirtual?: boolean }) => {
+// queryFn tách thành buildingsQueryOptions để prefetch (HomeLauncher) dùng chung
+// đúng queryKey/queryFn với hook → prefetch trúng cache.
+export const buildingsQueryOptions = (options?: { includeVirtual?: boolean }) => {
   const includeVirtual = options?.includeVirtual ?? false;
-  return useQuery({
-    queryKey: ["buildings", { includeVirtual }],
+  return {
+    queryKey: ["buildings", { includeVirtual }] as const,
+    staleTime: STALE_SLOW,
     queryFn: async () => {
       let q = (supabase
         .from("buildings")
@@ -44,7 +48,11 @@ export const useBuildings = (options?: { includeVirtual?: boolean }) => {
         areas: (building.area_links || []).map((l: any) => l.area).filter(Boolean),
       }));
     },
-  });
+  };
+};
+
+export const useBuildings = (options?: { includeVirtual?: boolean }) => {
+  return useQuery(buildingsQueryOptions(options));
 };
 
 // Fetch single building by ID

@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bell, Search, TrendingUp, Wallet, Building2 } from 'lucide-react';
 import './homeLauncher.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -7,6 +9,7 @@ import { useDashboardStats } from '@/hooks/useDashboard';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { LAUNCHER_SECTIONS, type LauncherTile } from './launcherTiles';
+import { runLauncherPrefetch } from './launcherPrefetch';
 
 // Rút gọn tiền cho ô hero: 18.4tr · 84.5tr · 1.2 tỷ (đồng bộ style Space Mono
 // của Thu tiền). Số nhỏ < 1.000 thì để nguyên.
@@ -50,6 +53,16 @@ const HomeLauncher = () => {
   const { data: profile } = useProfile();
   const { data: stats } = useDashboardStats(null);
   const { data: perms } = useMyPermissions();
+
+  // Prefetch code + data của trang ngay khi ngón tay chạm ô (pointerdown) hoặc rê
+  // chuột (thiết bị có con trỏ) → vào trang là có sẵn, không nháy "Đang tải".
+  const queryClient = useQueryClient();
+  const fired = useRef<Set<string>>(new Set());
+  const prefetch = (id: string) => {
+    if (fired.current.has(id)) return;
+    fired.current.add(id);
+    runLauncherPrefetch(id, queryClient);
+  };
 
   const name = profile?.full_name || user?.email || 'Bạn';
 
@@ -113,7 +126,13 @@ const HomeLauncher = () => {
                     const badge = badgeOf(t);
                     const soft = !(t.id === 'thu-tien' || t.id === 'invoices');
                     return (
-                      <Link key={t.id} to={t.href} className={'tile' + (t.hot ? ' hot' : '')}>
+                      <Link
+                        key={t.id}
+                        to={t.href}
+                        className={'tile' + (t.hot ? ' hot' : '')}
+                        onPointerDown={() => prefetch(t.id)}
+                        onMouseEnter={() => prefetch(t.id)}
+                      >
                         <span className="tile-ic" style={{ background: t.accent }}>
                           <Icon />
                           {badge ? (

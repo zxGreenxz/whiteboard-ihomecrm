@@ -4,11 +4,12 @@
 // Uses new schema with billing_month (YYYY-MM) and building_id on invoices.
 // =============================================
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import type { PaginatedData } from '@/hooks/usePagination';
+import { STALE_LIVE } from './queryStale';
 import type {
   InvoiceWithRelations,
   InvoiceFilters,
@@ -58,13 +59,16 @@ export interface InvoicePaginationParams {
 // Requirements: 10.2, 10.4, 10.5, 13.7
 // =============================================
 
-export const useInvoices = (
+// queryFn tách thành factory để prefetch (HomeLauncher) dùng chung key/fn.
+export const invoicesQueryOptions = (
   filters?: InvoiceFilters,
   pagination?: InvoicePaginationParams,
-) => {
-  return useQuery({
-    queryKey: ['invoices', filters, pagination],
-    queryFn: async (): Promise<PaginatedData<InvoiceWithRelations>> => {
+) => ({
+  queryKey: ['invoices', filters, pagination] as const,
+  // Giữ danh sách cũ khi đổi bộ lọc/tab để không nháy về skeleton.
+  placeholderData: keepPreviousData,
+  staleTime: STALE_LIVE,
+  queryFn: async (): Promise<PaginatedData<InvoiceWithRelations>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -134,7 +138,17 @@ export const useInvoices = (
         count: count || 0,
       };
     },
-  });
+});
+
+/** Bộ lọc/phân trang mặc định trang Hoá đơn mobile lần render đầu (cho prefetch). */
+export const INVOICES_MOBILE_DEFAULT_FILTERS: InvoiceFilters = {};
+export const INVOICES_MOBILE_DEFAULT_PAGINATION: InvoicePaginationParams = { page: 1, pageSize: 30 };
+
+export const useInvoices = (
+  filters?: InvoiceFilters,
+  pagination?: InvoicePaginationParams,
+) => {
+  return useQuery(invoicesQueryOptions(filters, pagination));
 };
 
 // Legacy hook for backwards compatibility (returns array directly)
