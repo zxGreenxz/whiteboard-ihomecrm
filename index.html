@@ -10,17 +10,36 @@
     <meta name="description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
     <meta name="author" content="CRM" />
 
+    <!-- Đánh dấu chạy standalone (đã cài vào MH chính) — CHỈ khi đó mới hiện
+         splash. Tab trình duyệt (desktop/mobile) KHÔNG hiện để không che nội
+         dung. navigator.standalone phủ cả iOS đời cũ (chưa hỗ trợ media query). -->
+    <script>
+      (function () {
+        try {
+          if (
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true
+          ) {
+            document.documentElement.classList.add('pwa-standalone');
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Splash tức thì: nền brand + logo ngay từ paint đầu tiên, tránh MÀN ĐEN
          khi chunk JS đang tải (đặc biệt standalone iOS dark mode). React gọi
-         hideAppSplash() khi trang đầu mount (xem src/lib/appSplash.ts). -->
+         hideAppSplash() khi trang đầu mount (xem src/lib/appSplash.ts).
+         Mặc định display:none → chỉ .pwa-standalone mới bật. -->
     <style>
-      html, body { margin: 0; background: #f5f3ee; }
+      html, body { margin: 0; }
+      html.pwa-standalone, html.pwa-standalone body { background: #f5f3ee; }
       #app-splash {
         position: fixed; inset: 0; z-index: 99999;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        display: none; flex-direction: column; align-items: center; justify-content: center;
         gap: 24px; background: #f5f3ee;
         opacity: 1; transition: opacity .28s ease;
       }
+      html.pwa-standalone #app-splash { display: flex; }
       #app-splash .as-logo {
         width: 84px; height: 84px; border-radius: 21px;
         background: linear-gradient(150deg, #21845a, #176244);

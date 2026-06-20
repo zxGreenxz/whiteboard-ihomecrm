@@ -115,11 +115,14 @@ All colors MUST be HSL.
   }
 
   /* App-like: chặn pull-to-refresh / rubber-band của trình duyệt để cảm giác
-     native khi chạy standalone trên màn hình chính. Các vùng cuộn trong app
-     shell (.mbody/.home-body/.scroll…) tự set overscroll-behavior: contain. */
-  html,
-  body {
-    overscroll-behavior: none;
+     native khi chạy standalone trên màn hình chính. CHỈ áp dụng cho mobile —
+     desktop giữ nguyên hành vi cuộn mặc định. Vùng cuộn trong app shell
+     (.mbody/.home-body/.scroll…) tự set overscroll-behavior: contain. */
+  @media (max-width: 767px) {
+    html,
+    body {
+      overscroll-behavior: none;
+    }
   }
 }
 
