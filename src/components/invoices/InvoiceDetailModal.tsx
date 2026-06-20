@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DIALOG_CLOSE_RED,
 } from '@/components/ui/dialog';
 import InvoiceDetailView from './InvoiceDetailView';
 
@@ -31,6 +32,7 @@ export default function InvoiceDetailModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="left-0 top-0 h-screen max-h-screen w-screen max-w-none translate-x-0 translate-y-0 flex flex-col gap-0 rounded-none border-0 p-0 sm:rounded-none"
+        closeClassName={DIALOG_CLOSE_RED}
       >
         <DialogHeader className="flex shrink-0 flex-row items-center gap-2 space-y-0 border-b bg-white px-4 py-3 pr-12 text-left">
           <Receipt className="h-5 w-5 shrink-0 text-emerald-600" />
