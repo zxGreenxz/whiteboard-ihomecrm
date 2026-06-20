@@ -7,6 +7,7 @@ import { useDashboardStats } from '@/hooks/useDashboard';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { LAUNCHER_SECTIONS, type LauncherTile } from './launcherTiles';
+import InstallHint from '@/components/pwa/InstallHint';
 
 // Rút gọn tiền cho ô hero: 18.4tr · 84.5tr · 1.2 tỷ (đồng bộ style Space Mono
 // của Thu tiền). Số nhỏ < 1.000 thì để nguyên.
@@ -91,6 +92,7 @@ const HomeLauncher = () => {
           </header>
 
           <div className="home-body">
+            <InstallHint />
             <div className="hero">
               <div className="hero-card rev">
                 <div className="hero-l"><TrendingUp />THU THÁNG NÀY</div>

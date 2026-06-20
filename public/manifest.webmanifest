@@ -14,5 +14,31 @@
     { "src": "/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Thu tiền",
+      "short_name": "Thu tiền",
+      "url": "/thu-tien",
+      "icons": [{ "src": "/sc-thu-tien.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Hoá đơn",
+      "short_name": "Hoá đơn",
+      "url": "/invoices",
+      "icons": [{ "src": "/sc-invoices.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Khách hàng",
+      "short_name": "Khách hàng",
+      "url": "/customers",
+      "icons": [{ "src": "/sc-customers.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Căn hộ",
+      "short_name": "Căn hộ",
+      "url": "/apartments",
+      "icons": [{ "src": "/sc-apartments.png", "sizes": "96x96", "type": "image/png" }]
+    }
   ]
 }

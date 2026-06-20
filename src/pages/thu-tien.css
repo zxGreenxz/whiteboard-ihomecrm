@@ -5,7 +5,7 @@
    rò ra ngoài (mọi rule prefix .tt-page). Lazy-load qua route nên CSS + font
    chỉ nạp khi mở /thu-tien.
    ============================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+/* Font Be Vietnam Pro + Space Mono nạp gộp 1 <link> ở index.html (tránh @import render-blocking). */
 
 /* ===== Outer stage: nền "bàn", canh giữa khung điện thoại trên desktop =====
    Token đặt ở .tt-stage để cả khung điện thoại (.tt-page) lẫn panel quản lý
@@ -68,7 +68,7 @@
 }
 
 /* ===== Scroll body ===== */
-.tt-page .scroll { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.tt-page .scroll { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .tt-page .scroll::-webkit-scrollbar { display: none; }
 
 /* ===== Header ===== */

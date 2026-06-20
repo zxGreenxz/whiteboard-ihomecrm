@@ -113,6 +113,14 @@ All colors MUST be HSL.
       font-size: 16px !important;
     }
   }
+
+  /* App-like: chặn pull-to-refresh / rubber-band của trình duyệt để cảm giác
+     native khi chạy standalone trên màn hình chính. Các vùng cuộn trong app
+     shell (.mbody/.home-body/.scroll…) tự set overscroll-behavior: contain. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
 }
 
 /* ===== Print Styles ===== */

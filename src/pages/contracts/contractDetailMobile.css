@@ -5,7 +5,7 @@
    Pro + Space Mono, khung điện thoại). KHÔNG kế thừa theme site; không rò ra
    ngoài. Lazy-load qua nhánh mobile → font + CSS chỉ nạp trên điện thoại.
    ============================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+/* Font Be Vietnam Pro + Space Mono nạp gộp 1 <link> ở index.html (tránh @import render-blocking). */
 
 /* ===== Outer stage + tokens ===== */
 .cdt-stage {
@@ -69,7 +69,7 @@
 .cdt-app .mtop-btn svg { width: 15px; height: 15px; }
 .cdt-app .mtop-btn.ghost { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); box-shadow: none; }
 
-.cdt-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 16px; }
+.cdt-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 .cdt-app .mbody::-webkit-scrollbar { display: none; }
 
 .cdt-app .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; }

@@ -7,7 +7,7 @@
    prefix .hl-stage/.hl-app). Lazy-load qua route → CSS + font chỉ nạp
    khi mở launcher (mobile "/").
    ============================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+/* Font Be Vietnam Pro + Space Mono nạp gộp 1 <link> ở index.html (tránh @import render-blocking). */
 
 /* ===== Outer stage + tokens (nền "bàn", canh giữa khung điện thoại) ===== */
 .hl-stage {
@@ -82,7 +82,7 @@
 .hl-app .hh-search span { font-size: 13.5px; font-weight: 500; }
 
 /* hero today strip */
-.hl-app .home-body { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 16px 16px 30px; }
+.hl-app .home-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 16px 16px calc(30px + env(safe-area-inset-bottom)); }
 .hl-app .home-body::-webkit-scrollbar { display: none; }
 .hl-app .hero { display: flex; gap: 11px; margin-bottom: 22px; }
 .hl-app .hero-card { flex: 1; border-radius: var(--r-lg); padding: 14px 15px; border: 1px solid; position: relative; overflow: hidden; }
@@ -99,6 +99,19 @@
 .hl-app .hero-card.rev .hero-s { color: rgba(255,255,255,.8); }
 .hl-app .hero-card.debt .hero-s { color: var(--ink-3); }
 .hl-app .hero-v small { font-family: var(--mono); font-size: 14px; font-weight: 700; }
+
+/* Install hint banner (gợi ý cài app — Android prompt / iOS hướng dẫn) */
+.hl-app .ihint { display: flex; align-items: center; gap: 11px; background: var(--brand-50); border: 1px solid var(--brand-100); border-radius: var(--r); padding: 10px 11px; margin-bottom: 16px; }
+.hl-app .ihint-ic { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(150deg, var(--brand), var(--brand-600)); color: #fff; display: grid; place-items: center; flex-shrink: 0; box-shadow: var(--sh-1); }
+.hl-app .ihint-ic svg { width: 18px; height: 18px; }
+.hl-app .ihint-body { flex: 1; min-width: 0; }
+.hl-app .ihint-t { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.2px; }
+.hl-app .ihint-s { font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-top: 2px; line-height: 1.35; }
+.hl-app .ihint-btn { flex-shrink: 0; height: 34px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--brand); color: #fff; font-family: var(--font); font-weight: 700; font-size: 12.5px; cursor: pointer; transition: .14s; }
+.hl-app .ihint-btn:active { background: var(--brand-600); transform: scale(.96); }
+.hl-app .ihint-x { flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; transition: .14s; }
+.hl-app .ihint-x svg { width: 16px; height: 16px; }
+.hl-app .ihint-x:active { background: var(--line-2); }
 
 /* launcher sections */
 .hl-app .lsec { margin-bottom: 22px; }

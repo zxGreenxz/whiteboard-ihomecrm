@@ -6,7 +6,7 @@
    (warm-neutral + emerald, Be Vietnam Pro + Space Mono, khung điện thoại).
    KHÔNG kế thừa theme site; không rò ra ngoài. Nạp lười theo nhánh mobile.
    ============================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+/* Font Be Vietnam Pro + Space Mono nạp gộp 1 <link> ở index.html (tránh @import render-blocking). */
 
 /* ===== Outer stage + tokens ===== */
 .cm-stage {
@@ -73,7 +73,7 @@
 .cm-app .mtop-btn.fbtn.act { background: var(--brand-50); border-color: var(--brand-100); color: var(--brand-600); }
 .cm-app .fbadge { position: absolute; top: -5px; right: -5px; font-family: var(--mono); font-size: 10px; font-weight: 700; background: var(--brand); color: #fff; border-radius: 999px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--surface); }
 
-.cm-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 16px; }
+.cm-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 .cm-app .mbody::-webkit-scrollbar { display: none; }
 
 /* ===== Status tabs (lchip) ===== */

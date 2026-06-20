@@ -1,5 +1,5 @@
 /* ===== Phong Trong - Sale View · Design System ===== */
-@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap");
+/* Font Be Vietnam Pro + Space Mono nạp gộp 1 <link> ở index.html (tránh @import render-blocking). */
 
 :root {
   /* Surfaces & ink (warm neutral) */
@@ -99,6 +99,7 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
