@@ -6,6 +6,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { getSessionUser } from "@/lib/authSession";
 import { Icon } from "./icons";
 import { fmtPrice, type Room } from "./sampleData";
+import { useTrack } from "./useTracking";
 
 /**
  * Modal "Tạo phiếu cọc nhanh" — chỉ hiển thị cho user ĐANG ĐĂNG NHẬP có quyền
@@ -47,6 +48,7 @@ export function QuickDepositModal({
   onDone: (msg: string) => void;
 }) {
   const qc = useQueryClient();
+  const track = useTrack();
   const createIE = useCreateIncomeExpense();
   const { data: accounts = [] } = useAccounts();
   const [amount, setAmount] = useState(""); // chuỗi chữ số (đã bỏ separator)
@@ -163,9 +165,15 @@ export function QuickDepositModal({
 
       // Phòng vừa bị khoá (RESERVED) → refetch danh sách công khai để ẩn ngay.
       qc.invalidateQueries({ queryKey: ["phong-trong"] });
+      track.track("deposit_dialog", {
+        room_id: room.id, room_code: room.code, room_name: String(room.no),
+        building_id: room.buildingId, building_name: room.buildingName,
+        metadata: { created: true, amount: unitPrice },
+      });
       onDone(`Đã tạo cọc — phòng ${roomLabel} đã được giữ`);
       onClose();
     } catch (e) {
+      track.track("error", { room_id: room.id, metadata: { where: "deposit", msg: (e as Error)?.message?.slice(0, 300) } });
       onDone((e as Error)?.message || "Tạo phiếu cọc thất bại");
       setSubmitting(false);
     }

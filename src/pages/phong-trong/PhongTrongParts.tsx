@@ -4,6 +4,7 @@ import {
   STATUS_META, fmtPrice, GENERAL_POLICY,
   type Room, type Building, type FloorPlan as FloorPlanData, type RoomStatus,
 } from "./sampleData";
+import { useRoomImpression } from "./useTracking";
 
 const SM = STATUS_META;
 const stColor = (s: RoomStatus | string) => `var(--st-${s})`;
@@ -54,8 +55,9 @@ export function FilterBar({ showRented, setShowRented, band, setBand }: {
 
 /* ===== List view ===== */
 export function RoomCard({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
+  const impRef = useRoomImpression<HTMLDivElement>(r);
   return (
-    <div className="room-card" onClick={() => onOpen(r)}>
+    <div className="room-card" ref={impRef} onClick={() => onOpen(r)}>
       <div className="rc-photo">
         <img className="rc-img" src={(r.images && r.images[0]) || `https://picsum.photos/seed/${r.code}/600/440`} alt={r.type} loading="lazy" decoding="async" />
         <span className="rc-badge">
@@ -196,7 +198,22 @@ export function OverviewView({
             {isOpen && (
               <div className="ov-rows">
                 {rooms.map((r) => (
-                  <div className={"ov-row" + (r.status === "pass" ? " pass" : "")} key={r.id} onClick={() => onOpen(r)}>
+                  <OvRow key={r.id} r={r} onOpen={onOpen} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 1 hàng phòng trong trang Tổng hợp — tách riêng để gắn impression observer. */
+function OvRow({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
+  const impRef = useRoomImpression<HTMLDivElement>(r);
+  return (
+                  <div className={"ov-row" + (r.status === "pass" ? " pass" : "")} ref={impRef} onClick={() => onOpen(r)}>
                     <span className="ovr-bar" style={{ background: stColor(r.status) }} />
                     <div className="ovr-body">
                       <div className="ovr-l1">
@@ -229,13 +246,6 @@ export function OverviewView({
                     </div>
                     <span className="ov-chevron"><Icon.Chevron /></span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
   );
 }
 

@@ -159,6 +159,9 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("sale_phong", "create_deposit", "Tạo cọc nhanh trên trang công khai", "elevated", {
             desc: "Nút 'Tạo cọc giữ phòng' trên /r/:token khi đăng nhập — phòng tự chuyển ĐÃ CỌC.",
           }),
+          f("sale_phong", "view_analytics", "Xem tab Thống kê truy cập", "view", {
+            desc: "Tab 'Thống kê' — đo đếm lượt xem, thời gian, phòng được xem nhiều, lỗi của trang /r/:token.",
+          }),
         ],
       },
     ],

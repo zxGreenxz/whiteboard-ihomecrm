@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Share2, SlidersHorizontal, Image as ImageIcon, LayoutGrid, Repeat } from "lucide-react";
+import { Share2, SlidersHorizontal, Image as ImageIcon, LayoutGrid, Repeat, BarChart3 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ShareTokensTab from "@/components/sale-phong/ShareTokensTab";
@@ -7,10 +7,11 @@ import DisplaySettingsTab from "@/components/sale-phong/DisplaySettingsTab";
 import SaleImagesTab from "@/components/sale-phong/SaleImagesTab";
 import PassListingsTab from "@/components/sale-phong/PassListingsTab";
 import FloorPlanEditorTab from "@/components/sale-phong/floor-editor/FloorPlanEditorTab";
+import AnalyticsTab from "@/components/sale-phong/AnalyticsTab";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 
-type TabKey = "tokens" | "settings" | "images" | "pass" | "floorplan";
+type TabKey = "tokens" | "settings" | "images" | "pass" | "floorplan" | "analytics";
 
 /**
  * Trang quản trị "SALE PHÒNG": vận hành trang công khai "Phòng trống" (/r/:token).
@@ -28,6 +29,7 @@ export default function SalePhongPage() {
         { key: "images" as TabKey, allowed: canUse(perms, "sale_phong", "manage_images") },
         { key: "pass" as TabKey, allowed: canUse(perms, "sale_phong", "manage_pass_listings") },
         { key: "floorplan" as TabKey, allowed: canUse(perms, "sale_phong", "edit_floor_plan") },
+        { key: "analytics" as TabKey, allowed: canUse(perms, "sale_phong", "view_analytics") },
       ].filter((t) => t.allowed),
     [perms],
   );
@@ -79,6 +81,11 @@ export default function SalePhongPage() {
                   <LayoutGrid className="h-4 w-4" />Sơ đồ tòa nhà
                 </TabsTrigger>
               )}
+              {tabs.some((t) => t.key === "analytics") && (
+                <TabsTrigger value="analytics" className="gap-1.5">
+                  <BarChart3 className="h-4 w-4" />Thống kê
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="tokens" className="mt-4"><ShareTokensTab /></TabsContent>
@@ -86,6 +93,7 @@ export default function SalePhongPage() {
             <TabsContent value="images" className="mt-4"><SaleImagesTab /></TabsContent>
             <TabsContent value="pass" className="mt-4"><PassListingsTab /></TabsContent>
             <TabsContent value="floorplan" className="mt-4"><FloorPlanEditorTab /></TabsContent>
+            <TabsContent value="analytics" className="mt-4"><AnalyticsTab /></TabsContent>
           </Tabs>
         )}
       </div>

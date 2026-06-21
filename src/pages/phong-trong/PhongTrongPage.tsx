@@ -9,6 +9,7 @@ import { usePhongTrong } from "./usePhongTrong";
 import { QuickDepositModal } from "./QuickDepositModal";
 import { useSession } from "@/hooks/useAuth";
 import { useMyPermissions, can } from "@/hooks/useMyPermissions";
+import { useTracking, TrackingProvider } from "./useTracking";
 
 /** Giá trị đặc biệt cho chip "Tổng hợp" trong hàng chọn tòa nhà (xem tất cả tòa). */
 const OVERVIEW = "__overview__";
@@ -36,8 +37,16 @@ export default function PhongTrongPage() {
   const { data: session } = useSession();
   const { data: perms } = useMyPermissions();
   const canQuickDeposit = !!session?.user && can(perms, "sale_phong", "create_deposit");
+  // Bộ đo đếm: no-op khi không có token; is_staff = đang đăng nhập (cờ boolean, KHÔNG id/email).
+  const tracker = useTracking(token, !!session?.user);
   const [depositRoom, setDepositRoom] = useState<Room | null>(null);
-  const openDeposit = (r: Room) => setDepositRoom(r);
+  const openDeposit = (r: Room) => {
+    setDepositRoom(r);
+    tracker.track("deposit_dialog", {
+      room_id: r.id, room_code: r.code, room_name: String(r.no),
+      building_id: r.buildingId, building_name: r.buildingName,
+    });
+  };
   const [toast, setToast] = useState({ msg: "", show: false });
   const toastTimer = useRef<number | undefined>(undefined);
   const propsRef = useRef<HTMLDivElement>(null);
@@ -47,8 +56,10 @@ export default function PhongTrongPage() {
     try { return JSON.parse(localStorage.getItem("pt_saved") || "[]"); } catch { return []; }
   });
   useEffect(() => { localStorage.setItem("pt_saved", JSON.stringify(saved)); }, [saved]);
-  const toggleSave = (id: string) =>
+  const toggleSave = (id: string) => {
+    tracker.track("favorite", { room_id: id, metadata: { on: !saved.includes(id) } });
     setSaved((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  };
 
   // Kéo ngang hàng quận + tòa nhà: vuốt trên mobile (native) + kéo chuột trên desktop.
   useEffect(() => {
@@ -88,10 +99,33 @@ export default function PhongTrongPage() {
   const building = buildings.find((p) => p.id === propId) || buildings[0];
 
   const pickDistrict = (d: string) => {
+    tracker.track("building_select", { metadata: { kind: "district", district: d } });
     setDistrict(d);
     if (isOverview) return; // giữ chế độ "Tổng hợp" khi đổi quận
     const first = buildings.find((p) => d === "all" || p.district === d);
     if (first) setPropId(first.id);
+  };
+
+  // Chọn tòa (chip) — ghi building_select.
+  const selectBuilding = (id: string) => {
+    setPropId(id);
+    if (id === OVERVIEW) {
+      tracker.track("building_select", { metadata: { overview: true } });
+    } else {
+      const b = buildings.find((p) => p.id === id);
+      tracker.track("building_select", { building_id: id, building_name: b?.name });
+    }
+  };
+
+  // Đổi chế độ Danh sách/Sơ đồ — ghi view_mode (+ floorplan_view khi vào Sơ đồ).
+  const changeView = (v: "map" | "list") => {
+    setView(v);
+    tracker.track("view_mode", { metadata: { view: v } });
+    if (v === "map") {
+      tracker.track("floorplan_view", isOverview
+        ? { metadata: { overview: true } }
+        : { building_id: building.id, building_name: building.name });
+    }
   };
 
   const listRooms = useMemo(() => {
@@ -100,8 +134,32 @@ export default function PhongTrongPage() {
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
   }, [building]);
 
-  const openRoom = (r: Room) => { setRoom(r); requestAnimationFrame(() => setSheetShow(true)); };
-  const closeSheet = () => { setSheetShow(false); window.setTimeout(() => setRoom(null), 300); };
+  // Đo thời gian xem chi tiết mỗi phòng: chốt dwell khi đóng / mở phòng khác / rời trang.
+  const roomDwell = useRef<{ id: string; code: string; no: number; bid: string; bname: string; at: number } | null>(null);
+  const emitRoomDwell = () => {
+    const d = roomDwell.current;
+    if (!d) return;
+    roomDwell.current = null;
+    const at = typeof performance !== "undefined" ? performance.now() : Date.now();
+    tracker.track("room_open", {
+      room_id: d.id, room_code: d.code, room_name: String(d.no),
+      building_id: d.bid, building_name: d.bname, dwell_ms: at - d.at,
+    });
+  };
+  const emitDwellRef = useRef(emitRoomDwell);
+  emitDwellRef.current = emitRoomDwell;
+  useEffect(() => () => emitDwellRef.current(), []); // chốt dwell phòng đang mở khi rời trang
+
+  const openRoom = (r: Room) => {
+    emitRoomDwell(); // chốt phòng trước (nếu có)
+    roomDwell.current = {
+      id: r.id, code: r.code, no: r.no, bid: r.buildingId, bname: r.buildingName,
+      at: typeof performance !== "undefined" ? performance.now() : Date.now(),
+    };
+    setRoom(r);
+    requestAnimationFrame(() => setSheetShow(true));
+  };
+  const closeSheet = () => { emitRoomDwell(); setSheetShow(false); window.setTimeout(() => setRoom(null), 300); };
 
   const showToast = (msg: string) => {
     setToast({ msg, show: true });
@@ -112,6 +170,12 @@ export default function PhongTrongPage() {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
   const alwaysTrue = () => true;
+
+  // Ghi lỗi tải dữ liệu / token sai (không log giá trị token).
+  useEffect(() => {
+    if (token && isError) tracker.track("error", { metadata: { kind: "fetch_or_token", where: "usePhongTrong" } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isError, token]);
 
   if (token && isLoading && !(data && data.length)) {
     return (
@@ -129,6 +193,7 @@ export default function PhongTrongPage() {
   }
 
   return (
+    <TrackingProvider tracker={tracker}>
     <div id="stage">
       <div className="app">
         <div className="hdr">
@@ -142,10 +207,10 @@ export default function PhongTrongPage() {
           </div>
 
           <div className="seg">
-            <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>
+            <button className={view === "list" ? "on" : ""} onClick={() => changeView("list")}>
               <Icon.Photo />Danh sách
             </button>
-            <button className={view === "map" ? "on" : ""} onClick={() => setView("map")}>
+            <button className={view === "map" ? "on" : ""} onClick={() => changeView("map")}>
               <Icon.Grid />Sơ đồ
             </button>
           </div>
@@ -161,12 +226,12 @@ export default function PhongTrongPage() {
 
           <div className="sel-lbl">Tòa nhà</div>
           <div className="props" ref={propsRef}>
-            <button className={"prop-chip" + (isOverview ? " on" : "")} onClick={() => setPropId(OVERVIEW)}>
+            <button className={"prop-chip" + (isOverview ? " on" : "")} onClick={() => selectBuilding(OVERVIEW)}>
               <span className="pc-name">Tổng hợp</span>
               <span className="pc-meta">{visibleBuildings.length} tòa · {totalFree} trống</span>
             </button>
             {visibleBuildings.map((p) => (
-              <button key={p.id} className={"prop-chip" + (p.id === propId ? " on" : "")} onClick={() => setPropId(p.id)}>
+              <button key={p.id} className={"prop-chip" + (p.id === propId ? " on" : "")} onClick={() => selectBuilding(p.id)}>
                 <span className="pc-name">{p.name}</span>
                 <span className="pc-meta">{p.area} · {p.freeCount} trống</span>
               </button>
@@ -186,10 +251,11 @@ export default function PhongTrongPage() {
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
-        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={setRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
+        <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
         <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
         <Toast msg={toast.msg} show={toast.show} />
       </div>
     </div>
+    </TrackingProvider>
   );
 }

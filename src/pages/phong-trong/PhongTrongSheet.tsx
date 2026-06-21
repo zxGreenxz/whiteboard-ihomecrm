@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
 import { STATUS_META, fmtPrice, MANAGER, genInfoLines, type Room, type Building } from "./sampleData";
+import { useTrack } from "./useTracking";
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
@@ -147,6 +148,7 @@ export function DetailSheet({
   /** Có quyền tạo cọc nhanh → hiện nút "Tạo cọc giữ phòng" (phòng chưa thuê). */
   onQuickDeposit?: (r: Room) => void;
 }) {
+  const track = useTrack();
   const [lb, setLb] = useState<number | null>(null);
   const rid = room ? room.id : null;
   useEffect(() => { setLb(null); }, [rid]);
@@ -197,14 +199,24 @@ export function DetailSheet({
     : (building?.phone || MANAGER.phone);
   const contactDigits = contactPhone.replace(/\D/g, "") || MANAGER.zalo;
 
+  // Helper: ghi sự kiện gắn phòng hiện hành.
+  const trackRoom = (type: Parameters<typeof track.track>[0], meta?: Record<string, unknown>) =>
+    track.track(type, {
+      room_id: r.id, room_code: r.code, room_name: String(r.no),
+      building_id: r.buildingId, building_name: r.buildingName, metadata: meta,
+    });
+
   const doCall = () => {
+    trackRoom("contact_click", { channel: "call", is_pass: isPass });
     onToast("Đang gọi " + contactName + " để giữ phòng…");
     window.location.href = "tel:" + contactDigits;
   };
   const doZalo = () => {
+    trackRoom("contact_click", { channel: "zalo", is_pass: isPass });
     window.open("https://zalo.me/" + contactDigits, "_blank");
   };
   const doRoute = () => {
+    trackRoom("directions");
     // Link Chỉ đường riêng từng tòa nếu đã set; chưa có -> tìm theo địa chỉ.
     const url = building?.mapUrl
       || "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(r.buildingAddr);
@@ -236,19 +248,24 @@ export function DetailSheet({
       catch (e) { if ((e as DOMException)?.name === "AbortError") return; }
     }
     try { await navigator.clipboard.writeText(text); onToast(copyFallbackMsg); return; } catch { /* */ }
+    trackRoom("error", { where: "share", msg: "share+clipboard failed" });
     onToast("Không chia sẻ được — bấm thử lại");
   };
-  const doShare = () => shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
+  const doShare = () => {
+    trackRoom("share");
+    return shareRoom("Đã copy thông tin phòng — ảnh vui lòng gửi kèm thủ công");
+  };
 
   // "Tải ảnh": gom TOÀN BỘ ảnh rồi mở share sheet 1 lần → trên iOS/Android chọn
   // "Lưu N ảnh" để lưu thẳng vào Thư viện ảnh (không còn tải đè từng tấm vào Files).
   // Desktop / máy không hỗ trợ share file → tải từng ảnh bằng <a download>.
   const doDownload = async () => {
+    trackRoom("download");
     const nav = navigator as ShareNav;
     const entry = ensureFiles(r);
     if (!entry.done) onToast("Đang chuẩn bị ảnh…");
     const files = await entry.promise;
-    if (!files.length) { onToast("Không tải được ảnh"); return; }
+    if (!files.length) { trackRoom("error", { where: "download", msg: "no images" }); onToast("Không tải được ảnh"); return; }
 
     if (nav.share && nav.canShare && nav.canShare({ files })) {
       try {
@@ -326,7 +343,7 @@ export function DetailSheet({
         <button className="sheet-close" onClick={onClose} aria-label="Đóng" title="Đóng"><Icon.Close /></button>
         <div className="sheet-grab" onClick={onClose} />
         <div className="sheet-scroll">
-          <Gallery images={images} onZoom={setLb} />
+          <Gallery images={images} onZoom={(i) => { trackRoom("image_view", { index: i }); setLb(i); }} />
 
           <div className="sheet-body">
             <div className="sh-head">
