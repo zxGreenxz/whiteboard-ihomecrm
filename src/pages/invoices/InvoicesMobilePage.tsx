@@ -17,7 +17,7 @@ import type {
 } from "@/types/invoice";
 import type { BuildingWithRelations } from "@/types/building";
 import type { RoomWithRelations } from "@/types/room";
-import InvoiceStatsSummary from "@/components/invoices/InvoiceStatsSummary";
+import InvoiceStatsSummary, { type StatMethodKey } from "@/components/invoices/InvoiceStatsSummary";
 import GenerateInvoiceDialog from "@/components/invoices/GenerateInvoiceDialog";
 
 const compact = (n: number) => {
@@ -73,6 +73,7 @@ export default function InvoicesMobilePage() {
   const [pageSize, setPageSize] = useState(30);
   const [createOpen, setCreateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [methodFilter, setMethodFilter] = useState<StatMethodKey | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 350);
@@ -109,6 +110,7 @@ export default function InvoicesMobilePage() {
     building_id: buildingId || undefined,
     room_ids: roomIds && roomIds.length ? roomIds : undefined,
     status: stat === "all" ? undefined : stat,
+    payment_method: methodFilter ?? undefined,
     search: debounced || undefined,
   };
 
@@ -298,7 +300,14 @@ export default function InvoicesMobilePage() {
                   </button>
                 </div>
                 <div style={{ margin: "0 -18px" }}>
-                  <InvoiceStatsSummary filters={statsFilters} />
+                  <InvoiceStatsSummary
+                    filters={statsFilters}
+                    activeMethod={methodFilter}
+                    onMethodClick={(m) => {
+                      setMethodFilter((prev) => (prev === m ? null : m));
+                      setReportOpen(false);
+                    }}
+                  />
                 </div>
               </div>
             </div>

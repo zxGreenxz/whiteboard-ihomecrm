@@ -152,6 +152,9 @@ export interface InvoiceFilters {
    *  - 'all' → không lọc theo CANCELLED. */
   view_status?: 'active' | 'cancelled' | 'all';
   billing_month?: string; // YYYY-MM
+  /** Lọc theo phương thức thanh toán: chỉ hiện HĐ có ≥1 phiếu thu method này
+   *  (TM/TK/TT/CT). Dùng khi bấm thẻ phương thức trên dashboard. */
+  payment_method?: PaymentMethod;
   date_range?: {
     start: string; // DATE
     end: string; // DATE

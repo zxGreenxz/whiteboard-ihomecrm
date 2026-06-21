@@ -64,6 +64,7 @@ const InvoiceDetailPage = lazy(() => import("./pages/invoices/InvoiceDetailPage"
 const InvoicePrintPage = lazy(() => import("./pages/invoices/InvoicePrintPage"));
 const IncomeExpensePage = lazy(() => import("./pages/payments/IncomeExpensePage"));
 const IncomeExpensePrintPage = lazy(() => import("./pages/payments/IncomeExpensePrintPage"));
+const VoucherDetailPage = lazy(() => import("./pages/payments/VoucherDetailPage"));
 const RefundLogPage = lazy(() => import("./pages/payments/RefundLogPage"));
 
 // Tài sản & vật tư
@@ -292,6 +293,7 @@ const App = () => (
           {/* Primary route: /income-expense, redirect /payments → /income-expense */}
           <Route path="/income-expense" element={<ProtectedRoute><RequirePermission module="income_expenses"><IncomeExpensePage /></RequirePermission></ProtectedRoute>} />
           <Route path="/income-expense/print/:id" element={<ProtectedRoute><RequirePermission module="income_expenses" action="print"><IncomeExpensePrintPage /></RequirePermission></ProtectedRoute>} />
+          <Route path="/income-expense/voucher/:id" element={<ProtectedRoute><RequirePermission module="income_expenses"><VoucherDetailPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/finance/refund-log" element={<ProtectedRoute><RequirePermission module="deposits"><RefundLogPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />

@@ -68,11 +68,21 @@ export const useInvoices = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Lọc theo phương thức thanh toán → cần INNER join payments để loại HĐ
+      // không có phiếu thu method đó (PostgREST trả 1 dòng/HĐ, count vẫn đúng).
+      const listSelect = filters?.payment_method
+        ? INVOICE_LIST_SELECT.replace('payments (', 'payments!inner (')
+        : INVOICE_LIST_SELECT;
+
       let query = (supabase
         .from('invoices')
-        .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
+        .select(listSelect, { count: 'exact' }) as any)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
+
+      if (filters?.payment_method) {
+        query = query.eq('payments.payment_method', filters.payment_method);
+      }
 
       // Apply filters
       if (filters?.building_ids?.length) {

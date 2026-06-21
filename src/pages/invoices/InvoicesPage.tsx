@@ -21,7 +21,7 @@ import { canUse } from '@/lib/permissionPages';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
-import InvoiceStatsSummary from '@/components/invoices/InvoiceStatsSummary';
+import InvoiceStatsSummary, { type StatMethodKey } from '@/components/invoices/InvoiceStatsSummary';
 import InvoiceListFilters from '@/components/invoices/InvoiceListFilters';
 import InvoiceListToolbar from '@/components/invoices/InvoiceListToolbar';
 import InvoiceListTable from '@/components/invoices/InvoiceListTable';
@@ -151,6 +151,19 @@ const InvoicesDesktopPage = () => {
     [setPage],
   );
 
+  // Bấm thẻ phương thức (TM/TK/TT/Cấn trừ) → lọc bảng theo method; bấm lại = bỏ lọc.
+  const handleMethodCardClick = useCallback(
+    (method: StatMethodKey) => {
+      setFilters((prev) => ({
+        ...prev,
+        payment_method: prev.payment_method === method ? undefined : method,
+      }));
+      setPage(1);
+      setSelectedIds([]);
+    },
+    [setPage],
+  );
+
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
@@ -241,8 +254,12 @@ const InvoicesDesktopPage = () => {
       icon={Receipt}
     >
       <>
-          {/* Statistics */}
-          <InvoiceStatsSummary filters={statsFilters} />
+          {/* Statistics — bấm thẻ phương thức để lọc bảng theo TM/TK/TT/Cấn trừ */}
+          <InvoiceStatsSummary
+            filters={statsFilters}
+            activeMethod={filters.payment_method ?? null}
+            onMethodClick={handleMethodCardClick}
+          />
 
           {/* Filters */}
           <InvoiceListFilters filters={filters} onFiltersChange={handleFiltersChange} />

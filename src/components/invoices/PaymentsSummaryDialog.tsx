@@ -484,11 +484,11 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 <li key={v.id} className="text-sm">
                   <div className="flex items-center gap-3">
                     <a
-                      href={`/income-expense/print/${v.id}`}
+                      href={`/income-expense/voucher/${v.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition"
-                      title="Mở phiếu thu cọc (trang in)"
+                      title="Mở chi tiết phiếu thu cọc"
                     >
                       <Receipt className="h-3 w-3" />
                       {v.code ?? 'Phiếu thu'}

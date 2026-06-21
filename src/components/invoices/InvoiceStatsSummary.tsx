@@ -14,8 +14,16 @@ import {
   TrendingDown,
 } from 'lucide-react';
 
+/** Các thẻ phương thức bấm được để lọc bảng (TM/TK/TT/CT). Tiền Thối & Cọc
+ *  KHÔNG lọc được (không phải payment_method). */
+export type StatMethodKey = 'TM' | 'TK' | 'TT' | 'CT';
+
 interface InvoiceStatsSummaryProps {
   filters?: InvoiceStatisticsFilters;
+  /** Phương thức đang lọc bảng — để highlight thẻ. null/undefined = không lọc. */
+  activeMethod?: StatMethodKey | null;
+  /** Bấm thẻ phương thức → lọc bảng theo method (parent tự toggle). */
+  onMethodClick?: (method: StatMethodKey) => void;
 }
 
 // Toàn bộ số tiền hiển thị theo đơn vị K (1.000đ = 1K).
@@ -33,9 +41,11 @@ interface StatCard {
 interface PlainCard {
   label: string;
   value: number;
+  /** Nếu có → thẻ bấm được để lọc bảng theo phương thức này. */
+  method?: StatMethodKey;
 }
 
-const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
+const InvoiceStatsSummary = ({ filters, activeMethod, onMethodClick }: InvoiceStatsSummaryProps) => {
   const isMobile = useIsMobile();
   const { data: stats, isLoading } = useInvoiceStatistics(filters);
   const { data: ctx } = useMyContext();
@@ -61,10 +71,26 @@ const InvoiceStatsSummary = ({ filters }: InvoiceStatsSummaryProps) => {
   };
 
   if (isMobile) {
-    return <MobileStats s={s} isLoading={isLoading} hideAggregateRow={hideAggregateRow} />;
+    return (
+      <MobileStats
+        s={s}
+        isLoading={isLoading}
+        hideAggregateRow={hideAggregateRow}
+        activeMethod={activeMethod ?? null}
+        onMethodClick={onMethodClick}
+      />
+    );
   }
 
-  return <DesktopStats s={s} isLoading={isLoading} hideAggregateRow={hideAggregateRow} />;
+  return (
+    <DesktopStats
+      s={s}
+      isLoading={isLoading}
+      hideAggregateRow={hideAggregateRow}
+      activeMethod={activeMethod ?? null}
+      onMethodClick={onMethodClick}
+    />
+  );
 };
 
 type StatValues = {
@@ -93,10 +119,14 @@ const MobileStats = ({
   s,
   isLoading,
   hideAggregateRow,
+  activeMethod,
+  onMethodClick,
 }: {
   s: StatValues;
   isLoading: boolean;
   hideAggregateRow: boolean;
+  activeMethod: StatMethodKey | null;
+  onMethodClick?: (method: StatMethodKey) => void;
 }) => {
   if (isLoading) {
     const skeletonCount = hideAggregateRow ? 7 : 12;
@@ -123,10 +153,10 @@ const MobileStats = ({
       <ColoredMobileCard label="Đã Thu" value={s.total_paid} Icon={Banknote} iconColor="text-blue-500" valueColor="text-blue-600" />
       <ColoredMobileCard label="Phải thu" value={s.total_remaining} Icon={TrendingDown} iconColor="text-orange-500" valueColor="text-orange-600" />
       <ColoredMobileCard label="Tiền Hoàn" value={s.total_refunded} Icon={RefreshCcw} iconColor="text-red-500" valueColor="text-red-600" />
-      <PlainMobileCard label="TM" value={s.payment_tm} />
-      <PlainMobileCard label="TK" value={s.payment_tk} />
-      <PlainMobileCard label="TT" value={s.payment_tt} />
-      <PlainMobileCard label="Cấn trừ" value={s.payment_ct} />
+      <PlainMobileCard label="TM" value={s.payment_tm} method="TM" activeMethod={activeMethod} onMethodClick={onMethodClick} />
+      <PlainMobileCard label="TK" value={s.payment_tk} method="TK" activeMethod={activeMethod} onMethodClick={onMethodClick} />
+      <PlainMobileCard label="TT" value={s.payment_tt} method="TT" activeMethod={activeMethod} onMethodClick={onMethodClick} />
+      <PlainMobileCard label="Cấn trừ" value={s.payment_ct} method="CT" activeMethod={activeMethod} onMethodClick={onMethodClick} />
       <PlainMobileCard label="Tiền Thối" value={s.change_amount} />
       <PlainMobileCard label="Cọc đã thu" value={s.deposit_collected} />
     </section>
@@ -151,12 +181,37 @@ const ColoredMobileCard = ({ label, value, Icon, iconColor, valueColor }: Colore
   </div>
 );
 
-const PlainMobileCard = ({ label, value }: { label: string; value: number }) => (
-  <div className="bg-white border border-zinc-200 rounded-xl p-3 min-h-[78px] flex flex-col gap-1">
-    <div className="text-[11px] font-medium tracking-wide text-zinc-900 uppercase">{label}</div>
-    <span className="text-xl font-bold text-zinc-900 tabular-nums">{formatK(value)}</span>
-  </div>
-);
+const PlainMobileCard = ({
+  label,
+  value,
+  method,
+  activeMethod,
+  onMethodClick,
+}: {
+  label: string;
+  value: number;
+  method?: StatMethodKey;
+  activeMethod?: StatMethodKey | null;
+  onMethodClick?: (method: StatMethodKey) => void;
+}) => {
+  const clickable = !!method && !!onMethodClick;
+  const active = !!method && method === activeMethod;
+  return (
+    <div
+      role={clickable ? 'button' : undefined}
+      aria-pressed={clickable ? active : undefined}
+      onClick={clickable ? () => onMethodClick!(method!) : undefined}
+      className={[
+        'bg-white border rounded-xl p-3 min-h-[78px] flex flex-col gap-1 transition',
+        clickable ? 'cursor-pointer active:scale-[0.98]' : '',
+        active ? 'border-emerald-400 ring-2 ring-emerald-300 bg-emerald-50/50' : 'border-zinc-200',
+      ].join(' ')}
+    >
+      <div className="text-[11px] font-medium tracking-wide text-zinc-900 uppercase">{label}</div>
+      <span className="text-xl font-bold text-zinc-900 tabular-nums">{formatK(value)}</span>
+    </div>
+  );
+};
 
 // =============================================
 // Desktop layout
@@ -166,10 +221,14 @@ const DesktopStats = ({
   s,
   isLoading,
   hideAggregateRow,
+  activeMethod,
+  onMethodClick,
 }: {
   s: StatValues;
   isLoading: boolean;
   hideAggregateRow: boolean;
+  activeMethod: StatMethodKey | null;
+  onMethodClick?: (method: StatMethodKey) => void;
 }) => {
   // Hàng 1 (5 cột): Tổng tiền | Tiền nhà | Điện | Nước | PDV
   const row1: StatCard[] = [
@@ -246,10 +305,10 @@ const DesktopStats = ({
 
   // Hàng 3 (5 cột): TM | TK | TT | Tiền Thối | Cọc đã thu
   const row3: PlainCard[] = [
-    { label: 'TM', value: s.payment_tm },
-    { label: 'TK', value: s.payment_tk },
-    { label: 'TT', value: s.payment_tt },
-    { label: 'Cấn trừ', value: s.payment_ct },
+    { label: 'TM', value: s.payment_tm, method: 'TM' },
+    { label: 'TK', value: s.payment_tk, method: 'TK' },
+    { label: 'TT', value: s.payment_tt, method: 'TT' },
+    { label: 'Cấn trừ', value: s.payment_ct, method: 'CT' },
     { label: 'Tiền Thối', value: s.change_amount },
     { label: 'Cọc đã thu', value: s.deposit_collected },
   ];
@@ -272,21 +331,36 @@ const DesktopStats = ({
     </Card>
   );
 
-  const renderPlainCard = (card: PlainCard) => (
-    <Card key={card.label} className="shadow-sm">
-      <CardContent className="flex items-center gap-3 p-3">
-        <div className="h-11 w-11 rounded-full bg-zinc-100 flex items-center justify-center shrink-0" />
-        <div className="min-w-0">
-          {isLoading ? (
-            <Skeleton className="h-6 w-24 mb-1" />
-          ) : (
-            <p className="text-lg font-bold text-zinc-900 truncate">{formatK(card.value)}</p>
-          )}
-          <p className="text-xs text-zinc-900">{card.label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const renderPlainCard = (card: PlainCard) => {
+    const clickable = !!card.method && !!onMethodClick;
+    const active = !!card.method && card.method === activeMethod;
+    return (
+      <Card
+        key={card.label}
+        role={clickable ? 'button' : undefined}
+        aria-pressed={clickable ? active : undefined}
+        title={clickable ? (active ? 'Bỏ lọc' : `Lọc hoá đơn thanh toán ${card.label}`) : undefined}
+        onClick={clickable ? () => onMethodClick!(card.method!) : undefined}
+        className={[
+          'shadow-sm transition',
+          clickable ? 'cursor-pointer hover:border-zinc-400 hover:shadow-md' : '',
+          active ? 'border-emerald-400 ring-2 ring-emerald-300 bg-emerald-50/50' : '',
+        ].join(' ')}
+      >
+        <CardContent className="flex items-center gap-3 p-3">
+          <div className={`h-11 w-11 rounded-full flex items-center justify-center shrink-0 ${active ? 'bg-emerald-100' : 'bg-zinc-100'}`} />
+          <div className="min-w-0">
+            {isLoading ? (
+              <Skeleton className="h-6 w-24 mb-1" />
+            ) : (
+              <p className="text-lg font-bold text-zinc-900 truncate">{formatK(card.value)}</p>
+            )}
+            <p className="text-xs text-zinc-900">{card.label}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-3 mb-6">
