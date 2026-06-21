@@ -6,10 +6,10 @@
 //   - DISCOUNT: khuyến mãi tháng đầu (nếu có discounts)
 //   - SERVICE: dịch vụ tính cố định (theo tháng/phòng/người).
 //     Bỏ qua dịch vụ tính theo đồng hồ (đợi chốt chỉ số).
-//
-// LƯU Ý: Tiền cọc KHÔNG còn nằm trong hoá đơn (trước đây là item OTHER
-// "Tiền cọc"). Cọc lọt vào hoá đơn rồi thu → bị tính nhầm vào KQKD. Nay cọc
-// được thu bằng PHIẾU THU CỌC riêng (hạng mục "Tiền cọc", is_deposit).
+//   - OTHER: cọc còn thiếu (total_deposit − deposit_paid) GỘP vào hoá đơn —
+//     là KHOẢN PHẢI THU của HĐ. Khi thu, useRecordPaymentRPC tách phần cọc
+//     thành phiếu is_deposit (NGOÀI KQKD) để nhìn rõ ở Thu chi (không phải
+//     phiếu thu lẻ ngoài HĐ). Bỏ qua nếu include_deposit=false (mode Nợ cọc).
 // =============================================
 
 export type FirstInvoiceItemType = "RENT" | "SERVICE" | "DISCOUNT" | "OTHER";
@@ -30,6 +30,11 @@ export interface FirstInvoiceBuilderInput {
   rent_price: number;
   total_deposit: number;
   deposit_paid: number;
+  /** Có gộp cọc còn thiếu vào hoá đơn tháng đầu không. Mặc định TRUE (mode
+   *  "Đóng đủ"): cọc còn thiếu = item OTHER "Tiền cọc" trong HĐ, thu cùng hoá
+   *  đơn rồi tách phiếu is_deposit khi thanh toán (useRecordPaymentRPC). FALSE
+   *  (mode "Nợ cọc"): cọc thiếu KHÔNG vào HĐ, chỉ theo dõi nợ + nhắc. */
+  include_deposit?: boolean;
   start_billing_date?: string; // YYYY-MM-DD
   end_billing_date?: string;   // YYYY-MM-DD
   discount_months?: number;
@@ -152,9 +157,27 @@ export function buildFirstInvoiceItems(
     });
   }
 
-  // NOTE: Tiền cọc KHÔNG còn nằm trong hoá đơn (đường rò rỉ cũ → cọc lọt vào
-  // KQKD khi thu hoá đơn). Cọc còn thiếu lúc ký được thu bằng PHIẾU THU CỌC
-  // riêng (hạng mục "Tiền cọc", is_deposit) — xem ContractFormDialog.
+  // OTHER — cọc còn thiếu GỘP vào hoá đơn tháng đầu (= khoản phải thu của HĐ).
+  // Cọc nằm TRONG hoá đơn (item "Tiền cọc"); khi thu hoá đơn, useRecordPaymentRPC
+  // tách phần cọc thành phiếu thu hạng mục "Tiền cọc" (is_deposit, NGOÀI KQKD) —
+  // chỉ là cơ chế tách phiếu để nhìn rõ ở Thu chi, KHÔNG phải phiếu thu lẻ ngoài
+  // HĐ. Mode "Nợ cọc" (include_deposit=false) thì KHÔNG gộp, chỉ theo dõi nợ.
+  if (input.include_deposit !== false) {
+    const depositRemaining = Math.max(
+      0,
+      (input.total_deposit ?? 0) - (input.deposit_paid ?? 0),
+    );
+    if (depositRemaining > 0) {
+      items.push({
+        id: nextId("deposit"),
+        type: "OTHER",
+        description: "Tiền cọc",
+        unit_price: depositRemaining,
+        quantity: 1,
+      });
+    }
+  }
+
   return items;
 }
 

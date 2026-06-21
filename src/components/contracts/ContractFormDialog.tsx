@@ -515,7 +515,10 @@ export function ContractFormDialog({
     const items = buildFirstInvoiceItems({
       rent_price: rentPriceWatch,
       total_deposit: totalDepositWatch,
-      deposit_paid: depositPaidWatch,
+      // Cọc đã đặt (dòng nhập + phiếu cọc cũ ĐÃ DUYỆT) → phần cọc CÒN LẠI gộp
+      // vào hoá đơn. Mode "Nợ cọc" (DEBT) thì KHÔNG gộp (chỉ theo dõi nợ).
+      deposit_paid: depositPaidTotal,
+      include_deposit: depositDebtMode !== "DEBT",
       start_billing_date: startBilling || undefined,
       end_billing_date: endBilling || undefined,
       discount_months: discountMonthsWatch,
@@ -537,7 +540,8 @@ export function ContractFormDialog({
     isEditMode,
     rentPriceWatch,
     totalDepositWatch,
-    depositPaidWatch,
+    depositPaidTotal,
+    depositDebtMode,
     startBilling,
     endBilling,
     discountMonthsWatch,
@@ -1437,9 +1441,9 @@ export function ContractFormDialog({
                     )}
                   />
 
-                  {/* Tiền cọc phải đóng (calculated readonly) */}
+                  {/* Tiền cọc phải đóng (calculated readonly) — gộp vào HĐ tháng đầu */}
                   <div className="space-y-2">
-                    <Label>Tiền cọc phải đóng</Label>
+                    <Label>Tiền cọc phải đóng (gộp vào hoá đơn)</Label>
                     <Input
                       type="text"
                       readOnly
@@ -1449,13 +1453,20 @@ export function ContractFormDialog({
                   </div>
                 </div>
 
-                {/* Đã đặt cọc — danh sách dòng (mỗi lần cọc 1 dòng): số tiền |
-                    sổ quỹ thật | ngày nhận | hình giấy cọc. Mỗi dòng → 1 phiếu
-                    thu cọc (is_deposit) ghi vào sổ quỹ thật. Chỉ khi tạo mới. */}
+                {/* Đã đặt cọc — chỉ ghi cọc khách ĐÃ ĐƯA TIỀN MẶT (giữ chỗ trước /
+                    đưa thêm lúc ký): mỗi dòng [số tiền | sổ quỹ | ngày | ảnh] → 1
+                    phiếu thu cọc (is_deposit) vào sổ thật. Phần cọc CÒN LẠI tự gộp
+                    vào hoá đơn tháng đầu (thu cùng hoá đơn, tách phiếu khi thu). */}
                 {!isEditMode && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <Label>Đã đặt cọc</Label>
+                      <div className="space-y-0.5">
+                        <Label>Đã đặt cọc (khách đã đưa tiền mặt)</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Cọc còn thiếu tự gộp vào hoá đơn tháng đầu — chỉ thêm
+                          dòng nếu khách đưa tiền mặt cọc lúc ký.
+                        </p>
+                      </div>
                       <Button
                         type="button"
                         variant="outline"
@@ -1549,9 +1560,10 @@ export function ContractFormDialog({
                 )}
 
                 {/* Xử lý thiếu cọc — chặn ký khi khách chưa đóng đủ cọc. Chọn
-                    "Nợ cọc" (theo dõi + nhắc) hoặc "Đóng đủ ngay" (tự thêm dòng
-                    cọc cho phần thiếu → thu bằng phiếu cọc, KHÔNG vào hoá đơn
-                    doanh thu). Chỉ hiện khi tạo mới & thiếu cọc. */}
+                    "Đóng đủ trong hoá đơn" (cọc còn thiếu GỘP vào hoá đơn tháng
+                    đầu, thu cùng hoá đơn rồi tách phiếu cọc khi thanh toán) hoặc
+                    "Nợ cọc" (theo dõi nợ + nhắc, không vào hoá đơn). Chỉ hiện
+                    khi tạo mới & thiếu cọc. */}
                 {!isEditMode && depositShortfall && (
                   <Alert variant="destructive" className="space-y-3">
                     <AlertDescription className="space-y-3">
@@ -1561,8 +1573,9 @@ export function ContractFormDialog({
                           {formatCurrency(depositRemaining)}
                         </p>
                         <p className="text-xs">
-                          Phần còn thiếu KHÔNG vào hoá đơn doanh thu; theo dõi ở
-                          mục cọc của hợp đồng. Chọn cách xử lý để lưu hợp đồng.
+                          Chọn "Đóng đủ trong hoá đơn" để gộp cọc còn thiếu vào
+                          hoá đơn tháng đầu (thu cùng hoá đơn), hoặc "Nợ cọc" để
+                          theo dõi nợ. Chọn cách xử lý để lưu hợp đồng.
                         </p>
                       </div>
 
@@ -1574,29 +1587,9 @@ export function ContractFormDialog({
                             <FormControl>
                               <RadioGroup
                                 value={field.value ?? ""}
-                                onValueChange={(v) => {
-                                  field.onChange(v);
-                                  // "Đóng đủ ngay" → tự thêm 1 dòng cọc cho phần
-                                  // còn thiếu (thu bằng phiếu cọc vào sổ thật).
-                                  // Chỉ thêm khi CHƯA có dòng cọc nào (tránh thêm
-                                  // trùng khi toggle radio qua lại).
-                                  if (
-                                    v === "FIRST_INVOICE" &&
-                                    depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD &&
-                                    !depositRows.some((r) => (Number(r.amount) || 0) > 0)
-                                  ) {
-                                    addDepositRow(depositRemaining);
-                                  }
-                                }}
+                                onValueChange={field.onChange}
                                 className="gap-2"
                               >
-                                <label className="flex items-start gap-2 cursor-pointer">
-                                  <RadioGroupItem value="DEBT" className="mt-0.5" />
-                                  <span className="text-sm">
-                                    <span className="font-medium">Nợ cọc</span>{" "}
-                                    — theo dõi &amp; nhắc khách bổ sung cọc sau.
-                                  </span>
-                                </label>
                                 <label className="flex items-start gap-2 cursor-pointer">
                                   <RadioGroupItem
                                     value="FIRST_INVOICE"
@@ -1604,10 +1597,18 @@ export function ContractFormDialog({
                                   />
                                   <span className="text-sm">
                                     <span className="font-medium">
-                                      Đóng đủ ngay
+                                      Đóng đủ trong hoá đơn
                                     </span>{" "}
-                                    — thêm dòng cọc cho phần còn thiếu, thu bằng
-                                    phiếu cọc vào sổ quỹ (không vào hoá đơn).
+                                    — cọc còn thiếu tính vào hoá đơn tháng đầu,
+                                    thu cùng hoá đơn (tự tách phiếu cọc khi thu).
+                                  </span>
+                                </label>
+                                <label className="flex items-start gap-2 cursor-pointer">
+                                  <RadioGroupItem value="DEBT" className="mt-0.5" />
+                                  <span className="text-sm">
+                                    <span className="font-medium">Nợ cọc</span>{" "}
+                                    — KHÔNG vào hoá đơn; theo dõi &amp; nhắc khách
+                                    bổ sung cọc sau.
                                   </span>
                                 </label>
                               </RadioGroup>

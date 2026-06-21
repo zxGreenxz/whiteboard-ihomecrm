@@ -398,6 +398,10 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
         .eq('type', 'INCOME')
         .eq('approval_status', 'APPROVED')
         .is('deleted_at', null)
+        // CHỈ phiếu cọc ĐỘC LẬP (ngoài hoá đơn): invoice_id IS NULL — vd cọc giữ
+        // chỗ thu trước khi ký, hoặc phiếu cọc tạo tay. Phiếu cọc TÁCH TỪ hoá đơn
+        // tháng đầu (A2, có invoice_id) thuộc "trong HĐ" → KHÔNG liệt kê ở đây.
+        .is('invoice_id', null)
         .eq('income_expense_items.income_expense_types.is_deposit', true)
         .order('voucher_date', { ascending: true });
       if (error) throw error;
