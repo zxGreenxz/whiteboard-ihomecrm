@@ -27,7 +27,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { useDeposits, type DepositWithRelations } from "@/hooks/useDeposits";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useReservationDeposits,
+  type ReservationDepositRow,
+} from "@/hooks/useDeposits";
 import {
   useHeldDeposits,
   useDepositRefundsForfeits,
@@ -36,20 +40,20 @@ import {
 } from "@/hooks/useDepositDashboard";
 import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
-import { EditDepositDialog } from "@/components/deposits/EditDepositDialog";
-import { ConvertToContractDialog } from "@/components/deposits/ConvertToContractDialog";
+import {
+  ContractFormDialog,
+  type ContractPrefill,
+} from "@/components/contracts/ContractFormDialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 
-const STATUS_CONFIG = {
-  PENDING: { label: "Chờ xác nhận", color: "bg-yellow-100 text-yellow-800" },
-  CONFIRMED: { label: "Đã xác nhận", color: "bg-green-100 text-green-800" },
-  CONVERTED: { label: "Đã chuyển HĐ", color: "bg-blue-100 text-blue-800" },
-  REFUNDED: { label: "Đã hoàn trả", color: "bg-gray-100 text-gray-800" },
-  FORFEITED: { label: "Mất cọc", color: "bg-red-100 text-red-800" },
-};
-const HOLDING_STATUSES = new Set(["PENDING", "CONFIRMED"]);
+// Trạng thái phiếu giữ chỗ (theo approval_status của phiếu thu cọc mồ côi).
+const RESV_STATUS = {
+  UNAPPROVED: { label: "Chờ duyệt", color: "bg-yellow-100 text-yellow-800" },
+  APPROVED: { label: "Đang giữ chỗ", color: "bg-green-100 text-green-800" },
+  CANCELLED: { label: "Đã huỷ", color: "bg-gray-100 text-gray-700" },
+} as const;
 
 function KpiCard({
   label,
@@ -86,21 +90,19 @@ function KpiCard({
 }
 
 const DepositsPage = () => {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState("overview");
   const { data: perms } = useMyPermissions();
   const canCreateDeposit = canUse(perms, "deposits", "create");
-  const canEditDeposit = canUse(perms, "deposits", "edit");
   const canConvertDeposit = canUse(perms, "deposits", "convert");
 
   // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
   const [buildingIds, setBuildingIds] = useState<string[]>([]);
 
-  // Tab "Phiếu giữ chỗ" (CRUD).
+  // Tab "Phiếu giữ chỗ".
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
-  const [selectedDeposit, setSelectedDeposit] =
-    useState<DepositWithRelations | null>(null);
+  const [resvContractOpen, setResvContractOpen] = useState(false);
+  const [resvPrefill, setResvPrefill] = useState<ContractPrefill | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [onlyShort, setOnlyShort] = useState(false);
@@ -108,9 +110,9 @@ const DepositsPage = () => {
   const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
   const { data: refunds = [], isLoading: refundsLoading } =
     useDepositRefundsForfeits();
-  const { data: deposits = [], isLoading: depositsLoading } = useDeposits({
-    status: statusFilter !== "ALL" ? statusFilter : undefined,
-  });
+  // Cọc giữ chỗ — nguồn thống nhất từ income_expenses (lọc toà server-side).
+  const { data: reservations = [], isLoading: resvLoading } =
+    useReservationDeposits(buildingIds);
 
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
@@ -164,46 +166,40 @@ const DepositsPage = () => {
     };
   }, [heldFiltered, refundsFiltered]);
 
-  // Giữ chỗ đang chờ (bảng deposits, PENDING/CONFIRMED) — lọc theo toà.
-  const holdingAmount = useMemo(() => {
-    return deposits
-      .filter((d) => HOLDING_STATUSES.has(d.status as string))
-      .filter(
-        (d) =>
-          buildingIds.length === 0 ||
-          buildingIds.includes(d.room?.building?.id ?? ""),
-      )
-      .reduce((s, d) => s + (d.amount || 0), 0);
-  }, [deposits, buildingIds]);
+  // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — đã lọc toà trong hook.
+  const holdingAmount = useMemo(
+    () =>
+      reservations
+        .filter((r) => r.approval_status === "APPROVED")
+        .reduce((s, r) => s + r.total_amount, 0),
+    [reservations],
+  );
 
   const shortfallRows = useMemo(() => {
     const rows = heldFiltered.filter((r) => r.state !== "FULL");
     return onlyShort ? rows.filter((r) => r.state === "SHORT") : rows;
   }, [heldFiltered, onlyShort]);
 
-  // Tab giữ chỗ — lọc theo search + toà nhà.
-  const filteredDeposits = deposits.filter((deposit) => {
-    if (
-      buildingIds.length > 0 &&
-      !buildingIds.includes(deposit.room?.building?.id ?? "")
-    )
+  // Tab giữ chỗ — lọc theo trạng thái + search (toà đã lọc server-side).
+  const filteredReservations = reservations.filter((r) => {
+    if (statusFilter !== "ALL" && r.approval_status !== statusFilter)
       return false;
     if (!searchQuery) return true;
     const search = searchQuery.toLowerCase();
     return (
-      deposit.tenant?.full_name?.toLowerCase().includes(search) ||
-      deposit.tenant?.phone?.toLowerCase().includes(search) ||
-      deposit.room?.name?.toLowerCase().includes(search)
+      r.code?.toLowerCase().includes(search) ||
+      r.name?.toLowerCase().includes(search) ||
+      r.payer_name?.toLowerCase().includes(search) ||
+      r.room_name?.toLowerCase().includes(search)
     );
   });
 
-  const handleEdit = (deposit: DepositWithRelations) => {
-    setSelectedDeposit(deposit);
-    setEditDialogOpen(true);
-  };
-  const handleConvert = (deposit: DepositWithRelations) => {
-    setSelectedDeposit(deposit);
-    setConvertDialogOpen(true);
+  // "Tạo HĐ" từ phiếu giữ chỗ: mở form HĐ prefill phòng; KHÔNG truyền depositId
+  // (phiếu cọc mồ côi tự gắn vào HĐ qua trigger trg_contract_link_orphan_deposits).
+  const handleConvertReservation = (r: ReservationDepositRow) => {
+    if (!r.room_id) return;
+    setResvPrefill({ buildingId: r.building_id, roomId: r.room_id });
+    setResvContractOpen(true);
   };
 
   return (
@@ -413,6 +409,12 @@ const DepositsPage = () => {
 
           {/* ===== TAB 3: HOÀN / BỎ CỌC ===== */}
           <TabsContent value="refunds" className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Bỏ cọc = khách mất cọc, cọc thành doanh thu. "Tổng nợ tất toán" là
+              tổng nợ khách khi thanh lý (tiền phòng + phí),{" "}
+              <strong>không trừ vào cọc</strong>; nếu nợ &gt; cọc thì khách còn
+              nợ thêm.
+            </p>
             <Card>
               <Table>
                 <TableHeader>
@@ -423,69 +425,99 @@ const DepositsPage = () => {
                     <TableHead>Khách hàng</TableHead>
                     <TableHead>Loại</TableHead>
                     <TableHead className="text-right">Cọc gốc</TableHead>
-                    <TableHead className="text-right">Khấu trừ</TableHead>
-                    <TableHead className="text-right">Hoàn lại</TableHead>
-                    <TableHead>Tình trạng</TableHead>
+                    <TableHead className="text-right">Tổng nợ tất toán</TableHead>
+                    <TableHead>Còn nợ / Hoàn lại</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {refundsLoading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
                     </TableRow>
                   ) : refundsFiltered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         Chưa có hợp đồng thanh lý nào
                       </TableCell>
                     </TableRow>
                   ) : (
-                    refundsFiltered.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell>{formatDate(r.termination_date)}</TableCell>
-                        <TableCell>{r.building_name}</TableCell>
-                        <TableCell>{r.room_name}</TableCell>
-                        <TableCell>
-                          <Link to={`/contracts/${r.contract_id}`} className="text-blue-600 hover:underline">
-                            {r.customer_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell>
-                          {r.kind === "FORFEIT" ? (
-                            <Badge className="bg-red-100 text-red-700">Bỏ cọc</Badge>
-                          ) : (
-                            <Badge className="bg-gray-100 text-gray-700">Hoàn cọc</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.total_deposit)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.total_deductions)}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {r.kind === "FORFEIT" ? "—" : formatCurrency(Math.max(0, r.refund_amount))}
-                        </TableCell>
-                        <TableCell>
-                          {r.kind === "FORFEIT" ? (
-                            <span className="text-xs text-muted-foreground">Cọc thành doanh thu</span>
-                          ) : r.refund_done ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-green-700">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Đã hoàn
-                            </span>
-                          ) : (
-                            <span className="text-xs text-orange-600">Chờ hoàn</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    refundsFiltered.map((r) => {
+                      // Số tiền khách CÒN NỢ sau khi mất cọc (nợ > cọc).
+                      const stillOwed = Math.max(0, -r.refund_amount);
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell>{formatDate(r.termination_date)}</TableCell>
+                          <TableCell>{r.building_name}</TableCell>
+                          <TableCell>{r.room_name}</TableCell>
+                          <TableCell>
+                            <Link to={`/contracts/${r.contract_id}`} className="text-blue-600 hover:underline">
+                              {r.customer_name}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            {r.kind === "FORFEIT" ? (
+                              <Badge className="bg-red-100 text-red-700">Bỏ cọc</Badge>
+                            ) : (
+                              <Badge className="bg-gray-100 text-gray-700">Hoàn cọc</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(r.total_deposit)}</TableCell>
+                          <TableCell
+                            className="text-right text-muted-foreground"
+                            title="Tổng nợ khách khi thanh lý (tiền phòng nợ + phí) — KHÔNG trừ vào cọc"
+                          >
+                            {formatCurrency(r.total_deductions)}
+                          </TableCell>
+                          <TableCell>
+                            {r.kind === "FORFEIT" ? (
+                              stillOwed > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                  Khách nợ {formatCurrency(stillOwed)}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Ban className="h-3.5 w-3.5" /> Cọc thành doanh thu
+                                </span>
+                              )
+                            ) : r.refund_done ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-green-700">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Đã hoàn{" "}
+                                {formatCurrency(Math.max(0, r.refund_amount))}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-orange-600">
+                                Chờ hoàn {formatCurrency(Math.max(0, r.refund_amount))}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
             </Card>
           </TabsContent>
 
-          {/* ===== TAB 4: PHIẾU GIỮ CHỖ (CRUD) ===== */}
+          {/* ===== TAB 4: PHIẾU GIỮ CHỖ ===== */}
           <TabsContent value="holds" className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                const count = deposits.filter((d) => d.status === key).length;
+            <p className="text-sm text-muted-foreground">
+              Cọc giữ chỗ trước hợp đồng — gộp mọi nguồn (trang Phòng trống,
+              Thu-chi, nút "Tạo đặt cọc"). Khi ký hợp đồng, phiếu cọc tự gắn vào
+              HĐ và rời danh sách này.
+            </p>
+
+            <div className="grid grid-cols-3 gap-4">
+              {(
+                Object.entries(RESV_STATUS) as [
+                  keyof typeof RESV_STATUS,
+                  (typeof RESV_STATUS)[keyof typeof RESV_STATUS],
+                ][]
+              ).map(([key, config]) => {
+                const count = reservations.filter(
+                  (r) => r.approval_status === key,
+                ).length;
                 return (
                   <Card key={key} className="p-4">
                     <div className="space-y-2">
@@ -501,7 +533,7 @@ const DepositsPage = () => {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
-                  placeholder="Tìm kiếm theo tên, SĐT, căn hộ..."
+                  placeholder="Tìm mã, nội dung, người nộp, phòng..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -514,7 +546,7 @@ const DepositsPage = () => {
                 placeholder="Lọc theo trạng thái"
                 options={[
                   { value: "ALL", label: "Tất cả" },
-                  ...Object.entries(STATUS_CONFIG).map(([key, config]) => ({
+                  ...Object.entries(RESV_STATUS).map(([key, config]) => ({
                     value: key,
                     label: config.label,
                   })),
@@ -527,85 +559,72 @@ const DepositsPage = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Mã</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>SĐT</TableHead>
+                    <TableHead>Nội dung</TableHead>
                     <TableHead>Toà nhà</TableHead>
-                    <TableHead>Căn hộ</TableHead>
-                    <TableHead>CTV</TableHead>
-                    <TableHead>Số tiền</TableHead>
-                    <TableHead>Ngày cọc</TableHead>
+                    <TableHead>Phòng</TableHead>
+                    <TableHead>Người nộp</TableHead>
+                    <TableHead className="text-right">Số tiền</TableHead>
+                    <TableHead>Ngày</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Thao tác</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {depositsLoading ? (
+                  {resvLoading ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
                     </TableRow>
-                  ) : filteredDeposits.length === 0 ? (
+                  ) : filteredReservations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10}>
-                        {deposits.length === 0 && statusFilter === "ALL" && !searchQuery ? (
+                      <TableCell colSpan={9}>
+                        {reservations.length === 0 && statusFilter === "ALL" && !searchQuery ? (
                           <EmptyState
                             icon={DollarSign}
-                            title="Chưa có phiếu đặt cọc nào"
-                            description="Hãy tạo phiếu đặt cọc đầu tiên để bắt đầu quản lý"
+                            title="Chưa có phiếu giữ chỗ nào"
+                            description="Tạo cọc giữ chỗ từ trang Phòng trống, Thu-chi, hoặc nút Tạo đặt cọc"
                             actionLabel={canCreateDeposit ? "Tạo đặt cọc" : undefined}
                             onAction={canCreateDeposit ? () => setCreateDialogOpen(true) : undefined}
                           />
                         ) : (
                           <div className="text-center py-8 text-muted-foreground">
-                            Không tìm thấy phiếu đặt cọc nào
+                            Không tìm thấy phiếu giữ chỗ nào
                           </div>
                         )}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredDeposits.map((deposit) => (
-                      <TableRow key={deposit.id}>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {(deposit as any).code || "-"}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {deposit.tenant?.full_name || "-"}
-                        </TableCell>
-                        <TableCell>{deposit.tenant?.phone || "-"}</TableCell>
-                        <TableCell>{deposit.room?.building?.name || "-"}</TableCell>
-                        <TableCell>{deposit.room?.name || "-"}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {(deposit as any).ctv_name || "-"}
-                        </TableCell>
-                        <TableCell>{formatCurrency(deposit.amount)}</TableCell>
-                        <TableCell>
-                          {deposit.deposit_date ? formatDate(deposit.deposit_date) : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              STATUS_CONFIG[deposit.status as keyof typeof STATUS_CONFIG]?.color || ""
-                            }
-                          >
-                            {STATUS_CONFIG[deposit.status as keyof typeof STATUS_CONFIG]?.label ||
-                              deposit.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {canEditDeposit && (
-                              <Button size="sm" variant="outline" onClick={() => handleEdit(deposit)}>
-                                Sửa
-                              </Button>
-                            )}
-                            {canConvertDeposit && deposit.status === "CONFIRMED" && (
-                              <Button size="sm" onClick={() => handleConvert(deposit)}>
-                                Tạo HĐ
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    filteredReservations.map((r) => {
+                      const st = RESV_STATUS[r.approval_status];
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {r.code || "-"}
+                          </TableCell>
+                          <TableCell className="max-w-[260px] truncate" title={r.name}>
+                            {r.name || "-"}
+                          </TableCell>
+                          <TableCell>{r.building_name || "-"}</TableCell>
+                          <TableCell>{r.room_name || "—"}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {r.payer_name || "-"}
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(r.total_amount)}</TableCell>
+                          <TableCell>{r.voucher_date ? formatDate(r.voucher_date) : "-"}</TableCell>
+                          <TableCell>
+                            <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {canConvertDeposit &&
+                              r.approval_status === "APPROVED" &&
+                              r.room_id && (
+                                <Button size="sm" onClick={() => handleConvertReservation(r)}>
+                                  Tạo HĐ
+                                </Button>
+                              )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -615,19 +634,15 @@ const DepositsPage = () => {
 
         {/* Dialogs */}
         <CreateDepositDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
-        {selectedDeposit && (
-          <>
-            <EditDepositDialog
-              open={editDialogOpen}
-              onOpenChange={setEditDialogOpen}
-              deposit={selectedDeposit}
-            />
-            <ConvertToContractDialog
-              open={convertDialogOpen}
-              onOpenChange={setConvertDialogOpen}
-              deposit={selectedDeposit}
-            />
-          </>
+        {resvPrefill && (
+          <ContractFormDialog
+            open={resvContractOpen}
+            onOpenChange={setResvContractOpen}
+            prefill={resvPrefill}
+            onCreated={() =>
+              queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] })
+            }
+          />
         )}
       </div>
     </MainLayout>

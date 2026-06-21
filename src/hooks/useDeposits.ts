@@ -80,6 +80,84 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
   });
 };
 
+export type ReservationStatus = 'UNAPPROVED' | 'APPROVED' | 'CANCELLED';
+
+export interface ReservationDepositRow {
+  id: string;
+  code: string | null;
+  name: string;
+  payer_name: string | null;
+  total_amount: number;
+  voucher_date: string;
+  approval_status: ReservationStatus;
+  building_id: string;
+  building_name: string;
+  room_id: string | null;
+  room_name: string | null;
+}
+
+/**
+ * Cọc giữ chỗ TOÀN HỆ THỐNG — NGUỒN THỐNG NHẤT cho mọi đường tạo cọc giữ chỗ
+ * (trang Phòng trống / Thu-chi / nút "Tạo đặt cọc"): phiếu thu CỌC mồ côi =
+ * income_expenses type=INCOME, contract_id NULL, item có
+ * income_expense_types.is_deposit=TRUE. Trường thống nhất chính là cờ
+ * `is_deposit`. KHÁC useOrphanDepositVouchers ở chỗ: không giới hạn theo phòng
+ * và KHÔNG dùng cửa sổ voucher_date+7 (cửa sổ đó chỉ dành cho auto-link HĐ).
+ * Lấy cả CANCELLED để hiện "Đã huỷ"; phiếu đã chuyển HĐ (contract_id != NULL)
+ * tự rớt khỏi danh sách (đã thành cọc HĐ — xem tab Đủ/Thiếu cọc).
+ */
+export const useReservationDeposits = (buildingIds?: string[]) => {
+  return useQuery({
+    queryKey: ['reservation-deposits', buildingIds ?? []],
+    queryFn: async (): Promise<ReservationDepositRow[]> => {
+      let query = (supabase as any)
+        .from('income_expenses')
+        .select(
+          `id, code, name, payer_name, total_amount, voucher_date,
+           approval_status, building_id, room_id,
+           building:buildings!income_expenses_building_id_fkey ( id, name ),
+           room:rooms!income_expenses_room_id_fkey ( id, name ),
+           income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
+        )
+        .is('contract_id', null)
+        .is('deleted_at', null)
+        .eq('type', 'INCOME')
+        .in('approval_status', ['APPROVED', 'UNAPPROVED', 'CANCELLED'])
+        .eq('income_expense_items.income_expense_types.is_deposit', true)
+        .order('voucher_date', { ascending: false });
+
+      if (buildingIds && buildingIds.length > 0) {
+        query = query.in('building_id', buildingIds);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // !inner có thể nhân dòng nếu phiếu có >1 item cọc → dedupe theo id.
+      const seen = new Set<string>();
+      const rows: ReservationDepositRow[] = [];
+      for (const v of (data ?? []) as any[]) {
+        if (seen.has(v.id)) continue;
+        seen.add(v.id);
+        rows.push({
+          id: v.id,
+          code: v.code ?? null,
+          name: v.name,
+          payer_name: v.payer_name ?? null,
+          total_amount: Number(v.total_amount) || 0,
+          voucher_date: v.voucher_date,
+          approval_status: v.approval_status,
+          building_id: v.building?.id ?? v.building_id ?? '',
+          building_name: v.building?.name ?? '—',
+          room_id: v.room?.id ?? v.room_id ?? null,
+          room_name: v.room?.name ?? null,
+        });
+      }
+      return rows;
+    },
+  });
+};
+
 export const useDeposits = (filters?: {
   status?: string;
   tenant_id?: string;
