@@ -75,6 +75,10 @@ export interface DepositBreakdownRow {
   amount: number;
   account_name: string;
   notes: string | null;
+  // Hoá đơn mà khoản cọc được thu kèm (chỉ có khi phiếu cọc tách ra từ HĐ gộp cọc).
+  invoice_id: string | null;
+  invoice_number: string | null;
+  invoice_total: number | null;
 }
 
 export const useDepositBreakdown = (
@@ -113,6 +117,9 @@ export const useDepositBreakdown = (
         amount: Number(r.amount) || 0,
         account_name: r.account_name ?? '',
         notes: r.notes ?? null,
+        invoice_id: r.invoice_id ?? null,
+        invoice_number: r.invoice_number ?? null,
+        invoice_total: r.invoice_total != null ? Number(r.invoice_total) : null,
       }));
     },
   });

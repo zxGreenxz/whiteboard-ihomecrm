@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useDepositBreakdown, type DepositBreakdownRow } from '@/hooks/useStatBreakdowns';
 import { DEPOSIT_SHORTFALL_THRESHOLD } from '@/hooks/useDepositDashboard';
 import type { InvoiceStatisticsFilters } from '@/hooks/useInvoices';
-import { PiggyBank, Check, AlertTriangle, Clock } from 'lucide-react';
+import { PiggyBank, Check, AlertTriangle, Clock, FileText } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -25,6 +25,14 @@ const fmtDay = (iso?: string | null) => {
   if (!iso) return '—';
   const [y, m, d] = String(iso).slice(0, 10).split('-');
   return y && m && d ? `${d}/${m}/${y}` : '—';
+};
+
+// Bỏ marker kỹ thuật "[THU TACH COC ...]" khỏi ghi chú hiển thị — phần thông tin
+// HĐ đã được trình bày rõ ở khối breakdown bên dưới.
+const cleanNotes = (notes?: string | null) => {
+  if (!notes) return null;
+  const cleaned = notes.replace(/\[THU TACH COC[^\]]*\]/g, '').trim();
+  return cleaned || null;
 };
 
 interface RoomGroup {
@@ -87,7 +95,7 @@ const DepositBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PiggyBank className="h-5 w-5 text-zinc-500" />
@@ -159,22 +167,59 @@ const DepositBreakdownDialog = ({ open, onOpenChange, filters }: Props) => {
                         )}
 
                         <ul className="mt-1.5 space-y-1">
-                          {room.receipts.map((rc) => (
-                            <li
-                              key={rc.voucher_id}
-                              className="flex items-center justify-between gap-2 text-xs bg-zinc-50/60 rounded px-2 py-1"
-                            >
-                              <span className="flex items-center gap-2 min-w-0">
-                                <span className="text-muted-foreground shrink-0">{fmtDay(rc.voucher_date)}</span>
-                                <span className="shrink-0">{rc.code ?? ''}</span>
-                                {rc.account_name && (
-                                  <span className="text-muted-foreground shrink-0">· {rc.account_name}</span>
+                          {room.receipts.map((rc) => {
+                            const note = cleanNotes(rc.notes);
+                            const hasInvoice =
+                              !!rc.invoice_number && rc.invoice_total != null;
+                            const roomService = hasInvoice
+                              ? Math.max(0, (rc.invoice_total ?? 0) - rc.amount)
+                              : 0;
+                            return (
+                              <li
+                                key={rc.voucher_id}
+                                className="bg-zinc-50/60 rounded px-2 py-1 text-xs"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <span className="text-muted-foreground shrink-0">{fmtDay(rc.voucher_date)}</span>
+                                    <span className="shrink-0">{rc.code ?? ''}</span>
+                                    {rc.account_name && (
+                                      <span className="text-muted-foreground shrink-0">· {rc.account_name}</span>
+                                    )}
+                                    {note && <span className="truncate text-muted-foreground">— {note}</span>}
+                                  </span>
+                                  <span className="font-semibold tabular-nums shrink-0">{fmtVND(rc.amount)}</span>
+                                </div>
+
+                                {/* Cọc thu KÈM trong hoá đơn → bóc tách rõ HĐ */}
+                                {hasInvoice && (
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-indigo-100 bg-indigo-50/70 px-2 py-1 text-[11px]">
+                                    <span className="inline-flex items-center gap-1 font-medium text-indigo-700">
+                                      <FileText className="h-3 w-3" /> Thu kèm HĐ {rc.invoice_number}
+                                    </span>
+                                    <span className="text-zinc-600">
+                                      Tổng HĐ:{' '}
+                                      <span className="font-semibold tabular-nums text-zinc-900">
+                                        {fmtVND(rc.invoice_total ?? 0)}
+                                      </span>
+                                    </span>
+                                    <span className="text-zinc-600">
+                                      Tổng cọc:{' '}
+                                      <span className="font-semibold tabular-nums text-emerald-700">
+                                        {fmtVND(rc.amount)}
+                                      </span>
+                                    </span>
+                                    <span className="text-zinc-600">
+                                      Tiền phòng + dịch vụ:{' '}
+                                      <span className="font-semibold tabular-nums text-zinc-900">
+                                        {fmtVND(roomService)}
+                                      </span>
+                                    </span>
+                                  </div>
                                 )}
-                                {rc.notes && <span className="truncate text-muted-foreground">— {rc.notes}</span>}
-                              </span>
-                              <span className="font-semibold tabular-nums shrink-0">{fmtVND(rc.amount)}</span>
-                            </li>
-                          ))}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     );
