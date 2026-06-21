@@ -19,6 +19,8 @@ import type { BuildingWithRelations } from "@/types/building";
 import type { RoomWithRelations } from "@/types/room";
 import InvoiceStatsSummary, { type StatMethodKey } from "@/components/invoices/InvoiceStatsSummary";
 import GenerateInvoiceDialog from "@/components/invoices/GenerateInvoiceDialog";
+import ChangeBreakdownDialog from "@/components/invoices/ChangeBreakdownDialog";
+import DepositBreakdownDialog from "@/components/invoices/DepositBreakdownDialog";
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -74,6 +76,8 @@ export default function InvoicesMobilePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [methodFilter, setMethodFilter] = useState<StatMethodKey | null>(null);
+  const [changeOpen, setChangeOpen] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 350);
@@ -307,6 +311,14 @@ export default function InvoicesMobilePage() {
                       setMethodFilter((prev) => (prev === m ? null : m));
                       setReportOpen(false);
                     }}
+                    onShowChange={() => {
+                      setReportOpen(false);
+                      setChangeOpen(true);
+                    }}
+                    onShowDeposit={() => {
+                      setReportOpen(false);
+                      setDepositOpen(true);
+                    }}
                   />
                 </div>
               </div>
@@ -316,6 +328,8 @@ export default function InvoicesMobilePage() {
       </div>
 
       <GenerateInvoiceDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ChangeBreakdownDialog open={changeOpen} onOpenChange={setChangeOpen} filters={statsFilters} />
+      <DepositBreakdownDialog open={depositOpen} onOpenChange={setDepositOpen} filters={statsFilters} />
     </div>
   );
 }

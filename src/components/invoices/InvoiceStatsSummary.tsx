@@ -24,6 +24,10 @@ interface InvoiceStatsSummaryProps {
   activeMethod?: StatMethodKey | null;
   /** Bấm thẻ phương thức → lọc bảng theo method (parent tự toggle). */
   onMethodClick?: (method: StatMethodKey) => void;
+  /** Bấm thẻ "Tiền Thối" → mở modal thống kê tiền thối. */
+  onShowChange?: () => void;
+  /** Bấm thẻ "Cọc đã thu" → mở modal thống kê cọc. */
+  onShowDeposit?: () => void;
 }
 
 // Toàn bộ số tiền hiển thị theo đơn vị K (1.000đ = 1K).
@@ -41,11 +45,19 @@ interface StatCard {
 interface PlainCard {
   label: string;
   value: number;
-  /** Nếu có → thẻ bấm được để lọc bảng theo phương thức này. */
+  /** Nếu có → thẻ bấm được để lọc bảng theo phương thức này (toggle + highlight). */
   method?: StatMethodKey;
+  /** Hành động khi bấm thẻ (vd mở modal). Không highlight như method. */
+  onClick?: () => void;
 }
 
-const InvoiceStatsSummary = ({ filters, activeMethod, onMethodClick }: InvoiceStatsSummaryProps) => {
+const InvoiceStatsSummary = ({
+  filters,
+  activeMethod,
+  onMethodClick,
+  onShowChange,
+  onShowDeposit,
+}: InvoiceStatsSummaryProps) => {
   const isMobile = useIsMobile();
   const { data: stats, isLoading } = useInvoiceStatistics(filters);
   const { data: ctx } = useMyContext();
@@ -78,6 +90,8 @@ const InvoiceStatsSummary = ({ filters, activeMethod, onMethodClick }: InvoiceSt
         hideAggregateRow={hideAggregateRow}
         activeMethod={activeMethod ?? null}
         onMethodClick={onMethodClick}
+        onShowChange={onShowChange}
+        onShowDeposit={onShowDeposit}
       />
     );
   }
@@ -89,6 +103,8 @@ const InvoiceStatsSummary = ({ filters, activeMethod, onMethodClick }: InvoiceSt
       hideAggregateRow={hideAggregateRow}
       activeMethod={activeMethod ?? null}
       onMethodClick={onMethodClick}
+      onShowChange={onShowChange}
+      onShowDeposit={onShowDeposit}
     />
   );
 };
@@ -121,12 +137,16 @@ const MobileStats = ({
   hideAggregateRow,
   activeMethod,
   onMethodClick,
+  onShowChange,
+  onShowDeposit,
 }: {
   s: StatValues;
   isLoading: boolean;
   hideAggregateRow: boolean;
   activeMethod: StatMethodKey | null;
   onMethodClick?: (method: StatMethodKey) => void;
+  onShowChange?: () => void;
+  onShowDeposit?: () => void;
 }) => {
   if (isLoading) {
     const skeletonCount = hideAggregateRow ? 7 : 12;
@@ -157,8 +177,8 @@ const MobileStats = ({
       <PlainMobileCard label="TK" value={s.payment_tk} method="TK" activeMethod={activeMethod} onMethodClick={onMethodClick} />
       <PlainMobileCard label="TT" value={s.payment_tt} method="TT" activeMethod={activeMethod} onMethodClick={onMethodClick} />
       <PlainMobileCard label="Cấn trừ" value={s.payment_ct} method="CT" activeMethod={activeMethod} onMethodClick={onMethodClick} />
-      <PlainMobileCard label="Tiền Thối" value={s.change_amount} />
-      <PlainMobileCard label="Cọc đã thu" value={s.deposit_collected} />
+      <PlainMobileCard label="Tiền Thối" value={s.change_amount} onClick={onShowChange} />
+      <PlainMobileCard label="Cọc đã thu" value={s.deposit_collected} onClick={onShowDeposit} />
     </section>
   );
 };
@@ -187,20 +207,23 @@ const PlainMobileCard = ({
   method,
   activeMethod,
   onMethodClick,
+  onClick,
 }: {
   label: string;
   value: number;
   method?: StatMethodKey;
   activeMethod?: StatMethodKey | null;
   onMethodClick?: (method: StatMethodKey) => void;
+  onClick?: () => void;
 }) => {
-  const clickable = !!method && !!onMethodClick;
+  const isMethod = !!method && !!onMethodClick;
+  const clickable = isMethod || !!onClick;
   const active = !!method && method === activeMethod;
   return (
     <div
       role={clickable ? 'button' : undefined}
-      aria-pressed={clickable ? active : undefined}
-      onClick={clickable ? () => onMethodClick!(method!) : undefined}
+      aria-pressed={isMethod ? active : undefined}
+      onClick={isMethod ? () => onMethodClick!(method!) : onClick}
       className={[
         'bg-white border rounded-xl p-3 min-h-[78px] flex flex-col gap-1 transition',
         clickable ? 'cursor-pointer active:scale-[0.98]' : '',
@@ -223,12 +246,16 @@ const DesktopStats = ({
   hideAggregateRow,
   activeMethod,
   onMethodClick,
+  onShowChange,
+  onShowDeposit,
 }: {
   s: StatValues;
   isLoading: boolean;
   hideAggregateRow: boolean;
   activeMethod: StatMethodKey | null;
   onMethodClick?: (method: StatMethodKey) => void;
+  onShowChange?: () => void;
+  onShowDeposit?: () => void;
 }) => {
   // Hàng 1 (5 cột): Tổng tiền | Tiền nhà | Điện | Nước | PDV
   const row1: StatCard[] = [
@@ -309,8 +336,8 @@ const DesktopStats = ({
     { label: 'TK', value: s.payment_tk, method: 'TK' },
     { label: 'TT', value: s.payment_tt, method: 'TT' },
     { label: 'Cấn trừ', value: s.payment_ct, method: 'CT' },
-    { label: 'Tiền Thối', value: s.change_amount },
-    { label: 'Cọc đã thu', value: s.deposit_collected },
+    { label: 'Tiền Thối', value: s.change_amount, onClick: onShowChange },
+    { label: 'Cọc đã thu', value: s.deposit_collected, onClick: onShowDeposit },
   ];
 
   const renderCard = (card: StatCard) => (
@@ -332,15 +359,23 @@ const DesktopStats = ({
   );
 
   const renderPlainCard = (card: PlainCard) => {
-    const clickable = !!card.method && !!onMethodClick;
+    const isMethod = !!card.method && !!onMethodClick;
+    const clickable = isMethod || !!card.onClick;
     const active = !!card.method && card.method === activeMethod;
+    const title = isMethod
+      ? active
+        ? 'Bỏ lọc'
+        : `Lọc hoá đơn thanh toán ${card.label}`
+      : card.onClick
+        ? `Xem thống kê ${card.label}`
+        : undefined;
     return (
       <Card
         key={card.label}
         role={clickable ? 'button' : undefined}
-        aria-pressed={clickable ? active : undefined}
-        title={clickable ? (active ? 'Bỏ lọc' : `Lọc hoá đơn thanh toán ${card.label}`) : undefined}
-        onClick={clickable ? () => onMethodClick!(card.method!) : undefined}
+        aria-pressed={isMethod ? active : undefined}
+        title={title}
+        onClick={isMethod ? () => onMethodClick!(card.method!) : card.onClick}
         className={[
           'shadow-sm transition',
           clickable ? 'cursor-pointer hover:border-zinc-400 hover:shadow-md' : '',

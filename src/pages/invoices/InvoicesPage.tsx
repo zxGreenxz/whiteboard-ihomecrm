@@ -36,6 +36,8 @@ import PaymentsSummaryDialog from '@/components/invoices/PaymentsSummaryDialog';
 import InvoiceHistoryDialog from '@/components/invoices/InvoiceHistoryDialog';
 import SuperAdminForceDeleteDialog from '@/components/invoices/SuperAdminForceDeleteDialog';
 import InvoiceDetailModal from '@/components/invoices/InvoiceDetailModal';
+import ChangeBreakdownDialog from '@/components/invoices/ChangeBreakdownDialog';
+import DepositBreakdownDialog from '@/components/invoices/DepositBreakdownDialog';
 
 const InvoicesDesktopPage = () => {
   // Filters
@@ -79,6 +81,10 @@ const InvoicesDesktopPage = () => {
   // Modal xem chi tiết — mở ngay tại trang để KHÔNG mất bộ lọc đang dò.
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailInvoice, setDetailInvoice] = useState<InvoiceWithRelations | null>(null);
+
+  // Modal thống kê khi bấm thẻ Tiền Thối / Cọc đã thu.
+  const [changeModalOpen, setChangeModalOpen] = useState(false);
+  const [depositModalOpen, setDepositModalOpen] = useState(false);
 
   // Merge search into filters
   const effectiveFilters = useMemo(
@@ -259,6 +265,8 @@ const InvoicesDesktopPage = () => {
             filters={statsFilters}
             activeMethod={filters.payment_method ?? null}
             onMethodClick={handleMethodCardClick}
+            onShowChange={() => setChangeModalOpen(true)}
+            onShowDeposit={() => setDepositModalOpen(true)}
           />
 
           {/* Filters */}
@@ -395,6 +403,18 @@ const InvoicesDesktopPage = () => {
         title={detailInvoice ? getInvoiceTitle(detailInvoice) : ''}
         open={detailModalOpen}
         onOpenChange={setDetailModalOpen}
+      />
+
+      {/* Thống kê tiền thối / cọc — theo phạm vi lọc hiện tại */}
+      <ChangeBreakdownDialog
+        open={changeModalOpen}
+        onOpenChange={setChangeModalOpen}
+        filters={statsFilters}
+      />
+      <DepositBreakdownDialog
+        open={depositModalOpen}
+        onOpenChange={setDepositModalOpen}
+        filters={statsFilters}
       />
     </MainLayout>
   );
