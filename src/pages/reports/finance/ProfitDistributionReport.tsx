@@ -7,7 +7,7 @@ import {
   useIncomeExpenseStats,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
-import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails } from "@/hooks/useInvoices";
+import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails, useInvoiceRentPeriods } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useVacantRoomNotes } from "@/hooks/useReports";
@@ -438,6 +438,8 @@ export default function ProfitDistributionReport() {
   // Chi tiết "hoá đơn tháng đầu" (HĐ tự sinh khi ký HĐ) cho các HĐ trong cột Thu:
   // kỳ tiền phòng + đã thu/tổng HĐ + cọc đã đóng/tổng. Chỉ trả về HĐ tháng đầu.
   const { data: firstInvoiceDetails } = useFirstInvoiceDetails(invoiceIds);
+  // Kỳ tiền phòng của hoá đơn KHÔNG đủ ngày (prorate) — tô xanh lá + ghi chú kỳ.
+  const { data: rentPeriods } = useInvoiceRentPeriods(invoiceIds);
 
   // Chi tiết các lần thu của 1 hoá đơn (nhấp đôi vào dòng) — dùng lại dialog
   // "Các lần thanh toán" (hiện số tiền + ngày giờ từng lần).
@@ -545,19 +547,24 @@ export default function ProfitDistributionReport() {
                 const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
                 const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
                 const firstFull = invFull && depFull;
-                // Phòng trống → nền VÀNG CAM nhạt (khác sắc rose của "thiếu tiền"),
-                // ưu tiên hơn tô nền HĐ tháng đầu.
+                // Hoá đơn KHÔNG đủ ngày (prorate — khách vào/rời giữa tháng, có đoạn
+                // trống) → nền XANH LÁ nhạt + ghi chú kỳ tiền phòng.
+                const rp = r.invoiceId ? rentPeriods?.get(r.invoiceId) : null;
+                // Thứ tự ưu tiên nền: phòng trống (vàng cam) → HĐ không đủ ngày
+                // (xanh lá) → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
                 const rowClass = r.isVacant
                   ? `${clickable ? "cursor-pointer select-none " : ""}bg-amber-100 hover:bg-amber-200`
-                  : fd
-                    ? `${clickable ? "cursor-pointer select-none " : ""}${
-                        firstFull
-                          ? "bg-emerald-50 hover:bg-emerald-100"
-                          : "bg-rose-50 hover:bg-rose-100"
-                      }`
-                    : clickable
-                      ? "cursor-pointer select-none hover:bg-muted/50"
-                      : undefined;
+                  : rp
+                    ? `${clickable ? "cursor-pointer select-none " : ""}bg-green-50 hover:bg-green-100`
+                    : fd
+                      ? `${clickable ? "cursor-pointer select-none " : ""}${
+                          firstFull
+                            ? "bg-emerald-50 hover:bg-emerald-100"
+                            : "bg-rose-50 hover:bg-rose-100"
+                        }`
+                      : clickable
+                        ? "cursor-pointer select-none hover:bg-muted/50"
+                        : undefined;
                 return (
                   <TableRow
                     key={r.key}
@@ -607,6 +614,14 @@ export default function ProfitDistributionReport() {
                               )}
                             </div>
                           )}
+                        </div>
+                      )}
+                      {/* HĐ không đủ ngày mà KHÔNG phải HĐ tháng đầu (fd) → vẫn ghi
+                          chú kỳ tiền phòng để thấy khách chỉ ở 1 đoạn trong tháng. */}
+                      {!fd && rp && (
+                        <div className="mt-1 text-xs text-emerald-700">
+                          <span className="text-foreground/70">Tiền phòng tính từ:</span>{" "}
+                          {fmtDay(rp.rentFrom)} → {fmtDay(rp.rentTo)}
                         </div>
                       )}
                     </TableCell>

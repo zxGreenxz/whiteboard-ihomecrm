@@ -301,6 +301,11 @@ export function InvoiceDetailMobile({
                     <div className="invitem" key={it.id}>
                       <span className="invitem-desc">
                         <b>{it.description}</b>
+                        {it.from_date && it.to_date ? (
+                          <small style={{ color: "#2563eb" }}>
+                            Tính từ {fmtDate(it.from_date)} → {fmtDate(it.to_date)}
+                          </small>
+                        ) : null}
                         {it.type ? <small>{it.type.toLowerCase()}</small> : null}
                       </span>
                       <span className="r mono">{it.quantity}</span>

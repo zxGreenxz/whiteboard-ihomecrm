@@ -56,6 +56,13 @@ const InvoiceDetailMobile = lazy(() =>
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
+// 'YYYY-MM-DD' → 'dd/MM/yyyy'; rỗng/không hợp lệ → null (để khỏi hiển thị dòng kỳ).
+const fmtItemDay = (iso?: string | null): string | null => {
+  if (!iso) return null;
+  const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+  return Number.isNaN(d.getTime()) ? null : format(d, 'dd/MM/yyyy');
+};
+
 interface InvoiceDetailViewProps {
   /** ID hoá đơn cần hiển thị (đã đảm bảo có giá trị bởi nơi gọi). */
   id: string;
@@ -458,6 +465,11 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="font-medium">{item.description}</div>
+                          {fmtItemDay(item.from_date) && fmtItemDay(item.to_date) && (
+                            <div className="text-xs text-blue-600">
+                              Tính từ {fmtItemDay(item.from_date)} → {fmtItemDay(item.to_date)}
+                            </div>
+                          )}
                           <div className="text-xs text-gray-500 capitalize">{item.type?.toLowerCase()}</div>
                         </TableCell>
                         <TableCell className="text-right">{item.quantity}</TableCell>

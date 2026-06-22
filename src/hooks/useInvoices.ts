@@ -17,6 +17,7 @@ import type {
   InvoiceStatus,
 } from '@/types/invoice';
 import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
+import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 
 // Re-export types for backward compatibility
 export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
@@ -125,6 +126,43 @@ export const useInvoices = (
       }
       if (filters?.date_range?.end) {
         query = query.lte('issue_date', filters.date_range.end);
+      }
+
+      // Lọc theo số tiền (±tolerance) — suy từ ô tìm kiếm khi người dùng gõ số.
+      if (filters?.amount_target != null) {
+        query = query
+          .gte('total_amount', filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
+          .lte('total_amount', filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
+      }
+
+      // Tìm theo text: số HĐ (invoice_number) HOẶC tên khách. Tên khách nằm ở
+      // bảng join (contract → contract_customers → customers) nên resolve trước
+      // customer_id khớp tên → contract_id rồi OR vào điều kiện.
+      if (filters?.search?.trim()) {
+        const q = filters.search.trim().replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (q) {
+          const { data: custRows } = await (supabase as any)
+            .from('customers')
+            .select('id')
+            .ilike('full_name', `%${q}%`)
+            .limit(200);
+          const custIds = ((custRows || []) as any[]).map((c) => c.id);
+          let contractIds: string[] = [];
+          if (custIds.length > 0) {
+            const { data: ccRows } = await (supabase as any)
+              .from('contract_customers')
+              .select('contract_id')
+              .in('customer_id', custIds);
+            contractIds = Array.from(
+              new Set(((ccRows || []) as any[]).map((r) => r.contract_id).filter(Boolean))
+            );
+          }
+          const ors = [`invoice_number.ilike.%${q}%`];
+          if (contractIds.length > 0) {
+            ors.push(`contract_id.in.(${contractIds.join(',')})`);
+          }
+          query = query.or(ors.join(','));
+        }
       }
 
       // Apply pagination
@@ -355,6 +393,68 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
             depositTotal: Number(contract?.total_deposit) || 0,
             depositInInvoice,
           });
+        }
+      }
+      return map;
+    },
+  });
+};
+
+// =============================================
+// useInvoiceRentPeriods — kỳ tiền phòng (from→to) của hạng mục RENT bị PRORATE
+// (hoá đơn KHÔNG đủ ngày: khách vào/rời giữa tháng). Hệ chỉ set from_date/to_date
+// cho item khi prorate → có dòng RENT kèm from_date+to_date ⇒ hoá đơn không đủ
+// ngày. Dùng tô màu + ghi chú kỳ ở cột Thu (Phân bổ lợi nhuận) cho MỌI hoá đơn
+// (không chỉ HĐ tháng đầu như useFirstInvoiceDetails).
+// =============================================
+
+export interface InvoiceRentPeriod {
+  invoiceId: string;
+  rentFrom: string;
+  rentTo: string;
+}
+
+export const useInvoiceRentPeriods = (ids: string[]) => {
+  const sortedIds = Array.from(new Set(ids.filter(Boolean))).sort();
+  return useQuery({
+    queryKey: ['invoice-rent-periods', sortedIds],
+    enabled: sortedIds.length > 0,
+    queryFn: async (): Promise<Map<string, InvoiceRentPeriod>> => {
+      const map = new Map<string, InvoiceRentPeriod>();
+      const CHUNK = 200;
+      for (let i = 0; i < sortedIds.length; i += CHUNK) {
+        const slice = sortedIds.slice(i, i + CHUNK);
+        const { data, error } = await (supabase as any)
+          .from('invoices')
+          .select('id, billing_month, invoice_items (type, from_date, to_date)')
+          .in('id', slice)
+          .is('deleted_at', null);
+        if (error) throw error;
+        for (const inv of (data ?? []) as any[]) {
+          const rent = ((inv.invoice_items ?? []) as any[])
+            .filter((it) => it.type === 'RENT' && it.from_date && it.to_date)
+            .sort((a, b) => String(a.from_date).localeCompare(String(b.from_date)))[0];
+          if (!rent) continue;
+          // Chỉ tính "không đủ ngày" khi kỳ tiền phòng KHÔNG phủ trọn tháng hoá đơn
+          // (loại trường hợp HĐ đủ tháng vẫn lỡ set from/to = 1→cuối tháng).
+          const bm: string | null = inv.billing_month ?? null;
+          let partial = true;
+          if (bm && /^\d{4}-\d{2}$/.test(bm)) {
+            const [y, m] = bm.split('-').map(Number);
+            const monthStart = `${bm}-01`;
+            const lastDay = new Date(y, m, 0).getDate();
+            const monthEnd = `${bm}-${String(lastDay).padStart(2, '0')}`;
+            const from = String(rent.from_date).slice(0, 10);
+            const to = String(rent.to_date).slice(0, 10);
+            partial = from > monthStart || to < monthEnd;
+          }
+          if (partial) {
+            map.set(inv.id, {
+              invoiceId: inv.id,
+              rentFrom: rent.from_date,
+              rentTo: rent.to_date,
+            });
+          }
         }
       }
       return map;
