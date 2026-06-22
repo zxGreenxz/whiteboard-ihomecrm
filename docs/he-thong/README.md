@@ -29,6 +29,7 @@ Mỗi file mô tả một **domain** theo cùng một bố cục: *Tổng quan �
 | [03](03-khach-hang-lead-ho-so.md) | **Khách hàng · Lead · Người thuê · Phương tiện · CT01** | `leads, customers, tenants, vehicles, ct01_declarations, contract_customers/tenants` | `/leads`, `/customers`, `/vehicles` |
 | [04](04-coc-giu-cho.md) | **Cọc giữ chỗ** & theo dõi cọc | `deposits, excess_amounts` | `/deposits` |
 | [05](05-hop-dong.md) | **Hợp đồng** — gia hạn · chuyển nhượng · thanh lý | `contracts, contract_services/extensions/transfers/terminations, asset_handovers` | `/contracts`, `/contracts/:id` |
+| [16](16-thanh-ly-hop-dong.md) | **Thanh lý hợp đồng** (deep-dive) — dòng tiền BỎ CỌC vs RỜI PHÒNG | `contract_terminations, invoices, payments, income_expenses, accounts` | dialog Thanh lý ở `/contracts/:id` |
 
 ### Tài chính & vận hành tháng
 | # | Domain | Bảng chính | Route chính |
