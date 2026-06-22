@@ -6,6 +6,8 @@ import "@/styles/financeMobile.css";
 import { useInvoices } from "@/hooks/useInvoices";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
+import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
+import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePagination } from "@/hooks/usePagination";
@@ -110,12 +112,24 @@ export default function InvoicesMobilePage() {
       .map((r) => r.id);
   }, [roomsData, roomName, buildingId]);
 
+  // Tìm kiếm: ưu tiên MÃ PHÒNG → nếu không có phòng nào mới tìm theo số tiền /
+  // số HĐ / tên khách. (debounced đã .trim() ở effect trên.)
+  const roomCode = isRoomCodeQuery(debounced) ? debounced : null;
+  const { data: roomLookup } = useRoomIdsByCode(
+    roomCode,
+    buildingId ? [buildingId] : undefined,
+  );
+  const resolvedSearch = resolveSearch(debounced, roomLookup);
+  const effectiveRoomIds = resolvedSearch.roomIds ?? roomIds;
+
   const filters: InvoiceFilters = {
     building_id: buildingId || undefined,
-    room_ids: roomIds && roomIds.length ? roomIds : undefined,
+    room_ids:
+      effectiveRoomIds && effectiveRoomIds.length ? effectiveRoomIds : undefined,
     status: stat === "all" ? undefined : stat,
     payment_method: methodFilter ?? undefined,
-    search: debounced || undefined,
+    amount_target: resolvedSearch.amountTarget ?? undefined,
+    search: resolvedSearch.text,
   };
 
   const statsFilters = {
@@ -213,13 +227,13 @@ export default function InvoicesMobilePage() {
             <div className="cm-search">
               <Search />
               <input
-                placeholder="Tìm mã HĐ, tên khách, tên phòng…"
+                placeholder="Tìm mã phòng, số HĐ, tên khách, số tiền…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
 
-            {isLoading ? (
+            {isLoading || resolvedSearch.pending ? (
               <div className="stub">
                 <p>Đang tải hoá đơn…</p>
               </div>

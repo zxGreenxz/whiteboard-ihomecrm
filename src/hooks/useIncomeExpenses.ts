@@ -9,6 +9,10 @@ import type {
 } from "@/lib/incomeExpenseValidation";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
+import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
+
+// Re-export để giữ tương thích cho các nơi import từ hook này.
+export { AMOUNT_SEARCH_TOLERANCE };
 
 // --- Types ---
 
@@ -49,11 +53,6 @@ export interface IncomeExpenseFilters {
   period_start_month?: string | null;
   period_end_month?: string | null;
 }
-
-// Sai số mặc định khi lọc theo số tiền: ±5.000đ. Cho phép match nhỏ
-// (vd phí ngân hàng, làm tròn).
-export const AMOUNT_SEARCH_TOLERANCE = 5000;
-
 
 export interface IncomeExpenseItem {
   id: string;
@@ -1349,6 +1348,8 @@ export const useIncomeExpenseBatches = (
       "list",
       filters.building_id,
       filters.building_ids,
+      filters.room_id,
+      filters.room_ids,
       filters.account_id,
       filters.type,
       filters.start_date,
@@ -1430,6 +1431,11 @@ export const useIncomeExpenseBatches = (
         voucherQuery = voucherQuery.in("building_id", filters.building_ids);
       }
       if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
+      if (filters.room_ids?.length) {
+        voucherQuery = voucherQuery.in("room_id", filters.room_ids);
+      } else if (filters.room_id) {
+        voucherQuery = voucherQuery.eq("room_id", filters.room_id);
+      }
       if (filters.account_id) voucherQuery = voucherQuery.or(
         `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
       );

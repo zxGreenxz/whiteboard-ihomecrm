@@ -47,6 +47,8 @@ import {
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 import { usePagination } from "@/hooks/usePagination";
 import { usePhoneViewport } from "@/hooks/use-mobile";
+import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
+import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
@@ -69,19 +71,6 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   period_start_month: null,
   period_end_month: null,
 };
-
-// Parse search input: nếu toàn ký tự số (sau khi bỏ ., space, đ, d) → amount filter.
-// Trả về { amount } nếu là số, { text } nếu là chuỗi, { } nếu rỗng.
-function parseSearchInput(raw: string): { amount?: number; text?: string } {
-  const trimmed = raw.trim();
-  if (!trimmed) return {};
-  const cleaned = trimmed.replace(/[\s.,đdĐ]/g, "");
-  if (/^\d+$/.test(cleaned)) {
-    const amount = Number(cleaned);
-    if (amount > 0) return { amount };
-  }
-  return { text: trimmed };
-}
 
 const IncomeExpenseDesktopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -128,9 +117,17 @@ const IncomeExpenseDesktopPage = () => {
 
   const pagination = usePagination(20);
 
-  // Parse search input: số → amount filter (±5.000đ), chữ → text search
-  const parsedSearch = parseSearchInput(searchQuery);
+  // Tìm kiếm: ưu tiên MÃ PHÒNG → nếu không có phòng nào mới tìm theo số tiền
+  // (±5.000đ) hoặc tên/mã phiếu như cũ.
   const buildingIds = filters.building_ids ?? [];
+  const trimmedSearch = searchQuery.trim();
+  const roomCode = isRoomCodeQuery(trimmedSearch) ? trimmedSearch : null;
+  const { data: roomLookup } = useRoomIdsByCode(
+    roomCode,
+    buildingIds.length ? buildingIds : undefined
+  );
+  const parsedSearch = resolveSearch(searchQuery, roomLookup);
+
   const effectiveFilters: IncomeExpenseFilters = {
     ...filters,
     building_ids: buildingIds.length ? buildingIds : undefined,
@@ -138,7 +135,9 @@ const IncomeExpenseDesktopPage = () => {
     // chọn đúng 1 toà thì truyền kèm building_id đơn để view đó vẫn lọc được
     // (với list/stats, building_ids ưu tiên nên không đổi kết quả).
     building_id: buildingIds.length === 1 ? buildingIds[0] : null,
-    amount_target: parsedSearch.amount ?? null,
+    amount_target: parsedSearch.amountTarget,
+    // Tìm theo mã phòng → ghi đè bộ lọc phòng (nếu có) bằng các phòng khớp.
+    room_ids: parsedSearch.roomIds ?? filters.room_ids,
   };
 
   const { data: listResult, isLoading } = useIncomeExpenses(
@@ -375,12 +374,17 @@ const IncomeExpenseDesktopPage = () => {
           <div className="relative flex-1 max-w-md ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Tìm tên/mã phiếu hoặc gõ số tiền (±5.000đ)..."
+              placeholder="Tìm mã phòng, tên/mã phiếu hoặc số tiền (±5.000đ)..."
               value={searchQuery}
               onChange={handleSearchChange}
               className="pl-9"
             />
-            {parsedSearch.amount != null && (
+            {parsedSearch.mode === "room" && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                mã phòng
+              </span>
+            )}
+            {parsedSearch.mode === "amount" && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
                 ±5.000đ
               </span>
@@ -391,7 +395,7 @@ const IncomeExpenseDesktopPage = () => {
         {viewMode === "individual" ? (
           <IncomeExpenseList
             vouchers={vouchers}
-            isLoading={isLoading}
+            isLoading={isLoading || parsedSearch.pending}
             onView={handleView}
             onCancel={handleCancelVoucher}
             onStopRecurring={(id) => stopRecurringMutation.mutate(id)}
@@ -405,7 +409,7 @@ const IncomeExpenseDesktopPage = () => {
         ) : (
           <IncomeExpenseBatchList
             batches={batches}
-            isLoading={isBatchLoading}
+            isLoading={isBatchLoading || parsedSearch.pending}
             onView={handleViewBatch}
             onCancel={handleCancelBatch}
             onEdit={handleViewBatch}

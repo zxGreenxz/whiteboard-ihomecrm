@@ -159,7 +159,10 @@ export interface InvoiceFilters {
     start: string; // DATE
     end: string; // DATE
   };
+  /** Text tìm theo số HĐ / tên khách (ô tìm kiếm). */
   search?: string;
+  /** Lọc theo số tiền tổng (±AMOUNT_SEARCH_TOLERANCE) — suy từ ô tìm kiếm khi gõ số. */
+  amount_target?: number | null;
 }
 
 /** Computed totals for invoice summary section */

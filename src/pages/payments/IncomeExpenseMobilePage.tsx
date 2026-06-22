@@ -37,6 +37,8 @@ import {
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
 import { usePagination } from "@/hooks/usePagination";
+import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
+import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import IncomeExpenseFilterPanel from "@/components/income-expenses/IncomeExpenseFilterPanel";
@@ -68,18 +70,6 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   period_start_month: null,
   period_end_month: null,
 };
-
-// Số → lọc theo số tiền (±5.000đ); chữ → tìm text. Khớp parse desktop.
-function parseSearchInput(raw: string): { amount?: number; text?: string } {
-  const trimmed = raw.trim();
-  if (!trimmed) return {};
-  const cleaned = trimmed.replace(/[\s.,đdĐ]/g, "");
-  if (/^\d+$/.test(cleaned)) {
-    const amount = Number(cleaned);
-    if (amount > 0) return { amount };
-  }
-  return { text: trimmed };
-}
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -174,13 +164,20 @@ export default function IncomeExpenseMobilePage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const parsed = parseSearchInput(debounced);
   const buildingIds = filters.building_ids ?? [];
+  const trimmedSearch = debounced.trim();
+  const roomCode = isRoomCodeQuery(trimmedSearch) ? trimmedSearch : null;
+  const { data: roomLookup } = useRoomIdsByCode(
+    roomCode,
+    buildingIds.length ? buildingIds : undefined,
+  );
+  const parsed = resolveSearch(debounced, roomLookup);
   const effectiveFilters: IncomeExpenseFilters = {
     ...filters,
     building_ids: buildingIds.length ? buildingIds : undefined,
     building_id: buildingIds.length === 1 ? buildingIds[0] : null,
-    amount_target: parsed.amount ?? null,
+    amount_target: parsed.amountTarget,
+    room_ids: parsed.roomIds ?? filters.room_ids,
   };
 
   const { data: listResult, isLoading } = useIncomeExpenses(
@@ -255,7 +252,7 @@ export default function IncomeExpenseMobilePage() {
               <div className="tksearch-in">
                 <Search />
                 <input
-                  placeholder="Theo mã phiếu, tên, số tiền…"
+                  placeholder="Theo mã phòng, mã phiếu, tên, số tiền…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -335,7 +332,7 @@ export default function IncomeExpenseMobilePage() {
             </div>
 
             {viewMode === "individual" ? (
-              isLoading ? (
+              isLoading || parsed.pending ? (
                 <div className="stub">
                   <p>Đang tải phiếu…</p>
                 </div>
@@ -447,7 +444,7 @@ export default function IncomeExpenseMobilePage() {
             ) : (
               <IncomeExpenseBatchListMobile
                 batches={batches}
-                isLoading={isBatchLoading}
+                isLoading={isBatchLoading || parsed.pending}
                 onView={setDetailBatchId}
                 totalCount={batchTotalCount}
                 onLoadMore={() =>

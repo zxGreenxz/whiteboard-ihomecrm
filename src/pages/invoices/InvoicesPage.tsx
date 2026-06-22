@@ -18,6 +18,8 @@ import {
 import { useMyContext } from '@/hooks/useMyContext';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { useRoomIdsByCode } from '@/hooks/useRoomIdsByCode';
+import { isRoomCodeQuery, resolveSearch } from '@/lib/roomCodeSearch';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
 import type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 
@@ -86,14 +88,29 @@ const InvoicesDesktopPage = () => {
   const [changeModalOpen, setChangeModalOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
 
+  // Tìm kiếm: ưu tiên MÃ PHÒNG → nếu không có phòng nào mới tìm theo số tiền
+  // (±5.000đ) hoặc số HĐ / tên khách.
+  const trimmedSearch = searchQuery.trim();
+  const roomCode = isRoomCodeQuery(trimmedSearch) ? trimmedSearch : null;
+  const lookupBuildingIds = filters.building_ids?.length
+    ? filters.building_ids
+    : filters.building_id
+      ? [filters.building_id]
+      : undefined;
+  const { data: roomLookup } = useRoomIdsByCode(roomCode, lookupBuildingIds);
+  const resolvedSearch = resolveSearch(searchQuery, roomLookup);
+
   // Merge search into filters
-  const effectiveFilters = useMemo(
-    () => ({ ...filters, search: searchQuery || undefined }),
-    [filters, searchQuery],
-  );
+  const effectiveFilters: InvoiceFilters = {
+    ...filters,
+    room_ids: resolvedSearch.roomIds ?? filters.room_ids,
+    amount_target: resolvedSearch.amountTarget ?? undefined,
+    search: resolvedSearch.text,
+  };
 
   // Data fetching
-  const { data: invoicesData, isLoading } = useInvoices(effectiveFilters, { page, pageSize });
+  const { data: invoicesData, isLoading: isLoadingRaw } = useInvoices(effectiveFilters, { page, pageSize });
+  const isLoading = isLoadingRaw || resolvedSearch.pending;
   const invoices = invoicesData?.data ?? [];
   const totalCount = invoicesData?.count ?? 0;
 
