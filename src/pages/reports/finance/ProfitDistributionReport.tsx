@@ -10,6 +10,9 @@ import {
 import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
+import { useVacantRoomNotes } from "@/hooks/useReports";
+import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
+import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useBuildings } from "@/hooks/useBuildings";
 import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
@@ -48,6 +51,8 @@ interface DisplayRow {
   description: string;
   buildingName: string;
   roomName: string | null;
+  // room_id của phiếu — khớp phòng trống chính xác (tránh trùng tên giữa các toà).
+  roomId?: string | null;
   periodLabel: string;
   typeName: string;
   // Nhóm hạng mục (income_expense_types.category) — dùng sắp xếp ưu tiên cột Chi.
@@ -59,6 +64,13 @@ interface DisplayRow {
   invoiceId?: string | null;
   // Số lần thu được gộp (>1 ⇒ hiện "(N lần)").
   groupCount?: number;
+  // Phòng đang trống trong tháng → tô nền vàng cam + đẩy lên đầu cột Thu.
+  isVacant?: boolean;
+  // Dòng ghi chú thuần (không phải khoản thật) "Trống phòng — <lý do>" — amount 0,
+  // không tính vào "X khoản".
+  isNote?: boolean;
+  // Lý do trống ("Bỏ cọc" / "Thanh lý HĐ" / "Chuyển phòng" / …).
+  vacantReason?: string;
 }
 
 // Các cột CÓ THỂ ẩn/hiện. "Mô tả" + cột số tiền luôn hiển thị (lõi).
@@ -77,13 +89,13 @@ const TOGGLE_COLUMNS: { key: ColKey; label: string }[] = [
 // 1000 thì con số tổng không sai.
 const LIST_LIMIT = 1000;
 
-// So sánh tên phòng theo thứ tự TỰ NHIÊN (101 < 102 < 201…); phòng trống (null)
-// dồn xuống cuối.
+// So sánh tên phòng theo thứ tự nhóm MB* → G* → L* → 1,2,3,4… (dùng compareRoomNames
+// chung của dự án); phòng không tên (null) dồn xuống cuối.
 const compareRoom = (a: string | null, b: string | null): number => {
   if (!a && !b) return 0;
   if (!a) return 1;
   if (!b) return -1;
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  return compareRoomNames(a, b);
 };
 
 // Bỏ dấu + thường hoá để khớp hạng mục bất kể cách gõ ("Vệ Sinh" ≈ "vệ sinh").
@@ -95,6 +107,13 @@ const nrm = (s: string | null | undefined): string =>
     .toLowerCase()
     .replace(/đ/g, "d")
     .trim();
+
+// Dòng doanh thu THANH LÝ / BỎ CỌC — khi phòng đang trống thì đem lên đầu + tô màu
+// (thay cho dòng ghi chú "Trống phòng").
+const isLiquidationRow = (r: DisplayRow): boolean => {
+  const s = nrm(`${r.typeName} ${r.description}`);
+  return s.includes("bo coc") || s.includes("thanh ly");
+};
 
 // Thứ tự ƯU TIÊN hiển thị KHOẢN CHI: các hạng mục cố định hằng tháng nổi lên
 // đầu sổ đúng thứ tự nghiệp vụ; phần còn lại giữ thứ tự cũ (phòng → mô tả) ở dưới.
@@ -241,6 +260,13 @@ export default function ProfitDistributionReport() {
 
   const loading = accrualMode ? accrualLoading : isLoading;
 
+  // Phòng trống trong tháng (đầu cột Thu, nền vàng cam). Chỉ tính khi panel Thu
+  // hiển thị, không lọc 1 phòng cụ thể, và đã chọn ≥1 toà (cần danh sách phòng
+  // đầy đủ của toà).
+  const vacancyEnabled =
+    voucherType !== "EXPENSE" && roomId === "all" && buildingIds.length > 0;
+  const { data: vacantNotes } = useVacantRoomNotes(buildingIds, endDate, vacancyEnabled);
+
   // Chuẩn hoá dữ liệu thành 2 danh sách thu/chi + sắp theo thứ tự phòng.
   const { incomeRows, expenseRows } = useMemo(() => {
     const rawInc: DisplayRow[] = [];
@@ -252,6 +278,7 @@ export default function ProfitDistributionReport() {
           description: r.voucherName ?? "",
           buildingName: r.buildingName ?? "",
           roomName: r.roomName ?? null,
+          roomId: r.roomId ?? null,
           periodLabel: formatPeriod(r.startDate, r.endDate) || "—",
           typeName: r.typeName || "—",
           category: r.category ?? null,
@@ -268,6 +295,7 @@ export default function ProfitDistributionReport() {
           description: r.name ?? "",
           buildingName: r.building_name ?? "",
           roomName: r.room_name ?? null,
+          roomId: r.room_id ?? null,
           periodLabel: "—",
           // Mặc định null — gán đúng category theo từng item bên dưới (cột Chi).
           category: null as string | null,
@@ -345,14 +373,57 @@ export default function ProfitDistributionReport() {
 
     const sorter = (a: DisplayRow, b: DisplayRow) =>
       compareRoom(a.roomName, b.roomName) || a.description.localeCompare(b.description, "vi");
-    inc.sort(sorter);
     // Cột Chi: hạng mục cố định (Tiền nhà → Điện → … → Thang máy) lên đầu,
     // trong cùng nhóm vẫn theo phòng → mô tả như cũ.
-    exp.sort(
-      (a, b) => expenseRank(a) - expenseRank(b) || sorter(a, b)
-    );
-    return { incomeRows: inc, expenseRows: exp };
-  }, [accrualMode, accrual, result, monthLabel]);
+    exp.sort((a, b) => expenseRank(a) - expenseRank(b) || sorter(a, b));
+
+    // Không bật phòng-trống (chưa chọn toà / lọc 1 phòng / panel Chi) → giữ như cũ.
+    if (!vacantNotes || vacantNotes.size === 0) {
+      inc.sort(sorter);
+      return { incomeRows: inc, expenseRows: exp };
+    }
+
+    // Tách: doanh thu thanh lý của phòng trống → khối ĐỎ/CAM lên đầu; còn lại giữ
+    // nguyên ở khối thường.
+    const red: DisplayRow[] = [];
+    const normal: DisplayRow[] = [];
+    const roomsWithRed = new Set<string>();
+    for (const r of inc) {
+      const note = r.roomId ? vacantNotes.get(r.roomId) : undefined;
+      if (note && isLiquidationRow(r)) {
+        red.push({ ...r, isVacant: true, vacantReason: note.reason });
+        roomsWithRed.add(note.roomId);
+      } else {
+        normal.push(r);
+      }
+    }
+    // Phòng trống CHƯA có dòng doanh thu thanh lý → thêm dòng ghi chú thuần.
+    for (const note of vacantNotes.values()) {
+      if (roomsWithRed.has(note.roomId)) continue;
+      red.push({
+        key: `vacant-${note.roomId}`,
+        monthLabel,
+        description:
+          note.reason === VACANCY_FALLBACK_REASON
+            ? "Trống phòng"
+            : `Trống phòng — ${note.reason}`,
+        buildingName: note.buildingName,
+        roomName: note.roomName,
+        roomId: note.roomId,
+        periodLabel: "—",
+        typeName: "—",
+        category: null,
+        amount: 0,
+        notKqkd: false,
+        isVacant: true,
+        isNote: true,
+        vacantReason: note.reason,
+      });
+    }
+    red.sort(sorter);
+    normal.sort(sorter);
+    return { incomeRows: [...red, ...normal], expenseRows: exp };
+  }, [accrualMode, accrual, result, monthLabel, vacantNotes]);
 
   // Tổng/đã trả của các hoá đơn xuất hiện trong cột Thu → tính note thiếu/thừa.
   const invoiceIds = useMemo(
@@ -428,7 +499,9 @@ export default function ProfitDistributionReport() {
       <div className={`flex items-center justify-between gap-2 px-4 py-2.5 border-b ${accentHeader}`}>
         <div className="flex items-center gap-2">
           <span className="font-medium">{title}</span>
-          <span className="text-xs text-muted-foreground">{data.length} khoản</span>
+          <span className="text-xs text-muted-foreground">
+            {data.filter((r) => !r.isNote).length} khoản
+          </span>
         </div>
         <span className={`font-semibold ${accentText}`}>{formatCurrency(total)}</span>
       </div>
@@ -468,15 +541,19 @@ export default function ProfitDistributionReport() {
                 const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
                 const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
                 const firstFull = invFull && depFull;
-                const rowClass = fd
-                  ? `${clickable ? "cursor-pointer select-none " : ""}${
-                      firstFull
-                        ? "bg-emerald-50 hover:bg-emerald-100"
-                        : "bg-rose-50 hover:bg-rose-100"
-                    }`
-                  : clickable
-                    ? "cursor-pointer select-none hover:bg-muted/50"
-                    : undefined;
+                // Phòng trống → nền VÀNG CAM nhạt (khác sắc rose của "thiếu tiền"),
+                // ưu tiên hơn tô nền HĐ tháng đầu.
+                const rowClass = r.isVacant
+                  ? `${clickable ? "cursor-pointer select-none " : ""}bg-amber-100 hover:bg-amber-200`
+                  : fd
+                    ? `${clickable ? "cursor-pointer select-none " : ""}${
+                        firstFull
+                          ? "bg-emerald-50 hover:bg-emerald-100"
+                          : "bg-rose-50 hover:bg-rose-100"
+                      }`
+                    : clickable
+                      ? "cursor-pointer select-none hover:bg-muted/50"
+                      : undefined;
                 return (
                   <TableRow
                     key={r.key}
@@ -536,7 +613,7 @@ export default function ProfitDistributionReport() {
                     )}
                     {visible("phan_loai") && <TableCell>{r.typeName}</TableCell>}
                     <TableCell className={`text-right whitespace-nowrap font-medium ${accentText}`}>
-                      {formatCurrency(r.amount)}
+                      {r.isNote ? "—" : formatCurrency(r.amount)}
                       {note && <div className={`text-xs font-normal ${note.cls}`}>{note.text}</div>}
                     </TableCell>
                   </TableRow>
@@ -672,7 +749,7 @@ export default function ProfitDistributionReport() {
         </div>
 
         <div className="text-sm text-muted-foreground">
-          Tổng {incomeRows.length + expenseRows.length} khoản
+          Tổng {incomeRows.filter((r) => !r.isNote).length + expenseRows.length} khoản
           {!accrualMode && (result?.totalCount ?? 0) > LIST_LIMIT && (
             <span className="ml-1 text-amber-600">
               (hiển thị {LIST_LIMIT} đầu trên tổng {result?.totalCount} — số tổng ở thẻ vẫn đủ)

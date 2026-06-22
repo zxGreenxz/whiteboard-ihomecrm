@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { resolveVacancyReason, type VacancyEvent } from "@/lib/vacancyReason";
 import {
   addDays,
   differenceInDays,
@@ -96,6 +97,159 @@ export function useVacantRoomsReport(buildingId?: string, floorId?: string) {
       }
 
       return vacantRooms;
+    },
+  });
+}
+
+export interface VacantRoomNote {
+  roomId: string;
+  roomName: string;
+  buildingId: string;
+  buildingName: string;
+  /** Nhãn lý do trống: "Bỏ cọc" / "Thanh lý HĐ" / "Chuyển phòng" / … */
+  reason: string;
+}
+
+/** Lấy building name từ embed (PostgREST có thể trả object hoặc mảng). */
+const embeddedName = (b: any): string =>
+  (Array.isArray(b) ? b[0]?.name : b?.name) ?? "";
+
+/**
+ * Danh sách phòng TRỐNG (theo ảnh chụp CUỐI tháng) của các toà đã chọn, kèm lý do
+ * — dùng tô màu + ghi chú "Trống phòng — <lý do>" ở đầu cột Khoản thu trang
+ * Phân bổ lợi nhuận.
+ *
+ * "Đang ở tại cuối tháng" = có HĐ `ACTIVE` phủ ngày cuối tháng. Phòng gắn cờ =
+ * không ở + status không thuộc {RESERVED, MAINTENANCE, UNAVAILABLE}. Lý do suy từ
+ * contract_terminations (FORFEIT→Bỏ cọc, còn lại→Thanh lý HĐ), contract_transfers
+ * theo `old_room_id` (ROOM_CHANGE→Chuyển phòng, TENANT/BOTH→Sang nhượng) và HĐ
+ * EXPIRED (→Hết hạn HĐ). Chỉ chạy khi đã chọn ≥1 toà.
+ *
+ * @param monthEndDate ngày cuối tháng 'YYYY-MM-DD'.
+ */
+export function useVacantRoomNotes(
+  buildingIds: string[],
+  monthEndDate: string,
+  enabled: boolean,
+) {
+  const sortedIds = [...buildingIds].sort();
+  return useQuery({
+    queryKey: ["reports", "vacant-room-notes", sortedIds, monthEndDate],
+    enabled: enabled && buildingIds.length > 0 && !!monthEndDate,
+    queryFn: async (): Promise<Map<string, VacantRoomNote>> => {
+      // 1) Phòng trong các toà đã chọn (bỏ phòng đã xoá).
+      const { data: rooms, error: roomsErr } = await supabase
+        .from("rooms")
+        .select("id, name, status, building_id, buildings(id, name)")
+        .is("deleted_at", null)
+        .in("building_id", buildingIds);
+      if (roomsErr) throw roomsErr;
+      const roomList = (rooms ?? []) as any[];
+      if (roomList.length === 0) return new Map();
+      const roomIds = roomList.map((r) => r.id);
+
+      // 2) HĐ của các phòng (mọi status): ACTIVE để xác định "đang ở tại cuối
+      //    tháng", TERMINATED/EXPIRED/TRANSFERRED để suy lý do.
+      const { data: contracts, error: cErr } = await supabase
+        .from("contracts")
+        .select("id, room_id, status, start_date, end_date, actual_end_date")
+        .in("room_id", roomIds)
+        .is("deleted_at", null);
+      if (cErr) throw cErr;
+      const contractList = (contracts ?? []) as any[];
+
+      // Phòng "đang ở tại CUỐI tháng" = có HĐ ACTIVE phủ ngày cuối tháng.
+      const occupied = new Set<string>();
+      for (const c of contractList) {
+        if (c.status !== "ACTIVE") continue;
+        const start: string = c.start_date ?? "";
+        const end: string = c.actual_end_date || c.end_date || "";
+        if (start && start <= monthEndDate && end && end >= monthEndDate) {
+          occupied.add(c.room_id);
+        }
+      }
+
+      // Phòng gắn cờ = không ở + không phải giữ chỗ/bảo trì/ngưng cho thuê.
+      const SKIP_STATUS = new Set(["RESERVED", "MAINTENANCE", "UNAVAILABLE"]);
+      const flagged = roomList.filter(
+        (r) => !occupied.has(r.id) && !SKIP_STATUS.has(r.status),
+      );
+      if (flagged.length === 0) return new Map();
+      const flaggedIds = new Set<string>(flagged.map((r) => r.id));
+
+      // HĐ đã kết thúc (≤ cuối tháng) của các phòng gắn cờ → tra termination &
+      // phát hiện EXPIRED.
+      const endedByContract = new Map<
+        string,
+        { roomId: string; date: string | null; status: string }
+      >();
+      for (const c of contractList) {
+        if (!flaggedIds.has(c.room_id) || c.status === "ACTIVE") continue;
+        const end: string | null = c.actual_end_date || c.end_date || null;
+        if (end && end > monthEndDate) continue; // kết thúc sau tháng → bỏ
+        endedByContract.set(c.id, { roomId: c.room_id, date: end, status: c.status });
+      }
+      const endedContractIds = [...endedByContract.keys()];
+
+      // 3) Terminations cho các HĐ đã kết thúc.
+      let terminations: any[] = [];
+      if (endedContractIds.length) {
+        const { data } = await supabase
+          .from("contract_terminations")
+          .select("contract_id, termination_type, termination_date, actual_move_out_date")
+          .in("contract_id", endedContractIds);
+        terminations = data ?? [];
+      }
+
+      // 4) Transfers có old_room_id = phòng gắn cờ (đã duyệt) — bắt được chuyển
+      //    phòng dù room_id của HĐ đã đổi tại chỗ sang phòng mới.
+      const { data: transfersData } = await supabase
+        .from("contract_transfers")
+        .select("old_room_id, transfer_type, transfer_date, status")
+        .in("old_room_id", [...flaggedIds])
+        .in("status", ["APPROVED", "COMPLETED"]);
+      const transfers = (transfersData ?? []).filter(
+        (t: any) => !t.transfer_date || t.transfer_date <= monthEndDate,
+      );
+
+      // Gom sự kiện theo phòng → suy nhãn lý do.
+      const eventsByRoom = new Map<string, VacancyEvent[]>();
+      const pushEv = (roomId: string, ev: VacancyEvent) => {
+        const arr = eventsByRoom.get(roomId);
+        if (arr) arr.push(ev);
+        else eventsByRoom.set(roomId, [ev]);
+      };
+      for (const t of terminations) {
+        const ended = endedByContract.get(t.contract_id);
+        if (!ended) continue;
+        pushEv(ended.roomId, {
+          kind: "termination",
+          type: t.termination_type ?? null,
+          date: t.actual_move_out_date || t.termination_date || ended.date,
+        });
+      }
+      for (const c of endedByContract.values()) {
+        if (c.status === "EXPIRED") pushEv(c.roomId, { kind: "expired", date: c.date });
+      }
+      for (const t of transfers) {
+        pushEv(t.old_room_id, {
+          kind: "transfer",
+          type: t.transfer_type ?? null,
+          date: t.transfer_date ?? null,
+        });
+      }
+
+      const out = new Map<string, VacantRoomNote>();
+      for (const r of flagged) {
+        out.set(r.id, {
+          roomId: r.id,
+          roomName: r.name ?? "",
+          buildingId: r.building_id,
+          buildingName: embeddedName(r.buildings),
+          reason: resolveVacancyReason(eventsByRoom.get(r.id) ?? []),
+        });
+      }
+      return out;
     },
   });
 }
