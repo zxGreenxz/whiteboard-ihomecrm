@@ -66,6 +66,8 @@ interface DisplayRow {
   groupCount?: number;
   // Phòng đang trống trong tháng → tô nền vàng cam + đẩy lên đầu cột Thu.
   isVacant?: boolean;
+  // Phòng CÒN HĐ nhưng THIẾU hoá đơn tháng này → cảnh báo nền đỏ.
+  isMissingInvoice?: boolean;
   // Dòng ghi chú thuần (không phải khoản thật) "Trống phòng — <lý do>" — amount 0,
   // không tính vào "X khoản".
   isNote?: boolean;
@@ -401,28 +403,48 @@ export default function ProfitDistributionReport() {
         normal.push(r);
       }
     }
-    // Phòng trống (gắn cờ) KHÔNG có khoản thu nào trong tháng → dòng ghi chú thuần.
+    // Phòng gắn cờ KHÔNG có khoản thu nào trong tháng → dòng ghi chú thuần:
+    //  - còn HĐ (kind 'active') → CẢNH BÁO đỏ "Chưa có hoá đơn".
+    //  - trống thật (kind 'vacant') → ghi chú vàng cam "Trống phòng — <lý do>".
     for (const note of vacantNotes.values()) {
       if (anyIncomeRooms.has(note.roomId)) continue;
-      red.push({
-        key: `vacant-${note.roomId}`,
-        monthLabel,
-        description:
-          note.reason === VACANCY_FALLBACK_REASON
-            ? "Trống phòng"
-            : `Trống phòng — ${note.reason}`,
-        buildingName: note.buildingName,
-        roomName: note.roomName,
-        roomId: note.roomId,
-        periodLabel: "—",
-        typeName: "—",
-        category: null,
-        amount: 0,
-        notKqkd: false,
-        isVacant: true,
-        isNote: true,
-        vacantReason: note.reason,
-      });
+      if (note.kind === "active") {
+        red.push({
+          key: `missing-${note.roomId}`,
+          monthLabel,
+          description: "⚠️ Chưa có hoá đơn tháng này (còn hợp đồng)",
+          buildingName: note.buildingName,
+          roomName: note.roomName,
+          roomId: note.roomId,
+          periodLabel: "—",
+          typeName: "—",
+          category: null,
+          amount: 0,
+          notKqkd: false,
+          isMissingInvoice: true,
+          isNote: true,
+        });
+      } else {
+        red.push({
+          key: `vacant-${note.roomId}`,
+          monthLabel,
+          description:
+            !note.reason || note.reason === VACANCY_FALLBACK_REASON
+              ? "Trống phòng"
+              : `Trống phòng — ${note.reason}`,
+          buildingName: note.buildingName,
+          roomName: note.roomName,
+          roomId: note.roomId,
+          periodLabel: "—",
+          typeName: "—",
+          category: null,
+          amount: 0,
+          notKqkd: false,
+          isVacant: true,
+          isNote: true,
+          vacantReason: note.reason,
+        });
+      }
     }
     red.sort(sorter);
     normal.sort(sorter);
@@ -550,9 +572,11 @@ export default function ProfitDistributionReport() {
                 // Hoá đơn KHÔNG đủ ngày (prorate — khách vào/rời giữa tháng, có đoạn
                 // trống) → nền XANH LÁ nhạt + ghi chú kỳ tiền phòng.
                 const rp = r.invoiceId ? rentPeriods?.get(r.invoiceId) : null;
-                // Thứ tự ưu tiên nền: phòng trống (vàng cam) → HĐ không đủ ngày
-                // (xanh lá) → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
-                const rowClass = r.isVacant
+                // Thứ tự ưu tiên nền: thiếu hoá đơn (ĐỎ) → phòng trống (vàng cam)
+                // → HĐ không đủ ngày (xanh lá) → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
+                const rowClass = r.isMissingInvoice
+                  ? "bg-red-100 hover:bg-red-200"
+                  : r.isVacant
                   ? `${clickable ? "cursor-pointer select-none " : ""}bg-amber-100 hover:bg-amber-200`
                   : rp
                     ? `${clickable ? "cursor-pointer select-none " : ""}bg-green-50 hover:bg-green-100`
