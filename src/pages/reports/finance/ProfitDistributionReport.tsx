@@ -377,29 +377,33 @@ export default function ProfitDistributionReport() {
     // trong cùng nhóm vẫn theo phòng → mô tả như cũ.
     exp.sort((a, b) => expenseRank(a) - expenseRank(b) || sorter(a, b));
 
-    // Không bật phòng-trống (chưa chọn toà / lọc 1 phòng / panel Chi) → giữ như cũ.
-    if (!vacantNotes || vacantNotes.size === 0) {
+    // Phòng-trống chỉ bật khi đã chọn ≥1 toà (vacantNotes !== undefined). Tắt → cũ.
+    if (!vacantNotes) {
       inc.sort(sorter);
       return { incomeRows: inc, expenseRows: exp };
     }
 
-    // Tách: doanh thu thanh lý của phòng trống → khối ĐỎ/CAM lên đầu; còn lại giữ
-    // nguyên ở khối thường.
+    const anyIncomeRooms = new Set<string>();
+    for (const r of inc) if (r.roomId) anyIncomeRooms.add(r.roomId);
+
+    // Lên đầu + nền VÀNG CAM:
+    //  (1) khoản thu THANH LÝ / BỎ CỌC — luôn nổi, kể cả phòng đã cho thuê lại
+    //      (doanh thu thanh lý là khoản đáng chú ý, không phụ thuộc HĐ còn/hết);
+    //  (2) dòng ghi chú "Trống phòng" cho phòng bị gắn cờ mà KHÔNG có khoản thu nào.
+    // Khoản thu THƯỜNG (tiền nhà) giữ nguyên khối dưới — "có hoá đơn ⇒ không trống".
     const red: DisplayRow[] = [];
     const normal: DisplayRow[] = [];
-    const roomsWithRed = new Set<string>();
     for (const r of inc) {
-      const note = r.roomId ? vacantNotes.get(r.roomId) : undefined;
-      if (note && isLiquidationRow(r)) {
-        red.push({ ...r, isVacant: true, vacantReason: note.reason });
-        roomsWithRed.add(note.roomId);
+      if (isLiquidationRow(r)) {
+        const note = r.roomId ? vacantNotes.get(r.roomId) : undefined;
+        red.push({ ...r, isVacant: true, vacantReason: note?.reason });
       } else {
         normal.push(r);
       }
     }
-    // Phòng trống CHƯA có dòng doanh thu thanh lý → thêm dòng ghi chú thuần.
+    // Phòng trống (gắn cờ) KHÔNG có khoản thu nào trong tháng → dòng ghi chú thuần.
     for (const note of vacantNotes.values()) {
-      if (roomsWithRed.has(note.roomId)) continue;
+      if (anyIncomeRooms.has(note.roomId)) continue;
       red.push({
         key: `vacant-${note.roomId}`,
         monthLabel,

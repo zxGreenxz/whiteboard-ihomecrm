@@ -158,15 +158,21 @@ export function useVacantRoomNotes(
       if (cErr) throw cErr;
       const contractList = (contracts ?? []) as any[];
 
-      // Phòng "đang ở tại CUỐI tháng" = có HĐ ACTIVE phủ ngày cuối tháng.
+      // Phòng "đang ở tại CUỐI tháng":
+      //  - HĐ ACTIVE đã bắt đầu trước cuối tháng → đang ở (month-to-month: end_date
+      //    có thể đã qua nhưng khách vẫn ở, HĐ vẫn ACTIVE → KHÔNG coi là trống).
+      //  - HĐ đã kết thúc (TERMINATED/EXPIRED/…) chỉ tính nếu còn hiệu lực tới cuối
+      //    tháng (kết thúc giữa tháng → cuối tháng đã trống).
       const occupied = new Set<string>();
       for (const c of contractList) {
-        if (c.status !== "ACTIVE") continue;
         const start: string = c.start_date ?? "";
-        const end: string = c.actual_end_date || c.end_date || "";
-        if (start && start <= monthEndDate && end && end >= monthEndDate) {
+        if (!start || start > monthEndDate) continue;
+        if (c.status === "ACTIVE") {
           occupied.add(c.room_id);
+          continue;
         }
+        const end: string = c.actual_end_date || c.end_date || "";
+        if (end && end >= monthEndDate) occupied.add(c.room_id);
       }
 
       // Phòng gắn cờ = không ở + không phải giữ chỗ/bảo trì/ngưng cho thuê.
