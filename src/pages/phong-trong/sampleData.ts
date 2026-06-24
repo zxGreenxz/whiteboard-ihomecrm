@@ -194,7 +194,7 @@ function build(): Building[] {
       id: p.id, code: p.code, name: p.name, area: p.area, district: p.area, address: p.address,
       manager: p.manager, phone: p.phone, lift: p.lift, policy: p.policy,
       floors, rooms: all,
-      freeCount: all.filter((r) => r.status === "free" || r.status === "soon").length,
+      freeCount: all.filter((r) => r.status === "free" || r.status === "soon" || r.status === "pass").length,
       total: all.length,
     };
   });

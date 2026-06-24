@@ -155,7 +155,7 @@ export function OverviewView({
             <div className={"ov-bld-head" + (isOpen ? "" : " closed")} onClick={() => toggle(b.id)}>
               <div className="ovh-top">
                 <span className="ovh-name">{b.name}</span>
-                <span className="ovh-count">{rooms.filter((r) => r.status === "free" || r.status === "soon").length} trống</span>
+                <span className="ovh-count">{rooms.filter((r) => r.status === "free" || r.status === "soon" || r.status === "pass").length} trống</span>
                 <span className={"ovh-chev" + (isOpen ? " open" : "")}><Icon.Chevron /></span>
               </div>
               <div className="ovh-meta">
@@ -324,7 +324,7 @@ export function FloorPlan({
           <span className="bld-stat">{building.freeCount} trống</span>
         </div>
         {building.floors.map((fp) => {
-          const avail = fp.rooms.filter((r) => r.status === "free" || r.status === "soon").length;
+          const avail = fp.rooms.filter((r) => r.status === "free" || r.status === "soon" || r.status === "pass").length;
           return (
             <div className="fp-floor" key={fp.floor}>
               <div className="fp-head">
