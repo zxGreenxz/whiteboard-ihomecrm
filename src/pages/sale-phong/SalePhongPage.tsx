@@ -1,5 +1,5 @@
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Share2, SlidersHorizontal, Image as ImageIcon, LayoutGrid, Repeat, BarChart3 } from "lucide-react";
+import { Share2, SlidersHorizontal, Info, LayoutGrid, Repeat, BarChart3 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -63,7 +63,7 @@ function SalePhongDesktopPage() {
           <h1 className="text-xl md:text-2xl font-semibold">Sale Phòng</h1>
           <p className="text-sm text-muted-foreground">
             Quản lý trang công khai "Phòng trống": tạo link chia sẻ, cài đặt hiển thị,
-            hình ảnh sale và sơ đồ tọa độ từng tầng.
+            thông tin sale (liên hệ, nội thất, ảnh) và sơ đồ tọa độ từng tầng.
           </p>
         </div>
 
@@ -87,7 +87,7 @@ function SalePhongDesktopPage() {
               )}
               {tabs.some((t) => t.key === "images") && (
                 <TabsTrigger value="images" className="gap-1.5">
-                  <ImageIcon className="h-4 w-4" />Hình ảnh sale
+                  <Info className="h-4 w-4" />Thông tin sale
                 </TabsTrigger>
               )}
               {tabs.some((t) => t.key === "pass") && (

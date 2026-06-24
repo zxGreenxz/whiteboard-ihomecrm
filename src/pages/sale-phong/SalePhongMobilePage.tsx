@@ -1,7 +1,7 @@
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, ChevronRight, Share2, SlidersHorizontal, Image as ImageIcon,
+  ArrowLeft, ChevronRight, Share2, SlidersHorizontal, Info,
   Repeat, LayoutGrid, BarChart3, Monitor,
 } from 'lucide-react';
 import '@/styles/mobileApp.css';
@@ -33,7 +33,7 @@ interface TabDef {
 const TAB_DEFS: TabDef[] = [
   { key: 'tokens', label: 'Link chia sẻ', desc: 'Tạo & quản lý link gửi khách', icon: Share2, accent: '#2563eb', action: 'manage_tokens' },
   { key: 'settings', label: 'Cài đặt hiển thị', desc: 'Ngày "sắp trống", hotline', icon: SlidersHorizontal, accent: '#0891b2', action: 'manage_settings' },
-  { key: 'images', label: 'Hình ảnh sale', desc: 'Ảnh phòng cho trang công khai', icon: ImageIcon, accent: '#7c3aed', action: 'manage_images' },
+  { key: 'images', label: 'Thông tin sale', desc: 'Liên hệ toà, nội thất & ảnh phòng', icon: Info, accent: '#7c3aed', action: 'manage_images' },
   { key: 'pass', label: 'Khách nhờ sale', desc: 'Phòng khách nhờ pass', icon: Repeat, accent: '#d97706', action: 'manage_pass_listings' },
   { key: 'floorplan', label: 'Sơ đồ tòa nhà', desc: 'Bố trí tọa độ từng tầng', icon: LayoutGrid, accent: '#0d9488', action: 'edit_floor_plan' },
   { key: 'analytics', label: 'Thống kê', desc: 'Lượt xem, tương tác', icon: BarChart3, accent: '#475569', action: 'view_analytics' },
