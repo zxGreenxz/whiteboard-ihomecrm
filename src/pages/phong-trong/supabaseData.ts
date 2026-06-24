@@ -207,7 +207,8 @@ export function mapPayloadToBuildings(payload: RpcPayload | null | undefined): B
       images: toImages(b.images),
       floors,
       rooms,
-      freeCount: rooms.filter((r) => r.status === "free").length,
+      // "Trống" gồm cả phòng trống sẵn (free) lẫn sắp trống (soon).
+      freeCount: rooms.filter((r) => r.status === "free" || r.status === "soon").length,
       total: rooms.length,
     };
   });

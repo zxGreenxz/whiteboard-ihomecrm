@@ -324,7 +324,7 @@ export function FloorPlan({
           <span className="bld-stat">{building.freeCount} trống</span>
         </div>
         {building.floors.map((fp) => {
-          const avail = fp.rooms.filter((r) => r.status === "free").length;
+          const avail = fp.rooms.filter((r) => r.status === "free" || r.status === "soon").length;
           return (
             <div className="fp-floor" key={fp.floor}>
               <div className="fp-head">
