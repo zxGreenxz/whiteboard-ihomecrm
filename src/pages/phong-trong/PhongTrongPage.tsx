@@ -4,7 +4,7 @@ import "./phongTrong.css";
 import { Icon } from "./icons";
 import { FloorPlan, ListView, OverviewView } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
-import { SAMPLE_BUILDINGS, type Room } from "./sampleData";
+import { SAMPLE_BUILDINGS, type Building, type Room } from "./sampleData";
 import { usePhongTrong } from "./usePhongTrong";
 import { QuickDepositModal } from "./QuickDepositModal";
 import { useSession } from "@/hooks/useAuth";
@@ -18,12 +18,28 @@ const OVERVIEW = "__overview__";
  * Trang công khai "Phòng trống" cho Sale — 100% giao diện mock, data mẫu.
  * Route gợi ý: /r/:token (xem README). Khi nối Supabase: thay SAMPLE_BUILDINGS
  * bằng dữ liệu thật map sang type Building/Room (giữ nguyên toàn bộ UI bên dưới).
+ *
+ * Dùng lại in-app (mobile): truyền sẵn `buildings` (đã map qua mapPayloadToBuildings)
+ * + `embedded` để bỏ thanh brand `.hdr-top` và KHÔNG fallback data mẫu khi rỗng.
  */
-export default function PhongTrongPage() {
-  const { token } = useParams<{ token: string }>();
-  const { data, isLoading, isError } = usePhongTrong(token);
-  // Có data thật -> dùng; chưa có token/data (xem thử) -> data mẫu.
-  const buildings = data && data.length ? data : SAMPLE_BUILDINGS;
+export interface PhongTrongPageProps {
+  /** Token public; mặc định đọc từ useParams (route /r/:token). */
+  token?: string;
+  /** Dữ liệu tòa/phòng có sẵn (in-app authenticated) — ưu tiên hơn token. */
+  buildings?: Building[];
+  /** Nhúng trong shell mobile: ẩn brand header, rỗng → empty-state thay vì SAMPLE. */
+  embedded?: boolean;
+}
+
+export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
+  const { token: tokenParam } = useParams<{ token: string }>();
+  const token = props.token ?? tokenParam;
+  const isEmbedded = !!props.embedded;
+  // In-app: chỉ gọi RPC token khi KHÔNG được truyền sẵn buildings.
+  const { data, isLoading, isError } = usePhongTrong(props.buildings ? undefined : token);
+  // Ưu tiên buildings truyền vào; rồi data RPC; cuối cùng data mẫu (chỉ khi không embedded).
+  const sourced = props.buildings ?? data;
+  const buildings = sourced && sourced.length ? sourced : isEmbedded ? [] : SAMPLE_BUILDINGS;
 
   const [propId, setPropId] = useState<string>(OVERVIEW);
   const [view, setView] = useState<"map" | "list">("list");
@@ -129,6 +145,7 @@ export default function PhongTrongPage() {
   };
 
   const listRooms = useMemo(() => {
+    if (!building) return [] as Room[];
     return building.rooms
       .filter((r) => showRented || r.status !== "rented")
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
@@ -191,20 +208,30 @@ export default function PhongTrongPage() {
       </div></div></div>
     );
   }
+  // In-app rỗng: không có phòng trống nào → empty-state (không hiện data mẫu).
+  if (isEmbedded && buildings.length === 0) {
+    return (
+      <div id="stage" className="embed"><div className="app"><div className="empty" style={{ marginTop: 40 }}>
+        <div className="e-ic">🏠</div><p>Hiện chưa có phòng trống.</p>
+      </div></div></div>
+    );
+  }
 
   return (
     <TrackingProvider tracker={tracker}>
-    <div id="stage">
+    <div id="stage" className={isEmbedded ? "embed" : undefined}>
       <div className="app">
         <div className="hdr">
-          <div className="hdr-top">
-            <div className="brand-mark"><span>R</span></div>
-            <div>
-              <div className="brand-name">Phòng trống</div>
-              <div className="brand-sub">Bảng phòng trực tiếp cho Sale</div>
+          {!isEmbedded && (
+            <div className="hdr-top">
+              <div className="brand-mark"><span>R</span></div>
+              <div>
+                <div className="brand-name">Phòng trống</div>
+                <div className="brand-sub">Bảng phòng trực tiếp cho Sale</div>
+              </div>
+              <div className="live"><i className="dot" />Live · {hh}</div>
             </div>
-            <div className="live"><i className="dot" />Live · {hh}</div>
-          </div>
+          )}
 
           <div className="seg">
             <button className={view === "list" ? "on" : ""} onClick={() => changeView("list")}>

@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Map,
   Home,
+  DoorOpen,
   UserPlus,
   User,
   FileText,
@@ -61,6 +62,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
       { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
       { id: 'tasks', title: 'Công việc', href: '/tasks', icon: ClipboardList, accent: '#0ea5e9', module: 'tasks' },
+      { id: 'sale-phong', title: 'Phòng trống', href: '/sale-phong', icon: DoorOpen, accent: '#16a34a', module: 'sale_phong', action: 'view' },
     ],
   },
   {

@@ -94,6 +94,18 @@ body {
   }
 }
 
+/* Nhúng in-app (mobile shell .cm-app): bỏ full-viewport + khung điện thoại desktop,
+   để trang lấp đầy vùng chứa cha (.sp-embed) và tự cuộn trong .scroll. */
+#stage.embed { min-height: 0; height: 100%; display: block; }
+#stage.embed .app {
+  height: 100%;
+  max-width: none;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* Scroll body */
 .scroll {
   flex: 1;

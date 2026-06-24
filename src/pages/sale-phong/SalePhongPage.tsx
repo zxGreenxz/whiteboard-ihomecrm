@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { Share2, SlidersHorizontal, Image as ImageIcon, LayoutGrid, Repeat, BarChart3 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ShareTokensTab from "@/components/sale-phong/ShareTokensTab";
 import DisplaySettingsTab from "@/components/sale-phong/DisplaySettingsTab";
@@ -13,12 +14,30 @@ import { canUse } from "@/lib/permissionPages";
 
 type TabKey = "tokens" | "settings" | "images" | "pass" | "floorplan" | "analytics";
 
+const SalePhongMobilePage = lazy(() => import("./SalePhongMobilePage"));
+
+/**
+ * Entry "SALE PHÒNG" — branch theo viewport (giống CustomersPage):
+ * điện thoại → SalePhongMobilePage (shell .cm-*), còn lại → bản desktop dưới đây.
+ */
+export default function SalePhongPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone) {
+    return (
+      <Suspense fallback={null}>
+        <SalePhongMobilePage />
+      </Suspense>
+    );
+  }
+  return <SalePhongDesktopPage />;
+}
+
 /**
  * Trang quản trị "SALE PHÒNG": vận hành trang công khai "Phòng trống" (/r/:token).
  * 4 tab: Link chia sẻ · Cài đặt hiển thị · Hình ảnh sale · Sơ đồ tòa nhà.
  * Mỗi tab gate theo quyền chi tiết sale_phong.* (fallback legacy: sale_phong.edit).
  */
-export default function SalePhongPage() {
+function SalePhongDesktopPage() {
   const { data: perms } = useMyPermissions();
 
   const tabs = useMemo(
