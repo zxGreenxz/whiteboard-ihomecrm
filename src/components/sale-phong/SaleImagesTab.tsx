@@ -55,16 +55,17 @@ function AmenityEditor({ value, onChange }: { value: string[]; onChange: (next: 
   );
 }
 
-/** Thông tin Sale của TỪNG PHÒNG: nội thất + ảnh phòng (kèm đồng bộ ảnh sang phòng tương tự). */
-function RoomInfoSection() {
+/** Thông tin Sale của TỪNG PHÒNG: nội thất + ảnh phòng (kèm đồng bộ ảnh sang phòng tương tự).
+ *  Toà nhà dùng chung với mục "Thông tin toà nhà" (nhận qua prop, không có dropdown riêng). */
+function RoomInfoSection({ buildingId }: { buildingId: string }) {
   const qc = useQueryClient();
   const { data: buildings } = useBuildings();
-  const [buildingId, setBuildingId] = useState("");
   const { data: rooms } = useRooms(buildingId || undefined);
   const [roomId, setRoomId] = useState("");
 
   const room = useMemo(() => (rooms ?? []).find((r) => r.id === roomId), [rooms, roomId]);
   const roomsById = useMemo(() => new Map((rooms ?? []).map((r) => [r.id, r])), [rooms]);
+  const buildingName = useMemo(() => (buildings ?? []).find((b) => b.id === buildingId)?.name ?? "", [buildings, buildingId]);
 
   const [amenities, setAmenities] = useState<string[]>([]);
   const [images, setImages] = useState<string[]>([]);
@@ -80,7 +81,6 @@ function RoomInfoSection() {
   // Đổi toà → reset phòng đang chọn.
   useEffect(() => { setRoomId(""); }, [buildingId]);
 
-  const buildingOpts = (buildings ?? []).map((b) => ({ value: b.id, label: `${b.name}${b.code && b.code !== b.name ? ` (${b.code})` : ""}` }));
   const roomOpts = (rooms ?? []).map((r) => ({
     value: r.id,
     label: `${r.name}${r.code ? ` · ${r.code}` : ""} — Tầng ${r.floor}`,
@@ -159,18 +159,14 @@ function RoomInfoSection() {
         <CardDescription>Nội thất và ảnh của từng phòng, hiển thị trong chi tiết phòng trên trang công khai.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Toà nhà</Label>
-            <SearchableSelect value={buildingId} onValueChange={setBuildingId} options={buildingOpts}
-              placeholder="Chọn toà nhà" emptyText="Không có toà nhà" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Phòng</Label>
-            <SearchableSelect value={roomId} onValueChange={setRoomId} options={roomOpts}
-              placeholder={buildingId ? "Chọn phòng" : "Chọn toà trước"} emptyText="Không có phòng"
-              disabled={!buildingId} />
-          </div>
+        <div className="space-y-1.5 sm:max-w-sm">
+          <Label>
+            Phòng
+            {buildingName && <span className="text-xs font-normal text-muted-foreground"> · Toà {buildingName}</span>}
+          </Label>
+          <SearchableSelect value={roomId} onValueChange={setRoomId} options={roomOpts}
+            placeholder={buildingId ? "Chọn phòng" : "Chọn toà nhà trước"} emptyText="Không có phòng"
+            disabled={!buildingId} />
         </div>
 
         {room ? (
@@ -227,18 +223,21 @@ function RoomInfoSection() {
             </div>
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">Chọn toà nhà và phòng để chỉnh sửa nội thất, ảnh.</p>
+          <p className="text-sm text-muted-foreground">
+            {buildingId
+              ? "Chọn phòng để chỉnh sửa nội thất, ảnh."
+              : 'Chọn toà nhà ở mục "Thông tin toà nhà" phía trên trước.'}
+          </p>
         )}
       </CardContent>
     </Card>
   );
 }
 
-/** Thông tin Sale của TOÀ NHÀ: liên hệ quản lý + ảnh bìa toà. */
-function BuildingInfoSection() {
+/** Thông tin Sale của TOÀ NHÀ: liên hệ quản lý + ảnh bìa toà. Toà nhà do component cha giữ (dùng chung với mục Phòng). */
+function BuildingInfoSection({ buildingId, onBuildingChange }: { buildingId: string; onBuildingChange: (id: string) => void }) {
   const qc = useQueryClient();
   const { data: buildings } = useBuildings();
-  const [buildingId, setBuildingId] = useState("");
   const updateBuilding = useUpdateBuilding();
 
   const building = useMemo(() => (buildings ?? []).find((b) => b.id === buildingId), [buildings, buildingId]);
@@ -277,7 +276,7 @@ function BuildingInfoSection() {
       <CardContent className="space-y-5">
         <div className="space-y-1.5 sm:max-w-sm">
           <Label>Toà nhà</Label>
-          <SearchableSelect value={buildingId} onValueChange={setBuildingId} options={buildingOpts}
+          <SearchableSelect value={buildingId} onValueChange={onBuildingChange} options={buildingOpts}
             placeholder="Chọn toà nhà" emptyText="Không có toà nhà" />
         </div>
 
@@ -327,10 +326,12 @@ function BuildingInfoSection() {
  * Bố cục responsive (shadcn Card + grid) dùng tốt trên cả desktop lẫn mobile.
  */
 export default function SaleImagesTab() {
+  // Toà nhà chọn 1 lần, dùng chung cho cả mục "Thông tin toà nhà" lẫn "Thông tin phòng".
+  const [buildingId, setBuildingId] = useState("");
   return (
     <div className="space-y-4">
-      <BuildingInfoSection />
-      <RoomInfoSection />
+      <BuildingInfoSection buildingId={buildingId} onBuildingChange={setBuildingId} />
+      <RoomInfoSection buildingId={buildingId} />
     </div>
   );
 }
