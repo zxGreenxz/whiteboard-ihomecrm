@@ -44,10 +44,10 @@ function Gallery({ images, onZoom }: { images: string[]; onZoom: (i: number) => 
   );
 }
 
-function Lightbox({ images, index, onClose, onSaveImage }: {
+function Lightbox({ images, index, onClose, onSaveAll }: {
   images: string[]; index: number | null; onClose: () => void;
-  /** Lưu tấm ảnh đang xem (theo vị trí) về máy/Photos. */
-  onSaveImage?: (i: number) => void;
+  /** Lưu TOÀN BỘ ảnh của phòng về máy/Photos. */
+  onSaveAll?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useDragScroll(ref);
@@ -69,9 +69,9 @@ function Lightbox({ images, index, onClose, onSaveImage }: {
           </div>
         ))}
       </div>
-      {onSaveImage && (
-        <button className="lb-save" onClick={(e) => { e.stopPropagation(); onSaveImage(cur); }}>
-          <Icon.Download />Lưu ảnh này
+      {onSaveAll && (
+        <button className="lb-save" onClick={(e) => { e.stopPropagation(); onSaveAll(); }}>
+          <Icon.Download />Lưu tất cả ảnh
         </button>
       )}
     </div>
@@ -300,42 +300,6 @@ export function DetailSheet({
     onToast(ok ? `Đã tải ${ok}/${files.length} ảnh về máy` : "Không tải được ảnh");
   };
 
-  // "Lưu ảnh này" trong lightbox: chỉ lưu 1 tấm đang xem. Ưu tiên file đã prefetch
-  // (await tức thì → còn trong gesture); chưa kịp thì fetch riêng tấm đó. Mobile:
-  // share 1 file để share sheet hiện "Lưu ảnh" thẳng vào Thư viện; desktop: <a download>.
-  const saveOneImage = async (i: number) => {
-    const nav = navigator as ShareNav;
-    let file: File | undefined;
-    const entry = filesCache.current;
-    if (entry && entry.key === r.id && entry.done) file = (await entry.promise)[i];
-    if (!file) {
-      try {
-        const res = await fetch(images[i]);
-        const blob = await res.blob();
-        const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
-        file = new File([blob], `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`, { type: blob.type || "image/jpeg" });
-      } catch { onToast("Không tải được ảnh"); return; }
-    }
-    if (nav.share && nav.canShare && nav.canShare({ files: [file] })) {
-      try { await nav.share({ files: [file] }); return; }
-      catch (e) {
-        const name = (e as DOMException)?.name;
-        if (name === "AbortError") return; // user huỷ share sheet
-        if (name === "NotAllowedError") { onToast("Bấm Lưu ảnh lần nữa"); return; }
-        // lỗi khác → rơi xuống <a download>
-      }
-    }
-    const url = URL.createObjectURL(file);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    onToast("Đã lưu ảnh về máy");
-  };
-
   return (
     <>
       <div className={"sheet-scrim" + (show ? " show" : "")} onClick={onClose} />
@@ -446,7 +410,7 @@ export function DetailSheet({
           </button>
         </div>
       </div>
-      <Lightbox images={images} index={lb} onClose={() => setLb(null)} onSaveImage={saveOneImage} />
+      <Lightbox images={images} index={lb} onClose={() => setLb(null)} onSaveAll={doDownload} />
     </>
   );
 }
