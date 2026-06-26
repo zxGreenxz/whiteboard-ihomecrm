@@ -16,7 +16,7 @@
 // khoản phụ, KHÔNG mở Zalo Web nơi khác cùng nick. Một số tên hàm/event của
 // zca-js có thể đổi theo phiên bản — chỗ nào nhạy cảm đã chú thích để bạn chỉnh.
 // =============================================================
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,12 +25,15 @@ import { createClient } from '@supabase/supabase-js';
 import { Zalo, ThreadType } from 'zca-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Nạp .env NẰM CẠNH worker (chạy từ bất kỳ thư mục nào cũng đúng)
+dotenv.config({ path: path.join(__dirname, '.env') });
 const SESSION_DIR = path.join(__dirname, 'sessions');
 fs.mkdirSync(SESSION_DIR, { recursive: true });
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Thiếu SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY trong .env');
+  console.error('Thiếu SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY trong', path.join(__dirname, '.env'));
+  console.error('→ Mở worker/.env và điền SUPABASE_SERVICE_ROLE_KEY (Supabase ▸ Settings ▸ API ▸ service_role).');
   process.exit(1);
 }
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
