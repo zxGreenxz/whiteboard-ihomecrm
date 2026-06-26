@@ -5,10 +5,13 @@ import { cn } from '@/lib/utils';
 import ConversationList from '@/components/chat-zalo/ConversationList';
 import ChatThread from '@/components/chat-zalo/ChatThread';
 import InfoPanel from '@/components/chat-zalo/InfoPanel';
+import AccountSwitcher from '@/components/chat-zalo/AccountSwitcher';
+import ConnectZaloDialog from '@/components/chat-zalo/ConnectZaloDialog';
 import type { FilterKey, RightTab } from '@/components/chat-zalo/types';
 import {
   useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
+  useZaloAccounts, useRequestConnect, useDisconnectAccount,
 } from '@/hooks/useZaloChat';
 
 /**
@@ -19,9 +22,12 @@ export default function ChatZaloPage() {
   const { data: conversations = [], isLoading } = useZaloConversations();
   const { data: automations = { broadcastOn: false, autoReplyOn: false } } = useZaloAutomations();
   const { data: templates = [] } = useZaloTemplates();
+  const { data: accounts = [] } = useZaloAccounts();
   const sendMut = useSendZaloMessage();
   const markRead = useMarkConversationRead();
   const toggleMut = useToggleAutomation();
+  const requestConnect = useRequestConnect();
+  const disconnect = useDisconnectAccount();
 
   const [activeId, setActiveId] = useState<string>('');
   const [rightTab, setRightTab] = useState<RightTab>('info');
@@ -30,6 +36,9 @@ export default function ChatZaloPage() {
   const [draft, setDraft] = useState('');
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
   const [infoOpen, setInfoOpen] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
 
   const effectiveId = activeId || conversations[0]?.id || '';
   useZaloRealtime(effectiveId || undefined);
@@ -41,6 +50,7 @@ export default function ChatZaloPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
+      if (selectedAccountId && c.accountId !== selectedAccountId) return false;
       if (filter === 'unread' && c.unread <= 0) return false;
       if (filter === 'tenant' && c.profile.kind !== 'tenant') return false;
       if (filter === 'lead' && c.profile.kind !== 'lead') return false;
@@ -52,7 +62,24 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [conversations, filter, search]);
+  }, [conversations, filter, search, selectedAccountId]);
+
+  const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
+
+  const onConnectNew = async () => {
+    try {
+      const acc = await requestConnect.mutateAsync({});
+      setConnectingId(acc.id);
+      setConnectOpen(true);
+    } catch { /* toast trong hook */ }
+  };
+  const onReconnect = async (id: string) => {
+    try {
+      const acc = await requestConnect.mutateAsync({ accountId: id });
+      setConnectingId(acc.id);
+      setConnectOpen(true);
+    } catch { /* toast trong hook */ }
+  };
 
   const automationActive = (automations.broadcastOn ? 1 : 0) + (automations.autoReplyOn ? 1 : 0);
 
@@ -75,15 +102,16 @@ export default function ChatZaloPage() {
     toggleMut.mutate({ kind, enabled: !cur });
   };
 
-  if (!active) {
-    return (
-      <MainLayout fullBleed>
-        <div className="h-full flex items-center justify-center text-muted-foreground">
-          {isLoading ? 'Đang tải hội thoại…' : 'Chưa có hội thoại Zalo nào'}
-        </div>
-      </MainLayout>
-    );
-  }
+  const switcher = (
+    <AccountSwitcher
+      accounts={accounts}
+      selectedId={selectedAccountId}
+      onSelect={setSelectedAccountId}
+      onConnectNew={onConnectNew}
+      onReconnect={onReconnect}
+      onDisconnect={(id) => disconnect.mutate(id)}
+    />
+  );
 
   return (
     <MainLayout fullBleed>
@@ -100,45 +128,63 @@ export default function ChatZaloPage() {
           onFilter={setFilter}
           onSearch={setSearch}
           onSelect={select}
+          topSlot={switcher}
         />
 
-        <ChatThread
-          className={cn('lg:flex', mobileView === 'thread' ? 'flex' : 'hidden')}
-          conv={active}
-          draft={draft}
-          templates={templates}
-          onDraft={setDraft}
-          onSend={send}
-          onPickTemplate={(t) => setDraft(t)}
-          onBack={() => setMobileView('list')}
-          onOpenInfo={() => setInfoOpen(true)}
-        />
+        {active ? (
+          <ChatThread
+            className={cn('lg:flex', mobileView === 'thread' ? 'flex' : 'hidden')}
+            conv={active}
+            draft={draft}
+            templates={templates}
+            onDraft={setDraft}
+            onSend={send}
+            onPickTemplate={(t) => setDraft(t)}
+            onBack={() => setMobileView('list')}
+            onOpenInfo={() => setInfoOpen(true)}
+          />
+        ) : (
+          <section className="flex-1 min-w-0 hidden lg:flex items-center justify-center text-muted-foreground" style={{ background: 'hsl(160 20% 98.5%)' }}>
+            {isLoading ? 'Đang tải hội thoại…' : 'Chưa có hội thoại — kết nối Zalo để bắt đầu'}
+          </section>
+        )}
 
-        <InfoPanel
-          className="hidden lg:flex w-full lg:w-[330px]"
-          conv={active}
-          tab={rightTab}
-          onTab={setRightTab}
-          automations={automations}
-          onToggle={toggleAutomation}
-          templates={templates}
-        />
-        <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
-          <SheetContent side="right" className="p-0 w-[330px] max-w-[90vw]">
-            <div className="h-full">
-              <InfoPanel
-                className="flex w-full h-full"
-                conv={active}
-                tab={rightTab}
-                onTab={setRightTab}
-                automations={automations}
-                onToggle={toggleAutomation}
-                templates={templates}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+        {active && (
+          <>
+            <InfoPanel
+              className="hidden lg:flex w-full lg:w-[330px]"
+              conv={active}
+              tab={rightTab}
+              onTab={setRightTab}
+              automations={automations}
+              onToggle={toggleAutomation}
+              templates={templates}
+            />
+            <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
+              <SheetContent side="right" className="p-0 w-[330px] max-w-[90vw]">
+                <div className="h-full">
+                  <InfoPanel
+                    className="flex w-full h-full"
+                    conv={active}
+                    tab={rightTab}
+                    onTab={setRightTab}
+                    automations={automations}
+                    onToggle={toggleAutomation}
+                    templates={templates}
+                  />
+                </div>
+              </SheetContent>
+            </Sheet>
+          </>
+        )}
       </div>
+
+      <ConnectZaloDialog
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
+        account={connectingAccount}
+        onRetry={() => connectingId && onReconnect(connectingId)}
+      />
     </MainLayout>
   );
 }

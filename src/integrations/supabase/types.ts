@@ -6262,9 +6262,13 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          last_error: string | null
+          login_requested_at: string | null
           meta: Json
           name: string
           oa_id: string | null
+          qr_data: string | null
+          qr_expires_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -6275,9 +6279,13 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          last_error?: string | null
+          login_requested_at?: string | null
           meta?: Json
           name: string
           oa_id?: string | null
+          qr_data?: string | null
+          qr_expires_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -6288,9 +6296,13 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          last_error?: string | null
+          login_requested_at?: string | null
           meta?: Json
           name?: string
           oa_id?: string | null
+          qr_data?: string | null
+          qr_expires_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -7894,9 +7906,39 @@ export type Database = {
         Returns: undefined
       }
       zalo_can: { Args: { _action: string }; Returns: boolean }
+      zalo_disconnect_account: {
+        Args: { p_account_id: string }
+        Returns: undefined
+      }
       zalo_mark_read: {
         Args: { p_conversation_id: string }
         Returns: undefined
+      }
+      zalo_request_connect: {
+        Args: { p_account_id?: string; p_name?: string }
+        Returns: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          login_requested_at: string | null
+          meta: Json
+          name: string
+          oa_id: string | null
+          qr_data: string | null
+          qr_expires_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+          zalo_uid: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "zalo_accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       zalo_send_message: {
         Args: {

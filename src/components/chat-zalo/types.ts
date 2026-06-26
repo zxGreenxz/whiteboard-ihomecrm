@@ -64,6 +64,7 @@ export interface ZaloMessage {
 
 export interface ZaloConversation {
   id: string;
+  accountId?: string | null;
   name: string;
   initials: string;
   tone: ToneKey;
@@ -87,4 +88,18 @@ export interface ZaloAutomations {
   broadcastOn: boolean;
   /** "Tự động trả lời" */
   autoReplyOn: boolean;
+}
+
+export type AccountStatus = 'connected' | 'disconnected' | 'error' | 'connecting' | 'waiting_scan';
+
+export interface ZaloAccount {
+  id: string;
+  name: string;
+  kind: 'personal' | 'oa';
+  status: AccountStatus;
+  zaloUid?: string | null;
+  avatarUrl?: string | null;
+  /** data URL ảnh QR (worker ghi khi chờ quét) */
+  qrData?: string | null;
+  lastError?: string | null;
 }

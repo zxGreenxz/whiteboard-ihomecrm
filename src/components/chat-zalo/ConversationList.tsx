@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Search, MessageSquarePlus, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EMERALD } from './zaloTheme';
@@ -23,15 +24,18 @@ interface Props {
   onSearch: (s: string) => void;
   onSelect: (id: string) => void;
   className?: string;
+  /** Thanh chọn/kết nối tài khoản Zalo render trên cùng. */
+  topSlot?: ReactNode;
 }
 
 /** Cột 1: danh sách hội thoại + tìm + lọc + footer tự động hoá. */
 export default function ConversationList({
   conversations, totalCount, activeId, filter, search, automationActive, automationRuns,
-  onFilter, onSearch, onSelect, className,
+  onFilter, onSearch, onSelect, className, topSlot,
 }: Props) {
   return (
     <section className={cn('flex-col flex-none bg-white border-r', className)}>
+      {topSlot}
       {/* Header + search + chips */}
       <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid hsl(210 20% 93%)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>

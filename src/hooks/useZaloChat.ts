@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type {
-  ZaloConversation, ZaloMessage, ZaloAutomations, ToneKey, TagKey,
+  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ToneKey, TagKey,
 } from '@/components/chat-zalo/types';
 
 const db = supabase as any;
@@ -42,6 +42,7 @@ function initialsFrom(name: string): string {
 function mapConv(r: any): ZaloConversation {
   return {
     id: r.id,
+    accountId: r.account_id,
     name: r.peer_name,
     initials: r.initials || initialsFrom(r.peer_name),
     tone: (r.tone as ToneKey) || 'emerald',
@@ -79,7 +80,15 @@ const QK = {
   messages: (id: string) => ['zalo', 'messages', id] as const,
   automations: ['zalo', 'automations'] as const,
   templates: ['zalo', 'templates'] as const,
+  accounts: ['zalo', 'accounts'] as const,
 };
+
+function mapAccount(r: any): ZaloAccount {
+  return {
+    id: r.id, name: r.name, kind: r.kind, status: r.status,
+    zaloUid: r.zalo_uid, avatarUrl: r.avatar_url, qrData: r.qr_data, lastError: r.last_error,
+  };
+}
 
 // ── Danh sách hội thoại ──
 export function useZaloConversations() {
@@ -209,7 +218,51 @@ export function useZaloTemplates() {
   });
 }
 
-// ── Realtime: cập nhật danh sách + luồng tin tức thì ──
+// ── Tài khoản Zalo (kết nối / chuyển / ngắt) ──
+export function useZaloAccounts() {
+  return useQuery({
+    queryKey: QK.accounts,
+    queryFn: async (): Promise<ZaloAccount[]> => {
+      const { data, error } = await db
+        .from('zalo_accounts')
+        .select('id, name, kind, status, zalo_uid, avatar_url, qr_data, last_error')
+        .order('created_at', { ascending: true });
+      if (error) { console.error('useZaloAccounts', error); return []; }
+      return (data || []).map(mapAccount);
+    },
+    // poll nhẹ phòng khi realtime accounts chưa kịp (lúc đang quét QR)
+    refetchInterval: 4000,
+  });
+}
+
+export function useRequestConnect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { accountId?: string; name?: string }): Promise<ZaloAccount> => {
+      const { data, error } = await db.rpc('zalo_request_connect', {
+        p_account_id: v.accountId ?? null, p_name: v.name ?? null,
+      });
+      if (error) throw error;
+      return mapAccount(data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QK.accounts }),
+    onError: (e) => { toast.error('Không khởi tạo được kết nối'); console.error('zalo_request_connect', e); },
+  });
+}
+
+export function useDisconnectAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (accountId: string) => {
+      const { error } = await db.rpc('zalo_disconnect_account', { p_account_id: accountId });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QK.accounts }),
+    onError: (e) => { toast.error('Không ngắt được kết nối'); console.error('zalo_disconnect_account', e); },
+  });
+}
+
+// ── Realtime: cập nhật danh sách + luồng tin + trạng thái tài khoản tức thì ──
 export function useZaloRealtime(activeId?: string) {
   const qc = useQueryClient();
   useEffect(() => {
@@ -217,6 +270,9 @@ export function useZaloRealtime(activeId?: string) {
       .channel('zalo-convs')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_conversations' }, () => {
         qc.invalidateQueries({ queryKey: QK.conversations });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_accounts' }, () => {
+        qc.invalidateQueries({ queryKey: QK.accounts });
       })
       .subscribe();
     return () => { supabase.removeChannel(convCh); };
