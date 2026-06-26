@@ -1,4 +1,5 @@
-import { avatarStyle, toneOf, tagStyle, EMERALD } from './zaloTheme';
+import { toneOf, tagStyle, EMERALD } from './zaloTheme';
+import ZaloAvatar from './ZaloAvatar';
 import type { ZaloConversation } from './types';
 
 interface Props {
@@ -24,7 +25,7 @@ export default function ConversationRow({ conv, active, onSelect }: Props) {
       }}
     >
       <div style={{ position: 'relative', flex: 'none' }}>
-        <div style={avatarStyle(conv.tone, 46, 15)}>{conv.initials}</div>
+        <ZaloAvatar url={conv.avatarUrl} initials={conv.initials} tone={conv.tone} size={46} fontSize={15} />
         {conv.online && (
           <span style={{ position: 'absolute', bottom: 0, right: 0, width: 13, height: 13, borderRadius: '50%', background: 'hsl(142 71% 45%)', border: '2.5px solid #fff' }} />
         )}

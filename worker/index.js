@@ -106,9 +106,94 @@ async function attachSession(accountId, ownerId, api) {
   sessions.set(accountId, { api, ownId });
   try {
     api.listener.on('message', (m) => handleInbound(accountId, ownerId, m));
+    api.listener.on('reaction', (e) => handleReaction(accountId, e));
+    api.listener.on('undo', (e) => handleUndo(accountId, e));
+    api.listener.on('seen_messages', (e) => handleSeen(accountId, e));
     api.listener.on('error', (e) => log('listener error', accountId, e?.message || e));
     api.listener.start();
   } catch (e) { log('listener start error', e.message); }
+  // Đồng bộ DANH BẠ + NHÓM về làm hội thoại (để web thấy ngay sau khi kết nối)
+  syncContacts(api, accountId, ownerId).catch((e) => log('syncContacts error', e?.message || e));
+}
+
+// ── Đồng bộ bạn bè + nhóm → zalo_conversations (upsert theo account_id+thread_id) ──
+function chunk(arr, n) { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; }
+
+async function upsertConvRows(rows) {
+  for (const c of chunk(rows, 200)) {
+    const { error } = await sb.from('zalo_conversations').upsert(c, { onConflict: 'account_id,thread_id', ignoreDuplicates: false });
+    if (error) log('upsert conv error', error.message);
+  }
+}
+
+async function syncContacts(api, accountId, ownerId) {
+  // Bạn bè
+  let friends = [];
+  try { friends = await api.getAllFriends(20000, 0); } catch (e) { log('getAllFriends', e?.message || e); }
+  const friendRows = (friends || []).filter((u) => u && u.userId).map((u) => ({
+    user_id: ownerId, account_id: accountId, thread_id: String(u.userId), thread_type: 'user',
+    peer_name: u.displayName || u.zaloName || 'Bạn Zalo', peer_avatar_url: u.avatar || null,
+    peer_phone: u.phoneNumber || null, peer_zalo_uid: String(u.userId),
+  }));
+  if (friendRows.length) await upsertConvRows(friendRows);
+
+  // Nhóm: getAllGroups trả map id→version; chi tiết qua getGroupInfo
+  let gids = [];
+  try { const g = await api.getAllGroups(); gids = Object.keys(g?.gridVerMap || {}); } catch (e) { log('getAllGroups', e?.message || e); }
+  let groupCount = 0;
+  for (const ids of chunk(gids, 50)) {
+    try {
+      const info = await api.getGroupInfo(ids);
+      const map = info?.gridInfoMap || {};
+      const rows = Object.values(map).filter((g) => g && g.groupId).map((g) => ({
+        user_id: ownerId, account_id: accountId, thread_id: String(g.groupId), thread_type: 'group',
+        peer_name: g.name || 'Nhóm Zalo', peer_avatar_url: g.fullAvt || g.avt || null,
+      }));
+      if (rows.length) { await upsertConvRows(rows); groupCount += rows.length; }
+    } catch (e) { log('getGroupInfo', e?.message || e); }
+  }
+  log('synced', friendRows.length, 'bạn,', groupCount, 'nhóm →', accountId);
+}
+
+// ── Inbound: reaction / undo / seen (best-effort, defensive) ──
+function evMsgIds(e) {
+  const d = e?.data || e;
+  const ids = [];
+  const push = (x) => { if (x) ids.push(String(x)); };
+  push(d?.msgId); push(d?.globalMsgId); push(d?.content?.rMsg?.[0]?.gMsgID);
+  if (Array.isArray(d?.msgIds)) d.msgIds.forEach(push);
+  return ids;
+}
+function evThreadId(e) { const d = e?.data || e; return String(e?.threadId ?? d?.threadId ?? d?.idTo ?? d?.uidFrom ?? ''); }
+
+async function handleReaction(accountId, e) {
+  try {
+    const d = e?.data || e;
+    const icon = d?.content?.rIcon || d?.rIcon || d?.icon;
+    const ids = evMsgIds(e);
+    if (!icon || !ids.length) return;
+    await sb.from('zalo_messages').update({ reaction_emoji: icon }).eq('account_id', accountId).in('zalo_msg_id', ids);
+    log('reaction', accountId, icon);
+  } catch (err) { log('handleReaction', err?.message || err); }
+}
+async function handleUndo(accountId, e) {
+  try {
+    const ids = evMsgIds(e);
+    if (!ids.length) return;
+    await sb.from('zalo_messages').update({ body: '(Tin đã được thu hồi)', msg_type: 'sys' }).eq('account_id', accountId).in('zalo_msg_id', ids);
+    log('undo', accountId, ids.join(','));
+  } catch (err) { log('handleUndo', err?.message || err); }
+}
+async function handleSeen(accountId, e) {
+  try {
+    const tid = evThreadId(e);
+    if (!tid) return;
+    const { data: conv } = await sb.from('zalo_conversations').select('id').eq('account_id', accountId).eq('thread_id', tid).maybeSingle();
+    if (!conv) return;
+    await sb.from('zalo_messages').update({ status: 'seen' })
+      .eq('conversation_id', conv.id).eq('direction', 'out').in('status', ['sent', 'delivered']);
+    log('seen', accountId, tid);
+  } catch (err) { log('handleSeen', err?.message || err); }
 }
 
 function saveSession(accountId, ctx) {
@@ -146,7 +231,7 @@ async function startLoginQR(account, ownerId) {
     });
 
     // Đăng nhập thành công — lưu Credentials {imei,userAgent,cookie} để re-login
-    let name = account.name, uid = '';
+    let name = account.name, uid = '', avatar = null;
     try {
       const ctx = api.getContext?.();
       if (ctx) {
@@ -154,9 +239,9 @@ async function startLoginQR(account, ownerId) {
         saveSession(id, { imei: ctx.imei, userAgent: ctx.userAgent, cookie });
       }
     } catch (e) { log('save ctx error', e.message); }
-    try { const info = await api.fetchAccountInfo?.(); name = info?.profile?.displayName || info?.displayName || name; } catch { /* */ }
+    try { const info = await api.fetchAccountInfo?.(); const p = info?.profile || info; name = p?.displayName || p?.zaloName || name; avatar = p?.avatar || null; } catch { /* */ }
     try { uid = await api.getOwnId?.(); } catch { /* */ }
-    await setAccount(id, { status: 'connected', qr_data: null, qr_expires_at: null, last_error: null, name, zalo_uid: String(uid || '') });
+    await setAccount(id, { status: 'connected', qr_data: null, qr_expires_at: null, last_error: null, name, zalo_uid: String(uid || ''), avatar_url: avatar });
     await attachSession(id, ownerId, api);
     log('connected', id, name);
   } catch (e) {

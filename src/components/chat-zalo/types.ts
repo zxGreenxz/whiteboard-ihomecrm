@@ -67,6 +67,7 @@ export interface ZaloConversation {
   accountId?: string | null;
   name: string;
   initials: string;
+  avatarUrl?: string | null;
   tone: ToneKey;
   time: string;
   sub: string;

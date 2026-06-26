@@ -1,6 +1,7 @@
 import { User, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { avatarStyle, tagStyle } from './zaloTheme';
+import { tagStyle } from './zaloTheme';
+import ZaloAvatar from './ZaloAvatar';
 import { mono } from './infoCards';
 import TenantInfo from './TenantInfo';
 import LeadInfo from './LeadInfo';
@@ -45,7 +46,7 @@ export default function InfoPanel({ conv, tab, onTab, automations, onToggle, tem
         <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto' }}>
           {/* Customer header */}
           <div style={{ padding: '20px 18px 14px', textAlign: 'center', borderBottom: '1px solid hsl(210 20% 93%)' }}>
-            <div style={{ ...avatarStyle(conv.tone, 72, 24), margin: '0 auto' }}>{conv.initials}</div>
+            <div style={{ margin: '0 auto', width: 'fit-content' }}><ZaloAvatar url={conv.avatarUrl} initials={conv.initials} tone={conv.tone} size={72} fontSize={24} /></div>
             <div style={{ fontSize: 16.5, fontWeight: 700, marginTop: 10 }}>{conv.name}</div>
             <div style={{ fontSize: 12.5, color: 'hsl(210 10% 45%)', marginTop: 2, ...mono() }}>{conv.phone}</div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>

@@ -1,5 +1,6 @@
 import { ArrowLeft, Search, Phone, MoreVertical, PanelRightOpen } from 'lucide-react';
-import { avatarStyle, tagStyle } from './zaloTheme';
+import { tagStyle } from './zaloTheme';
+import ZaloAvatar from './ZaloAvatar';
 import type { ZaloConversation } from './types';
 
 interface Props {
@@ -24,7 +25,7 @@ export default function ThreadHeader({ conv, onBack, onOpenInfo }: Props) {
           <ArrowLeft size={18} />
         </button>
       )}
-      <div style={avatarStyle(conv.tone, 42, 15)}>{conv.initials}</div>
+      <ZaloAvatar url={conv.avatarUrl} initials={conv.initials} tone={conv.tone} size={42} fontSize={15} />
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 15.5, fontWeight: 700 }}>{conv.name}</span>

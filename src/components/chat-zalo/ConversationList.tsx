@@ -76,16 +76,23 @@ export default function ConversationList({
         </div>
       </div>
 
-      {/* List */}
+      {/* List (giới hạn render để mượt với danh bạ lớn; lọc/tìm để thu hẹp) */}
       <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto' }}>
         {conversations.length === 0 ? (
           <div style={{ padding: '40px 16px', textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 13 }}>
             Không có hội thoại phù hợp
           </div>
         ) : (
-          conversations.map((c) => (
-            <ConversationRow key={c.id} conv={c} active={c.id === activeId} onSelect={onSelect} />
-          ))
+          <>
+            {conversations.slice(0, 300).map((c) => (
+              <ConversationRow key={c.id} conv={c} active={c.id === activeId} onSelect={onSelect} />
+            ))}
+            {conversations.length > 300 && (
+              <div style={{ padding: '12px 16px', textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 12 }}>
+                Hiển thị 300/{conversations.length} — gõ tìm kiếm để thu hẹp
+              </div>
+            )}
+          </>
         )}
       </div>
 

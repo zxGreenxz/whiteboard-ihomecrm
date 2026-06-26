@@ -45,6 +45,7 @@ function mapConv(r: any): ZaloConversation {
     accountId: r.account_id,
     name: r.peer_name,
     initials: r.initials || initialsFrom(r.peer_name),
+    avatarUrl: r.peer_avatar_url,
     tone: (r.tone as ToneKey) || 'emerald',
     time: fmtListTime(r.last_message_at),
     sub: r.sub_label || '',
