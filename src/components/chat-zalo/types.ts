@@ -52,14 +52,16 @@ export interface ZaloProfile {
 export interface ZaloMessage {
   /** id dòng DB (để thả reaction / thu hồi). Tin lạc quan chưa có id. */
   id?: string;
-  /** 'sys' = thông báo hệ thống/tự động; 'image' = ảnh; bỏ trống = text */
-  type?: 'sys' | 'image';
+  /** 'sys' = thông báo hệ thống/tự động; 'image' = ảnh; 'video' = video; bỏ trống = text */
+  type?: 'sys' | 'image' | 'video';
   dir?: 'in' | 'out';
   text?: string;
-  /** nhãn ảnh (type='image') */
+  /** nhãn ảnh/video */
   label?: string;
-  /** URL ảnh thật (Zalo CDN) */
+  /** URL ảnh/video thật (Zalo CDN) */
   mediaUrl?: string | null;
+  /** ảnh poster cho video */
+  videoThumb?: string | null;
   /** tông gradient ảnh: 'neutral' | 'room' | 'warm' */
   imgTone?: string;
   /** giờ HH:MM — tin hệ thống (type='sys') có thể bỏ trống */

@@ -64,14 +64,17 @@ function mapConv(r: any): ZaloConversation {
 }
 function mapMsg(r: any): ZaloMessage {
   const isImg = r.msg_type === 'image';
-  const body = (r.body && String(r.body).trim()) ? r.body : (isImg ? undefined : '[Tin nhắn]');
+  const isVid = r.msg_type === 'video';
+  const isMedia = isImg || isVid;
+  const body = (r.body && String(r.body).trim()) ? r.body : (isMedia ? undefined : '[Tin nhắn]');
   return {
     id: r.id,
-    type: r.msg_type === 'sys' ? 'sys' : isImg ? 'image' : undefined,
+    type: r.msg_type === 'sys' ? 'sys' : isImg ? 'image' : isVid ? 'video' : undefined,
     dir: r.direction,
     text: body,
     label: r.media_label || undefined,
     mediaUrl: r.media_url || undefined,
+    videoThumb: r.media_meta?.thumb || undefined,
     imgTone: r.media_tone || undefined,
     time: fmtClock(r.created_at),
     tick: r.status === 'seen' ? 'seen' : r.status === 'sent' ? 'sent' : undefined,

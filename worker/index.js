@@ -114,9 +114,15 @@ function classifyMessage(m) {
   if (mt === 'chat.photo' && c && typeof c === 'object') {
     const url = c.href || c.thumb || c.normalUrl || null;
     const cap = c.title && String(c.title).trim() ? String(c.title) : '';
-    return { msg_type: 'image', body: cap || '[Hình ảnh]', media_url: url, media_label: cap || 'Ảnh' };
+    return { msg_type: 'image', body: cap || '[Hình ảnh]', media_url: url, media_label: cap || 'Ảnh', media_meta: null };
   }
-  return { msg_type: 'text', body: pickText(m), media_url: null, media_label: null };
+  if (mt === 'chat.video.msg' && c && typeof c === 'object') {
+    const cap = c.title && String(c.title).trim() ? String(c.title) : '';
+    let dur = null;
+    try { dur = c.params ? JSON.parse(c.params).duration : null; } catch { /* */ }
+    return { msg_type: 'video', body: cap || '[Video]', media_url: c.href || null, media_label: cap || 'Video', media_meta: { thumb: c.thumb || null, duration: dur } };
+  }
+  return { msg_type: 'text', body: pickText(m), media_url: null, media_label: null, media_meta: null };
 }
 
 // Reaction Zalo (zca code) ↔ emoji hiển thị
@@ -161,7 +167,7 @@ async function handleInbound(accountId, ownerId, m) {
     const body = cm.body;
     await sb.from('zalo_messages').upsert({
       user_id: ownerId, conversation_id: conv.id, account_id: accountId,
-      direction: out ? 'out' : 'in', msg_type: cm.msg_type, body, media_url: cm.media_url, media_label: cm.media_label,
+      direction: out ? 'out' : 'in', msg_type: cm.msg_type, body, media_url: cm.media_url, media_label: cm.media_label, media_meta: cm.media_meta || null,
       zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
       cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
       status: out ? 'sent' : 'delivered', created_at: new Date().toISOString(),
@@ -226,7 +232,7 @@ async function upsertMessagesForThread(accountId, ownerId, threadId, tt, msgs) {
     const cm = classifyMessage(m);
     return {
       user_id: ownerId, conversation_id: conv.id, account_id: accountId,
-      direction: m.isSelf ? 'out' : 'in', msg_type: cm.msg_type, body: cm.body, media_url: cm.media_url, media_label: cm.media_label,
+      direction: m.isSelf ? 'out' : 'in', msg_type: cm.msg_type, body: cm.body, media_url: cm.media_url, media_label: cm.media_label, media_meta: cm.media_meta || null,
       zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
       cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
       status: m.isSelf ? 'sent' : 'delivered',

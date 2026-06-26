@@ -3,6 +3,7 @@ import { Loader2, History } from 'lucide-react';
 import SystemMessage from './SystemMessage';
 import MessageBubble from './MessageBubble';
 import ImageMessage from './ImageMessage';
+import VideoMessage from './VideoMessage';
 import TypingIndicator from './TypingIndicator';
 import { EMERALD } from './zaloTheme';
 import type { ZaloConversation } from './types';
@@ -59,6 +60,7 @@ export default function MessageList({ conv, showTyping, canLoadHistory, loadingH
       {conv.messages.map((m, i) => {
         if (m.type === 'sys') return <SystemMessage key={m.id || i} text={m.text || ''} />;
         if (m.type === 'image') return <ImageMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} />;
+        if (m.type === 'video') return <VideoMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} />;
         return <MessageBubble key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} />;
       })}
       {showTyping && <TypingIndicator />}
