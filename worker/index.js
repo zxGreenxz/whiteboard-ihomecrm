@@ -51,11 +51,25 @@ async function setAccount(id, patch) {
 }
 
 // ── Map event message zca-js → row inbound ──
+const MSGTYPE_LABEL = {
+  'chat.photo': '[Hình ảnh]', 'chat.sticker': '[Sticker]', 'share.file': '[Tệp tin]',
+  'chat.voice': '[Tin nhắn thoại]', 'chat.video.msg': '[Video]', 'chat.gif': '[GIF]',
+  'chat.recommended': '[Danh thiếp]', 'share.contact': '[Danh thiếp]',
+  'chat.location.new': '[Vị trí]', 'chat.location': '[Vị trí]', 'group.poll': '[Bình chọn]',
+};
 function pickText(m) {
-  const c = m?.data?.content;
-  if (typeof c === 'string') return c;
-  if (c && typeof c === 'object') return c.title || c.text || '';
-  return m?.data?.message || '';
+  const d = m?.data || {};
+  const c = d.content;
+  if (typeof c === 'string' && c.trim()) return c;
+  if (c && typeof c === 'object') {
+    if (c.title && String(c.title).trim()) return String(c.title);
+    if (c.description && String(c.description).trim()) return String(c.description);
+    if (c.text && String(c.text).trim()) return String(c.text);
+  }
+  const lbl = MSGTYPE_LABEL[String(d.msgType || '')];
+  if (lbl) return lbl;
+  if (c && typeof c === 'object') return '[Hình ảnh / Tệp]';
+  return typeof c === 'string' ? c : '[Tin nhắn]';
 }
 function threadTypeOf(m) {
   return m?.type === ThreadType.Group ? 'group' : 'user';
@@ -86,12 +100,13 @@ async function handleInbound(accountId, ownerId, m) {
     const conv = await upsertConversation(accountId, ownerId, m);
     if (!conv) return;
     const body = pickText(m);
-    await sb.from('zalo_messages').insert({
+    await sb.from('zalo_messages').upsert({
       user_id: ownerId, conversation_id: conv.id, account_id: accountId,
       direction: 'in', msg_type: 'text', body,
-      zalo_msg_id: String(m?.data?.msgId ?? ''), cli_msg_id: String(m?.data?.cliMsgId ?? ''),
+      zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
+      cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
       status: 'delivered', created_at: new Date().toISOString(),
-    });
+    }, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: true });
     await sb.from('zalo_conversations').update({
       last_message_text: body || '[Tin nhắn]', last_message_at: new Date().toISOString(),
       last_message_dir: 'in', unread_count: (conv.unread_count || 0) + 1,
@@ -106,14 +121,70 @@ async function attachSession(accountId, ownerId, api) {
   sessions.set(accountId, { api, ownId });
   try {
     api.listener.on('message', (m) => handleInbound(accountId, ownerId, m));
+    api.listener.on('old_messages', (msgs, type) => handleOldMessages(accountId, ownerId, msgs, type));
     api.listener.on('reaction', (e) => handleReaction(accountId, e));
     api.listener.on('undo', (e) => handleUndo(accountId, e));
     api.listener.on('seen_messages', (e) => handleSeen(accountId, e));
     api.listener.on('error', (e) => log('listener error', accountId, e?.message || e));
     api.listener.start();
+    // Yêu cầu Zalo đẩy TIN GẦN ĐÂY (1-1 + nhóm) — đúng cách Zalo Web đồng bộ khi
+    // kết nối; tin về qua event 'old_messages'. Chờ WS connect rồi mới gọi.
+    setTimeout(() => {
+      try { api.listener.requestOldMessages(ThreadType.User); } catch (e) { log('reqOld user', e?.message || e); }
+      try { api.listener.requestOldMessages(ThreadType.Group); } catch (e) { log('reqOld group', e?.message || e); }
+    }, 2000);
   } catch (e) { log('listener start error', e.message); }
   // Đồng bộ DANH BẠ + NHÓM về làm hội thoại (để web thấy ngay sau khi kết nối)
   syncContacts(api, accountId, ownerId).catch((e) => log('syncContacts error', e?.message || e));
+}
+
+// ── Đồng bộ TIN GẦN ĐÂY (từ event old_messages) → upsert messages + conversation ──
+async function handleOldMessages(accountId, ownerId, messages, type) {
+  try {
+    if (!Array.isArray(messages) || !messages.length) return;
+    const tt = type === ThreadType.Group ? 'group' : 'user';
+    // gom theo thread
+    const byThread = new Map();
+    for (const m of messages) {
+      const tid = threadIdOf(m);
+      if (!tid) continue;
+      if (!byThread.has(tid)) byThread.set(tid, []);
+      byThread.get(tid).push(m);
+    }
+    let total = 0;
+    for (const [tid, msgs] of byThread) {
+      let { data: conv } = await sb.from('zalo_conversations').select('id').eq('account_id', accountId).eq('thread_id', tid).maybeSingle();
+      if (!conv) {
+        const f = msgs[0];
+        const ins = await sb.from('zalo_conversations').insert({
+          user_id: ownerId, account_id: accountId, thread_id: tid, thread_type: tt,
+          peer_name: f?.data?.dName || (tt === 'group' ? 'Nhóm Zalo' : 'Zalo'), peer_zalo_uid: String(f?.data?.uidFrom || ''),
+        }).select('id').single();
+        conv = ins.data;
+      }
+      if (!conv) continue;
+      const rows = msgs.map((m) => ({
+        user_id: ownerId, conversation_id: conv.id, account_id: accountId,
+        direction: m.isSelf ? 'out' : 'in', msg_type: 'text', body: pickText(m),
+        zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
+        cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
+        status: m.isSelf ? 'sent' : 'delivered',
+        created_at: m?.data?.ts ? new Date(Number(m.data.ts)).toISOString() : new Date().toISOString(),
+      })).filter((r) => r.zalo_msg_id);
+      if (rows.length) {
+        // ignoreDuplicates:false → đồng bộ lại sẽ CẬP NHẬT body (vd vá tin rỗng)
+        await sb.from('zalo_messages').upsert(rows, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: false });
+        total += rows.length;
+      }
+      const last = msgs[msgs.length - 1];
+      await sb.from('zalo_conversations').update({
+        last_message_text: pickText(last) || '[Tin nhắn]',
+        last_message_at: last?.data?.ts ? new Date(Number(last.data.ts)).toISOString() : new Date().toISOString(),
+        last_message_dir: last.isSelf ? 'out' : 'in',
+      }).eq('id', conv.id);
+    }
+    log('old_messages', tt, '→', total, 'tin /', byThread.size, 'hội thoại');
+  } catch (e) { log('handleOldMessages', e?.message || e); }
 }
 
 // ── Đồng bộ bạn bè + nhóm → zalo_conversations (upsert theo account_id+thread_id) ──
@@ -148,6 +219,7 @@ async function syncContacts(api, accountId, ownerId) {
       const rows = Object.values(map).filter((g) => g && g.groupId).map((g) => ({
         user_id: ownerId, account_id: accountId, thread_id: String(g.groupId), thread_type: 'group',
         peer_name: g.name || 'Nhóm Zalo', peer_avatar_url: g.fullAvt || g.avt || null,
+        profile: { kind: 'unknown', isGroup: true, members: g.totalMember || (Array.isArray(g.memberIds) ? g.memberIds.length : null), desc: g.desc || null },
       }));
       if (rows.length) { await upsertConvRows(rows); groupCount += rows.length; }
     } catch (e) { log('getGroupInfo', e?.message || e); }

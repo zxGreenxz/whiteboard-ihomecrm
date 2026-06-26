@@ -63,10 +63,12 @@ function mapConv(r: any): ZaloConversation {
   };
 }
 function mapMsg(r: any): ZaloMessage {
+  const isImg = r.msg_type === 'image';
+  const body = (r.body && String(r.body).trim()) ? r.body : (isImg ? undefined : '[Tin nhắn]');
   return {
-    type: r.msg_type === 'sys' ? 'sys' : r.msg_type === 'image' ? 'image' : undefined,
+    type: r.msg_type === 'sys' ? 'sys' : isImg ? 'image' : undefined,
     dir: r.direction,
-    text: r.body || undefined,
+    text: body,
     label: r.media_label || undefined,
     imgTone: r.media_tone || undefined,
     time: fmtClock(r.created_at),

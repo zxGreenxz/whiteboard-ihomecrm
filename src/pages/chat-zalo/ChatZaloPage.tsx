@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -36,9 +36,23 @@ export default function ChatZaloPage() {
   const [draft, setDraft] = useState('');
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
   const [infoOpen, setInfoOpen] = useState(false);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  // Tập tài khoản đang xem (chọn nhiều cùng lúc); null = chưa khởi tạo (= tất cả).
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
+  const seenAccounts = useRef<Set<string>>(new Set());
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
+
+  // Tài khoản MỚI xuất hiện → tự thêm vào tập xem (mặc định hiện); KHÔNG đụng
+  // tài khoản người dùng đã bỏ chọn.
+  useEffect(() => {
+    const newIds = accounts.map((a) => a.id).filter((id) => !seenAccounts.current.has(id));
+    if (newIds.length) {
+      newIds.forEach((id) => seenAccounts.current.add(id));
+      setSelectedIds((prev) => (prev === null ? accounts.map((a) => a.id) : [...prev, ...newIds]));
+    }
+  }, [accounts]);
+
+  const selIds = selectedIds ?? accounts.map((a) => a.id);
 
   const effectiveId = activeId || conversations[0]?.id || '';
   useZaloRealtime(effectiveId || undefined);
@@ -49,8 +63,10 @@ export default function ChatZaloPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const selSet = new Set(selIds);
+    const allSelected = selIds.length >= accounts.length;
     return conversations.filter((c) => {
-      if (selectedAccountId && c.accountId !== selectedAccountId) return false;
+      if (!allSelected && c.accountId && !selSet.has(c.accountId)) return false;
       if (filter === 'unread' && c.unread <= 0) return false;
       if (filter === 'tenant' && c.profile.kind !== 'tenant') return false;
       if (filter === 'lead' && c.profile.kind !== 'lead') return false;
@@ -62,7 +78,7 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [conversations, filter, search, selectedAccountId]);
+  }, [conversations, filter, search, selIds, accounts.length]);
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
 
@@ -105,8 +121,15 @@ export default function ChatZaloPage() {
   const switcher = (
     <AccountSwitcher
       accounts={accounts}
-      selectedId={selectedAccountId}
-      onSelect={setSelectedAccountId}
+      selectedIds={selIds}
+      onToggle={(id) =>
+        setSelectedIds((prev) => {
+          const base = prev ?? accounts.map((a) => a.id);
+          return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+        })
+      }
+      onOnly={(id) => setSelectedIds([id])}
+      onAll={() => setSelectedIds(accounts.map((a) => a.id))}
       onConnectNew={onConnectNew}
       onReconnect={onReconnect}
       onDisconnect={(id) => disconnect.mutate(id)}

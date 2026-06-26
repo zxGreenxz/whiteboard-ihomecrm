@@ -3,7 +3,7 @@
 
 export type ToneKey = 'emerald' | 'blue' | 'purple' | 'orange' | 'rose' | 'slate';
 export type TagKey = 'success' | 'info' | 'debt' | 'danger' | 'warning' | 'purple' | 'neutral';
-export type ProfileKind = 'tenant' | 'lead' | 'broker';
+export type ProfileKind = 'tenant' | 'lead' | 'broker' | 'unknown';
 export type MsgTick = 'seen' | 'sent';
 export type FilterKey = 'all' | 'unread' | 'tenant' | 'lead';
 export type RightTab = 'info' | 'auto';
@@ -40,6 +40,10 @@ export interface ZaloProfile {
   phone?: string;
   rooms?: string;
   stats?: { label: string; value: string }[];
+  // Zalo thật (danh bạ/nhóm chưa phân loại)
+  isGroup?: boolean;
+  members?: number | null;
+  desc?: string | null;
   // shared
   staff?: ZaloStaff;
   tags?: ZaloTag[];

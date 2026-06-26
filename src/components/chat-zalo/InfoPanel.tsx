@@ -6,6 +6,7 @@ import { mono } from './infoCards';
 import TenantInfo from './TenantInfo';
 import LeadInfo from './LeadInfo';
 import BrokerInfo from './BrokerInfo';
+import ZaloContactInfo from './ZaloContactInfo';
 import AutomationPanel from './AutomationPanel';
 import type { ZaloConversation, ZaloAutomations, RightTab } from './types';
 
@@ -58,6 +59,7 @@ export default function InfoPanel({ conv, tab, onTab, automations, onToggle, tem
           {p.kind === 'tenant' && <TenantInfo p={p} />}
           {p.kind === 'lead' && <LeadInfo p={p} />}
           {p.kind === 'broker' && <BrokerInfo p={p} />}
+          {(!p.kind || p.kind === 'unknown') && <ZaloContactInfo conv={conv} />}
         </div>
       ) : (
         <AutomationPanel automations={automations} onToggle={onToggle} templates={templates} />
