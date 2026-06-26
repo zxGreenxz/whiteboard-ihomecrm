@@ -39,9 +39,9 @@ interface Props {
 
 /** Tab Chi phí — cơ cấu chi KQKD + tỷ lệ CP/DT + top khoản chi lớn. */
 export function ExpenseTab({ filters }: Props) {
-  const { ym, periodStart, periodEnd, t13Start, t13End, months12, buildingIds } = filters;
+  const { ym, periodStart, periodEnd, t13Start, t13End, months12, buildingIds, accrual } = filters;
 
-  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds);
+  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
 
   // Tỷ lệ CP/DT 12 tháng
   const ratioData = useMemo(() => {
@@ -139,7 +139,18 @@ export function ExpenseTab({ filters }: Props) {
         exportPrefix="chi-phi"
       />
 
-      <ChartCard title={`Top 10 khoản chi lớn — ${monthTitle(ym)}`} height={200}>
+      <ChartCard
+        title={`Top 10 khoản chi lớn — ${monthTitle(ym)}`}
+        height={200}
+        footnote={
+          accrual ? (
+            <p className="text-xs text-muted-foreground">
+              Danh sách phiếu chi lập trong kỳ (theo ngày phiếu) — không phân bổ dồn tích như các
+              biểu đồ tổng phía trên.
+            </p>
+          ) : undefined
+        }
+      >
         <div className="overflow-x-auto -mx-6 px-6">
           <Table>
             <TableHeader>

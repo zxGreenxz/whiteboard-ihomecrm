@@ -49,11 +49,11 @@ interface Props {
 export function TypeBreakdownSection({
   filters, side, mainColor, colorFn, invert, noun, exportPrefix,
 }: Props) {
-  const { ym, prevYm, t13Start, t13End, months12, buildingIds } = filters;
+  const { ym, prevYm, t13Start, t13End, months12, buildingIds, accrual } = filters;
   const { data: breakdown = [], isLoading: bdLoading } = useFaTypeBreakdown(
-    t13Start, t13End, buildingIds,
+    t13Start, t13End, buildingIds, accrual,
   );
-  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds);
+  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
 
   const analysis = useMemo(
     () => analyzeTypeBreakdown(breakdown, side, months12, ym, prevYm),
