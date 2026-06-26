@@ -61,16 +61,16 @@ interface Props {
 }
 
 export function OverviewTab({ filters }: Props) {
-  const { ym, prevYm, yoyYm, t13Start, t13End, t13StartYm, months12, buildingIds } = filters;
+  const { ym, prevYm, yoyYm, t13Start, t13End, t13StartYm, months12, buildingIds, accrual } = filters;
 
-  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds);
+  const { data: pnl = [], isLoading: pnlLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
   const { data: snapshot = [], isLoading: snapLoading } = useFaSnapshotKpis(buildingIds);
   const { data: occupancy = [], isLoading: occLoading } = useFaOccupancyMonthly(
     t13Start, t13End, buildingIds,
   );
   // 2 query dưới fetch cả cửa sổ 13 tháng — tab Doanh thu/Chi phí/Vận hành
   // dùng chung query key nên không tốn thêm round-trip khi chuyển tab.
-  const { data: breakdown = [] } = useFaTypeBreakdown(t13Start, t13End, buildingIds);
+  const { data: breakdown = [] } = useFaTypeBreakdown(t13Start, t13End, buildingIds, accrual);
   const { data: collection = [] } = useFaInvoiceCollection(t13StartYm, ym, buildingIds);
 
   const byMonth = useMemo(() => aggregatePnlByMonth(pnl), [pnl]);

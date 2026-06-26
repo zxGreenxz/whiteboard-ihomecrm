@@ -42,15 +42,20 @@ async function callFa<T>(
   return ((data || []) as any[]).map(map);
 }
 
-export const useFaMonthlyPnl = (start?: string, end?: string, buildingIds?: string[]) =>
+export const useFaMonthlyPnl = (
+  start?: string,
+  end?: string,
+  buildingIds?: string[],
+  accrual = false,
+) =>
   useQuery({
-    queryKey: [FA, "monthly-pnl", start, end, normIds(buildingIds)],
+    queryKey: [FA, "monthly-pnl", accrual ? "accrual" : "cash", start, end, normIds(buildingIds)],
     enabled: !!start && !!end,
     staleTime: STALE_SLOW,
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa<FaMonthlyPnlRow>(
-        "fa_monthly_pnl",
+        accrual ? "fa_monthly_pnl_accrual" : "fa_monthly_pnl",
         { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) },
         "Không thể tải P&L theo tháng",
         (r) => ({
@@ -65,15 +70,20 @@ export const useFaMonthlyPnl = (start?: string, end?: string, buildingIds?: stri
       ),
   });
 
-export const useFaTypeBreakdown = (start?: string, end?: string, buildingIds?: string[]) =>
+export const useFaTypeBreakdown = (
+  start?: string,
+  end?: string,
+  buildingIds?: string[],
+  accrual = false,
+) =>
   useQuery({
-    queryKey: [FA, "type-breakdown", start, end, normIds(buildingIds)],
+    queryKey: [FA, "type-breakdown", accrual ? "accrual" : "cash", start, end, normIds(buildingIds)],
     enabled: !!start && !!end,
     staleTime: STALE_SLOW,
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa<FaTypeBreakdownRow>(
-        "fa_type_breakdown",
+        accrual ? "fa_type_breakdown_accrual" : "fa_type_breakdown",
         { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) },
         "Không thể tải cơ cấu thu chi",
         (r) => ({

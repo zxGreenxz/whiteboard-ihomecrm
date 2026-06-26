@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import MainLayout from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
 import { useBuildings } from "@/hooks/useBuildings";
 import { monthToEndDate, monthToStartDate } from "@/lib/monthPeriod";
@@ -18,14 +20,18 @@ import { OperationsTab } from "@/components/finance-analysis/OperationsTab";
 
 /**
  * Trang Phân tích tài chính — 5 tab (Tổng quan / Doanh thu / Chi phí /
- * Lợi nhuận / Vận hành). Cơ sở ghi nhận: NGÀY PHIẾU (cash basis), chỉ khoản
- * KQKD — đồng nhất Phân bổ lợi nhuận & module chia LN. (Phase 2: accrual
- * toggle, ARPU trend, phân loại chi phí cố định/biến đổi.)
+ * Lợi nhuận / Vận hành). Chỉ khoản KQKD. Toggle cơ sở ghi nhận:
+ *   • DỒN TÍCH (mặc định) — theo kỳ áp dụng / billing_month, ĐỒNG BỘ Phân bổ
+ *     lợi nhuận (fa_*_accrual).
+ *   • TIỀN MẶT — theo ngày phiếu (fa_monthly_pnl / fa_type_breakdown).
+ * Chỉ P&L & cơ cấu hạng mục đổi theo toggle; KPI vận hành không phụ thuộc.
  */
 export default function FinancialAnalysisReport() {
   // Kỳ phân tích "MM-yyyy" (convention month picker của ProfitDistributionReport)
   const [monthStr, setMonthStr] = useState<string>(format(new Date(), "MM-yyyy"));
   const [buildingIds, setBuildingIds] = useState<string[]>([]);
+  // Mặc định DỒN TÍCH để khớp Phân bổ lợi nhuận (cũng mặc định accrual).
+  const [accrual, setAccrual] = useState<boolean>(true);
 
   // 36 tháng gần nhất — đủ ngữ cảnh YoY khi xem lùi 2 năm.
   const monthOptions = useMemo(() => {
@@ -64,8 +70,9 @@ export default function FinancialAnalysisReport() {
       t13End: monthToEndDate(ym),
       months12: monthsRange(ym, 12),
       buildingIds,
+      accrual,
     };
-  }, [monthStr, buildingIds]);
+  }, [monthStr, buildingIds, accrual]);
 
   return (
     <MainLayout>
@@ -85,7 +92,8 @@ export default function FinancialAnalysisReport() {
           <div>
             <h1 className="text-2xl font-bold">Phân tích tài chính</h1>
             <p className="text-sm text-muted-foreground">
-              Doanh thu · Chi phí · Lợi nhuận · KPI vận hành (ghi nhận theo ngày phiếu, khoản KQKD)
+              Doanh thu · Chi phí · Lợi nhuận · KPI vận hành (khoản KQKD · ghi nhận theo{" "}
+              {accrual ? "kỳ áp dụng — dồn tích" : "ngày phiếu — tiền mặt"})
             </p>
           </div>
         </div>
@@ -110,6 +118,12 @@ export default function FinancialAnalysisReport() {
               className="w-[260px]"
               placeholder="Tất cả toà nhà"
             />
+          </div>
+          <div className="flex items-center gap-2 h-9 ml-auto">
+            <Switch id="fa-accrual" checked={accrual} onCheckedChange={setAccrual} />
+            <Label htmlFor="fa-accrual" className="text-sm text-muted-foreground whitespace-nowrap">
+              Dồn tích (theo kỳ áp dụng)
+            </Label>
           </div>
         </div>
 

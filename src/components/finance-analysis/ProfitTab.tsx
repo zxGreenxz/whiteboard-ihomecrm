@@ -38,8 +38,8 @@ interface Props {
 
 /** Tab Lợi nhuận — biên LN, ma trận LN toà × tháng, luỹ kế YTD. */
 export function ProfitTab({ filters }: Props) {
-  const { ym, t13Start, t13End, months12, buildingIds } = filters;
-  const { data: pnl = [], isLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds);
+  const { ym, t13Start, t13End, months12, buildingIds, accrual } = filters;
+  const { data: pnl = [], isLoading } = useFaMonthlyPnl(t13Start, t13End, buildingIds, accrual);
 
   const byMonth = useMemo(() => aggregatePnlByMonth(pnl), [pnl]);
 

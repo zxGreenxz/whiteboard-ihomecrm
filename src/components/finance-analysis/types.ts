@@ -28,6 +28,10 @@ export interface AnalysisFilters {
   months12: string[];
   /** [] = tất cả toà (gồm toà ảo "Chung"). */
   buildingIds: string[];
+  /** true = ghi nhận DỒN TÍCH (theo kỳ áp dụng / billing_month) — đồng bộ Phân bổ
+   *  lợi nhuận; false = TIỀN MẶT (theo ngày phiếu). Chỉ ảnh hưởng P&L & cơ cấu
+   *  hạng mục; chỉ số vận hành (lấp đầy, thu hồi, tuổi nợ) không phụ thuộc. */
+  accrual: boolean;
 }
 
 // ── Row shapes từ RPC ────────────────────────────────────────────────
