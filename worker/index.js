@@ -331,7 +331,8 @@ async function startLoginQR(account, ownerId) {
 
   const ua = account.meta?.userAgent || uaFor(id);
   log('loginQR UA', id, ua.slice(0, 40) + '…');
-  const zalo = new Zalo();
+  // selfListen: true → listener phát cả tin MÌNH gửi từ thiết bị khác (điện thoại…)
+  const zalo = new Zalo({ selfListen: true });
   try {
     const api = await zalo.loginQR({ userAgent: ua }, async (ev) => {
       // zca-js phát event khi sinh QR / quét / đăng nhập. Tên có thể khác theo
@@ -380,7 +381,7 @@ async function tryRelogin(account, ownerId) {
   if (!ctx) return;
   loggingIn.add(account.id);
   try {
-    const zalo = new Zalo();
+    const zalo = new Zalo({ selfListen: true });
     const api = await zalo.login(ctx);          // login bằng {cookie, imei, userAgent}
     await attachSession(account.id, ownerId, api);
     await setAccount(account.id, { status: 'connected', last_error: null });
@@ -392,8 +393,12 @@ async function tryRelogin(account, ownerId) {
 
 // ── Gửi 1 job trong hàng đợi ──
 async function processJob(job) {
+  // Nhận job NGUYÊN TỬ: chỉ xử lý nếu chuyển được queued→processing. Nếu 0 dòng
+  // đổi (tick khác đã nhận) → bỏ qua → CHỐNG GỬI TRÙNG khi tick chồng nhau.
+  const { data: claimed, error: claimErr } = await sb.from('zalo_send_queue')
+    .update({ status: 'processing' }).eq('id', job.id).eq('status', 'queued').select('id');
+  if (claimErr || !claimed || !claimed.length) return;
   const s = sessions.get(job.account_id);
-  await sb.from('zalo_send_queue').update({ status: 'processing' }).eq('id', job.id);
   if (!s) {
     await sb.from('zalo_send_queue').update({ status: 'failed', last_error: 'Tài khoản chưa kết nối', attempts: (job.attempts || 0) + 1 }).eq('id', job.id);
     if (job.message_id) await sb.from('zalo_messages').update({ status: 'failed' }).eq('id', job.message_id);
@@ -418,7 +423,19 @@ async function processJob(job) {
       const res = await s.api.sendMessage({ msg: p.body || '', ...(p.reply_to ? { quote: p.reply_to } : {}) }, conv.thread_id, t2);
       const zid = res?.message?.msgId || res?.msgId || '';
       const cid = res?.message?.cliMsgId || res?.cliMsgId || '';
-      if (job.message_id) await sb.from('zalo_messages').update({ status: 'sent', zalo_msg_id: zid ? String(zid) : null, cli_msg_id: cid ? String(cid) : null }).eq('id', job.message_id);
+      if (job.message_id) {
+        if (zid) {
+          // selfListen có thể đã chèn echo của chính tin này → tránh trùng:
+          const { data: dup } = await sb.from('zalo_messages').select('id').eq('account_id', job.account_id).eq('zalo_msg_id', String(zid)).maybeSingle();
+          if (dup && dup.id !== job.message_id) {
+            await sb.from('zalo_messages').delete().eq('id', job.message_id);   // bỏ row 'pending' của web, giữ echo
+          } else {
+            await sb.from('zalo_messages').update({ status: 'sent', zalo_msg_id: String(zid), cli_msg_id: cid ? String(cid) : null }).eq('id', job.message_id);
+          }
+        } else {
+          await sb.from('zalo_messages').update({ status: 'sent' }).eq('id', job.message_id);
+        }
+      }
       log('sent', job.id);
     }
     await sb.from('zalo_send_queue').update({ status: 'sent', processed_at: new Date().toISOString() }).eq('id', job.id);
@@ -431,19 +448,24 @@ async function processJob(job) {
 
 // ── Vòng lặp chính ──
 let booted = false;
+let ticking = false;
 async function tick() {
-  // accounts cần đăng nhập / re-login
-  const { data: accounts } = await sb.from('zalo_accounts').select('id, user_id, name, status, meta').eq('kind', 'personal');
-  for (const a of accounts || []) {
-    if (a.status === 'connecting' || a.status === 'waiting_scan') startLoginQR(a, a.user_id);
-    else if (!booted && a.status === 'connected') tryRelogin(a, a.user_id);
-  }
-  booted = true;
+  if (ticking) return;              // CHỐNG tick chồng nhau (send chậm → gửi trùng)
+  ticking = true;
+  try {
+    // accounts cần đăng nhập / re-login
+    const { data: accounts } = await sb.from('zalo_accounts').select('id, user_id, name, status, meta').eq('kind', 'personal');
+    for (const a of accounts || []) {
+      if (a.status === 'connecting' || a.status === 'waiting_scan') startLoginQR(a, a.user_id);
+      else if (!booted && a.status === 'connected') tryRelogin(a, a.user_id);
+    }
+    booted = true;
 
-  // hàng đợi gửi
-  const { data: jobs } = await sb.from('zalo_send_queue')
-    .select('*').eq('channel', 'personal').eq('status', 'queued').order('created_at', { ascending: true }).limit(10);
-  for (const j of jobs || []) await processJob(j);
+    // hàng đợi gửi
+    const { data: jobs } = await sb.from('zalo_send_queue')
+      .select('*').eq('channel', 'personal').eq('status', 'queued').order('created_at', { ascending: true }).limit(10);
+    for (const j of jobs || []) await processJob(j);
+  } finally { ticking = false; }
 }
 
 log('Zalo worker khởi động →', SUPABASE_URL);
