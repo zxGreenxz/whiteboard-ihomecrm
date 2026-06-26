@@ -72,9 +72,17 @@ export interface ZaloMessage {
   reply?: { name: string; text: string };
 }
 
+export interface ZaloLabel {
+  labelId: number;
+  name: string;
+  color?: string | null;
+  emoji?: string | null;
+}
+
 export interface ZaloConversation {
   id: string;
   accountId?: string | null;
+  labelIds?: number[];
   name: string;
   initials: string;
   avatarUrl?: string | null;

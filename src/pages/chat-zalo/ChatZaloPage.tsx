@@ -7,12 +7,14 @@ import ChatThread from '@/components/chat-zalo/ChatThread';
 import InfoPanel from '@/components/chat-zalo/InfoPanel';
 import AccountSwitcher from '@/components/chat-zalo/AccountSwitcher';
 import ConnectZaloDialog from '@/components/chat-zalo/ConnectZaloDialog';
+import BroadcastDialog from '@/components/chat-zalo/BroadcastDialog';
 import type { FilterKey, RightTab } from '@/components/chat-zalo/types';
 import {
   useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount,
   useReactMessage, useRecallMessage, useLoadHistory,
+  useZaloLabels, useBroadcast,
 } from '@/hooks/useZaloChat';
 
 /**
@@ -24,6 +26,8 @@ export default function ChatZaloPage() {
   const { data: automations = { broadcastOn: false, autoReplyOn: false } } = useZaloAutomations();
   const { data: templates = [] } = useZaloTemplates();
   const { data: accounts = [] } = useZaloAccounts();
+  const { data: labels = [] } = useZaloLabels();
+  const broadcastMut = useBroadcast();
   const sendMut = useSendZaloMessage();
   const markRead = useMarkConversationRead();
   const toggleMut = useToggleAutomation();
@@ -45,6 +49,8 @@ export default function ChatZaloPage() {
   const seenAccounts = useRef<Set<string>>(new Set());
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState<number | null>(null);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
   // Tài khoản MỚI xuất hiện → tự thêm vào tập xem (mặc định hiện); KHÔNG đụng
   // tài khoản người dùng đã bỏ chọn.
@@ -71,6 +77,7 @@ export default function ChatZaloPage() {
     const allSelected = selIds.length >= accounts.length;
     return conversations.filter((c) => {
       if (!allSelected && c.accountId && !selSet.has(c.accountId)) return false;
+      if (selectedLabel != null && !(c.labelIds || []).includes(selectedLabel)) return false;
       if (filter === 'unread' && c.unread <= 0) return false;
       if (filter === 'tenant' && c.profile.kind !== 'tenant') return false;
       if (filter === 'lead' && c.profile.kind !== 'lead') return false;
@@ -82,7 +89,7 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [conversations, filter, search, selIds, accounts.length]);
+  }, [conversations, filter, search, selIds, accounts.length, selectedLabel]);
 
   const connectingAccount = connectingId ? accounts.find((a) => a.id === connectingId) || null : null;
 
@@ -156,6 +163,10 @@ export default function ChatZaloPage() {
           onSearch={setSearch}
           onSelect={select}
           topSlot={switcher}
+          labels={labels}
+          selectedLabel={selectedLabel}
+          onSelectLabel={setSelectedLabel}
+          onBroadcast={() => setBroadcastOpen(true)}
         />
 
         {active ? (
@@ -216,6 +227,15 @@ export default function ChatZaloPage() {
         onOpenChange={setConnectOpen}
         account={connectingAccount}
         onRetry={() => connectingId && onReconnect(connectingId)}
+      />
+
+      <BroadcastDialog
+        open={broadcastOpen}
+        onOpenChange={setBroadcastOpen}
+        conversations={conversations}
+        labels={labels}
+        sending={broadcastMut.isPending}
+        onSend={(ids, body) => broadcastMut.mutate({ conversationIds: ids, body }, { onSuccess: () => setBroadcastOpen(false) })}
       />
     </MainLayout>
   );

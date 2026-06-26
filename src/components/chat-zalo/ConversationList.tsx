@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { Search, MessageSquarePlus, Zap } from 'lucide-react';
+import { Search, MessageSquarePlus, Zap, Megaphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EMERALD } from './zaloTheme';
 import ConversationRow from './ConversationRow';
-import type { ZaloConversation, FilterKey } from './types';
+import LabelFilter from './LabelFilter';
+import type { ZaloConversation, FilterKey, ZaloLabel } from './types';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tất cả' },
@@ -26,12 +27,17 @@ interface Props {
   className?: string;
   /** Thanh chọn/kết nối tài khoản Zalo render trên cùng. */
   topSlot?: ReactNode;
+  labels?: ZaloLabel[];
+  selectedLabel?: number | null;
+  onSelectLabel?: (id: number | null) => void;
+  onBroadcast?: () => void;
 }
 
 /** Cột 1: danh sách hội thoại + tìm + lọc + footer tự động hoá. */
 export default function ConversationList({
   conversations, totalCount, activeId, filter, search, automationActive, automationRuns,
   onFilter, onSearch, onSelect, className, topSlot,
+  labels = [], selectedLabel = null, onSelectLabel, onBroadcast,
 }: Props) {
   return (
     <section className={cn('flex-col flex-none bg-white border-r', className)}>
@@ -43,9 +49,14 @@ export default function ConversationList({
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, letterSpacing: '-.01em' }}>Hội thoại</h2>
             <span style={{ background: 'hsl(152 30% 94%)', color: 'hsl(152 69% 28%)', fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 8 }}>{totalCount}</span>
           </div>
-          <button title="Soạn tin mới" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <MessageSquarePlus size={17} />
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={onBroadcast} title="Chia sẻ / Gửi hàng loạt" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Megaphone size={17} />
+            </button>
+            <button title="Soạn tin mới" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <MessageSquarePlus size={17} />
+            </button>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 11px', background: 'hsl(210 20% 96%)', borderRadius: 8, color: 'hsl(210 10% 50%)', marginBottom: 11 }}>
           <Search size={15} />
@@ -56,7 +67,7 @@ export default function ConversationList({
             style={{ flex: 1, border: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 13, color: 'hsl(160 30% 14%)' }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 7, overflow: 'hidden' }}>
+        <div className="wz-scroll" style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 2 }}>
           {FILTERS.map((f) => {
             const on = f.key === filter;
             return (
@@ -68,11 +79,12 @@ export default function ConversationList({
                   border: on ? 'none' : '1px solid hsl(210 20% 88%)',
                   color: on ? '#fff' : 'hsl(160 20% 30%)',
                   fontSize: 12, fontWeight: on ? 600 : 500, padding: '5px 12px', borderRadius: 8,
-                  whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit',
+                  whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit', flex: 'none',
                 }}
               >{f.label}</button>
             );
           })}
+          {onSelectLabel && <LabelFilter labels={labels} selectedLabel={selectedLabel} onSelect={onSelectLabel} />}
         </div>
       </div>
 

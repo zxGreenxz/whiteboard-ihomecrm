@@ -44,6 +44,7 @@ const loggingIn = new Set();         // account_id đang chạy loginQR
 
 const sessFile = (id) => path.join(SESSION_DIR, `${id}.json`);
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Cô lập "thiết bị" đa-nick: mỗi nick một user-agent THẬT, cố định theo account_id.
 // (imei = randomUUID + MD5(UA) nên UA khác ⇒ imei khác; cookie đã tách theo file phiên.)
@@ -213,6 +214,7 @@ async function attachSession(accountId, ownerId, api) {
   } catch (e) { log('listener start error', e.message); }
   // Đồng bộ DANH BẠ + NHÓM về làm hội thoại (để web thấy ngay sau khi kết nối)
   syncContacts(api, accountId, ownerId).catch((e) => log('syncContacts error', e?.message || e));
+  syncLabels(api, accountId, ownerId).catch((e) => log('syncLabels error', e?.message || e));
 }
 
 // ── Upsert N tin vào 1 hội thoại (theo account+thread); tạo hội thoại nếu chưa có ──
@@ -306,6 +308,33 @@ async function syncContacts(api, accountId, ownerId) {
     } catch (e) { log('getGroupInfo', e?.message || e); }
   }
   log('synced', friendRows.length, 'bạn,', groupCount, 'nhóm →', accountId);
+}
+
+// ── Đồng bộ NHÃN "Phân loại" (getLabels) → zalo_labels + gắn vào hội thoại ──
+async function syncLabels(api, accountId, ownerId) {
+  let labels = [];
+  try { const r = await api.getLabels(); labels = r?.labelData || []; } catch (e) { log('getLabels', e?.message || e); return; }
+  const rows = labels.filter((l) => l && l.id != null).map((l, i) => ({
+    user_id: ownerId, account_id: accountId, label_id: Number(l.id),
+    name: l.text || ('Nhãn ' + l.id), color: l.color || null, emoji: l.emoji || null, sort_order: l.offset ?? i,
+  }));
+  if (rows.length) await sb.from('zalo_labels').upsert(rows, { onConflict: 'account_id,label_id' });
+  const ids = rows.map((r) => r.label_id);
+  if (ids.length) await sb.from('zalo_labels').delete().eq('account_id', accountId).not('label_id', 'in', '(' + ids.join(',') + ')');
+  else await sb.from('zalo_labels').delete().eq('account_id', accountId);
+  // thread → [label_id]
+  const threadToLabels = new Map();
+  for (const l of labels) for (const t of (l.conversations || [])) {
+    const k = String(t);
+    if (!threadToLabels.has(k)) threadToLabels.set(k, []);
+    threadToLabels.get(k).push(Number(l.id));
+  }
+  // xoá gắn nhãn cũ (chỉ hội thoại đang có nhãn) rồi gắn lại
+  await sb.from('zalo_conversations').update({ label_ids: [] }).eq('account_id', accountId).neq('label_ids', '[]');
+  for (const [t, labs] of threadToLabels) {
+    await sb.from('zalo_conversations').update({ label_ids: labs }).eq('account_id', accountId).eq('thread_id', t);
+  }
+  log('labels synced', rows.length, 'nhãn /', threadToLabels.size, 'hội thoại gắn');
 }
 
 // ── Inbound: reaction / undo / seen (best-effort, defensive) ──
@@ -422,6 +451,8 @@ async function tryRelogin(account, ownerId) {
     log('re-login ok', account.id);
   } catch (e) {
     log('re-login fail', account.id, e?.message || e);
+    // Phiên hết hạn → đánh dấu để web hiện "cần đăng nhập lại" (quét QR)
+    await setAccount(account.id, { status: 'error', last_error: 'Phiên Zalo hết hạn — bấm "Đăng nhập lại" để quét QR.' });
   } finally { loggingIn.delete(account.id); }
 }
 
@@ -495,10 +526,13 @@ async function tick() {
     }
     booted = true;
 
-    // hàng đợi gửi
+    // hàng đợi gửi — RẢI NHỊP giữa các job (broadcast hàng loạt không bị Zalo coi là spam)
     const { data: jobs } = await sb.from('zalo_send_queue')
       .select('*').eq('channel', 'personal').eq('status', 'queued').order('created_at', { ascending: true }).limit(10);
-    for (const j of jobs || []) await processJob(j);
+    for (let i = 0; i < (jobs || []).length; i++) {
+      await processJob(jobs[i]);
+      if (i < jobs.length - 1) await sleep(700 + Math.floor(Math.random() * 800));
+    }
   } finally { ticking = false; }
 }
 

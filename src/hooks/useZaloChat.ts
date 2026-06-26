@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type {
-  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ToneKey, TagKey,
+  ZaloConversation, ZaloMessage, ZaloAutomations, ZaloAccount, ZaloLabel, ToneKey, TagKey,
 } from '@/components/chat-zalo/types';
 
 const db = supabase as any;
@@ -43,6 +43,7 @@ function mapConv(r: any): ZaloConversation {
   return {
     id: r.id,
     accountId: r.account_id,
+    labelIds: Array.isArray(r.label_ids) ? r.label_ids.map(Number) : [],
     name: r.peer_name,
     initials: r.initials || initialsFrom(r.peer_name),
     avatarUrl: r.peer_avatar_url,
@@ -89,6 +90,7 @@ const QK = {
   automations: ['zalo', 'automations'] as const,
   templates: ['zalo', 'templates'] as const,
   accounts: ['zalo', 'accounts'] as const,
+  labels: ['zalo', 'labels'] as const,
 };
 
 function mapAccount(r: any): ZaloAccount {
@@ -279,6 +281,34 @@ export function useZaloTemplates() {
   });
 }
 
+// ── Nhãn "Phân loại" ──
+export function useZaloLabels() {
+  return useQuery({
+    queryKey: QK.labels,
+    queryFn: async (): Promise<ZaloLabel[]> => {
+      const { data, error } = await db.from('zalo_labels').select('label_id, name, color, emoji, sort_order').order('sort_order', { ascending: true });
+      if (error) { console.error('useZaloLabels', error); return []; }
+      const seen = new Map<number, ZaloLabel>();
+      for (const r of (data || [])) if (!seen.has(r.label_id)) seen.set(r.label_id, { labelId: r.label_id, name: r.name, color: r.color, emoji: r.emoji });
+      return [...seen.values()];
+    },
+  });
+}
+
+// ── Chia sẻ / Gửi hàng loạt tới nhiều hội thoại ──
+export function useBroadcast() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { conversationIds: string[]; body: string }): Promise<number> => {
+      const { data, error } = await db.rpc('zalo_broadcast', { p_conversation_ids: v.conversationIds, p_body: v.body });
+      if (error) throw error;
+      return Number(data) || 0;
+    },
+    onSuccess: (n) => { toast.success(`Đã gửi tới ${n} hội thoại`); qc.invalidateQueries({ queryKey: QK.conversations }); },
+    onError: (e: any) => { toast.error(e?.message || 'Không gửi được'); console.error('zalo_broadcast', e); },
+  });
+}
+
 // ── Tài khoản Zalo (kết nối / chuyển / ngắt) ──
 export function useZaloAccounts() {
   return useQuery({
@@ -334,6 +364,9 @@ export function useZaloRealtime(activeId?: string) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_accounts' }, () => {
         qc.invalidateQueries({ queryKey: QK.accounts });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_labels' }, () => {
+        qc.invalidateQueries({ queryKey: QK.labels });
       })
       .subscribe();
     return () => { supabase.removeChannel(convCh); };
