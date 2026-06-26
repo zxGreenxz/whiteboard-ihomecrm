@@ -12,6 +12,7 @@ import {
   useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
   useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
   useZaloAccounts, useRequestConnect, useDisconnectAccount,
+  useReactMessage, useRecallMessage, useLoadHistory,
 } from '@/hooks/useZaloChat';
 
 /**
@@ -28,6 +29,9 @@ export default function ChatZaloPage() {
   const toggleMut = useToggleAutomation();
   const requestConnect = useRequestConnect();
   const disconnect = useDisconnectAccount();
+  const reactMut = useReactMessage();
+  const recallMut = useRecallMessage();
+  const loadHistoryMut = useLoadHistory();
 
   const [activeId, setActiveId] = useState<string>('');
   const [rightTab, setRightTab] = useState<RightTab>('info');
@@ -165,6 +169,11 @@ export default function ChatZaloPage() {
             onPickTemplate={(t) => setDraft(t)}
             onBack={() => setMobileView('list')}
             onOpenInfo={() => setInfoOpen(true)}
+            canLoadHistory={!!active.profile.isGroup}
+            loadingHistory={loadHistoryMut.isPending}
+            onLoadHistory={() => loadHistoryMut.mutate({ conversationId: active.id })}
+            onReact={(id, emoji) => reactMut.mutate({ messageId: id, emoji, conversationId: active.id })}
+            onRecall={(id) => recallMut.mutate({ messageId: id, conversationId: active.id })}
           />
         ) : (
           <section className="flex-1 min-w-0 hidden lg:flex items-center justify-center text-muted-foreground" style={{ background: 'hsl(160 20% 98.5%)' }}>

@@ -15,16 +15,30 @@ interface Props {
   onBack?: () => void;
   onOpenInfo?: () => void;
   className?: string;
+  canLoadHistory?: boolean;
+  loadingHistory?: boolean;
+  onLoadHistory?: () => void;
+  onReact?: (id: string, emoji: string) => void;
+  onRecall?: (id: string) => void;
 }
 
 /** Cột 2: header + luồng tin + ô soạn. */
 export default function ChatThread({
   conv, draft, showTyping, templates, onDraft, onSend, onPickTemplate, onBack, onOpenInfo, className,
+  canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall,
 }: Props) {
   return (
     <section className={cn('flex-1 min-w-0 flex-col', className)} style={{ background: 'hsl(160 20% 98.5%)' }}>
       <ThreadHeader conv={conv} onBack={onBack} onOpenInfo={onOpenInfo} />
-      <MessageList conv={conv} showTyping={showTyping} />
+      <MessageList
+        conv={conv}
+        showTyping={showTyping}
+        canLoadHistory={canLoadHistory}
+        loadingHistory={loadingHistory}
+        onLoadHistory={onLoadHistory}
+        onReact={onReact}
+        onRecall={onRecall}
+      />
       <Composer draft={draft} onDraft={onDraft} onSend={onSend} templates={templates} onPickTemplate={onPickTemplate} />
     </section>
   );

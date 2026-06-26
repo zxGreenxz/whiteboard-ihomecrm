@@ -50,12 +50,16 @@ export interface ZaloProfile {
 }
 
 export interface ZaloMessage {
+  /** id dòng DB (để thả reaction / thu hồi). Tin lạc quan chưa có id. */
+  id?: string;
   /** 'sys' = thông báo hệ thống/tự động; 'image' = ảnh; bỏ trống = text */
   type?: 'sys' | 'image';
   dir?: 'in' | 'out';
   text?: string;
   /** nhãn ảnh (type='image') */
   label?: string;
+  /** URL ảnh thật (Zalo CDN) */
+  mediaUrl?: string | null;
   /** tông gradient ảnh: 'neutral' | 'room' | 'warm' */
   imgTone?: string;
   /** giờ HH:MM — tin hệ thống (type='sys') có thể bỏ trống */

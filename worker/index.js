@@ -71,6 +71,28 @@ function pickText(m) {
   if (c && typeof c === 'object') return '[Hình ảnh / Tệp]';
   return typeof c === 'string' ? c : '[Tin nhắn]';
 }
+
+// Phân loại tin → {msg_type, body, media_url, media_label}. Ảnh giữ URL để FE hiện thật.
+function classifyMessage(m) {
+  const d = m?.data || {};
+  const mt = String(d.msgType || '');
+  const c = d.content;
+  if (mt === 'chat.photo' && c && typeof c === 'object') {
+    const url = c.href || c.thumb || c.normalUrl || null;
+    const cap = c.title && String(c.title).trim() ? String(c.title) : '';
+    return { msg_type: 'image', body: cap || '[Hình ảnh]', media_url: url, media_label: cap || 'Ảnh' };
+  }
+  return { msg_type: 'text', body: pickText(m), media_url: null, media_label: null };
+}
+
+// Reaction Zalo (zca code) ↔ emoji hiển thị
+const ZCA_REACTIONS = [
+  { emoji: '❤️', zca: '/-heart' }, { emoji: '👍', zca: '/-strong' }, { emoji: '😆', zca: ':>' },
+  { emoji: '😮', zca: ':o' }, { emoji: '😢', zca: ':-((' }, { emoji: '😠', zca: ':-h' },
+];
+const zcaToEmoji = (code) => (ZCA_REACTIONS.find((r) => r.zca === code) || {}).emoji || code;
+const emojiToZca = (e) => (ZCA_REACTIONS.find((r) => r.emoji === e) || {}).zca || e;
+
 function threadTypeOf(m) {
   return m?.type === ThreadType.Group ? 'group' : 'user';
 }
@@ -99,10 +121,11 @@ async function handleInbound(accountId, ownerId, m) {
     if (m?.isSelf) return;                       // tin mình gửi đã có trong DB
     const conv = await upsertConversation(accountId, ownerId, m);
     if (!conv) return;
-    const body = pickText(m);
+    const cm = classifyMessage(m);
+    const body = cm.body;
     await sb.from('zalo_messages').upsert({
       user_id: ownerId, conversation_id: conv.id, account_id: accountId,
-      direction: 'in', msg_type: 'text', body,
+      direction: 'in', msg_type: cm.msg_type, body, media_url: cm.media_url, media_label: cm.media_label,
       zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
       cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
       status: 'delivered', created_at: new Date().toISOString(),
@@ -138,12 +161,46 @@ async function attachSession(accountId, ownerId, api) {
   syncContacts(api, accountId, ownerId).catch((e) => log('syncContacts error', e?.message || e));
 }
 
-// ── Đồng bộ TIN GẦN ĐÂY (từ event old_messages) → upsert messages + conversation ──
+// ── Upsert N tin vào 1 hội thoại (theo account+thread); tạo hội thoại nếu chưa có ──
+async function upsertMessagesForThread(accountId, ownerId, threadId, tt, msgs) {
+  if (!Array.isArray(msgs) || !msgs.length) return 0;
+  let { data: conv } = await sb.from('zalo_conversations').select('id').eq('account_id', accountId).eq('thread_id', threadId).maybeSingle();
+  if (!conv) {
+    const f = msgs[0];
+    const ins = await sb.from('zalo_conversations').insert({
+      user_id: ownerId, account_id: accountId, thread_id: threadId, thread_type: tt,
+      peer_name: f?.data?.dName || (tt === 'group' ? 'Nhóm Zalo' : 'Zalo'), peer_zalo_uid: String(f?.data?.uidFrom || ''),
+    }).select('id').single();
+    conv = ins.data;
+  }
+  if (!conv) return 0;
+  const rows = msgs.map((m) => {
+    const cm = classifyMessage(m);
+    return {
+      user_id: ownerId, conversation_id: conv.id, account_id: accountId,
+      direction: m.isSelf ? 'out' : 'in', msg_type: cm.msg_type, body: cm.body, media_url: cm.media_url, media_label: cm.media_label,
+      zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
+      cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
+      status: m.isSelf ? 'sent' : 'delivered',
+      created_at: m?.data?.ts ? new Date(Number(m.data.ts)).toISOString() : new Date().toISOString(),
+    };
+  }).filter((r) => r.zalo_msg_id);
+  if (rows.length) await sb.from('zalo_messages').upsert(rows, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: false });
+  // cập nhật preview từ tin mới nhất (chỉ khi mới hơn)
+  const last = msgs[msgs.length - 1];
+  const lastTs = last?.data?.ts ? new Date(Number(last.data.ts)).toISOString() : null;
+  if (lastTs) {
+    const cmLast = classifyMessage(last);
+    await sb.from('zalo_conversations').update({ last_message_text: cmLast.body || '[Tin nhắn]', last_message_at: lastTs, last_message_dir: last.isSelf ? 'out' : 'in' }).eq('id', conv.id).lt('last_message_at', lastTs);
+  }
+  return rows.length;
+}
+
+// ── Đồng bộ TIN GẦN ĐÂY (event old_messages) — gom theo thread rồi upsert ──
 async function handleOldMessages(accountId, ownerId, messages, type) {
   try {
     if (!Array.isArray(messages) || !messages.length) return;
     const tt = type === ThreadType.Group ? 'group' : 'user';
-    // gom theo thread
     const byThread = new Map();
     for (const m of messages) {
       const tid = threadIdOf(m);
@@ -152,37 +209,7 @@ async function handleOldMessages(accountId, ownerId, messages, type) {
       byThread.get(tid).push(m);
     }
     let total = 0;
-    for (const [tid, msgs] of byThread) {
-      let { data: conv } = await sb.from('zalo_conversations').select('id').eq('account_id', accountId).eq('thread_id', tid).maybeSingle();
-      if (!conv) {
-        const f = msgs[0];
-        const ins = await sb.from('zalo_conversations').insert({
-          user_id: ownerId, account_id: accountId, thread_id: tid, thread_type: tt,
-          peer_name: f?.data?.dName || (tt === 'group' ? 'Nhóm Zalo' : 'Zalo'), peer_zalo_uid: String(f?.data?.uidFrom || ''),
-        }).select('id').single();
-        conv = ins.data;
-      }
-      if (!conv) continue;
-      const rows = msgs.map((m) => ({
-        user_id: ownerId, conversation_id: conv.id, account_id: accountId,
-        direction: m.isSelf ? 'out' : 'in', msg_type: 'text', body: pickText(m),
-        zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
-        cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
-        status: m.isSelf ? 'sent' : 'delivered',
-        created_at: m?.data?.ts ? new Date(Number(m.data.ts)).toISOString() : new Date().toISOString(),
-      })).filter((r) => r.zalo_msg_id);
-      if (rows.length) {
-        // ignoreDuplicates:false → đồng bộ lại sẽ CẬP NHẬT body (vd vá tin rỗng)
-        await sb.from('zalo_messages').upsert(rows, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: false });
-        total += rows.length;
-      }
-      const last = msgs[msgs.length - 1];
-      await sb.from('zalo_conversations').update({
-        last_message_text: pickText(last) || '[Tin nhắn]',
-        last_message_at: last?.data?.ts ? new Date(Number(last.data.ts)).toISOString() : new Date().toISOString(),
-        last_message_dir: last.isSelf ? 'out' : 'in',
-      }).eq('id', conv.id);
-    }
+    for (const [tid, msgs] of byThread) total += await upsertMessagesForThread(accountId, ownerId, tid, tt, msgs);
     log('old_messages', tt, '→', total, 'tin /', byThread.size, 'hội thoại');
   } catch (e) { log('handleOldMessages', e?.message || e); }
 }
@@ -244,8 +271,8 @@ async function handleReaction(accountId, e) {
     const icon = d?.content?.rIcon || d?.rIcon || d?.icon;
     const ids = evMsgIds(e);
     if (!icon || !ids.length) return;
-    await sb.from('zalo_messages').update({ reaction_emoji: icon }).eq('account_id', accountId).in('zalo_msg_id', ids);
-    log('reaction', accountId, icon);
+    await sb.from('zalo_messages').update({ reaction_emoji: zcaToEmoji(icon) }).eq('account_id', accountId).in('zalo_msg_id', ids);
+    log('reaction', accountId, zcaToEmoji(icon));
   } catch (err) { log('handleReaction', err?.message || err); }
 }
 async function handleUndo(accountId, e) {
@@ -351,15 +378,28 @@ async function processJob(job) {
     return;
   }
   try {
-    const { data: conv } = await sb.from('zalo_conversations').select('thread_id, thread_type').eq('id', job.conversation_id).single();
-    const type = conv?.thread_type === 'group' ? ThreadType.Group : ThreadType.User;
     const p = job.payload || {};
-    const res = await s.api.sendMessage({ msg: p.body || '', ...(p.reply_to ? { quote: p.reply_to } : {}) }, conv.thread_id, type);
-    const zid = res?.message?.msgId || res?.msgId || '';
-    const cid = res?.message?.cliMsgId || res?.cliMsgId || '';
-    if (job.message_id) await sb.from('zalo_messages').update({ status: 'sent', zalo_msg_id: String(zid), cli_msg_id: String(cid) }).eq('id', job.message_id);
+    const type = p.thread_type === 'group' ? ThreadType.Group : ThreadType.User;
+    if (p.action === 'react') {
+      await s.api.addReaction(emojiToZca(p.emoji), { data: { msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, threadId: String(p.thread_id), type });
+      log('reacted', job.id, p.emoji);
+    } else if (p.action === 'recall') {
+      await s.api.undo({ msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, String(p.thread_id), type);
+      log('recalled', job.id);
+    } else if (p.action === 'load_history') {
+      const h = await s.api.getGroupChatHistory(String(p.thread_id), Number(p.count) || 50);
+      const n = await upsertMessagesForThread(job.account_id, job.user_id, String(p.thread_id), 'group', h?.groupMsgs || []);
+      log('history', job.id, '→', n, 'tin');
+    } else {
+      const { data: conv } = await sb.from('zalo_conversations').select('thread_id, thread_type').eq('id', job.conversation_id).single();
+      const t2 = conv?.thread_type === 'group' ? ThreadType.Group : ThreadType.User;
+      const res = await s.api.sendMessage({ msg: p.body || '', ...(p.reply_to ? { quote: p.reply_to } : {}) }, conv.thread_id, t2);
+      const zid = res?.message?.msgId || res?.msgId || '';
+      const cid = res?.message?.cliMsgId || res?.cliMsgId || '';
+      if (job.message_id) await sb.from('zalo_messages').update({ status: 'sent', zalo_msg_id: zid ? String(zid) : null, cli_msg_id: cid ? String(cid) : null }).eq('id', job.message_id);
+      log('sent', job.id);
+    }
     await sb.from('zalo_send_queue').update({ status: 'sent', processed_at: new Date().toISOString() }).eq('id', job.id);
-    log('sent', job.id);
   } catch (e) {
     log('send error', job.id, e?.message || e);
     await sb.from('zalo_send_queue').update({ status: 'failed', last_error: String(e?.message || e).slice(0, 300), attempts: (job.attempts || 0) + 1 }).eq('id', job.id);

@@ -1,6 +1,13 @@
+import { useState } from 'react';
 import { Check, CheckCheck } from 'lucide-react';
 import { EMERALD } from './zaloTheme';
+import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
+
+export interface MsgActionProps {
+  onReact?: (id: string, emoji: string) => void;
+  onRecall?: (id: string) => void;
+}
 
 /** Hàng meta (giờ + tick seen/sent) dùng chung cho bubble & ảnh. */
 export function MetaRow({ out, time, tick }: { out: boolean; time?: string; tick?: 'seen' | 'sent' }) {
@@ -13,16 +20,21 @@ export function MetaRow({ out, time, tick }: { out: boolean; time?: string; tick
   );
 }
 
-/** Bong bóng tin nhắn text (in/out), kèm reply-quote + reaction. */
-export default function MessageBubble({ m }: { m: ZaloMessage }) {
+/** Bong bóng tin nhắn text (in/out), kèm reply-quote + reaction + hover actions. */
+export default function MessageBubble({ m, onReact, onRecall }: { m: ZaloMessage } & MsgActionProps) {
   const out = m.dir === 'out';
+  const [hover, setHover] = useState(false);
+  const canAct = !!m.id && (!!onReact || !!onRecall);
   const bubbleStyle = out
     ? { background: EMERALD, color: '#fff', padding: '10px 14px', borderRadius: '16px 16px 4px 16px', fontSize: 13.5, lineHeight: 1.5, boxShadow: '0 1px 2px rgba(16,40,30,.12)' as const }
     : { background: '#fff', border: '1px solid hsl(210 20% 89%)', color: 'hsl(160 30% 14%)', padding: '10px 14px', borderRadius: '16px 16px 16px 4px', fontSize: 13.5, lineHeight: 1.5 };
 
   return (
-    <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }}>
-      <div style={{ maxWidth: '74%' }}>
+    <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <div style={{ maxWidth: '74%', position: 'relative' }}>
+        {hover && canAct && (
+          <MessageActions out={out} canRecall={out && !!onRecall} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} />
+        )}
         <div style={bubbleStyle}>
           {m.reply && (
             <div style={{ background: 'rgba(255,255,255,.16)', borderLeft: '3px solid rgba(255,255,255,.6)', borderRadius: 6, padding: '5px 9px', marginBottom: 6 }}>

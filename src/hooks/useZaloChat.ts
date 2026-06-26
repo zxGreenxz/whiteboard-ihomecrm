@@ -66,10 +66,12 @@ function mapMsg(r: any): ZaloMessage {
   const isImg = r.msg_type === 'image';
   const body = (r.body && String(r.body).trim()) ? r.body : (isImg ? undefined : '[Tin nhắn]');
   return {
+    id: r.id,
     type: r.msg_type === 'sys' ? 'sys' : isImg ? 'image' : undefined,
     dir: r.direction,
     text: body,
     label: r.media_label || undefined,
+    mediaUrl: r.media_url || undefined,
     imgTone: r.media_tone || undefined,
     time: fmtClock(r.created_at),
     tick: r.status === 'seen' ? 'seen' : r.status === 'sent' ? 'sent' : undefined,
@@ -157,6 +159,59 @@ export function useSendZaloMessage() {
       qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) });
       qc.invalidateQueries({ queryKey: QK.conversations });
     },
+  });
+}
+
+// ── Thả reaction (lạc quan) ──
+export function useReactMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { messageId: string; emoji: string; conversationId: string }) => {
+      const { error } = await db.rpc('zalo_react_message', { p_message_id: v.messageId, p_emoji: v.emoji });
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      const key = QK.messages(v.conversationId);
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<ZaloMessage[]>(key);
+      qc.setQueryData<ZaloMessage[]>(key, (prev || []).map((m) => (m.id === v.messageId ? { ...m, react: v.emoji } : m)));
+      return { prev, key };
+    },
+    onError: (e, _v, ctx) => { if (ctx?.key) qc.setQueryData(ctx.key, ctx.prev); toast.error('Không thả được cảm xúc'); console.error('zalo_react', e); },
+    onSettled: (_d, _e, v) => qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) }),
+  });
+}
+
+// ── Thu hồi tin của mình ──
+export function useRecallMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { messageId: string; conversationId: string }) => {
+      const { error } = await db.rpc('zalo_recall_message', { p_message_id: v.messageId });
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) });
+      qc.invalidateQueries({ queryKey: QK.conversations });
+    },
+    onError: (e: any) => { toast.error(e?.message || 'Không thu hồi được'); console.error('zalo_recall', e); },
+  });
+}
+
+// ── Tải thêm tin cũ (chỉ NHÓM) ──
+export function useLoadHistory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { conversationId: string }) => {
+      const { error } = await db.rpc('zalo_load_history', { p_conversation_id: v.conversationId, p_count: 60 });
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success('Đang tải thêm tin cũ…');
+      // worker xử lý bất đồng bộ → realtime cập nhật; chốt lại sau ~3s cho chắc
+      setTimeout(() => qc.invalidateQueries({ queryKey: QK.messages(v.conversationId) }), 3000);
+    },
+    onError: (e: any) => { toast.error(e?.message || 'Không tải được tin cũ'); console.error('zalo_load_history', e); },
   });
 }
 
