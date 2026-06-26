@@ -20,12 +20,13 @@ interface Props {
   onLoadHistory?: () => void;
   onReact?: (id: string, emoji: string) => void;
   onRecall?: (id: string) => void;
+  onShare?: (m: import('./types').ZaloMessage) => void;
 }
 
 /** Cột 2: header + luồng tin + ô soạn. */
 export default function ChatThread({
   conv, draft, showTyping, templates, onDraft, onSend, onPickTemplate, onBack, onOpenInfo, className,
-  canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall,
+  canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall, onShare,
 }: Props) {
   return (
     <section className={cn('flex-1 min-w-0 flex-col', className)} style={{ background: 'hsl(160 20% 98.5%)' }}>
@@ -38,6 +39,7 @@ export default function ChatThread({
         onLoadHistory={onLoadHistory}
         onReact={onReact}
         onRecall={onRecall}
+        onShare={onShare}
       />
       <Composer draft={draft} onDraft={onDraft} onSend={onSend} templates={templates} onPickTemplate={onPickTemplate} />
     </section>

@@ -7,18 +7,18 @@ import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
 
 /** Tin nhắn ảnh — hiện ảnh thật (no-referrer) nếu có URL, lỗi/không có thì tile gradient. */
-export default function ImageMessage({ m, onReact, onRecall }: { m: ZaloMessage } & MsgActionProps) {
+export default function ImageMessage({ m, onReact, onRecall, onShare }: { m: ZaloMessage } & MsgActionProps) {
   const out = m.dir === 'out';
   const [err, setErr] = useState(false);
   const [hover, setHover] = useState(false);
-  const canAct = !!m.id && (!!onReact || !!onRecall);
+  const canAct = (!!m.id && (!!onReact || !!onRecall)) || !!onShare;
   const radius = out ? '14px 4px 14px 14px' : '14px 14px 14px 4px';
 
   return (
     <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div style={{ position: 'relative' }}>
         {hover && canAct && (
-          <MessageActions out={out} canRecall={out && !!onRecall} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} />
+          <MessageActions out={out} canRecall={out && !!onRecall && !!m.id} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} onShare={onShare ? () => onShare(m) : undefined} />
         )}
         {m.mediaUrl && !err ? (
           <a href={m.mediaUrl} target="_blank" rel="noreferrer">

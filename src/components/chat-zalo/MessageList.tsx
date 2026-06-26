@@ -6,7 +6,7 @@ import ImageMessage from './ImageMessage';
 import VideoMessage from './VideoMessage';
 import TypingIndicator from './TypingIndicator';
 import { EMERALD } from './zaloTheme';
-import type { ZaloConversation } from './types';
+import type { ZaloConversation, ZaloMessage } from './types';
 
 interface Props {
   conv: ZaloConversation;
@@ -16,10 +16,11 @@ interface Props {
   onLoadHistory?: () => void;
   onReact?: (id: string, emoji: string) => void;
   onRecall?: (id: string) => void;
+  onShare?: (m: ZaloMessage) => void;
 }
 
 /** Khu vực cuộn chứa luồng tin; cuộn đáy khi đổi hội thoại / có tin mới (nếu đang ở đáy). */
-export default function MessageList({ conv, showTyping, canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall }: Props) {
+export default function MessageList({ conv, showTyping, canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall, onShare }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const prevConv = useRef(conv.id);
   const atBottom = useRef(true);
@@ -59,9 +60,9 @@ export default function MessageList({ conv, showTyping, canLoadHistory, loadingH
       </div>
       {conv.messages.map((m, i) => {
         if (m.type === 'sys') return <SystemMessage key={m.id || i} text={m.text || ''} />;
-        if (m.type === 'image') return <ImageMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} />;
-        if (m.type === 'video') return <VideoMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} />;
-        return <MessageBubble key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} />;
+        if (m.type === 'image') return <ImageMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />;
+        if (m.type === 'video') return <VideoMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />;
+        return <MessageBubble key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />;
       })}
       {showTyping && <TypingIndicator />}
     </div>

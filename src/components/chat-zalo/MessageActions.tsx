@@ -1,4 +1,5 @@
-import { Undo2 } from 'lucide-react';
+import { Undo2, Share2 } from 'lucide-react';
+import { EMERALD } from './zaloTheme';
 
 export const REACTION_EMOJIS = ['❤️', '👍', '😆', '😮', '😢', '😠'];
 
@@ -7,10 +8,11 @@ interface Props {
   canRecall: boolean;
   onReact: (emoji: string) => void;
   onRecall?: () => void;
+  onShare?: () => void;
 }
 
-/** Thanh thao tác nổi khi hover bong bóng: thả cảm xúc + thu hồi (tin của mình). */
-export default function MessageActions({ out, canRecall, onReact, onRecall }: Props) {
+/** Thanh thao tác nổi khi hover bong bóng: thả cảm xúc + chia sẻ + thu hồi. */
+export default function MessageActions({ out, canRecall, onReact, onRecall, onShare }: Props) {
   return (
     <div
       style={{
@@ -23,6 +25,12 @@ export default function MessageActions({ out, canRecall, onReact, onRecall }: Pr
       {REACTION_EMOJIS.map((e) => (
         <button key={e} onClick={() => onReact(e)} title={`Thả ${e}`} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '2px 3px', borderRadius: 6 }}>{e}</button>
       ))}
+      {onShare && (
+        <>
+          <span style={{ width: 1, height: 16, background: 'hsl(210 20% 88%)', margin: '0 3px' }} />
+          <button onClick={onShare} title="Chia sẻ tin này" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: EMERALD, display: 'flex', padding: 3, borderRadius: 6 }}><Share2 size={15} /></button>
+        </>
+      )}
       {canRecall && onRecall && (
         <>
           <span style={{ width: 1, height: 16, background: 'hsl(210 20% 88%)', margin: '0 3px' }} />

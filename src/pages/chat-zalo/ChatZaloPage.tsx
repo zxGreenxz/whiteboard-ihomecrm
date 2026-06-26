@@ -51,6 +51,7 @@ export default function ChatZaloPage() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState<number | null>(null);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcastInitial, setBroadcastInitial] = useState('');
 
   // Tài khoản MỚI xuất hiện → tự thêm vào tập xem (mặc định hiện); KHÔNG đụng
   // tài khoản người dùng đã bỏ chọn.
@@ -166,7 +167,7 @@ export default function ChatZaloPage() {
           labels={labels}
           selectedLabel={selectedLabel}
           onSelectLabel={setSelectedLabel}
-          onBroadcast={() => setBroadcastOpen(true)}
+          onBroadcast={() => { setBroadcastInitial(''); setBroadcastOpen(true); }}
         />
 
         {active ? (
@@ -185,6 +186,11 @@ export default function ChatZaloPage() {
             onLoadHistory={() => loadHistoryMut.mutate({ conversationId: active.id })}
             onReact={(id, emoji) => reactMut.mutate({ messageId: id, emoji, conversationId: active.id })}
             onRecall={(id) => recallMut.mutate({ messageId: id, conversationId: active.id })}
+            onShare={(m) => {
+              const content = m.text && m.text.trim() ? m.text : (m.mediaUrl || m.label || '[Nội dung]');
+              setBroadcastInitial(content);
+              setBroadcastOpen(true);
+            }}
           />
         ) : (
           <section className="flex-1 min-w-0 hidden lg:flex items-center justify-center text-muted-foreground" style={{ background: 'hsl(160 20% 98.5%)' }}>
@@ -234,6 +240,7 @@ export default function ChatZaloPage() {
         onOpenChange={setBroadcastOpen}
         conversations={conversations}
         labels={labels}
+        initialMessage={broadcastInitial}
         sending={broadcastMut.isPending}
         onSend={(ids, body) => broadcastMut.mutate({ conversationIds: ids, body }, { onSuccess: () => setBroadcastOpen(false) })}
       />

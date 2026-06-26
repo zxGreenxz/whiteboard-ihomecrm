@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, Send, Loader2, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -13,16 +13,22 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   conversations: ZaloConversation[];
   labels: ZaloLabel[];
+  initialMessage?: string;
   sending?: boolean;
   onSend: (ids: string[], body: string) => void;
 }
 
 /** Dialog "Chia sẻ / Gửi hàng loạt": chọn nhiều hội thoại (lọc theo nhãn) + gửi 1 nội dung. */
-export default function BroadcastDialog({ open, onOpenChange, conversations, labels, sending, onSend }: Props) {
+export default function BroadcastDialog({ open, onOpenChange, conversations, labels, initialMessage, sending, onSend }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [labelFilter, setLabelFilter] = useState<number | null>(null);
   const [message, setMessage] = useState('');
+
+  // Mở dialog: nạp nội dung được chia sẻ (nếu có) + reset lựa chọn
+  useEffect(() => {
+    if (open) { setMessage(initialMessage || ''); setSelected(new Set()); }
+  }, [open, initialMessage]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

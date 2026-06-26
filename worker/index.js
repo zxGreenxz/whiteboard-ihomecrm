@@ -322,19 +322,42 @@ async function syncLabels(api, accountId, ownerId) {
   const ids = rows.map((r) => r.label_id);
   if (ids.length) await sb.from('zalo_labels').delete().eq('account_id', accountId).not('label_id', 'in', '(' + ids.join(',') + ')');
   else await sb.from('zalo_labels').delete().eq('account_id', accountId);
-  // thread → [label_id]
+  // thread → [label_id]. Zalo conversation id: 1-1 = uid, nhóm có thể là "g<id>"
+  // → thử cả id gốc lẫn bỏ tiền tố 'g' để khớp thread_id đã lưu.
   const threadToLabels = new Map();
-  for (const l of labels) for (const t of (l.conversations || [])) {
-    const k = String(t);
-    if (!threadToLabels.has(k)) threadToLabels.set(k, []);
-    threadToLabels.get(k).push(Number(l.id));
-  }
-  // xoá gắn nhãn cũ (chỉ hội thoại đang có nhãn) rồi gắn lại
+  const addThread = (raw, labId) => {
+    const variants = new Set([String(raw)]);
+    const s = String(raw);
+    if (/^g/i.test(s)) variants.add(s.replace(/^g/i, ''));
+    for (const k of variants) {
+      if (!threadToLabels.has(k)) threadToLabels.set(k, new Set());
+      threadToLabels.get(k).add(Number(labId));
+    }
+  };
+  for (const l of labels) for (const t of (l.conversations || [])) addThread(t, l.id);
+
+  // xoá gắn nhãn cũ (chỉ hội thoại đang có nhãn)
   await sb.from('zalo_conversations').update({ label_ids: [] }).eq('account_id', accountId).neq('label_ids', '[]');
-  for (const [t, labs] of threadToLabels) {
-    await sb.from('zalo_conversations').update({ label_ids: labs }).eq('account_id', accountId).eq('thread_id', t);
+  // gắn lại — GỘP theo bộ nhãn giống nhau → ít query, khó bị gián đoạn nửa chừng
+  const bySet = new Map();
+  for (const [t, labSet] of threadToLabels) {
+    const labs = [...labSet].sort((a, b) => a - b);
+    const key = labs.join(',');
+    if (!bySet.has(key)) bySet.set(key, { labs, threads: [] });
+    bySet.get(key).threads.push(t);
   }
-  log('labels synced', rows.length, 'nhãn /', threadToLabels.size, 'hội thoại gắn');
+  let tagged = 0;
+  for (const { labs, threads } of bySet.values()) {
+    for (const ch of chunk(threads, 300)) {
+      const { data } = await sb.from('zalo_conversations').update({ label_ids: labs })
+        .eq('account_id', accountId).in('thread_id', ch).select('id');
+      tagged += (data || []).length;
+    }
+  }
+  // debug: nhãn nhóm có khớp không
+  const sampleGroupLabel = labels.find((l) => /group|nhóm|phòng trọ/i.test(l.text || ''));
+  if (sampleGroupLabel) log('LABELDBG', sampleGroupLabel.text, 'convs=', (sampleGroupLabel.conversations || []).length, 'first=', JSON.stringify((sampleGroupLabel.conversations || []).slice(0, 3)));
+  log('labels synced', rows.length, 'nhãn /', threadToLabels.size, 'thread →', tagged, 'hội thoại khớp');
 }
 
 // ── Inbound: reaction / undo / seen (best-effort, defensive) ──
