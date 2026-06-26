@@ -37,6 +37,7 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 // vì có CSS toàn cục cần cô lập).
 const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+const ChatZaloPage = lazy(() => import("./pages/chat-zalo/ChatZaloPage"));
 
 // Danh mục dữ liệu
 const BuildingsPage = lazy(() => import("./pages/buildings/BuildingsPage"));
@@ -248,6 +249,9 @@ const App = () => (
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
           <Route path="/building-map" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingMapPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
+
+          {/* === KÊNH CHAT === */}
+          <Route path="/chat-zalo" element={<ProtectedRoute><RequirePermission module="chat_zalo" action="view"><ChatZaloPage /></RequirePermission></ProtectedRoute>} />
 
           {/* === DANH MỤC DỮ LIỆU === */}
           {/* /areas đã gỡ: khu vực = nhãn nhóm toà, quản lý bằng dialog trong /buildings */}

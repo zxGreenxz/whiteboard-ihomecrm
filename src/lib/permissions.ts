@@ -76,6 +76,9 @@ export type ActionKey =
   | "complete"
   // Phân quyền nhân viên
   | "manage_templates"
+  // Kênh chat (Zalo)
+  | "send"
+  | "manage_automation"
   // Báo cáo BĐS (từng báo cáo)
   | "vacant_rooms"
   | "expiring"
@@ -124,6 +127,18 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     modules: [
       { key: "dashboard",     label: "Bảng tin", core: ["view"], extra: ["view_finance"] },
       { key: "notifications", label: "Thông báo", core: ["view", "delete"] },
+    ],
+  },
+  {
+    key: "chat",
+    label: "Kênh chat",
+    modules: [
+      {
+        key: "chat_zalo",
+        label: "Chat Zalo",
+        core: ["view"],
+        extra: ["send", "manage_automation", "manage_templates"],
+      },
     ],
   },
   {
@@ -282,6 +297,8 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   maintain:       "Bảo trì",
   complete:       "Hoàn thành",
   manage_templates: "Quản lý mẫu",
+  send:           "Gửi tin",
+  manage_automation: "Quản lý tự động hoá",
   vacant_rooms:   "BC Phòng trống",
   expiring:       "BC HĐ sắp hết hạn",
   renewals_transfers: "BC Gia hạn & CN",
@@ -447,6 +464,7 @@ const MANAGE_ACTIONS = new Set<ActionKey>([
   "manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings",
   "convert", "refund", "renew", "transfer", "handover", "import", "share",
   "cancel", "collect", "undo", "report", "move", "maintain", "complete",
+  "send", "manage_automation", "manage_templates",
   "vacant_rooms", "expiring", "renewals_transfers", "occupancy", "promotions",
   "new_leases", "terminations", "expense_ratio",
   "daily_cashbook", "cash_flow", "profit_distribution", "debt",

@@ -109,6 +109,24 @@ export const PAGE_GROUPS: PageGroup[] = [
     ],
   },
   {
+    key: "chat",
+    label: "Kênh chat",
+    pages: [
+      {
+        key: "chat_zalo",
+        label: "Chat Zalo",
+        route: "/chat-zalo",
+        desc: "Nhắn tin Zalo với khách trọ, lead, môi giới; mẫu tin & tự động hoá.",
+        features: [
+          f("chat_zalo", "view", "Vào trang Chat Zalo", "view"),
+          f("chat_zalo", "send", "Gửi / soạn tin nhắn", "manage"),
+          f("chat_zalo", "manage_automation", "Bật/tắt luồng tự động hoá", "manage"),
+          f("chat_zalo", "manage_templates", "Quản lý mẫu tin / ZNS", "manage"),
+        ],
+      },
+    ],
+  },
+  {
     key: "real_estate",
     label: "Bất động sản",
     pages: [

@@ -126,6 +126,20 @@ All colors MUST be HSL.
   }
 }
 
+/* ===== Chat Zalo ===== */
+/* Typing indicator (3 chấm nảy) — port từ design Chat Zalo.dc.html */
+@keyframes wzdot {
+  0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+/* Thanh cuộn mảnh cho các cột chat (chỉ trong workspace .wz-scroll) */
+.wz-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
+.wz-scroll::-webkit-scrollbar-thumb {
+  background: hsl(210 16% 82%); border-radius: 8px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+.wz-scroll::-webkit-scrollbar-track { background: transparent; }
+
 /* ===== Print Styles ===== */
 @media print {
   /* Hide header */

@@ -47,6 +47,7 @@ import {
   Calendar,
   Coins,
   Share2,
+  MessageSquare,
 } from 'lucide-react';
 
 interface NavItem {
@@ -88,6 +89,12 @@ const navigationGroups: NavGroup[] = [
       // Bảng tin = trang chủ kiêm fallback của RequirePermission → luôn hiện.
       { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
       { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, module: 'buildings' },
+    ],
+  },
+  {
+    label: 'KÊNH CHAT',
+    items: [
+      { title: 'Chat Zalo', href: '/chat-zalo', icon: MessageSquare, module: 'chat_zalo' },
     ],
   },
   {

@@ -15,6 +15,9 @@ const routeLabels: Record<string, string> = {
   '/': 'Bảng tin',
   '/building-map': 'Sơ đồ toà nhà',
 
+  // Kênh chat
+  '/chat-zalo': 'Chat Zalo',
+
   // Danh mục dữ liệu
   '/buildings': 'Toà nhà',
   '/apartments': 'Căn hộ',
