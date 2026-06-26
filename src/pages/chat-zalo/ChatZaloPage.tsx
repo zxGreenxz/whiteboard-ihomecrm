@@ -5,38 +5,42 @@ import { cn } from '@/lib/utils';
 import ConversationList from '@/components/chat-zalo/ConversationList';
 import ChatThread from '@/components/chat-zalo/ChatThread';
 import InfoPanel from '@/components/chat-zalo/InfoPanel';
-import { MOCK_CONVS, MOCK_TEMPLATES } from '@/components/chat-zalo/_mockConvs';
-import type {
-  ZaloConversation, ZaloAutomations, FilterKey, RightTab,
-} from '@/components/chat-zalo/types';
-
-function nowHHmm(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
+import type { FilterKey, RightTab } from '@/components/chat-zalo/types';
+import {
+  useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
+  useZaloAutomations, useToggleAutomation, useZaloTemplates, useZaloRealtime,
+} from '@/hooks/useZaloChat';
 
 /**
  * Trang Chat Zalo — workspace 3 cột (danh sách · khung chat · panel thông tin).
- * Phần 1: dữ liệu mock in-memory. Phần 2 sẽ thay bằng hook Supabase + realtime.
+ * Dữ liệu từ Supabase (bảng zalo_*) + realtime; gửi tin qua RPC zalo_send_message.
  */
 export default function ChatZaloPage() {
-  const [convs, setConvs] = useState<ZaloConversation[]>(
-    () => JSON.parse(JSON.stringify(MOCK_CONVS)) as ZaloConversation[],
-  );
-  const [activeId, setActiveId] = useState<string>(MOCK_CONVS[0]?.id ?? '');
+  const { data: conversations = [], isLoading } = useZaloConversations();
+  const { data: automations = { broadcastOn: false, autoReplyOn: false } } = useZaloAutomations();
+  const { data: templates = [] } = useZaloTemplates();
+  const sendMut = useSendZaloMessage();
+  const markRead = useMarkConversationRead();
+  const toggleMut = useToggleAutomation();
+
+  const [activeId, setActiveId] = useState<string>('');
   const [rightTab, setRightTab] = useState<RightTab>('info');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
-  const [automations, setAutomations] = useState<ZaloAutomations>({ broadcastOn: true, autoReplyOn: true });
   const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
   const [infoOpen, setInfoOpen] = useState(false);
 
-  const active = convs.find((c) => c.id === activeId) || convs[0];
+  const effectiveId = activeId || conversations[0]?.id || '';
+  useZaloRealtime(effectiveId || undefined);
+  const { data: messages = [] } = useZaloMessages(effectiveId || undefined);
+
+  const base = conversations.find((c) => c.id === effectiveId);
+  const active = base ? { ...base, messages } : undefined;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return convs.filter((c) => {
+    return conversations.filter((c) => {
       if (filter === 'unread' && c.unread <= 0) return false;
       if (filter === 'tenant' && c.profile.kind !== 'tenant') return false;
       if (filter === 'lead' && c.profile.kind !== 'lead') return false;
@@ -48,38 +52,35 @@ export default function ChatZaloPage() {
         (c.profile.room || '').toLowerCase().includes(q)
       );
     });
-  }, [convs, filter, search]);
+  }, [conversations, filter, search]);
 
   const automationActive = (automations.broadcastOn ? 1 : 0) + (automations.autoReplyOn ? 1 : 0);
 
   const select = (id: string) => {
     setActiveId(id);
     setMobileView('thread');
-    // đánh dấu đã đọc (Phần 2: gọi RPC zalo_mark_read)
-    setConvs((prev) => prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
+    markRead.mutate(id);
   };
 
   const send = () => {
     const text = draft.trim();
     if (!text || !active) return;
-    const time = nowHHmm();
-    setConvs((prev) =>
-      prev.map((c) =>
-        c.id === active.id
-          ? { ...c, preview: text, time, messages: [...c.messages, { dir: 'out', text, time, tick: 'sent' }] }
-          : c,
-      ),
-    );
+    sendMut.mutate({ conversationId: active.id, body: text });
     setDraft('');
   };
 
-  const toggleAutomation = (key: 'broadcastOn' | 'autoReplyOn') =>
-    setAutomations((s) => ({ ...s, [key]: !s[key] }));
+  const toggleAutomation = (key: 'broadcastOn' | 'autoReplyOn') => {
+    const kind = key === 'broadcastOn' ? 'broadcast_vacant' : 'auto_reply';
+    const cur = key === 'broadcastOn' ? automations.broadcastOn : automations.autoReplyOn;
+    toggleMut.mutate({ kind, enabled: !cur });
+  };
 
   if (!active) {
     return (
       <MainLayout fullBleed>
-        <div className="h-full flex items-center justify-center text-muted-foreground">Chưa có hội thoại</div>
+        <div className="h-full flex items-center justify-center text-muted-foreground">
+          {isLoading ? 'Đang tải hội thoại…' : 'Chưa có hội thoại Zalo nào'}
+        </div>
       </MainLayout>
     );
   }
@@ -90,8 +91,8 @@ export default function ChatZaloPage() {
         <ConversationList
           className={cn('w-full lg:w-[322px] lg:flex', mobileView === 'list' ? 'flex' : 'hidden')}
           conversations={filtered}
-          totalCount={convs.length}
-          activeId={activeId}
+          totalCount={conversations.length}
+          activeId={effectiveId}
           filter={filter}
           search={search}
           automationActive={automationActive}
@@ -105,8 +106,7 @@ export default function ChatZaloPage() {
           className={cn('lg:flex', mobileView === 'thread' ? 'flex' : 'hidden')}
           conv={active}
           draft={draft}
-          showTyping={active.id === 'an'}
-          templates={MOCK_TEMPLATES}
+          templates={templates}
           onDraft={setDraft}
           onSend={send}
           onPickTemplate={(t) => setDraft(t)}
@@ -114,7 +114,6 @@ export default function ChatZaloPage() {
           onOpenInfo={() => setInfoOpen(true)}
         />
 
-        {/* Panel thông tin — desktop cố định, mobile mở bằng Sheet */}
         <InfoPanel
           className="hidden lg:flex w-full lg:w-[330px]"
           conv={active}
@@ -122,7 +121,7 @@ export default function ChatZaloPage() {
           onTab={setRightTab}
           automations={automations}
           onToggle={toggleAutomation}
-          templates={MOCK_TEMPLATES}
+          templates={templates}
         />
         <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
           <SheetContent side="right" className="p-0 w-[330px] max-w-[90vw]">
@@ -134,7 +133,7 @@ export default function ChatZaloPage() {
                 onTab={setRightTab}
                 automations={automations}
                 onToggle={toggleAutomation}
-                templates={MOCK_TEMPLATES}
+                templates={templates}
               />
             </div>
           </SheetContent>
