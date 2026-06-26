@@ -118,23 +118,26 @@ async function upsertConversation(accountId, ownerId, m) {
 
 async function handleInbound(accountId, ownerId, m) {
   try {
-    if (m?.isSelf) return;                       // tin mình gửi đã có trong DB
+    // isSelf = tin do CHÍNH tài khoản gửi (kể cả từ điện thoại / máy khác) → lưu là 'out'.
+    // Tin gửi từ web đã có sẵn (RPC); upsert theo zalo_msg_id chống trùng.
+    const out = !!m?.isSelf;
     const conv = await upsertConversation(accountId, ownerId, m);
     if (!conv) return;
     const cm = classifyMessage(m);
     const body = cm.body;
     await sb.from('zalo_messages').upsert({
       user_id: ownerId, conversation_id: conv.id, account_id: accountId,
-      direction: 'in', msg_type: cm.msg_type, body, media_url: cm.media_url, media_label: cm.media_label,
+      direction: out ? 'out' : 'in', msg_type: cm.msg_type, body, media_url: cm.media_url, media_label: cm.media_label,
       zalo_msg_id: m?.data?.msgId ? String(m.data.msgId) : null,
       cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
-      status: 'delivered', created_at: new Date().toISOString(),
+      status: out ? 'sent' : 'delivered', created_at: new Date().toISOString(),
     }, { onConflict: 'account_id,zalo_msg_id', ignoreDuplicates: true });
     await sb.from('zalo_conversations').update({
       last_message_text: body || '[Tin nhắn]', last_message_at: new Date().toISOString(),
-      last_message_dir: 'in', unread_count: (conv.unread_count || 0) + 1,
+      last_message_dir: out ? 'out' : 'in',
+      unread_count: out ? 0 : (conv.unread_count || 0) + 1,   // tự gửi → coi như đã đọc
     }).eq('id', conv.id);
-    log('inbound →', conv.id, body.slice(0, 40));
+    log(out ? 'self →' : 'inbound →', conv.id, (body || '').slice(0, 40));
   } catch (e) { log('handleInbound error', e.message); }
 }
 
