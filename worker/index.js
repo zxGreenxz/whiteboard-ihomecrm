@@ -45,6 +45,23 @@ const loggingIn = new Set();         // account_id đang chạy loginQR
 const sessFile = (id) => path.join(SESSION_DIR, `${id}.json`);
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
+// Cô lập "thiết bị" đa-nick: mỗi nick một user-agent THẬT, cố định theo account_id.
+// (imei = randomUUID + MD5(UA) nên UA khác ⇒ imei khác; cookie đã tách theo file phiên.)
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+];
+function uaFor(accountId) {
+  let h = 0;
+  const s = String(accountId);
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return USER_AGENTS[h % USER_AGENTS.length];
+}
+
 async function setAccount(id, patch) {
   const { error } = await sb.from('zalo_accounts').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) log('setAccount error', id, error.message);
@@ -312,9 +329,11 @@ async function startLoginQR(account, ownerId) {
   loggingIn.add(id);
   log('loginQR start', id);
 
+  const ua = account.meta?.userAgent || uaFor(id);
+  log('loginQR UA', id, ua.slice(0, 40) + '…');
   const zalo = new Zalo();
   try {
-    const api = await zalo.loginQR({}, async (ev) => {
+    const api = await zalo.loginQR({ userAgent: ua }, async (ev) => {
       // zca-js phát event khi sinh QR / quét / đăng nhập. Tên có thể khác theo
       // phiên bản → bắt linh hoạt: lấy ảnh QR base64 hoặc URL để render.
       const t = String(ev?.type ?? '');
@@ -343,7 +362,7 @@ async function startLoginQR(account, ownerId) {
     } catch (e) { log('save ctx error', e.message); }
     try { const info = await api.fetchAccountInfo?.(); const p = info?.profile || info; name = p?.displayName || p?.zaloName || name; avatar = p?.avatar || null; } catch { /* */ }
     try { uid = await api.getOwnId?.(); } catch { /* */ }
-    await setAccount(id, { status: 'connected', qr_data: null, qr_expires_at: null, last_error: null, name, zalo_uid: String(uid || ''), avatar_url: avatar });
+    await setAccount(id, { status: 'connected', qr_data: null, qr_expires_at: null, last_error: null, name, zalo_uid: String(uid || ''), avatar_url: avatar, meta: { ...(account.meta || {}), userAgent: ua } });
     await attachSession(id, ownerId, api);
     log('connected', id, name);
   } catch (e) {
@@ -414,7 +433,7 @@ async function processJob(job) {
 let booted = false;
 async function tick() {
   // accounts cần đăng nhập / re-login
-  const { data: accounts } = await sb.from('zalo_accounts').select('id, user_id, name, status').eq('kind', 'personal');
+  const { data: accounts } = await sb.from('zalo_accounts').select('id, user_id, name, status, meta').eq('kind', 'personal');
   for (const a of accounts || []) {
     if (a.status === 'connecting' || a.status === 'waiting_scan') startLoginQR(a, a.user_id);
     else if (!booted && a.status === 'connected') tryRelogin(a, a.user_id);

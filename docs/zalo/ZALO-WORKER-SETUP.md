@@ -151,7 +151,32 @@ api.listener.start();
 - Mở 1 instance duy nhất / nick (single-listener). Khi deploy lại: dừng cũ trước (graceful SIGTERM).
 - Theo dõi `zalo_accounts.status`; có thể thêm health-check log.
 
-## 6. OA / ZNS (để sau, chưa làm)
+## 6. Chống Zalo nhận diện đa-nick "cùng máy"
+
+**Làm rõ:** Zalo **KHÔNG đọc được MAC address / ID phần cứng / fingerprint trình
+duyệt**. Worker nói chuyện như **Zalo Web** (HTTPS + WebSocket) — không có quyền
+đọc MAC/serial, và worker **không phải trình duyệt** nên không có canvas/WebGL/font
+fingerprint. Tín hiệu Zalo dùng để liên hệ "cùng máy" + cách worker cô lập:
+
+| Tín hiệu | Cô lập |
+|---|---|
+| **imei** (UUID thiết bị) | Tự sinh `randomUUID + MD5(UA)` mỗi nick, lưu `sessions/<id>.json` → **đã riêng** ✓ |
+| **user-agent** | Mỗi nick một UA thật cố định (`USER_AGENTS` + `uaFor(accountId)`); ghi đè được qua `zalo_accounts.meta.userAgent` ✓ |
+| **cookie** | File phiên riêng từng nick ✓ |
+| **IP** | **Cùng IP** nếu chạy chung 1 máy. Muốn tách → mỗi nick một **proxy** (xem dưới). |
+
+**Proxy/IP riêng mỗi nick (nâng cấp tùy chọn — mạnh nhất):** `new Zalo({ polyfill })`
+nhận custom fetch → bọc proxy cho HTTP (vd `undici` `ProxyAgent`). ⚠️ **WebSocket
+nghe tin có thể vẫn lộ IP thật** nếu không tách egress (chạy mỗi nick một tiến
+trình/VPS qua proxy/VPN riêng). Với 1–3 nick CSKH thường chưa cần.
+
+**Quan trọng hơn cô lập thiết bị = hành vi:** Zalo khoá chủ yếu do **spam**, không
+chỉ do "cùng máy". Hãy: giãn nhịp gửi, nội dung tự nhiên, dùng nick thật/đã dùng
+lâu, **không** mở Zalo Web cùng nick nơi khác (bị kick listener). zca-js là API
+**không chính thức** → vẫn có rủi ro khoá theo ToS; cô lập thiết bị chỉ **giảm**
+khả năng bị gộp "cùng máy", không đảm bảo tuyệt đối.
+
+## 7. OA / ZNS (để sau, chưa làm)
 
 Khi cần kênh Official Account: schema đã chừa `zalo_message_templates.zns_template_id`
 và `zalo_send_queue.channel='oa'`. Lúc đó bổ sung Edge Function `zalo-send` (gửi qua
