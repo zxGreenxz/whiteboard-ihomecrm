@@ -10,6 +10,7 @@ import { User, Camera, Lock, Loader2 } from "lucide-react";
 import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from "@/hooks/useProfile";
 import { toast } from "sonner";
 import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
+import PushNotificationSettings from "@/components/notifications/PushNotificationSettings";
 
 export default function ProfilePage() {
   const { data: profile, isLoading } = useProfile();
@@ -225,6 +226,9 @@ export default function ProfilePage() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Push Notification Section */}
+        <PushNotificationSettings />
       </div>
     </MainLayout>
   );

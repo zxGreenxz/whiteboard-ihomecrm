@@ -67,6 +67,23 @@ async function setAccount(id, patch) {
   if (error) log('setAccount error', id, error.message);
 }
 
+// ── Web Push: gọi edge function send-push (service role) — fire & forget ──
+async function notifyPush({ userId, title, body, url, tag }) {
+  if (!userId) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({ userId, title, body, url, tag }),
+    });
+    if (!res.ok) log('notifyPush http', res.status);
+  } catch (e) { log('notifyPush error', e?.message || e); }
+}
+
 // ── Map event message zca-js → row inbound ──
 const MSGTYPE_LABEL = {
   'chat.photo': '[Hình ảnh]', 'chat.sticker': '[Sticker]', 'share.file': '[Tệp tin]',
@@ -155,6 +172,17 @@ async function handleInbound(accountId, ownerId, m) {
       unread_count: out ? 0 : (conv.unread_count || 0) + 1,   // tự gửi → coi như đã đọc
     }).eq('id', conv.id);
     log(out ? 'self →' : 'inbound →', conv.id, (body || '').slice(0, 40));
+    // Tin ĐẾN (không phải mình gửi) → đẩy Web Push cho chủ tài khoản
+    if (!out) {
+      const peerName = m?.data?.dName || m?.data?.fromName || 'Zalo';
+      notifyPush({
+        userId: ownerId,
+        title: `Tin nhắn Zalo · ${peerName}`,
+        body: (body || '[Tin nhắn]').slice(0, 120),
+        url: '/chat-zalo',
+        tag: `zalo-${conv.id}`,
+      });
+    }
   } catch (e) { log('handleInbound error', e.message); }
 }
 
