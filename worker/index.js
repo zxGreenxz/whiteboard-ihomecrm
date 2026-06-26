@@ -142,12 +142,17 @@ async function startLoginQR(account, ownerId) {
       }
     });
 
-    // Đăng nhập thành công
-    let ctx = null, name = account.name, uid = '';
-    try { ctx = api.getContext?.(); } catch { /* */ }
+    // Đăng nhập thành công — lưu Credentials {imei,userAgent,cookie} để re-login
+    let name = account.name, uid = '';
+    try {
+      const ctx = api.getContext?.();
+      if (ctx) {
+        const cookie = ctx.cookie && typeof ctx.cookie.toJSON === 'function' ? ctx.cookie.toJSON() : ctx.cookie;
+        saveSession(id, { imei: ctx.imei, userAgent: ctx.userAgent, cookie });
+      }
+    } catch (e) { log('save ctx error', e.message); }
     try { const info = await api.fetchAccountInfo?.(); name = info?.profile?.displayName || info?.displayName || name; } catch { /* */ }
     try { uid = await api.getOwnId?.(); } catch { /* */ }
-    if (ctx) saveSession(id, ctx);
     await setAccount(id, { status: 'connected', qr_data: null, qr_expires_at: null, last_error: null, name, zalo_uid: String(uid || '') });
     await attachSession(id, ownerId, api);
     log('connected', id, name);
