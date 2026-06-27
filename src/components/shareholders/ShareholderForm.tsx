@@ -13,8 +13,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useAdminUsers } from "@/hooks/useAdminUsers";
 import { useBuildings } from "@/hooks/useBuildings";
+import { useAreas } from "@/hooks/useAreas";
 import {
   useCreateShareholder,
   useUpdateShareholder,
@@ -39,6 +41,7 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
   const isEdit = !!shareholder;
   const { data: users = [] } = useAdminUsers();
   const { data: buildings = [] } = useBuildings(); // ẩn tòa ảo
+  const { data: areas = [] } = useAreas();
   const { data: shareholders = [] } = useShareholders();
   const { data: allShares = [] } = useBuildingShareholders();
 
@@ -95,6 +98,37 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
     return buildings
       .filter((b: any) => !chosen.has(b.id))
       .map((b: any) => ({ value: b.id, label: b.name }));
+  };
+
+  // Khu vực → gợi ý thêm nhanh cả nhóm tòa. Đếm theo `buildings` (đã ẩn tòa ảo)
+  // để số "(N toà)" khớp đúng những gì có thể thêm, bỏ qua khu rỗng.
+  const areaOptions = useMemo(() => {
+    return areas
+      .map((a: any) => ({
+        id: a.id as string,
+        name: a.name as string,
+        count: buildings.filter((b: any) => (b.area_ids || []).includes(a.id)).length,
+      }))
+      .filter((a) => a.count > 0)
+      .map((a) => ({
+        value: a.id,
+        label: `${a.name} (${a.count} toà)`,
+        keywords: a.name,
+      }));
+  }, [areas, buildings]);
+
+  // Thêm tất cả tòa của một khu (bỏ qua tòa đã có) thành các dòng tỷ lệ 0%.
+  const addAreaBuildings = (areaId: string) => {
+    if (!areaId) return;
+    const existing = new Set(rows.map((r) => r.building_id).filter(Boolean));
+    const toAdd = buildings
+      .filter((b: any) => (b.area_ids || []).includes(areaId) && !existing.has(b.id))
+      .map((b: any) => ({ building_id: b.id as string, percent: 0 }));
+    if (toAdd.length === 0) {
+      toast.info("Các tòa của khu này đã được thêm hết.");
+      return;
+    }
+    setRows((p) => [...p, ...toAdd]);
   };
 
   const handleUserChange = (uid: string) => {
@@ -176,6 +210,15 @@ export default function ShareholderForm({ open, onOpenChange, shareholder }: Pro
                 <Plus className="h-4 w-4 mr-1" /> Thêm tòa
               </Button>
             </div>
+            {areaOptions.length > 0 && (
+              <SearchableSelect
+                value=""
+                onValueChange={addAreaBuildings}
+                placeholder="+ Thêm nhanh theo khu vực…"
+                searchPlaceholder="Tìm khu vực..."
+                options={areaOptions}
+              />
+            )}
             {rows.length === 0 && (
               <p className="text-xs text-muted-foreground">Cổ đông này chưa có phần ở tòa nào. Bấm "Thêm tòa".</p>
             )}
