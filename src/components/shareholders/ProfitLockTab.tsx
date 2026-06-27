@@ -18,13 +18,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Lock, Unlock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Lock, Unlock, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import {
   useMonthlyBuildingProfit,
   useProfitMonthly,
   useLockProfitMonth,
   useUnlockProfitMonth,
+  useResyncLockedMonths,
 } from "@/hooks/useShareholderProfit";
 import { useShareholders, useBuildingShareholders } from "@/hooks/useShareholders";
 import {
@@ -47,6 +59,14 @@ export default function ProfitLockTab() {
   const { data: shares = [] } = useBuildingShareholders();
   const lockMut = useLockProfitMonth();
   const unlockMut = useUnlockProfitMonth();
+  const resyncMut = useResyncLockedMonths();
+
+  // Số tháng đang LOCKED (để hiện nút "Chốt lại theo số mới").
+  const lockedMonthCount = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of profitMonthly) if (p.status === "LOCKED") s.add(p.period_month);
+    return s.size;
+  }, [profitMonthly]);
 
   const lockedByBuilding = useMemo(() => {
     const m = new Map<string, { id: string; status: string; adjusted_profit: number }>();
@@ -115,10 +135,38 @@ export default function ProfitLockTab() {
             {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button className="ml-auto" onClick={handleLock} disabled={lockMut.isPending || rpc.length === 0}>
-          <Lock className="h-4 w-4 mr-2" />
-          {lockMut.isPending ? "Đang chốt..." : `Chốt tháng ${periodToLabel(period)}`}
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {lockedMonthCount > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" disabled={resyncMut.isPending}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${resyncMut.isPending ? "animate-spin" : ""}`} />
+                  {resyncMut.isPending ? "Đang chốt lại..." : `Chốt lại ${lockedMonthCount} tháng đã chốt`}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Chốt lại theo số mới (phân bổ)?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cập nhật {lockedMonthCount} tháng đã chốt sang cách tính dồn tích (accrual) — khớp
+                    báo cáo Phân bổ lợi nhuận. Giữ nguyên các giá trị "LN sau điều chỉnh" bạn đã sửa tay.
+                    Thao tác ghi đè số đã chốt và <strong>không hoàn tác được</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Huỷ</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => resyncMut.mutate()}>
+                    Chốt lại
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          <Button onClick={handleLock} disabled={lockMut.isPending || rpc.length === 0}>
+            <Lock className="h-4 w-4 mr-2" />
+            {lockMut.isPending ? "Đang chốt..." : `Chốt tháng ${periodToLabel(period)}`}
+          </Button>
+        </div>
       </div>
 
       <Card>

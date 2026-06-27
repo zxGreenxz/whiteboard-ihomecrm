@@ -1,7 +1,10 @@
+import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { useBuildings } from "@/hooks/useBuildings";
+import { monthDateRange } from "@/components/shareholders/shareholderUtils";
 import {
   computeShareholderSummary,
   type ShareholderSummaryRow,
@@ -56,34 +59,80 @@ export interface ShareholderDistribution {
 
 // --- Queries ---
 
-// LN theo nhà cho 1 khoảng (RPC, chỉ khoản KQKD).
+// Gom các dòng accrual (tháng × toà) của fa_monthly_pnl_accrual về 1 dòng/toà,
+// BỎ toà ảo ("Chung" chứa phiếu chia LN). Tách riêng để dùng lại ở resync.
+function aggregateAccrualByBuilding(rows: any[]): MonthlyBuildingProfit[] {
+  const map = new Map<string, MonthlyBuildingProfit>();
+  for (const r of rows || []) {
+    if (r.is_virtual) continue;
+    const cur =
+      map.get(r.building_id) ?? {
+        building_id: r.building_id,
+        building_name: r.building_name,
+        total_income: 0,
+        total_expense: 0,
+        net_profit: 0,
+      };
+    cur.total_income += Number(r.revenue) || 0;
+    cur.total_expense += Number(r.expense) || 0;
+    cur.net_profit += Number(r.net) || 0;
+    map.set(r.building_id, cur);
+  }
+  return [...map.values()];
+}
+
+// LN theo nhà cho 1 khoảng — DỒN TÍCH (accrual), KHỚP báo cáo Phân bổ lợi nhuận.
+// Trước đây dùng RPC monthly_building_profit (cash-basis theo voucher_date + chỉ
+// phiếu owner) nên lệch số. Nay gọi fa_monthly_pnl_accrual: doanh thu HĐ theo
+// billing_month, item có kỳ chia đều ra từng tháng, gồm cả phiếu nhân viên.
+// Pad đủ MỌI toà thật (toà không phát sinh = 0đ) để giữ nguyên danh sách như cũ.
 export const useMonthlyBuildingProfit = (
   start?: string,
   end?: string,
   buildingId?: string
 ) => {
-  return useQuery({
+  const { data: buildings = [] } = useBuildings(); // toà thật (đã ẩn toà ảo)
+  const query = useQuery({
     queryKey: ["monthly-building-profit", start, end, buildingId ?? null],
     enabled: !!start && !!end,
-    queryFn: async () => {
-      const { data, error } = await (supabase.rpc as any)("monthly_building_profit", {
-        p_start: start,
-        p_end: end,
-        p_building_id: buildingId ?? null,
+    queryFn: async (): Promise<MonthlyBuildingProfit[]> => {
+      const { data, error } = await (supabase.rpc as any)("fa_monthly_pnl_accrual", {
+        p_start_date: start,
+        p_end_date: end,
+        p_building_ids: buildingId ? [buildingId] : null,
       });
       if (error) {
         toast.error("Không thể tính lợi nhuận theo nhà");
         throw error;
       }
-      return ((data || []) as any[]).map((r) => ({
-        building_id: r.building_id,
-        building_name: r.building_name,
-        total_income: Number(r.total_income) || 0,
-        total_expense: Number(r.total_expense) || 0,
-        net_profit: Number(r.net_profit) || 0,
-      })) as MonthlyBuildingProfit[];
+      return aggregateAccrualByBuilding(data as any[]);
     },
   });
+
+  // Ghép full toà thật: giữ thứ tự theo tên, toà chưa có số → 0/0/0.
+  const data = useMemo<MonthlyBuildingProfit[]>(() => {
+    if (query.isLoading) return [];
+    const byId = new Map((query.data ?? []).map((r) => [r.building_id, r]));
+    const list = (buildings as any[]).filter((b) => !buildingId || b.id === buildingId);
+    const padded: MonthlyBuildingProfit[] = list.map(
+      (b) =>
+        byId.get(b.id) ?? {
+          building_id: b.id,
+          building_name: b.name,
+          total_income: 0,
+          total_expense: 0,
+          net_profit: 0,
+        }
+    );
+    // Phòng hờ: toà có số accrual nhưng không nằm trong danh sách toà (lệch RLS).
+    const known = new Set(list.map((b) => b.id));
+    for (const r of query.data ?? []) if (!known.has(r.building_id)) padded.push(r);
+    return padded.sort((a, b) =>
+      (a.building_name || "").localeCompare(b.building_name || "", "vi")
+    );
+  }, [query.isLoading, query.data, buildings, buildingId]);
+
+  return { ...query, data };
 };
 
 // Tất cả phiếu chốt LN (owner thấy all; cổ đông thấy tháng có phần mình qua RLS).
@@ -170,90 +219,171 @@ export interface LockProfitInput {
   rows: Array<{ building_id: string; computed_profit: number; adjusted_profit: number }>;
 }
 
+// Ghi-khoá 1 tháng: upsert profit_monthly (LOCKED) + snapshot lại profit_allocations
+// theo tỷ lệ building_shareholders. Tách riêng để cả chốt thủ công lẫn resync dùng chung.
+async function writeLockedMonth(
+  uid: string,
+  period_month: string,
+  rows: LockProfitInput["rows"]
+): Promise<{ locked: number; allocations: number }> {
+  if (rows.length === 0) return { locked: 0, allocations: 0 };
+  const nowIso = new Date().toISOString();
+
+  // 1) Upsert profit_monthly (LOCKED) cho từng nhà
+  const pmPayload = rows.map((r) => ({
+    user_id: uid,
+    building_id: r.building_id,
+    period_month,
+    computed_profit: r.computed_profit,
+    adjusted_profit: r.adjusted_profit,
+    status: "LOCKED",
+    locked_at: nowIso,
+    locked_by: uid,
+  }));
+  const { data: pmRows, error: pmErr } = await supabase
+    .from("profit_monthly" as any)
+    .upsert(pmPayload, { onConflict: "building_id,period_month" })
+    .select("id, building_id, adjusted_profit");
+  if (pmErr) {
+    toast.error(pmErr.message || "Không thể chốt lợi nhuận");
+    throw pmErr;
+  }
+
+  const pm = (pmRows || []) as any[];
+  const buildingIds = pm.map((r) => r.building_id);
+  const pmIds = pm.map((r) => r.id);
+
+  // 2) Lấy tỷ lệ cổ đông của các nhà này
+  const { data: shares, error: shErr } = await (supabase
+    .from("building_shareholders" as any)
+    .select("building_id, shareholder_id, percent") as any)
+    .in("building_id", buildingIds);
+  if (shErr) throw shErr;
+
+  // 3) Xoá allocations cũ của các profit_monthly này rồi insert lại (snapshot)
+  if (pmIds.length > 0) {
+    const { error: delErr } = await (supabase
+      .from("profit_allocations" as any)
+      .delete() as any)
+      .in("profit_monthly_id", pmIds);
+    if (delErr) throw delErr;
+  }
+
+  const pmByBuilding = new Map<string, { id: string; adjusted: number }>();
+  for (const r of pm) {
+    pmByBuilding.set(r.building_id, { id: r.id, adjusted: Number(r.adjusted_profit) || 0 });
+  }
+
+  const allocPayload: any[] = [];
+  for (const s of (shares || []) as any[]) {
+    const target = pmByBuilding.get(s.building_id);
+    if (!target) continue;
+    const percent = Number(s.percent) || 0;
+    const amount = Math.round((target.adjusted * percent) / 100);
+    allocPayload.push({
+      user_id: uid,
+      profit_monthly_id: target.id,
+      shareholder_id: s.shareholder_id,
+      percent,
+      amount,
+    });
+  }
+
+  if (allocPayload.length > 0) {
+    const { error: insErr } = await supabase
+      .from("profit_allocations" as any)
+      .insert(allocPayload);
+    if (insErr) throw insErr;
+  }
+
+  return { locked: pm.length, allocations: allocPayload.length };
+}
+
 export const useLockProfitMonth = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: LockProfitInput) => {
-      const auth = { user: await getSessionUser() };
-      if (!auth.user) throw new Error("User not authenticated");
-      const uid = auth.user.id;
-      const nowIso = new Date().toISOString();
-
+      const uid = (await getSessionUser())?.id;
+      if (!uid) throw new Error("User not authenticated");
       if (input.rows.length === 0) throw new Error("Không có dữ liệu để chốt");
-
-      // 1) Upsert profit_monthly (LOCKED) cho từng nhà
-      const pmPayload = input.rows.map((r) => ({
-        user_id: uid,
-        building_id: r.building_id,
-        period_month: input.period_month,
-        computed_profit: r.computed_profit,
-        adjusted_profit: r.adjusted_profit,
-        status: "LOCKED",
-        locked_at: nowIso,
-        locked_by: uid,
-      }));
-      const { data: pmRows, error: pmErr } = await supabase
-        .from("profit_monthly" as any)
-        .upsert(pmPayload, { onConflict: "building_id,period_month" })
-        .select("id, building_id, adjusted_profit");
-      if (pmErr) {
-        toast.error(pmErr.message || "Không thể chốt lợi nhuận");
-        throw pmErr;
-      }
-
-      const pm = (pmRows || []) as any[];
-      const buildingIds = pm.map((r) => r.building_id);
-      const pmIds = pm.map((r) => r.id);
-
-      // 2) Lấy tỷ lệ cổ đông của các nhà này
-      const { data: shares, error: shErr } = await (supabase
-        .from("building_shareholders" as any)
-        .select("building_id, shareholder_id, percent") as any)
-        .in("building_id", buildingIds);
-      if (shErr) throw shErr;
-
-      // 3) Xoá allocations cũ của các profit_monthly này rồi insert lại (snapshot)
-      if (pmIds.length > 0) {
-        const { error: delErr } = await (supabase
-          .from("profit_allocations" as any)
-          .delete() as any)
-          .in("profit_monthly_id", pmIds);
-        if (delErr) throw delErr;
-      }
-
-      const pmByBuilding = new Map<string, { id: string; adjusted: number }>();
-      for (const r of pm) {
-        pmByBuilding.set(r.building_id, { id: r.id, adjusted: Number(r.adjusted_profit) || 0 });
-      }
-
-      const allocPayload: any[] = [];
-      for (const s of (shares || []) as any[]) {
-        const target = pmByBuilding.get(s.building_id);
-        if (!target) continue;
-        const percent = Number(s.percent) || 0;
-        const amount = Math.round((target.adjusted * percent) / 100);
-        allocPayload.push({
-          user_id: uid,
-          profit_monthly_id: target.id,
-          shareholder_id: s.shareholder_id,
-          percent,
-          amount,
-        });
-      }
-
-      if (allocPayload.length > 0) {
-        const { error: insErr } = await supabase
-          .from("profit_allocations" as any)
-          .insert(allocPayload);
-        if (insErr) throw insErr;
-      }
-
-      return { locked: pm.length, allocations: allocPayload.length };
+      return writeLockedMonth(uid, input.period_month, input.rows);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["profit-monthly"] });
       qc.invalidateQueries({ queryKey: ["profit-allocations"] });
       toast.success("Đã chốt lợi nhuận tháng");
+    },
+  });
+};
+
+// Chốt LẠI mọi tháng đang LOCKED theo số accrual mới (đồng bộ với Phân bổ lợi nhuận).
+// Chỉ cập nhật đúng các toà đã chốt của từng tháng; GIỮ "LN sau điều chỉnh" nếu
+// trước đó user đã sửa tay (adjusted_profit ≠ computed_profit), còn lại lấy số mới.
+export const useResyncLockedMonths = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const uid = (await getSessionUser())?.id;
+      if (!uid) throw new Error("User not authenticated");
+
+      const { data: lockedRows, error } = await (supabase
+        .from("profit_monthly" as any)
+        .select("building_id, period_month, computed_profit, adjusted_profit") as any)
+        .eq("status", "LOCKED");
+      if (error) throw error;
+
+      const locked = (lockedRows || []) as any[];
+      if (locked.length === 0) return { months: 0, buildings: 0 };
+
+      // Gom các dòng đã chốt theo tháng.
+      const byMonth = new Map<string, any[]>();
+      for (const r of locked) {
+        const arr = byMonth.get(r.period_month) ?? [];
+        arr.push(r);
+        byMonth.set(r.period_month, arr);
+      }
+
+      let months = 0;
+      let buildings = 0;
+      for (const [period, lrows] of byMonth) {
+        const { start, end } = monthDateRange(period);
+        const { data: acc, error: accErr } = await (supabase.rpc as any)(
+          "fa_monthly_pnl_accrual",
+          { p_start_date: start, p_end_date: end, p_building_ids: null }
+        );
+        if (accErr) throw accErr;
+
+        const accNet = new Map<string, number>();
+        for (const a of aggregateAccrualByBuilding(acc as any[])) {
+          accNet.set(a.building_id, a.net_profit);
+        }
+
+        const rows = lrows.map((lr) => {
+          const newComputed = accNet.get(lr.building_id) ?? 0;
+          const hadManualEdit =
+            Number(lr.adjusted_profit) !== Number(lr.computed_profit);
+          return {
+            building_id: lr.building_id,
+            computed_profit: newComputed,
+            adjusted_profit: hadManualEdit ? Number(lr.adjusted_profit) : newComputed,
+          };
+        });
+
+        await writeLockedMonth(uid, period, rows);
+        months += 1;
+        buildings += rows.length;
+      }
+      return { months, buildings };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
+      qc.invalidateQueries({ queryKey: ["profit-monthly"] });
+      qc.invalidateQueries({ queryKey: ["profit-allocations"] });
+      if (res.months === 0) {
+        toast.info("Không có tháng đã chốt để cập nhật");
+      } else {
+        toast.success(`Đã chốt lại ${res.months} tháng theo số mới`);
+      }
     },
   });
 };
