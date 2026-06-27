@@ -231,6 +231,17 @@ const App = () => (
             }
           />
 
+          {/* Link công khai có thương hiệu: chillhome.io.vn/phongtrong → cùng trang
+              Phòng trống (token "demo"). Giữ nguyên /r/:token cho link cũ. */}
+          <Route
+            path="/phongtrong"
+            element={
+              <Suspense fallback={null}>
+                <PhongTrongPage token="demo" />
+              </Suspense>
+            }
+          />
+
           {/* ========================================
               PROTECTED ROUTES - Require authentication
               ======================================== */}
