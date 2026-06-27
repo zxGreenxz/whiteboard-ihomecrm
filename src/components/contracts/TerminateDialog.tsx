@@ -46,6 +46,8 @@ import {
 } from "@/hooks/useContractOperations";
 import { useUnpaidInvoices } from "@/hooks/useContracts";
 import { useExcessAmount } from "@/hooks/useInvoices";
+import { TerminationExtraCharges } from "./TerminationExtraCharges";
+import type { ExtraChargeItem } from "@/lib/contractValidation";
 
 type TerminationType = "FORFEIT" | "MOVE_OUT";
 
@@ -72,9 +74,10 @@ export function TerminateDialog({
   const terminateForfeit = useTerminateForfeit();
   const terminateMoveOut = useTerminateMoveOut();
 
-  // Query unpaid invoices for move-out flow
+  // Query unpaid invoices — dùng cho cả move-out (tính công nợ) lẫn forfeit
+  // (liệt kê các hoá đơn sẽ bị huỷ khi bỏ cọc).
   const { data: unpaidInvoices } = useUnpaidInvoices(
-    terminationType === "MOVE_OUT" ? contract.id : undefined
+    terminationType ? contract.id : undefined
   );
   // Tiền nợ khách (credit) còn dư của contract — pre-fill vào "Tiền phòng thừa"
   // ở move-out, hiển thị info ở forfeit.
@@ -137,6 +140,7 @@ export function TerminateDialog({
           <StepForfeit
             contract={contract}
             creditBalance={creditBalance}
+            unpaidInvoices={unpaidInvoices || []}
             onBack={handleBack}
             onClose={() => onOpenChange(false)}
             isPending={isPending}
@@ -205,6 +209,7 @@ function StepSelectType({
 function StepForfeit({
   contract,
   creditBalance,
+  unpaidInvoices,
   onBack,
   onClose,
   isPending,
@@ -212,6 +217,7 @@ function StepForfeit({
 }: {
   contract: ContractWithRelations;
   creditBalance: number;
+  unpaidInvoices: any[];
   onBack: () => void;
   onClose: () => void;
   isPending: boolean;
@@ -224,11 +230,15 @@ function StepForfeit({
     },
   });
 
+  const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
+  const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
+
   const onSubmit = (data: TerminateForfeitFormData) => {
     terminateForfeit.mutate(
       {
         contractId: contract.id,
         forfeitDate: data.forfeit_date,
+        extraCharges,
       },
       {
         onSuccess: () => {
@@ -239,6 +249,17 @@ function StepForfeit({
   };
 
   const forfeitInfo = creditBalance > 0;
+
+  // Tổng "còn nợ" của các hoá đơn sẽ bị huỷ.
+  const totalRemaining = useMemo(
+    () =>
+      unpaidInvoices.reduce((sum: number, inv: any) => {
+        const total = Number(inv.total_amount) || 0;
+        const paid = Number(inv.paid_amount) || 0;
+        return sum + (total - paid);
+      }, 0),
+    [unpaidInvoices]
+  );
 
   return (
     <Form {...form}>
@@ -264,6 +285,66 @@ function StepForfeit({
           )}
         />
 
+        {/* Các hoá đơn còn nợ sẽ bị huỷ khi bỏ cọc */}
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Hoá đơn sẽ bị huỷ
+          </h3>
+          {unpaidInvoices.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              Không có hoá đơn còn nợ
+            </p>
+          ) : (
+            <div className="border rounded-md overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Mã HĐ</TableHead>
+                    <TableHead className="text-xs">Kỳ</TableHead>
+                    <TableHead className="text-xs text-right">Tổng tiền</TableHead>
+                    <TableHead className="text-xs text-right">Đã TT</TableHead>
+                    <TableHead className="text-xs text-right">Còn nợ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unpaidInvoices.map((inv: any) => {
+                    const total = Number(inv.total_amount) || 0;
+                    const paid = Number(inv.paid_amount) || 0;
+                    const remaining = total - paid;
+                    return (
+                      <TableRow key={inv.id}>
+                        <TableCell className="text-xs">
+                          {inv.invoice_number || inv.id?.slice(0, 8)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {inv.billing_month || inv.billing_period || "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-right">
+                          {formatVND(total)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right">
+                          {formatVND(paid)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-medium text-red-600">
+                          {formatVND(remaining)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {totalRemaining > 0 && (
+            <p className="text-xs text-muted-foreground text-right">
+              Tổng còn nợ sẽ huỷ:{" "}
+              <span className="font-medium text-red-600">
+                {formatVND(totalRemaining)} đ
+              </span>
+            </p>
+          )}
+        </div>
+
         {forfeitInfo && (
           <div className="rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
             Hợp đồng đang có {formatVND(creditBalance)} đ tiền nợ khách (credit).
@@ -272,11 +353,28 @@ function StepForfeit({
         )}
 
         <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-          Khi thanh lý bỏ cọc: tiền cọc được giữ làm phí phạt. Hoá đơn của
-          tháng này nếu <strong>chưa thu</strong> sẽ bị huỷ; nếu{" "}
-          <strong>đã thu một phần/toàn bộ</strong> thì phần còn nợ bị huỷ và{" "}
-          <strong>số đã thu được giữ lại làm doanh thu</strong> (không hoàn về
-          khách).
+          Khi thanh lý bỏ cọc:{" "}
+          <strong>tất cả hoá đơn còn nợ ở trên sẽ bị huỷ</strong> (phần đã thu —
+          nếu có — được giữ lại làm doanh thu, chỉ huỷ phần nợ). Tiền cọc được
+          ghi nhận thành <strong>phí phạt</strong>: hệ thống tạo sẵn một{" "}
+          <strong>phiếu thu "Doanh thu bỏ cọc" (chờ duyệt)</strong> rút từ sổ
+          CỌC. Vào sổ thu chi bấm <strong>Duyệt</strong> thì cọc mới vào doanh
+          thu (KQKD) và hoá đơn thanh lý mới tất toán.
+        </div>
+
+        {/* Thu thêm — tạo hoá đơn thu tiền khách RIÊNG với hoá đơn bù cọc */}
+        <div className="border-t pt-4">
+          <TerminationExtraCharges
+            contract={contract}
+            onChange={setExtraCharges}
+          />
+          {extraTotal > 0 && (
+            <p className="mt-2 text-xs text-blue-700">
+              Sẽ tạo <strong>hoá đơn thu tiền khách riêng</strong> tổng{" "}
+              <strong>{formatVND(extraTotal)} đ</strong> (tách biệt với hoá đơn
+              thanh lý bù cọc vào doanh thu).
+            </p>
+          )}
         </div>
 
         <DialogFooter className="gap-2">
@@ -335,11 +433,13 @@ function StepMoveOut({
         ? contract.expected_move_out_date.split("T")[0]
         : new Date().toISOString().split("T")[0],
       deposit_refund: contract.total_deposit || 0,
-      penalty_fee: 0,
       excess_rent: 0,
       notes: "",
     },
   });
+
+  const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
+  const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
   // Auto fill credit (excess_amounts) vào "Tiền phòng thừa" lần đầu khi user
   // chưa chỉnh tay. Chỉ thực hiện khi credit > 0 và excess_rent chưa được
@@ -354,7 +454,6 @@ function StepMoveOut({
 
   // Watch values for real-time settlement calculation
   const depositRefund = form.watch("deposit_refund") || 0;
-  const penaltyFee = form.watch("penalty_fee") || 0;
   const excessRent = form.watch("excess_rent") || 0;
 
   // Calculate outstanding debt from unpaid invoices
@@ -366,8 +465,8 @@ function StepMoveOut({
     }, 0);
   }, [unpaidInvoices]);
 
-  // Settlement formula: deposit_refund + excess_rent - outstanding_debt - penalty_fee
-  const totalDeductions = outstandingDebt + penaltyFee;
+  // Settlement formula: deposit_refund + excess_rent - outstanding_debt - thu thêm
+  const totalDeductions = outstandingDebt + extraTotal;
   const settlementAmount = depositRefund + excessRent - totalDeductions;
 
   const onSubmit = (data: TerminateMoveOutFormData) => {
@@ -376,10 +475,10 @@ function StepMoveOut({
         contractId: contract.id,
         moveOutDate: data.move_out_date,
         depositRefund: data.deposit_refund,
-        penaltyFee: data.penalty_fee,
         excessRent: data.excess_rent,
         outstandingDebt,
         notes: data.notes,
+        extraCharges,
       },
       {
         onSuccess: () => {
@@ -535,32 +634,13 @@ function StepMoveOut({
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             Hoàn cọc và tiền thừa
           </h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <FormField
               control={form.control}
               name="deposit_refund"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-xs">Tiền cọc hoàn trả</FormLabel>
-                  <FormControl>
-                    <CurrencyInput
-                      className="h-8 text-sm"
-                      value={field.value}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                      name={field.name}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="penalty_fee"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-xs">Phí phạt</FormLabel>
                   <FormControl>
                     <CurrencyInput
                       className="h-8 text-sm"
@@ -602,6 +682,14 @@ function StepMoveOut({
           </div>
         </div>
 
+        {/* Section 3b: Thu thêm — gộp chung vào hoá đơn thanh lý, khấu trừ cọc */}
+        <div className="border-t pt-4">
+          <TerminationExtraCharges
+            contract={contract}
+            onChange={setExtraCharges}
+          />
+        </div>
+
         {/* Section 4: Tổng hợp (auto-calculated realtime) */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -627,8 +715,14 @@ function StepMoveOut({
               </span>
             </div>
             <div className="flex justify-between">
+              <span className="text-muted-foreground">Tổng thu thêm:</span>
+              <span className="font-medium text-red-600">
+                {formatVND(extraTotal)} đ
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-muted-foreground">
-                Tổng khấu trừ (công nợ + phí phạt):
+                Tổng khấu trừ (công nợ + thu thêm):
               </span>
               <span className="font-medium text-red-600">
                 {formatVND(totalDeductions)} đ

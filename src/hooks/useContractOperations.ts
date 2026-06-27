@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import type { ExtraChargeItem } from "@/lib/contractValidation";
 
 // =============================================
 // useRenewContract — Gia hạn hợp đồng
@@ -182,12 +183,14 @@ export const useTerminateForfeit = () => {
     mutationFn: async (params: {
       contractId: string;
       forfeitDate: string;
+      extraCharges?: ExtraChargeItem[];
     }) => {
       const { data, error } = await (supabase as any).rpc(
         "terminate_contract_forfeit",
         {
           p_contract_id: params.contractId,
           p_forfeit_date: params.forfeitDate,
+          p_extra_charges: params.extraCharges ?? [],
         }
       );
 
@@ -274,6 +277,7 @@ export const useTerminateMoveOut = () => {
       excessRent?: number;
       outstandingDebt?: number;
       notes?: string;
+      extraCharges?: ExtraChargeItem[];
     }) => {
       const { data, error } = await (supabase as any).rpc(
         "terminate_contract_move_out",
@@ -285,6 +289,7 @@ export const useTerminateMoveOut = () => {
           p_excess_rent: params.excessRent ?? 0,
           p_outstanding_debt: params.outstandingDebt ?? 0,
           p_notes: params.notes ?? null,
+          p_extra_charges: params.extraCharges ?? [],
         }
       );
 

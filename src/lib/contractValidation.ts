@@ -71,6 +71,24 @@ export const transferContractFormSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Một dòng "Thu thêm" khi thanh lý (tiền phòng ngày ở thêm / điện / vệ sinh /
+// khoản tuỳ ý). Gửi xuống RPC dưới dạng mảng jsonb p_extra_charges.
+//  - PRORATED: tiền phòng+nước+PDV theo `days` ngày ở thêm.
+//  - ELECTRIC: tiền điện chốt cuối kỳ (kèm chỉ số + meter để ghi meter_readings).
+//  - CLEANING: tiền vệ sinh (mặc định 200k).
+//  - CUSTOM:   khoản tuỳ ý {tên, số tiền}.
+export const extraChargeItemSchema = z.object({
+  kind: z.enum(['PRORATED', 'ELECTRIC', 'CLEANING', 'CUSTOM']),
+  description: z.string().min(1, 'Tên khoản thu không được để trống'),
+  amount: z.number().min(0, 'Số tiền không được âm'),
+  days: z.number().min(0).optional(),
+  previous_reading: z.number().min(0).optional(),
+  current_reading: z.number().min(0).optional(),
+  unit_price: z.number().min(0).optional(),
+  meter_id: z.string().uuid().nullable().optional(),
+});
+export type ExtraChargeItem = z.infer<typeof extraChargeItemSchema>;
+
 export const terminateForfeitFormSchema = z.object({
   forfeit_date: z.string().min(1, 'Ngày bỏ cọc không được để trống'),
 });
@@ -78,7 +96,6 @@ export const terminateForfeitFormSchema = z.object({
 export const terminateMoveOutFormSchema = z.object({
   move_out_date: z.string().min(1, 'Ngày chuyển đi không được để trống'),
   deposit_refund: z.number().min(0, 'Tiền hoàn cọc không được âm'),
-  penalty_fee: z.number().min(0).optional(),
   excess_rent: z.number().min(0).optional(),
   notes: z.string().optional(),
 });
