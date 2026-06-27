@@ -526,14 +526,27 @@ export default function ProfitDistributionReport() {
     return null;
   };
 
+  // Rút gọn tên dòng THU dài dòng (đã lọc theo 1 tháng nên không cần lặp lại tháng):
+  //  - Khoản thanh lý hợp đồng → "HĐ Thanh Lý Hợp Đồng".
+  //  - Phiếu thu tiền phòng theo HĐ → "Tiền Phòng T{tháng đang lọc}".
+  const displayDescription = (r: DisplayRow): string => {
+    if (nrm(`${r.typeName} ${r.description}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
+    if (nrm(r.description).includes("thu tien theo hd tien phong")) return `Tiền Phòng T${mm || 1}`;
+    return r.description;
+  };
+
   // Mặc định ẩn/hiện cột: ẩn cột mà MỌI dòng (gộp cả 2 bên để 2 bảng đồng cột)
   // có cùng giá trị — tức cột đã bị bộ lọc ghim (tháng/toà/phòng/kỳ…).
   const autoVisible = useMemo(() => {
     const all = [...incomeRows, ...expenseRows];
     const m = {} as Record<ColKey, boolean>;
     for (const c of TOGGLE_COLUMNS) m[c.key] = !allSame(all, COL_VALUE[c.key]);
+    // "Phân loại" mặc định LUÔN ẩn (bật lại qua nút "Cột" nếu cần).
+    m.phan_loai = false;
+    // Lọc theo 1 toà cụ thể (kèm kỳ tháng cố định) → ẩn cột "Kỳ" mặc định cho gọn.
+    if (buildingIds.length > 0) m.ky = false;
     return m;
-  }, [incomeRows, expenseRows]);
+  }, [incomeRows, expenseRows, buildingIds]);
 
   const visible = (k: ColKey) => colOverrides[k] ?? autoVisible[k];
   const toggleCol = (k: ColKey) =>
@@ -642,7 +655,7 @@ export default function ProfitDistributionReport() {
                   >
                     {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
                     <TableCell>
-                      {r.description}
+                      {displayDescription(r)}
                       {r.groupCount && r.groupCount > 1 && (
                         <span className="ml-1 text-xs text-muted-foreground">({r.groupCount} lần)</span>
                       )}
