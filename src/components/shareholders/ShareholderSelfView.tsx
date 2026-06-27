@@ -21,13 +21,17 @@ import {
 } from "@/hooks/useShareholderProfit";
 import type { Shareholder } from "@/hooks/useShareholders";
 
+const ALL = "all";
+
 export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   const [year, setYear] = useState(currentYear());
+  const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const { data: allocations = [] } = useProfitAllocations(); // RLS: chỉ của mình
   const { data: distributions = [] } = useShareholderDistributions(); // RLS: chỉ của mình
   const { data: buildings = [] } = useBuildings();
 
   const buildingName = (id?: string) => buildings.find((b: any) => b.id === id)?.name ?? "—";
+  const monthOf = (p?: string) => Number((p ?? "").slice(5, 7));
 
   const summary = useMemo(
     () => computeShareholderSummary([me.id], allocations, distributions)[me.id],
@@ -39,6 +43,12 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
     [allocations, year]
   );
 
+  // Thêm lọc tháng cho biểu đồ cơ cấu theo nhà + 2 bảng (biểu đồ cột giữ cả 12 tháng).
+  const allocScoped = useMemo(
+    () => allocYear.filter((a) => month === ALL || monthOf(a.period_month) === Number(month)),
+    [allocYear, month]
+  );
+
   const profitThisYear = useMemo(() => allocYear.reduce((s, a) => s + a.amount, 0), [allocYear]);
 
   const monthlyChart = useMemo(
@@ -46,7 +56,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
       Array.from({ length: 12 }, (_, i) => {
         const m = i + 1;
         const amount = allocYear
-          .filter((a) => Number((a.period_month ?? "").slice(5, 7)) === m)
+          .filter((a) => monthOf(a.period_month) === m)
           .reduce((s, a) => s + a.amount, 0);
         return { month: `T${m}`, amount };
       }),
@@ -55,9 +65,20 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
 
   const byBuilding = useMemo(() => {
     const m = new Map<string, number>();
-    for (const a of allocYear) m.set(a.building_id ?? "?", (m.get(a.building_id ?? "?") ?? 0) + a.amount);
+    for (const a of allocScoped) m.set(a.building_id ?? "?", (m.get(a.building_id ?? "?") ?? 0) + a.amount);
     return Array.from(m.entries()).map(([bid, value]) => ({ name: buildingName(bid), value })).filter((x) => x.value !== 0);
-  }, [allocYear, buildings]);
+  }, [allocScoped, buildings]);
+
+  // ---- Ma trận Nhà × Tháng (được chia) ----
+  const buildingIdsInYear = useMemo(
+    () => Array.from(new Set(allocScoped.map((a) => a.building_id).filter(Boolean) as string[])),
+    [allocScoped]
+  );
+  const cell = (bid: string, m: number) => {
+    const rows = allocYear.filter((a) => a.building_id === bid && monthOf(a.period_month) === m);
+    return rows.length ? rows.reduce((s, a) => s + a.amount, 0) : undefined;
+  };
+  const monthsToShow = month === ALL ? Array.from({ length: 12 }, (_, i) => i + 1) : [Number(month)];
 
   const years = [currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2];
 
@@ -75,10 +96,19 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
         <StatCard label={`LN năm ${year}`} value={formatCurrency(profitThisYear)} icon={TrendingUp} tone="default" />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
           <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={month} onValueChange={setMonth}>
+          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Cả năm</SelectItem>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <SelectItem key={m} value={String(m)}>Tháng {m}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </div>
 
@@ -99,7 +129,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Theo nhà — {year}</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Theo nhà — {year}{month === ALL ? "" : ` · T${month}`}</CardTitle></CardHeader>
           <CardContent>
             {byBuilding.length === 0 ? (
               <div className="h-[260px] grid place-items-center text-muted-foreground text-sm">Chưa có dữ liệu</div>
@@ -117,6 +147,50 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
         </Card>
       </div>
 
+      {/* Ma trận Nhà × Tháng — số được chia của tôi */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">LN được chia Nhà × Tháng — {year}</CardTitle></CardHeader>
+        <CardContent>
+          {buildingIdsInYear.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Chưa có phần chia trong {month === ALL ? `năm ${year}` : `tháng ${month}/${year}`}.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-background z-10">Tháng</TableHead>
+                    {buildingIdsInYear.map((bid) => (
+                      <TableHead key={bid} className="text-right min-w-[110px]">{buildingName(bid)}</TableHead>
+                    ))}
+                    <TableHead className="text-right font-semibold">Tổng chia</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {monthsToShow.map((m) => {
+                    const rowTotal = buildingIdsInYear.reduce((s, bid) => s + (cell(bid, m) ?? 0), 0);
+                    if (rowTotal === 0 && !buildingIdsInYear.some((bid) => cell(bid, m) != null)) return null;
+                    return (
+                      <TableRow key={m}>
+                        <TableCell className="font-medium sticky left-0 bg-background z-10">T{m}</TableCell>
+                        {buildingIdsInYear.map((bid) => {
+                          const v = cell(bid, m);
+                          return (
+                            <TableCell key={bid} className="text-right tabular-nums">
+                              {v == null ? <span className="text-muted-foreground">—</span> : formatCurrency(v)}
+                            </TableCell>
+                          );
+                        })}
+                        <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(rowTotal)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Lợi nhuận từng tháng/nhà</CardTitle></CardHeader>
@@ -132,10 +206,10 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allocYear.length === 0 && (
+                  {allocScoped.length === 0 && (
                     <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Chưa có dữ liệu</TableCell></TableRow>
                   )}
-                  {allocYear
+                  {allocScoped
                     .slice()
                     .sort((a, b) => (b.period_month ?? "").localeCompare(a.period_month ?? ""))
                     .map((a) => (
