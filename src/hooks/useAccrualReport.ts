@@ -16,6 +16,11 @@ import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
  * Phân loại Thu/Chi lấy từ voucher.type (item không có cột type riêng) — nhất
  * quán với useIncomeExpenseStats. Tổng các phần qua mọi tháng của mọi item ==
  * tổng total_amount của voucher (vì Σ item.amount == voucher.total_amount).
+ *
+ * Phiếu KHÔNG có item: total_amount vẫn được ghi nhận (hạng mục NULL "Không có
+ * hạng mục") — vào billing_month nếu gắn HĐ, ngược lại vào tháng voucher_date.
+ * KHỚP fa_accrual_allocations (a_noitem/b_noitem) để Phân bổ lợi nhuận == Phân
+ * tích tài chính (Dồn tích); nếu bỏ qua sẽ thất thoát doanh thu phiếu trống item.
  */
 
 export interface AccrualReportRow {
@@ -28,6 +33,8 @@ export interface AccrualReportRow {
   roomId: string | null;
   typeName: string;
   category: string | null;
+  /** income_expense_type_id của item — khớp cờ "hạng mục đặc biệt" (hide_in_report). */
+  typeId: string | null;
   /** Kỳ áp dụng (ngày DB), để hiển thị; null nếu item không gán kỳ. */
   startDate: string | null;
   endDate: string | null;
@@ -72,6 +79,8 @@ const PARENT_PAGE = 1000;
 // → PostgREST 400 → báo cáo rỗng oan (xem useIncomeExpenses.ts:124-128). `!inner`
 // loại phiếu không có item khớp & mảng items[] chỉ chứa item khớp kỳ. Embed luôn
 // tên+nhóm loại để khỏi query income_expense_types riêng.
+// LƯU Ý: `!inner` cũng loại phiếu KHÔNG có item nào → bù lại bằng truy vấn (3)
+// (ACCRUAL_SELECT_NOITEM) để không thất thoát total_amount của phiếu trống item.
 const ACCRUAL_SELECT = `
   id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
@@ -88,7 +97,7 @@ const ACCRUAL_SELECT = `
 // như cách gom invoice_id). items KHÔNG `!inner`/không lọc kỳ → lấy mọi hạng mục
 // của phiếu (kỳ của item = ngày thu, không dùng để xếp tháng ở nhánh này).
 const ACCRUAL_SELECT_INV = `
-  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id,
+  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id, total_amount,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   invoice:invoices!income_expenses_invoice_id_fkey!inner ( billing_month ),
@@ -96,6 +105,18 @@ const ACCRUAL_SELECT_INV = `
     id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date,
     income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
   )
+`;
+
+// Phiếu KHÔNG gắn hoá đơn & KHÔNG có item: items!inner ở ACCRUAL_SELECT loại
+// các phiếu này → cần truy vấn riêng theo voucher_date (KHÔNG `!inner`) rồi giữ
+// đúng phiếu có items rỗng. total_amount ghi nhận trọn vào tháng voucher_date
+// (khớp nhánh b_noitem của fa_accrual_allocations). Chỉ cần items(id) để biết
+// rỗng hay không — phiếu có item đã được nhánh (1) xử lý.
+const ACCRUAL_SELECT_NOITEM = `
+  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id, total_amount,
+  building:buildings!income_expenses_building_id_fkey ( id, name ),
+  room:rooms!income_expenses_room_id_fkey ( id, name ),
+  items:income_expense_items ( id )
 `;
 
 /**
@@ -186,6 +207,25 @@ export const useAccrualMonthReport = (
           .range(from, to);
       };
 
+      // (3) Phiếu KHÔNG gắn hoá đơn & KHÔNG có item: nhánh (1) (items!inner) đã
+      // bỏ chúng. Lọc theo voucher_date trong tháng (cùng cách useIncomeExpenses
+      // lọc gte/lte) → ghi nhận total_amount trọn vào tháng. Chỉ phiếu items rỗng
+      // mới được dùng (phiếu có item đã thuộc nhánh (1)).
+      const buildNonInvoiceNoItem = (from: number, to: number) => {
+        let q = supabase
+          .from("income_expenses" as any)
+          .select(ACCRUAL_SELECT_NOITEM)
+          .is("deleted_at", null)
+          .is("invoice_id", null)
+          .gte("voucher_date", firstOfMonth)
+          .lte("voucher_date", lastOfMonth);
+        q = applyFilters(q);
+        return q
+          .order("voucher_date", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to);
+      };
+
       // Fetch-all: lặp từng trang 1000 tới khi trang ngắn hơn PARENT_PAGE.
       const fetchAll = async (
         build: (f: number, t: number) => any,
@@ -204,16 +244,21 @@ export const useAccrualMonthReport = (
         return out;
       };
 
-      const [nonInv, inv] = await Promise.all([
+      const [nonInv, inv, noItem] = await Promise.all([
         fetchAll(buildNonInvoice),
         fetchAll(buildInvoice),
+        fetchAll(buildNonInvoiceNoItem),
       ]);
-      if (nonInv === null || inv === null) return EMPTY;
+      if (nonInv === null || inv === null || noItem === null) return EMPTY;
 
       // Transform: phân bổ từng item vào tháng YM (client-side).
       let totalIncome = 0;
       let totalExpense = 0;
       const rows: AccrualReportRow[] = [];
+
+      // Item giả cho phiếu trống hạng mục — khớp nhãn 'Không có hạng mục' của
+      // fa_accrual_allocations (a_noitem/b_noitem), category NULL.
+      const NOITEM_TYPE = { name: "Không có hạng mục", category: null };
 
       const pushRow = (
         voucher: any,
@@ -235,6 +280,7 @@ export const useAccrualMonthReport = (
           roomId: voucher.room_id ?? voucher.room?.id ?? null,
           typeName: t?.name ?? "",
           category: t?.category ?? null,
+          typeId: it.income_expense_type_id ?? t?.id ?? null,
           startDate,
           endDate,
           income: isIncome ? portion : 0,
@@ -269,7 +315,8 @@ export const useAccrualMonthReport = (
       // (2) Phiếu GẮN hoá đơn: doanh thu nhận TRỌN vào tháng kỳ hoá đơn
       // (billing_month đã lọc = month), bất kể ngày thu. Kỳ hiển thị = tháng HĐ.
       for (const voucher of inv) {
-        for (const it of (voucher.items ?? []) as any[]) {
+        const items = (voucher.items ?? []) as any[];
+        for (const it of items) {
           const amount = Number(it.amount);
           const itemAmount = Number.isFinite(amount)
             ? amount
@@ -277,6 +324,27 @@ export const useAccrualMonthReport = (
           if (itemAmount === 0) continue;
           pushRow(voucher, it, itemAmount, firstOfMonth, lastOfMonth);
         }
+        // Phiếu HĐ trống item → total_amount trọn vào billing_month (a_noitem).
+        if (items.length === 0) {
+          const amt = Number(voucher.total_amount);
+          if (amt)
+            pushRow(
+              voucher,
+              { id: voucher.id, income_expense_type: NOITEM_TYPE },
+              amt,
+              firstOfMonth,
+              lastOfMonth,
+            );
+        }
+      }
+
+      // (3) Phiếu KHÔNG gắn hoá đơn & trống item: total_amount trọn vào tháng
+      // voucher_date (b_noitem). Bỏ phiếu có item — đã thuộc nhánh (1).
+      for (const voucher of noItem) {
+        if (((voucher.items ?? []) as any[]).length > 0) continue;
+        const amt = Number(voucher.total_amount);
+        if (!amt) continue;
+        pushRow(voucher, { id: voucher.id, income_expense_type: NOITEM_TYPE }, amt, null, null);
       }
 
       return {

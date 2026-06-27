@@ -20,6 +20,9 @@ export interface IncomeExpenseType {
   // mới thấy hạng mục (picker) và các phiếu thuộc hạng mục này (bảng + tổng).
   // RLS enforce; FE thêm lọc picker theo restricted_create.
   is_restricted: boolean;
+  // Cờ "hạng mục đặc biệt": bật → cho phép ẩn các dòng thuộc hạng mục này khỏi
+  // danh sách báo cáo Phân bổ lợi nhuận (tuỳ chọn FE, KHÔNG đụng RLS/số tổng).
+  hide_in_report: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -116,6 +119,28 @@ export const useIncomeExpenseTypeCategories = (
   });
 };
 
+/**
+ * Các hạng mục được đánh dấu "đặc biệt" (hide_in_report=true) — KHÔNG dedup, trả
+ * mọi row khớp để báo cáo Phân bổ lợi nhuận ẩn đúng (dữ liệu có thể trùng tên
+ * "Tiền nhà" giữa nhiều type_id). Báo cáo khớp dòng theo type_id HOẶC tên.
+ */
+export const useHiddenInReportTypes = () => {
+  return useQuery({
+    queryKey: ["ie-types-hidden-in-report"],
+    queryFn: async (): Promise<{ id: string; name: string }[]> => {
+      const { data, error } = await supabase
+        .from("income_expense_types" as any)
+        .select("id, name")
+        .eq("hide_in_report", true);
+      if (error) {
+        console.error("useHiddenInReportTypes error:", error);
+        return [];
+      }
+      return ((data ?? []) as any[]).map((r) => ({ id: r.id, name: r.name ?? "" }));
+    },
+  });
+};
+
 // --- Mutation Hooks ---
 
 export const useCreateIncomeExpenseType = () => {
@@ -129,6 +154,7 @@ export const useCreateIncomeExpenseType = () => {
       description?: string | null;
       is_default?: boolean;
       is_restricted?: boolean;
+      hide_in_report?: boolean;
     }) => {
       const user = await getSessionUser();
 
@@ -144,6 +170,7 @@ export const useCreateIncomeExpenseType = () => {
           description: input.description ?? null,
           is_default: input.is_default ?? false,
           is_restricted: input.is_restricted ?? false,
+          hide_in_report: input.hide_in_report ?? false,
         })
         .select()
         .single();
@@ -184,6 +211,7 @@ export const useUpdateIncomeExpenseType = () => {
         description?: string | null;
         is_default?: boolean;
         is_restricted?: boolean;
+        hide_in_report?: boolean;
       };
     }) => {
       const { data, error } = await supabase

@@ -77,6 +77,8 @@ export const incomeExpenseTypeFormSchema = z.object({
   is_default: z.boolean().optional().default(false),
   // Cờ "hạng mục hạn chế" — chỉ người có quyền income_expenses.restricted_* thấy.
   is_restricted: z.boolean().optional().default(false),
+  // Cờ "hạng mục đặc biệt" — cho phép ẩn dòng khỏi báo cáo Phân bổ lợi nhuận.
+  hide_in_report: z.boolean().optional().default(false),
 });
 
 export type IncomeExpenseTypeFormValues = z.infer<typeof incomeExpenseTypeFormSchema>;

@@ -60,6 +60,7 @@ const IncomeExpenseTypeForm = ({
       description: '',
       is_default: false,
       is_restricted: false,
+      hide_in_report: false,
     },
   });
 
@@ -71,6 +72,7 @@ const IncomeExpenseTypeForm = ({
       description: '',
       is_default: false,
       is_restricted: false,
+      hide_in_report: false,
     });
   }, [defaultType, form]);
 
@@ -83,6 +85,7 @@ const IncomeExpenseTypeForm = ({
         description: data.description || null,
         is_default: data.is_default ?? false,
         is_restricted: canManageRestricted ? (data.is_restricted ?? false) : false,
+        hide_in_report: data.hide_in_report ?? false,
       });
       form.reset();
       onCreated?.(result as unknown as IncomeExpenseType);
@@ -197,6 +200,28 @@ const IncomeExpenseTypeForm = ({
             )}
           />
         )}
+
+        <FormField
+          control={form.control}
+          name="hide_in_report"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start gap-2 rounded-md border p-3">
+              <FormControl>
+                <Checkbox
+                  checked={!!field.value}
+                  onCheckedChange={(v) => field.onChange(v === true)}
+                />
+              </FormControl>
+              <div className="space-y-0.5 leading-tight">
+                <FormLabel className="cursor-pointer">Hạng mục đặc biệt</FormLabel>
+                <p className="text-xs text-muted-foreground">
+                  Cho phép ẩn các dòng thuộc hạng mục này khỏi báo cáo Phân bổ
+                  lợi nhuận (vd "Tiền nhà"). Bật/tắt hiển thị ngay trong báo cáo.
+                </p>
+              </div>
+            </FormItem>
+          )}
+        />
 
         <div className="flex justify-end gap-2 pt-1">
           {onCancel && (

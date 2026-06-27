@@ -80,6 +80,7 @@ const EditIncomeExpenseTypeDialog = ({
       description: '',
       is_default: false,
       is_restricted: false,
+      hide_in_report: false,
     },
   });
 
@@ -92,6 +93,7 @@ const EditIncomeExpenseTypeDialog = ({
         description: type.description ?? '',
         is_default: type.is_default ?? false,
         is_restricted: type.is_restricted ?? false,
+        hide_in_report: type.hide_in_report ?? false,
       });
     }
   }, [open, type, form]);
@@ -111,6 +113,7 @@ const EditIncomeExpenseTypeDialog = ({
           is_default: data.is_default ?? false,
           // Chỉ ghi is_restricted khi có quyền — tránh staff vô tình gỡ cờ.
           ...(canManageRestricted ? { is_restricted: data.is_restricted ?? false } : {}),
+          hide_in_report: data.hide_in_report ?? false,
         },
       });
       onOpenChange(false);
@@ -246,6 +249,30 @@ const EditIncomeExpenseTypeDialog = ({
                   )}
                 />
               )}
+
+              <FormField
+                control={form.control}
+                name="hide_in_report"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start gap-2 rounded-md border p-3">
+                    <FormControl>
+                      <Checkbox
+                        checked={!!field.value}
+                        onCheckedChange={(v) => field.onChange(v === true)}
+                      />
+                    </FormControl>
+                    <div className="space-y-0.5 leading-tight">
+                      <FormLabel className="cursor-pointer">
+                        Hạng mục đặc biệt
+                      </FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Cho phép ẩn các dòng thuộc hạng mục này khỏi báo cáo
+                        Phân bổ lợi nhuận (vd "Tiền nhà").
+                      </p>
+                    </div>
+                  </FormItem>
+                )}
+              />
 
               <div className="flex items-center justify-between pt-2">
                 <Button

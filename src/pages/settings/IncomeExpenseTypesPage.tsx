@@ -72,6 +72,7 @@ export default function IncomeExpenseTypesPage() {
       category: '',
       description: '',
       is_default: false,
+      hide_in_report: false,
     },
   });
 
@@ -85,6 +86,7 @@ export default function IncomeExpenseTypesPage() {
         category: editingType.category ?? '',
         description: editingType.description ?? '',
         is_default: editingType.is_default ?? false,
+        hide_in_report: editingType.hide_in_report ?? false,
       });
     } else if (!editingType && isFormOpen) {
       form.reset({
@@ -93,6 +95,7 @@ export default function IncomeExpenseTypesPage() {
         category: '',
         description: '',
         is_default: false,
+        hide_in_report: false,
       });
     }
   }, [editingType, isFormOpen, form]);
@@ -111,6 +114,7 @@ export default function IncomeExpenseTypesPage() {
             category: normalizedCategory,
             description: data.description || null,
             is_default: data.is_default ?? false,
+            hide_in_report: data.hide_in_report ?? false,
           },
         });
       } else {
@@ -120,6 +124,7 @@ export default function IncomeExpenseTypesPage() {
           category: normalizedCategory,
           description: data.description || null,
           is_default: data.is_default ?? false,
+          hide_in_report: data.hide_in_report ?? false,
         });
       }
       handleFormClose(false);
@@ -267,6 +272,27 @@ export default function IncomeExpenseTypesPage() {
                   render={({ field }) => (
                     <FormItem className="flex items-center justify-between rounded-lg border p-3">
                       <FormLabel className="cursor-pointer">Mặc định</FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="hide_in_report"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="space-y-0.5 pr-3 leading-tight">
+                        <FormLabel className="cursor-pointer">Hạng mục đặc biệt</FormLabel>
+                        <p className="text-xs text-muted-foreground">
+                          Cho phép ẩn các dòng thuộc hạng mục này khỏi báo cáo
+                          Phân bổ lợi nhuận (vd "Tiền nhà").
+                        </p>
+                      </div>
                       <FormControl>
                         <Switch
                           checked={field.value}

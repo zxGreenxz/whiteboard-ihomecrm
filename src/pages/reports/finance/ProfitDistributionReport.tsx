@@ -11,6 +11,7 @@ import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails, useInvoiceRe
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
+import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
 import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
@@ -56,6 +57,9 @@ interface DisplayRow {
   roomId?: string | null;
   periodLabel: string;
   typeName: string;
+  // income_expense_type_id của dòng — khớp cờ "hạng mục đặc biệt" để ẩn/hiện.
+  // null với dòng gộp theo hoá đơn (nhiều hạng mục) hoặc dòng ghi chú.
+  typeId?: string | null;
   // Nhóm hạng mục (income_expense_types.category) — dùng sắp xếp ưu tiên cột Chi.
   category: string | null;
   amount: number;
@@ -207,7 +211,20 @@ export default function ProfitDistributionReport() {
   // giữ trạng thái qua F5/đa thiết bị. Toggle nằm trong popover "Cột".
   const hideStatCards = useUiPrefBool("pd_hideStatCards", false);
   const hideTotals = useUiPrefBool("pd_hideTotals", false);
+  // Ẩn các hạng mục đánh dấu "đặc biệt" (hide_in_report) — vd Tiền nhà. Chỉ ẩn
+  // DÒNG khỏi danh sách; số tổng (3 thẻ + header) GIỮ NGUYÊN.
+  const hideSpecialTypes = useUiPrefBool("pd_hideSpecialTypes", false);
   const setUiPref = useSetUiPreference();
+
+  // Hạng mục đánh dấu đặc biệt — khớp dòng theo type_id HOẶC tên (dữ liệu có thể
+  // trùng tên "Tiền nhà" giữa nhiều type_id; đánh dấu 1 cái → ẩn mọi dòng cùng tên).
+  const { data: specialTypes = [] } = useHiddenInReportTypes();
+  const specialTypeIds = useMemo(() => new Set(specialTypes.map((t) => t.id)), [specialTypes]);
+  const specialTypeNames = useMemo(
+    () => new Set(specialTypes.map((t) => t.name.trim().toLowerCase()).filter(Boolean)),
+    [specialTypes]
+  );
+  const hasSpecialTypes = specialTypes.length > 0;
 
   // Parse monthStr "MM-yyyy" → start/end date + 'YYYY-MM'
   const [mm, yyyy] = monthStr.split("-").map((s) => parseInt(s, 10));
@@ -291,6 +308,7 @@ export default function ProfitDistributionReport() {
           periodLabel: formatPeriod(r.startDate, r.endDate) || "—",
           typeName: r.typeName || "—",
           category: r.category ?? null,
+          typeId: r.typeId ?? null,
           notKqkd: r.countsInBusinessResult === false,
           monthLabel,
         };
@@ -341,6 +359,7 @@ export default function ProfitDistributionReport() {
                   key: `${r.id}:${it.id}`,
                   typeName: it.type_name || "—",
                   category: it.category ?? null,
+                  typeId: it.income_expense_type_id ?? null,
                   amount: safe,
                 };
               })
@@ -457,6 +476,22 @@ export default function ProfitDistributionReport() {
     normal.sort(sorter);
     return { incomeRows: [...red, ...normal], expenseRows: exp };
   }, [accrualMode, accrual, result, monthLabel, vacantNotes]);
+
+  // Lọc bỏ dòng thuộc hạng mục đặc biệt khi bật toggle (chỉ ẩn dòng — số tổng
+  // 3 thẻ + header lấy từ stats/accrual nên KHÔNG đổi).
+  const isSpecialRow = (r: DisplayRow) =>
+    (r.typeId && specialTypeIds.has(r.typeId)) ||
+    specialTypeNames.has((r.typeName ?? "").trim().toLowerCase());
+  const filterSpecial = (rows: DisplayRow[]) =>
+    hideSpecialTypes && hasSpecialTypes ? rows.filter((r) => !isSpecialRow(r)) : rows;
+  const shownIncomeRows = useMemo(
+    () => filterSpecial(incomeRows),
+    [incomeRows, hideSpecialTypes, hasSpecialTypes, specialTypeIds, specialTypeNames]
+  );
+  const shownExpenseRows = useMemo(
+    () => filterSpecial(expenseRows),
+    [expenseRows, hideSpecialTypes, hasSpecialTypes, specialTypeIds, specialTypeNames]
+  );
 
   // Tổng/đã trả của các hoá đơn xuất hiện trong cột Thu → tính note thiếu/thừa.
   const invoiceIds = useMemo(
@@ -797,6 +832,21 @@ export default function ProfitDistributionReport() {
                     />
                     <span>Số tổng (thu/chi)</span>
                   </Label>
+                  {hasSpecialTypes && (
+                    <Label
+                      htmlFor="pd-hide-special"
+                      className="flex items-center gap-2 py-1 px-1 rounded hover:bg-accent cursor-pointer text-sm font-normal"
+                    >
+                      <Checkbox
+                        id="pd-hide-special"
+                        checked={hideSpecialTypes}
+                        onCheckedChange={() =>
+                          setUiPref.mutate({ key: "pd_hideSpecialTypes", value: !hideSpecialTypes })
+                        }
+                      />
+                      <span>Ẩn hạng mục đặc biệt</span>
+                    </Label>
+                  )}
                 </div>
                 <div className="text-sm font-medium mb-2 mt-3 pt-2 border-t">Hiển thị cột</div>
                 <div className="space-y-1.5">
@@ -827,8 +877,8 @@ export default function ProfitDistributionReport() {
 
         {/* Sổ 2 cột: Thu | Chi */}
         <div className={`grid gap-4 ${showThu && showChi ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-          {showThu && renderPanel("Khoản thu", "Doanh thu", displayIncome, incomeRows, "text-emerald-700", "bg-emerald-50")}
-          {showChi && renderPanel("Khoản chi", "Chi phí", displayExpense, expenseRows, "text-orange-700", "bg-orange-50")}
+          {showThu && renderPanel("Khoản thu", "Doanh thu", displayIncome, shownIncomeRows, "text-emerald-700", "bg-emerald-50")}
+          {showChi && renderPanel("Khoản chi", "Chi phí", displayExpense, shownExpenseRows, "text-orange-700", "bg-orange-50")}
         </div>
 
         <div className="text-sm text-muted-foreground">
