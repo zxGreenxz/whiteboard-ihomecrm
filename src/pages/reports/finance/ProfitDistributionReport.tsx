@@ -10,6 +10,7 @@ import {
 import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails, useInvoiceRentPeriods } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
+import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useVacantRoomNotes } from "@/hooks/useReports";
 import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
@@ -201,6 +202,12 @@ export default function ProfitDistributionReport() {
   // Người dùng tự ép ẩn/hiện 1 cột — ghi đè lên mặc định tự-suy-từ-bộ-lọc.
   // Trống = theo mặc định (nút "Đặt lại mặc định" xoá hết override).
   const [colOverrides, setColOverrides] = useState<Partial<Record<ColKey, boolean>>>({});
+
+  // Ẩn/hiện thẻ thống kê & số tổng — LƯU TRÊN SERVER (profiles.ui_preferences) để
+  // giữ trạng thái qua F5/đa thiết bị. Toggle nằm trong popover "Cột".
+  const hideStatCards = useUiPrefBool("pd_hideStatCards", false);
+  const hideTotals = useUiPrefBool("pd_hideTotals", false);
+  const setUiPref = useSetUiPreference();
 
   // Parse monthStr "MM-yyyy" → start/end date + 'YYYY-MM'
   const [mm, yyyy] = monthStr.split("-").map((s) => parseInt(s, 10));
@@ -531,7 +538,9 @@ export default function ProfitDistributionReport() {
             {data.filter((r) => !r.isNote).length} khoản
           </span>
         </div>
-        <span className={`font-semibold ${accentText}`}>{formatCurrency(total)}</span>
+        {!hideTotals && (
+          <span className={`font-semibold ${accentText}`}>{formatCurrency(total)}</span>
+        )}
       </div>
       <div className="overflow-auto max-h-[60vh]">
         <Table>
@@ -680,12 +689,14 @@ export default function ProfitDistributionReport() {
           <span className="text-foreground font-medium">Phân bổ lợi nhuận</span>
         </div>
 
-        {/* 3 Stat cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard label="Doanh thu" value={displayIncome} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
-          <StatCard label="Chi phí" value={displayExpense} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
-          <StatCard label="Lợi nhuận" value={displayDiff} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
-        </div>
+        {/* 3 Stat cards — có thể ẩn qua popover "Cột" (lưu server) */}
+        {!hideStatCards && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Doanh thu" value={displayIncome} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
+            <StatCard label="Chi phí" value={displayExpense} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
+            <StatCard label="Lợi nhuận" value={displayDiff} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3">
@@ -758,7 +769,36 @@ export default function ProfitDistributionReport() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-3">
-                <div className="text-sm font-medium mb-2">Hiển thị cột</div>
+                <div className="text-sm font-medium mb-2">Hiển thị</div>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="pd-show-stats"
+                    className="flex items-center gap-2 py-1 px-1 rounded hover:bg-accent cursor-pointer text-sm font-normal"
+                  >
+                    <Checkbox
+                      id="pd-show-stats"
+                      checked={!hideStatCards}
+                      onCheckedChange={() =>
+                        setUiPref.mutate({ key: "pd_hideStatCards", value: !hideStatCards })
+                      }
+                    />
+                    <span>Thẻ thống kê</span>
+                  </Label>
+                  <Label
+                    htmlFor="pd-show-totals"
+                    className="flex items-center gap-2 py-1 px-1 rounded hover:bg-accent cursor-pointer text-sm font-normal"
+                  >
+                    <Checkbox
+                      id="pd-show-totals"
+                      checked={!hideTotals}
+                      onCheckedChange={() =>
+                        setUiPref.mutate({ key: "pd_hideTotals", value: !hideTotals })
+                      }
+                    />
+                    <span>Số tổng (thu/chi)</span>
+                  </Label>
+                </div>
+                <div className="text-sm font-medium mb-2 mt-3 pt-2 border-t">Hiển thị cột</div>
                 <div className="space-y-1.5">
                   {TOGGLE_COLUMNS.map((col) => (
                     <Label
