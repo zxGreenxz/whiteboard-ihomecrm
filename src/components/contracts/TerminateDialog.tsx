@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowLeft, Ban, LogOut } from "lucide-react";
+import { Loader2, ArrowLeft, Ban, LogOut, ReceiptText } from "lucide-react";
 
 import {
   terminateForfeitFormSchema,
@@ -366,14 +366,18 @@ function StepForfeit({
         <div className="border-t pt-4">
           <TerminationExtraCharges
             contract={contract}
+            chargeDate={form.watch("forfeit_date")}
             onChange={setExtraCharges}
           />
           {extraTotal > 0 && (
-            <p className="mt-2 text-xs text-blue-700">
-              Sẽ tạo <strong>hoá đơn thu tiền khách riêng</strong> tổng{" "}
-              <strong>{formatVND(extraTotal)} đ</strong> (tách biệt với hoá đơn
-              thanh lý bù cọc vào doanh thu).
-            </p>
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              <ReceiptText className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>
+                Sẽ tạo <strong>hoá đơn thu tiền khách riêng</strong> tổng{" "}
+                <strong>{formatVND(extraTotal)} đ</strong>, tách biệt với hoá đơn
+                thanh lý bù cọc vào doanh thu.
+              </p>
+            </div>
           )}
         </div>
 
@@ -643,7 +647,7 @@ function StepMoveOut({
                   <FormLabel className="text-xs">Tiền cọc hoàn trả</FormLabel>
                   <FormControl>
                     <CurrencyInput
-                      className="h-8 text-sm"
+                      className="h-9 text-sm text-right"
                       value={field.value}
                       onChange={field.onChange}
                       onBlur={field.onBlur}
@@ -662,7 +666,7 @@ function StepMoveOut({
                   <FormLabel className="text-xs">Tiền phòng thừa</FormLabel>
                   <FormControl>
                     <CurrencyInput
-                      className="h-8 text-sm"
+                      className="h-9 text-sm text-right"
                       value={field.value}
                       onChange={field.onChange}
                       onBlur={field.onBlur}
@@ -686,6 +690,7 @@ function StepMoveOut({
         <div className="border-t pt-4">
           <TerminationExtraCharges
             contract={contract}
+            chargeDate={form.watch("move_out_date")}
             onChange={setExtraCharges}
           />
         </div>
@@ -695,55 +700,66 @@ function StepMoveOut({
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
             Tổng hợp
           </h3>
-          <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tổng công nợ:</span>
-              <span className="font-medium text-red-600">
-                {formatVND(outstandingDebt)} đ
-              </span>
+          <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tổng công nợ</span>
+                <span className="font-medium tabular-nums text-red-600">
+                  {formatVND(outstandingDebt)} đ
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tiền cọc hoàn trả</span>
+                <span className="font-medium tabular-nums text-emerald-600">
+                  {formatVND(depositRefund)} đ
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tiền phòng thừa</span>
+                <span className="font-medium tabular-nums text-emerald-600">
+                  {formatVND(excessRent)} đ
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tổng thu thêm</span>
+                <span className="font-medium tabular-nums text-red-600">
+                  {formatVND(extraTotal)} đ
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-dashed pt-1.5">
+                <span className="text-muted-foreground">
+                  Tổng khấu trừ <span className="text-xs">(công nợ + thu thêm)</span>
+                </span>
+                <span className="font-medium tabular-nums text-red-600">
+                  −{formatVND(totalDeductions)} đ
+                </span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tiền cọc hoàn trả:</span>
-              <span className="font-medium text-green-600">
-                {formatVND(depositRefund)} đ
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tiền phòng thừa:</span>
-              <span className="font-medium text-green-600">
-                {formatVND(excessRent)} đ
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tổng thu thêm:</span>
-              <span className="font-medium text-red-600">
-                {formatVND(extraTotal)} đ
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">
-                Tổng khấu trừ (công nợ + thu thêm):
-              </span>
-              <span className="font-medium text-red-600">
-                {formatVND(totalDeductions)} đ
-              </span>
-            </div>
-            <div className="border-t pt-2 flex justify-between">
-              <span className="font-semibold">Số tiền quyết toán:</span>
+
+            <div
+              className={`mt-3 flex items-center justify-between rounded-lg border px-3.5 py-3 ${
+                settlementAmount >= 0
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-red-200 bg-red-50"
+              }`}
+            >
+              <div className="flex flex-col">
+                <span className="font-semibold">Số tiền quyết toán</span>
+                <span className="text-xs text-muted-foreground">
+                  {settlementAmount >= 0
+                    ? "Chủ nhà trả lại khách"
+                    : "Khách phải trả thêm"}
+                </span>
+              </div>
               <span
-                className={`font-bold text-lg ${
-                  settlementAmount >= 0 ? "text-green-700" : "text-red-700"
+                className={`text-xl font-bold tabular-nums ${
+                  settlementAmount >= 0 ? "text-emerald-700" : "text-red-700"
                 }`}
               >
-                {settlementAmount >= 0 ? "+" : ""}
-                {formatVND(settlementAmount)} đ
+                {settlementAmount >= 0 ? "+" : "−"}
+                {formatVND(Math.abs(settlementAmount))} đ
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {settlementAmount >= 0
-                ? "Chủ nhà trả lại khách"
-                : "Khách phải trả thêm"}
-            </p>
           </div>
         </div>
 

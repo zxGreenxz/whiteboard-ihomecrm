@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Building2, Zap, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuildingServices } from "@/hooks/useBuildingServices";
 import { resolveInvoicePricing } from "@/lib/contractServicePricing";
-import { prorateAmount } from "@/lib/prorateCalculation";
+import { prorateAmount, calcProratedDays } from "@/lib/prorateCalculation";
 import type { ExtraChargeItem } from "@/lib/contractValidation";
 import type { ContractWithRelations } from "@/types/contract";
 
 interface TerminationExtraChargesProps {
   contract: ContractWithRelations;
+  /** Ngày thanh lý (move-out/forfeit) — mặc định cho ô "đến ngày" của dòng prorate. */
+  chargeDate?: string;
   /** Emit mảng khoản thu thêm đã chuẩn hoá mỗi khi có thay đổi. */
   onChange: (items: ExtraChargeItem[]) => void;
 }
@@ -27,13 +30,20 @@ function formatVND(value: number): string {
   return new Intl.NumberFormat("vi-VN").format(value);
 }
 
+function fmtDM(iso?: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return d && m ? `${d}/${m}` : iso;
+}
+
 /**
  * Khu vực "Thu thêm" dùng chung cho cả 2 chế độ thanh lý (rời phòng & bỏ cọc).
- * 3 dòng mặc định + nút "+" thêm dòng tuỳ ý. Component emit-only: tự tính từng
- * khoản rồi đẩy mảng ExtraChargeItem lên form cha qua onChange.
+ * Bố cục dạng thẻ: cột nhãn — controls — số tiền (canh phải). Dòng đầu cho nhập
+ * "ở từ ngày → đến ngày" để tự suy ra số ngày prorate. Component emit-only.
  */
 export function TerminationExtraCharges({
   contract,
+  chargeDate,
   onChange,
 }: TerminationExtraChargesProps) {
   const buildingId = contract.room?.building_id || "";
@@ -129,12 +139,15 @@ export function TerminationExtraCharges({
   }, [contract.room_id]);
 
   // ── State các dòng mặc định + dòng tuỳ ý ────────────────────────────────
-  const [days, setDays] = useState(0);
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>(() => chargeDate || "");
   const [proratedAmount, setProratedAmount] = useState(0);
   const [proratedTouched, setProratedTouched] = useState(false);
   const [currentReading, setCurrentReading] = useState<number | null>(null);
   const [cleaningAmount, setCleaningAmount] = useState(200000);
   const [customRows, setCustomRows] = useState<CustomRow[]>([]);
+
+  const days = calcProratedDays(fromDate, toDate);
 
   // Auto thành tiền dòng 1 theo số ngày ở thêm (cho tới khi user gõ tay).
   const autoProrated = days > 0 ? prorateAmount(proratedBase, days) : 0;
@@ -143,18 +156,21 @@ export function TerminationExtraCharges({
   }, [autoProrated, proratedTouched]);
 
   // Tiền điện = (cuối − đầu) × đơn giá điện (chỉ hiển thị, auto).
-  const electricAmount =
+  const consumption =
     currentReading != null && currentReading > previousReading
-      ? Math.round((currentReading - previousReading) * (pricing.elec || 0))
+      ? currentReading - previousReading
       : 0;
+  const electricAmount = Math.round(consumption * (pricing.elec || 0));
 
   // ── Emit mảng ExtraChargeItem chuẩn hoá lên cha ─────────────────────────
   useEffect(() => {
     const items: ExtraChargeItem[] = [];
     if (proratedAmount > 0) {
+      const range =
+        fromDate && toDate ? ` (${fmtDM(fromDate)}–${fmtDM(toDate)}, ${days} ngày)` : "";
       items.push({
         kind: "PRORATED",
-        description: `Tiền phòng + Nước + PDV (${days} ngày ở thêm)`,
+        description: `Tiền phòng + Nước + PDV${range}`,
         amount: proratedAmount,
         days,
         unit_price: proratedBase,
@@ -192,6 +208,8 @@ export function TerminationExtraCharges({
   }, [
     proratedAmount,
     days,
+    fromDate,
+    toDate,
     proratedBase,
     electricAmount,
     currentReading,
@@ -205,148 +223,180 @@ export function TerminationExtraCharges({
     proratedAmount +
     electricAmount +
     cleaningAmount +
-    customRows.reduce((s, r) => s + (r.name.trim() && r.amount > 0 ? r.amount : 0), 0);
+    customRows.reduce(
+      (s, r) => s + (r.name.trim() && r.amount > 0 ? r.amount : 0),
+      0,
+    );
 
   const addCustomRow = () =>
-    setCustomRows((rows) => [
-      ...rows,
-      { id: ++customRowSeq, name: "", amount: 0 },
-    ]);
+    setCustomRows((rows) => [...rows, { id: ++customRowSeq, name: "", amount: 0 }]);
   const updateCustomRow = (id: number, patch: Partial<CustomRow>) =>
-    setCustomRows((rows) =>
-      rows.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-    );
+    setCustomRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const removeCustomRow = (id: number) =>
     setCustomRows((rows) => rows.filter((r) => r.id !== id));
 
+  const onDateChange = (which: "from" | "to") => (iso: string) => {
+    if (which === "from") setFromDate(iso);
+    else setToDate(iso);
+    setProratedTouched(false);
+  };
+
   return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-        Thu thêm
-      </h3>
+    <div className="space-y-2.5">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Thu thêm
+        </h3>
+        <span className="text-xs text-muted-foreground normal-case">
+          Các khoản khách phải trả thêm
+        </span>
+      </div>
 
-      {/* Dòng 1: Tiền phòng + Nước + PDV (theo số ngày ở thêm) */}
-      <div className="grid grid-cols-[1fr_auto_140px] items-center gap-2">
-        <span className="text-sm">Tiền phòng + Nước + PDV</span>
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            min={0}
-            inputMode="numeric"
-            className="h-8 w-20 text-sm"
-            placeholder="0"
-            value={days === 0 ? "" : days}
-            onChange={(e) => {
-              const v = Math.max(0, Math.floor(Number(e.target.value) || 0));
-              setDays(v);
-              setProratedTouched(false);
-            }}
-          />
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            ngày
+      <div className="rounded-xl border bg-card divide-y divide-border/70 overflow-hidden">
+        {/* Dòng 1: Tiền phòng + Nước + PDV (theo khoảng ngày ở thêm) */}
+        <div className="px-3.5 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium">Tiền phòng + Nước + PDV</span>
+            <div className="ml-auto w-36">
+              <CurrencyInput
+                className="h-9 text-sm text-right"
+                value={proratedAmount}
+                onChange={(v) => {
+                  setProratedAmount(v);
+                  setProratedTouched(true);
+                }}
+              />
+            </div>
+            <div className="w-9 shrink-0" />
+          </div>
+          <div className="flex items-center gap-2 flex-wrap pl-6">
+            <span className="text-xs text-muted-foreground">Ở từ</span>
+            <DateInput
+              value={fromDate}
+              onChange={onDateChange("from")}
+              className="w-[140px] [&_input]:h-9 [&_input]:text-sm"
+            />
+            <span className="text-muted-foreground text-xs">đến</span>
+            <DateInput
+              value={toDate}
+              onChange={onDateChange("to")}
+              className="w-[140px] [&_input]:h-9 [&_input]:text-sm"
+            />
+            {days > 0 && (
+              <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                {days} ngày
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Dòng 2: Tiền điện (chốt số) */}
+        <div className="flex items-center gap-2 px-3.5 py-3">
+          <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="text-sm font-medium shrink-0">Tiền điện</span>
+          <div className="flex items-center gap-1.5 ml-2 flex-wrap">
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              className="h-9 w-[86px] text-sm"
+              title="Số điện đầu"
+              value={previousReading === 0 ? "" : previousReading}
+              onChange={(e) =>
+                setPreviousReading(Math.max(0, Number(e.target.value) || 0))
+              }
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              className="h-9 w-[86px] text-sm"
+              placeholder="Số cuối"
+              title="Số điện cuối"
+              value={currentReading == null ? "" : currentReading}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setCurrentReading(raw === "" ? null : Math.max(0, Number(raw) || 0));
+              }}
+            />
+            {consumption > 0 && (
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {formatVND(consumption)} kWh
+              </span>
+            )}
+          </div>
+          <div className="ml-auto flex h-9 w-36 items-center justify-end rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold tabular-nums">
+            {formatVND(electricAmount)}
+            <span className="ml-1 font-normal text-muted-foreground">đ</span>
+          </div>
+          <div className="w-9 shrink-0" />
+        </div>
+
+        {/* Dòng 3: Tiền vệ sinh */}
+        <div className="flex items-center gap-2 px-3.5 py-3">
+          <Sparkles className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="text-sm font-medium">Tiền vệ sinh</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            (mặc định 200.000đ)
           </span>
+          <div className="ml-auto w-36">
+            <CurrencyInput
+              className="h-9 text-sm text-right"
+              value={cleaningAmount}
+              onChange={setCleaningAmount}
+            />
+          </div>
+          <div className="w-9 shrink-0" />
         </div>
-        <CurrencyInput
-          className="h-8 text-sm"
-          value={proratedAmount}
-          onChange={(v) => {
-            setProratedAmount(v);
-            setProratedTouched(true);
-          }}
-        />
-      </div>
 
-      {/* Dòng 2: Tiền điện (chốt số) */}
-      <div className="grid grid-cols-[1fr_auto_140px] items-center gap-2">
-        <span className="text-sm">Tiền điện</span>
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            min={0}
-            inputMode="numeric"
-            className="h-8 w-24 text-sm"
-            title="Số điện đầu"
-            value={previousReading === 0 ? "" : previousReading}
-            onChange={(e) =>
-              setPreviousReading(Math.max(0, Number(e.target.value) || 0))
-            }
-          />
-          <span className="text-xs text-muted-foreground">→</span>
-          <Input
-            type="number"
-            min={0}
-            inputMode="numeric"
-            className="h-8 w-24 text-sm"
-            placeholder="Số cuối"
-            title="Số điện cuối"
-            value={currentReading == null ? "" : currentReading}
-            onChange={(e) => {
-              const raw = e.target.value;
-              setCurrentReading(raw === "" ? null : Math.max(0, Number(raw) || 0));
-            }}
-          />
-        </div>
-        <div className="h-8 flex items-center justify-end px-2 text-sm font-medium tabular-nums">
-          {formatVND(electricAmount)} đ
-        </div>
-      </div>
+        {/* Dòng tuỳ ý */}
+        {customRows.map((r) => (
+          <div key={r.id} className="flex items-center gap-2 px-3.5 py-3">
+            <Input
+              className="h-9 flex-1 min-w-0 text-sm"
+              placeholder="Tên khoản thu thêm…"
+              value={r.name}
+              onChange={(e) => updateCustomRow(r.id, { name: e.target.value })}
+            />
+            <div className="w-36 shrink-0">
+              <CurrencyInput
+                className="h-9 text-sm text-right"
+                value={r.amount}
+                onChange={(v) => updateCustomRow(r.id, { amount: v })}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-red-600"
+              onClick={() => removeCustomRow(r.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
 
-      {/* Dòng 3: Tiền vệ sinh */}
-      <div className="grid grid-cols-[1fr_auto_140px] items-center gap-2">
-        <span className="text-sm">Tiền vệ sinh</span>
-        <span />
-        <CurrencyInput
-          className="h-8 text-sm"
-          value={cleaningAmount}
-          onChange={setCleaningAmount}
-        />
-      </div>
-
-      {/* Dòng tuỳ ý */}
-      {customRows.map((r) => (
-        <div
-          key={r.id}
-          className="grid grid-cols-[1fr_140px_auto] items-center gap-2"
-        >
-          <Input
-            className="h-8 text-sm"
-            placeholder="Tên khoản thu"
-            value={r.name}
-            onChange={(e) => updateCustomRow(r.id, { name: e.target.value })}
-          />
-          <CurrencyInput
-            className="h-8 text-sm"
-            value={r.amount}
-            onChange={(v) => updateCustomRow(r.id, { amount: v })}
-          />
+        {/* Footer: thêm khoản + tổng */}
+        <div className="flex items-center justify-between gap-2 bg-muted/40 px-3.5 py-2.5">
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-red-600"
-            onClick={() => removeCustomRow(r.id)}
+            variant="outline"
+            size="sm"
+            className="h-8 border-dashed"
+            onClick={addCustomRow}
           >
-            <Trash2 className="h-4 w-4" />
+            <Plus className="h-4 w-4 mr-1" />
+            Thêm khoản
           </Button>
-        </div>
-      ))}
-
-      <div className="flex items-center justify-between">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8"
-          onClick={addCustomRow}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Thêm khoản
-        </Button>
-        <div className="text-sm">
-          Tổng thu thêm:{" "}
-          <span className="font-semibold text-red-600">
-            {formatVND(total)} đ
-          </span>
+          <div className="text-sm">
+            <span className="text-muted-foreground">Tổng thu thêm: </span>
+            <span className="font-semibold text-base text-red-600 tabular-nums">
+              {formatVND(total)} đ
+            </span>
+          </div>
         </div>
       </div>
     </div>
