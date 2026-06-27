@@ -283,3 +283,222 @@
 .cm-app .veh-acts .cust-ic { width: 28px; height: 28px; }
 .cm-app .veh-name { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cm-app .veh-meta { font-size: 11.5px; font-weight: 500; color: var(--ink-3); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* =============================================================
+   Sale Phòng (Quản lý phòng trống) — mobile redesign (.sp-*)
+   Dựng từ handoff Claude Design "Quản lý phòng trống". Tái dùng
+   shell .cm-app + tokens warm-neutral/emerald; thêm token trạng
+   thái phòng (trống/sắp/đã thuê/pass) + accent cho từng tab.
+   ============================================================= */
+.cm-stage {
+  --free: #1f9d57; --freeBg: #e6f5ec; --freeLine: #bfe6cd;
+  --soon: #d98a14; --soonBg: #fbf1da; --soonLine: #f0dca8;
+  --rented: #8a8377; --rentedBg: #efece6; --rentedLine: #ddd8cd;
+  --pass: #db2777; --passBg: #fce7f1; --passLine: #f6c8dd;
+  --red: #d6453f; --redBg: #fcebe9;
+  --acc-blue: #2563eb; --acc-cyan: #0891b2; --acc-violet: #7c3aed;
+  --acc-amber: #d97706; --acc-teal: #0d9488; --acc-slate: #475569;
+}
+
+/* ---- Header action button (góc phải mtop) ---- */
+.cm-app .mtop-btn.solid { background: var(--brand); color: #fff; border: 0; box-shadow: var(--sh-1); }
+.cm-app .mtop-btn.solid:active { background: var(--brand-600); }
+
+/* ---- Segmented pill control ---- */
+.cm-app .sp-pillseg { display: flex; gap: 7px; background: var(--surface); border: 1px solid var(--line); padding: 4px; border-radius: 999px; box-shadow: var(--sh-1); }
+.cm-app .sp-pillseg button { flex: 1; border: 0; cursor: pointer; font-family: var(--font); font-size: 13px; font-weight: 700; padding: 9px 0; border-radius: 999px; transition: .16s; background: transparent; color: var(--ink-3); }
+.cm-app .sp-pillseg button.on { background: var(--brand); color: #fff; box-shadow: var(--sh-1); }
+
+/* ---- Browse: stat cards + building cards ---- */
+.cm-app .sp-stats { display: flex; gap: 10px; margin-bottom: 14px; }
+.cm-app .sp-stat { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 13px 15px; box-shadow: var(--sh-1); }
+.cm-app .sp-stat-n { font-family: var(--mono); font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+.cm-app .sp-stat-n.free { color: var(--free); }
+.cm-app .sp-stat-n.soon { color: var(--soon); }
+.cm-app .sp-stat-l { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-top: 6px; }
+.cm-app .sp-bcard { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 13px 14px; cursor: pointer; font-family: var(--font); box-shadow: var(--sh-1); }
+.cm-app .sp-bcard:active { background: var(--surface-2); transform: scale(.99); }
+.cm-app .sp-btag { width: 42px; height: 42px; border-radius: 12px; background: var(--brand-50); color: var(--brand); display: grid; place-items: center; flex-shrink: 0; font-family: var(--mono); font-weight: 700; font-size: 12px; }
+.cm-app .sp-bcard .nm { display: block; font-size: 14.5px; font-weight: 700; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .sp-bcard .sub { display: block; font-size: 12px; font-weight: 500; color: var(--ink-3); margin-top: 3px; }
+.cm-app .sp-bcard .ends { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+
+/* ---- Admin nav rows (enhanced) ---- */
+.cm-app .sp-navrow { border-radius: 18px; }
+.cm-app .sp-navrow .ic { width: 42px; height: 42px; border-radius: 12px; }
+.cm-app .sp-navrow .ic svg { width: 20px; height: 20px; }
+.cm-app .sp-navrow .tx b { font-size: 14.5px; }
+.cm-app .sp-navrow .tx span.statpill { display: inline-block; width: auto; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-top: 7px; }
+
+/* ---- Status pill (reuse .pill colors) ---- */
+.cm-app .pill.free { color: var(--free); background: var(--freeBg); border-color: var(--freeLine); }
+.cm-app .pill.soon { color: var(--soon); background: var(--soonBg); border-color: var(--soonLine); }
+.cm-app .pill.rented { color: var(--rented); background: var(--rentedBg); border-color: var(--rentedLine); }
+.cm-app .pill.passc { color: var(--pass); background: var(--passBg); border-color: var(--passLine); }
+
+/* ---- Info note banner ---- */
+.cm-app .sp-note { display: flex; gap: 9px; align-items: flex-start; border-radius: 14px; padding: 11px 13px; margin-bottom: 14px; }
+.cm-app .sp-note svg { flex-shrink: 0; margin-top: 1px; }
+.cm-app .sp-note p { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); line-height: 1.5; }
+.cm-app .sp-note.blue { background: rgba(37,99,235,.06); border: 1px solid rgba(37,99,235,.16); }
+.cm-app .sp-note.pink { background: var(--passBg); border: 1px solid var(--passLine); }
+
+/* ---- Empty state ---- */
+.cm-app .sp-empty { text-align: center; padding: 44px 24px; display: flex; flex-direction: column; align-items: center; gap: 13px; }
+.cm-app .sp-empty .ic { width: 54px; height: 54px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); }
+.cm-app .sp-empty.pink .ic { background: var(--passBg); border-color: var(--passLine); color: var(--pass); }
+.cm-app .sp-empty p { font-size: 13.5px; font-weight: 500; color: var(--ink-3); margin: 0; max-width: 250px; line-height: 1.55; }
+.cm-app .sp-empty b { color: var(--ink-2); }
+
+/* ---- Generic card / labels / inputs ---- */
+.cm-app .sp-card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 15px; box-shadow: var(--sh-1); margin-bottom: 12px; }
+.cm-app .sp-card-t { font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; }
+.cm-app .sp-label { display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 6px; }
+.cm-app .sp-input, .cm-app .sp-textarea { width: 100%; border: 1px solid var(--line); border-radius: 11px; padding: 0 13px; font-family: var(--font); font-size: 14.5px; font-weight: 600; color: var(--ink); background: var(--surface-2); outline: none; }
+.cm-app .sp-input { height: 44px; }
+.cm-app .sp-input.mono { font-family: var(--mono); }
+.cm-app .sp-textarea { padding: 11px 13px; font-weight: 500; font-size: 14px; resize: none; line-height: 1.5; }
+.cm-app .sp-input:focus, .cm-app .sp-textarea:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.cm-app .sp-hint { margin: 10px 0 0; font-size: 11px; font-weight: 500; color: var(--ink-3); line-height: 1.5; }
+
+/* ---- Stepper (số ngày) ---- */
+.cm-app .sp-step { display: flex; align-items: center; gap: 10px; }
+.cm-app .sp-step button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-size: 22px; font-weight: 700; cursor: pointer; display: grid; place-items: center; line-height: 1; }
+.cm-app .sp-step button:active { background: var(--line-2); }
+.cm-app .sp-step .box { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; height: 44px; }
+.cm-app .sp-step .box input { width: 56px; border: 0; background: transparent; text-align: right; font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--ink); outline: none; }
+.cm-app .sp-step .box span { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+
+/* ---- Toggle switch ---- */
+.cm-app .sp-switch { width: 46px; height: 28px; border-radius: 999px; border: 0; cursor: pointer; position: relative; transition: .18s; flex-shrink: 0; background: var(--line); }
+.cm-app .sp-switch.on { background: var(--brand); }
+.cm-app .sp-switch .knob { position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: .18s; }
+.cm-app .sp-switch.on .knob { transform: translateX(18px); }
+
+/* ---- Row with toggle / chevron picker ---- */
+.cm-app .sp-rowcard { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px 15px; box-shadow: var(--sh-1); margin-bottom: 12px; width: 100%; text-align: left; font-family: var(--font); }
+button.cm-app, .cm-app button.sp-rowcard { cursor: pointer; }
+.cm-app .sp-rowcard .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.cm-app .sp-rowcard .ic.brand { background: var(--brand-50); color: var(--brand); }
+.cm-app .sp-rowcard .gv { display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.cm-app .sp-rowcard .gn { display: block; font-size: 14px; font-weight: 700; letter-spacing: -.2px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .sp-rowcard .chev { color: var(--ink-faint); flex-shrink: 0; }
+
+/* ---- Save / primary button ---- */
+.cm-app .sp-save { width: 100%; height: 50px; border-radius: 14px; border: 0; background: var(--brand); color: #fff; font-family: var(--font); font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 4px 14px rgba(31,122,82,.25); }
+.cm-app .sp-save:active { background: var(--brand-600); }
+.cm-app .sp-save:disabled { opacity: .6; }
+
+/* ---- Token / list cards ---- */
+.cm-app .sp-list { display: flex; flex-direction: column; gap: 11px; }
+.cm-app .sp-tcard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 13px 14px; box-shadow: var(--sh-1); }
+.cm-app .sp-tcard.off { opacity: .55; }
+.cm-app .sp-tcard-h { display: flex; align-items: center; gap: 8px; }
+.cm-app .sp-tcard-h .lbl { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 700; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .sp-copy { display: flex; align-items: center; gap: 7px; width: 100%; margin-top: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; cursor: pointer; font-family: var(--font); }
+.cm-app .sp-copy .u { flex: 1; min-width: 0; text-align: left; font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .sp-copy svg { flex-shrink: 0; color: var(--brand); }
+.cm-app .sp-tcard-f { display: flex; align-items: center; gap: 7px; margin-top: 11px; }
+.cm-app .sp-tcard-f .when { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.cm-app .sp-acts { margin-left: auto; display: flex; gap: 6px; }
+.cm-app .sp-iconbtn { width: 33px; height: 33px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; }
+.cm-app .sp-iconbtn:active { background: var(--line-2); }
+.cm-app .sp-iconbtn.danger { color: var(--red); }
+.cm-app .sp-iconbtn.warn { color: var(--soon); }
+
+/* ---- Badge dot pill ---- */
+.cm-app .sp-badge { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid; }
+.cm-app .sp-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.cm-app .sp-badge.on { color: var(--free); background: var(--freeBg); border-color: var(--freeLine); }
+.cm-app .sp-badge.off { color: var(--rented); background: var(--rentedBg); border-color: var(--rentedLine); }
+
+/* ---- Pass card ---- */
+.cm-app .sp-pcard { position: relative; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--pass); border-radius: 16px; padding: 13px 14px 12px; box-shadow: var(--sh-1); }
+.cm-app .sp-pcard.off { opacity: .55; }
+.cm-app .sp-pcard .room { font-family: var(--mono); font-size: 14.5px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .sp-pcard .rt { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+.cm-app .sp-pcard .ln { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cm-app .sp-pcard .ln svg { flex-shrink: 0; }
+.cm-app .sp-pcard .ln .mono { font-family: var(--mono); }
+.cm-app .sp-pcard .ln .muted { font-weight: 500; color: var(--ink-3); }
+.cm-app .sp-pcard .pol { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--ink-2); line-height: 1.45; }
+.cm-app .sp-pcard .pol svg { flex-shrink: 0; margin-top: 1px; }
+.cm-app .sp-pcard-f { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line-2); }
+.cm-app .sp-pcard-f .price { font-family: var(--mono); font-size: 13.5px; font-weight: 700; color: var(--pass); }
+
+/* ---- Image grid ---- */
+.cm-app .sp-imggrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.cm-app .sp-imgcell { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.cm-app .sp-imgcell img { width: 100%; height: 100%; object-fit: cover; }
+.cm-app .sp-imgcell .rm { position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(27,24,19,.55); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.cm-app .sp-imgcell .cover { position: absolute; top: 5px; left: 5px; font-size: 9px; font-weight: 700; background: var(--brand); color: #fff; border-radius: 6px; padding: 2px 5px; }
+.cm-app .sp-imgadd { aspect-ratio: 1; border-radius: 12px; border: 1.5px dashed var(--line); background: var(--surface-2); color: var(--ink-3); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; font-family: var(--font); font-size: 11px; font-weight: 600; }
+
+/* ---- Amenity tags ---- */
+.cm-app .sp-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.cm-app .sp-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); padding: 6px 7px 6px 12px; border-radius: 999px; }
+.cm-app .sp-tag button { width: 18px; height: 18px; border-radius: 50%; border: 0; background: var(--line); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.cm-app .sp-addrow { display: flex; gap: 8px; margin-bottom: 11px; }
+.cm-app .sp-addrow .sp-input { flex: 1; min-width: 0; height: 42px; font-weight: 500; font-size: 14px; }
+.cm-app .sp-addbtn { height: 42px; padding: 0 16px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: var(--font); font-weight: 700; font-size: 13.5px; cursor: pointer; flex-shrink: 0; }
+
+/* ---- Analytics ---- */
+.cm-app .sp-range { display: flex; gap: 7px; margin-bottom: 12px; }
+.cm-app .sp-range button { flex: 1; font-family: var(--font); font-size: 12.5px; font-weight: 700; padding: 9px 0; border-radius: 11px; cursor: pointer; background: var(--surface); color: var(--ink-3); border: 1px solid var(--line); }
+.cm-app .sp-range button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.cm-app .sp-scrolltabs { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; margin-bottom: 15px; padding-bottom: 2px; }
+.cm-app .sp-scrolltabs::-webkit-scrollbar { display: none; }
+.cm-app .sp-scrolltabs button { flex-shrink: 0; font-family: var(--font); font-size: 12.5px; font-weight: 700; padding: 8px 14px; border-radius: 999px; cursor: pointer; white-space: nowrap; background: var(--surface); color: var(--ink-3); border: 1px solid var(--line); }
+.cm-app .sp-scrolltabs button.on { background: var(--brand-50); color: var(--brand-600); border-color: var(--brand-100); }
+.cm-app .sp-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.cm-app .sp-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 13px; box-shadow: var(--sh-1); }
+.cm-app .sp-kpi .kic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; }
+.cm-app .sp-kpi .kn { font-family: var(--mono); font-size: 25px; font-weight: 700; letter-spacing: -1px; margin-top: 9px; line-height: 1; }
+.cm-app .sp-kpi .kl { font-size: 11px; font-weight: 600; color: var(--ink-3); margin-top: 6px; }
+.cm-app .sp-chartcard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; box-shadow: var(--sh-1); margin-bottom: 14px; }
+.cm-app .sp-chartcard .ct { font-size: 13px; font-weight: 700; letter-spacing: -.2px; margin-bottom: 11px; }
+.cm-app .sp-funnel { display: flex; flex-direction: column; gap: 9px; }
+.cm-app .sp-funnel-row { display: flex; align-items: center; gap: 9px; }
+.cm-app .sp-funnel-row .fl { width: 88px; flex-shrink: 0; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.cm-app .sp-funnel-row .ftrack { flex: 1; height: 27px; border-radius: 8px; background: var(--surface-2); position: relative; overflow: hidden; }
+.cm-app .sp-funnel-row .ffill { height: 100%; border-radius: 8px; }
+.cm-app .sp-funnel-row .fv { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink); }
+.cm-app .sp-bars { display: flex; flex-direction: column; gap: 13px; }
+.cm-app .sp-bar-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cm-app .sp-bar-h .rk { width: 20px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-3); }
+.cm-app .sp-bar-h .nm { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: -.2px; }
+.cm-app .sp-bar-h .sub { font-size: 11px; font-weight: 500; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cm-app .sp-bar-h .val { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.cm-app .sp-bartrack { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.cm-app .sp-bartrack .fill { height: 100%; border-radius: 999px; }
+
+/* ---- Bottom sheet ---- */
+.cm-app .sp-backdrop { position: absolute; inset: 0; background: rgba(27,24,19,.4); z-index: 50; animation: cmFade .18s ease; }
+@keyframes cmFade { from { opacity: 0; } to { opacity: 1; } }
+.cm-app .sp-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 51; background: var(--surface); border-radius: 26px 26px 0 0; box-shadow: 0 -10px 40px rgba(27,24,19,.2); max-height: 90%; display: flex; flex-direction: column; animation: cmSheet .24s cubic-bezier(.22,.61,.36,1) both; }
+@keyframes cmSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.cm-app .sp-sheet .grip { padding: 12px 0 4px; display: flex; justify-content: center; flex-shrink: 0; }
+.cm-app .sp-sheet .grip span { width: 38px; height: 5px; border-radius: 999px; background: var(--line); }
+.cm-app .sp-sheet-body { overflow-y: auto; scrollbar-width: none; padding: 6px 18px calc(20px + env(safe-area-inset-bottom)); }
+.cm-app .sp-sheet-body::-webkit-scrollbar { display: none; }
+.cm-app .sp-sheet-body h3 { margin: 6px 0 4px; font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+.cm-app .sp-sheet-body .desc { margin: 0 0 16px; font-size: 12.5px; color: var(--ink-3); font-weight: 500; line-height: 1.5; }
+.cm-app .sp-sheet .sl { display: block; font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 7px; }
+.cm-app .sp-sheet-btns { display: flex; gap: 10px; margin-top: 20px; }
+.cm-app .sp-sheet-btns button { height: 48px; border-radius: 13px; font-family: var(--font); font-weight: 700; font-size: 14.5px; cursor: pointer; }
+.cm-app .sp-sheet-btns .cancel { flex: 1; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); }
+.cm-app .sp-sheet-btns .ok { flex: 1.4; border: 0; background: var(--brand); color: #fff; }
+.cm-app .sp-sheet-btns .ok.danger { background: var(--red); }
+.cm-app .sp-pickitem { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 13px; padding: 12px 14px; cursor: pointer; font-family: var(--font); }
+.cm-app .sp-pickitem.sel { border-color: var(--brand); background: var(--brand-50); }
+.cm-app .sp-pickitem .nm { display: block; font-size: 14px; font-weight: 700; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-app .sp-pickitem .sub { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-3); margin-top: 2px; }
+.cm-app .sp-pickitem .tag { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); color: var(--brand); display: grid; place-items: center; flex-shrink: 0; font-family: var(--mono); font-weight: 700; font-size: 12px; }
+.cm-app .sp-picklist { display: flex; flex-direction: column; gap: 9px; }
+
+/* ---- Confirm sheet icon ---- */
+.cm-app .sp-confirm-ic { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; margin: 6px auto 14px; }
+.cm-app .sp-confirm-ic.danger { background: var(--redBg); color: var(--red); }
+.cm-app .sp-confirm-ic.warn { background: var(--soonBg); color: var(--soon); }
+.cm-app .sp-sheet-body h3.center { text-align: center; }
+.cm-app .sp-sheet-body .desc.center { text-align: center; max-width: 290px; margin-left: auto; margin-right: auto; }

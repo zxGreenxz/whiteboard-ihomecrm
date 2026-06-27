@@ -1,22 +1,26 @@
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, ChevronRight, Share2, SlidersHorizontal, Info,
+  ArrowLeft, ChevronRight, Plus, Share2, SlidersHorizontal, Info,
   Repeat, LayoutGrid, BarChart3, Monitor,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import '@/styles/mobileApp.css';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
 import { useMyAvailableRooms } from '@/hooks/useMyAvailableRooms';
+import { usePublicRoomTokens } from '@/hooks/usePublicRoomTokens';
+import { usePassListings } from '@/hooks/usePassListings';
 import PhongTrongPage from '@/pages/phong-trong/PhongTrongPage';
+import type { HeaderAction } from '@/components/sale-phong/mobile/types';
 
-// Tab quản trị (component desktop) — lazy để không phình chunk mobile.
-const ShareTokensTab = lazy(() => import('@/components/sale-phong/ShareTokensTab'));
-const DisplaySettingsTab = lazy(() => import('@/components/sale-phong/DisplaySettingsTab'));
-const SaleImagesTab = lazy(() => import('@/components/sale-phong/SaleImagesTab'));
-const PassListingsTab = lazy(() => import('@/components/sale-phong/PassListingsTab'));
-const AnalyticsTab = lazy(() => import('@/components/sale-phong/AnalyticsTab'));
+// Tab quản trị mobile (lazy để không phình chunk mobile mặc định).
+const MobileShareTokens = lazy(() => import('@/components/sale-phong/mobile/MobileShareTokens'));
+const MobileDisplaySettings = lazy(() => import('@/components/sale-phong/mobile/MobileDisplaySettings'));
+const MobileSaleInfo = lazy(() => import('@/components/sale-phong/mobile/MobileSaleInfo'));
+const MobilePassListings = lazy(() => import('@/components/sale-phong/mobile/MobilePassListings'));
+const MobileAnalytics = lazy(() => import('@/components/sale-phong/mobile/MobileAnalytics'));
 
 type TabKey = 'tokens' | 'settings' | 'images' | 'pass' | 'floorplan' | 'analytics';
 type Mode = 'browse' | 'admin';
@@ -25,35 +29,40 @@ interface TabDef {
   key: TabKey;
   label: string;
   desc: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   accent: string;
   action: ActionKey;
 }
 
 const TAB_DEFS: TabDef[] = [
-  { key: 'tokens', label: 'Link chia sẻ', desc: 'Tạo & quản lý link gửi khách', icon: Share2, accent: '#2563eb', action: 'manage_tokens' },
-  { key: 'settings', label: 'Cài đặt hiển thị', desc: 'Ngày "sắp trống", hotline', icon: SlidersHorizontal, accent: '#0891b2', action: 'manage_settings' },
-  { key: 'images', label: 'Thông tin sale', desc: 'Liên hệ toà, nội thất & ảnh phòng', icon: Info, accent: '#7c3aed', action: 'manage_images' },
-  { key: 'pass', label: 'Khách nhờ sale', desc: 'Phòng khách nhờ pass', icon: Repeat, accent: '#d97706', action: 'manage_pass_listings' },
-  { key: 'floorplan', label: 'Sơ đồ tòa nhà', desc: 'Bố trí tọa độ từng tầng', icon: LayoutGrid, accent: '#0d9488', action: 'edit_floor_plan' },
-  { key: 'analytics', label: 'Thống kê', desc: 'Lượt xem, tương tác', icon: BarChart3, accent: '#475569', action: 'view_analytics' },
+  { key: 'tokens', label: 'Link chia sẻ', desc: 'Tạo & quản lý link gửi khách', icon: Share2, accent: 'var(--acc-blue)', action: 'manage_tokens' },
+  { key: 'settings', label: 'Cài đặt hiển thị', desc: 'Ngày "sắp trống", hotline', icon: SlidersHorizontal, accent: 'var(--acc-cyan)', action: 'manage_settings' },
+  { key: 'images', label: 'Thông tin sale', desc: 'Liên hệ toà, nội thất & ảnh phòng', icon: Info, accent: 'var(--acc-violet)', action: 'manage_images' },
+  { key: 'pass', label: 'Khách nhờ sale', desc: 'Phòng khách nhờ pass', icon: Repeat, accent: 'var(--acc-amber)', action: 'manage_pass_listings' },
+  { key: 'floorplan', label: 'Sơ đồ tòa nhà', desc: 'Bố trí tọa độ từng tầng', icon: LayoutGrid, accent: 'var(--acc-teal)', action: 'edit_floor_plan' },
+  { key: 'analytics', label: 'Thống kê', desc: 'Lượt xem, tương tác', icon: BarChart3, accent: 'var(--acc-slate)', action: 'view_analytics' },
 ];
 
 /**
- * "Phòng trống" — màn hình app full-screen trên mobile (web-app), shell .cm-*.
- * Gồm 2 chế độ qua segmented control:
- *  - Phòng trống (mặc định): nhúng lại PhongTrongPage với data in-app
- *    (useMyAvailableRooms) — list/sơ đồ/chi tiết/tạo cọc như trang công khai.
- *  - Quản lý: danh sách tab quản trị Sale Phòng (gate theo quyền chi tiết),
- *    chạm 1 hàng → mở component tab đó full-screen (back về danh sách).
+ * "Phòng trống" — màn app full-screen mobile (web-app), shell .cm-*. Redesign theo
+ * handoff Claude Design "Quản lý phòng trống".
+ *  - Phòng trống (mặc định): nhúng PhongTrongPage với data in-app (useMyAvailableRooms).
+ *  - Quản lý: 6 hàng tab quản trị (gate quyền). Chạm 1 hàng → mở màn tab full-screen,
+ *    mỗi tab là component mobile-native riêng (bottom-sheet thay dialog desktop).
  */
 export default function SalePhongMobilePage() {
   const navigate = useNavigate();
   const { data: perms } = useMyPermissions();
   const { data: buildings, isLoading } = useMyAvailableRooms();
+  const { data: tokens } = usePublicRoomTokens();
+  const { data: passListings } = usePassListings();
 
   const [mode, setMode] = useState<Mode>('browse');
   const [openTab, setOpenTab] = useState<TabKey | null>(null);
+  const [headerAction, setHeaderAction] = useState<HeaderAction | null>(null);
+
+  // Reset header action khi đổi/đóng tab.
+  useEffect(() => { setHeaderAction(null); }, [openTab]);
 
   const adminTabs = useMemo(
     () => TAB_DEFS.filter((t) => canUse(perms, 'sale_phong', t.action)),
@@ -61,6 +70,14 @@ export default function SalePhongMobilePage() {
   );
 
   const activeTabDef = openTab ? TAB_DEFS.find((t) => t.key === openTab) : null;
+
+  const statFor = (key: TabKey): string | null => {
+    if (key === 'tokens' && tokens) return `${tokens.length} link`;
+    if (key === 'pass' && passListings) return `${passListings.length} phòng`;
+    return null;
+  };
+  const statColor = (key: TabKey) =>
+    key === 'tokens' ? 'rgba(37,99,235,.09)' : 'rgba(217,119,6,.1)';
 
   const goBack = () => {
     if (openTab) setOpenTab(null);
@@ -86,27 +103,30 @@ export default function SalePhongMobilePage() {
               <h1>{title}</h1>
               <p>{subtitle}</p>
             </div>
+            {openTab && headerAction && (
+              <div className="mtop-act">
+                <button className="mtop-btn solid" onClick={headerAction.onClick}>
+                  <Plus />{headerAction.label}
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Segmented control chỉ hiện ở cấp 1 (chưa mở tab quản trị). */}
+          {/* Segmented control chỉ ở cấp 1 */}
           {!openTab && (
             <div className="sp-seg">
-              <div className="lfilter">
-                <button className={'lchip' + (mode === 'browse' ? ' on' : '')} onClick={() => setMode('browse')}>
-                  Phòng trống
-                </button>
-                <button className={'lchip' + (mode === 'admin' ? ' on' : '')} onClick={() => setMode('admin')}>
-                  Quản lý
-                </button>
+              <div className="sp-pillseg">
+                <button className={mode === 'browse' ? 'on' : ''} onClick={() => setMode('browse')}>Phòng trống</button>
+                <button className={mode === 'admin' ? 'on' : ''} onClick={() => setMode('admin')}>Quản lý</button>
               </div>
             </div>
           )}
 
           {/* Nội dung */}
           {openTab ? (
-            <div className="mbody">
+            <div className="mbody" style={{ padding: 0 }}>
               <Suspense fallback={<div className="stub"><p>Đang tải…</p></div>}>
-                {renderTab(openTab)}
+                {renderTab(openTab, setHeaderAction)}
               </Suspense>
             </div>
           ) : mode === 'browse' ? (
@@ -128,18 +148,24 @@ export default function SalePhongMobilePage() {
                 </div>
               ) : (
                 <div className="rowlist">
-                  {adminTabs.map((t) => (
-                    <button key={t.key} className="sp-navrow" onClick={() => setOpenTab(t.key)}>
-                      <span className="ic" style={{ background: t.accent }}>
-                        <t.icon />
-                      </span>
-                      <span className="tx">
-                        <b>{t.label}</b>
-                        <span>{t.desc}</span>
-                      </span>
-                      <ChevronRight className="chev" />
-                    </button>
-                  ))}
+                  {adminTabs.map((t) => {
+                    const stat = statFor(t.key);
+                    return (
+                      <button key={t.key} className="sp-navrow" onClick={() => setOpenTab(t.key)}>
+                        <span className="ic" style={{ background: t.accent }}>
+                          <t.icon size={20} />
+                        </span>
+                        <span className="tx">
+                          <b>{t.label}</b>
+                          <span>{t.desc}</span>
+                          {stat && (
+                            <span className="statpill" style={{ background: statColor(t.key), color: t.accent }}>{stat}</span>
+                          )}
+                        </span>
+                        <ChevronRight className="chev" />
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -150,18 +176,18 @@ export default function SalePhongMobilePage() {
   );
 }
 
-function renderTab(key: TabKey) {
+function renderTab(key: TabKey, setHeaderAction: (a: HeaderAction | null) => void) {
   switch (key) {
     case 'tokens':
-      return <div className="sp-tabhost"><ShareTokensTab /></div>;
+      return <MobileShareTokens onHeaderAction={setHeaderAction} />;
     case 'settings':
-      return <div className="sp-tabhost"><DisplaySettingsTab /></div>;
+      return <MobileDisplaySettings />;
     case 'images':
-      return <div className="sp-tabhost"><SaleImagesTab /></div>;
+      return <MobileSaleInfo />;
     case 'pass':
-      return <div className="sp-tabhost"><PassListingsTab /></div>;
+      return <MobilePassListings onHeaderAction={setHeaderAction} />;
     case 'analytics':
-      return <div className="sp-tabhost scrollx"><AnalyticsTab /></div>;
+      return <MobileAnalytics />;
     case 'floorplan':
       return (
         <div className="stub">
