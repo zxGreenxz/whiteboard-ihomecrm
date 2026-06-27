@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { DollarSign, LayoutGrid } from "lucide-react";
+import { usePhoneViewport } from "@/hooks/use-mobile";
+import ProfitDistributionMobile from "./ProfitDistributionMobile";
 import {
   useIncomeExpenses,
   useIncomeExpenseStats,
@@ -187,7 +189,14 @@ const StatCard = ({
   </div>
 );
 
-export default function ProfitDistributionReport() {
+// Bản nội dung (không MainLayout) — render trong tab "Phân bổ lợi nhuận" của ProfitHubPage.
+// Rẽ nhánh desktop ↔ mobile bằng usePhoneViewport (khởi tạo đồng bộ → không nháy bảng).
+export default function ProfitDistributionContent() {
+  const phone = usePhoneViewport();
+  return phone ? <ProfitDistributionMobile /> : <ProfitDistributionDesktop />;
+}
+
+function ProfitDistributionDesktop() {
   const now = new Date();
   const [monthStr, setMonthStr] = useState<string>(format(now, "MM-yyyy"));
   // Lọc nhiều toà (nhóm theo khu vực trong BuildingMultiSelect). [] = tất cả.
