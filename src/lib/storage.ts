@@ -1,5 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { createSignedUrlBatched } from "./signedUrlBatcher";
+import { compressImage } from "./imageCompress";
+import { isR2Bucket, isR2PublicBucket, parseR2Ref } from "./storage/r2Config";
+import { uploadToR2, signR2 } from "./storage/r2Client";
 
 export { sanitizeStorageFileName } from "./storageKey";
 
@@ -15,10 +18,23 @@ export async function uploadFile(
   path: string,
   file: File
 ): Promise<string> {
+  // Nén ảnh trước khi upload (giảm kho + băng thông egress). Nếu nén ra WebP thì
+  // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key.
+  const toUpload = await compressImage(file);
+  let key = path;
+  if (toUpload !== file && toUpload.type === "image/webp") {
+    key = path.replace(/\.[^./]+$/, "") + ".webp";
+  }
+
+  // Bucket đã chuyển sang R2 → upload qua Worker (egress $0). Còn lại: Supabase.
+  if (isR2Bucket(bucket)) {
+    return uploadToR2(bucket, key, toUpload);
+  }
+
   const { data, error } = await supabase.storage
     .from(bucket)
-    .upload(path, file, {
-      cacheControl: "3600",
+    .upload(key, toUpload, {
+      cacheControl: "31536000", // 1 năm — file đặt tên theo timestamp, không đổi
       upsert: false,
     });
 
@@ -55,12 +71,23 @@ export const SIGNED_URL_TTL = 3600; // 1 giờ
  * Nhận diện URL Supabase Storage dạng /object/public|sign|authenticated/<bucket>/<path>.
  * Trả về null cho blob:/data:/URL ngoài → caller dùng nguyên giá trị.
  */
-export function parseStorageRef(value: string): { bucket: string; path: string } | null {
-  if (!value || typeof value !== 'string') return null;
-  if (value.startsWith('blob:') || value.startsWith('data:')) return null;
+function parseSupabaseRef(value: string): { bucket: string; path: string } | null {
   const m = value.match(/\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+?)(?:\?|$)/);
   if (!m) return null;
   return { bucket: m[1], path: decodeURIComponent(m[2]) };
+}
+
+/**
+ * Tách { bucket, path } để quyết định "có phải file Storage cần ký không".
+ * Trả null cho blob:/data:/URL ngoài VÀ URL R2 CÔNG KHAI (đọc thẳng, không ký).
+ * Trả { bucket, path } cho URL Supabase, hoặc URL R2 RIÊNG TƯ (ký qua Worker).
+ */
+export function parseStorageRef(value: string): { bucket: string; path: string } | null {
+  if (!value || typeof value !== 'string') return null;
+  if (value.startsWith('blob:') || value.startsWith('data:')) return null;
+  const r2 = parseR2Ref(value);
+  if (r2) return isR2PublicBucket(r2.bucket) ? null : r2; // public R2 → dùng nguyên giá trị
+  return parseSupabaseRef(value);
 }
 
 /**
@@ -71,7 +98,15 @@ export async function createSignedUrlFromStored(
   value: string,
   expiresIn: number = SIGNED_URL_TTL
 ): Promise<string> {
-  const ref = parseStorageRef(value);
+  // R2: công khai → dùng thẳng (custom domain có cache); riêng tư → presigned GET
+  // qua Worker (Phase 2). Egress $0 ở cả hai.
+  const r2 = parseR2Ref(value);
+  if (r2) {
+    if (isR2PublicBucket(r2.bucket)) return value;
+    const signed = await signR2(r2.bucket, r2.path, expiresIn);
+    return signed ?? value;
+  }
+  const ref = parseSupabaseRef(value);
   if (!ref) return value;
   // Ký theo BATCH: các yêu cầu trong cùng tick gom thành 1 request / bucket
   // (trang nhiều ảnh từng bắn 20-50 POST /object/sign riêng lẻ).

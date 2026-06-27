@@ -1,0 +1,25 @@
+# Cloudflare Worker: cổng lưu trữ R2 (upload + sign) cho ihomecrm.
+# Đọc CÔNG KHAI đi thẳng qua custom domain của bucket (img.chillhome.io.vn) — KHÔNG
+# qua Worker. Worker chỉ xử lý PUT /upload (kiểm JWT Supabase) và GET /sign (Phase 2).
+name = "ihome-storage"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+workers_dev = false
+
+# Cổng public của Worker: storage.<domain> (tự tạo DNS + route khi deploy).
+routes = [
+  { pattern = "storage.chillhome.io.vn", custom_domain = true },
+]
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "ihome-files"
+
+[vars]
+SUPABASE_URL = "https://tryymsxyyckgbrmmvozx.supabase.co"
+# Anon key là KHÓA CÔNG KHAI (đã có trong .env client) — dùng làm apikey khi gọi
+# /auth/v1/user để xác thực token người dùng. KHÔNG phải secret.
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyeXltc3h5eWNrZ2JybW12b3p4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0NDUzMzksImV4cCI6MjA3OTAyMTMzOX0.peeRgXEjf6Ap5qE9WmiE_SkKGWMAu5YiRbb-TJIjp7g"
+R2_PUBLIC_BASE = "https://img.chillhome.io.vn"
+ALLOWED_ORIGINS = "https://ptcrm.vercel.app,http://localhost:5173,http://localhost:8080,http://localhost:3000"
+# Secret (đặt qua `wrangler secret put SIGN_SECRET`): dùng cho presigned GET Phase 2.
