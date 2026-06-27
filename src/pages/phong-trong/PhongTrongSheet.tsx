@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import { Icon, amenIcon } from "./icons";
 import { STATUS_META, fmtPrice, MANAGER, genInfoLines, type Room, type Building } from "./sampleData";
 import { useTrack } from "./useTracking";
+import { corsFetchUrl } from "@/lib/storage/r2Config";
 
 const SM = STATUS_META;
 const stColor = (s: string) => `var(--st-${s})`;
@@ -123,7 +124,8 @@ function roomImages(r: Room): string[] {
 // allSettled: 1 ảnh lỗi không làm hỏng cả batch.
 async function fetchImageFiles(r: Room): Promise<File[]> {
   const results = await Promise.allSettled(roomImages(r).map(async (src, i) => {
-    const res = await fetch(src);
+    // Ảnh R2 công khai: fetch qua Worker /file (có CORS) để tải/chia sẻ được.
+    const res = await fetch(corsFetchUrl(src));
     const blob = await res.blob();
     const ext = (blob.type.split("/")[1] || "jpg").split("+")[0];
     const name = `${r.buildingName}-${r.code}-${String(i + 1).padStart(2, "0")}.${ext}`;

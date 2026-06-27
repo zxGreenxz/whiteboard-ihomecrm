@@ -49,6 +49,17 @@ export function r2PublicUrl(bucket: string, path: string): string {
 }
 
 /**
+ * URL để FETCH ảnh R2 công khai có CORS (qua Worker `/file`) — dùng cho tải/chia sẻ
+ * ảnh (fetch→blob). Hiển thị <img> KHÔNG cần cái này (dùng URL img trực tiếp, cache
+ * edge); chỉ fetch cross-origin mới cần CORS. URL không phải R2 → trả nguyên.
+ */
+export function corsFetchUrl(value: string): string {
+  const ref = parseR2Ref(value);
+  if (!ref || !STORAGE_GATEWAY) return value;
+  return `${STORAGE_GATEWAY}/file?key=${encodeURIComponent(`${ref.bucket}/${ref.path}`)}`;
+}
+
+/**
  * Tách { bucket, path } từ một URL R2 đã lưu (khớp R2_PUBLIC_BASE). Trả null nếu
  * không phải URL R2. Dùng để nhận diện giá trị đã migrate sang R2.
  */

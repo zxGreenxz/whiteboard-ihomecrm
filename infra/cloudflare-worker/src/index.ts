@@ -90,6 +90,25 @@ export default {
         return json({ ok: true, url: `${env.R2_PUBLIC_BASE}/${key}` }, 200, headers);
       }
 
+      // Phục vụ ảnh CÔNG KHAI kèm CORS (cho fetch tải/chia sẻ của sale). Hiển thị
+      // <img> vẫn dùng img.<domain> trực tiếp (cache edge, không tốn Worker); endpoint
+      // này chỉ dùng khi cần fetch cross-origin (CORS). Chỉ cho bucket công khai.
+      if (url.pathname === '/file' && req.method === 'GET') {
+        const key = safeKey(url.searchParams.get('key'));
+        if (!key) return json({ error: 'invalid key' }, 400, headers);
+        if (!key.startsWith('room-sale-images/')) return json({ error: 'forbidden' }, 403, headers);
+        const obj = await env.FILES.get(key);
+        if (!obj) return json({ error: 'not found' }, 404, headers);
+        return new Response(obj.body, {
+          status: 200,
+          headers: {
+            'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
       if (url.pathname === '/sign' && req.method === 'GET') {
         if (!(await verifyUser(env, req))) return json({ error: 'unauthorized' }, 401, headers);
         // Phase 2: cấp presigned GET (HMAC ký URL /file?key&exp&sig do Worker tự stream R2).
