@@ -414,28 +414,25 @@ export default function ProfitDistributionReport() {
     const anyIncomeRooms = new Set<string>();
     for (const r of inc) if (r.roomId) anyIncomeRooms.add(r.roomId);
 
-    // Lên đầu + nền VÀNG CAM:
-    //  (1) khoản thu THANH LÝ / BỎ CỌC — luôn nổi, kể cả phòng đã cho thuê lại
-    //      (doanh thu thanh lý là khoản đáng chú ý, không phụ thuộc HĐ còn/hết);
-    //  (2) dòng ghi chú "Trống phòng" cho phòng bị gắn cờ mà KHÔNG có khoản thu nào.
-    // Khoản thu THƯỜNG (tiền nhà) giữ nguyên khối dưới — "có hoá đơn ⇒ không trống".
-    const red: DisplayRow[] = [];
-    const normal: DisplayRow[] = [];
-    for (const r of inc) {
-      if (isLiquidationRow(r)) {
-        const note = r.roomId ? vacantNotes.get(r.roomId) : undefined;
-        red.push({ ...r, isVacant: true, vacantReason: note?.reason });
-      } else {
-        normal.push(r);
-      }
-    }
+    // KHÔNG dồn dòng nào lên đầu nữa — xếp ĐỀU mọi dòng theo thứ tự phòng
+    // (MB → G → L → 0 → 1 → 2 …). Vẫn GIỮ màu nền: khoản thanh lý/bỏ cọc vàng cam,
+    // ghi chú phòng trống vàng cam, thiếu hoá đơn đỏ.
+    const all: DisplayRow[] = inc.map((r) =>
+      isLiquidationRow(r)
+        ? {
+            ...r,
+            isVacant: true,
+            vacantReason: r.roomId ? vacantNotes.get(r.roomId)?.reason : undefined,
+          }
+        : r
+    );
     // Phòng gắn cờ KHÔNG có khoản thu nào trong tháng → dòng ghi chú thuần:
     //  - còn HĐ (kind 'active') → CẢNH BÁO đỏ "Chưa có hoá đơn".
     //  - trống thật (kind 'vacant') → ghi chú vàng cam "Trống phòng — <lý do>".
     for (const note of vacantNotes.values()) {
       if (anyIncomeRooms.has(note.roomId)) continue;
       if (note.kind === "active") {
-        red.push({
+        all.push({
           key: `missing-${note.roomId}`,
           monthLabel,
           description: "⚠️ Chưa có hoá đơn tháng này (còn hợp đồng)",
@@ -451,7 +448,7 @@ export default function ProfitDistributionReport() {
           isNote: true,
         });
       } else {
-        red.push({
+        all.push({
           key: `vacant-${note.roomId}`,
           monthLabel,
           description:
@@ -472,9 +469,8 @@ export default function ProfitDistributionReport() {
         });
       }
     }
-    red.sort(sorter);
-    normal.sort(sorter);
-    return { incomeRows: [...red, ...normal], expenseRows: exp };
+    all.sort(sorter);
+    return { incomeRows: all, expenseRows: exp };
   }, [accrualMode, accrual, result, monthLabel, vacantNotes]);
 
   // Lọc bỏ dòng thuộc hạng mục đặc biệt khi bật toggle (chỉ ẩn dòng — số tổng
@@ -528,10 +524,11 @@ export default function ProfitDistributionReport() {
 
   // Rút gọn tên dòng THU dài dòng (đã lọc theo 1 tháng nên không cần lặp lại tháng):
   //  - Khoản thanh lý hợp đồng → "HĐ Thanh Lý Hợp Đồng".
-  //  - Phiếu thu tiền phòng theo HĐ → "Tiền Phòng T{tháng đang lọc}".
+  //  - Phiếu thu tiền phòng theo HĐ → "Hóa Đơn Tiền Phòng T{tháng đang lọc}".
   const displayDescription = (r: DisplayRow): string => {
     if (nrm(`${r.typeName} ${r.description}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
-    if (nrm(r.description).includes("thu tien theo hd tien phong")) return `Tiền Phòng T${mm || 1}`;
+    if (nrm(r.description).includes("thu tien theo hd tien phong"))
+      return `Hóa Đơn Tiền Phòng T${mm || 1}`;
     return r.description;
   };
 
@@ -541,8 +538,6 @@ export default function ProfitDistributionReport() {
     const all = [...incomeRows, ...expenseRows];
     const m = {} as Record<ColKey, boolean>;
     for (const c of TOGGLE_COLUMNS) m[c.key] = !allSame(all, COL_VALUE[c.key]);
-    // "Phân loại" mặc định LUÔN ẩn (bật lại qua nút "Cột" nếu cần).
-    m.phan_loai = false;
     // Lọc theo 1 toà cụ thể (kèm kỳ tháng cố định) → ẩn cột "Kỳ" mặc định cho gọn.
     if (buildingIds.length > 0) m.ky = false;
     return m;
@@ -597,7 +592,7 @@ export default function ProfitDistributionReport() {
               {visible("thang") && <TableHead className="whitespace-nowrap">Tháng</TableHead>}
               <TableHead>Mô tả</TableHead>
               {visible("toa_nha") && <TableHead>Tòa nhà</TableHead>}
-              {visible("phong") && <TableHead>Phòng</TableHead>}
+              {visible("phong") && <TableHead className="font-semibold">Phòng</TableHead>}
               {visible("ky") && <TableHead className="whitespace-nowrap">Kỳ</TableHead>}
               {visible("phan_loai") && <TableHead>Phân loại</TableHead>}
               <TableHead className="text-right whitespace-nowrap">{amountLabel}</TableHead>
@@ -707,7 +702,9 @@ export default function ProfitDistributionReport() {
                       )}
                     </TableCell>
                     {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
-                    {visible("phong") && <TableCell>{r.roomName || "—"}</TableCell>}
+                    {visible("phong") && (
+                      <TableCell className="font-semibold">{r.roomName || "—"}</TableCell>
+                    )}
                     {visible("ky") && (
                       <TableCell className="whitespace-nowrap">{r.periodLabel}</TableCell>
                     )}
