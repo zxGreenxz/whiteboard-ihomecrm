@@ -14,6 +14,10 @@ export const jobTypeFormSchema = z.object({
   completion_deadline: z.number().int().min(0).default(0),
   business_hours_only: z.boolean().default(false),
   default_department_id: z.string().min(1, 'Vui lòng chọn bộ phận thực hiện'),
+  // Bảng lương: thưởng theo loại việc
+  bonus_amount: z.number().int().min(0).default(0),
+  is_repair: z.boolean().default(false),
+  counts_for_salary: z.boolean().default(true),
 });
 
 export type JobTypeFormValues = z.infer<typeof jobTypeFormSchema>;

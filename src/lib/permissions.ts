@@ -69,6 +69,7 @@ export type ActionKey =
   | "unlock"
   | "distribute"
   | "manage_shareholders"
+  | "manage_salary"
   // Tài sản
   | "move"
   | "maintain"
@@ -190,6 +191,12 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         core: ["view"],
         extra: ["lock", "unlock", "distribute", "manage_shareholders", "export"],
       },
+      {
+        key: "salary",
+        label: "Bảng lương quản lý",
+        core: ["view"],
+        extra: ["lock", "unlock", "distribute", "manage_salary", "export"],
+      },
       { key: "personal_finance", label: "Ví thu chi cá nhân" },
     ],
   },
@@ -293,6 +300,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   unlock:         "Mở khoá",
   distribute:     "Chi lợi nhuận",
   manage_shareholders: "Quản lý cổ đông",
+  manage_salary:  "Cấu hình lương",
   move:           "Di chuyển",
   maintain:       "Bảo trì",
   complete:       "Hoàn thành",

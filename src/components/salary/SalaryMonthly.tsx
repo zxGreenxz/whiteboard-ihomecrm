@@ -1,0 +1,353 @@
+// Tab 1 — Bảng lương tháng. Port từ kit SalaryMonthly.jsx, nối callback thật.
+import React, { useState } from "react";
+import { SAL_ICONS } from "./salaryIcons";
+import { salFmt, salShort } from "./salaryFormat";
+import { ClickNum, Popover, Menu, Modal } from "./salaryCommon";
+import { BonusPop, InvestmentPop, CommissionPop, AdvancePop } from "./salaryPopovers";
+import { SalChartModal } from "./salaryChart";
+import type { SalManager, SalAdjustment } from "@/lib/managerSalary";
+
+const I = SAL_ICONS;
+const today = () => new Date().toISOString().slice(0, 10);
+const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
+
+export interface SalaryAccount { id: string; name: string; }
+
+export interface SalAdjustPayload { id?: string; kind: "BONUS" | "DEDUCTION"; label: string; amount: number; note?: string | null; }
+
+interface MonthlyProps {
+  managers: SalManager[];
+  period: { label: string; year: number };
+  locked: boolean;
+  accounts: SalaryAccount[];
+  canLock: boolean;
+  canPay: boolean;
+  onSaveAdjustment: (staffId: string, payload: SalAdjustPayload) => void;
+  onRemoveAdjustment: (adjId: string) => void;
+  onPayout: (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) => void;
+  onBulkPayout: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
+  onLock: () => void;
+  onUnlock: () => void;
+  onOpenLedger: (f: { who: string }) => void;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onRecompute: () => void;
+}
+
+// ---- Dialogs ----
+function AdjustDialog({ m, edit, onClose, onSave }: { m: SalManager; edit?: SalAdjustment | null; onClose: () => void; onSave: (p: SalAdjustPayload) => void }) {
+  const [kind, setKind] = useState<"Thưởng" | "Trừ">(edit ? (edit.amount < 0 ? "Trừ" : "Thưởng") : "Thưởng");
+  const [label, setLabel] = useState(edit ? edit.label : "");
+  const [amount, setAmount] = useState(edit ? String(Math.abs(edit.amount)) : "");
+  const [note, setNote] = useState(edit?.note || "");
+  const numVal = parseNum(amount);
+  const save = () => {
+    if (!label.trim() || !numVal) return;
+    onSave({ id: edit?.id, kind: kind === "Trừ" ? "DEDUCTION" : "BONUS", label: label.trim(), amount: numVal, note: note.trim() || null });
+    onClose();
+  };
+  return (
+    <Modal onClose={onClose}>
+      <div className="sal-modal-head">
+        <span className="mic" style={{ background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" }}><I.Gift size={19} /></span>
+        <div><h3>{edit ? "Sửa khoản thưởng / trừ" : "Thêm thưởng / trừ"}</h3><p>{m.name}</p></div>
+        <button className="x" onClick={onClose}><I.X size={18} /></button>
+      </div>
+      <div className="sal-modal-body">
+        <div className="sal-field"><label>Loại</label>
+          <div className="sal-segment">
+            <button className="pos" data-active={kind === "Thưởng"} onClick={() => setKind("Thưởng")}><I.Plus size={15} />Thưởng</button>
+            <button className="neg" data-active={kind === "Trừ"} onClick={() => setKind("Trừ")}><I.Minus size={15} />Trừ</button>
+          </div>
+        </div>
+        <div className="sal-field"><label>Nội dung</label>
+          <input className="sal-input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Bonus QL, fighting, hỗ trợ xăng…" autoFocus /></div>
+        <div className="sal-field"><label>Số tiền</label>
+          <input className="sal-input mono" value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" inputMode="numeric" /></div>
+        <div className="sal-field"><label>Ghi chú</label>
+          <textarea className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tuỳ chọn…" /></div>
+      </div>
+      <div className="sal-modal-foot">
+        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
+        <button className="sal-btn sal-btn--primary" onClick={save} disabled={!label.trim() || !numVal}>Lưu</button>
+      </div>
+    </Modal>
+  );
+}
+
+function PayoutDialog({ m, accounts, period, onClose, onSave }: {
+  m: SalManager; accounts: SalaryAccount[]; period: { label: string; year: number };
+  onClose: () => void; onSave: (amount: number, accountId: string, voucherDate: string, note: string) => void;
+}) {
+  const remain = (m.calc?.takehome ?? 0) - m.paid;
+  const [amount, setAmount] = useState(String(Math.max(remain, 0)));
+  const [acc, setAcc] = useState(accounts[0]?.id || "");
+  const [date, setDate] = useState(today());
+  const [note, setNote] = useState("Lương " + period.label + "/" + period.year);
+  const numVal = parseNum(amount);
+  return (
+    <Modal onClose={onClose}>
+      <div className="sal-modal-head">
+        <span className="mic" style={{ background: "hsl(var(--primary) / .12)", color: "hsl(var(--primary))" }}><I.Wallet size={19} /></span>
+        <div><h3>Trả lương</h3><p>{m.name} · còn nhận {salFmt(remain)}</p></div>
+        <button className="x" onClick={onClose}><I.X size={18} /></button>
+      </div>
+      <div className="sal-modal-body">
+        <div className="sal-field"><label>Số tiền</label>
+          <input className="sal-input mono" value={numVal ? numVal.toLocaleString("vi-VN") : amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" /></div>
+        <div className="sal-field"><label>Chi từ sổ quỹ</label>
+          <select className="sal-select" style={{ height: 40 }} value={acc} onChange={(e) => setAcc(e.target.value)}>
+            {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select></div>
+        <div className="sal-field"><label>Ngày chi</label>
+          <input type="date" className="sal-input mono" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+        <div className="sal-field"><label>Ghi chú</label>
+          <textarea className="sal-input" value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        <div className="sal-helprow"><I.Info size={15} />Tạo phiếu chi trong sổ thu chi — không tính KQKD.</div>
+      </div>
+      <div className="sal-modal-foot">
+        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
+        <button className="sal-btn sal-btn--primary" onClick={() => { onSave(numVal, acc, date, note); onClose(); }} disabled={!numVal || !acc}><I.Check size={16} />Ghi phiếu chi</button>
+      </div>
+    </Modal>
+  );
+}
+
+function BulkPayoutDialog({ managers, accounts, period, onClose, onSave }: {
+  managers: SalManager[]; accounts: SalaryAccount[]; period: { label: string; year: number };
+  onClose: () => void; onSave: (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) => void;
+}) {
+  const rows = managers.map((m) => ({ m, remain: (m.calc?.takehome ?? 0) - m.paid })).filter((r) => r.remain > 0);
+  const total = rows.reduce((s, r) => s + r.remain, 0);
+  const [acc, setAcc] = useState(accounts[0]?.id || "");
+  return (
+    <Modal onClose={onClose} wide>
+      <div className="sal-modal-head">
+        <span className="mic" style={{ background: "hsl(var(--primary) / .12)", color: "hsl(var(--primary))" }}><I.Wallet size={19} /></span>
+        <div><h3>Trả lương hàng loạt</h3><p>{rows.length} quản lý · {period.label}/{period.year}</p></div>
+        <button className="x" onClick={onClose}><I.X size={18} /></button>
+      </div>
+      <div className="sal-modal-body">
+        {rows.length === 0 ? <p style={{ color: "hsl(var(--muted-foreground))" }}>Tất cả đã được trả đủ.</p> : rows.map((r) => (
+          <div key={r.m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid hsl(var(--border) / .6)" }}>
+            <span className="sal-ava" style={{ width: 32, height: 32, fontSize: 13, background: `hsl(var(--${r.m.tone === "primary" ? "primary" : "status-info"}))` }}>{r.m.initials}</span>
+            <span style={{ flex: 1, fontWeight: 600, fontSize: 13.5 }}>{r.m.name}</span>
+            <span className="sal-num" style={{ fontWeight: 700 }}>{salFmt(r.remain)}</span>
+          </div>
+        ))}
+        <div className="sal-field" style={{ marginTop: 6 }}><label>Chi từ sổ quỹ</label>
+          <select className="sal-select" style={{ height: 40 }} value={acc} onChange={(e) => setAcc(e.target.value)}>
+            {accounts.length === 0 ? <option value="">— Chưa có sổ quỹ —</option> : accounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+      </div>
+      <div className="sal-modal-foot" style={{ alignItems: "center" }}>
+        <div style={{ marginRight: "auto", fontSize: 13 }}>Tổng chi <b className="sal-num" style={{ color: "hsl(var(--primary))", fontSize: 16 }}>{salFmt(total)}</b></div>
+        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
+        <button className="sal-btn sal-btn--primary" onClick={() => { onSave(rows.map((r) => ({ staffId: r.m.id, staffName: r.m.name, amount: r.remain })), acc); onClose(); }} disabled={!rows.length || !acc}><I.Check size={16} />Ghi {rows.length} phiếu chi</button>
+      </div>
+    </Modal>
+  );
+}
+
+function LockDialog({ locked, period, onClose, onConfirm }: { locked: boolean; period: { label: string; year: number }; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <Modal onClose={onClose}>
+      <div className="sal-modal-head">
+        <span className="mic" style={locked ? { background: "hsl(var(--status-warning-bg))", color: "hsl(var(--status-warning-fg))" } : { background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" }}>
+          {locked ? <I.Unlock size={19} /> : <I.Lock size={19} />}</span>
+        <div><h3>{locked ? "Mở khoá tháng?" : "Chốt tháng?"}</h3><p>{period.label}/{period.year}</p></div>
+        <button className="x" onClick={onClose}><I.X size={18} /></button>
+      </div>
+      <div className="sal-modal-body">
+        <p style={{ fontSize: 13.5, lineHeight: 1.55, color: "hsl(var(--muted-foreground))" }}>
+          {locked
+            ? "Mở khoá cho phép sửa lại số liệu. Mọi thay đổi việc/HĐ cũ sẽ lại ảnh hưởng tháng này. Nếu đã có phiếu trả lương, hãy kiểm tra lại."
+            : "Hệ thống tính lần cuối và đóng băng toàn bộ bảng lương + bảng kê (snapshot). Sau khi chốt, sửa hay đóng việc cũ sẽ không còn ảnh hưởng tháng này."}
+        </p>
+      </div>
+      <div className="sal-modal-foot">
+        <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
+        <button className={"sal-btn " + (locked ? "sal-btn--outline" : "sal-btn--primary")} onClick={() => { onConfirm(); onClose(); }}>
+          {locked ? <><I.Unlock size={16} />Mở khoá</> : <><I.Lock size={16} />Chốt tháng</>}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+export default function SalaryMonthly(props: MonthlyProps) {
+  const { managers, period, locked, accounts, canLock, canPay,
+    onSaveAdjustment, onRemoveAdjustment, onPayout, onBulkPayout, onLock, onUnlock, onOpenLedger,
+    onPrevMonth, onNextMonth, onRecompute } = props;
+  const periodText = `${period.label}/${period.year}`;
+  const [pop, setPop] = useState<{ type: string; m: SalManager; rect: DOMRect } | null>(null);
+  const [menu, setMenu] = useState<{ m: SalManager; rect: DOMRect } | null>(null);
+  const [dialog, setDialog] = useState<{ type: string; m: SalManager; edit?: SalAdjustment | null } | null>(null);
+  const [exporting, setExporting] = useState<{ rect: DOMRect } | null>(null);
+  const [recomputing, setRecomputing] = useState(false);
+  const [showLock, setShowLock] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+  const [chartModal, setChartModal] = useState(false);
+
+  const openPop = (type: string, m: SalManager, e: React.MouseEvent) => setPop({ type, m, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() });
+  const totals = managers.reduce((t, m) => {
+    const c = m.calc!;
+    t.base += m.base; t.bonus += c.bonus; t.inv += m.investment; t.com += m.commission;
+    t.gross += c.gross; t.adv += m.advance; t.room += m.roomRent; t.take += c.takehome; return t;
+  }, { base: 0, bonus: 0, inv: 0, com: 0, gross: 0, adv: 0, room: 0, take: 0 });
+
+  return (
+    <div className="sal-card">
+      {/* Toolbar */}
+      <div className="sal-toolbar">
+        <div className="sal-monthnav">
+          <button className="sal-monthbtn" onClick={onPrevMonth}><I.ChevronLeft size={17} /></button>
+          <span className="sal-monthlabel">{period.label} · {period.year}</span>
+          <button className="sal-monthbtn" onClick={onNextMonth}><I.ChevronRight size={17} /></button>
+        </div>
+        <button className="sal-btn sal-btn--outline sal-btn--sm" title="Xem biểu đồ lương các tháng" onClick={() => setChartModal(true)}><I.BarChart size={16} />Biểu đồ</button>
+        {locked ? (
+          <span className="sal-status sal-status--locked"><I.Lock size={14} /> ĐÃ CHỐT {period.year && <small></small>}</span>
+        ) : (
+          <span className="sal-status sal-status--draft"><span className="dot" /> NHÁP <small>· cập nhật realtime</small></span>
+        )}
+        <div className="sal-toolbar-actions">
+          {!locked && <button className="sal-btn sal-btn--outline sal-btn--sm" onClick={() => { setRecomputing(true); onRecompute(); setTimeout(() => setRecomputing(false), 950); }}>
+            <I.RefreshCw size={15} style={recomputing ? { animation: "salSpin .95s linear" } : undefined} />Tính lại</button>}
+          {canPay && <button className="sal-btn sal-btn--outline sal-btn--sm" onClick={() => setShowBulk(true)}><I.Wallet size={15} />Trả lương hàng loạt</button>}
+          {canLock && (locked
+            ? <button className="sal-btn sal-btn--outline sal-btn--sm" onClick={() => setShowLock(true)}><I.Unlock size={15} />Mở khoá</button>
+            : <button className="sal-btn sal-btn--primary sal-btn--sm" onClick={() => setShowLock(true)}><I.Lock size={15} />Chốt tháng</button>)}
+          <button className="sal-btn sal-btn--outline sal-btn--sm sal-btn--icon" onClick={(e) => setExporting({ rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.Download size={15} /></button>
+        </div>
+      </div>
+
+      {/* Sheet */}
+      <div className="sal-tablewrap">
+        <table className="sal-sheet">
+          <thead>
+            <tr>
+              <th className="l">Họ và tên</th>
+              <th className="c">Ngày công</th>
+              <th>Lương tháng</th>
+              <th>Thưởng</th>
+              <th>Lợi nhuận ĐT</th>
+              <th>HH Sale</th>
+              <th>Tổng lương</th>
+              <th>Ứng lương</th>
+              <th>Tiền phòng</th>
+              <th>Thực nhận</th>
+              <th className="c">Trạng thái</th>
+              <th className="c"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {managers.map((m) => {
+              const c = m.calc!;
+              const pct = m.incomeGoal ? Math.round((c.gross / m.incomeGoal) * 100) : 0;
+              const paidState = m.paid >= c.takehome && c.takehome > 0;
+              const rowLocked = m.status === "LOCKED";
+              return (
+                <tr key={m.id}>
+                  <td className="l">
+                    <div className="sal-namecell">
+                      <span className="sal-ava" style={{ background: m.tone === "primary" ? "hsl(var(--primary))" : "hsl(var(--status-info))" }}>{m.initials}</span>
+                      <div className="sal-nameinfo">
+                        <span className="nm">{m.short}{m.alias ? <span className="sal-alias">{m.alias}</span> : null}</span>
+                        <span className="rl">{m.role}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="c"><span className="sal-num" style={{ fontWeight: 600 }}>{m.workdays}</span></td>
+                  <td><span className="sal-num">{salFmt(m.base)}</span></td>
+                  <td>
+                    <ClickNum value={c.bonus} onClick={(e) => openPop("bonus", m, e)} />
+                    {!rowLocked && <div><button className="sal-addbonus" onClick={() => setDialog({ type: "adjust", m })}><I.Plus size={11} />Thưởng</button></div>}
+                  </td>
+                  <td>{m.investmentLocked
+                    ? <ClickNum value={m.investment} onClick={(e) => openPop("investment", m, e)} />
+                    : <button className="sal-link is-pending" onClick={(e) => openPop("investment", m, e)}><I.Hourglass size={13} />Chờ chốt</button>}</td>
+                  <td>{m.commission > 0
+                    ? <ClickNum value={m.commission} onClick={(e) => openPop("commission", m, e)} />
+                    : <button className="sal-link sal-zero" onClick={(e) => openPop("commission", m, e)}>{salFmt(0)}<I.Info className="i" size={13} /></button>}</td>
+                  <td><span className="sal-num" style={{ fontWeight: 700 }}>{salFmt(c.gross)}</span></td>
+                  <td>{m.advance > 0
+                    ? <ClickNum value={m.advance} onClick={(e) => openPop("advance", m, e)} neg prefix="−" />
+                    : <span className="sal-num sal-zero">0₫</span>}</td>
+                  <td>{m.roomRent > 0
+                    ? <span className="sal-num sal-neg">−{salFmt(m.roomRent)}</span>
+                    : <span className="sal-num sal-zero">0₫</span>}</td>
+                  <td>
+                    <div className="sal-rowgoal">
+                      <span className="sal-takehome">{salFmt(c.takehome)}</span>
+                      {m.incomeGoal > 0 && <>
+                        <span className={"sal-rowbar" + (pct >= 100 ? " over" : "")}><span style={{ width: Math.min(pct, 100) + "%" }} /></span>
+                        <span className="sal-rowgoalcap">{pct >= 100 ? "Vượt mục tiêu " : "Đạt "}{pct}% · mục tiêu {salShort(m.incomeGoal)}</span>
+                      </>}
+                    </div>
+                  </td>
+                  <td className="c">
+                    {paidState ? <span className="sal-statebadge sal-statebadge--paid"><I.Check size={12} />Đã trả</span>
+                      : rowLocked ? <span className="sal-statebadge sal-statebadge--locked"><I.Lock size={11} />Đã chốt</span>
+                        : <span className="sal-statebadge sal-statebadge--draft"><span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />Nháp</span>}
+                  </td>
+                  <td className="c"><button className="sal-btn sal-btn--ghost sal-btn--icon sal-btn--sm" onClick={(e) => setMenu({ m, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.MoreVertical size={16} /></button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="lbl">Tổng cộng</td>
+              <td></td>
+              <td><span className="sal-num">{salFmt(totals.base)}</span></td>
+              <td><span className="sal-num">{salFmt(totals.bonus)}</span></td>
+              <td><span className="sal-num">{salFmt(totals.inv)}</span></td>
+              <td><span className="sal-num">{salFmt(totals.com)}</span></td>
+              <td><span className="sal-num" style={{ fontWeight: 800 }}>{salFmt(totals.gross)}</span></td>
+              <td><span className="sal-num sal-neg">{totals.adv ? "−" + salFmt(totals.adv) : "0₫"}</span></td>
+              <td><span className="sal-num sal-neg">{totals.room ? "−" + salFmt(totals.room) : "0₫"}</span></td>
+              <td><span className="sal-takehome" style={{ fontSize: 16 }}>{salFmt(totals.take)}</span></td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* Popovers */}
+      {pop && (
+        <Popover rect={pop.rect} width={pop.type === "bonus" ? 360 : 340} onClose={() => setPop(null)}>
+          {pop.type === "bonus" && <BonusPop m={pop.m} periodText={periodText} locked={pop.m.status === "LOCKED"} onClose={() => setPop(null)} onOpenLedger={onOpenLedger}
+            onAdjust={(adj) => { setPop(null); setDialog({ type: "adjust", m: pop.m, edit: adj }); }}
+            onRemove={(id) => onRemoveAdjustment(id)} />}
+          {pop.type === "investment" && <InvestmentPop m={pop.m} periodText={periodText} />}
+          {pop.type === "commission" && <CommissionPop m={pop.m} />}
+          {pop.type === "advance" && <AdvancePop m={pop.m} periodText={periodText} />}
+        </Popover>
+      )}
+
+      {/* Row menu */}
+      {menu && <Menu rect={menu.rect} onClose={() => setMenu(null)} items={[
+        { icon: "Eye", label: "Xem bảng kê của " + menu.m.short, onClick: () => onOpenLedger({ who: menu.m.id }) },
+        { icon: "Gift", label: "Thêm thưởng / trừ", disabled: menu.m.status === "LOCKED", onClick: () => setDialog({ type: "adjust", m: menu.m }) },
+        ...(canPay ? [{ icon: "Wallet", label: "Trả lương", onClick: () => setDialog({ type: "payout", m: menu.m }) }] : []),
+        ...(canLock ? [{ sep: true } as any, (menu.m.status === "LOCKED")
+          ? { icon: "Unlock", label: "Mở khoá tháng", onClick: () => setShowLock(true) }
+          : { icon: "Lock", label: "Chốt tháng", onClick: () => setShowLock(true) }] : []),
+      ]} />}
+
+      {/* Export menu */}
+      {exporting && <Menu rect={exporting.rect} onClose={() => setExporting(null)} items={[
+        { icon: "Download", label: "In / Xuất PDF", onClick: () => window.print() },
+      ]} />}
+
+      {/* Dialogs */}
+      {dialog?.type === "adjust" && <AdjustDialog m={dialog.m} edit={dialog.edit} onClose={() => setDialog(null)}
+        onSave={(p) => onSaveAdjustment(dialog.m.id, p)} />}
+      {dialog?.type === "payout" && <PayoutDialog m={dialog.m} accounts={accounts} period={period} onClose={() => setDialog(null)}
+        onSave={(amt, acc, date, note) => onPayout(dialog.m.id, dialog.m.name, amt, acc, date, note)} />}
+      {showBulk && <BulkPayoutDialog managers={managers} accounts={accounts} period={period} onClose={() => setShowBulk(false)} onSave={onBulkPayout} />}
+      {showLock && <LockDialog locked={locked} period={period} onClose={() => setShowLock(false)} onConfirm={() => locked ? onUnlock() : onLock()} />}
+      {chartModal && <SalChartModal managers={managers} onClose={() => setChartModal(false)} />}
+    </div>
+  );
+}

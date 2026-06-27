@@ -110,6 +110,7 @@ const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExp
 const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
 const ShareholderProfitPage = lazy(() => import("./pages/finance/ShareholderProfitPage"));
 const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
+const ManagerSalaryPage = lazy(() => import("./pages/finance/ManagerSalaryPage"));
 const SuppliersPage = lazy(() => import("./pages/settings/categories/SuppliersPage"));
 const WarehousesPage = lazy(() => import("./pages/settings/categories/WarehousesPage"));
 const AssetTypesPage = lazy(() => import("./pages/settings/categories/AssetTypesPage"));
@@ -359,6 +360,9 @@ const App = () => (
           <Route path="/finance/shareholder-profit" element={<ProtectedRoute><RequirePermission module="shareholder_profit" action="view"><ShareholderProfitPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/shareholder-profit" element={<Navigate to="/finance/shareholder-profit" replace />} />
           <Route path="/finance/personal-wallet" element={<ProtectedRoute><RequirePermission module="personal_finance" action="view"><PersonalWalletPage /></RequirePermission></ProtectedRoute>} />
+
+          {/* === BẢNG LƯƠNG QUẢN LÝ === (trang tự rẽ admin ↔ self-view theo quyền/cấu hình) */}
+          <Route path="/finance/salary" element={<ProtectedRoute><ManagerSalaryPage /></ProtectedRoute>} />
 
           {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
 

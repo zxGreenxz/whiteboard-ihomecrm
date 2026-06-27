@@ -39,6 +39,10 @@ export interface JobType {
   default_department_id: string | null;
   auto_assign: boolean | null;
   is_active: boolean | null;
+  // Bảng lương: thưởng khi hoàn thành 1 việc loại này
+  bonus_amount: number | null;
+  is_repair: boolean | null;
+  counts_for_salary: boolean | null;
   created_at: string;
   updated_at: string;
 }

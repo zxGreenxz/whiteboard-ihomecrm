@@ -70,6 +70,9 @@ export default function TaskTypeFormDialog({
       completion_deadline: 0,
       business_hours_only: false,
       default_department_id: "",
+      bonus_amount: 0,
+      is_repair: false,
+      counts_for_salary: true,
     },
   });
 
@@ -86,6 +89,9 @@ export default function TaskTypeFormDialog({
           completion_deadline: jobType.completion_deadline ?? 0,
           business_hours_only: jobType.business_hours_only ?? false,
           default_department_id: jobType.default_department_id ?? "",
+          bonus_amount: jobType.bonus_amount ?? 0,
+          is_repair: jobType.is_repair ?? false,
+          counts_for_salary: jobType.counts_for_salary ?? true,
         });
       } else {
         form.reset({
@@ -97,6 +103,9 @@ export default function TaskTypeFormDialog({
           completion_deadline: 0,
           business_hours_only: false,
           default_department_id: "",
+          bonus_amount: 0,
+          is_repair: false,
+          counts_for_salary: true,
         });
       }
       setIsCreatingGroup(false);
@@ -383,6 +392,48 @@ export default function TaskTypeFormDialog({
                 </FormItem>
               )}
             />
+
+            {/* Bảng lương — thưởng theo loại việc */}
+            <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
+              <div className="text-sm font-semibold text-green-700">Bảng lương quản lý</div>
+              <FormField
+                control={form.control}
+                name="bonus_amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tiền thưởng khi hoàn thành (đ) — để 0 nếu loại này không thưởng</FormLabel>
+                    <FormControl>
+                      <NumberInput min={0} value={field.value} onChange={field.onChange} onBlur={field.onBlur} name={field.name} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="is_repair"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <FormLabel className="cursor-pointer">Là việc sửa chữa (dùng cho thưởng +20k cả ngày nếu rơi CN/Lễ)</FormLabel>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="counts_for_salary"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <FormLabel className="cursor-pointer">Tính vào lương</FormLabel>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* Buttons */}
             <DialogFooter>

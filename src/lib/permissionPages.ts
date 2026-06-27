@@ -383,6 +383,20 @@ export const PAGE_GROUPS: PageGroup[] = [
         ],
       },
       {
+        key: "salary",
+        label: "Bảng lương quản lý",
+        route: "/finance/salary",
+        desc: "Tính lương quản lý từ việc thật + đầu tư + HH Sale; chốt tháng; quản lý tự xem.",
+        features: [
+          f("salary", "view", "Xem bảng lương quản lý", "view"),
+          f("salary", "lock", "Chốt lương tháng", "elevated", { fallback: { action: "edit" } }),
+          f("salary", "unlock", "Mở khoá tháng lương", "elevated", { fallback: { action: "edit" } }),
+          f("salary", "distribute", "Trả lương (ghi phiếu chi)", "elevated", { fallback: { action: "create" } }),
+          f("salary", "manage_salary", "Cấu hình lương, quy tắc thưởng, quản lý", "elevated", { fallback: { action: "edit" } }),
+          f("salary", "export", "Xuất bảng lương", "manage"),
+        ],
+      },
+      {
         key: "personal_finance",
         label: "Ví thu chi cá nhân",
         route: "/finance/personal-wallet",

@@ -136,6 +136,7 @@ const navigationGroups: NavGroup[] = [
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
           { title: 'Chia lợi nhuận', href: '/finance/shareholder-profit', icon: PieChart, module: 'shareholder_profit' },
+          { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary' },
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
