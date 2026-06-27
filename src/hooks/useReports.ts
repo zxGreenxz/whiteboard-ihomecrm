@@ -164,14 +164,24 @@ export function useVacantRoomNotes(
       if (cErr) throw cErr;
       const contractList = (contracts ?? []) as any[];
 
-      // Phòng CÒN HĐ ACTIVE đã tới kỳ phải xuất hoá đơn (billing bắt đầu ≤ cuối
-      // tháng) → kỳ vọng có hoá đơn tháng này. Thiếu hoá đơn ⇒ cảnh báo (kind
-      // 'active'). Dùng start_billing_date nếu có (loại HĐ billing tháng sau).
+      // Phòng có HĐ đã tới kỳ phải xuất hoá đơn (billing bắt đầu ≤ cuối tháng) VÀ
+      // còn hiệu lực tới cuối tháng → kỳ vọng có hoá đơn tháng này. Thiếu hoá đơn
+      // ⇒ cảnh báo (kind 'active'). Dùng start_billing_date nếu có (loại HĐ
+      // billing tháng sau). KHÔNG chỉ xét status='ACTIVE' hiện tại: HĐ thanh lý
+      // đầu tháng SAU (vd kết thúc 05/06) vẫn phủ tháng 05 → phải cảnh báo, dù
+      // giờ đã TERMINATED (cùng tinh thần "còn hiệu lực" với set occupied dưới).
       const activeRooms = new Set<string>();
       for (const c of contractList) {
-        if (c.status !== "ACTIVE") continue;
         const billStart: string = c.start_billing_date || c.start_date || "";
-        if (billStart && billStart <= monthEndDate) activeRooms.add(c.room_id);
+        if (!billStart || billStart > monthEndDate) continue; // chưa tới kỳ tính tiền
+        if (c.status === "ACTIVE") {
+          activeRooms.add(c.room_id);
+          continue;
+        }
+        // HĐ đã kết thúc nhưng còn hiệu lực tới cuối tháng báo cáo → vẫn thuộc kỳ
+        // này (kết thúc giữa tháng → cuối tháng đã trống, để set vacant xử lý).
+        const end: string = c.actual_end_date || c.end_date || "";
+        if (end && end >= monthEndDate) activeRooms.add(c.room_id);
       }
 
       // Phòng "đang ở tại CUỐI tháng":
