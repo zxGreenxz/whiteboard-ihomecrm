@@ -12,6 +12,8 @@ export interface ManagerConfigRow {
   income_goal: number;
   role_title: string;
   alias: string | null;
+  room_id: string | null;
+  room_name: string | null;
   is_active: boolean;
 }
 
@@ -45,6 +47,12 @@ export const useSalaryConfigList = () => {
         const { data: profs } = await (supabase.from("profiles" as any).select("id, full_name") as any).in("id", ids);
         for (const p of (profs || []) as any[]) nameById.set(p.id, p.full_name);
       }
+      const roomIds = rows.map((r) => r.room_id).filter(Boolean);
+      const roomNameById = new Map<string, string>();
+      if (roomIds.length) {
+        const { data: rms } = await (supabase.from("rooms" as any).select("id, name") as any).in("id", roomIds);
+        for (const rm of (rms || []) as any[]) roomNameById.set(rm.id, rm.name);
+      }
       return rows.map((r) => ({
         id: r.id,
         staff_id: r.staff_id,
@@ -54,6 +62,8 @@ export const useSalaryConfigList = () => {
         income_goal: Number(r.income_goal) || 0,
         role_title: r.role_title || "Quản lý vận hành",
         alias: r.alias,
+        room_id: r.room_id ?? null,
+        room_name: r.room_id ? (roomNameById.get(r.room_id) ?? null) : null,
         is_active: !!r.is_active,
       }));
     },
@@ -68,6 +78,7 @@ export interface SaveManagerConfigInput {
   income_goal?: number;
   role_title: string;
   alias?: string | null;
+  room_id?: string | null;
 }
 
 export const useSaveManagerConfig = () => {
@@ -85,6 +96,7 @@ export const useSaveManagerConfig = () => {
             income_goal: input.income_goal ?? 0,
             role_title: input.role_title,
             alias: input.alias ?? null,
+            room_id: input.room_id ?? null,
           })
           .eq("id", input.id);
         if (error) throw error;
@@ -98,6 +110,7 @@ export const useSaveManagerConfig = () => {
           income_goal: input.income_goal ?? 0,
           role_title: input.role_title,
           alias: input.alias ?? null,
+          room_id: input.room_id ?? null,
         });
         if (error) throw error;
       }

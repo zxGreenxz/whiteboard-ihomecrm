@@ -41,12 +41,24 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
     },
     enabled: !row,
   });
+  const { data: rooms } = useQuery({
+    queryKey: ["rooms-for-salary"],
+    queryFn: async () => {
+      const { data } = await (supabase
+        .from("rooms" as any)
+        .select("id, name, building:building_id(name, code)") as any)
+        .is("deleted_at", null)
+        .order("name");
+      return (data || []) as { id: string; name: string; building: { name: string; code: string | null } | null }[];
+    },
+  });
   const [staffId, setStaffId] = useState(row?.staff_id || "");
   const [alias, setAlias] = useState(row?.alias || "");
   const [role, setRole] = useState(row?.role_title || "Quản lý vận hành");
   const [base, setBase] = useState(row ? String(row.base_salary) : "");
   const [room, setRoom] = useState(row ? String(row.default_room_rent) : "0");
   const [goal, setGoal] = useState(row ? String(row.income_goal) : "");
+  const [roomId, setRoomId] = useState(row?.room_id || "");
 
   return (
     <Modal onClose={onClose}>
@@ -67,12 +79,18 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
           <div className="sal-field"><label>Biệt danh nội bộ</label><input className="sal-input" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Joey" /></div>
           <div className="sal-field"><label>Chức vụ</label><input className="sal-input" value={role} onChange={(e) => setRole(e.target.value)} /></div>
         </div>
-        <div className="sal-two" style={{ gap: 12 }}>
-          <div className="sal-field"><label>Lương tháng</label><input className="sal-input mono" value={fmtIn(base)} onChange={(e) => setBase(e.target.value)} placeholder="8.000.000" inputMode="numeric" /></div>
-          <div className="sal-field"><label>Tiền phòng mặc định</label><input className="sal-input mono" value={fmtIn(room)} onChange={(e) => setRoom(e.target.value)} inputMode="numeric" /></div>
+        <div className="sal-field"><label>Lương tháng</label><input className="sal-input mono" value={fmtIn(base)} onChange={(e) => setBase(e.target.value)} placeholder="8.000.000" inputMode="numeric" /></div>
+        <div className="sal-field"><label>Phòng nhân viên ở (giá ưu đãi)</label>
+          <select className="sal-select" style={{ height: 40 }} value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+            <option value="">— Không gán phòng (dùng số cố định) —</option>
+            {(rooms || []).map((r) => <option key={r.id} value={r.id}>{(r.building?.code || r.building?.name || "") + " · " + r.name}</option>)}
+          </select>
         </div>
-        <div className="sal-field"><label>Mục tiêu thu nhập tháng (tuỳ chọn)</label><input className="sal-input mono" value={fmtIn(goal)} onChange={(e) => setGoal(e.target.value)} placeholder="14.000.000" inputMode="numeric" /></div>
-        <div className="sal-helprow"><I.KeyRound size={15} />Quản lý dùng tài khoản đăng nhập sẵn có để tự xem lương realtime ở mục "Lương của tôi".</div>
+        <div className="sal-two" style={{ gap: 12 }}>
+          <div className="sal-field"><label>Tiền phòng cố định {roomId ? "(khi tháng chưa có HĐ)" : ""}</label><input className="sal-input mono" value={fmtIn(room)} onChange={(e) => setRoom(e.target.value)} inputMode="numeric" /></div>
+          <div className="sal-field"><label>Mục tiêu thu nhập tháng (tuỳ chọn)</label><input className="sal-input mono" value={fmtIn(goal)} onChange={(e) => setGoal(e.target.value)} placeholder="14.000.000" inputMode="numeric" /></div>
+        </div>
+        <div className="sal-helprow"><I.Home size={15} />{roomId ? "Tiền phòng = hoá đơn của phòng này theo từng tháng (giá ưu đãi), tự trừ vào lương." : "Cấp tài khoản đăng nhập để quản lý tự xem lương realtime ở mục \"Lương của tôi\"."}</div>
       </div>
       <div className="sal-modal-foot">
         <button className="sal-btn sal-btn--ghost" onClick={onClose}>Huỷ</button>
@@ -81,6 +99,7 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
             id: row?.id, staff_id: staffId || undefined,
             base_salary: parseNum(base), default_room_rent: parseNum(room),
             income_goal: parseNum(goal), role_title: role, alias: alias || null,
+            room_id: roomId || null,
           }, { onSuccess: onClose });
         }}><I.Check size={16} />Lưu</button>
       </div>
@@ -155,7 +174,7 @@ export default function SalaryConfig() {
                 <span className="sal-ava" style={{ width: 40, height: 40, background: "hsl(var(--primary))" }}>{(m.full_name || "?").trim().split(/\s+/).pop()![0]}</span>
                 <div className="sal-mgrinfo">
                   <span className="nm">{m.full_name}{m.alias ? <span className="sal-alias">{m.alias}</span> : null}</span>
-                  <span className="meta">{m.role_title} · Lương {salFmt(m.base_salary)}{m.default_room_rent ? " · Phòng " + salFmt(m.default_room_rent) : ""}</span>
+                  <span className="meta">{m.role_title} · Lương {salFmt(m.base_salary)}{m.room_name ? " · Ở phòng " + m.room_name : (m.default_room_rent ? " · Phòng " + salFmt(m.default_room_rent) : "")}</span>
                 </div>
                 <button className="sal-btn sal-btn--ghost sal-btn--sm sal-btn--icon" onClick={() => setMgrDialog({ row: m })}><I.Pencil size={15} /></button>
               </div>

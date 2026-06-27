@@ -66,6 +66,7 @@ export interface SalManager {
   commissionItems: SalCommissionItem[];
   advance: number;
   advanceItems: SalAdvanceItem[];
+  roomRentItems: SalAdvanceItem[];
   paid: number;
   stats: SalStats;
   trend: SalTrendPoint[];

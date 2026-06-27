@@ -71,6 +71,32 @@ export const useManagerSalary = (periodMonth: string) => {
 
       const staffIds: string[] = configs.map((c) => c.staff_id);
       const ownerId: string = configs[0].user_id;
+      const billingMonth = periodMonth.slice(0, 7); // 'YYYY-MM'
+
+      // Tiền phòng từ hoá đơn phòng nhân viên ở (giá ưu đãi)
+      const roomIds: string[] = configs.map((c) => c.room_id).filter(Boolean);
+      const roomInvoice = new Map<string, { amount: number; label: string }>();
+      const roomNameById = new Map<string, string>();
+      if (roomIds.length) {
+        const [rmRes, invRes] = await Promise.all([
+          (supabase.from("rooms" as any).select("id, name") as any).in("id", roomIds),
+          (supabase
+            .from("invoices" as any)
+            .select("room_id, total_amount, billing_month, created_at") as any)
+            .in("room_id", roomIds)
+            .eq("billing_month", billingMonth)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false }),
+        ]);
+        for (const r of (rmRes.data || []) as any[]) roomNameById.set(r.id, r.name);
+        for (const iv of (invRes.data || []) as any[]) {
+          if (roomInvoice.has(iv.room_id)) continue; // hoá đơn mới nhất của phòng/tháng
+          roomInvoice.set(iv.room_id, {
+            amount: num(iv.total_amount),
+            label: `HĐ phòng ${roomNameById.get(iv.room_id) || ""} · T${mm}`,
+          });
+        }
+      }
 
       // 2..N) các nguồn dữ liệu song song
       const [
@@ -249,7 +275,20 @@ export const useManagerSalary = (periodMonth: string) => {
         const advance = advanceItems.reduce((s, x) => s + x.amount, 0);
 
         const base = num(c.base_salary);
-        const roomRent = locked ? num(mRow.room_rent) : num(c.default_room_rent);
+        // Tiền phòng: ưu tiên hoá đơn phòng nhân viên ở; chưa có HĐ → số cố định
+        let roomRent: number;
+        let roomRentItems: { date: string; label: string; amount: number }[] = [];
+        if (locked) {
+          roomRent = num(mRow.room_rent);
+          if (roomRent > 0) roomRentItems = [{ date: "", label: "Tiền phòng (đã chốt)", amount: roomRent }];
+        } else if (c.room_id && roomInvoice.has(c.room_id)) {
+          const inv = roomInvoice.get(c.room_id)!;
+          roomRent = inv.amount;
+          roomRentItems = [{ date: "", label: inv.label, amount: inv.amount }];
+        } else {
+          roomRent = num(c.default_room_rent);
+          if (roomRent > 0) roomRentItems = [{ date: "", label: c.room_id ? "Cố định (tháng chưa có hoá đơn)" : "Cố định (cấu hình)", amount: roomRent }];
+        }
         const stats0 = computeStats(ledger);
         const stats = { ...stats0, streak: computeStreak(ledger) };
 
@@ -274,6 +313,7 @@ export const useManagerSalary = (periodMonth: string) => {
           commissionItems,
           advance,
           advanceItems,
+          roomRentItems,
           paid: locked ? num(mRow.paid) : num(mRow?.paid),
           stats,
           trend: [],

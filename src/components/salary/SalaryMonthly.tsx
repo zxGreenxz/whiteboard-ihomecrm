@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { SAL_ICONS } from "./salaryIcons";
 import { salFmt, salShort } from "./salaryFormat";
 import { ClickNum, Popover, Menu, Modal } from "./salaryCommon";
-import { BonusPop, InvestmentPop, CommissionPop, AdvancePop } from "./salaryPopovers";
+import { BonusPop, InvestmentPop, CommissionPop, AdvancePop, RoomRentPop } from "./salaryPopovers";
 import { SalChartModal } from "./salaryChart";
 import type { SalManager, SalAdjustment } from "@/lib/managerSalary";
 
@@ -274,7 +274,7 @@ export default function SalaryMonthly(props: MonthlyProps) {
                     ? <ClickNum value={m.advance} onClick={(e) => openPop("advance", m, e)} neg prefix="−" />
                     : <span className="sal-num sal-zero">0₫</span>}</td>
                   <td>{m.roomRent > 0
-                    ? <span className="sal-num sal-neg">−{salFmt(m.roomRent)}</span>
+                    ? <ClickNum value={m.roomRent} onClick={(e) => openPop("room", m, e)} neg prefix="−" />
                     : <span className="sal-num sal-zero">0₫</span>}</td>
                   <td>
                     <div className="sal-rowgoal">
@@ -322,6 +322,7 @@ export default function SalaryMonthly(props: MonthlyProps) {
           {pop.type === "investment" && <InvestmentPop m={pop.m} periodText={periodText} />}
           {pop.type === "commission" && <CommissionPop m={pop.m} />}
           {pop.type === "advance" && <AdvancePop m={pop.m} periodText={periodText} />}
+          {pop.type === "room" && <RoomRentPop m={pop.m} periodText={periodText} />}
         </Popover>
       )}
 

@@ -110,6 +110,22 @@ export function CommissionPop({ m }: { m: SalManager }) {
   );
 }
 
+export function RoomRentPop({ m, periodText }: { m: SalManager; periodText: string }) {
+  return (
+    <>
+      <div className="sal-pop-head">
+        <span className="ic" style={{ background: "hsl(var(--status-danger-bg))", color: "hsl(var(--status-danger-fg))" }}><I.Home size={17} /></span>
+        <div><div className="tt">Tiền phòng</div><div className="st">{m.short} · {periodText}</div></div>
+      </div>
+      <div className="sal-pop-body">
+        {m.roomRentItems.length === 0 ? <div style={{ padding: "18px 16px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))" }}>Không trừ tiền phòng.</div> :
+          m.roomRentItems.map((x, i) => <PopRow key={i} icon="Home" label={x.label} amount={x.amount} />)}
+      </div>
+      <div className="sal-pop-foot"><span className="tl">Trừ tiền phòng</span><span className="tv" style={{ color: "hsl(var(--status-danger-fg))" }}>{salFmt(m.roomRent)}</span></div>
+    </>
+  );
+}
+
 export function AdvancePop({ m, periodText }: { m: SalManager; periodText: string }) {
   return (
     <>
