@@ -12,7 +12,7 @@ import {
 import { Wallet, HandCoins, Scale, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { StatCard } from "./StatCard";
-import { colorAt, currentYear, periodToLabel } from "./shareholderUtils";
+import { colorAt, currentYear } from "./shareholderUtils";
 import { useBuildings } from "@/hooks/useBuildings";
 import {
   useProfitAllocations,
@@ -191,41 +191,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Lợi nhuận từng tháng/nhà</CardTitle></CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tháng</TableHead>
-                    <TableHead>Nhà</TableHead>
-                    <TableHead className="text-right">Tỷ lệ</TableHead>
-                    <TableHead className="text-right">Được chia</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allocScoped.length === 0 && (
-                    <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Chưa có dữ liệu</TableCell></TableRow>
-                  )}
-                  {allocScoped
-                    .slice()
-                    .sort((a, b) => (b.period_month ?? "").localeCompare(a.period_month ?? ""))
-                    .map((a) => (
-                      <TableRow key={a.id}>
-                        <TableCell>{a.period_month ? periodToLabel(a.period_month) : "—"}</TableCell>
-                        <TableCell>{buildingName(a.building_id)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{a.percent}%</TableCell>
-                        <TableCell className="text-right tabular-nums font-medium">{formatCurrency(a.amount)}</TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
+      <div>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-base">Lịch sử đã ứng / đã lấy</CardTitle></CardHeader>
           <CardContent>

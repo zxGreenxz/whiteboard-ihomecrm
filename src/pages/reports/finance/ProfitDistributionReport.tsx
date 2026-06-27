@@ -1,7 +1,5 @@
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
-import MainLayout from "@/components/layout/MainLayout";
-import { ChevronRight, DollarSign, LayoutGrid } from "lucide-react";
+import { DollarSign, LayoutGrid } from "lucide-react";
 import {
   useIncomeExpenses,
   useIncomeExpenseStats,
@@ -724,16 +722,8 @@ export default function ProfitDistributionReport() {
   );
 
   return (
-    <MainLayout>
+    <>
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/reports/finance" className="hover:text-primary">
-            Báo cáo tài chính
-          </Link>
-          <ChevronRight className="h-4 w-4" />
-          <span className="text-foreground font-medium">Phân bổ lợi nhuận</span>
-        </div>
-
         {/* 3 Stat cards — có thể ẩn qua popover "Cột" (lưu server) */}
         {!hideStatCards && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -910,6 +900,6 @@ export default function ProfitDistributionReport() {
         }}
         invoice={detailInvoice ?? null}
       />
-    </MainLayout>
+    </>
   );
 }

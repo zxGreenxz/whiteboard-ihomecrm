@@ -91,7 +91,7 @@ const CustomerDebtReport = lazy(() => import("./pages/reports/finance/CustomerDe
 const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/PaymentScheduleReport"));
 const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
 const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
-const ProfitDistributionReport = lazy(() => import("./pages/reports/finance/ProfitDistributionReport"));
+const ProfitHubPage = lazy(() => import("./pages/reports/finance/ProfitHubPage"));
 const FinancialAnalysisReport = lazy(() => import("./pages/reports/finance/FinancialAnalysisReport"));
 
 // Cài đặt
@@ -108,7 +108,6 @@ const MetersPage = lazy(() => import("./pages/settings/MetersPage"));
 const IncomeExpenseTypesNewPage = lazy(() => import("./pages/settings/IncomeExpenseTypesPage"));
 const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExpenseTemplatesPage"));
 const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
-const ShareholderProfitPage = lazy(() => import("./pages/finance/ShareholderProfitPage"));
 const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
 const ManagerSalaryPage = lazy(() => import("./pages/finance/ManagerSalaryPage"));
 const SuppliersPage = lazy(() => import("./pages/settings/categories/SuppliersPage"));
@@ -337,7 +336,7 @@ const App = () => (
           <Route path="/report/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance/cashbook" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/report/finance-by-month" element={<ProtectedRoute><RequirePermission module="reports_finance" action="profit_distribution"><ProfitDistributionReport /></RequirePermission></ProtectedRoute>} />
+          <Route path="/report/finance-by-month" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
           <Route path="/report/finance/debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="customer_debt"><CustomerDebtReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance/billing-calendar" element={<ProtectedRoute><RequirePermission module="reports_finance" action="payment_schedule"><PaymentScheduleReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/report/finance/prepaid" element={<ProtectedRoute><RequirePermission module="reports_finance" action="overpayment"><OverpaymentReport /></RequirePermission></ProtectedRoute>} />
@@ -347,7 +346,8 @@ const App = () => (
           <Route path="/reports/finance/daily-cashbook" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/cash-book" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><RequirePermission module="reports_finance" action="profit_distribution"><ProfitDistributionReport /></RequirePermission></ProtectedRoute>} />
+          {/* Trang gộp: Phân bổ lợi nhuận (báo cáo) + Chia lợi nhuận cổ đông — tab theo quyền, gate bên trong */}
+          <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitHubPage /></ProtectedRoute>} />
           <Route path="/reports/finance/new-contract-debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="debt"><DebtReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="debt"><DebtReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/customer-debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="customer_debt"><CustomerDebtReport /></RequirePermission></ProtectedRoute>} />
@@ -357,8 +357,9 @@ const App = () => (
           <Route path="/reports/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
 
           {/* === CHIA LỢI NHUẬN CỔ ĐÔNG + VÍ THU CHI CÁ NHÂN === */}
-          <Route path="/finance/shareholder-profit" element={<ProtectedRoute><RequirePermission module="shareholder_profit" action="view"><ShareholderProfitPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/shareholder-profit" element={<Navigate to="/finance/shareholder-profit" replace />} />
+          {/* Đã gộp vào trang Phân bổ lợi nhuận → redirect các URL cũ */}
+          <Route path="/finance/shareholder-profit" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
+          <Route path="/reports/finance/shareholder-profit" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
           <Route path="/finance/personal-wallet" element={<ProtectedRoute><RequirePermission module="personal_finance" action="view"><PersonalWalletPage /></RequirePermission></ProtectedRoute>} />
 
           {/* === BẢNG LƯƠNG QUẢN LÝ === (trang tự rẽ admin ↔ self-view theo quyền/cấu hình) */}
