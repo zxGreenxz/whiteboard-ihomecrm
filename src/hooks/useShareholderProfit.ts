@@ -253,12 +253,21 @@ async function writeLockedMonth(
   const buildingIds = pm.map((r) => r.building_id);
   const pmIds = pm.map((r) => r.id);
 
-  // 2) Lấy tỷ lệ cổ đông của các nhà này
+  // 2) Lấy tỷ lệ cổ đông của các nhà này — CHỈ cổ đông còn hiệu lực.
+  // building_shareholders KHÔNG bị xoá khi cổ đông soft-delete → phải lọc theo
+  // shareholders.deleted_at, nếu không sẽ tạo phân bổ "ma" cho cổ đông đã xoá
+  // (vd "Green") làm tổng được chia phồng so với danh sách cổ đông hiển thị.
   const { data: shares, error: shErr } = await (supabase
     .from("building_shareholders" as any)
     .select("building_id, shareholder_id, percent") as any)
     .in("building_id", buildingIds);
   if (shErr) throw shErr;
+  const { data: activeSh, error: aShErr } = await (supabase
+    .from("shareholders" as any)
+    .select("id") as any)
+    .is("deleted_at", null);
+  if (aShErr) throw aShErr;
+  const activeShIds = new Set(((activeSh || []) as any[]).map((s) => s.id));
 
   // 3) Xoá allocations cũ của các profit_monthly này rồi insert lại (snapshot)
   if (pmIds.length > 0) {
@@ -276,6 +285,7 @@ async function writeLockedMonth(
 
   const allocPayload: any[] = [];
   for (const s of (shares || []) as any[]) {
+    if (!activeShIds.has(s.shareholder_id)) continue; // bỏ cổ đông đã xoá
     const target = pmByBuilding.get(s.building_id);
     if (!target) continue;
     const percent = Number(s.percent) || 0;
