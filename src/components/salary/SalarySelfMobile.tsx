@@ -527,6 +527,18 @@ export default function SalarySelfMobile({ m, period, onExit }: ScreenProps & { 
     return () => { document.body.style.overflow = prev; };
   }, []);
 
+  // Status bar nhuốm tông tím-đen của QUEST (thay vì trắng global). CHỈ trong lúc
+  // ở trang này — rời trang trả lại màu cũ → không đụng theme sáng của CRM.
+  // (Android/Chrome PWA đổi ngay; iOS standalone đọc status-bar-style lúc mở app
+  // nên không đổi động được — giới hạn hệ thống, set theme-color vẫn vô hại.)
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const prev = meta.getAttribute("content");
+    meta.setAttribute("content", "#17132A");
+    return () => { if (prev != null) meta.setAttribute("content", prev); };
+  }, []);
+
   return (
     // Stage: nền "bàn" tối, canh giữa khung điện thoại (giống .hl-stage / .tt-stage).
     <div className="fixed inset-0 z-[60] overflow-hidden flex justify-center"
