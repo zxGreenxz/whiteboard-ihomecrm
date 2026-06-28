@@ -26,6 +26,7 @@ import {
   ClipboardList,
   Car,
   Wallet,
+  Coins,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
 
@@ -81,6 +82,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
       { id: 'cashbook', title: 'Thu chi', href: '/income-expense', icon: CreditCard, accent: '#7c3aed', module: 'income_expenses' },
       { id: 'funds', title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, accent: '#ca8a04', module: 'cashbooks' },
+      { id: 'salary', title: 'Bảng lương', href: '/finance/salary', icon: Coins, accent: '#eab308', module: 'salary' },
       { id: 'reports', title: 'Báo cáo', href: '/reports/real-estate', icon: BarChart3, accent: '#475569', module: 'reports_real_estate' },
     ],
   },

@@ -15,6 +15,8 @@ import SalaryMonthly, { type SalaryAccount, type SalAdjustPayload } from "@/comp
 import SalaryLedger from "@/components/salary/SalaryLedger";
 import SalaryConfig from "@/components/salary/SalaryConfig";
 import SalarySelf from "@/components/salary/SalarySelf";
+import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import "@/components/salary/salary.css";
 
 function currentPeriodMonth(): string {
@@ -31,6 +33,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function ManagerSalaryPage() {
   const { data: perms } = useMyPermissions();
   const { data: myMgr, isLoading: myLoading } = useMyManagerConfig();
+  const phone = usePhoneViewport();
 
   const canLock = canUse(perms, "salary", "lock");
   const canManageSalary = canUse(perms, "salary", "manage_salary");
@@ -104,6 +107,8 @@ export default function ManagerSalaryPage() {
       </MainLayout>;
     }
     const me = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
+    // Mobile: shell web-app chiếm trọn màn (không MainLayout) — giống Thu tiền / Home launcher.
+    if (phone) return <SalarySelfMobile m={me} period={period} />;
     return (
       <MainLayout title="Lương của tôi" subtitle="Tài chính → Lương" icon={Wallet}>
         <div className="sal-root">
@@ -133,7 +138,11 @@ export default function ManagerSalaryPage() {
         )}
 
         {view === "self" && previewMgr ? (
-          <SalarySelf m={previewMgr} period={period} onOpenLedger={() => { setView("admin"); openLedger({ who: previewMgr.id }); }} />
+          phone ? (
+            <SalarySelfMobile m={previewMgr} period={period} onExit={() => setView("admin")} />
+          ) : (
+            <SalarySelf m={previewMgr} period={period} onOpenLedger={() => { setView("admin"); openLedger({ who: previewMgr.id }); }} />
+          )
         ) : (
           <>
             <div className="sal-tabs">
