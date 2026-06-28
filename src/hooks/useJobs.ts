@@ -12,7 +12,7 @@ export const useJobs = (filters?: TaskFilters) => {
         .from("jobs")
         .select(`
           *,
-          buildings(id, name),
+          buildings(id, name, latitude, longitude, street_address, ward, district, province),
           rooms(id, name),
           job_types(id, name),
           profiles!jobs_assignee_id_fkey(id, full_name)
@@ -164,6 +164,10 @@ export const useCompleteJob = () => {
       id: string;
       completion_time: string;
       completion_attachments: string[] | null;
+      completion_lat?: number | null;
+      completion_lng?: number | null;
+      completion_distance_m?: number | null;
+      completion_geofence_status?: string | null;
     }) => {
       const { data, error } = await supabase
         .from("jobs")
@@ -171,6 +175,10 @@ export const useCompleteJob = () => {
           status: "COMPLETED",
           completion_time: input.completion_time,
           attachments: input.completion_attachments,
+          completion_lat: input.completion_lat ?? null,
+          completion_lng: input.completion_lng ?? null,
+          completion_distance_m: input.completion_distance_m ?? null,
+          completion_geofence_status: input.completion_geofence_status ?? null,
         })
         .eq("id", input.id)
         .select()

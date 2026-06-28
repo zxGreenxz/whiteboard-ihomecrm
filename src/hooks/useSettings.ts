@@ -10,7 +10,8 @@ export type SettingKey =
   | 'invoice_config'
   | 'payment_config'
   | 'notification_config'
-  | 'code_generation_config';
+  | 'code_generation_config'
+  | 'acceptance_geofence';
 
 // Types for different settings
 export interface CompanyInfo {
@@ -256,6 +257,31 @@ export function useCodeGenerationConfig() {
 
 export function useUpdateCodeGenerationConfig() {
   return useUpdateSetting<CodeGenerationConfig>('code_generation_config');
+}
+
+// =============================================
+// Geo-fence nghiệm thu công việc (bật/tắt kiểm tra GPS + bán kính)
+// Lưu trong settings của owner; staff đọc qua RPC get_acceptance_geofence_config.
+// =============================================
+export interface AcceptanceGeofenceSetting {
+  enabled: boolean;
+  radius_m: number;
+}
+
+const DEFAULT_ACCEPTANCE_GEOFENCE: AcceptanceGeofenceSetting = {
+  enabled: true,
+  radius_m: 70,
+};
+
+export function useAcceptanceGeofenceSetting() {
+  return useSetting<AcceptanceGeofenceSetting>(
+    'acceptance_geofence',
+    DEFAULT_ACCEPTANCE_GEOFENCE
+  );
+}
+
+export function useUpdateAcceptanceGeofenceSetting() {
+  return useUpdateSetting<AcceptanceGeofenceSetting>('acceptance_geofence');
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
-import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt } from 'lucide-react';
+import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt, MapPin } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,8 @@ import {
   useUpdateGeneralSetting,
   useCompanyInfo,
   useUpdateCompanyInfo,
+  useAcceptanceGeofenceSetting,
+  useUpdateAcceptanceGeofenceSetting,
 } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 
@@ -323,6 +325,10 @@ const GeneralSettingsPage = () => {
   const { data: companyInfo, isLoading: loadingCompany } = useCompanyInfo();
   const updateCompanyInfo = useUpdateCompanyInfo();
 
+  // Geo-fence nghiệm thu (bật/tắt kiểm tra GPS + bán kính)
+  const { data: geofence } = useAcceptanceGeofenceSetting();
+  const updateGeofence = useUpdateAcceptanceGeofenceSetting();
+
   const handleSettingChange = (key: string, value: boolean | string | number) => {
     updateSetting.mutate({ key, value });
   };
@@ -436,6 +442,57 @@ const GeneralSettingsPage = () => {
                         onChange={handleLogoFileChange}
                       />
                     </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Geo-fence nghiệm thu công việc */}
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-gray-600" />
+                  Kiểm tra vị trí khi nghiệm thu
+                </CardTitle>
+                <CardDescription>
+                  Khi nhân viên bấm "Hoàn thành công việc": luôn bắt chụp ảnh trực tiếp (gắn
+                  ngày giờ + địa chỉ). Bật tuỳ chọn này để gắn thêm toạ độ GPS và cảnh báo nếu
+                  chụp cách tòa quá bán kính cho phép (không chặn, chỉ ghi nhận để xem lại).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between py-3 border-b">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium">Bật kiểm tra GPS (geo-fence)</Label>
+                  </div>
+                  <Switch
+                    checked={geofence?.enabled ?? true}
+                    onCheckedChange={(checked) =>
+                      updateGeofence.mutate({
+                        enabled: checked,
+                        radius_m: geofence?.radius_m ?? 70,
+                      })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium">Bán kính cho phép</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <NumberInput
+                      className="w-[100px]"
+                      min={10}
+                      max={2000}
+                      value={geofence?.radius_m ?? 70}
+                      onChange={(v) =>
+                        updateGeofence.mutate({
+                          enabled: geofence?.enabled ?? true,
+                          radius_m: v,
+                        })
+                      }
+                    />
+                    <span className="text-sm text-muted-foreground">mét</span>
                   </div>
                 </div>
               </CardContent>

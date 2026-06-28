@@ -41,6 +41,7 @@ import { useDocumentTemplatesByType } from '@/hooks/useDocumentTemplates';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useMyContext } from '@/hooks/useMyContext';
 import BuildingAddressSection from './BuildingAddressSection';
+import BuildingGeoSection from './BuildingGeoSection';
 import BuildingServicesSection from './BuildingServicesSection';
 import { CommissionTiersField } from './CommissionTiersField';
 
@@ -103,6 +104,10 @@ export default function BuildingFormDialog({
           district: building.district,
           ward: building.ward,
           street_address: building.street_address ?? '',
+          latitude:
+            (building as { latitude?: number | null }).latitude ?? null,
+          longitude:
+            (building as { longitude?: number | null }).longitude ?? null,
           status: building.status,
           contract_template_id:
             (building as { contract_template_id?: string | null })
@@ -128,6 +133,8 @@ export default function BuildingFormDialog({
           district: '',
           ward: '',
           street_address: '',
+          latitude: null,
+          longitude: null,
           status: 'ACTIVE',
           contract_template_id: null,
           invoice_template_id: null,
@@ -177,6 +184,8 @@ export default function BuildingFormDialog({
             district: data.district,
             ward: data.ward,
             street_address: data.street_address,
+            latitude: data.latitude ?? null,
+            longitude: data.longitude ?? null,
             status: data.status,
             contract_template_id: data.contract_template_id ?? null,
             invoice_template_id: data.invoice_template_id ?? null,
@@ -198,6 +207,8 @@ export default function BuildingFormDialog({
           district: data.district,
           ward: data.ward,
           street_address: data.street_address,
+          latitude: data.latitude ?? null,
+          longitude: data.longitude ?? null,
           status: data.status,
           contract_template_id: data.contract_template_id ?? null,
           invoice_template_id: data.invoice_template_id ?? null,
@@ -307,6 +318,7 @@ export default function BuildingFormDialog({
                     setValue={form.setValue}
                     watch={form.watch}
                   />
+                  <BuildingGeoSection setValue={form.setValue} watch={form.watch} />
                 </CardContent>
               </Card>
 

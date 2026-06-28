@@ -104,6 +104,8 @@ export interface BuildingFormData {
   district: string;
   ward: string;
   street_address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   status: BuildingStatus;
   contract_template_id?: string | null;
   invoice_template_id?: string | null;

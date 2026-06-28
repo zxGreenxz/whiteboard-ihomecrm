@@ -908,6 +908,8 @@ export type Database = {
           images: Json | null
           invoice_template_id: string | null
           is_virtual: boolean
+          latitude: number | null
+          longitude: number | null
           name: string
           province: string
           public_contact_name: string | null
@@ -939,6 +941,8 @@ export type Database = {
           images?: Json | null
           invoice_template_id?: string | null
           is_virtual?: boolean
+          latitude?: number | null
+          longitude?: number | null
           name: string
           province: string
           public_contact_name?: string | null
@@ -970,6 +974,8 @@ export type Database = {
           images?: Json | null
           invoice_template_id?: string | null
           is_virtual?: boolean
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           province?: string
           public_contact_name?: string | null
@@ -3743,6 +3749,10 @@ export type Database = {
           code: string
           completion_attachments: Json | null
           completion_description: string | null
+          completion_distance_m: number | null
+          completion_geofence_status: string | null
+          completion_lat: number | null
+          completion_lng: number | null
           completion_time: string | null
           created_at: string | null
           customer_comments: string | null
@@ -3770,6 +3780,10 @@ export type Database = {
           code: string
           completion_attachments?: Json | null
           completion_description?: string | null
+          completion_distance_m?: number | null
+          completion_geofence_status?: string | null
+          completion_lat?: number | null
+          completion_lng?: number | null
           completion_time?: string | null
           created_at?: string | null
           customer_comments?: string | null
@@ -3797,6 +3811,10 @@ export type Database = {
           code?: string
           completion_attachments?: Json | null
           completion_description?: string | null
+          completion_distance_m?: number | null
+          completion_geofence_status?: string | null
+          completion_lat?: number | null
+          completion_lng?: number | null
           completion_time?: string | null
           created_at?: string | null
           customer_comments?: string | null

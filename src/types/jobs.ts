@@ -45,14 +45,31 @@ export interface Job {
   completion_time: string | null;
   completion_description: string | null;
   completion_attachments: string[] | null;
+  // Audit geo-fence khi hoàn thành (xem useCompleteJob / JobCaptureCamera)
+  completion_lat: number | null;
+  completion_lng: number | null;
+  completion_distance_m: number | null;
+  completion_geofence_status: string | null;
   started_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
+// Toà nhà kèm địa chỉ + toạ độ (đủ để vẽ watermark + so geo-fence)
+export interface JobBuildingRef {
+  id: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+  street_address: string | null;
+  ward: string | null;
+  district: string | null;
+  province: string | null;
+}
+
 // Job with joined relations (for display)
 export interface JobWithRelations extends Job {
-  buildings: { id: string; name: string } | null;
+  buildings: JobBuildingRef | null;
   rooms: { id: string; name: string } | null;
   job_types: { id: string; name: string } | null;
   profiles: { id: string; full_name: string } | null;
