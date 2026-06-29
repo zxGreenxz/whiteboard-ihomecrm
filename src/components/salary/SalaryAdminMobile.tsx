@@ -3,16 +3,17 @@
 // (Lương / Cá nhân / Bảng kê / Cấu hình). DÙNG CHUNG dữ liệu + callback với bản
 // desktop (SalaryMonthly); chỉ khác cách trình bày. Rẽ nhánh desktop ↔ mobile
 // bằng usePhoneViewport ở ManagerSalaryPage.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Wallet, User, Zap, Settings, ChevronLeft, ChevronRight, RefreshCw, BarChart3,
   Lock, Unlock, HandCoins, X, Check, Info, AlertTriangle, Plus, Minus, Gift,
-  Wrench, CalendarCheck, FileText, Banknote, TrendingUp, Trophy, type LucideIcon,
+  Wrench, CalendarCheck, FileText, Banknote, TrendingUp, Trophy, Coins, type LucideIcon,
 } from "lucide-react";
 import { salFmt, salShort } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import SalaryConfig from "./SalaryConfig";
+import SalarySelfMobile from "./SalarySelfMobile";
 import type { SalManager, SalAdjustment, SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
 
@@ -23,6 +24,7 @@ const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
 interface AdminMobileProps {
   managers: SalManager[];
   period: { label: string; year: number };
+  loading: boolean;
   locked: boolean;
   accounts: SalaryAccount[];
   canLock: boolean;
@@ -92,12 +94,94 @@ function DRow({ label, amount, color, neg }: { label: string; amount: number; co
   );
 }
 
+// ───────────────────────── header dùng chung ─────────────────────────
+function AdminHeader({ period, onBack, onRecompute, onPrevMonth, onNextMonth, recomputing }: {
+  period: { label: string; year: number }; onBack: () => void; onRecompute: () => void;
+  onPrevMonth: () => void; onNextMonth: () => void; recomputing: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-[11px] px-4 pt-1.5 pb-3.5">
+      <button onClick={onBack} aria-label="Quay lại" className="w-9 h-9 rounded-[13px] grid place-items-center shrink-0"
+        style={{ background: "rgba(139,92,246,.18)", border: "2px solid #A78BFA", color: "#C4B5FD" }}>
+        <ChevronLeft size={20} strokeWidth={2.5} />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="text-[16px] font-extrabold text-[#EDEAF7] tracking-tight">Bảng lương quản lý</div>
+        <div className="text-[11.5px] text-[#9A8FC4]">Quản trị viên · toàn đội</div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button onClick={onRecompute} aria-label="Tính lại" className="w-8 h-8 rounded-full grid place-items-center"
+          style={{ background: "rgba(255,255,255,.08)", color: "#9A8FC4" }}>
+          <RefreshCw size={15} className={recomputing ? "animate-spin" : undefined} />
+        </button>
+        <div className="inline-flex items-center rounded-full" style={{ background: "rgba(255,210,63,.14)" }}>
+          <button onClick={onPrevMonth} aria-label="Tháng trước" className="w-7 h-7 grid place-items-center" style={{ color: "#FFD23F" }}><ChevronLeft size={16} /></button>
+          <span className="text-[11px] font-bold px-0.5 whitespace-nowrap" style={{ color: "#FFD23F" }}>{period.label}</span>
+          <button onClick={onNextMonth} aria-label="Tháng sau" className="w-7 h-7 grid place-items-center" style={{ color: "#FFD23F" }}><ChevronRight size={16} /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────── loading (gaming) — đổi tháng vẫn ở trong shell tối ─────────────────
+function LoadingScreen({ period, onBack, onRecompute, onPrevMonth, onNextMonth, recomputing }: {
+  period: { label: string; year: number }; onBack: () => void; onRecompute: () => void;
+  onPrevMonth: () => void; onNextMonth: () => void; recomputing: boolean;
+}) {
+  return (
+    <div className="pb-5">
+      <AdminHeader period={period} onBack={onBack} onRecompute={onRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth} recomputing={recomputing} />
+      <div className="relative mx-3.5 rounded-[28px] overflow-hidden p-8 flex flex-col items-center"
+        style={{ background: "radial-gradient(110% 120% at 90% -10%, #5B3AA8 0%, transparent 55%), radial-gradient(100% 120% at -5% 115%, #7A4F12 0%, transparent 58%), #251C46" }}>
+        <div className="absolute inset-0 pointer-events-none opacity-60"
+          style={{ backgroundImage: "radial-gradient(rgba(255,210,63,.10) 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
+        <div className="relative w-[92px] h-[92px]">
+          <svg className="animate-spin" width={92} height={92} viewBox="0 0 92 92" style={{ filter: "drop-shadow(0 0 10px rgba(255,210,63,.45))" }}>
+            <circle cx={46} cy={46} r={40} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={8} />
+            <circle cx={46} cy={46} r={40} fill="none" stroke="#FFD23F" strokeWidth={8} strokeLinecap="round" strokeDasharray="70 200" />
+          </svg>
+          <span className="absolute inset-0 grid place-items-center animate-pulse" style={{ color: "#FFD23F" }}><Coins size={30} /></span>
+        </div>
+        <div className="relative mt-4 text-[15px] font-extrabold" style={{ color: "#FFD23F" }}>Đang tính bảng lương…</div>
+        <div className="relative mt-1 text-[12px]" style={{ color: "#9A8FC4" }}>{period.label} · {period.year}</div>
+      </div>
+      <div className="mx-3.5 mt-3.5 flex flex-col gap-[9px]">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-[66px] rounded-[18px] animate-pulse"
+            style={{ background: "#221C3E", border: "1px solid #322A55", animationDelay: `${i * 140}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmptyScreen({ period, onBack, onRecompute, onPrevMonth, onNextMonth, recomputing, canManageSalary, onGoConfig }: {
+  period: { label: string; year: number }; onBack: () => void; onRecompute: () => void;
+  onPrevMonth: () => void; onNextMonth: () => void; recomputing: boolean; canManageSalary: boolean; onGoConfig: () => void;
+}) {
+  return (
+    <div className="pb-5">
+      <AdminHeader period={period} onBack={onBack} onRecompute={onRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth} recomputing={recomputing} />
+      <div className="mx-3.5 mt-2 rounded-[24px] px-6 py-12 flex flex-col items-center text-center" style={{ background: "#221C3E", border: "1px solid #322A55" }}>
+        <span className="w-[60px] h-[60px] rounded-[18px] grid place-items-center mb-4" style={{ background: "rgba(255,210,63,.14)", color: "#FFD23F" }}><Wallet size={28} /></span>
+        <div className="text-[15px] font-extrabold text-[#EDEAF7]">Chưa có quản lý hưởng lương</div>
+        <div className="text-[12px] text-[#9A8FC4] mt-1.5 leading-[1.5]">Vào tab Cấu hình để thêm quản lý vào diện hưởng lương, đặt lương cứng và tiền phòng.</div>
+        {canManageSalary && (
+          <button onClick={onGoConfig} className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-bold rounded-[13px] px-5 py-2.5"
+            style={{ color: "#17132A", background: "#FFD23F", border: "none" }}><Settings size={15} />Mở Cấu hình</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ───────────────────────── HOME (Lương) ─────────────────────────
-function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock, onBack, onRecompute, onPrevMonth, onNextMonth, onOpenMember, onOpenBreakdown, onOpenBatch, onOpenClose }: {
+function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock, recomputing, onBack, onRecompute, onPrevMonth, onNextMonth, onOpenBreakdown, onOpenBatch, onOpenClose }: {
   managers: SalManager[]; period: { label: string; year: number }; locked: boolean;
-  totals: Totals; metrics: Metrics; canPay: boolean; canLock: boolean;
+  totals: Totals; metrics: Metrics; canPay: boolean; canLock: boolean; recomputing: boolean;
   onBack: () => void; onRecompute: () => void; onPrevMonth: () => void; onNextMonth: () => void;
-  onOpenMember: (id: string) => void; onOpenBreakdown: (m: SalManager) => void; onOpenBatch: () => void; onOpenClose: () => void;
+  onOpenBreakdown: (m: SalManager) => void; onOpenBatch: () => void; onOpenClose: () => void;
 }) {
   const treasury = useCountUp(totals.take, [totals.take]);
   const { N, readyPct, doneSteps, unpaidCount, overCount, withGoalCount } = metrics;
@@ -114,26 +198,7 @@ function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock
 
   return (
     <div className="pb-5">
-      {/* header */}
-      <div className="flex items-center gap-[11px] px-4 pt-1.5 pb-3.5">
-        <button onClick={onBack} aria-label="Quay lại" className="w-9 h-9 rounded-[13px] grid place-items-center shrink-0"
-          style={{ background: "rgba(139,92,246,.18)", border: "2px solid #A78BFA", color: "#C4B5FD" }}>
-          <ChevronLeft size={20} strokeWidth={2.5} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="text-[16px] font-extrabold text-[#EDEAF7] tracking-tight">Bảng lương quản lý</div>
-          <div className="text-[11.5px] text-[#9A8FC4]">Quản trị viên · toàn đội</div>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button onClick={onRecompute} aria-label="Tính lại" className="w-8 h-8 rounded-full grid place-items-center"
-            style={{ background: "rgba(255,255,255,.08)", color: "#9A8FC4" }}><RefreshCw size={15} /></button>
-          <div className="inline-flex items-center rounded-full" style={{ background: "rgba(255,210,63,.14)" }}>
-            <button onClick={onPrevMonth} aria-label="Tháng trước" className="w-7 h-7 grid place-items-center" style={{ color: "#FFD23F" }}><ChevronLeft size={16} /></button>
-            <span className="text-[11px] font-bold px-0.5" style={{ color: "#FFD23F" }}>{period.label}</span>
-            <button onClick={onNextMonth} aria-label="Tháng sau" className="w-7 h-7 grid place-items-center" style={{ color: "#FFD23F" }}><ChevronRight size={16} /></button>
-          </div>
-        </div>
-      </div>
+      <AdminHeader period={period} onBack={onBack} onRecompute={onRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth} recomputing={recomputing} />
 
       {/* treasury hero */}
       <div className="relative mx-3.5 rounded-[28px] overflow-hidden p-[22px]"
@@ -247,137 +312,95 @@ function ProgressRing({ pct }: { pct: number }) {
   );
 }
 
-// ───────────────────────── CÁ NHÂN (Member) ─────────────────────────
-function MemberScreen({ managers, period, canPay, selId, onSel, onPayout, onGoLog }: {
-  managers: SalManager[]; period: { label: string; year: number }; canPay: boolean;
-  selId: string; onSel: (id: string) => void; onPayout: (m: SalManager) => void; onGoLog: () => void;
-}) {
-  const m = managers.find((x) => x.id === selId) || managers[0];
-  const c = m.calc!;
-  const t = avaTone(m);
-  const goal = m.incomeGoal || 0;
-  const pct = goal > 0 ? Math.min(Math.round((c.gross / goal) * 100), 999) : 0;
-  const barPct = Math.min(pct, 100);
-  const periodText = `${period.label}/${period.year}`;
-
-  const rows = [
-    { label: "Lương tháng", v: m.base, color: "#EDEAF7", neg: false },
-    { label: "Thưởng việc", v: c.bonus, color: "#FFD23F", neg: false },
-    { label: "Lợi nhuận đầu tư", v: m.investment, color: "#7BE7AC", neg: false },
-    { label: "Hoa hồng Sale", v: m.commission, color: "#C4B5FD", neg: false },
-    { label: "Đã ứng trước", v: m.advance, color: "#FF7AA0", neg: true },
-    { label: "Tiền phòng", v: m.roomRent, color: "#FF7AA0", neg: true },
-  ];
-
+// ───────────────────────── CÁ NHÂN (Member) — mở self-view y như nhân viên ─────────────────────────
+// Chạm 1 người → mở SalarySelfMobile (đúng trải nghiệm "Lương của tôi" của NV).
+function MemberScreen({ managers, onPick }: { managers: SalManager[]; onPick: (m: SalManager) => void }) {
+  const ranked = [...managers].sort((a, b) => pctOf(b) - pctOf(a));
   return (
     <div className="pb-5">
-      <div className="px-[18px] pt-2 pb-2.5">
+      <div className="px-[18px] pt-2 pb-3">
         <div className="text-[18px] font-extrabold text-[#EDEAF7]">Bảng lương cá nhân</div>
-        <div className="text-[11.5px] text-[#9A8FC4]">Xem chi tiết lương của từng thành viên</div>
+        <div className="text-[11.5px] text-[#9A8FC4]">Mở bảng lương đúng như nhân viên tự xem</div>
       </div>
-
-      {/* person switcher */}
-      <div className="flex gap-3.5 overflow-x-auto px-[18px] pb-2 [&::-webkit-scrollbar]:hidden">
-        {managers.map((p) => {
-          const pt = avaTone(p);
-          const on = p.id === selId;
+      <div className="mx-3.5 flex flex-col gap-[9px]">
+        {ranked.map((m) => {
+          const t = avaTone(m);
+          const pct = pctOf(m);
+          const ok = pct >= 100;
+          const paid = isPaid(m);
           return (
-            <button key={p.id} onClick={() => onSel(p.id)} className="shrink-0 flex flex-col items-center gap-1.5"
-              style={{ opacity: on ? 1 : 0.45 }}>
-              <span className="w-[50px] h-[50px] rounded-full grid place-items-center font-extrabold text-[15px] tabular-nums"
-                style={{ background: pt.bg, border: on ? `2px solid ${pt.border}` : "2px solid transparent", color: pt.fg }}>{p.initials}</span>
-              <span className="text-[10.5px] font-semibold text-[#CFC9E0]">{p.short}</span>
+            <button key={m.id} onClick={() => onPick(m)}
+              className="flex items-center gap-3 px-[15px] py-[14px] rounded-[18px] text-left"
+              style={{ background: "#221C3E", border: "1px solid #322A55" }}>
+              <span className="relative w-11 h-11 rounded-full grid place-items-center font-extrabold text-[14px] shrink-0 tabular-nums"
+                style={{ background: t.bg, border: `2px solid ${t.border}`, color: t.fg }}>
+                {m.initials}
+                <span className="absolute -bottom-[7px] left-1/2 -translate-x-1/2 text-[8px] font-extrabold px-[5px] rounded-full"
+                  style={{ color: "#17132A", background: t.border }}>{m.workdays}</span>
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-bold text-[#EDEAF7] truncate">{m.short}{m.alias ? <span className="text-[#9A8FC4] font-normal"> · {m.alias}</span> : null}</div>
+                <div className="text-[11px] text-[#9A8FC4] truncate">{m.role} · {m.workdays} công</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="font-mono font-bold text-[14px]" style={{ color: paid ? "#9A8FC4" : "#7BE7AC" }}>{bigNum(m.calc?.takehome ?? 0)}</div>
+                <div className="text-[10px] font-bold mt-px" style={{ color: m.incomeGoal > 0 ? (ok ? "#34D399" : "#FF9DB4") : "#9A8FC4" }}>
+                  {m.incomeGoal > 0 ? <>{ok ? "↑" : "↓"} {pct}% mục tiêu</> : (paid ? "đã trả" : "chờ trả")}
+                </div>
+              </div>
+              <ChevronRight size={18} strokeWidth={2.5} className="shrink-0" style={{ color: "#7A6FA0" }} />
             </button>
           );
         })}
       </div>
-
-      {/* hero */}
-      <div className="relative mx-3.5 mt-1 rounded-[28px] overflow-hidden p-[22px]"
-        style={{ background: "radial-gradient(110% 120% at 90% -10%, #5B3AA8 0%, transparent 55%), radial-gradient(100% 120% at -5% 115%, #7A4F12 0%, transparent 58%), #251C46" }}>
-        <div className="absolute inset-0 pointer-events-none opacity-60"
-          style={{ backgroundImage: "radial-gradient(rgba(255,210,63,.10) 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
-        <div className="relative flex items-center gap-3">
-          <span className="w-[46px] h-[46px] rounded-full grid place-items-center font-extrabold text-[16px] tabular-nums"
-            style={{ background: t.bg, border: `2px solid ${t.border}`, color: t.fg }}>{m.initials}</span>
-          <div className="flex-1 min-w-0">
-            <div className="text-[17px] font-extrabold text-white tracking-tight truncate">{m.short}{m.alias ? ` · ${m.alias}` : ""}</div>
-            <div className="text-[12px] text-[#EDEAF7]/70 truncate">{m.role} · {m.workdays} công</div>
-          </div>
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#EDEAF7] px-2.5 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,.12)" }}>
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#FFD23F" }} />{periodText}
-          </span>
-        </div>
-
-        <div className="relative mt-[18px] flex items-center gap-2 text-[12.5px] text-[#EDEAF7]/85">
-          <Trophy size={15} style={{ color: "#FFD23F" }} />Tổng thu nhập tháng này
-        </div>
-        <div className="relative mt-1 font-extrabold tabular-nums leading-[1.04] text-[44px] tracking-tight" style={{ color: "#FFD23F", textShadow: "0 3px 22px rgba(255,210,63,.28)" }}>
-          {bigNum(c.gross)}<span className="text-[22px] opacity-75 ml-[2px]">₫</span>
-        </div>
-
-        {goal > 0 && (
-          <div className="relative mt-[15px]">
-            <div className="flex items-center justify-between text-[11px] mb-1.5">
-              <span className="text-[#EDEAF7]/85 font-semibold">Mục tiêu {salShort(goal)}</span>
-              <span className="font-mono font-bold" style={{ color: "#FFD23F" }}>{pct}%</span>
-            </div>
-            <div className="h-[9px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.12)" }}>
-              <span className="block h-full rounded-full transition-[width] duration-700"
-                style={{ width: barPct + "%", background: pct >= 100 ? "linear-gradient(90deg,#FFD23F,#F5A623)" : "#FF7AA0" }} />
-            </div>
-            <div className="text-[11px] text-[#EDEAF7]/70 mt-2">{pct >= 100 ? `Vượt mục tiêu ${pct}%` : `Mới đạt ${pct}% mục tiêu`}</div>
-          </div>
-        )}
+      <div className="mx-3.5 mt-3.5 flex items-center gap-2 px-3.5 py-3 rounded-[14px] text-[11.5px]"
+        style={{ background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.22)", color: "#C4B5FD" }}>
+        <Info size={14} className="shrink-0" />Chạm vào một người để xem bảng lương gamified y như nhân viên thấy.
       </div>
-
-      {/* income components */}
-      <div className="mx-3.5 mt-3.5 rounded-[22px] overflow-hidden" style={{ background: "#221C3E", border: "1px solid #322A55" }}>
-        <div className="flex items-center gap-2.5 px-4 py-3.5 border-b" style={{ borderColor: "#322A55" }}>
-          <span className="w-[30px] h-[30px] rounded-[9px] grid place-items-center" style={{ background: "rgba(255,210,63,.14)", color: "#FFD23F" }}><BarChart3 size={16} /></span>
-          <div className="text-[13.5px] font-bold text-[#EDEAF7]">Thành phần thu nhập</div>
-        </div>
-        <div className="px-4 pt-1 pb-1.5">
-          {rows.map((r, i) => (
-            <DRow key={i} label={r.label} amount={r.v} color={r.v > 0 ? r.color : "#9A8FC4"} neg={r.neg} />
-          ))}
-        </div>
-        <div className="flex items-center justify-between px-4 py-3.5 border-t" style={{ borderColor: "#322A55", background: "rgba(255,210,63,.08)" }}>
-          <span className="text-[13px] font-bold text-[#EDEAF7]">Thực nhận</span>
-          <span className="font-extrabold text-[20px]" style={{ color: "#FFD23F" }}>{salFmt(c.takehome)}</span>
-        </div>
-      </div>
-
-      <button onClick={onGoLog} className="mx-3.5 mt-3 w-[calc(100%-28px)] flex items-center justify-center gap-1.5 text-[12.5px] font-semibold rounded-[14px] py-3"
-        style={{ background: "#221C3E", border: "1px solid #322A55", color: "#FFD23F" }}>
-        <Zap size={14} />Xem bảng kê công việc<ChevronRight size={14} strokeWidth={2.5} />
-      </button>
-
-      {canPay && (
-        <button onClick={() => onPayout(m)} className="mx-3.5 mt-2.5 mb-1 w-[calc(100%-28px)] inline-flex items-center justify-center gap-1.5 text-[13.5px] font-bold rounded-[14px] py-3.5"
-          style={{ color: "#17132A", background: "#FFD23F", border: "none" }}>
-          <HandCoins size={16} />Trả lương cho {m.short}
-        </button>
-      )}
     </div>
   );
 }
 
 // ───────────────────────── BẢNG KÊ (Log) ─────────────────────────
-function LogScreen({ ledger, nameById, period }: {
-  ledger: SalLedgerRow[]; nameById: Map<string, string>; period: { label: string; year: number };
+function LogScreen({ ledger, managers, nameById, period }: {
+  ledger: SalLedgerRow[]; managers: SalManager[]; nameById: Map<string, string>; period: { label: string; year: number };
 }) {
-  const rows = useMemo(() => [...ledger].sort((a, b) => (a.occurred_date < b.occurred_date ? 1 : -1)), [ledger]);
+  const [filter, setFilter] = useState<string | null>(null); // null = tất cả
+  const sorted = useMemo(() => [...ledger].sort((a, b) => (a.occurred_date < b.occurred_date ? 1 : -1)), [ledger]);
+  const rows = useMemo(() => (filter ? sorted.filter((r) => r.staff_id === filter) : sorted), [sorted, filter]);
   const total = rows.reduce((s, r) => s + (r.bonus_amount || 0), 0);
+  const ranked = [...managers].sort((a, b) => pctOf(b) - pctOf(a));
+  const filterName = filter ? (nameById.get(filter) || "") : "Toàn đội";
   return (
     <div className="px-3.5 pt-2 pb-5">
-      <div className="flex items-center gap-3 px-1 pb-3.5">
+      <div className="flex items-center gap-3 px-1 pb-3">
         <div className="flex-1 min-w-0">
           <div className="text-[18px] font-extrabold text-[#EDEAF7]">Bảng kê công việc</div>
-          <div className="text-[11.5px] text-[#9A8FC4]">Toàn đội · {period.label}/{period.year} · {rows.length} việc</div>
+          <div className="text-[11.5px] text-[#9A8FC4]">{filterName} · {period.label}/{period.year} · {rows.length} việc</div>
         </div>
         <span className="font-mono font-extrabold text-[17px] shrink-0" style={{ color: "#FFD23F" }}>+{salShort(total)}</span>
       </div>
+
+      {/* lọc theo nhân viên — mặc định "Tất cả" */}
+      <div className="flex gap-2 overflow-x-auto pb-3 px-1 [&::-webkit-scrollbar]:hidden">
+        <button onClick={() => setFilter(null)} className="shrink-0 text-[12px] font-semibold px-3.5 py-1.5 rounded-full"
+          style={filter === null ? { color: "#17132A", background: "#FFD23F", border: "none" } : { color: "#CFC9E0", background: "#221C3E", border: "1px solid #322A55" }}>
+          Tất cả
+        </button>
+        {ranked.map((m) => {
+          const on = filter === m.id;
+          const t = avaTone(m);
+          return (
+            <button key={m.id} onClick={() => setFilter(m.id)} className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full"
+              style={on ? { color: "#17132A", background: t.border, border: "none" } : { color: "#CFC9E0", background: "#221C3E", border: "1px solid #322A55" }}>
+              <span className="w-4 h-4 rounded-full grid place-items-center text-[8px] font-extrabold"
+                style={on ? { background: "rgba(0,0,0,.18)", color: "#17132A" } : { background: t.bg, color: t.fg }}>{m.initials}</span>
+              {m.short}
+            </button>
+          );
+        })}
+      </div>
+
       {rows.length === 0 ? (
         <div className="rounded-[18px] px-5 py-12 text-center text-[13px] text-[#9A8FC4]" style={{ background: "#221C3E", border: "1px solid #322A55" }}>
           Chưa có việc nào tháng này.
@@ -680,20 +703,32 @@ const NAV: { key: Tab; label: string; Icon: LucideIcon }[] = [
 ];
 
 export default function SalaryAdminMobile(props: AdminMobileProps) {
-  const { managers, period, locked, accounts, canLock, canPay, canManageSalary,
+  const { managers, period, loading, locked, accounts, canLock, canPay, canManageSalary,
     onSaveAdjustment, onPayout, onBulkPayout, onLock, onUnlock,
     onPrevMonth, onNextMonth, onRecompute } = props;
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("home");
   const [sheet, setSheet] = useState<SheetState>(null);
-  const [selId, setSelId] = useState<string>(managers[0]?.id || "");
+  const [selfMember, setSelfMember] = useState<SalManager | null>(null);
+  const [recomputing, setRecomputing] = useState(false);
+  const recomputeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Shell chiếm trọn màn (web-app) — khoá cuộn nền site khi mở.
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.overflow = prev;
+      if (recomputeTimer.current) clearTimeout(recomputeTimer.current);
+    };
   }, []);
+
+  const handleRecompute = () => {
+    onRecompute();
+    setRecomputing(true);
+    if (recomputeTimer.current) clearTimeout(recomputeTimer.current);
+    recomputeTimer.current = setTimeout(() => setRecomputing(false), 900);
+  };
 
   const totals: Totals = useMemo(() => managers.reduce((t, m) => {
     const c = m.calc!;
@@ -715,7 +750,7 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
   const ledger = useMemo(() => managers.flatMap((m) => m.ledger), [managers]);
   const nameById = useMemo(() => new Map(managers.map((m) => [m.id, m.short])), [managers]);
 
-  const openMember = (id: string) => { setSelId(id); setTab("member"); };
+  const headerNav = { onBack: () => navigate(-1), onRecompute: handleRecompute, onPrevMonth, onNextMonth, recomputing };
 
   return (
     <div className="fixed inset-0 z-[60] overflow-hidden flex justify-center"
@@ -724,19 +759,23 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
         style={{ height: "100dvh", background: "radial-gradient(80% 30% at 50% 0%, #241a44 0%, transparent 55%), #17132A" }}>
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch", paddingTop: "env(safe-area-inset-top)" }}>
-          {tab === "home" && (
+          {loading ? (
+            <LoadingScreen period={period} {...headerNav} />
+          ) : managers.length === 0 && tab !== "config" ? (
+            <EmptyScreen period={period} {...headerNav} canManageSalary={canManageSalary} onGoConfig={() => setTab("config")} />
+          ) : tab === "home" ? (
             <HomeScreen managers={managers} period={period} locked={locked} totals={totals} metrics={metrics}
-              canPay={canPay} canLock={canLock}
-              onBack={() => navigate(-1)} onRecompute={onRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth}
-              onOpenMember={openMember} onOpenBreakdown={(m) => setSheet({ kind: "breakdown", m })}
+              canPay={canPay} canLock={canLock} recomputing={recomputing}
+              onBack={headerNav.onBack} onRecompute={handleRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth}
+              onOpenBreakdown={(m) => setSheet({ kind: "breakdown", m })}
               onOpenBatch={() => setSheet({ kind: "batch" })} onOpenClose={() => setSheet({ kind: "close" })} />
+          ) : tab === "member" ? (
+            <MemberScreen managers={managers} onPick={(m) => setSelfMember(m)} />
+          ) : tab === "log" ? (
+            <LogScreen key={period.label + period.year} ledger={ledger} managers={managers} nameById={nameById} period={period} />
+          ) : (
+            canManageSalary && <ConfigScreen />
           )}
-          {tab === "member" && (
-            <MemberScreen managers={managers} period={period} canPay={canPay} selId={selId || managers[0]?.id || ""}
-              onSel={setSelId} onPayout={(m) => setSheet({ kind: "payout", m })} onGoLog={() => setTab("log")} />
-          )}
-          {tab === "log" && <LogScreen ledger={ledger} nameById={nameById} period={period} />}
-          {tab === "config" && canManageSalary && <ConfigScreen />}
         </div>
 
         {/* bottom nav */}
@@ -754,6 +793,9 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
             );
           })}
         </nav>
+
+        {/* Self-view y như nhân viên — overlay full-screen (có nav riêng Lương/Nhiệm vụ/Đầu tư) */}
+        {selfMember && <SalarySelfMobile m={selfMember} period={period} onExit={() => setSelfMember(null)} />}
 
         {/* sheets */}
         {sheet?.kind === "breakdown" && (

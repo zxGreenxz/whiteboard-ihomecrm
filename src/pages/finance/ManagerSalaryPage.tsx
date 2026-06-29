@@ -129,11 +129,17 @@ export default function ManagerSalaryPage() {
 
   // Mobile: shell web-app chiếm trọn màn (không MainLayout) — 4 tab dưới đáy
   // (Lương / Cá nhân / Bảng kê / Cấu hình). Bỏ role switcher + self-preview vì
-  // tab "Cá nhân" đã thay thế. Loading/empty rơi xuống nhánh desktop dưới.
-  if (phone && !isLoading && managers.length > 0) {
+  // tab "Cá nhân" đã thay thế. Tự xử lý loading/empty trong shell tối (không
+  // rơi xuống nhánh desktop sáng) — đổi tháng = spinner gaming tại chỗ.
+  if (phone) {
+    // Nhãn tháng suy TRỰC TIẾP từ periodMonth (tháng đang yêu cầu), KHÔNG lấy
+    // từ data.period — vì khi đổi tháng React Query còn giữ data tháng cũ 1 nhịp
+    // → màn loading sẽ hiện sai tháng. periodMonth luôn là nguồn sự thật.
+    const [pyNum, pmNum] = periodMonth.split("-").map((x) => parseInt(x, 10));
+    const mobilePeriod = { label: `Tháng ${pmNum}`, year: pyNum };
     return (
       <SalaryAdminMobile
-        managers={managers} period={period} locked={monthLocked} accounts={accounts}
+        managers={managers} period={mobilePeriod} loading={isLoading} locked={monthLocked} accounts={accounts}
         canLock={canLock} canPay={canPay} canManageSalary={canManageSalary}
         onSaveAdjustment={onSaveAdjustment} onRemoveAdjustment={onRemoveAdjustment}
         onPayout={onPayout} onBulkPayout={onBulkPayout}
