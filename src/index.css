@@ -232,82 +232,116 @@ All colors MUST be HSL.
 }
 
 /* ============================================================
-   Bonus toast — popup thưởng khi hoàn thành công việc.
-   Render qua Sonner toast.custom (BonusToast.tsx). Nằm ở portal toaster,
-   NGOÀI .sal-root nên dùng màu hex tường minh, không phụ thuộc token salary.
+   Bonus reward popup — "kiếm tiền" game-farm theo tinh thần Bảng lương.
+   Render qua Sonner toast.custom (BonusToast.tsx, position top-center,
+   unstyled). Nằm ở portal toaster, NGOÀI .sal-root nên dùng hex tường minh.
+   Thẻ kho báu xanh lá + số tiền VÀNG đếm tăng + tia jackpot xoay + xu bay +
+   vệt sáng lướt + rơi nảy bất ngờ.
    ============================================================ */
-@keyframes bonusPop {
-  0%   { opacity: 0; transform: translateY(8px) scale(.96); }
-  60%  { opacity: 1; transform: translateY(-2px) scale(1.02); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes bonusDrop {
+  0%   { opacity: 0; transform: translateY(-48px) scale(.62); }
+  55%  { opacity: 1; transform: translateY(7px)   scale(1.06); }
+  72%  {              transform: translateY(-3px)  scale(.985); }
+  100% { opacity: 1; transform: translateY(0)     scale(1); }
 }
-@keyframes bonusBadgePulse {
-  0%, 100% { transform: scale(1); }
-  40%      { transform: scale(1.12); }
+@keyframes bonusGlow {
+  0%, 100% { box-shadow: 0 20px 50px -12px rgba(5,150,105,.62), 0 0 0 1px rgba(250,204,21,.5),  0 0 24px rgba(250,204,21,.16); }
+  50%      { box-shadow: 0 22px 58px -10px rgba(5,150,105,.8),  0 0 0 1px rgba(250,204,21,.9),  0 0 42px rgba(250,204,21,.45); }
 }
-@keyframes bonusFloat {
-  0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(-10px) rotate(12deg); opacity: .55; }
+@keyframes bonusRays { to { transform: translateX(-50%) rotate(360deg); } }
+@keyframes bonusShine {
+  0%       { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
+  18%      { opacity: 1; }
+  60%,100% { transform: translateX(320%)  skewX(-18deg); opacity: 0; }
+}
+@keyframes bonusCoinRise {
+  0%   { opacity: 0; transform: translateY(16px) scale(.55) rotate(0deg); }
+  18%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-66px) scale(1.05) rotate(26deg); }
+}
+@keyframes bonusAmountPop {
+  0%   { transform: scale(.4);  opacity: 0; }
+  60%  { transform: scale(1.16); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes bonusNewPulse {
+  0%, 100% { transform: scale(1);    box-shadow: 0 2px 8px rgba(245,158,11,.5); }
+  50%      { transform: scale(1.08); box-shadow: 0 3px 14px rgba(245,158,11,.75); }
 }
 
-.bonus-toast {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-width: 260px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 70%);
-  border: 1px solid #a7f3d0;
-  box-shadow: 0 10px 30px -8px rgba(16, 185, 129, .45);
-  animation: bonusPop .32s cubic-bezier(.22, 1, .36, 1);
+.bonus-pop {
+  position: relative;
+  width: min(90vw, 384px);
+  border-radius: 20px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 88% -20%, #16a34a 0%, transparent 55%),
+    radial-gradient(95% 120% at 0% 120%, #064e3b 0%, transparent 60%),
+    linear-gradient(160deg, #075e44 0%, #053627 100%);
+  animation:
+    bonusDrop .58s cubic-bezier(.18, 1.3, .4, 1),
+    bonusGlow 1.9s ease-in-out .58s infinite;
 }
-.bonus-toast__badge {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 58px;
-  height: 38px;
-  padding: 0 10px;
-  border-radius: 10px;
-  font-weight: 800;
+.bonus-pop__rays {
+  position: absolute; top: -45%; left: 50%; width: 230%; height: 230%;
+  transform: translateX(-50%);
+  background: repeating-conic-gradient(from 0deg, rgba(250,204,21,.16) 0deg 11deg, transparent 11deg 26deg);
+  animation: bonusRays 11s linear infinite;
+  pointer-events: none; opacity: .4;
+}
+.bonus-pop__inner {
+  position: relative; z-index: 2;
+  padding: 16px 18px 17px;
+  background: radial-gradient(140% 90% at 50% 0%, rgba(255,255,255,.07), transparent 62%);
+}
+.bonus-pop__head { display: flex; align-items: center; gap: 8px; }
+.bonus-pop__gift { font-size: 18px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+.bonus-pop__title {
+  font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+  color: #fde68a;
+}
+.bonus-pop__new {
+  margin-left: auto;
+  font-size: 9.5px; font-weight: 900; letter-spacing: .08em;
+  color: #052e1a;
+  background: linear-gradient(180deg, #fde047, #f59e0b);
+  padding: 3px 9px; border-radius: 999px;
+  animation: bonusNewPulse 1.5s ease-in-out infinite;
+}
+.bonus-pop__amount {
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900; font-size: 52px; line-height: 1; letter-spacing: -.02em;
+  background: linear-gradient(180deg, #fff7cc 0%, #fde047 38%, #f59e0b 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 10px rgba(245,158,11,.45));
+  animation: bonusAmountPop .62s cubic-bezier(.18, 1.4, .4, 1) .14s both;
+}
+.bonus-pop__label {
+  margin-top: 7px; font-size: 15px; font-weight: 700; color: #fff; line-height: 1.25;
+}
+.bonus-pop__place { margin-top: 2px; font-size: 12px; color: rgba(255,255,255,.72); }
+.bonus-pop__shine {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 34%; z-index: 3;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.4), transparent);
+  animation: bonusShine 2s ease-in-out .55s 2;
+  pointer-events: none;
+}
+.bonus-pop__coins { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.bonus-pop__coin {
+  position: absolute; bottom: 12px;
+  left: calc(11% + (var(--i) * 19.5%));
   font-size: 17px;
-  letter-spacing: .3px;
-  color: #fff;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  box-shadow: 0 4px 12px -2px rgba(5, 150, 105, .55);
-  animation: bonusBadgePulse .7s ease-out .12s 1;
-}
-.bonus-toast__body { min-width: 0; flex: 1; }
-.bonus-toast__label {
-  font-weight: 700;
-  font-size: 14px;
-  color: #064e3b;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bonus-toast__place {
-  margin-top: 1px;
-  font-size: 12px;
-  color: #047857;
-  opacity: .8;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bonus-toast__spark {
-  flex-shrink: 0;
-  font-size: 20px;
-  animation: bonusFloat 1.1s ease-in-out infinite alternate;
+  animation: bonusCoinRise 1.6s ease-out calc(.35s + var(--i) * .13s) infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .bonus-toast,
-  .bonus-toast__badge,
-  .bonus-toast__spark {
+  .bonus-pop,
+  .bonus-pop__rays,
+  .bonus-pop__shine,
+  .bonus-pop__coin,
+  .bonus-pop__amount,
+  .bonus-pop__new {
     animation: none;
   }
 }

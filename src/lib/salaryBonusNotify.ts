@@ -46,7 +46,8 @@ export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonu
   }
 
   rows.forEach((row, i) => {
-    // Popup nổi — stagger nhẹ để tạo cảm giác "combo" khi có nhiều dòng cùng lúc.
+    // Popup "phần thưởng" nổi ở TOP-CENTER (unstyled để thẻ game-farm chiếm trọn).
+    // Stagger để nhiều dòng (JOB + DAY_BONUS) rơi xuống lần lượt như "combo".
     setTimeout(() => {
       toast.custom(
         () =>
@@ -54,10 +55,11 @@ export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonu
             amount: row.amount,
             label: row.label,
             place: row.place,
+            kind: row.bonus_kind,
           }),
-        { duration: 5000 },
+        { duration: 6000, position: 'top-center', unstyled: true },
       );
-    }, i * 250);
+    }, i * 600);
 
     // Web Push tới chính mình (thanh trạng thái) — nuốt lỗi êm (chưa bật push → sent:0).
     supabase.functions
