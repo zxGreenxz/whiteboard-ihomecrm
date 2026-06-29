@@ -88,14 +88,6 @@ export default function ServiceQuotasPage() {
   return (
     <MainLayout>
       <div className="space-y-4">
-        {/* Breadcrumb */}
-        <div className="text-sm text-muted-foreground">
-          Cài đặt hệ thống &gt; Danh mục khác &gt; Tài chính &gt;{" "}
-          <span className="text-foreground font-medium">
-            Định mức dịch vụ
-          </span>
-        </div>
-
         {/* Toolbar */}
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>

@@ -96,11 +96,6 @@ export default function ServicesPage() {
   return (
     <MainLayout>
       <div className="space-y-4">
-        {/* Breadcrumb */}
-        <div className="text-sm text-muted-foreground">
-          Danh mục dữ liệu &gt; <span className="text-foreground font-medium">Dịch vụ</span>
-        </div>
-
         {/* Toolbar */}
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>

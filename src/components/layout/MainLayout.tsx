@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
-import Breadcrumbs from './Breadcrumbs';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { LucideIcon } from 'lucide-react';
 
@@ -61,35 +60,26 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, fullBleed = false }
             /* Full-height: không breadcrumbs/padding; cố định = viewport - header */
             <div className="h-[calc(100vh-4rem)] overflow-hidden">{children}</div>
           ) : (
-            <>
-              {/* Breadcrumbs */}
-              <div className="border-b bg-white">
-                <div className="px-4 py-3">
-                  <Breadcrumbs />
-                </div>
-              </div>
-
-              {/* Page Content */}
-              <div className="p-4 lg:p-6">
-                {/* Page Header if title is provided */}
-                {title && (
-                  <div className="flex items-center gap-3 mb-6">
-                    {Icon && (
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Icon className="h-6 w-6 text-primary" />
-                      </div>
-                    )}
-                    <div>
-                      <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-                      {subtitle && (
-                        <p className="text-sm text-muted-foreground">{subtitle}</p>
-                      )}
+            /* Page Content (breadcrumbs removed) */
+            <div className="p-4 lg:p-6">
+              {/* Page Header if title is provided */}
+              {title && (
+                <div className="flex items-center gap-3 mb-6">
+                  {Icon && (
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Icon className="h-6 w-6 text-primary" />
                     </div>
+                  )}
+                  <div>
+                    <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+                    {subtitle && (
+                      <p className="text-sm text-muted-foreground">{subtitle}</p>
+                    )}
                   </div>
-                )}
-                {children}
-              </div>
-            </>
+                </div>
+              )}
+              {children}
+            </div>
           )}
         </main>
       </div>

@@ -43,12 +43,6 @@ export default function MetersPage() {
   return (
     <MainLayout>
       <div className="space-y-4">
-        {/* Breadcrumb */}
-        <div className="text-sm text-muted-foreground">
-          Cài đặt hệ thống &gt; Danh mục khác &gt; Tài chính &gt;{' '}
-          <span className="text-foreground font-medium">Đồng hồ Công tơ</span>
-        </div>
-
         {/* Toolbar */}
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => { setEditingMeter(null); setIsFormOpen(true); }}>

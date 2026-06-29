@@ -60,12 +60,6 @@ export default function IncomeExpenseTemplatesPage() {
   return (
     <MainLayout>
       <div className="space-y-4">
-        {/* Breadcrumb */}
-        <div className="text-sm text-muted-foreground">
-          Cài đặt hệ thống &gt; Mẫu biểu &gt;{' '}
-          <span className="text-foreground font-medium">Mẫu thu chi</span>
-        </div>
-
         {/* Toolbar */}
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => { setEditingTemplate(null); setIsFormOpen(true); }}>
