@@ -13,6 +13,10 @@ import {
   computeStreak,
   firstName,
   initialsOf,
+  ymOf,
+  shiftYm,
+  autoStaffYm,
+  latestVisibleStaffYm,
 } from "@/lib/managerSalary";
 
 export interface SalPeriod {
@@ -376,6 +380,38 @@ export const useMyManagerConfig = () => {
         .limit(1)
         .maybeSingle();
       return data ? { staff_id: (data as any).staff_id } : null;
+    },
+  });
+};
+
+// Tháng mà SELF-VIEW của nhân viên hiển thị: lùi tháng theo chốt lương + override
+// admin. Override đọc qua RPC SECURITY DEFINER (staff không đọc được salary_bonus_rules);
+// trạng thái chốt đọc từ salary_monthly của chính nhân viên (sm_self_select).
+// Trả về period_month 'YYYY-MM-01'.
+export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled = true) => {
+  return useQuery({
+    queryKey: ["salary-staff-month", staffId],
+    enabled: !!staffId && enabled,
+    queryFn: async () => {
+      const cur = ymOf(new Date());
+      let overrides: Record<string, boolean> = {};
+      try {
+        const { data } = await (supabase.rpc as any)("salary_staff_months");
+        if (data && typeof data === "object") overrides = data as Record<string, boolean>;
+      } catch {
+        /* RPC chưa có / lỗi → dùng mặc định lùi-tháng */
+      }
+      const { data: rows } = await (supabase
+        .from("salary_monthly" as any)
+        .select("period_month, status") as any)
+        .eq("staff_id", staffId)
+        .eq("status", "LOCKED");
+      const locked = new Set<string>(
+        ((rows || []) as any[]).map((r) => String(r.period_month).slice(0, 7)),
+      );
+      const auto = autoStaffYm(cur, locked.has(shiftYm(cur, -1)));
+      const ym = latestVisibleStaffYm(cur, auto, overrides);
+      return `${ym}-01`;
     },
   });
 };

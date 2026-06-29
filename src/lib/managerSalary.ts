@@ -196,3 +196,49 @@ export function salCalc(
 function fmtPlain(n: number): string {
   return Math.round(n).toLocaleString("vi-VN");
 }
+
+// ===== Tháng hiển thị bảng lương cho NHÂN VIÊN (self-view) =====
+// Mặc định "lùi tháng theo chốt lương": hiện tháng TRƯỚC cho tới khi tháng trước
+// được CHỐT (LOCKED), rồi mới nhảy sang tháng hiện tại. Admin có thể ghi đè
+// hiện/ẩn từng tháng (overrides 'YYYY-MM' → bool).
+
+export function ymOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function shiftYm(ym: string, delta: number): string {
+  const [y, m] = ym.split("-").map((x) => parseInt(x, 10));
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+// Mốc auto: tháng trước nếu CHƯA chốt, tháng hiện tại nếu tháng trước đã chốt.
+export function autoStaffYm(curYm: string, prevLocked: boolean): string {
+  return prevLocked ? curYm : shiftYm(curYm, -1);
+}
+
+// Một tháng có hiển thị cho nhân viên không: override (admin) ưu tiên; nếu không
+// có override thì hiện mọi tháng ≤ mốc auto (so sánh chuỗi 'YYYY-MM' hợp lệ).
+export function isStaffMonthVisible(
+  ym: string,
+  autoYm: string,
+  overrides: Record<string, boolean>,
+): boolean {
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, ym)) return !!overrides[ym];
+  return ym <= autoYm;
+}
+
+// Tháng MỚI NHẤT nhân viên được xem (quét lùi tối đa `back` tháng từ tháng hiện tại).
+export function latestVisibleStaffYm(
+  curYm: string,
+  autoYm: string,
+  overrides: Record<string, boolean>,
+  back = 13,
+): string {
+  let m = curYm;
+  for (let i = 0; i <= back; i++) {
+    if (isStaffMonthVisible(m, autoYm, overrides)) return m;
+    m = shiftYm(m, -1);
+  }
+  return autoYm;
+}

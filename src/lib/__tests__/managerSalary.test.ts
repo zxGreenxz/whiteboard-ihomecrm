@@ -6,6 +6,10 @@ import {
   buildBonusAuto,
   computeStats,
   computeStreak,
+  shiftYm,
+  autoStaffYm,
+  isStaffMonthVisible,
+  latestVisibleStaffYm,
   type SalLedgerRow,
 } from "@/lib/managerSalary";
 
@@ -98,5 +102,35 @@ describe("computeStats / computeStreak", () => {
       job("h", "2026-06-12", "sửa", 30000),
     ];
     expect(computeStreak(led)).toBe(3);
+  });
+});
+
+describe("tháng hiển thị cho nhân viên (lùi tháng + override)", () => {
+  it("shiftYm qua biên năm", () => {
+    expect(shiftYm("2026-06", -1)).toBe("2026-05");
+    expect(shiftYm("2026-01", -1)).toBe("2025-12");
+    expect(shiftYm("2026-12", 1)).toBe("2027-01");
+  });
+
+  it("mặc định: tháng 5 chưa chốt → hiện tháng 5; chốt rồi → tháng 6", () => {
+    // T6 hiện tại, T5 chưa chốt
+    let auto = autoStaffYm("2026-06", false);
+    expect(auto).toBe("2026-05");
+    expect(latestVisibleStaffYm("2026-06", auto, {})).toBe("2026-05");
+    // T5 đã chốt → nhảy sang T6
+    auto = autoStaffYm("2026-06", true);
+    expect(auto).toBe("2026-06");
+    expect(latestVisibleStaffYm("2026-06", auto, {})).toBe("2026-06");
+  });
+
+  it("override admin ưu tiên: ẩn tháng auto → lùi tiếp; hiện tháng hiện tại sớm", () => {
+    const auto = autoStaffYm("2026-06", false); // 2026-05
+    // ẩn T5 → lùi về T4
+    expect(latestVisibleStaffYm("2026-06", auto, { "2026-05": false })).toBe("2026-04");
+    // hiện T6 sớm dù T5 chưa chốt
+    expect(latestVisibleStaffYm("2026-06", auto, { "2026-06": true })).toBe("2026-06");
+    // không override → theo auto
+    expect(isStaffMonthVisible("2026-06", auto, {})).toBe(false);
+    expect(isStaffMonthVisible("2026-05", auto, {})).toBe(true);
   });
 });

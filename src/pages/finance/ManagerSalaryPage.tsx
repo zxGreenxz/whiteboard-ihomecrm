@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import {
-  useManagerSalary, useMyManagerConfig,
+  useManagerSalary, useMyManagerConfig, useStaffDisplayMonth,
   useSaveSalaryAdjustment, useDeleteSalaryAdjustment,
   useLockSalaryMonth, useUnlockSalaryMonth, useSalaryPayout,
 } from "@/hooks/useManagerSalary";
@@ -46,7 +46,12 @@ export default function ManagerSalaryPage() {
   const [selfId, setSelfId] = useState<string | null>(null);
   const [ledgerFilter, setLedgerFilter] = useState<{ who?: string } | null>(null);
 
-  const { data, isLoading, refetch } = useManagerSalary(periodMonth);
+  // Nhân viên (không phải admin): mặc định hiển thị tháng lùi theo chốt lương +
+  // override admin. Admin giữ điều hướng tháng tự do.
+  const { data: staffMonth } = useStaffDisplayMonth(myMgr?.staff_id, !isAdmin);
+  const effPeriod = !isAdmin && staffMonth ? staffMonth : periodMonth;
+
+  const { data, isLoading, refetch } = useManagerSalary(effPeriod);
   const { data: rulesData } = useBonusRules();
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
 

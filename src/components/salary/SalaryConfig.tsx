@@ -9,7 +9,9 @@ import {
   useSalaryConfigList, useSaveManagerConfig, type ManagerConfigRow,
   useBonusRules, useSaveBonusRules, type SalaryRules,
   useSalaryHolidays, useAddHoliday, useDeleteHoliday,
+  useStaffMonthOverrides, useSaveStaffMonthOverride, useSalaryLockedMonths,
 } from "@/hooks/useSalaryConfig";
+import { ymOf, shiftYm, autoStaffYm, isStaffMonthVisible, latestVisibleStaffYm } from "@/lib/managerSalary";
 
 const I = SAL_ICONS;
 const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
@@ -104,6 +106,59 @@ function ManagerDialog({ row, onClose }: { row?: ManagerConfigRow | null; onClos
         }}><I.Check size={16} />Lưu</button>
       </div>
     </Modal>
+  );
+}
+
+const ymLabel = (ym: string) => { const [y, m] = ym.split("-"); return `Tháng ${parseInt(m, 10)}/${y}`; };
+
+// Card — Tháng hiển thị bảng lương cho nhân viên (self-view).
+function StaffMonthsCard() {
+  const { data: overrides = {} } = useStaffMonthOverrides();
+  const { data: lockedMonths } = useSalaryLockedMonths();
+  const saveOverride = useSaveStaffMonthOverride();
+
+  const cur = ymOf(new Date());
+  const prevLocked = lockedMonths?.has(shiftYm(cur, -1)) ?? false;
+  const auto = autoStaffYm(cur, prevLocked);
+  const staffViewing = latestVisibleStaffYm(cur, auto, overrides);
+  const months = Array.from({ length: 6 }, (_, i) => shiftYm(cur, -i)); // cur … cur-5
+
+  return (
+    <div className="sal-card">
+      <div className="sal-cfg-head">
+        <span className="ic" style={{ background: "hsl(var(--status-info-bg))", color: "hsl(var(--status-info-fg))" }}><I.Calendar size={18} /></span>
+        <div style={{ flex: 1 }}><h3>Tháng hiển thị cho nhân viên</h3><p>Bật/tắt từng tháng nhân viên được xem ở "Lương của tôi"</p></div>
+      </div>
+      <div className="sal-cfg-body">
+        <div className="sal-note" style={{ marginTop: 0, marginBottom: 8 }}>
+          <I.Info size={14} style={{ marginTop: 1, flexShrink: 0 }} />
+          Mặc định lùi 1 tháng: hiện <b>{ymLabel(shiftYm(cur, -1))}</b> tới khi chốt lương, chốt rồi nhảy sang <b>{ymLabel(cur)}</b>. Nhân viên đang xem: <b style={{ color: "hsl(var(--primary))" }}>{ymLabel(staffViewing)}</b>.
+        </div>
+        {months.map((m) => {
+          const visible = isStaffMonthVisible(m, auto, overrides);
+          const hasOverride = Object.prototype.hasOwnProperty.call(overrides, m);
+          const locked = lockedMonths?.has(m) ?? false;
+          return (
+            <div className="sal-rulerow" key={m}>
+              <div className="rl">
+                <b>{ymLabel(m)}{m === staffViewing ? <span className="sal-alias" style={{ marginLeft: 6 }}>đang hiển thị</span> : null}</b>
+                <small>
+                  {locked ? "Đã chốt lương" : "Chưa chốt"}
+                  {hasOverride ? " · admin ghim" : (visible ? " · tự động hiện" : " · tự động ẩn")}
+                </small>
+              </div>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                {hasOverride && (
+                  <button className="sal-btn sal-btn--ghost sal-btn--sm sal-btn--icon" title="Về mặc định tự động"
+                    onClick={() => saveOverride.mutate({ ym: m, value: null })}><I.RefreshCw size={14} /></button>
+                )}
+                <Switch on={visible} onClick={() => saveOverride.mutate({ ym: m, value: !visible })} />
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -241,6 +296,9 @@ export default function SalaryConfig() {
             <div className="sal-note"><I.Info size={14} style={{ marginTop: 1, flexShrink: 0 }} />KPI là cải tiến tuỳ chọn — bản xem trước, sẽ cộng vào cột Thưởng khi bật trong các bản sau.</div>
           </div>
         </div>
+
+        {/* Card 5 — Tháng hiển thị cho nhân viên */}
+        <StaffMonthsCard />
       </div>
 
       {mgrDialog && <ManagerDialog row={mgrDialog.row} onClose={() => setMgrDialog(null)} />}

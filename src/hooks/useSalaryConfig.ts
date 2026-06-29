@@ -131,7 +131,10 @@ export const useBonusRules = () => {
     queryFn: async () => {
       const { data } = await (supabase.from("salary_bonus_rules" as any).select("id, user_id, rules") as any).limit(1).maybeSingle();
       if (!data) return { id: null as string | null, rules: { ...DEFAULT_RULES } };
-      return { id: (data as any).id, rules: { ...DEFAULT_RULES, ...((data as any).rules || {}) } as SalaryRules };
+      // staffMonths sống chung trong jsonb `rules` nhưng KHÔNG thuộc SalaryRules —
+      // tách ra để form quy tắc không lưu nhầm (xem useStaffMonthOverrides).
+      const { staffMonths: _sm, ...rest } = ((data as any).rules || {}) as any;
+      return { id: (data as any).id, rules: { ...DEFAULT_RULES, ...rest } as SalaryRules };
     },
   });
 };
@@ -142,12 +145,15 @@ export const useSaveBonusRules = () => {
     mutationFn: async (rules: SalaryRules) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { data: existing } = await (supabase.from("salary_bonus_rules" as any).select("id") as any).limit(1).maybeSingle();
+      const { data: existing } = await (supabase.from("salary_bonus_rules" as any).select("id, rules") as any).limit(1).maybeSingle();
+      // GIỮ staffMonths (cài đặt tháng hiển thị) khi lưu lại quy tắc thưởng.
+      const staffMonths = ((existing as any)?.rules?.staffMonths) || {};
+      const merged = { ...rules, staffMonths };
       if (existing?.id) {
-        const { error } = await supabase.from("salary_bonus_rules" as any).update({ rules }).eq("id", (existing as any).id);
+        const { error } = await supabase.from("salary_bonus_rules" as any).update({ rules: merged }).eq("id", (existing as any).id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("salary_bonus_rules" as any).insert({ user_id: user.id, rules });
+        const { error } = await supabase.from("salary_bonus_rules" as any).insert({ user_id: user.id, rules: merged });
         if (error) throw error;
       }
     },
@@ -203,6 +209,59 @@ export const useDeleteHoliday = () => {
       qc.invalidateQueries({ queryKey: ["salary-holidays"] });
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       toast.success("Đã xoá ngày lễ");
+    },
+  });
+};
+
+// ===== Tháng hiển thị cho nhân viên (admin) =====
+// Override hiện/ẩn từng tháng cho self-view: 'YYYY-MM' → bool. Lưu trong
+// salary_bonus_rules.rules.staffMonths (chủ sổ ghi; staff đọc map qua RPC).
+
+export const useStaffMonthOverrides = () => {
+  return useQuery({
+    queryKey: ["salary-staff-months"],
+    queryFn: async () => {
+      const { data } = await (supabase.from("salary_bonus_rules" as any).select("rules") as any).limit(1).maybeSingle();
+      return (((data as any)?.rules?.staffMonths) || {}) as Record<string, boolean>;
+    },
+  });
+};
+
+// Đặt/huỷ override 1 tháng. value=null → xoá override (về mặc định lùi-tháng).
+export const useSaveStaffMonthOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ym, value }: { ym: string; value: boolean | null }) => {
+      const user = await getSessionUser();
+      if (!user) throw new Error("Chưa đăng nhập");
+      const { data: row } = await (supabase.from("salary_bonus_rules" as any).select("id, rules") as any).limit(1).maybeSingle();
+      const rules: any = { ...((row as any)?.rules || {}) };
+      const sm: Record<string, boolean> = { ...(rules.staffMonths || {}) };
+      if (value === null) delete sm[ym]; else sm[ym] = value;
+      rules.staffMonths = sm;
+      if ((row as any)?.id) {
+        const { error } = await supabase.from("salary_bonus_rules" as any).update({ rules }).eq("id", (row as any).id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("salary_bonus_rules" as any).insert({ user_id: user.id, rules });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["salary-staff-months"] });
+      qc.invalidateQueries({ queryKey: ["salary-staff-month"] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Không thể lưu cài đặt tháng"),
+  });
+};
+
+// Tập các tháng ('YYYY-MM') đã CHỐT (đọc bởi chủ sổ — để admin biết mốc auto).
+export const useSalaryLockedMonths = () => {
+  return useQuery({
+    queryKey: ["salary-locked-months"],
+    queryFn: async () => {
+      const { data } = await (supabase.from("salary_monthly" as any).select("period_month, status") as any).eq("status", "LOCKED");
+      return new Set<string>(((data || []) as any[]).map((r) => String(r.period_month).slice(0, 7)));
     },
   });
 };
