@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { SAL_ICONS } from "./salaryIcons";
 import { salFmt, salShort } from "./salaryFormat";
-import { ClickNum, Popover, Menu, Modal } from "./salaryCommon";
+import { ClickNum, Popover, Menu, Modal, Ring, useCountUp } from "./salaryCommon";
 import { BonusPop, InvestmentPop, CommissionPop, AdvancePop, RoomRentPop } from "./salaryPopovers";
 import { SalChartModal } from "./salaryChart";
 import type { SalManager, SalAdjustment } from "@/lib/managerSalary";
@@ -195,33 +195,170 @@ export default function SalaryMonthly(props: MonthlyProps) {
     t.gross += c.gross; t.adv += m.advance; t.room += m.roomRent; t.take += c.takehome; return t;
   }, { base: 0, bonus: 0, inv: 0, com: 0, gross: 0, adv: 0, room: 0, take: 0 });
 
+  // ---- Derived metrics cho command center / KPI / leaderboard ----
+  const N = managers.length;
+  const pctOf = (m: SalManager) => (m.incomeGoal > 0 ? Math.round(((m.calc?.gross ?? 0) / m.incomeGoal) * 100) : 0);
+  // "Đã trả/settled" = không còn nợ — kể cả takehome ≤ 0 (ứng/tiền phòng nuốt hết
+  // lương → không cần phiếu chi), kẻo tiến độ chốt kẹt mãi ở bước "Trả lương".
+  const isPaid = (m: SalManager) => (m.calc?.takehome ?? 0) - m.paid <= 0;
+  const paidCount = managers.filter(isPaid).length;
+  const unpaidCount = N - paidCount;
+  const withGoal = managers.filter((m) => m.incomeGoal > 0);
+  const avgPct = withGoal.length
+    ? Math.round(withGoal.reduce((s, m) => s + ((m.calc?.gross ?? 0) / m.incomeGoal) * 100, 0) / withGoal.length)
+    : 0;
+  const overCount = withGoal.filter((m) => pctOf(m) >= 100).length;
+  const mgrCount = managers.filter((m) => /quản\s*lý/i.test(m.role)).length;
+  const staffCount = N - mgrCount;
+  const bonusPool = totals.bonus + totals.com;
+
+  // Tiến độ chốt: tính lương (luôn xong) → trả lương → chốt & khoá
+  const stepPaid = N > 0 && paidCount === N;
+  const doneSteps = 1 + (stepPaid ? 1 : 0) + (locked ? 1 : 0);
+  const readyPct = Math.round((doneSteps / 3) * 100);
+
+  const treasury = useCountUp(totals.take, [totals.take]);
+
+  const ranked = [...managers].sort((a, b) => pctOf(b) - pctOf(a));
+  const medals = ["🥇", "🥈", "🥉"];
+
+  const splitComps = [
+    { label: "Lương cứng", val: totals.base, color: "hsl(var(--status-neutral-strong))" },
+    { label: "Đầu tư", val: totals.inv, color: "hsl(var(--primary))" },
+    { label: "HH Sale", val: totals.com, color: "hsl(var(--status-tasks))" },
+    { label: "Thưởng việc", val: totals.bonus, color: "hsl(var(--status-warning-strong))" },
+  ].filter((c) => c.val > 0);
+  const splitMax = Math.max(...splitComps.map((c) => c.val), 1);
+
+  const chips = [
+    { label: "Lương cứng", amt: totals.base, neg: false, color: "hsl(var(--foreground))", background: "hsl(var(--muted) / .7)", border: "1px solid hsl(var(--border))", show: true },
+    { label: "Thưởng", amt: totals.bonus, neg: false, color: "hsl(var(--status-warning-fg))", background: "hsl(var(--status-warning-bg))", show: totals.bonus > 0 },
+    { label: "Đầu tư", amt: totals.inv, neg: false, color: "hsl(var(--primary))", background: "hsl(var(--primary) / .1)", show: totals.inv > 0 },
+    { label: "HH Sale", amt: totals.com, neg: false, color: "hsl(var(--status-tasks-fg))", background: "hsl(var(--status-tasks-bg))", show: totals.com > 0 },
+    { label: "Ứng", amt: totals.adv, neg: true, color: "hsl(var(--status-danger-fg))", background: "hsl(var(--status-danger-bg))", show: totals.adv > 0 },
+    { label: "Tiền phòng", amt: totals.room, neg: true, color: "hsl(var(--status-danger-fg))", background: "hsl(var(--status-danger-bg))", show: totals.room > 0 },
+  ].filter((c) => c.show);
+
+  const doRecompute = () => { setRecomputing(true); onRecompute(); setTimeout(() => setRecomputing(false), 950); };
+
   return (
-    <div className="sal-card">
-      {/* Toolbar */}
-      <div className="sal-toolbar">
-        <div className="sal-monthnav">
-          <button className="sal-monthbtn" onClick={onPrevMonth}><I.ChevronLeft size={17} /></button>
-          <span className="sal-monthlabel">{period.label} · {period.year}</span>
-          <button className="sal-monthbtn" onClick={onNextMonth}><I.ChevronRight size={17} /></button>
+    <div className="sal-month">
+      {/* ===== HERO COMMAND CENTER ===== */}
+      <div className="sal-cmd">
+        <div className="sal-cmd-main">
+          <div className="sal-cmd-top">
+            <div className="sal-monthnav">
+              <button className="sal-monthbtn" aria-label="Tháng trước" onClick={onPrevMonth}><I.ChevronLeft size={17} /></button>
+              <span className="sal-monthlabel">{period.label} · {period.year}</span>
+              <button className="sal-monthbtn" aria-label="Tháng sau" onClick={onNextMonth}><I.ChevronRight size={17} /></button>
+            </div>
+            {locked ? (
+              <span className="sal-status sal-status--locked"><I.Lock size={14} />Đã chốt</span>
+            ) : (
+              <span className="sal-status sal-status--draft"><span className="dot" />Bản nháp <small>· cập nhật realtime</small></span>
+            )}
+          </div>
+
+          <div className="sal-cmd-cap"><I.BarChart size={16} />Tổng quỹ thực chi tháng này · {N} nhân sự</div>
+          <div className="sal-cmd-num">{Math.round(treasury).toLocaleString("vi-VN")}<span className="u">₫</span></div>
+
+          <div className="sal-cmd-chips">
+            {chips.map((c, i) => (
+              <span key={i} className="sal-cmd-chip" style={{ color: c.color, background: c.background, border: c.border || "1px solid transparent" }}>
+                {c.label} <b>{c.neg ? "−" : "+"}{Math.round(c.amt).toLocaleString("vi-VN")}</b>
+              </span>
+            ))}
+          </div>
+
+          <div className="sal-cmd-actions">
+            {canPay && <button className="sal-btn sal-btn--primary" onClick={() => setShowBulk(true)}><I.HandCoins size={16} />Trả lương hàng loạt</button>}
+            {!locked && <button className="sal-btn sal-btn--outline" onClick={doRecompute}><I.RefreshCw size={15} style={recomputing ? { animation: "salSpin .95s linear" } : undefined} />Tính lại</button>}
+            <button className="sal-btn sal-btn--outline" title="Xem biểu đồ lương các tháng" onClick={() => setChartModal(true)}><I.BarChart size={16} />Biểu đồ</button>
+            <button className="sal-btn sal-btn--outline" onClick={(e) => setExporting({ rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.Download size={15} />Xuất Excel</button>
+            {canLock && (locked
+              ? <button className="sal-btn sal-btn--outline sp" onClick={() => setShowLock(true)}><I.Unlock size={15} />Mở khoá</button>
+              : <button className="sal-btn sal-btn--primary sp" onClick={() => setShowLock(true)}><I.Lock size={15} />Chốt tháng</button>)}
+          </div>
         </div>
-        <button className="sal-btn sal-btn--outline sal-btn--sm" title="Xem biểu đồ lương các tháng" onClick={() => setChartModal(true)}><I.BarChart size={16} />Biểu đồ</button>
-        {locked ? (
-          <span className="sal-status sal-status--locked"><I.Lock size={14} /> ĐÃ CHỐT {period.year && <small></small>}</span>
-        ) : (
-          <span className="sal-status sal-status--draft"><span className="dot" /> NHÁP <small>· cập nhật realtime</small></span>
-        )}
-        <div className="sal-toolbar-actions">
-          {!locked && <button className="sal-btn sal-btn--outline sal-btn--sm" onClick={() => { setRecomputing(true); onRecompute(); setTimeout(() => setRecomputing(false), 950); }}>
-            <I.RefreshCw size={15} style={recomputing ? { animation: "salSpin .95s linear" } : undefined} />Tính lại</button>}
-          {canPay && <button className="sal-btn sal-btn--outline sal-btn--sm" onClick={() => setShowBulk(true)}><I.Wallet size={15} />Trả lương hàng loạt</button>}
-          {canLock && (locked
-            ? <button className="sal-btn sal-btn--outline sal-btn--sm" onClick={() => setShowLock(true)}><I.Unlock size={15} />Mở khoá</button>
-            : <button className="sal-btn sal-btn--primary sal-btn--sm" onClick={() => setShowLock(true)}><I.Lock size={15} />Chốt tháng</button>)}
-          <button className="sal-btn sal-btn--outline sal-btn--sm sal-btn--icon" onClick={(e) => setExporting({ rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.Download size={15} /></button>
+
+        {/* close readiness */}
+        <div className="sal-ready">
+          <div className="sal-ready-top">
+            <Ring pct={readyPct} size={72} stroke={7}>
+              <span style={{ fontFamily: "var(--font-mono)", fontWeight: 800, fontSize: 19, color: "hsl(var(--primary))" }}>{readyPct}%</span>
+            </Ring>
+            <div>
+              <div className="tt">Tiến độ chốt lương</div>
+              <div className="st">{doneSteps}/3 bước hoàn tất{unpaidCount > 0 ? ` · còn ${unpaidCount} phiếu chờ trả` : " · đã trả đủ"}</div>
+            </div>
+          </div>
+
+          <div className="sal-ready-step">
+            <span className="rd done"><I.Check size={14} /></span>
+            <div className="rl"><b>Tính lương tự động</b><small style={{ color: "hsl(var(--primary))" }}>{N}/{N} nhân sự · xong</small></div>
+          </div>
+          <div className="sal-ready-step">
+            <span className={"rd " + (stepPaid ? "done" : "active")}>{stepPaid ? <I.Check size={14} /> : 2}</span>
+            <div className="rl">
+              <b style={stepPaid ? undefined : { color: "hsl(var(--status-warning-fg))" }}>Trả lương</b>
+              <small style={{ color: stepPaid ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}>{paidCount}/{N} đã trả{stepPaid ? " · xong" : " · đang chờ"}</small>
+            </div>
+            {canPay && !stepPaid && !locked && (
+              <button className="sal-btn sal-btn--primary sal-btn--sm" onClick={() => setShowBulk(true)}>Trả ngay</button>
+            )}
+          </div>
+          <div className="sal-ready-step">
+            <span className={"rd " + (locked ? "done" : "todo")}>{locked ? <I.Check size={14} /> : <I.Lock size={14} />}</span>
+            <div className="rl"><b style={{ color: locked ? undefined : "hsl(var(--muted-foreground))" }}>Chốt &amp; khoá tháng</b><small style={{ color: "hsl(var(--muted-foreground))" }}>{locked ? "Đã khoá — số liệu đóng băng" : "Không thể sửa sau khi chốt"}</small></div>
+          </div>
         </div>
       </div>
 
-      {/* Sheet */}
+      {/* ===== KPI CARDS ===== */}
+      <div className="sal-kpis">
+        <div className="sal-kpi" style={{ borderLeftColor: "hsl(var(--status-info))" }}>
+          <span className="ki" style={{ background: "hsl(var(--status-info) / .1)", color: "hsl(var(--status-info))" }}><I.Users size={22} /></span>
+          <div>
+            <div className="kv">{N}</div>
+            <div className="kl">Nhân sự hưởng lương</div>
+            <div className="kx" style={{ color: "hsl(var(--status-info))" }}>{mgrCount > 0 ? `${mgrCount} quản lý` : ""}{mgrCount > 0 && staffCount > 0 ? " · " : ""}{staffCount > 0 ? `${staffCount} nhân viên` : ""}{mgrCount === 0 && staffCount === 0 ? "—" : ""}</div>
+          </div>
+        </div>
+        <div className="sal-kpi" style={{ borderLeftColor: "hsl(var(--primary))" }}>
+          <Ring pct={Math.min(avgPct, 100)} size={48} stroke={5}><I.TrendingUp size={18} style={{ color: "hsl(var(--primary))" }} /></Ring>
+          <div>
+            <div className="kv">{withGoal.length ? `${avgPct}%` : "—"}</div>
+            <div className="kl">Hiệu suất đội TB</div>
+            <div className="kx" style={{ color: "hsl(var(--primary))" }}>{withGoal.length ? `${overCount}/${withGoal.length} vượt mục tiêu` : "Chưa đặt mục tiêu"}</div>
+          </div>
+        </div>
+        <div className="sal-kpi" style={{ borderLeftColor: "hsl(var(--status-warning-strong))" }}>
+          <span className="ki" style={{ background: "hsl(var(--status-warning) / .14)", color: "hsl(var(--status-warning-fg))" }}><I.Trophy size={22} /></span>
+          <div>
+            <div className="kv">{salShort(bonusPool)}</div>
+            <div className="kl">Quỹ thưởng &amp; hoa hồng</div>
+            <div className="kx" style={{ color: "hsl(var(--status-warning-fg))" }}>Thưởng việc + HH Sale</div>
+          </div>
+        </div>
+        <div className="sal-kpi" style={{ borderLeftColor: "hsl(var(--status-danger))" }}>
+          <span className="ki" style={{ background: "hsl(var(--status-danger) / .1)", color: "hsl(var(--status-danger-fg))" }}><I.Clock size={22} /></span>
+          <div>
+            <div className="kv">{unpaidCount}</div>
+            <div className="kl">Phiếu chờ thanh toán</div>
+            <div className="kx" style={{ color: "hsl(var(--status-danger-fg))" }}>{paidCount} đã trả · {unpaidCount} chưa trả</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== PAYROLL TABLE ===== */}
+      <div className="sal-card">
+      <div className="sal-sheet-head">
+        <span className="shi"><I.Wallet size={18} /></span>
+        <div>
+          <h3>Bảng lương {period.label}</h3>
+          <p>Nhấp vào một con số để bóc tách chi tiết</p>
+        </div>
+      </div>
       <div className="sal-tablewrap">
         <table className="sal-sheet">
           <thead>
@@ -244,7 +381,7 @@ export default function SalaryMonthly(props: MonthlyProps) {
             {managers.map((m) => {
               const c = m.calc!;
               const pct = m.incomeGoal ? Math.round((c.gross / m.incomeGoal) * 100) : 0;
-              const paidState = m.paid >= c.takehome && c.takehome > 0;
+              const paidState = isPaid(m);
               const rowLocked = m.status === "LOCKED";
               return (
                 <tr key={m.id}>
@@ -299,7 +436,7 @@ export default function SalaryMonthly(props: MonthlyProps) {
                       : rowLocked ? <span className="sal-statebadge sal-statebadge--locked"><I.Lock size={11} />Đã chốt</span>
                         : <span className="sal-statebadge sal-statebadge--draft"><span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />Nháp</span>}
                   </td>
-                  <td className="c"><button className="sal-btn sal-btn--ghost sal-btn--icon sal-btn--sm" onClick={(e) => setMenu({ m, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.MoreVertical size={16} /></button></td>
+                  <td className="c"><button className="sal-btn sal-btn--ghost sal-btn--icon sal-btn--sm" aria-label={"Tác vụ cho " + m.short} onClick={(e) => setMenu({ m, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.MoreVertical size={16} /></button></td>
                 </tr>
               );
             })}
@@ -320,6 +457,52 @@ export default function SalaryMonthly(props: MonthlyProps) {
             </tr>
           </tfoot>
         </table>
+      </div>
+      </div>
+
+      {/* ===== LEADERBOARD + COST SPLIT ===== */}
+      <div className="sal-insights">
+        <div className="sal-card">
+          <div className="sal-panel-head">
+            <span className="pi" style={{ background: "hsl(var(--status-warning) / .12)", color: "hsl(var(--status-warning-fg))" }}><I.Trophy size={17} /></span>
+            <div><h3>Bảng xếp hạng hiệu suất</h3><p>Theo % vượt mục tiêu tháng</p></div>
+          </div>
+          {ranked.map((m, i) => {
+            const pct = pctOf(m);
+            const ok = pct >= 100;
+            const col = m.incomeGoal > 0 ? (ok ? "hsl(var(--primary))" : "hsl(var(--status-danger-fg))") : "hsl(var(--muted-foreground))";
+            return (
+              <div className="sal-lead-row" key={m.id}>
+                <span className={"sal-lead-rank" + (i < 3 ? "" : " num")}>{i < 3 ? medals[i] : i + 1}</span>
+                <span className="sal-ava" style={{ width: 32, height: 32, fontSize: 12, background: m.tone === "primary" ? "hsl(var(--primary))" : "hsl(var(--status-info))" }}>{m.initials}</span>
+                <div className="lnm"><b>{m.short}</b><small>{m.incomeGoal > 0 ? `Mục tiêu ${salShort(m.incomeGoal)}` : "Chưa đặt mục tiêu"}</small></div>
+                <span className="sal-lead-bar"><span style={{ width: Math.min(pct, 100) + "%", background: m.incomeGoal > 0 ? (ok ? "hsl(var(--primary))" : "hsl(var(--status-danger))") : "transparent" }} /></span>
+                <span className="sal-lead-pct" style={{ color: col }}>{m.incomeGoal > 0 ? `${pct}%` : "—"}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="sal-card">
+          <div className="sal-panel-head">
+            <span className="pi" style={{ background: "hsl(var(--primary) / .1)", color: "hsl(var(--primary))" }}><I.PiggyBank size={17} /></span>
+            <div><h3>Cấu phần quỹ lương</h3><p>Trước khấu trừ · {salShort(totals.gross)}</p></div>
+          </div>
+          <div className="sal-split-body">
+            {splitComps.map((c, i) => (
+              <div className="sal-split-row" key={i}>
+                <span className="sk">{c.label}</span>
+                <span className="sal-split-bar"><span style={{ width: (c.val / splitMax) * 100 + "%", background: c.color }} /></span>
+                <span className="sal-split-v" style={{ color: c.color }}>{salShort(c.val)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="sal-split-foot">
+            {totals.adv > 0 && <div className="sal-split-ded"><span>− Ứng lương</span><span className="sal-num">{salFmt(totals.adv)}</span></div>}
+            {totals.room > 0 && <div className="sal-split-ded"><span>− Tiền phòng</span><span className="sal-num">{salFmt(totals.room)}</span></div>}
+            <div className="sal-split-net"><span className="nl">Thực chi</span><span className="nv">{salFmt(totals.take)}</span></div>
+          </div>
+        </div>
       </div>
 
       {/* Popovers */}
