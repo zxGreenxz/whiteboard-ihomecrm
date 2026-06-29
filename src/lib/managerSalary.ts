@@ -40,7 +40,7 @@ export interface SalAdjustment {
 }
 
 export interface SalInvestBy { b: string; amount: number; }
-export interface SalCommissionItem { label: string; amount: number; approved: boolean; }
+export interface SalCommissionItem { label: string; amount: number; approved: boolean; voucherId?: string; }
 export interface SalAdvanceItem { date: string; label: string; amount: number; }
 export interface SalStats { jobs: number; repairs: number; afterHour: number; workdays: number; streak: number; }
 export interface SalTrendPoint { label: string; gross: number; takehome: number; paidOn?: string; current?: boolean; }
@@ -64,6 +64,9 @@ export interface SalManager {
   investmentLocked: boolean;
   commission: number;
   commissionItems: SalCommissionItem[];
+  // Phiếu hoa hồng ĐÃ DUYỆT (đã thanh toán) trong tháng → cảnh báo "!" cần kiểm tra
+  // (lẽ ra phải còn nháp để chốt lương mới duyệt). Rỗng với tháng đã chốt.
+  commissionFlagged: SalCommissionItem[];
   advance: number;
   advanceItems: SalAdvanceItem[];
   roomRentItems: SalAdvanceItem[];

@@ -87,25 +87,43 @@ export function InvestmentPop({ m, periodText }: { m: SalManager; periodText: st
 
 export function CommissionPop({ m }: { m: SalManager }) {
   const total = m.commissionItems.reduce((s, x) => s + x.amount, 0);
+  const flagged = m.commissionFlagged || [];
   return (
     <>
       <div className="sal-pop-head">
         <span className="ic" style={{ background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" }}><I.HandCoins size={17} /></span>
-        <div><div className="tt">HH Sale (hoa hồng)</div><div className="st">Tự duyệt khi chốt lương tháng</div></div>
+        <div><div className="tt">HH Sale (hoa hồng)</div><div className="st">Người nhận = quản lý · tự duyệt khi chốt lương</div></div>
       </div>
       <div className="sal-pop-body">
-        {m.commissionItems.length === 0 ? <div style={{ padding: "18px 16px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))" }}>Tháng này chưa có hoa hồng.</div> :
-          m.commissionItems.map((x, i) => (
-            <div key={i} className="sal-pop-row">
-              <span className="ric" style={x.approved ? { background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" } : undefined}>
-                {x.approved ? <I.CheckCircle size={15} /> : <I.Clock size={15} />}
-              </span>
-              <span className="rl"><b>{x.label}</b>{!x.approved ? <small style={{ color: "hsl(var(--status-warning-fg))" }}>chưa duyệt — sẽ duyệt khi chốt</small> : null}</span>
-              <span className="ra">{salFmt(x.amount)}</span>
-            </div>
-          ))}
+        {m.commissionItems.length === 0 && flagged.length === 0 ? (
+          <div style={{ padding: "18px 16px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))" }}>Tháng này chưa có hoa hồng (người nhận là quản lý này).</div>
+        ) : (
+          <>
+            {m.commissionItems.map((x, i) => (
+              <div key={"c" + i} className="sal-pop-row">
+                <span className="ric"><I.Clock size={15} /></span>
+                <span className="rl"><b>{x.label}</b><small style={{ color: "hsl(var(--status-warning-fg))" }}>nháp — sẽ duyệt khi chốt lương</small></span>
+                <span className="ra">{salFmt(x.amount)}</span>
+              </div>
+            ))}
+            {flagged.length > 0 && (
+              <>
+                <div style={{ padding: "8px 16px 4px", fontSize: 12, fontWeight: 700, color: "hsl(var(--status-danger-fg))", display: "flex", alignItems: "center", gap: 6 }}>
+                  <I.AlertTriangle size={14} />Cần kiểm tra — đã duyệt/thanh toán (không tính vào HH Sale)
+                </div>
+                {flagged.map((x, i) => (
+                  <div key={"f" + i} className="sal-pop-row">
+                    <span className="ric" style={{ background: "hsl(var(--status-danger-bg))", color: "hsl(var(--status-danger-fg))" }}><I.AlertTriangle size={15} /></span>
+                    <span className="rl"><b>{x.label}</b><small style={{ color: "hsl(var(--status-danger-fg))" }}>đã thanh toán riêng — kiểm tra kẻo trả 2 lần</small></span>
+                    <span className="ra" style={{ color: "hsl(var(--status-danger-fg))" }}>{salFmt(x.amount)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
       </div>
-      <div className="sal-pop-foot"><span className="tl">Tổng HH Sale</span><span className="tv">{salFmt(total)}</span></div>
+      <div className="sal-pop-foot"><span className="tl">Tổng HH Sale (nháp)</span><span className="tv">{salFmt(total)}</span></div>
     </>
   );
 }

@@ -266,9 +266,18 @@ export default function SalaryMonthly(props: MonthlyProps) {
                   <td>{m.investmentLocked
                     ? <ClickNum value={m.investment} onClick={(e) => openPop("investment", m, e)} />
                     : <button className="sal-link is-pending" onClick={(e) => openPop("investment", m, e)}><I.Hourglass size={13} />Chờ chốt</button>}</td>
-                  <td>{m.commission > 0
-                    ? <ClickNum value={m.commission} onClick={(e) => openPop("commission", m, e)} />
-                    : <button className="sal-link sal-zero" onClick={(e) => openPop("commission", m, e)}>{salFmt(0)}<I.Info className="i" size={13} /></button>}</td>
+                  <td>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      {m.commission > 0
+                        ? <ClickNum value={m.commission} onClick={(e) => openPop("commission", m, e)} />
+                        : <button className="sal-link sal-zero" onClick={(e) => openPop("commission", m, e)}>{salFmt(0)}<I.Info className="i" size={13} /></button>}
+                      {m.commissionFlagged && m.commissionFlagged.length > 0 && (
+                        <button title="Có phiếu hoa hồng đã thanh toán — bấm để kiểm tra"
+                          onClick={(e) => openPop("commission", m, e)}
+                          style={{ border: "none", background: "hsl(var(--status-danger-bg))", color: "hsl(var(--status-danger-fg))", width: 18, height: 18, borderRadius: 5, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, lineHeight: 1 }}>!</button>
+                      )}
+                    </span>
+                  </td>
                   <td><span className="sal-num" style={{ fontWeight: 700 }}>{salFmt(c.gross)}</span></td>
                   <td>{m.advance > 0
                     ? <ClickNum value={m.advance} onClick={(e) => openPop("advance", m, e)} neg prefix="−" />

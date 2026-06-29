@@ -7,6 +7,7 @@ import {
   type SalLedgerRow,
   type SalAdjustment,
   type SalTrendPoint,
+  type SalCommissionItem,
   salCalc,
   buildBonusAuto,
   computeStats,
@@ -126,7 +127,7 @@ export const useManagerSalary = (periodMonth: string) => {
           .from("income_expenses" as any)
           .select("id, salary_staff_id, salary_role, name, total_amount, approval_status, voucher_date") as any)
           .in("salary_staff_id", staffIds)
-          .in("salary_role", ["COMMISSION", "ADVANCE"])
+          .eq("salary_role", "ADVANCE")
           .is("deleted_at", null)
           .gte("voucher_date", start)
           .lte("voucher_date", end),
@@ -150,6 +151,49 @@ export const useManagerSalary = (periodMonth: string) => {
       const bldName = new Map<string, string>(
         ((buildingsRes.data || []) as any[]).map((b) => [b.id, b.code || b.name])
       );
+
+      // HH Sale: phiếu chi hoa hồng (loại "Hoa hồng môi giới"/"HHMG"/category HOA HỒNG)
+      // có NGƯỜI-NHẬN (payer_name) = tên/biệt danh quản lý, kỳ phân bổ (item.start_date)
+      // trong tháng. Tháng nháp: phiếu CHƯA DUYỆT (UNAPPROVED) mới tính (chốt lương sẽ
+      // tự duyệt); phiếu ĐÃ DUYỆT → cảnh báo "!" (cần kiểm tra).
+      const aliasToStaff = new Map<string, string>();
+      for (const c of configs) {
+        const al = (c.alias || "").trim().toLowerCase();
+        if (al) aliasToStaff.set(al, c.staff_id);
+        const fn = firstName(nameById.get(c.staff_id) || "").trim().toLowerCase();
+        if (fn) aliasToStaff.set(fn, c.staff_id);
+      }
+      const commByStaff = new Map<string, { items: SalCommissionItem[]; flagged: SalCommissionItem[] }>();
+      {
+        const { data: ctRaw } = await (supabase.from("income_expense_types" as any).select("id, name, category") as any);
+        const commTypeIds = ((ctRaw || []) as any[])
+          .filter((t) => String(t.category || "").toUpperCase() === "HOA HỒNG" || /hoa h[ồô]ng|hhmg/i.test(String(t.name || "")))
+          .map((t) => t.id);
+        if (commTypeIds.length) {
+          const { data: ciRaw } = await (supabase
+            .from("income_expense_items" as any)
+            .select("amount, start_date, income_expenses(id, name, payer_name, approval_status, type, deleted_at)") as any)
+            .in("income_expense_type_id", commTypeIds)
+            .gte("start_date", start)
+            .lte("start_date", end);
+          const voucherMap = new Map<string, { name: string; status: string; amount: number; staff: string }>();
+          for (const row of (ciRaw || []) as any[]) {
+            const ie = (row as any).income_expenses;
+            if (!ie || ie.type !== "EXPENSE" || ie.deleted_at || ie.approval_status === "CANCELLED") continue;
+            const staff = aliasToStaff.get((ie.payer_name || "").trim().toLowerCase());
+            if (!staff) continue;
+            const ex = voucherMap.get(ie.id);
+            if (ex) ex.amount += num(row.amount);
+            else voucherMap.set(ie.id, { name: ie.name || "Hoa hồng", status: ie.approval_status, amount: num(row.amount), staff });
+          }
+          for (const [vid, v] of voucherMap) {
+            const entry = commByStaff.get(v.staff) || { items: [] as SalCommissionItem[], flagged: [] as SalCommissionItem[] };
+            const item: SalCommissionItem = { label: v.name, amount: v.amount, approved: v.status === "APPROVED", voucherId: vid };
+            (v.status === "APPROVED" ? entry.flagged : entry.items).push(item);
+            commByStaff.set(v.staff, entry);
+          }
+        }
+      }
 
       // allocations (đầu tư) cho tháng — chỉ khi có cổ đông
       let allocs: any[] = [];
@@ -271,14 +315,16 @@ export const useManagerSalary = (periodMonth: string) => {
         const hasSh = shByStaff.has(staff);
         const pending = hasSh && investment === 0 && anyProfitDraft;
 
-        // HH Sale + ứng
+        // HH Sale: phiếu hoa hồng người-nhận = quản lý (commByStaff). Tháng nháp: chỉ
+        // phiếu CHƯA DUYỆT tính (chốt lương → tự duyệt); phiếu ĐÃ duyệt → cảnh báo "!".
+        // Tháng ĐÃ CHỐT: dùng số đã đóng băng; hiện đủ phiếu, bỏ cảnh báo.
+        const commEntry = commByStaff.get(staff) || { items: [] as SalCommissionItem[], flagged: [] as SalCommissionItem[] };
+        const commissionItems = locked ? commEntry.items.concat(commEntry.flagged) : commEntry.items;
+        const commissionFlagged = locked ? [] : commEntry.flagged;
+        const commission = locked ? num(mRow?.commission_total) : commEntry.items.reduce((s, x) => s + x.amount, 0);
+
+        // ứng lương
         const ieRows = ieByStaff.get(staff) || [];
-        const commissionItems = ieRows
-          .filter((x) => x.salary_role === "COMMISSION")
-          .map((x) => ({ label: x.name || "Hoa hồng", amount: num(x.total_amount), approved: x.approval_status === "APPROVED" }));
-        // HH Sale = MỌI phiếu hoa hồng trong tháng của nhân viên (kể cả chưa duyệt) —
-        // sẽ TỰ DUYỆT khi chốt lương tháng (xem useLockSalaryMonth).
-        const commission = commissionItems.reduce((s, x) => s + x.amount, 0);
         const advanceItems = ieRows
           .filter((x) => x.salary_role === "ADVANCE" && x.approval_status === "APPROVED")
           .map((x) => ({ date: fmtDM(x.voucher_date), label: x.name || "Ứng lương", amount: num(x.total_amount) }));
@@ -321,6 +367,7 @@ export const useManagerSalary = (periodMonth: string) => {
           investmentLocked: !pending,
           commission,
           commissionItems,
+          commissionFlagged,
           advance,
           advanceItems,
           roomRentItems,
@@ -510,20 +557,17 @@ export const useLockSalaryMonth = () => {
       if (!user) throw new Error("Chưa đăng nhập");
       const nowIso = new Date().toISOString();
 
-      // Chốt lương → DUYỆT luôn các phiếu hoa hồng (HH Sale) trong tháng của các
-      // nhân viên được chốt (người nhận = salary_staff_id, salary_role=COMMISSION).
-      const staffIds = managers.map((m) => m.id);
-      if (staffIds.length) {
-        const { start, end } = monthRange(periodMonth);
+      // Chốt lương → DUYỆT (đã thanh toán) luôn các phiếu hoa hồng CHƯA DUYỆT đang
+      // tính vào HH Sale (commissionItems mang voucherId của phiếu nháp).
+      const commVoucherIds = Array.from(new Set(
+        managers.flatMap((m) => (m.commissionItems || []).map((x) => x.voucherId).filter(Boolean) as string[])
+      ));
+      if (commVoucherIds.length) {
         const { error: cErr } = await (supabase
           .from("income_expenses" as any)
           .update({ approval_status: "APPROVED", approved_at: nowIso, approved_by: user.id }) as any)
-          .eq("salary_role", "COMMISSION")
-          .in("salary_staff_id", staffIds)
-          .gte("voucher_date", start)
-          .lte("voucher_date", end)
-          .neq("approval_status", "APPROVED")
-          .is("deleted_at", null);
+          .in("id", commVoucherIds)
+          .neq("approval_status", "APPROVED");
         if (cErr) throw cErr;
       }
 
