@@ -5,11 +5,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { useMyShareholder } from "@/hooks/useShareholders";
+import { useMyProfitManager } from "@/hooks/useProfitManagers";
 import ProfitDistributionContent from "@/pages/reports/finance/ProfitDistributionReport";
 import ProfitOverviewTab from "@/components/shareholders/ProfitOverviewTab";
 import ProfitLockTab from "@/components/shareholders/ProfitLockTab";
 import ShareConfigTab from "@/components/shareholders/ShareConfigTab";
 import ShareholderSelfView from "@/components/shareholders/ShareholderSelfView";
+import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfView";
 
 /**
  * Trang gộp "Phân bổ & chia lợi nhuận" (/reports/finance/profit-distribution).
@@ -22,6 +24,7 @@ import ShareholderSelfView from "@/components/shareholders/ShareholderSelfView";
 export default function ProfitHubPage() {
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const { data: me, isLoading: meLoading } = useMyShareholder();
+  const { data: myManager, isLoading: mgrLoading } = useMyProfitManager();
 
   const canReport = canUse(perms, "reports_finance", "profit_distribution");
   const canLock = canUse(perms, "shareholder_profit", "lock");
@@ -35,6 +38,10 @@ export default function ProfitHubPage() {
     tabs.push({ value: "overview", label: "Tổng quan", node: <ProfitOverviewTab /> });
     if (canLock) tabs.push({ value: "lock", label: "Chốt LN tháng", node: <ProfitLockTab /> });
     if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab /> });
+  }
+  // Quản lý điều hành đang đăng nhập: thêm tab tự xem lương của mình.
+  if (myManager) {
+    tabs.push({ value: "my-salary", label: "Lương của tôi", node: <ProfitManagerSelfView me={myManager} /> });
   }
 
   return (
@@ -52,9 +59,12 @@ export default function ProfitHubPage() {
             <TabsContent key={t.value} value={t.value}>{t.node}</TabsContent>
           ))}
         </Tabs>
-      ) : me ? (
-        <ShareholderSelfView me={me} />
-      ) : meLoading ? (
+      ) : me || myManager ? (
+        <div className="space-y-6">
+          {me && <ShareholderSelfView me={me} />}
+          {myManager && <ProfitManagerSelfView me={myManager} />}
+        </div>
+      ) : meLoading || mgrLoading ? (
         <p className="text-muted-foreground">Đang tải...</p>
       ) : (
         <p className="text-muted-foreground">

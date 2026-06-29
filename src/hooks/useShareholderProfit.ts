@@ -9,6 +9,10 @@ import {
   computeShareholderSummary,
   type ShareholderSummaryRow,
 } from "@/lib/shareholderProfit";
+import {
+  computeManagementSalaries,
+  type SalaryRule,
+} from "@/lib/managementSalary";
 
 export { computeShareholderSummary };
 export type { ShareholderSummaryRow };
@@ -29,10 +33,34 @@ export interface ProfitMonthly {
   period_month: string; // YYYY-MM-01
   computed_profit: number;
   adjusted_profit: number;
+  management_salary: number; // lương điều hành đã trừ (snapshot); distributable = adjusted - này
   status: "DRAFT" | "LOCKED";
   note: string | null;
   locked_at: string | null;
   locked_by: string | null;
+}
+
+// Snapshot phần lương điều hành của 1 quản lý tại 1 nhà/tháng.
+export interface ProfitManagerAllocation {
+  id: string;
+  user_id: string;
+  profit_monthly_id: string;
+  manager_id: string;
+  amount: number;
+  // embedded
+  period_month?: string;
+  building_id?: string;
+}
+
+// Phiếu chi trả lương điều hành (đã trả) gắn quản lý.
+export interface ManagerSalaryPayout {
+  id: string;
+  manager_id: string;
+  total_amount: number;
+  voucher_date: string;
+  name: string;
+  account_id: string | null;
+  building_id: string;
 }
 
 export interface ProfitAllocation {
@@ -152,6 +180,7 @@ export const useProfitMonthly = () => {
         ...r,
         computed_profit: Number(r.computed_profit) || 0,
         adjusted_profit: Number(r.adjusted_profit) || 0,
+        management_salary: Number(r.management_salary) || 0,
       })) as ProfitMonthly[];
     },
   });
@@ -213,14 +242,101 @@ export const useShareholderDistributions = () => {
   });
 };
 
+// Snapshot lương điều hành (kèm period_month + building_id từ profit_monthly).
+export const useProfitManagerAllocations = () => {
+  return useQuery({
+    queryKey: ["profit-manager-allocations"],
+    queryFn: async () => {
+      const { data, error } = await (supabase
+        .from("profit_manager_allocations" as any)
+        .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any);
+      if (error) {
+        toast.error("Không thể tải phân bổ lương điều hành");
+        throw error;
+      }
+      return ((data || []) as any[]).map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        profit_monthly_id: r.profit_monthly_id,
+        manager_id: r.manager_id,
+        amount: Number(r.amount) || 0,
+        period_month: r.pm?.period_month,
+        building_id: r.pm?.building_id,
+      })) as ProfitManagerAllocation[];
+    },
+  });
+};
+
+// Các phiếu chi trả lương điều hành (đã trả) gắn quản lý.
+export const useManagerSalaryPayouts = () => {
+  return useQuery({
+    queryKey: ["manager-salary-payouts"],
+    queryFn: async () => {
+      const { data, error } = await (supabase
+        .from("income_expenses" as any)
+        .select("id, profit_manager_id, total_amount, voucher_date, name, account_id, building_id") as any)
+        .eq("type", "EXPENSE")
+        .eq("approval_status", "APPROVED")
+        .not("profit_manager_id", "is", null)
+        .is("deleted_at", null)
+        .order("voucher_date", { ascending: false });
+      if (error) {
+        toast.error("Không thể tải lịch sử trả lương điều hành");
+        throw error;
+      }
+      return ((data || []) as any[]).map((r) => ({
+        id: r.id,
+        manager_id: r.profit_manager_id,
+        total_amount: Number(r.total_amount) || 0,
+        voucher_date: r.voucher_date,
+        name: r.name,
+        account_id: r.account_id,
+        building_id: r.building_id,
+      })) as ManagerSalaryPayout[];
+    },
+  });
+};
+
 // --- Lock mutation: chốt LN 1 tháng → ghi profit_monthly (LOCKED) + snapshot allocations ---
 export interface LockProfitInput {
   period_month: string; // YYYY-MM-01
   rows: Array<{ building_id: string; computed_profit: number; adjusted_profit: number }>;
 }
 
+// Lấy quy tắc lương điều hành CÒN HIỆU LỰC + tính khoản trừ theo nhà cho 1 tháng.
+// base = adjusted_profit từng nhà (rows). Chỉ tính quản lý chưa xoá + quy tắc is_active.
+async function computeMonthManagementSalaries(rows: LockProfitInput["rows"]) {
+  const { data: activeMgrs, error: mErr } = await (supabase
+    .from("profit_managers" as any)
+    .select("id") as any)
+    .is("deleted_at", null);
+  if (mErr) throw mErr;
+  const activeMgrIds = new Set(((activeMgrs || []) as any[]).map((m) => m.id));
+
+  const { data: salaryRows, error: sErr } = await (supabase
+    .from("profit_manager_salaries" as any)
+    .select("manager_id, form, basis, amount, percent, profit_manager_salary_buildings(building_id)") as any)
+    .eq("is_active", true);
+  if (sErr) throw sErr;
+
+  const rules: SalaryRule[] = ((salaryRows || []) as any[])
+    .filter((r) => activeMgrIds.has(r.manager_id))
+    .map((r) => ({
+      manager_id: r.manager_id,
+      form: r.form,
+      basis: r.basis,
+      amount: Number(r.amount) || 0,
+      percent: Number(r.percent) || 0,
+      building_ids: ((r.profit_manager_salary_buildings || []) as any[]).map((b) => b.building_id),
+    }));
+
+  const buildingBase = rows.map((r) => ({ building_id: r.building_id, base: r.adjusted_profit }));
+  return computeManagementSalaries(buildingBase, rules);
+}
+
 // Ghi-khoá 1 tháng: upsert profit_monthly (LOCKED) + snapshot lại profit_allocations
-// theo tỷ lệ building_shareholders. Tách riêng để cả chốt thủ công lẫn resync dùng chung.
+// theo tỷ lệ building_shareholders, ĐÃ TRỪ lương điều hành trước khi chia.
+// Tách riêng để cả chốt thủ công lẫn resync dùng chung.
 async function writeLockedMonth(
   uid: string,
   period_month: string,
@@ -229,13 +345,17 @@ async function writeLockedMonth(
   if (rows.length === 0) return { locked: 0, allocations: 0 };
   const nowIso = new Date().toISOString();
 
-  // 1) Upsert profit_monthly (LOCKED) cho từng nhà
+  // 0) Lương điều hành: khoản trừ mỗi nhà TRƯỚC khi chia cổ đông + chi tiết theo quản lý.
+  const mgmt = await computeMonthManagementSalaries(rows);
+
+  // 1) Upsert profit_monthly (LOCKED) cho từng nhà (kèm management_salary)
   const pmPayload = rows.map((r) => ({
     user_id: uid,
     building_id: r.building_id,
     period_month,
     computed_profit: r.computed_profit,
     adjusted_profit: r.adjusted_profit,
+    management_salary: mgmt.perBuilding.get(r.building_id) ?? 0,
     status: "LOCKED",
     locked_at: nowIso,
     locked_by: uid,
@@ -243,7 +363,7 @@ async function writeLockedMonth(
   const { data: pmRows, error: pmErr } = await supabase
     .from("profit_monthly" as any)
     .upsert(pmPayload, { onConflict: "building_id,period_month" })
-    .select("id, building_id, adjusted_profit");
+    .select("id, building_id, adjusted_profit, management_salary");
   if (pmErr) {
     toast.error(pmErr.message || "Không thể chốt lợi nhuận");
     throw pmErr;
@@ -269,27 +389,38 @@ async function writeLockedMonth(
   if (aShErr) throw aShErr;
   const activeShIds = new Set(((activeSh || []) as any[]).map((s) => s.id));
 
-  // 3) Xoá allocations cũ của các profit_monthly này rồi insert lại (snapshot)
+  // 3) Xoá allocations cũ (cổ đông + lương điều hành) rồi insert lại (snapshot)
   if (pmIds.length > 0) {
     const { error: delErr } = await (supabase
       .from("profit_allocations" as any)
       .delete() as any)
       .in("profit_monthly_id", pmIds);
     if (delErr) throw delErr;
+    const { error: delMgrErr } = await (supabase
+      .from("profit_manager_allocations" as any)
+      .delete() as any)
+      .in("profit_monthly_id", pmIds);
+    if (delMgrErr) throw delMgrErr;
   }
 
-  const pmByBuilding = new Map<string, { id: string; adjusted: number }>();
+  const pmByBuilding = new Map<string, { id: string; adjusted: number; salary: number }>();
   for (const r of pm) {
-    pmByBuilding.set(r.building_id, { id: r.id, adjusted: Number(r.adjusted_profit) || 0 });
+    pmByBuilding.set(r.building_id, {
+      id: r.id,
+      adjusted: Number(r.adjusted_profit) || 0,
+      salary: Number(r.management_salary) || 0,
+    });
   }
 
+  // Cổ đông chia trên distributable = LN sau điều chỉnh − lương điều hành.
   const allocPayload: any[] = [];
   for (const s of (shares || []) as any[]) {
     if (!activeShIds.has(s.shareholder_id)) continue; // bỏ cổ đông đã xoá
     const target = pmByBuilding.get(s.building_id);
     if (!target) continue;
     const percent = Number(s.percent) || 0;
-    const amount = Math.round((target.adjusted * percent) / 100);
+    const distributable = target.adjusted - target.salary;
+    const amount = Math.round((distributable * percent) / 100);
     allocPayload.push({
       user_id: uid,
       profit_monthly_id: target.id,
@@ -304,6 +435,25 @@ async function writeLockedMonth(
       .from("profit_allocations" as any)
       .insert(allocPayload);
     if (insErr) throw insErr;
+  }
+
+  // Snapshot phần lương điều hành theo từng quản lý/nhà.
+  const mgrAllocPayload: any[] = [];
+  for (const e of mgmt.perManager) {
+    const target = pmByBuilding.get(e.building_id);
+    if (!target || !e.amount) continue;
+    mgrAllocPayload.push({
+      user_id: uid,
+      profit_monthly_id: target.id,
+      manager_id: e.manager_id,
+      amount: e.amount,
+    });
+  }
+  if (mgrAllocPayload.length > 0) {
+    const { error: insMgrErr } = await supabase
+      .from("profit_manager_allocations" as any)
+      .insert(mgrAllocPayload);
+    if (insMgrErr) throw insMgrErr;
   }
 
   return { locked: pm.length, allocations: allocPayload.length };
@@ -321,6 +471,7 @@ export const useLockProfitMonth = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["profit-monthly"] });
       qc.invalidateQueries({ queryKey: ["profit-allocations"] });
+      qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
       toast.success("Đã chốt lợi nhuận tháng");
     },
   });
@@ -389,6 +540,7 @@ export const useResyncLockedMonths = () => {
       qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
       qc.invalidateQueries({ queryKey: ["profit-monthly"] });
       qc.invalidateQueries({ queryKey: ["profit-allocations"] });
+      qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
       if (res.months === 0) {
         toast.info("Không có tháng đã chốt để cập nhật");
       } else {
@@ -408,15 +560,21 @@ export const useUnlockProfitMonth = () => {
         .delete() as any)
         .eq("profit_monthly_id", profitMonthlyId);
       if (delErr) throw delErr;
+      const { error: delMgrErr } = await (supabase
+        .from("profit_manager_allocations" as any)
+        .delete() as any)
+        .eq("profit_monthly_id", profitMonthlyId);
+      if (delMgrErr) throw delMgrErr;
       const { error } = await supabase
         .from("profit_monthly" as any)
-        .update({ status: "DRAFT", locked_at: null, locked_by: null })
+        .update({ status: "DRAFT", management_salary: 0, locked_at: null, locked_by: null })
         .eq("id", profitMonthlyId);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["profit-monthly"] });
       qc.invalidateQueries({ queryKey: ["profit-allocations"] });
+      qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
       toast.success("Đã mở khoá tháng");
     },
   });

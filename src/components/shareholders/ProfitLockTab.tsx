@@ -29,7 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Lock, Unlock, RefreshCw } from "lucide-react";
+import { Lock, Unlock, RefreshCw, Briefcase } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import {
   useMonthlyBuildingProfit,
@@ -39,6 +39,8 @@ import {
   useResyncLockedMonths,
 } from "@/hooks/useShareholderProfit";
 import { useShareholders, useBuildingShareholders } from "@/hooks/useShareholders";
+import { useProfitManagers, useManagerSalaries } from "@/hooks/useProfitManagers";
+import { computeManagementSalaries, type SalaryRule } from "@/lib/managementSalary";
 import {
   periodOf,
   monthDateRange,
@@ -57,6 +59,8 @@ export default function ProfitLockTab() {
   const { data: profitMonthly = [] } = useProfitMonthly();
   const { data: shareholders = [] } = useShareholders();
   const { data: shares = [] } = useBuildingShareholders();
+  const { data: managers = [] } = useProfitManagers();
+  const { data: salaryRules = [] } = useManagerSalaries();
   const lockMut = useLockProfitMonth();
   const unlockMut = useUnlockProfitMonth();
   const resyncMut = useResyncLockedMonths();
@@ -92,18 +96,53 @@ export default function ProfitLockTab() {
     return m;
   }, [shares]);
 
+  // Lương điều hành (xem trước, theo LN sau điều chỉnh hiện tại + quy tắc còn hiệu lực).
+  const activeMgrIds = useMemo(() => new Set(managers.map((m) => m.id)), [managers]);
+  const mgmt = useMemo(() => {
+    const buildingBase = rpc.map((r) => ({
+      building_id: r.building_id,
+      base: adjusted[r.building_id] ?? r.net_profit,
+    }));
+    const rules: SalaryRule[] = salaryRules
+      .filter((r) => r.is_active && activeMgrIds.has(r.manager_id))
+      .map((r) => ({
+        manager_id: r.manager_id,
+        form: r.form,
+        basis: r.basis,
+        amount: r.amount,
+        percent: r.percent,
+        building_ids: r.building_ids,
+      }));
+    return computeManagementSalaries(buildingBase, rules);
+  }, [rpc, adjusted, salaryRules, activeMgrIds]);
+
+  const salaryOf = (buildingId: string) => mgmt.perBuilding.get(buildingId) ?? 0;
+  const totalSalary = useMemo(
+    () => [...mgmt.perBuilding.values()].reduce((s, x) => s + x, 0),
+    [mgmt]
+  );
+  const managerTotals = useMemo(() => {
+    const byMgr = new Map<string, number>();
+    for (const e of mgmt.perManager) byMgr.set(e.manager_id, (byMgr.get(e.manager_id) ?? 0) + e.amount);
+    return managers
+      .map((m) => ({ name: m.name, total: byMgr.get(m.id) ?? 0 }))
+      .filter((x) => x.total !== 0);
+  }, [mgmt, managers]);
+
+  // Cổ đông chia trên distributable = LN sau điều chỉnh − lương điều hành.
   const preview = useMemo(() => {
     return shareholders
       .map((s) => {
         let total = 0;
         for (const r of rpc) {
           const pct = bsMap.get(`${r.building_id}:${s.id}`) ?? 0;
-          total += ((adjusted[r.building_id] ?? r.net_profit) * pct) / 100;
+          const base = (adjusted[r.building_id] ?? r.net_profit) - salaryOf(r.building_id);
+          total += (base * pct) / 100;
         }
         return { name: s.name, total: Math.round(total) };
       })
       .filter((x) => x.total !== 0);
-  }, [shareholders, rpc, bsMap, adjusted]);
+  }, [shareholders, rpc, bsMap, adjusted, mgmt]);
 
   const handleLock = async () => {
     await lockMut.mutateAsync({
@@ -183,18 +222,22 @@ export default function ProfitLockTab() {
                   <TableHead className="text-right">Chi phí</TableHead>
                   <TableHead className="text-right">LN tự tính</TableHead>
                   <TableHead className="text-right">LN sau điều chỉnh</TableHead>
+                  <TableHead className="text-right">Lương điều hành</TableHead>
+                  <TableHead className="text-right">LN chia cổ đông</TableHead>
                   <TableHead className="text-center">Trạng thái</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading && (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Đang tải...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Đang tải...</TableCell></TableRow>
                 )}
                 {!isLoading && rpc.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Chưa có dữ liệu thu/chi tháng này</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Chưa có dữ liệu thu/chi tháng này</TableCell></TableRow>
                 )}
                 {rpc.map((r) => {
                   const locked = lockedByBuilding.get(r.building_id);
+                  const salary = salaryOf(r.building_id);
+                  const distributable = (adjusted[r.building_id] ?? r.net_profit) - salary;
                   return (
                     <TableRow key={r.building_id}>
                       <TableCell className="font-medium">{r.building_name}</TableCell>
@@ -208,6 +251,12 @@ export default function ProfitLockTab() {
                           suffix={false}
                           className="text-right"
                         />
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-orange-600">
+                        {salary > 0 ? formatCurrency(salary) : "—"}
+                      </TableCell>
+                      <TableCell className={`text-right tabular-nums font-medium ${distributable < 0 ? "text-red-600" : ""}`}>
+                        {formatCurrency(distributable)}
                       </TableCell>
                       <TableCell className="text-center">
                         {locked?.status === "LOCKED" ? (
@@ -235,10 +284,35 @@ export default function ProfitLockTab() {
         </CardContent>
       </Card>
 
+      {managerTotals.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-orange-600" />
+              Lương điều hành tháng này
+              <span className="ml-auto text-sm font-semibold text-orange-600">{formatCurrency(totalSalary)}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {managerTotals.map((m) => (
+                <div key={m.name} className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground truncate">{m.name}</p>
+                  <p className="text-base font-semibold tabular-nums text-orange-600">{formatCurrency(m.total)}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Trừ khỏi LN từng nhà trước khi chia cổ đông. Số chốt được snapshot khi bấm "Chốt tháng".
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {preview.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Xem trước chia cho cổ đông (theo tỷ lệ hiện tại)</CardTitle>
+            <CardTitle className="text-base">Xem trước chia cho cổ đông (sau khi trừ lương điều hành)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

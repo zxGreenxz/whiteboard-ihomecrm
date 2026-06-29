@@ -19,19 +19,23 @@ import {
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
-import { TrendingUp, Wallet, HandCoins, Scale, Plus } from "lucide-react";
+import { TrendingUp, Wallet, HandCoins, Scale, Plus, Briefcase } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { StatCard } from "./StatCard";
 import { colorAt, currentYear } from "./shareholderUtils";
 import { useShareholders } from "@/hooks/useShareholders";
+import { useProfitManagers } from "@/hooks/useProfitManagers";
 import { useBuildings } from "@/hooks/useBuildings";
 import {
   useProfitMonthly,
   useProfitAllocations,
   useShareholderDistributions,
+  useProfitManagerAllocations,
+  useManagerSalaryPayouts,
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
 import ProfitDistributeDialog from "./ProfitDistributeDialog";
+import ManagerSalaryPayoutDialog from "./ManagerSalaryPayoutDialog";
 
 const ALL = "all";
 
@@ -41,12 +45,18 @@ export default function ProfitOverviewTab() {
   const [shId, setShId] = useState<string>(ALL); // "all" | shareholder_id
   const [distOpen, setDistOpen] = useState(false);
   const [distShareholder, setDistShareholder] = useState<string | null>(null);
+  const [payoutOpen, setPayoutOpen] = useState(false);
+  const [payoutManager, setPayoutManager] = useState<string | null>(null);
 
   const { data: shareholders = [] } = useShareholders();
   const { data: buildings = [] } = useBuildings();
   const { data: profitMonthly = [] } = useProfitMonthly();
   const { data: allocations = [] } = useProfitAllocations();
   const { data: distributions = [] } = useShareholderDistributions();
+
+  const { data: managers = [] } = useProfitManagers();
+  const { data: managerAllocations = [] } = useProfitManagerAllocations();
+  const { data: managerPayouts = [] } = useManagerSalaryPayouts();
 
   const buildingName = (id: string) => buildings.find((b: any) => b.id === id)?.name ?? "—";
   const monthOf = (period?: string) => Number((period ?? "").slice(5, 7));
@@ -121,6 +131,22 @@ export default function ProfitOverviewTab() {
   const summary = useMemo(
     () => computeShareholderSummary(shareholders.map((s) => s.id), allocActive, distActive),
     [shareholders, allocActive, distActive]
+  );
+
+  // ---- Lương điều hành: settlement luỹ kế theo quản lý (tái dùng computeShareholderSummary) ----
+  const activeMgrIds = useMemo(() => new Set(managers.map((m) => m.id)), [managers]);
+  const managerSummary = useMemo(
+    () =>
+      computeShareholderSummary(
+        managers.map((m) => m.id),
+        managerAllocations
+          .filter((a) => activeMgrIds.has(a.manager_id))
+          .map((a) => ({ shareholder_id: a.manager_id, amount: a.amount })),
+        managerPayouts
+          .filter((p) => activeMgrIds.has(p.manager_id))
+          .map((p) => ({ shareholder_id: p.manager_id, total_amount: p.total_amount }))
+      ),
+    [managers, managerAllocations, managerPayouts, activeMgrIds]
   );
 
   const totals = useMemo(() => {
@@ -329,11 +355,62 @@ export default function ProfitOverviewTab() {
         </Card>
       </div>
 
+      {/* Lương điều hành (luỹ kế) */}
+      {managers.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-orange-600" /> Lương điều hành (luỹ kế)
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={() => { setPayoutManager(null); setPayoutOpen(true); }}>
+              <Plus className="h-4 w-4 mr-1" /> Chi lương điều hành
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Quản lý</TableHead>
+                    <TableHead className="text-right">Được nhận</TableHead>
+                    <TableHead className="text-right">Đã trả</TableHead>
+                    <TableHead className="text-right">Còn lại</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {managers.map((m) => {
+                    const r = managerSummary[m.id] ?? { accrued: 0, paid: 0, remaining: 0 };
+                    return (
+                      <TableRow key={m.id}>
+                        <TableCell className="font-medium">{m.name}</TableCell>
+                        <TableCell className="text-right tabular-nums text-orange-600">{formatCurrency(r.accrued)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-amber-600">{formatCurrency(r.paid)}</TableCell>
+                        <TableCell className={`text-right tabular-nums font-semibold ${r.remaining < 0 ? "text-red-600" : ""}`}>{formatCurrency(r.remaining)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => { setPayoutManager(m.id); setPayoutOpen(true); }}>Chi</Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <ProfitDistributeDialog
         open={distOpen}
         onOpenChange={setDistOpen}
         shareholders={shareholders}
         defaultShareholderId={distShareholder}
+      />
+      <ManagerSalaryPayoutDialog
+        open={payoutOpen}
+        onOpenChange={setPayoutOpen}
+        managers={managers}
+        defaultManagerId={payoutManager}
       />
     </div>
   );
