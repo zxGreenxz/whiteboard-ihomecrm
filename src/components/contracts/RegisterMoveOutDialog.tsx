@@ -56,9 +56,11 @@ const RegisterMoveOutDialog = ({ open, onOpenChange, contract }: RegisterMoveOut
         updateContractMutation.mutate(
             {
                 id: contract.id,
-                expected_move_out_date: data.expected_move_out_date,
-                notes: data.notes ? `${contract.notes || ''}\n[Đăng ký chuyển đi]: ${data.notes}` : contract.notes,
-            } as any, // Cast to any because expected_move_out_date is new
+                updates: {
+                    expected_move_out_date: data.expected_move_out_date,
+                    notes: data.notes ? `${contract.notes || ''}\n[Đăng ký chuyển đi]: ${data.notes}` : contract.notes,
+                },
+            },
             {
                 onSuccess: () => {
                     handleClose();
