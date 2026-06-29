@@ -741,28 +741,32 @@ const IncomeExpenseForm = ({
                 />
               )}
 
-              {/* Row 2: (chỉ EXPENSE) Tên người nhận + Ngày, hoặc (INCOME) chỉ Ngày */}
+              {/* Row 2: Người gửi (INCOME) / Tên người nhận (EXPENSE) + Ngày — luôn cùng 1 dòng */}
               <div className="grid grid-cols-2 gap-3">
-                {voucherType === 'EXPENSE' && (
-                  <FormField
-                    control={form.control}
-                    name="payer_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tên người nhận</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Nhập tên người nhận"
-                            {...field}
-                            value={field.value ?? ''}
-                            disabled={!canEdit}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
+                <FormField
+                  control={form.control}
+                  name="payer_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {voucherType === 'EXPENSE' ? 'Tên người nhận' : 'Người gửi'}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={
+                            voucherType === 'EXPENSE'
+                              ? 'Nhập tên người nhận'
+                              : 'Nhập tên người gửi'
+                          }
+                          {...field}
+                          value={field.value ?? ''}
+                          disabled={!canEdit}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
