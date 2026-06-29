@@ -16,6 +16,7 @@ import SalaryLedger from "@/components/salary/SalaryLedger";
 import SalaryConfig from "@/components/salary/SalaryConfig";
 import SalarySelf from "@/components/salary/SalarySelf";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
+import SalaryAdminMobile from "@/components/salary/SalaryAdminMobile";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import "@/components/salary/salary.css";
 
@@ -125,6 +126,24 @@ export default function ManagerSalaryPage() {
 
   // Admin
   const previewMgr = view === "self" ? managers.find((m) => m.id === selfId) : null;
+
+  // Mobile: shell web-app chiếm trọn màn (không MainLayout) — 4 tab dưới đáy
+  // (Lương / Cá nhân / Bảng kê / Cấu hình). Bỏ role switcher + self-preview vì
+  // tab "Cá nhân" đã thay thế. Loading/empty rơi xuống nhánh desktop dưới.
+  if (phone && !isLoading && managers.length > 0) {
+    return (
+      <SalaryAdminMobile
+        managers={managers} period={period} locked={monthLocked} accounts={accounts}
+        canLock={canLock} canPay={canPay} canManageSalary={canManageSalary}
+        onSaveAdjustment={onSaveAdjustment} onRemoveAdjustment={onRemoveAdjustment}
+        onPayout={onPayout} onBulkPayout={onBulkPayout}
+        onLock={onLock} onUnlock={onUnlock}
+        onPrevMonth={() => setPeriodMonth((p) => shiftMonth(p, -1))}
+        onNextMonth={() => setPeriodMonth((p) => shiftMonth(p, 1))}
+        onRecompute={() => refetch()}
+      />
+    );
+  }
 
   return (
     <MainLayout title="Bảng lương quản lý" subtitle="Tài chính → Lương" icon={Wallet}>
