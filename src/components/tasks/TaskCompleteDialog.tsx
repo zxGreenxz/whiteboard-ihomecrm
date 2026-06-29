@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import { StorageImage } from "@/components/ui/storage-image";
 import JobCaptureCamera, {
   type JobCaptureResult,
 } from "@/components/tasks/JobCaptureCamera";
+import { awardAndNotifyJobBonus } from "@/lib/salaryBonusNotify";
 import type { JobWithRelations } from "@/types/jobs";
 
 interface TaskCompleteDialogProps {
@@ -43,6 +45,7 @@ export default function TaskCompleteDialog({
   onSuccess,
 }: TaskCompleteDialogProps) {
   const { data: authUser } = useAuth();
+  const queryClient = useQueryClient();
   const completeJob = useCompleteJob();
   const isMobile = useIsMobile();
   const { data: geofence } = useAcceptanceGeofenceConfig();
@@ -94,6 +97,13 @@ export default function TaskCompleteDialog({
       });
       onOpenChange(false);
       onSuccess();
+      // Bắn thông báo thưởng (popup nổi + Web Push) nếu loại việc có thưởng.
+      // Fire-and-forget: không chặn việc đóng dialog; lỗi được nuốt êm trong util.
+      void awardAndNotifyJobBonus(job.id).then((rows) => {
+        if (rows.length) {
+          queryClient.invalidateQueries({ queryKey: ["notifications"] });
+        }
+      });
     } catch {
       // toast lỗi đã xử lý trong hook; giữ dialog mở để thử lại
     } finally {

@@ -12,6 +12,7 @@ export type NotificationType =
   | 'ISSUE_RESOLVED'
   | 'GENERAL_ANNOUNCEMENT'
   | 'DEPOSIT_SHORTFALL'
+  | 'SALARY_BONUS'
   | 'CUSTOM';
 
 export type NotificationChannel =
@@ -204,7 +205,8 @@ export function useCreateNotification() {
     mutationFn: async (input: CreateNotificationInput) => {
       if (!user?.id) throw new Error('User not authenticated');
 
-      const { data, error } = await supabase
+      // types.ts chưa regen sau khi thêm enum 'SALARY_BONUS' → cast (pattern như push.ts)
+      const { data, error } = await (supabase as any)
         .from('notifications')
         .insert({
           user_id: user.id,

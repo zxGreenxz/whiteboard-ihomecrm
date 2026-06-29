@@ -55,6 +55,9 @@ const NotificationBell = () => {
     } else if (notification.issue_id) {
       // TODO: Công việc đang xây dựng lại
       setOpen(false);
+    } else if (notification.type === 'SALARY_BONUS') {
+      navigate('/finance/salary');
+      setOpen(false);
     }
   };
 
@@ -88,6 +91,8 @@ const NotificationBell = () => {
         return '✅';
       case 'GENERAL_ANNOUNCEMENT':
         return '📢';
+      case 'SALARY_BONUS':
+        return '🎉';
       default:
         return '🔔';
     }
@@ -107,6 +112,8 @@ const NotificationBell = () => {
         return 'text-green-600';
       case 'GENERAL_ANNOUNCEMENT':
         return 'text-gray-600';
+      case 'SALARY_BONUS':
+        return 'text-emerald-600';
       default:
         return 'text-gray-600';
     }

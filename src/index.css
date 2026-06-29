@@ -230,3 +230,84 @@ All colors MUST be HSL.
     box-shadow: none !important;
   }
 }
+
+/* ============================================================
+   Bonus toast — popup thưởng khi hoàn thành công việc.
+   Render qua Sonner toast.custom (BonusToast.tsx). Nằm ở portal toaster,
+   NGOÀI .sal-root nên dùng màu hex tường minh, không phụ thuộc token salary.
+   ============================================================ */
+@keyframes bonusPop {
+  0%   { opacity: 0; transform: translateY(8px) scale(.96); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes bonusBadgePulse {
+  0%, 100% { transform: scale(1); }
+  40%      { transform: scale(1.12); }
+}
+@keyframes bonusFloat {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(-10px) rotate(12deg); opacity: .55; }
+}
+
+.bonus-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 260px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 70%);
+  border: 1px solid #a7f3d0;
+  box-shadow: 0 10px 30px -8px rgba(16, 185, 129, .45);
+  animation: bonusPop .32s cubic-bezier(.22, 1, .36, 1);
+}
+.bonus-toast__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: .3px;
+  color: #fff;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 4px 12px -2px rgba(5, 150, 105, .55);
+  animation: bonusBadgePulse .7s ease-out .12s 1;
+}
+.bonus-toast__body { min-width: 0; flex: 1; }
+.bonus-toast__label {
+  font-weight: 700;
+  font-size: 14px;
+  color: #064e3b;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bonus-toast__place {
+  margin-top: 1px;
+  font-size: 12px;
+  color: #047857;
+  opacity: .8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bonus-toast__spark {
+  flex-shrink: 0;
+  font-size: 20px;
+  animation: bonusFloat 1.1s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bonus-toast,
+  .bonus-toast__badge,
+  .bonus-toast__spark {
+    animation: none;
+  }
+}
