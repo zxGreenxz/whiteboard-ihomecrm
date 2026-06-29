@@ -552,13 +552,13 @@ function DetailSheet({ m, period, item, onClose, onGoList }: ScreenProps & { ite
   }
 
   if (item === "commission") {
-    const approved = m.commissionItems.filter((x) => x.approved).reduce((s, x) => s + x.amount, 0);
+    const total = m.commissionItems.reduce((s, x) => s + x.amount, 0);
     return (
       <Sheet title="Hoa hồng Sale" onClose={onClose}>
-        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Chỉ phiếu đã duyệt mới tính</div>
+        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Tự duyệt khi chốt lương tháng</div>
         {m.commissionItems.length === 0 ? <DEmpty>Tháng này chưa có hoa hồng.</DEmpty>
-          : m.commissionItems.map((x, i) => <DRow key={i} label={x.label} note={x.approved ? null : "chưa duyệt — chưa tính"} amount={x.amount} color={x.approved ? "#C4B5FD" : "#9A8FC4"} />)}
-        <DTotal label="Tổng đã tính" amount={approved} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
+          : m.commissionItems.map((x, i) => <DRow key={i} label={x.label} note={x.approved ? null : "chưa duyệt — sẽ duyệt khi chốt"} amount={x.amount} color="#C4B5FD" />)}
+        <DTotal label="Tổng HH Sale" amount={total} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
       </Sheet>
     );
   }

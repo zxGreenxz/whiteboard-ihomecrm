@@ -276,7 +276,9 @@ export const useManagerSalary = (periodMonth: string) => {
         const commissionItems = ieRows
           .filter((x) => x.salary_role === "COMMISSION")
           .map((x) => ({ label: x.name || "Hoa hồng", amount: num(x.total_amount), approved: x.approval_status === "APPROVED" }));
-        const commission = commissionItems.filter((x) => x.approved).reduce((s, x) => s + x.amount, 0);
+        // HH Sale = MỌI phiếu hoa hồng trong tháng của nhân viên (kể cả chưa duyệt) —
+        // sẽ TỰ DUYỆT khi chốt lương tháng (xem useLockSalaryMonth).
+        const commission = commissionItems.reduce((s, x) => s + x.amount, 0);
         const advanceItems = ieRows
           .filter((x) => x.salary_role === "ADVANCE" && x.approval_status === "APPROVED")
           .map((x) => ({ date: fmtDM(x.voucher_date), label: x.name || "Ứng lương", amount: num(x.total_amount) }));
@@ -507,6 +509,24 @@ export const useLockSalaryMonth = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
       const nowIso = new Date().toISOString();
+
+      // Chốt lương → DUYỆT luôn các phiếu hoa hồng (HH Sale) trong tháng của các
+      // nhân viên được chốt (người nhận = salary_staff_id, salary_role=COMMISSION).
+      const staffIds = managers.map((m) => m.id);
+      if (staffIds.length) {
+        const { start, end } = monthRange(periodMonth);
+        const { error: cErr } = await (supabase
+          .from("income_expenses" as any)
+          .update({ approval_status: "APPROVED", approved_at: nowIso, approved_by: user.id }) as any)
+          .eq("salary_role", "COMMISSION")
+          .in("salary_staff_id", staffIds)
+          .gte("voucher_date", start)
+          .lte("voucher_date", end)
+          .neq("approval_status", "APPROVED")
+          .is("deleted_at", null);
+        if (cErr) throw cErr;
+      }
+
       for (const m of managers) {
         const c = m.calc || salCalc(m);
         const contractBonus = m.bonusAuto.filter((b) => b.icon === "FileClock").reduce((s, b) => s + b.amount, 0);

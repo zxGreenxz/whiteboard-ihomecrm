@@ -86,26 +86,26 @@ export function InvestmentPop({ m, periodText }: { m: SalManager; periodText: st
 }
 
 export function CommissionPop({ m }: { m: SalManager }) {
-  const approved = m.commissionItems.filter((x) => x.approved).reduce((s, x) => s + x.amount, 0);
+  const total = m.commissionItems.reduce((s, x) => s + x.amount, 0);
   return (
     <>
       <div className="sal-pop-head">
         <span className="ic" style={{ background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" }}><I.HandCoins size={17} /></span>
-        <div><div className="tt">HH Sale (hoa hồng)</div><div className="st">Chỉ phiếu đã duyệt mới tính</div></div>
+        <div><div className="tt">HH Sale (hoa hồng)</div><div className="st">Tự duyệt khi chốt lương tháng</div></div>
       </div>
       <div className="sal-pop-body">
         {m.commissionItems.length === 0 ? <div style={{ padding: "18px 16px", textAlign: "center", fontSize: 13, color: "hsl(var(--muted-foreground))" }}>Tháng này chưa có hoa hồng.</div> :
           m.commissionItems.map((x, i) => (
-            <div key={i} className={"sal-pop-row" + (x.approved ? "" : " is-muted")}>
+            <div key={i} className="sal-pop-row">
               <span className="ric" style={x.approved ? { background: "hsl(var(--status-success-bg))", color: "hsl(var(--status-success-fg))" } : undefined}>
-                {x.approved ? <I.CheckCircle size={15} /> : <I.Circle size={15} />}
+                {x.approved ? <I.CheckCircle size={15} /> : <I.Clock size={15} />}
               </span>
-              <span className="rl"><b>{x.label}</b>{!x.approved ? <small style={{ color: "hsl(var(--status-warning-fg))" }}>chưa duyệt — chưa tính</small> : null}</span>
+              <span className="rl"><b>{x.label}</b>{!x.approved ? <small style={{ color: "hsl(var(--status-warning-fg))" }}>chưa duyệt — sẽ duyệt khi chốt</small> : null}</span>
               <span className="ra">{salFmt(x.amount)}</span>
             </div>
           ))}
       </div>
-      <div className="sal-pop-foot"><span className="tl">Tổng đã tính</span><span className="tv">{salFmt(approved)}</span></div>
+      <div className="sal-pop-foot"><span className="tl">Tổng HH Sale</span><span className="tv">{salFmt(total)}</span></div>
     </>
   );
 }
