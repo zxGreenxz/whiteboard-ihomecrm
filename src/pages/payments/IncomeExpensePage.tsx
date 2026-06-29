@@ -38,6 +38,7 @@ import {
   useIncomeExpenseStats,
   useCancelIncomeExpense,
   useApproveVoucher,
+  useUnapproveVoucher,
   useGenerateRecurringVouchers,
   useStopRecurring,
   useIncomeExpenseBatches,
@@ -113,6 +114,7 @@ const IncomeExpenseDesktopPage = () => {
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
+  const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(20);
@@ -169,6 +171,7 @@ const IncomeExpenseDesktopPage = () => {
   const cancelMutation = useCancelIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
+  const unapproveMutation = useUnapproveVoucher();
   const generateRecurringMutation = useGenerateRecurringVouchers();
   const stopRecurringMutation = useStopRecurring();
 
@@ -260,6 +263,17 @@ const IncomeExpenseDesktopPage = () => {
     }
     setApproveTarget(null);
   }, [approveTarget, approveMutation]);
+
+  const handleUnapproveVoucher = useCallback((id: string) => {
+    setUnapproveTarget(id);
+  }, []);
+
+  const confirmUnapprove = useCallback(() => {
+    if (unapproveTarget) {
+      unapproveMutation.mutate(unapproveTarget);
+    }
+    setUnapproveTarget(null);
+  }, [unapproveTarget, unapproveMutation]);
 
   const handleCancelVoucher = useCallback((id: string) => {
     setCancelTarget(id);
@@ -402,6 +416,7 @@ const IncomeExpenseDesktopPage = () => {
             onEdit={handleEditVoucher}
             onQuickEdit={handleQuickEditVoucher}
             onApprove={handleApproveVoucher}
+            onUnapprove={handleUnapproveVoucher}
             onVerify={handleVerifyVoucher}
             pagination={pagination}
             totalCount={totalCount}
@@ -445,6 +460,7 @@ const IncomeExpenseDesktopPage = () => {
         onEdit={handleEditVoucher}
         onQuickEdit={handleQuickEditVoucher}
         onApprove={handleApproveVoucher}
+        onUnapprove={handleUnapproveVoucher}
       />
       <IncomeExpenseQuickEditDialog
         open={!!quickEditVoucher}
@@ -523,6 +539,31 @@ const IncomeExpenseDesktopPage = () => {
               className="bg-green-600 hover:bg-green-700"
             >
               Duyệt phiếu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!unapproveTarget}
+        onOpenChange={() => setUnapproveTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận huỷ duyệt phiếu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Phiếu sẽ chuyển về trạng thái <b>Nháp</b> và không còn tính vào{" "}
+              <b>tồn quỹ</b> cho đến khi duyệt lại. Dùng khi cần chỉnh sửa phiếu
+              đã ghi nhận.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmUnapprove}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Huỷ duyệt
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

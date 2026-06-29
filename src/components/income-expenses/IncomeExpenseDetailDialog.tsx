@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Banknote,
+  Undo2,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +39,8 @@ interface Props {
    *  phiếu đã ghi nhận/đã huỷ, không cần super admin. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (id: string) => void;
+  /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
+  onUnapprove?: (id: string) => void;
 }
 
 const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -72,6 +75,7 @@ export function IncomeExpenseDetailDialog({
   onEdit,
   onQuickEdit,
   onApprove,
+  onUnapprove,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -195,6 +199,20 @@ export function IncomeExpenseDetailDialog({
                   }}
                 >
                   <CheckCircle2 className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
+                  title="Huỷ duyệt (chuyển về Nháp) — Super Admin"
+                  onClick={() => {
+                    onUnapprove(voucher.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  <Undo2 className="h-4 w-4 text-white" />
                 </Button>
               )}
               {!isCancelled && onCancel && (

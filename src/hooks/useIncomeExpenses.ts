@@ -1023,6 +1023,33 @@ export const useApproveVoucher = () => {
   });
 };
 
+// Huỷ duyệt phiếu thu/chi (APPROVED → UNAPPROVED, về lại Nháp). Chỉ super admin
+// (hoặc người tạo) — RPC unapprove_voucher tự kiểm quyền (user_id = auth.uid()
+// OR is_super_admin()). Dùng khi cần sửa lại phiếu đã ghi nhận.
+export const useUnapproveVoucher = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).rpc("unapprove_voucher", {
+        voucher_id: id,
+      });
+      if (error) {
+        toast.error(error.message || "Không thể huỷ duyệt phiếu");
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      toast.success("Đã chuyển phiếu về Nháp");
+    },
+    onError: (error) => {
+      console.error("Error unapproving voucher:", error);
+    },
+  });
+};
+
 // Huỷ phiếu thu/chi: đổi trạng thái sang CANCELLED. Nếu là phiếu INCOME mirror
 // từ thanh toán hoá đơn (có payment_id), cũng xoá payment row tương ứng để
 // trigger recompute invoice paid_amount/status (qua trigger DB).

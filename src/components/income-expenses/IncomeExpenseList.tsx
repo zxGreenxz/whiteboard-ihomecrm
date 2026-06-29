@@ -34,6 +34,7 @@ import {
   FileText as FileIcon,
   Repeat,
   CalendarX,
+  Undo2,
 } from 'lucide-react';
 import {
   HoverCard,
@@ -55,6 +56,8 @@ interface IncomeExpenseListProps {
    *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (id: string) => void;
+  /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
+  onUnapprove?: (id: string) => void;
   onVerify?: (voucher: IncomeExpenseWithRelations) => void;
   pagination: PaginationState;
   totalCount: number;
@@ -156,6 +159,7 @@ const IncomeExpenseList = ({
   onEdit,
   onQuickEdit,
   onApprove,
+  onUnapprove,
   onVerify,
   pagination,
   totalCount,
@@ -302,6 +306,19 @@ const IncomeExpenseList = ({
                         title="Duyệt phiếu (đã thanh toán)"
                       >
                         <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Huỷ duyệt: phiếu đã ghi nhận -> Nháp (chỉ super admin) */}
+                    {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        onClick={() => onUnapprove(voucher.id)}
+                        title="Huỷ duyệt (chuyển về Nháp) — Super Admin"
+                      >
+                        <Undo2 className="h-4 w-4" />
                       </Button>
                     )}
 
