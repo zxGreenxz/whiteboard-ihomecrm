@@ -4,9 +4,9 @@
 // "Bảng lương" ở sidebar. Dùng CHUNG dữ liệu SalManager với bản mobile/desktop cũ.
 import React, { useEffect, useState } from "react";
 import {
-  Home, Trophy, Briefcase, Flame, Zap, Sparkles, Wrench, CalendarCheck, FileText,
+  Trophy, Briefcase, Flame, Zap, Wrench, CalendarCheck, FileText,
   Banknote, Moon, TrendingUp, BarChart3, ChevronLeft, ChevronRight, X, Wallet,
-  Check, CheckCircle2, Target, AlertTriangle, Clock, CreditCard,
+  Check, CheckCircle2, Target, AlertTriangle, Clock,
   type LucideIcon,
 } from "lucide-react";
 import { salFmt, salShort } from "./salaryFormat";
@@ -66,55 +66,42 @@ function Ring({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-// ─────────────── TOP BAR ───────────────
-function TopBar({ m, period, onPrevMonth, onNextMonth, canPrev, canNext }: DeskProps) {
+// ─────────────── HEADER (hàng nổi bật, KHÔNG logo / KHÔNG tiêu đề) ───────────────
+// Avatar + tên (Space Grotesk to) nằm thẳng đầu khu nội dung; tháng + "Đang diễn
+// ra" dồn về phải. Bỏ logo iHomeCRM và chữ "Lương của tôi" theo thiết kế mới.
+function Header({ m, period, onPrevMonth, onNextMonth, canPrev, canNext }: DeskProps) {
   const live = m.status !== "LOCKED";
   const reached = useReached(m);
   return (
-    <div style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(21,17,42,.82)", backdropFilter: "blur(14px)", borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto", height: 64, display: "flex", alignItems: "center", gap: 16, padding: "0 28px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-          <span style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg,#8B5CF6,#FFD23F)", display: "flex", alignItems: "center", justifyContent: "center", color: C.ink }}>
-            <Home size={19} strokeWidth={2.2} />
-          </span>
-          <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-.01em" }}>iHomeCRM</div>
-            <div style={{ fontSize: 11, color: C.sub }}>Tài chính · Bảng lương</div>
-          </div>
-        </div>
-        <div style={{ width: 1, height: 26, background: C.border, margin: "0 4px" }} />
-        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Lương của tôi</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
+      <div style={{ position: "relative" }}>
+        <span style={{ width: 54, height: 54, borderRadius: "50%", background: "rgba(255,210,63,.16)", border: `2px solid ${C.gold}`, color: C.gold, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18, fontFamily: "'Space Grotesk',sans-serif" }}>{m.initials}</span>
+        {m.incomeGoal > 0 && (
+          <span style={{ position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)", fontSize: 9, fontWeight: 800, color: C.ink, background: C.gold, padding: "1px 8px", borderRadius: 999, fontFamily: "'Space Grotesk',sans-serif" }}>Lv.{reached + 1}</span>
+        )}
+      </div>
+      <div style={{ lineHeight: 1.18 }}>
+        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: "-.02em", color: "#fff" }}>{m.short}</div>
+        <div style={{ fontSize: 13, color: C.sub, marginTop: 1 }}>{m.role} · Bảng lương cá nhân</div>
+      </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "#221C3E", border: `1px solid ${C.border}`, borderRadius: 12, padding: 4 }}>
-            <button onClick={onPrevMonth} disabled={!canPrev} title="Tháng trước"
-              style={{ width: 30, height: 30, border: "none", background: "transparent", color: canPrev ? C.sub : C.muted, borderRadius: 8, cursor: canPrev ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <ChevronLeft size={17} strokeWidth={2.4} />
-            </button>
-            <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 13, fontWeight: 700, color: C.gold, padding: "0 10px", minWidth: 78, textAlign: "center" }}>
-              T{period.label.replace(/\D/g, "")}/{period.year}
-            </span>
-            <button onClick={onNextMonth} disabled={!canNext} title="Tháng sau"
-              style={{ width: 30, height: 30, border: "none", background: "transparent", color: canNext ? C.sub : C.muted, borderRadius: 8, cursor: canNext ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <ChevronRight size={17} strokeWidth={2.4} />
-            </button>
-          </div>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: live ? "#5BD08E" : C.greenSoft, padding: "6px 12px", background: live ? "rgba(52,211,153,.14)" : "rgba(52,211,153,.1)", border: `1px solid rgba(52,211,153,.25)`, borderRadius: 999 }}>
-            {live ? <><span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, animation: "salLiveDot 1.8s ease-out infinite" }} />Đang diễn ra</> : <><Check size={13} strokeWidth={3} />Đã chốt</>}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 2, background: C.card, border: `1px solid ${C.border}`, borderRadius: 13, padding: 5 }}>
+          <button onClick={onPrevMonth} disabled={!canPrev} title="Tháng trước"
+            style={{ width: 32, height: 32, border: "none", background: "transparent", color: canPrev ? C.sub : C.muted, borderRadius: 9, cursor: canPrev ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <ChevronLeft size={18} strokeWidth={2.4} />
+          </button>
+          <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 14, fontWeight: 700, color: C.gold, padding: "0 12px", minWidth: 84, textAlign: "center" }}>
+            T{period.label.replace(/\D/g, "")}/{period.year}
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, paddingLeft: 6 }}>
-            <div style={{ position: "relative" }}>
-              <span style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,210,63,.16)", border: `2px solid ${C.gold}`, color: C.gold, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{m.initials}</span>
-              {m.incomeGoal > 0 && (
-                <span style={{ position: "absolute", bottom: -6, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 800, color: C.ink, background: C.gold, padding: "1px 6px", borderRadius: 999 }}>Lv.{reached + 1}</span>
-              )}
-            </div>
-            <div style={{ lineHeight: 1.2 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{m.short}</div>
-              <div style={{ fontSize: 11, color: C.sub }}>{m.role}</div>
-            </div>
-          </div>
+          <button onClick={onNextMonth} disabled={!canNext} title="Tháng sau"
+            style={{ width: 32, height: 32, border: "none", background: "transparent", color: canNext ? C.sub : C.muted, borderRadius: 9, cursor: canNext ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <ChevronRight size={18} strokeWidth={2.4} />
+          </button>
         </div>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 700, color: live ? "#5BD08E" : C.greenSoft, padding: "9px 14px", background: live ? "rgba(52,211,153,.14)" : "rgba(52,211,153,.1)", border: `1px solid rgba(52,211,153,.25)`, borderRadius: 999 }}>
+          {live ? <><span style={{ width: 7, height: 7, borderRadius: "50%", background: C.green, animation: "salLiveDot 1.8s ease-out infinite" }} />Đang diễn ra</> : <><Check size={13} strokeWidth={3} />Đã chốt</>}
+        </span>
       </div>
     </div>
   );
@@ -198,17 +185,20 @@ function QuestLadder({ m }: { m: SalManager }) {
 }
 
 // ─────────────── HERO ───────────────
-function Hero({ m, onOpenBreak }: { m: SalManager; onOpenBreak: () => void }) {
+function Hero({ m, onOpenBreak, onOpenDetail }: { m: SalManager; onOpenBreak: () => void; onOpenDetail: (cat: CatKey) => void }) {
   const c = m.calc!;
   const earned = useCountUp(c.gross, [c.gross]);
   const net = c.takehome - m.paid;
-  const chips = [
-    { label: "Lương cứng", v: m.base, minus: false, color: C.text, bg: "rgba(255,255,255,.12)" },
-    { label: "Thưởng việc", v: c.bonus, minus: false, color: C.gold, bg: "rgba(255,210,63,.16)" },
-    { label: "Đầu tư", v: m.investment, minus: false, color: C.greenMint, bg: "rgba(52,211,153,.18)" },
-    { label: "HH Sale", v: m.commission, minus: false, color: C.purpleSoft, bg: "rgba(139,92,246,.22)" },
-    { label: "Đã ứng", v: m.advance, minus: true, color: C.pinkSoft, bg: "rgba(255,122,160,.2)" },
-  ].filter((x) => x.v > 0);
+  // Mỗi chip mở CHI TIẾT RIÊNG của khoản đó (cat); nút "Bóc tách lương" mới mở
+  // bảng tổng hợp đầy đủ (onOpenBreak).
+  const allChips: { cat: CatKey; label: string; v: number; minus: boolean; color: string; bg: string }[] = [
+    { cat: "luong", label: "Lương cứng", v: m.base, minus: false, color: C.text, bg: "rgba(255,255,255,.12)" },
+    { cat: "thuong", label: "Thưởng việc", v: c.bonus, minus: false, color: C.gold, bg: "rgba(255,210,63,.16)" },
+    { cat: "dautu", label: "Đầu tư", v: m.investment, minus: false, color: C.greenMint, bg: "rgba(52,211,153,.18)" },
+    { cat: "hh", label: "HH Sale", v: m.commission, minus: false, color: C.purpleSoft, bg: "rgba(139,92,246,.22)" },
+    { cat: "ung", label: "Đã ứng", v: m.advance, minus: true, color: C.pinkSoft, bg: "rgba(255,122,160,.2)" },
+  ];
+  const chips = allChips.filter((x) => x.v > 0);
 
   return (
     <div style={{ position: "relative", borderRadius: 28, overflow: "hidden", padding: 32, background: "radial-gradient(80% 130% at 92% -10%, #5B3AA8 0%, transparent 52%), radial-gradient(70% 130% at -2% 115%, #7A4F12 0%, transparent 55%), #251C46", display: "flex", gap: 32, alignItems: "stretch" }}>
@@ -229,7 +219,7 @@ function Hero({ m, onOpenBreak }: { m: SalManager; onOpenBreak: () => void }) {
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 20 }}>
           {chips.map((x) => (
-            <button key={x.label} onClick={onOpenBreak}
+            <button key={x.cat} onClick={() => onOpenDetail(x.cat)}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: x.color, padding: "8px 13px", borderRadius: 999, background: x.bg, border: "none", fontFamily: "inherit", cursor: "pointer" }}>
               {x.label} <b style={{ fontFamily: "'Space Mono',monospace" }}>{x.minus ? "−" : "+"}{plus(x.v)}</b>
             </button>
@@ -529,10 +519,123 @@ function BreakdownModal({ m, period, onClose }: { m: SalManager; period: PeriodL
   );
 }
 
+// ─────────────── CATEGORY DETAIL MODAL ───────────────
+// Mỗi chip thu nhập mở chi tiết RIÊNG của khoản đó (khác "Bóc tách lương" = tổng).
+type CatKey = "luong" | "thuong" | "dautu" | "hh" | "ung";
+interface DetailRow { label: string; note?: string; val: string; color: string; }
+interface DetailDesc {
+  title: string; sub: string; iconBg: string; iconColor: string; rows: DetailRow[];
+  totalLabel: string; totalVal: string; totalColor: string; totalBg: string; totalBorder: string;
+}
+
+function buildDetail(m: SalManager, period: PeriodLite, cat: CatKey): DetailDesc {
+  const c = m.calc!;
+  const pt = `T${period.label.replace(/\D/g, "")}/${period.year}`;
+  const GOLD = { color: C.gold, bg: "rgba(255,210,63,.1)", border: "rgba(255,210,63,.25)" };
+  const GREEN = { color: C.greenSoft, bg: "rgba(52,211,153,.1)", border: "rgba(52,211,153,.25)" };
+  const PURPLE = { color: C.purpleSoft, bg: "rgba(139,92,246,.12)", border: "rgba(139,92,246,.3)" };
+  const PINK = { color: C.pink, bg: "rgba(255,122,160,.1)", border: "rgba(255,122,160,.25)" };
+
+  if (cat === "luong") {
+    // Dữ liệu thật chỉ có lương cứng gộp (m.base) — hiện 1 dòng "Lương cơ bản".
+    return {
+      title: "Lương cứng", sub: `Lương cơ bản cố định · ${pt}`,
+      iconBg: "rgba(255,255,255,.1)", iconColor: C.text,
+      rows: [{ label: "Lương cơ bản", note: "· " + m.role, val: "+" + plus(m.base), color: C.text }],
+      totalLabel: "Tổng lương cứng", totalVal: "+" + plus(m.base), totalColor: GOLD.color, totalBg: GOLD.bg, totalBorder: GOLD.border,
+    };
+  }
+
+  if (cat === "thuong") {
+    const elig = m.ledger.filter((r) => (r.bonus_amount ?? 0) > 0).slice()
+      .sort((a, b) => (a.occurred_date < b.occurred_date ? 1 : -1));
+    const top = elig.slice(0, 4);
+    const rest = elig.slice(4);
+    const rows: DetailRow[] = top.map((r) => ({ label: r.content || "Việc", note: "· " + fmtDM(r.occurred_date), val: "+" + plus(r.bonus_amount as number), color: C.gold }));
+    if (rest.length) {
+      const sum = rest.reduce((s, r) => s + (r.bonus_amount || 0), 0);
+      rows.push({ label: `+ ${rest.length} việc khác`, val: "+" + plus(sum), color: C.sub });
+    }
+    for (const a of m.adjustments) {
+      rows.push({ label: a.label, note: a.note ? "· " + a.note : "", val: (a.amount < 0 ? "−" : "+") + plus(a.amount), color: a.amount < 0 ? C.pink : C.green });
+    }
+    if (!rows.length) rows.push({ label: "Chưa có thưởng việc tháng này", val: "—", color: C.sub });
+    return {
+      title: "Thưởng việc", sub: `${elig.length} việc đã duyệt · có ảnh nghiệm thu`,
+      iconBg: "rgba(255,210,63,.16)", iconColor: C.gold, rows,
+      totalLabel: "Tổng thưởng việc", totalVal: "+" + plus(c.bonus), totalColor: GOLD.color, totalBg: GOLD.bg, totalBorder: GOLD.border,
+    };
+  }
+
+  if (cat === "dautu") {
+    const list = m.investmentBy.slice().sort((a, b) => b.amount - a.amount);
+    const rows: DetailRow[] = list.length
+      ? list.map((x) => ({ label: x.b, val: "+" + plus(x.amount), color: C.greenSoft }))
+      : [{ label: m.investmentLocked ? "Chưa có phần đầu tư tháng này" : "Chờ chốt Lợi nhuận cổ đông", val: "—", color: C.sub }];
+    return {
+      title: "Lợi nhuận đầu tư", sub: `Chia LN cổ đông theo nhà · ${pt}`,
+      iconBg: "rgba(52,211,153,.18)", iconColor: C.green, rows,
+      totalLabel: "Tổng lợi nhuận", totalVal: "+" + plus(m.investment), totalColor: GREEN.color, totalBg: GREEN.bg, totalBorder: GREEN.border,
+    };
+  }
+
+  if (cat === "hh") {
+    const rows: DetailRow[] = m.commissionItems.map((x) => ({ label: x.label, val: "+" + plus(x.amount), color: C.purpleSoft }));
+    for (const x of m.commissionFlagged || []) rows.push({ label: x.label, note: "· đã thanh toán riêng", val: "+" + plus(x.amount), color: C.pink });
+    if (!rows.length) rows.push({ label: "Chưa có hoa hồng tháng này", val: "—", color: C.sub });
+    return {
+      title: "Hoa hồng Sale", sub: `Hợp đồng đã chốt · ${pt}`,
+      iconBg: "rgba(139,92,246,.22)", iconColor: C.purpleSoft, rows,
+      totalLabel: "Tổng hoa hồng", totalVal: "+" + plus(m.commission), totalColor: PURPLE.color, totalBg: PURPLE.bg, totalBorder: PURPLE.border,
+    };
+  }
+
+  // ung
+  const rows: DetailRow[] = m.advanceItems.length
+    ? m.advanceItems.map((x) => ({ label: x.label, note: "· " + x.date, val: "−" + plus(x.amount), color: C.pink }))
+    : [{ label: "Chưa có khoản ứng nào", val: "—", color: C.sub }];
+  return {
+    title: "Đã ứng trước", sub: `Khoản trừ vào lương kỳ này · ${pt}`,
+    iconBg: "rgba(255,122,160,.2)", iconColor: C.pinkSoft, rows,
+    totalLabel: "Tổng đã ứng", totalVal: "−" + plus(m.advance), totalColor: PINK.color, totalBg: PINK.bg, totalBorder: PINK.border,
+  };
+}
+
+function CategoryDetailModal({ m, period, cat, onClose }: { m: SalManager; period: PeriodLite; cat: CatKey; onClose: () => void }) {
+  const d = buildDetail(m, period, cat);
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(10,6,22,.66)", animation: "salFadeIn .2s ease" }} />
+      <div style={{ position: "relative", width: 460, maxWidth: "100%", background: C.card, border: "1px solid #3A3163", borderRadius: 22, boxShadow: "0 30px 80px rgba(0,0,0,.5)", animation: "salPopIn .22s cubic-bezier(.16,1,.3,1)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "20px 22px 16px", borderBottom: `1px solid ${C.border}` }}>
+          <span style={{ width: 38, height: 38, borderRadius: 11, background: d.iconBg, color: d.iconColor, display: "flex", alignItems: "center", justifyContent: "center" }}><BarChart3 size={20} /></span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>{d.title}</div>
+            <div style={{ fontSize: 11.5, color: C.sub }}>{d.sub}</div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, background: C.ink, border: `1px solid ${C.border}`, color: C.sub, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={16} strokeWidth={2.5} /></button>
+        </div>
+        <div style={{ padding: "6px 22px 18px", maxHeight: "60vh", overflowY: "auto" }}>
+          {d.rows.map((r, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 0", borderBottom: "1px solid rgba(50,42,85,.7)" }}>
+              <span style={{ fontSize: 13, color: C.text, minWidth: 0 }}>{r.label}{r.note ? <span style={{ fontSize: 11, color: C.sub }}> {r.note}</span> : null}</span>
+              <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, color: r.color, flexShrink: 0 }}>{r.val}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, padding: "15px 17px", borderRadius: 14, background: d.totalBg, border: `1px solid ${d.totalBorder}` }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{d.totalLabel}</span>
+            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 22, color: d.totalColor }}>{d.totalVal}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────── ROOT ───────────────
 export default function SalarySelfDesktop(props: DeskProps) {
   const { m, period } = props;
-  const [breakOpen, setBreakOpen] = useState(false);
+  const [modal, setModal] = useState<{ kind: "break" } | { kind: "detail"; cat: CatKey } | null>(null);
 
   // Khoá cuộn nền + nạp font QUEST (Be Vietnam Pro / Space Grotesk / Space Mono).
   useEffect(() => {
@@ -558,10 +661,9 @@ export default function SalarySelfDesktop(props: DeskProps) {
         @keyframes salPopIn { from { opacity:0; transform: translateY(10px) scale(.97);} to {opacity:1; transform:none;} }
       `}</style>
 
-      <TopBar {...props} />
-
-      <div style={{ maxWidth: 1320, margin: "0 auto", padding: "24px 28px 0" }}>
-        <Hero m={m} onOpenBreak={() => setBreakOpen(true)} />
+      <div style={{ maxWidth: 1320, margin: "0 auto", padding: "26px 28px 0" }}>
+        <Header {...props} />
+        <Hero m={m} onOpenBreak={() => setModal({ kind: "break" })} onOpenDetail={(cat) => setModal({ kind: "detail", cat })} />
         <Achievements m={m} />
         <div style={{ display: "grid", gridTemplateColumns: "1.9fr 1fr", gap: 18, marginTop: 18, alignItems: "start" }}>
           <Ledger m={m} />
@@ -573,7 +675,8 @@ export default function SalarySelfDesktop(props: DeskProps) {
         <JourneyChart m={m} />
       </div>
 
-      {breakOpen && <BreakdownModal m={m} period={period} onClose={() => setBreakOpen(false)} />}
+      {modal?.kind === "break" && <BreakdownModal m={m} period={period} onClose={() => setModal(null)} />}
+      {modal?.kind === "detail" && <CategoryDetailModal m={m} period={period} cat={modal.cat} onClose={() => setModal(null)} />}
     </div>
   );
 }
