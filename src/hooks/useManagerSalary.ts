@@ -75,7 +75,11 @@ export const useManagerSalary = (periodMonth: string) => {
 
       const staffIds: string[] = configs.map((c) => c.staff_id);
       const ownerId: string = configs[0].user_id;
-      const billingMonth = periodMonth.slice(0, 7); // 'YYYY-MM'
+      // Tiền phòng khấu trừ theo THÁNG T+1: lương tháng T trả vào tháng kế nên
+      // trừ tiền phòng của tháng kế (vd lương T5 → tiền phòng hoá đơn T6).
+      const rentPeriod = shiftMonth(periodMonth, 1); // 'YYYY-MM-01' tháng kế
+      const billingMonth = rentPeriod.slice(0, 7); // 'YYYY-MM' tháng kế
+      const rentMm = parseInt(rentPeriod.slice(5, 7), 10); // số tháng cho nhãn
 
       // Tiền phòng từ hoá đơn phòng nhân viên ở (giá ưu đãi)
       const roomIds: string[] = configs.map((c) => c.room_id).filter(Boolean);
@@ -97,7 +101,7 @@ export const useManagerSalary = (periodMonth: string) => {
           if (roomInvoice.has(iv.room_id)) continue; // hoá đơn mới nhất của phòng/tháng
           roomInvoice.set(iv.room_id, {
             amount: num(iv.total_amount),
-            label: `HĐ phòng ${roomNameById.get(iv.room_id) || ""} · T${mm}`,
+            label: `HĐ phòng ${roomNameById.get(iv.room_id) || ""} · T${rentMm}`,
           });
         }
       }
