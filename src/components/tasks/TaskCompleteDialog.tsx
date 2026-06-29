@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, Loader2, X, MapPin } from "lucide-react";
+import { Camera, Loader2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompleteJob } from "@/hooks/useJobs";
@@ -19,7 +19,6 @@ import { StorageImage } from "@/components/ui/storage-image";
 import JobCaptureCamera, {
   type JobCaptureResult,
 } from "@/components/tasks/JobCaptureCamera";
-import type { GeofenceStatus } from "@/lib/captureWatermark";
 import type { JobWithRelations } from "@/types/jobs";
 
 interface TaskCompleteDialogProps {
@@ -37,23 +36,6 @@ function nowLocalDatetimeValue(): string {
   )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-interface GeoMeta {
-  lat: number | null;
-  lng: number | null;
-  distanceM: number | null;
-  status: GeofenceStatus;
-  address: string | null;
-}
-
-// Mức "nghiêm trọng" để giữ lại reading tệ nhất trong các lần chụp.
-const STATUS_SEVERITY: Record<GeofenceStatus, number> = {
-  out_of_range: 3,
-  gps_denied: 2,
-  no_building_coords: 1,
-  ok: 0,
-  disabled: 0,
-};
-
 export default function TaskCompleteDialog({
   open,
   onOpenChange,
@@ -65,80 +47,64 @@ export default function TaskCompleteDialog({
   const isMobile = useIsMobile();
   const { data: geofence } = useAcceptanceGeofenceConfig();
   const [completionTime, setCompletionTime] = useState("");
-  const [newAttachments, setNewAttachments] = useState<string[]>([]);
-  const [geoMeta, setGeoMeta] = useState<GeoMeta | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     if (open) {
       setCompletionTime(nowLocalDatetimeValue());
-      setNewAttachments([]);
-      setGeoMeta(null);
       setCameraOpen(false);
+      setProcessing(false);
     }
   }, [open]);
 
   if (!job) return null;
 
   const existingAttachments = job.attachments ?? [];
-  const canSubmit = !!completionTime && !completeJob.isPending && !uploading;
 
+  // Chụp ảnh xong (xác nhận "Dùng ảnh này") → upload + HOÀN THÀNH luôn.
+  // Đây là con đường DUY NHẤT để hoàn thành: chưa chụp ảnh thì không xong được.
   const handleCaptured = async (result: JobCaptureResult) => {
-    setUploading(true);
+    setProcessing(true);
+    let url: string;
     try {
       const userId = authUser?.id ?? "anon";
-      const url = await uploadFile(
+      url = await uploadFile(
         "job-attachments",
         `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`,
         result.file,
       );
-      setNewAttachments((prev) => [...prev, url]);
-      // Giữ reading "tệ nhất" để ghi vào job (ưu tiên out_of_range, rồi xa nhất).
-      setGeoMeta((prev) => {
-        const next: GeoMeta = {
-          lat: result.lat,
-          lng: result.lng,
-          distanceM: result.distanceM,
-          status: result.status,
-          address: result.address,
-        };
-        if (!prev) return next;
-        const ds = STATUS_SEVERITY[next.status] - STATUS_SEVERITY[prev.status];
-        if (ds > 0) return next;
-        if (ds === 0 && (next.distanceM ?? -1) > (prev.distanceM ?? -1)) return next;
-        return prev;
-      });
     } catch {
       toast.error("Không tải được ảnh lên, vui lòng thử lại");
-    } finally {
-      setUploading(false);
+      setProcessing(false);
+      return;
     }
-  };
 
-  const handleRemoveNew = (url: string) => {
-    setNewAttachments((prev) => prev.filter((u) => u !== url));
-  };
-
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
-    const merged = [...existingAttachments, ...newAttachments];
     try {
+      const merged = [...existingAttachments, url];
       await completeJob.mutateAsync({
         id: job.id,
         completion_time: new Date(completionTime).toISOString(),
-        completion_attachments: merged.length ? merged : null,
-        completion_lat: geoMeta?.lat ?? null,
-        completion_lng: geoMeta?.lng ?? null,
-        completion_distance_m: geoMeta?.distanceM ?? null,
-        completion_geofence_status: geoMeta?.status ?? null,
-        completion_address: geoMeta?.address ?? null,
+        completion_attachments: merged,
+        completion_lat: result.lat,
+        completion_lng: result.lng,
+        completion_distance_m: result.distanceM,
+        completion_geofence_status: result.status,
+        completion_address: result.address,
       });
       onOpenChange(false);
       onSuccess();
     } catch {
-      // toast handled by hook
+      // toast lỗi đã xử lý trong hook; giữ dialog mở để thử lại
+    } finally {
+      setProcessing(false);
     }
+  };
+
+  // Chặn đóng dialog khi đang lưu để tránh race.
+  const handleDialogOpenChange = (o: boolean) => {
+    if (!o && processing) return;
+    onOpenChange(o);
   };
 
   const formBody = (
@@ -157,18 +123,10 @@ export default function TaskCompleteDialog({
           onChange={(e) => setCompletionTime(e.target.value)}
         />
       </div>
-      <div className="space-y-1.5">
-        <label className="text-[13px] font-medium block">
-          Ảnh đã làm
-          {existingAttachments.length > 0 && (
-            <span className="ml-1 text-[11px] font-normal text-muted-foreground">
-              (bổ sung vào {existingAttachments.length} ảnh đã có)
-            </span>
-          )}
-        </label>
 
-        {/* Lưới ảnh: ảnh đã có (chỉ xem) + ảnh vừa chụp (có thể xoá) */}
-        {(existingAttachments.length > 0 || newAttachments.length > 0) && (
+      {existingAttachments.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="text-[13px] font-medium block">Ảnh đã có</label>
           <div className="grid grid-cols-3 gap-2">
             {existingAttachments.map((url) => (
               <div
@@ -178,55 +136,43 @@ export default function TaskCompleteDialog({
                 <StorageImage value={url} className="w-full h-full object-cover" />
               </div>
             ))}
-            {newAttachments.map((url) => (
-              <div
-                key={`new-${url}`}
-                className="relative aspect-square rounded-lg overflow-hidden border bg-muted"
-              >
-                <StorageImage value={url} className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveNew(url)}
-                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
-                  aria-label="Xoá ảnh"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full h-11 border-dashed"
-          disabled={uploading}
-          onClick={() => setCameraOpen(true)}
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Đang tải ảnh…
-            </>
-          ) : (
-            <>
-              <Camera className="h-4 w-4 mr-2" /> Chụp ảnh
-            </>
-          )}
-        </Button>
-        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-          <MapPin className="h-3 w-3" />
-          {geofence?.enabled
-            ? `Chỉ chụp trực tiếp — ảnh gắn ngày giờ + địa chỉ GPS thực tế; cảnh báo nếu cách tòa quá ${geofence.radiusM}m.`
-            : "Chỉ chụp trực tiếp — ảnh gắn ngày giờ + địa chỉ GPS thực tế."}
-        </p>
-      </div>
+      <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+        <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
+        <span>
+          Phải <b>chụp ảnh trực tiếp</b> mới hoàn thành được — ảnh gắn ngày giờ + địa chỉ GPS thực tế
+          {geofence?.enabled ? `; cảnh báo nếu cách tòa quá ${geofence.radiusM}m.` : "."}
+        </span>
+      </p>
     </>
+  );
+
+  // Nút chính: mở camera; chụp xong tự hoàn thành.
+  const primaryButton = (className: string) => (
+    <Button
+      type="button"
+      className={`bg-green-600 hover:bg-green-700 text-white ${className}`}
+      disabled={processing}
+      onClick={() => setCameraOpen(true)}
+    >
+      {processing ? (
+        <>
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Đang lưu…
+        </>
+      ) : (
+        <>
+          <Camera className="h-4 w-4 mr-2" /> Chụp ảnh & hoàn thành
+        </>
+      )}
+    </Button>
   );
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent
           className={
             isMobile
@@ -248,18 +194,12 @@ export default function TaskCompleteDialog({
                 {formBody}
               </div>
               <DialogFooter className="shrink-0 px-4 py-3 border-t flex flex-col gap-2 bg-background">
-                <Button
-                  type="button"
-                  className="bg-green-600 hover:bg-green-700 text-white w-full h-11"
-                  disabled={!canSubmit}
-                  onClick={handleSubmit}
-                >
-                  {completeJob.isPending ? "Đang lưu..." : "Hoàn thành"}
-                </Button>
+                {primaryButton("w-full h-11")}
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
+                  disabled={processing}
                   className="w-full h-11"
                 >
                   Huỷ
@@ -279,17 +219,11 @@ export default function TaskCompleteDialog({
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
+                  disabled={processing}
                 >
                   Huỷ
                 </Button>
-                <Button
-                  type="button"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={!canSubmit}
-                  onClick={handleSubmit}
-                >
-                  {completeJob.isPending ? "Đang lưu..." : "Hoàn thành"}
-                </Button>
+                {primaryButton("")}
               </DialogFooter>
             </>
           )}
