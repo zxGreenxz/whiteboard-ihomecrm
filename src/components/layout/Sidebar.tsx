@@ -63,6 +63,12 @@ interface NavItem {
   module?: string;
   /** Action cần — mặc định "view". */
   action?: ActionKey;
+  /**
+   * Với NHÂN VIÊN (không phải admin của module): mở `selfHref` ở TAB MỚI thay vì
+   * điều hướng in-app. Dùng cho "Bảng lương" → trang "Lương của tôi" trọn-màn QUEST.
+   * Admin (lock/manage_salary/distribute) vẫn vào trang quản lý in-app như cũ.
+   */
+  selfHref?: string;
 }
 
 interface NavSection {
@@ -136,7 +142,7 @@ const navigationGroups: NavGroup[] = [
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
           { title: 'Chia lợi nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, module: 'shareholder_profit' },
-          { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary' },
+          { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary', selfHref: '/finance/my-salary' },
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
@@ -206,6 +212,14 @@ const Sidebar = ({ className }: SidebarProps) => {
   const location = useLocation();
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
 
+  // Admin Bảng lương = có quyền chốt/quản lý/chi lương (hoặc superadmin). Nhân viên
+  // thường (self-view) sẽ mở "Lương của tôi" ở tab mới thay vì vào trang quản lý.
+  const salaryAdmin =
+    !!(perms as any)?.__superadmin ||
+    canUse(perms, 'salary', 'lock') ||
+    canUse(perms, 'salary', 'manage_salary') ||
+    canUse(perms, 'salary', 'distribute');
+
   // Mục chỉ hiện khi có quyền XEM tương ứng (đúng quyền route guard kiểm).
   // Mục không khai báo `module` (Bảng tin, trang cá nhân) luôn hiện.
   const canShow = (item: NavItem) =>
@@ -263,18 +277,31 @@ const Sidebar = ({ className }: SidebarProps) => {
     const active = isActive(item.href);
     const Icon = item.icon;
 
+    const inner = (
+      <Button
+        variant="ghost"
+        className={cn(
+          'w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+          active && 'bg-sidebar-accent text-sidebar-primary font-medium'
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        <span className="text-sm">{item.title}</span>
+      </Button>
+    );
+
+    // Nhân viên (không phải admin module): mở trang self-view ở TAB MỚI.
+    if (item.selfHref && !salaryAdmin) {
+      return (
+        <a key={item.href} href={item.selfHref} target="_blank" rel="noopener noreferrer">
+          {inner}
+        </a>
+      );
+    }
+
     return (
       <Link key={item.href} to={item.href}>
-        <Button
-          variant="ghost"
-          className={cn(
-            'w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            active && 'bg-sidebar-accent text-sidebar-primary font-medium'
-          )}
-        >
-          <Icon className="h-4 w-4" />
-          <span className="text-sm">{item.title}</span>
-        </Button>
+        {inner}
       </Link>
     );
   };

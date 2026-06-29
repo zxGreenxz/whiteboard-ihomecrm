@@ -110,6 +110,7 @@ const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExp
 const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
 const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
 const ManagerSalaryPage = lazy(() => import("./pages/finance/ManagerSalaryPage"));
+const MySalaryPage = lazy(() => import("./pages/finance/MySalaryPage"));
 const SuppliersPage = lazy(() => import("./pages/settings/categories/SuppliersPage"));
 const WarehousesPage = lazy(() => import("./pages/settings/categories/WarehousesPage"));
 const AssetTypesPage = lazy(() => import("./pages/settings/categories/AssetTypesPage"));
@@ -364,6 +365,8 @@ const App = () => (
 
           {/* === BẢNG LƯƠNG QUẢN LÝ === (trang tự rẽ admin ↔ self-view theo quyền/cấu hình) */}
           <Route path="/finance/salary" element={<ProtectedRoute><ManagerSalaryPage /></ProtectedRoute>} />
+          {/* "Lương của tôi" — trang trọn-màn QUEST, nhân viên mở ở TAB MỚI từ sidebar */}
+          <Route path="/finance/my-salary" element={<ProtectedRoute><MySalaryPage /></ProtectedRoute>} />
 
           {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
 
