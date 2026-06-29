@@ -24,10 +24,11 @@ interface FormState {
   passPrice: string;
   availDate: string;
   active: boolean;
+  contactManager: boolean;
 }
 const emptyForm: FormState = {
   id: null, roomId: "", contactName: "", contactPhone: "",
-  salePolicy: "", passPrice: "", availDate: "", active: true,
+  salePolicy: "", passPrice: "", availDate: "", active: true, contactManager: false,
 };
 
 export default function MobilePassListings({ onHeaderAction }: { onHeaderAction: (a: HeaderAction | null) => void }) {
@@ -90,6 +91,7 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
       salePolicy: l.sale_policy ?? "",
       passPrice: l.pass_price != null ? String(l.pass_price) : "",
       availDate: l.avail_date ?? "", active: l.active,
+      contactManager: l.contact_manager ?? false,
     });
     setOpen(true);
   };
@@ -105,6 +107,7 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
       passPrice: price ? Number(price) : null,
       availDate: form.availDate || null,
       active: form.active,
+      contactManager: form.contactManager,
     }, { onSuccess: () => setOpen(false) });
   };
 
@@ -140,6 +143,12 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
                   </div>
                   <span className={"sp-badge " + (l.active ? "on" : "off")}><span className="dot" />{l.active ? "Đang hiện" : "Đang ẩn"}</span>
                 </div>
+                {l.contact_manager && (
+                  <div className="ln" style={{ fontWeight: 600, color: "var(--pass)" }}>
+                    <Phone size={14} stroke="var(--pass)" />
+                    <span>Liên hệ quản lý — ẩn SĐT khách</span>
+                  </div>
+                )}
                 {(l.contact_phone || l.contact_name) && (
                   <div className="ln">
                     <Phone size={14} stroke="var(--pass)" />
@@ -220,6 +229,14 @@ export default function MobilePassListings({ onHeaderAction }: { onHeaderAction:
         <textarea className="sp-textarea" rows={2} style={{ marginBottom: 13 }}
           placeholder="VD: Giảm khách 500k tháng đầu hoặc thưởng sale 500k" value={form.salePolicy}
           onChange={(e) => setForm((f) => ({ ...f, salePolicy: e.target.value }))} />
+
+        <div className="sp-rowcard" style={{ margin: 0, marginBottom: 10, borderRadius: 13, padding: "12px 14px" }}>
+          <div style={{ flex: 1, paddingRight: 10 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Liên hệ quản lý (ẩn SĐT khách)</div>
+            <p className="sp-hint" style={{ margin: "2px 0 0" }}>Trang công khai hiện "Liên hệ quản lý" + SĐT QL của tòa, ẩn SĐT khách. SĐT khách vẫn lưu nội bộ.</p>
+          </div>
+          <button className={"sp-switch" + (form.contactManager ? " on" : "")} onClick={() => setForm((f) => ({ ...f, contactManager: !f.contactManager }))}><span className="knob" /></button>
+        </div>
 
         <div className="sp-rowcard" style={{ margin: 0, marginBottom: 4, borderRadius: 13, padding: "12px 14px" }}>
           <div style={{ flex: 1 }}>

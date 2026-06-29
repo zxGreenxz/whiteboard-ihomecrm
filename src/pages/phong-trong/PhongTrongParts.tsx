@@ -227,9 +227,13 @@ function OvRow({ r, onOpen }: { r: Room; onOpen: (r: Room) => void }) {
                           <i style={{ background: stColor(r.status) }} />{SM[r.status].label}
                         </span>
                       </div>
-                      {r.status === "pass" && (r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
+                      {r.status === "pass" && (r.passContactManager || r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
                         <div className="ovr-pass">
-                          {(r.passContactPhone || r.passContactName) && (
+                          {r.passContactManager ? (
+                            <span className="ovr-pass-contact">
+                              <Icon.Phone />KHÁCH PASS PHÒNG — LIÊN HỆ QUẢN LÝ
+                            </span>
+                          ) : (r.passContactPhone || r.passContactName) && (
                             <span className="ovr-pass-contact">
                               <Icon.Phone />KHÁCH PASS PHÒNG — LIÊN HỆ: {r.passContactPhone || "—"}
                               {r.passContactName ? ` (${r.passContactName})` : ""}

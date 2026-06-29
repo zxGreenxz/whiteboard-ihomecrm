@@ -5195,6 +5195,7 @@ export type Database = {
           active: boolean
           avail_date: string | null
           building_id: string
+          contact_manager: boolean
           contact_name: string | null
           contact_phone: string | null
           created_at: string
@@ -5210,6 +5211,7 @@ export type Database = {
           active?: boolean
           avail_date?: string | null
           building_id: string
+          contact_manager?: boolean
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -5225,6 +5227,7 @@ export type Database = {
           active?: boolean
           avail_date?: string | null
           building_id?: string
+          contact_manager?: boolean
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -7716,6 +7719,7 @@ export type Database = {
           active: boolean
           avail_date: string | null
           building_id: string
+          contact_manager: boolean
           contact_name: string | null
           contact_phone: string | null
           created_at: string
@@ -7893,6 +7897,7 @@ export type Database = {
         Args: {
           p_active: boolean
           p_avail_date?: string
+          p_contact_manager?: boolean
           p_contact_name: string
           p_contact_phone: string
           p_id: string
@@ -7904,6 +7909,7 @@ export type Database = {
           active: boolean
           avail_date: string | null
           building_id: string
+          contact_manager: boolean
           contact_name: string | null
           contact_phone: string | null
           created_at: string

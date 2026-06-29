@@ -95,7 +95,9 @@ function buildShareText(r: Room, building?: Building): string {
     `🏠 ${r.buildingName} — Phòng ${r.code}${r.type ? ` · ${r.type}` : ""}`,
     `• Giá: ${fmtPrice(r.price)} triệu/tháng`,
     isPass
-      ? `• Tình trạng: Khách pass phòng${r.passContactPhone ? " — LH " + r.passContactPhone + (r.passContactName ? " (" + r.passContactName + ")" : "") : ""}`
+      ? (r.passContactManager
+          ? `• Tình trạng: Khách pass phòng — Liên hệ quản lý`
+          : `• Tình trạng: Khách pass phòng${r.passContactPhone ? " — LH " + r.passContactPhone + (r.passContactName ? " (" + r.passContactName + ")" : "") : ""}`)
       : `• Tình trạng: ${SM[r.status].label}${r.availDate ? " (trống từ " + r.availDate + ")" : ""}`,
     `• Nội thất: ${r.amenities.join(", ")}`,
     ...(isPass && r.passAvailDate ? [`• Dự kiến trống từ: ${r.passAvailDate}`] : []),
@@ -191,12 +193,15 @@ export function DetailSheet({
   const prev = idx > 0 ? siblings[idx - 1] : null;
   const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : null;
 
-  // Phòng "khách nhờ sale / pass": liên hệ là CỦA KHÁCH (không phải QL/hotline tòa).
+  // Phòng "khách nhờ sale / pass": liên hệ là CỦA KHÁCH — TRỪ KHI khách chọn
+  // "Liên hệ quản lý" (passContactManager) thì ẩn SĐT khách, dùng QL/hotline tòa.
   const isPass = r.status === "pass";
-  const contactName = isPass
+  const passViaManager = isPass && !!r.passContactManager;
+  const useCustomerContact = isPass && !passViaManager;
+  const contactName = useCustomerContact
     ? (r.passContactName?.trim() || "khách")
     : (building?.manager || MANAGER.name);
-  const contactPhone = isPass
+  const contactPhone = useCustomerContact
     ? (r.passContactPhone?.trim() || building?.phone || MANAGER.phone)
     : (building?.phone || MANAGER.phone);
   const contactDigits = contactPhone.replace(/\D/g, "") || MANAGER.zalo;
@@ -358,12 +363,14 @@ export function DetailSheet({
               </div>
             )}
 
-            {isPass && (r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
+            {isPass && (passViaManager || r.passContactPhone || r.passContactName || r.passSalePolicy || r.passAvailDate) && (
               <div className="note-box" style={{ background: "var(--st-pass-bg)", borderColor: "var(--st-pass-line)", color: "var(--st-pass)" }}>
                 <Icon.Tag />
                 <span>
                   <b>Khách pass phòng</b>
-                  {(r.passContactPhone || r.passContactName) && (
+                  {passViaManager ? (
+                    <> — Liên hệ quản lý để xem phòng</>
+                  ) : (r.passContactPhone || r.passContactName) && (
                     <> — Liên hệ: {r.passContactPhone || "—"}{r.passContactName ? ` (${r.passContactName})` : ""}</>
                   )}
                   {r.passAvailDate && <><br />Dự kiến trống từ {r.passAvailDate}</>}
@@ -399,7 +406,7 @@ export function DetailSheet({
         </div>
 
         <div className="sh-actions">
-          <button className="btn btn-primary btn-half" onClick={doCall}><Icon.Phone />{isPass ? "Gọi khách" : "Gọi Quản Lý"}</button>
+          <button className="btn btn-primary btn-half" onClick={doCall}><Icon.Phone />{useCustomerContact ? "Gọi khách" : "Gọi Quản Lý"}</button>
           <button className="btn btn-zalo btn-half" onClick={doZalo}><Icon.Chat />Zalo</button>
           <button className="btn btn-nav prev" disabled={!prev} onClick={() => prev && onGo(prev)} title="Phòng trước">
             <Icon.Chevron />

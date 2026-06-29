@@ -66,6 +66,7 @@ export interface UpsertPassListingInput {
   passPrice?: number | null;
   availDate?: string | null;   // 'YYYY-MM-DD'
   active?: boolean;
+  contactManager?: boolean;    // true = ẩn SĐT khách công khai, hiện "Liên hệ quản lý"
 }
 
 export function useUpsertPassListing() {
@@ -81,6 +82,7 @@ export function useUpsertPassListing() {
         p_pass_price: input.passPrice ?? null,
         p_avail_date: input.availDate ?? null,
         p_active: input.active ?? true,
+        p_contact_manager: input.contactManager ?? false,
       });
       if (error) throw error;
       return data as PassListing;

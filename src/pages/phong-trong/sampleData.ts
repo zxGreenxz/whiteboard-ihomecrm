@@ -33,6 +33,7 @@ export interface Room extends Box {
   passContactPhone?: string | null;
   passSalePolicy?: string | null;
   passAvailDate?: string | null;  // "dd/mm" — ngày dự kiến trống (tuỳ chọn)
+  passContactManager?: boolean;   // true = khách ẩn SĐT, chỉ "Liên hệ quản lý" (dùng SĐT QL tòa)
 }
 
 export interface Fixture extends Box {

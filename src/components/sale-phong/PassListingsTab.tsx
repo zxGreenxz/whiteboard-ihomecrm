@@ -43,11 +43,12 @@ interface FormState {
   passPrice: string; // chuỗi nhập tay → parse khi lưu
   availDate: string; // 'YYYY-MM-DD' (input type=date)
   active: boolean;
+  contactManager: boolean; // true = ẩn SĐT khách công khai, hiện "Liên hệ quản lý"
 }
 
 const emptyForm: FormState = {
   id: null, roomId: "", contactName: "", contactPhone: "",
-  salePolicy: "", passPrice: "", availDate: "", active: true,
+  salePolicy: "", passPrice: "", availDate: "", active: true, contactManager: false,
 };
 
 export default function PassListingsTab() {
@@ -106,6 +107,7 @@ export default function PassListingsTab() {
       passPrice: l.pass_price != null ? String(l.pass_price) : "",
       availDate: l.avail_date ?? "",
       active: l.active,
+      contactManager: l.contact_manager ?? false,
     });
     setOpen(true);
   };
@@ -123,6 +125,7 @@ export default function PassListingsTab() {
         passPrice: price ? Number(price) : null,
         availDate: form.availDate || null,
         active: form.active,
+        contactManager: form.contactManager,
       },
       { onSuccess: () => setOpen(false) },
     );
@@ -182,8 +185,13 @@ export default function PassListingsTab() {
                   <TableRow key={l.id} className={l.active ? "" : "opacity-60"}>
                     <TableCell>{roomLabel(l)}</TableCell>
                     <TableCell className="text-sm">
-                      {l.contact_phone || "—"}
-                      {l.contact_name && <span className="text-muted-foreground"> ({l.contact_name})</span>}
+                      {l.contact_manager && (
+                        <Badge variant="outline" className="mb-0.5 font-normal">Liên hệ QL · ẩn SĐT khách</Badge>
+                      )}
+                      <div>
+                        {l.contact_phone || "—"}
+                        {l.contact_name && <span className="text-muted-foreground"> ({l.contact_name})</span>}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm max-w-[240px] truncate" title={l.sale_policy ?? ""}>
                       {l.sale_policy || <span className="text-muted-foreground">—</span>}
@@ -294,6 +302,17 @@ export default function PassListingsTab() {
                   value={form.contactName}
                   onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))} />
               </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="pr-3">
+                <Label htmlFor="pass-contact-manager">Liên hệ quản lý (ẩn SĐT khách)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Bật khi khách không muốn lộ số: trang công khai hiện "Liên hệ quản lý" + SĐT
+                  quản lý của tòa, KHÔNG hiển thị SĐT khách. SĐT khách vẫn lưu để nội bộ tra cứu.
+                </p>
+              </div>
+              <Switch id="pass-contact-manager" checked={form.contactManager}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, contactManager: v }))} />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
