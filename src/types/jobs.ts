@@ -50,6 +50,7 @@ export interface Job {
   completion_lng: number | null;
   completion_distance_m: number | null;
   completion_geofence_status: string | null;
+  completion_address: string | null;
   started_at: string | null;
   created_at: string;
   updated_at: string;

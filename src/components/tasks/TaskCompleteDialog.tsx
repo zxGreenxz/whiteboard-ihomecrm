@@ -42,6 +42,7 @@ interface GeoMeta {
   lng: number | null;
   distanceM: number | null;
   status: GeofenceStatus;
+  address: string | null;
 }
 
 // Mức "nghiêm trọng" để giữ lại reading tệ nhất trong các lần chụp.
@@ -100,6 +101,7 @@ export default function TaskCompleteDialog({
           lng: result.lng,
           distanceM: result.distanceM,
           status: result.status,
+          address: result.address,
         };
         if (!prev) return next;
         const ds = STATUS_SEVERITY[next.status] - STATUS_SEVERITY[prev.status];
@@ -130,6 +132,7 @@ export default function TaskCompleteDialog({
         completion_lng: geoMeta?.lng ?? null,
         completion_distance_m: geoMeta?.distanceM ?? null,
         completion_geofence_status: geoMeta?.status ?? null,
+        completion_address: geoMeta?.address ?? null,
       });
       onOpenChange(false);
       onSuccess();
@@ -214,8 +217,8 @@ export default function TaskCompleteDialog({
         <p className="text-[11px] text-muted-foreground flex items-center gap-1">
           <MapPin className="h-3 w-3" />
           {geofence?.enabled
-            ? `Chỉ chụp trực tiếp — ảnh được gắn ngày giờ, địa chỉ & vị trí GPS (bán kính ${geofence.radiusM}m).`
-            : "Chỉ chụp trực tiếp — ảnh được gắn ngày giờ & địa chỉ."}
+            ? `Chỉ chụp trực tiếp — ảnh gắn ngày giờ + địa chỉ GPS thực tế; cảnh báo nếu cách tòa quá ${geofence.radiusM}m.`
+            : "Chỉ chụp trực tiếp — ảnh gắn ngày giờ + địa chỉ GPS thực tế."}
         </p>
       </div>
     </>

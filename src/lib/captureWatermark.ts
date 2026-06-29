@@ -2,6 +2,9 @@
 // captureWatermark.ts — dữ liệu + vẽ watermark "Timemark-style" cho ảnh nghiệm
 // thu công việc. buildWatermarkLines() trả model đã format (dùng chung cho
 // overlay live bằng JSX và burn vào ảnh bằng canvas qua drawWatermark()).
+//
+// LƯU Ý: địa chỉ hiển thị là địa chỉ REVERSE-GEOCODE TỪ GPS THỰC TẾ (xem
+// src/lib/reverseGeocode.ts), KHÔNG phải địa chỉ tòa nhà đã lưu.
 // =============================================================================
 
 export type GeofenceStatus =
@@ -11,17 +14,10 @@ export type GeofenceStatus =
   | 'no_building_coords' // tòa chưa cấu hình toạ độ → bỏ qua so khoảng cách
   | 'disabled'; // tắt kiểm tra GPS trong Cài đặt
 
-export interface WatermarkBuildingInfo {
-  name?: string | null;
-  street_address?: string | null;
-  ward?: string | null;
-  district?: string | null;
-  province?: string | null;
-}
-
 export interface BuildWatermarkInput {
   at: Date;
-  building?: WatermarkBuildingInfo | null;
+  /** Địa chỉ reverse-geocode từ GPS (null/"" nếu chưa lấy được). */
+  address?: string | null;
   gps?: { lat: number; lng: number } | null;
   distanceM?: number | null;
   status: GeofenceStatus;
@@ -31,8 +27,7 @@ export interface WatermarkModel {
   time: string; // "23:02"
   weekday: string; // "Chủ nhật"
   dateLine: string; // "28 Tháng 6, 2026"
-  title: string; // tên tòa (có thể rỗng)
-  address: string; // địa chỉ đầy đủ 1 dòng (canvas/CSS tự xuống dòng)
+  address: string; // địa chỉ quy đổi từ GPS (1 dòng; canvas/CSS tự xuống dòng)
   gpsLine: string; // "" nếu không hiển thị
   gpsAlert: boolean; // true → tô đỏ (ngoài phạm vi)
 }
@@ -54,22 +49,11 @@ export function formatLatLng(lat: number, lng: number): string {
 }
 
 export function buildWatermarkLines(input: BuildWatermarkInput): WatermarkModel {
-  const { at, building, gps, distanceM, status } = input;
+  const { at, address, gps, distanceM, status } = input;
 
   const time = `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
   const weekday = WEEKDAYS_VI[at.getDay()] ?? '';
   const dateLine = `${at.getDate()} Tháng ${at.getMonth() + 1}, ${at.getFullYear()}`;
-
-  const title = building?.name?.trim() || '';
-  const address = [
-    building?.street_address,
-    building?.ward,
-    building?.district,
-    building?.province,
-  ]
-    .map((s) => s?.trim())
-    .filter(Boolean)
-    .join(', ');
 
   let gpsLine = '';
   let gpsAlert = false;
@@ -94,10 +78,10 @@ export function buildWatermarkLines(input: BuildWatermarkInput): WatermarkModel 
       break;
     case 'disabled':
     default:
-      gpsLine = '';
+      gpsLine = gps ? `GPS ${formatLatLng(gps.lat, gps.lng)}` : '';
   }
 
-  return { time, weekday, dateLine, title, address, gpsLine, gpsAlert };
+  return { time, weekday, dateLine, address: address?.trim() || '', gpsLine, gpsAlert };
 }
 
 // ---------------------------------------------------------------------------
@@ -147,12 +131,10 @@ export function drawWatermark(
   ctx.textBaseline = 'alphabetic';
   ctx.font = `400 ${fAddr}px ${family}`;
   const addrLines = wrapText(ctx, model.address, w - margin * 2);
-  const titleLines = model.title ? wrapText(ctx, model.title, w - margin * 2) : [];
 
   const timeBlockH = fTime; // hàng giờ + meta
   let blockH = margin; // padding dưới
   blockH += timeBlockH + gap;
-  blockH += titleLines.length * (fAddr + gap * 0.4);
   blockH += addrLines.length * (fAddr + gap * 0.4);
   if (model.gpsLine) blockH += fGps + gap;
   blockH += gap;
@@ -191,14 +173,8 @@ export function drawWatermark(
   ctx.font = `400 ${fMeta}px ${family}`;
   ctx.fillText(model.weekday, metaX, y - fTime + fMeta * 2 + gap * 0.4);
 
-  // Tên tòa + địa chỉ
+  // Địa chỉ (quy đổi từ GPS)
   y += gap;
-  ctx.font = `600 ${fAddr}px ${family}`;
-  ctx.fillStyle = '#ffffff';
-  for (const line of titleLines) {
-    y += fAddr + gap * 0.4;
-    ctx.fillText(line, margin, y);
-  }
   ctx.font = `400 ${fAddr}px ${family}`;
   ctx.fillStyle = '#e5e7eb';
   for (const line of addrLines) {

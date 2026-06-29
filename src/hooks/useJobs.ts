@@ -168,6 +168,7 @@ export const useCompleteJob = () => {
       completion_lng?: number | null;
       completion_distance_m?: number | null;
       completion_geofence_status?: string | null;
+      completion_address?: string | null;
     }) => {
       const { data, error } = await supabase
         .from("jobs")
@@ -179,6 +180,7 @@ export const useCompleteJob = () => {
           completion_lng: input.completion_lng ?? null,
           completion_distance_m: input.completion_distance_m ?? null,
           completion_geofence_status: input.completion_geofence_status ?? null,
+          completion_address: input.completion_address ?? null,
         })
         .eq("id", input.id)
         .select()

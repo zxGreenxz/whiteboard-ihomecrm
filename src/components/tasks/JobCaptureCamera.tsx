@@ -1,8 +1,8 @@
 // =============================================================================
 // JobCaptureCamera — chụp ảnh TRỰC TIẾP (không cho chọn từ thư viện) cho bước
-// "Hoàn thành công việc". Burn watermark ngày/giờ/thứ/địa chỉ + GPS vào ảnh
-// (Timemark-style) và chốt toạ độ + khoảng cách tới tòa lúc bấm chụp.
-// Không bao giờ CHẶN — chỉ ghi nhận trạng thái geo-fence để audit.
+// "Hoàn thành công việc". Burn watermark ngày/giờ/thứ + ĐỊA CHỈ QUY ĐỔI TỪ GPS
+// (reverse-geocode, KHÔNG phải địa chỉ tòa) vào ảnh — Timemark-style. Chốt toạ
+// độ + khoảng cách tới tòa lúc bấm chụp. Không bao giờ CHẶN — chỉ ghi audit.
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,12 +12,12 @@ import { Camera, X, MapPin, Loader2, RotateCcw, Check, AlertTriangle } from 'luc
 import {
   buildWatermarkLines,
   type GeofenceStatus,
-  type WatermarkBuildingInfo,
   type WatermarkModel,
 } from '@/lib/captureWatermark';
 import { distanceMeters, isValidLatLng } from '@/lib/geo';
+import { reverseGeocode, GEOCODE_ATTRIBUTION } from '@/lib/reverseGeocode';
 
-export interface JobCaptureBuilding extends WatermarkBuildingInfo {
+export interface JobCaptureBuilding {
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -28,6 +28,8 @@ export interface JobCaptureResult {
   lng: number | null;
   distanceM: number | null;
   status: GeofenceStatus;
+  /** Địa chỉ reverse-geocode từ GPS (null nếu chưa lấy được). */
+  address: string | null;
 }
 
 interface JobCaptureCameraProps {
@@ -39,7 +41,7 @@ interface JobCaptureCameraProps {
   onCaptured: (result: JobCaptureResult) => void;
 }
 
-type GeoState = 'off' | 'locating' | 'ok' | 'denied' | 'unavailable';
+type GeoState = 'locating' | 'ok' | 'denied' | 'unavailable';
 type CamState = 'starting' | 'live' | 'error';
 
 interface Gps {
@@ -62,7 +64,13 @@ function computeStatus(
 }
 
 /** Overlay watermark hiển thị live (trùng dữ liệu với bản burn vào canvas). */
-function WatermarkOverlay({ model }: { model: WatermarkModel }) {
+function WatermarkOverlay({
+  model,
+  addrLoading,
+}: {
+  model: WatermarkModel;
+  addrLoading: boolean;
+}) {
   return (
     <div className="absolute inset-x-0 bottom-0 p-4 pb-6 bg-gradient-to-t from-black/80 via-black/45 to-transparent text-white pointer-events-none">
       <div className="flex items-end gap-3">
@@ -73,16 +81,20 @@ function WatermarkOverlay({ model }: { model: WatermarkModel }) {
           <div className="text-xs opacity-90">{model.weekday}</div>
         </div>
       </div>
-      {model.title && <div className="mt-1.5 text-sm font-semibold">{model.title}</div>}
-      {model.address && <div className="text-xs text-zinc-200 leading-snug">{model.address}</div>}
+      <div className="mt-1.5 text-sm text-zinc-100 leading-snug min-h-[1.1rem]">
+        {model.address || (addrLoading ? 'Đang lấy địa chỉ…' : '')}
+      </div>
       {model.gpsLine && (
         <div
-          className={`mt-1 text-xs font-semibold ${
+          className={`mt-0.5 text-xs font-semibold ${
             model.gpsAlert ? 'text-red-400' : 'text-green-300'
           }`}
         >
           {model.gpsLine}
         </div>
+      )}
+      {model.address && (
+        <div className="mt-0.5 text-[10px] text-zinc-400">{GEOCODE_ATTRIBUTION}</div>
       )}
     </div>
   );
@@ -100,27 +112,28 @@ export default function JobCaptureCamera({
   const streamRef = useRef<MediaStream | null>(null);
   const [camState, setCamState] = useState<CamState>('starting');
   const [camError, setCamError] = useState('');
-  const [geoState, setGeoState] = useState<GeoState>('off');
+  const [geoState, setGeoState] = useState<GeoState>('locating');
   const [gps, setGps] = useState<Gps | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [geoAddress, setGeoAddress] = useState<string | null>(null);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const lastGeoRef = useRef<{ lat: number; lng: number } | null>(null);
   const [preview, setPreview] = useState<{ url: string; result: JobCaptureResult } | null>(null);
 
   const buildingHasCoords = isValidLatLng(building?.latitude, building?.longitude);
   const liveDistance =
-    gps && buildingHasCoords
+    gps && geofenceEnabled && buildingHasCoords
       ? distanceMeters(gps.lat, gps.lng, building!.latitude!, building!.longitude!)
       : null;
   const liveStatus = computeStatus(geofenceEnabled, buildingHasCoords, gps, liveDistance, radiusM);
 
   const liveModel = buildWatermarkLines({
     at: now,
-    building,
+    address: geoAddress,
     gps,
     distanceM: liveDistance,
-    status: geoState === 'locating' && geofenceEnabled ? 'gps_denied' : liveStatus,
+    status: liveStatus,
   });
-  // Khi đang lấy vị trí: hiển thị "Đang lấy vị trí…" thay vì "không xác định".
-  if (geofenceEnabled && geoState === 'locating') liveModel.gpsLine = 'Đang lấy vị trí…';
 
   // ---- Camera lifecycle ----
   useEffect(() => {
@@ -181,13 +194,12 @@ export default function JobCaptureCamera({
     };
   }, [open]);
 
-  // ---- Geolocation watch (chỉ khi bật geo-fence) ----
+  // ---- Geolocation watch (LUÔN chạy để lấy địa chỉ; geofence chỉ điều khiển
+  //      việc so khoảng cách) ----
   useEffect(() => {
     if (!open) return;
-    if (!geofenceEnabled) {
-      setGeoState('off');
-      return;
-    }
+    setGeoAddress(null);
+    lastGeoRef.current = null;
     if (!('geolocation' in navigator)) {
       setGeoState('unavailable');
       return;
@@ -208,7 +220,31 @@ export default function JobCaptureCamera({
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
     );
     return () => navigator.geolocation.clearWatch(id);
-  }, [open, geofenceEnabled]);
+  }, [open]);
+
+  // ---- Reverse-geocode địa chỉ từ GPS (debounce + ngưỡng dịch chuyển 20m) ----
+  useEffect(() => {
+    if (!open || !gps) return;
+    if (
+      lastGeoRef.current &&
+      distanceMeters(gps.lat, gps.lng, lastGeoRef.current.lat, lastGeoRef.current.lng) < 20
+    ) {
+      return; // đã có địa chỉ cho điểm gần đây
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setAddrLoading(true);
+      const addr = await reverseGeocode(gps.lat, gps.lng);
+      if (cancelled) return;
+      setAddrLoading(false);
+      lastGeoRef.current = { lat: gps.lat, lng: gps.lng }; // đánh dấu đã thử (kể cả null)
+      if (addr) setGeoAddress(addr);
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, gps]);
 
   // ---- Đồng hồ live ----
   useEffect(() => {
@@ -224,7 +260,7 @@ export default function JobCaptureCamera({
     const at = new Date();
     const frozenGps = gps;
     const frozenDistance =
-      frozenGps && buildingHasCoords
+      frozenGps && geofenceEnabled && buildingHasCoords
         ? distanceMeters(frozenGps.lat, frozenGps.lng, building!.latitude!, building!.longitude!)
         : null;
     const status = computeStatus(
@@ -234,7 +270,15 @@ export default function JobCaptureCamera({
       frozenDistance,
       radiusM,
     );
-    const model = buildWatermarkLines({ at, building, gps: frozenGps, distanceM: frozenDistance, status });
+
+    // Bảo đảm có địa chỉ trên ảnh: nếu chưa kịp geocode, thử lấy ngay (có timeout).
+    let address = geoAddress;
+    if (!address && frozenGps) {
+      address = await reverseGeocode(frozenGps.lat, frozenGps.lng);
+      if (address) setGeoAddress(address);
+    }
+
+    const model = buildWatermarkLines({ at, address, gps: frozenGps, distanceM: frozenDistance, status });
 
     const w = video.videoWidth;
     const h = video.videoHeight;
@@ -261,9 +305,10 @@ export default function JobCaptureCamera({
         lng: frozenGps?.lng ?? null,
         distanceM: frozenDistance,
         status,
+        address: address ?? null,
       },
     });
-  }, [gps, building, buildingHasCoords, geofenceEnabled, radiusM]);
+  }, [gps, geoAddress, building, buildingHasCoords, geofenceEnabled, radiusM]);
 
   const handleRetake = useCallback(() => {
     if (preview) URL.revokeObjectURL(preview.url);
@@ -287,7 +332,6 @@ export default function JobCaptureCamera({
   }, [open, preview]);
 
   const geoChip = (() => {
-    if (!geofenceEnabled) return null;
     if (geoState === 'locating')
       return { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, text: 'Đang lấy vị trí…', cls: 'bg-black/60' };
     if (geoState === 'ok' && liveStatus === 'out_of_range')
@@ -296,6 +340,8 @@ export default function JobCaptureCamera({
       return { icon: <MapPin className="h-3.5 w-3.5" />, text: `Trong phạm vi · ${Math.round(liveDistance ?? 0)}m`, cls: 'bg-green-600/80' };
     if (geoState === 'ok' && liveStatus === 'no_building_coords')
       return { icon: <MapPin className="h-3.5 w-3.5" />, text: 'Tòa chưa có toạ độ', cls: 'bg-amber-600/80' };
+    if (geoState === 'ok' && liveStatus === 'disabled')
+      return { icon: <MapPin className="h-3.5 w-3.5" />, text: 'Đã ghi vị trí', cls: 'bg-black/60' };
     if (geoState === 'denied')
       return { icon: <AlertTriangle className="h-3.5 w-3.5" />, text: 'Không có quyền vị trí', cls: 'bg-amber-600/80' };
     if (geoState === 'unavailable')
@@ -328,7 +374,9 @@ export default function JobCaptureCamera({
           )}
 
           {/* Overlay watermark live */}
-          {!preview && camState === 'live' && <WatermarkOverlay model={liveModel} />}
+          {!preview && camState === 'live' && (
+            <WatermarkOverlay model={liveModel} addrLoading={addrLoading} />
+          )}
 
           {/* Chip trạng thái GPS (top center) */}
           {!preview && geoChip && (
@@ -392,7 +440,7 @@ export default function JobCaptureCamera({
                 <button
                   type="button"
                   onClick={handleCapture}
-                  className="pointer-events-auto h-18 w-18 rounded-full bg-white/95 ring-4 ring-white/40 flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+                  className="pointer-events-auto rounded-full bg-white/95 ring-4 ring-white/40 flex items-center justify-center active:scale-95 transition-transform shadow-lg"
                   style={{ height: '4.5rem', width: '4.5rem' }}
                   aria-label="Chụp ảnh"
                 >

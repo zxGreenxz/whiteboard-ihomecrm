@@ -3747,6 +3747,7 @@ export type Database = {
           attachments: Json | null
           building_id: string | null
           code: string
+          completion_address: string | null
           completion_attachments: Json | null
           completion_description: string | null
           completion_distance_m: number | null
@@ -3778,6 +3779,7 @@ export type Database = {
           attachments?: Json | null
           building_id?: string | null
           code: string
+          completion_address?: string | null
           completion_attachments?: Json | null
           completion_description?: string | null
           completion_distance_m?: number | null
@@ -3809,6 +3811,7 @@ export type Database = {
           attachments?: Json | null
           building_id?: string | null
           code?: string
+          completion_address?: string | null
           completion_attachments?: Json | null
           completion_description?: string | null
           completion_distance_m?: number | null
