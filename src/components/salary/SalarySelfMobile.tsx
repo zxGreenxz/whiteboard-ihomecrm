@@ -21,6 +21,9 @@ const RANK_NAMES = ["Tân binh", "Đồng", "Bạc", "Vàng", "Vô địch"];
 
 interface ScreenProps { m: SalManager; period: { label: string; year: number }; }
 
+// Khoản trong chip "bóc tách thu nhập" — mỗi khoản mở 1 sheet chi tiết riêng.
+type DetailKey = "base" | "bonus" | "invest" | "commission" | "advance" | "room";
+
 // ───────────────────────── icon theo loại dòng ledger ─────────────────────────
 const FEED_ICON: Record<string, LucideIcon> = {
   JOB: Wrench, DAY_BONUS: CalendarCheck, CONTRACT: FileText, CASH: Banknote,
@@ -56,8 +59,8 @@ function FeedRow({ r }: { r: SalLedgerRow }) {
 }
 
 // ───────────────────────────── màn HOME (Lương) ─────────────────────────────
-function HomeScreen({ m, period, onExit, onOpenChart, onOpenBreak, onGoInvest, onGoList }: ScreenProps & {
-  onExit: () => void; onOpenChart: () => void; onOpenBreak: () => void; onGoInvest: () => void; onGoList: () => void;
+function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, onGoList }: ScreenProps & {
+  onExit: () => void; onOpenChart: () => void; onOpenDetail: (item: DetailKey) => void; onGoInvest: () => void; onGoList: () => void;
 }) {
   const c = m.calc!;
   const gross = c.gross;
@@ -80,14 +83,15 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenBreak, onGoInvest, o
   const nextStop = stops.find((s) => s.v > gross);
 
   // Chips bóc tách thu nhập (chỉ hiện khoản > 0).
-  const chips = [
-    { label: "Lương cứng", v: m.base, minus: false, color: "#EDEAF7", bg: "rgba(255,255,255,.12)" },
-    { label: "Thưởng việc", v: c.bonus, minus: false, color: "#FFD23F", bg: "rgba(255,210,63,.16)" },
-    { label: "Đầu tư", v: m.investment, minus: false, color: "#9DE7C0", bg: "rgba(52,211,153,.18)" },
-    { label: "HH Sale", v: m.commission, minus: false, color: "#C4B5FD", bg: "rgba(139,92,246,.22)" },
-    { label: "Đã ứng", v: m.advance, minus: true, color: "#FFB3C6", bg: "rgba(255,122,160,.2)" },
-    { label: "Tiền phòng", v: m.roomRent, minus: true, color: "#FFB3C6", bg: "rgba(255,122,160,.2)" },
-  ].filter((x) => x.v > 0);
+  const allChips: { key: DetailKey; label: string; v: number; minus: boolean; color: string; bg: string }[] = [
+    { key: "base", label: "Lương cứng", v: m.base, minus: false, color: "#EDEAF7", bg: "rgba(255,255,255,.12)" },
+    { key: "bonus", label: "Thưởng việc", v: c.bonus, minus: false, color: "#FFD23F", bg: "rgba(255,210,63,.16)" },
+    { key: "invest", label: "Đầu tư", v: m.investment, minus: false, color: "#9DE7C0", bg: "rgba(52,211,153,.18)" },
+    { key: "commission", label: "HH Sale", v: m.commission, minus: false, color: "#C4B5FD", bg: "rgba(139,92,246,.22)" },
+    { key: "advance", label: "Đã ứng", v: m.advance, minus: true, color: "#FFB3C6", bg: "rgba(255,122,160,.2)" },
+    { key: "room", label: "Tiền phòng", v: m.roomRent, minus: true, color: "#FFB3C6", bg: "rgba(255,122,160,.2)" },
+  ];
+  const chips = allChips.filter((x) => x.v > 0);
 
   const tiles = [
     { v: m.stats.jobs, l: "Thợ sửa chữa", x: `${m.stats.repairs} việc sửa chữa`, Icon: Wrench, bg: "rgba(52,211,153,.16)", fg: "#34D399" },
@@ -176,7 +180,7 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenBreak, onGoInvest, o
         {/* breakdown chips */}
         <div className="relative flex flex-wrap gap-[7px] mt-[15px]">
           {chips.map((x) => (
-            <button key={x.label} onClick={onOpenBreak}
+            <button key={x.key} onClick={() => onOpenDetail(x.key)}
               className="inline-flex items-center gap-[5px] text-[11.5px] font-semibold px-[11px] py-[6px] rounded-full"
               style={{ color: x.color, background: x.bg }}>
               {x.label} <b className="font-mono">{x.minus ? "−" : "+"}{salShort(x.v)}</b>
@@ -474,34 +478,108 @@ function ChartSheet({ m, onClose }: { m: SalManager; onClose: () => void }) {
   );
 }
 
-function BreakSheet({ m, period, onClose }: ScreenProps & { onClose: () => void }) {
-  const c = m.calc!;
-  const net = c.takehome - m.paid;
-  const bonusCount = m.ledger.filter((r) => (r.bonus_amount || 0) > 0).length;
-  const rows = [
-    { label: "Lương cứng", v: m.base, neg: false, color: "#EDEAF7" },
-    { label: "Thưởng việc", note: `${bonusCount} việc`, v: c.bonus, neg: false, color: "#FFD23F" },
-    { label: "Đầu tư", note: "LN cổ đông", v: m.investment, neg: false, color: "#34D399" },
-    { label: "Hoa hồng Sale", v: m.commission, neg: false, color: "#EDEAF7" },
-    { label: "Đã ứng trước", v: m.advance, neg: true, color: "#FF7AA0" },
-    { label: "Tiền phòng", v: m.roomRent, neg: true, color: "#FF7AA0" },
-    { label: "Đã trả", v: m.paid, neg: true, color: "#FF7AA0" },
-  ].filter((r) => r.v > 0);
+// 1 dòng chi tiết trong sheet (nhãn trái · số tiền phải).
+function DRow({ label, note, amount, color, neg }: { label: string; note?: string | null; amount: number; color?: string; neg?: boolean }) {
   return (
-    <Sheet title={`Bóc tách thu nhập ${period.label}`} onClose={onClose}>
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center justify-between py-[11px] border-b" style={{ borderColor: "rgba(50,42,85,.7)" }}>
-          <span className="text-[13px]" style={{ color: r.neg ? "#FFB3C6" : "#EDEAF7" }}>
-            {r.label}{r.note ? <span className="text-[11px] text-[#9A8FC4]"> · {r.note}</span> : null}
-          </span>
-          <span className="font-mono font-bold" style={{ color: r.color }}>{r.neg ? "−" : "+"}{salFmt(r.v)}</span>
-        </div>
-      ))}
-      <div className="flex items-center justify-between mt-[14px] px-4 py-[14px] rounded-[16px]"
-        style={{ background: "rgba(255,210,63,.1)", border: "1px solid rgba(255,210,63,.25)" }}>
-        <span className="text-[13px] font-bold text-[#EDEAF7]">Còn nhận</span>
-        <span className="font-extrabold text-[20px] tabular-nums" style={{ color: "#FFD23F" }}>{salFmt(net)}</span>
-      </div>
+    <div className="flex items-center justify-between gap-3 py-[11px] border-b" style={{ borderColor: "rgba(50,42,85,.7)" }}>
+      <span className="text-[13px] min-w-0" style={{ color: neg ? "#FFB3C6" : "#EDEAF7" }}>
+        {label}{note ? <span className="text-[11px] text-[#9A8FC4]"> · {note}</span> : null}
+      </span>
+      <span className="font-mono font-bold text-[13.5px] shrink-0" style={{ color: color || (neg ? "#FF7AA0" : "#EDEAF7") }}>
+        {neg ? "−" : ""}{salFmt(amount)}
+      </span>
+    </div>
+  );
+}
+// Hộp tổng cuối sheet (theo tông màu từng khoản).
+function DTotal({ label, amount, color, bg, border }: { label: string; amount: number; color: string; bg: string; border: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 mt-[14px] px-4 py-[14px] rounded-[16px]" style={{ background: bg, border: `1px solid ${border}` }}>
+      <span className="text-[12.5px] font-bold uppercase tracking-wide text-[#EDEAF7]">{label}</span>
+      <span className="font-mono font-extrabold text-[18px] shrink-0" style={{ color }}>{salFmt(amount)}</span>
+    </div>
+  );
+}
+function DEmpty({ children }: { children: React.ReactNode }) {
+  return <div className="px-4 py-8 text-center text-[13px] text-[#9A8FC4]">{children}</div>;
+}
+
+// Sheet CHI TIẾT cho TỪNG khoản (đầu tư theo nhà, thưởng, HH, ứng, tiền phòng…).
+function DetailSheet({ m, period, item, onClose, onGoList }: ScreenProps & { item: DetailKey; onClose: () => void; onGoList: () => void }) {
+  const c = m.calc!;
+  const periodText = `${period.label}/${period.year}`;
+  const GOLD = { color: "#FFD23F", bg: "rgba(255,210,63,.1)", border: "rgba(255,210,63,.25)" };
+  const PINK = { color: "#FF7AA0", bg: "rgba(255,122,160,.1)", border: "rgba(255,122,160,.28)" };
+
+  if (item === "base") {
+    return (
+      <Sheet title="Lương cứng" onClose={onClose}>
+        <DRow label="Lương tháng cố định" note={periodText} amount={m.base} />
+        <DTotal label="Lương cứng" amount={m.base} {...GOLD} />
+      </Sheet>
+    );
+  }
+
+  if (item === "bonus") {
+    const has = m.bonusAuto.length > 0 || m.adjustments.length > 0;
+    return (
+      <Sheet title="Chi tiết thưởng" onClose={onClose}>
+        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">{m.short} · {periodText}</div>
+        {!has ? <DEmpty>Chưa có khoản thưởng nào tháng này.</DEmpty> : <>
+          {m.bonusAuto.map((r, i) => <DRow key={"a" + i} label={r.label} note={r.note} amount={r.amount} color="#FFD23F" />)}
+          {m.adjustments.map((r, i) => <DRow key={"m" + i} label={r.label} note={r.note} amount={Math.abs(r.amount)} neg={r.amount < 0} color={r.amount < 0 ? "#FF7AA0" : "#34D399"} />)}
+        </>}
+        <DTotal label="Tổng thưởng" amount={c.bonus} {...GOLD} />
+        <button onClick={() => { onClose(); onGoList(); }}
+          className="w-full mt-3 flex items-center justify-center gap-1 py-3 rounded-[14px] text-[12.5px] font-semibold"
+          style={{ background: "#17132A", border: "1px solid #322A55", color: "#FFD23F" }}>
+          Xem tất cả nhiệm vụ <ChevronRight size={14} strokeWidth={2.5} />
+        </button>
+      </Sheet>
+    );
+  }
+
+  if (item === "invest") {
+    return (
+      <Sheet title="Lợi nhuận đầu tư theo nhà" onClose={onClose}>
+        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Lấy từ Chia lợi nhuận cổ đông · {m.investmentLocked ? "đã chốt" : "chờ chốt"}</div>
+        {!m.investmentLocked ? <DEmpty>Chờ chốt Lợi nhuận cổ đông tháng này.</DEmpty>
+          : m.investmentBy.length === 0 ? <DEmpty>Chưa có phần đầu tư tháng này.</DEmpty>
+          : m.investmentBy.map((x, i) => <DRow key={i} label={x.b} amount={x.amount} color="#7BE7AC" />)}
+        <DTotal label="Tổng" amount={m.investment} color="#7BE7AC" bg="rgba(52,211,153,.1)" border="rgba(52,211,153,.25)" />
+      </Sheet>
+    );
+  }
+
+  if (item === "commission") {
+    const approved = m.commissionItems.filter((x) => x.approved).reduce((s, x) => s + x.amount, 0);
+    return (
+      <Sheet title="Hoa hồng Sale" onClose={onClose}>
+        <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Chỉ phiếu đã duyệt mới tính</div>
+        {m.commissionItems.length === 0 ? <DEmpty>Tháng này chưa có hoa hồng.</DEmpty>
+          : m.commissionItems.map((x, i) => <DRow key={i} label={x.label} note={x.approved ? null : "chưa duyệt — chưa tính"} amount={x.amount} color={x.approved ? "#C4B5FD" : "#9A8FC4"} />)}
+        <DTotal label="Tổng đã tính" amount={approved} color="#C4B5FD" bg="rgba(139,92,246,.12)" border="rgba(139,92,246,.3)" />
+      </Sheet>
+    );
+  }
+
+  if (item === "advance") {
+    return (
+      <Sheet title="Đã ứng lương" onClose={onClose}>
+        {m.advanceItems.length === 0 ? <DEmpty>Chưa có khoản ứng nào.</DEmpty>
+          : m.advanceItems.map((x, i) => <DRow key={i} label={x.label} note={x.date} amount={x.amount} neg />)}
+        <DTotal label="Tổng đã ứng" amount={m.advance} {...PINK} />
+      </Sheet>
+    );
+  }
+
+  // room
+  return (
+    <Sheet title="Tiền phòng" onClose={onClose}>
+      <div className="text-[11.5px] text-[#9A8FC4] -mt-2 mb-1">Khấu trừ tiền phòng tháng kế</div>
+      {m.roomRentItems.length === 0 ? <DEmpty>Không trừ tiền phòng.</DEmpty>
+        : m.roomRentItems.map((x, i) => <DRow key={i} label={x.label} note={x.date || null} amount={x.amount} neg />)}
+      <DTotal label="Trừ tiền phòng" amount={m.roomRent} {...PINK} />
     </Sheet>
   );
 }
@@ -517,7 +595,7 @@ const NAV: { key: ScreenKey; label: string; Icon: LucideIcon }[] = [
 export default function SalarySelfMobile({ m, period, onExit }: ScreenProps & { onExit?: () => void }) {
   const navigate = useNavigate();
   const [screen, setScreen] = useState<ScreenKey>("home");
-  const [sheet, setSheet] = useState<"chart" | "break" | null>(null);
+  const [sheet, setSheet] = useState<{ kind: "chart" } | { kind: "detail"; item: DetailKey } | null>(null);
   const exit = onExit || (() => navigate(-1));
 
   // Shell chiếm trọn màn (web-app) — khoá cuộn nền site khi mở.
@@ -538,7 +616,7 @@ export default function SalarySelfMobile({ m, period, onExit }: ScreenProps & { 
           style={{ WebkitOverflowScrolling: "touch", paddingTop: "env(safe-area-inset-top)" }}>
           {screen === "home" && (
             <HomeScreen m={m} period={period} onExit={exit}
-              onOpenChart={() => setSheet("chart")} onOpenBreak={() => setSheet("break")}
+              onOpenChart={() => setSheet({ kind: "chart" })} onOpenDetail={(item) => setSheet({ kind: "detail", item })}
               onGoInvest={() => setScreen("invest")} onGoList={() => setScreen("list")} />
           )}
           {screen === "list" && <ListScreen m={m} period={period} onBack={() => setScreen("home")} />}
@@ -561,8 +639,11 @@ export default function SalarySelfMobile({ m, period, onExit }: ScreenProps & { 
           })}
         </nav>
 
-        {sheet === "chart" && <ChartSheet m={m} onClose={() => setSheet(null)} />}
-        {sheet === "break" && <BreakSheet m={m} period={period} onClose={() => setSheet(null)} />}
+        {sheet?.kind === "chart" && <ChartSheet m={m} onClose={() => setSheet(null)} />}
+        {sheet?.kind === "detail" && (
+          <DetailSheet m={m} period={period} item={sheet.item}
+            onClose={() => setSheet(null)} onGoList={() => setScreen("list")} />
+        )}
       </div>
     </div>
   );
