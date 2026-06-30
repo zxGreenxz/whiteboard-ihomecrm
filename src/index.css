@@ -453,12 +453,104 @@ All colors MUST be HSL.
   background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
 }
 
+/* ============================================================
+   Thẻ "trân trọng" — việc ngoài giờ / Chủ Nhật / Lễ Tết.
+   KHÔNG hiện phòng & địa chỉ; thêm lời cảm ơn từ quản lý + linh vật.
+   • .bp-pop--night → 4A đêm/indigo (ngoài giờ): nền tím, sao, không tia.
+   • .bp-pop--medal → 4B huân chương (CN): nền xanh như đơn + tia, không sao.
+   • .bp-pop--fest  → 4C tri ân (Lễ Tết): nền đỏ, tia vàng + sao.
+   ============================================================ */
+@keyframes bp_glowNight {
+  0%, 100% { box-shadow: 0 18px 46px -14px rgba(30,27,75,.7), 0 0 0 1px rgba(129,140,248,.4); }
+  50%      { box-shadow: 0 22px 56px -12px rgba(49,46,129,.85), 0 0 0 1px rgba(165,180,252,.65); }
+}
+@keyframes bp_glowFest {
+  0%, 100% { box-shadow: 0 18px 46px -14px rgba(120,20,12,.6), 0 0 0 1px rgba(250,204,21,.55); }
+  50%      { box-shadow: 0 22px 58px -12px rgba(159,18,18,.8), 0 0 0 1px rgba(253,224,71,.85), 0 0 34px rgba(245,158,11,.4); }
+}
+@keyframes bp_twinkle {
+  0%, 100% { opacity: .25; transform: scale(.8); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+@keyframes bp_float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50%      { transform: translateY(-5px) rotate(4deg); }
+}
+
+/* 4A — đêm/indigo (ngoài giờ) */
+.bp-pop--night {
+  background:
+    radial-gradient(125% 130% at 85% -25%, #4338ca 0%, transparent 52%),
+    radial-gradient(100% 120% at 0% 120%, #1e1b4b 0%, transparent 60%),
+    linear-gradient(160deg, #312e81 0%, #1a1740 100%);
+  animation:
+    bp_drop .52s cubic-bezier(.18,1.4,.4,1) both,
+    bp_glowNight 2.2s ease-in-out .5s infinite;
+}
+.bp-pop--night .bp-rays { display: none; }
+.bp-pop--night .bp-kicker { color: #c7d2fe; }
+.bp-pop--night .bp-badge { color: #1e1b4b; }
+.bp-pop--night .bp-thanks { border-top-color: rgba(199,210,254,.18); color: #c7d2fe; }
+.bp-pop--night .bp-shine { background: linear-gradient(100deg, transparent, rgba(255,255,255,.32), transparent); }
+
+/* 4B — huân chương (Chủ Nhật): nền xanh + glow lục kế thừa .bp-pop */
+.bp-pop--medal .bp-stars { display: none; }
+.bp-pop--medal .bp-rays { opacity: .45; }
+
+/* 4C — tri ân (Lễ Tết) */
+.bp-pop--fest {
+  background:
+    radial-gradient(125% 130% at 85% -22%, #f59e0b 0%, transparent 52%),
+    radial-gradient(100% 120% at 0% 120%, #7f1d1d 0%, transparent 60%),
+    linear-gradient(160deg, #b91c1c 0%, #5e1212 100%);
+  animation:
+    bp_drop .52s cubic-bezier(.18,1.4,.4,1) both,
+    bp_glowFest 1.9s ease-in-out .5s infinite;
+}
+.bp-pop--fest .bp-rays {
+  background: repeating-conic-gradient(from 0deg, rgba(253,224,71,.2) 0deg 10deg, transparent 10deg 24deg);
+  animation-duration: 9s; opacity: .5;
+}
+.bp-pop--fest .bp-badge { color: #5e1212; }
+.bp-pop--fest .bp-thanks { border-top-color: rgba(253,224,71,.22); color: #ffe4b8; }
+
+/* Số tiền thẻ trân trọng = 60px (đơn thường 64px) */
+.bp-pop--night .bp-amount,
+.bp-pop--medal .bp-amount,
+.bp-pop--fest .bp-amount { font-size: 60px; }
+
+/* Nội dung việc đứng 1 mình (không cột phòng) */
+.bp-work--solo { flex: 1; min-width: 0; }
+
+/* Linh vật góc phải (nổi nhẹ) */
+.bp-mascot {
+  position: absolute; z-index: 1;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.5));
+  animation: bp_float 4s ease-in-out infinite;
+}
+.bp-pop--night .bp-mascot { top: 14px; right: 18px; font-size: 30px; }
+.bp-pop--medal .bp-mascot { top: 16px; right: 18px; font-size: 34px; }
+.bp-pop--fest  .bp-mascot { top: 13px; right: 20px; font-size: 30px; animation-duration: 3.6s; }
+
+/* Sao nhấp nháy nền */
+.bp-stars { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.bp-star { position: absolute; animation: bp_twinkle 2.6s ease-in-out infinite; }
+
+/* Lời cảm ơn từ quản lý (gạch ngăn trên) */
+.bp-thanks {
+  margin-top: 13px; padding-top: 11px;
+  border-top: 1px solid rgba(253,224,71,.2);
+  font-size: 12.5px; font-weight: 500; line-height: 1.4;
+  color: rgba(255,255,255,.85);
+}
+
 /* Thoát (Sonner đặt data-removed khi đóng) */
 [data-sonner-toast][data-removed="true"] .bp-pop { animation: bp_out .2s ease forwards; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bp-pop, .bp-pop--combo, .bp-rays, .bp-coin, .bp-amount,
-  .bp-badge, .bp-badge--combo, .bp-gift--fire, .bp-row, .bp-shine {
+  .bp-pop, .bp-pop--combo, .bp-pop--night, .bp-pop--fest,
+  .bp-rays, .bp-coin, .bp-amount, .bp-badge, .bp-badge--combo,
+  .bp-gift--fire, .bp-row, .bp-shine, .bp-mascot, .bp-star {
     animation: none !important;
   }
 }

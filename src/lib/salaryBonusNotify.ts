@@ -16,6 +16,9 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import BonusToast, { formatBonusK } from '@/components/tasks/BonusToast';
 
+/** Ngữ cảnh thời gian hoàn thành việc — chọn skin popup đơn (combo bỏ qua). */
+export type BonusTimeContext = 'AFTER_HOURS' | 'SUNDAY' | 'HOLIDAY' | 'NORMAL';
+
 export interface AwardedBonus {
   bonus_kind: 'JOB' | 'DAY_BONUS';
   amount: number;
@@ -24,7 +27,24 @@ export interface AwardedBonus {
   place: string;
   content: string;
   icon: string;
+  time_context: BonusTimeContext; // ngoài giờ / CN / Lễ / thường — award_job_bonus trả
   notif_id: string;
+}
+
+/** Skin popup đơn theo ngữ cảnh: ngoài giờ→đêm, CN→huân chương, Lễ→tri ân. */
+export type BonusVariant = 'normal' | 'night' | 'medal' | 'fest';
+
+function variantOf(ctx: BonusTimeContext | undefined): BonusVariant {
+  switch (ctx) {
+    case 'HOLIDAY':
+      return 'fest';
+    case 'SUNDAY':
+      return 'medal';
+    case 'AFTER_HOURS':
+      return 'night';
+    default:
+      return 'normal';
+  }
 }
 
 /**
@@ -53,11 +73,13 @@ export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonu
 
   const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
   const isCombo = rows.length >= 2;
+  // Đơn: chọn skin theo ngữ cảnh thời gian (ngoài giờ/CN/Lễ) — combo giữ thẻ vàng.
+  const variant: BonusVariant = isCombo ? 'normal' : variantOf(rows[0]?.time_context);
 
   // Một reward snackbar nổi TOP-CENTER (unstyled để thẻ glassmorphism chiếm trọn).
   // Auto-dismiss 4000ms; combo lâu hơn chút để đọc breakdown. Vuốt = Sonner tự lo.
   toast.custom(
-    () => createElement(BonusToast, { items: rows, total, isCombo }),
+    () => createElement(BonusToast, { items: rows, total, isCombo, variant }),
     { duration: isCombo ? 4500 : 4000, position: 'top-center', unstyled: true },
   );
 

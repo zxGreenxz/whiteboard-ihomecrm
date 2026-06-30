@@ -5,6 +5,10 @@
 //    + 📍 mã phòng align-phải. Tia xoay, xu dải mờ góc dưới-trái, vệt sáng lướt.
 //  • Combo (vàng-lục, ≥2 khoản): 🔥 "Thưởng kép!" + badge COMBO ×N + "+60K" + tag
 //    ngày; xu góc trên-phải + bảng phân rã (mỗi khoản: icon tile · nội dung · +K).
+//  • Đơn "trân trọng" (việc ngoài giờ / CN / Lễ — chọn qua prop `variant`, KHÔNG
+//    hiện phòng, thêm lời cảm ơn từ quản lý + linh vật góc phải):
+//    night 🌙 (ngoài giờ, indigo) · medal 🏅 (CN, xanh) · fest 🏮 (Lễ Tết, đỏ).
+//    Combo luôn giữ thẻ vàng, bỏ qua variant.
 // Micro-interactions: count-up (slot machine), confetti vàng (combo, lazy),
 // haptic vibrate. CSS (.bp-*) ở cuối src/index.css.
 
@@ -19,11 +23,43 @@ interface BonusItem {
   icon: string;
 }
 
+/** Skin popup đơn theo ngữ cảnh thời gian; combo bỏ qua. */
+type BonusVariant = "normal" | "night" | "medal" | "fest";
+
 interface BonusToastProps {
   items: BonusItem[];
   total: number;
   isCombo: boolean;
+  variant?: BonusVariant;
 }
+
+/** Cấu hình 3 thẻ "trân trọng" (ngoài giờ / CN / Lễ): lời cảm ơn từ quản lý. */
+const APPRECIATION: Record<
+  "night" | "medal" | "fest",
+  { cls: string; kicker: string; badge: string; mascot: string; thanks: string }
+> = {
+  night: {
+    cls: "bp-pop--night",
+    kicker: "🌙 Hỗ trợ ngoài giờ",
+    badge: "❤️ TRÂN TRỌNG",
+    mascot: "🌙",
+    thanks: "Cảm ơn bạn đã có mặt vì khách hàng ngay cả khi đã hết giờ làm 🌙",
+  },
+  medal: {
+    cls: "bp-pop--medal",
+    kicker: "✦ Ghi nhận nỗ lực",
+    badge: "⭐ TẬN TÂM",
+    mascot: "🏅",
+    thanks: "Sự tận tâm của bạn ngoài giờ làm luôn được công ty trân trọng 🤝",
+  },
+  fest: {
+    cls: "bp-pop--fest",
+    kicker: "🏮 Hỗ trợ ngày lễ",
+    badge: "🙏 TRI ÂN",
+    mascot: "🏮",
+    thanks: "Cảm ơn bạn đã gác lại ngày nghỉ để đồng hành cùng khách hàng 🧧",
+  },
+};
 
 /** 30000 -> "+30K". */
 export function formatBonusK(amount: number): string {
@@ -81,7 +117,41 @@ function Coins({ chars }: { chars: string[] }) {
   );
 }
 
-export default function BonusToast({ items, total, isCombo }: BonusToastProps) {
+/** Sao nhấp nháy nền cho thẻ "trân trọng" (đêm / lễ). */
+function Stars() {
+  const stars = [
+    { top: "18px", right: "128px", fontSize: "9px", delay: "0s", c: "✨" },
+    { top: "40px", right: "62px", fontSize: "7px", delay: ".6s", c: "✦" },
+    { top: "64px", right: "150px", fontSize: "6px", delay: "1.1s", c: "✦" },
+    { bottom: "20px", right: "40px", fontSize: "8px", delay: ".3s", c: "✨" },
+  ];
+  return (
+    <div className="bp-stars" aria-hidden>
+      {stars.map((s, i) => (
+        <span
+          key={i}
+          className="bp-star"
+          style={{
+            top: s.top,
+            bottom: s.bottom,
+            right: s.right,
+            fontSize: s.fontSize,
+            animationDelay: s.delay,
+          }}
+        >
+          {s.c}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export default function BonusToast({
+  items,
+  total,
+  isCombo,
+  variant = "normal",
+}: BonusToastProps) {
   const animated = useCountUp(total);
 
   // Haptic: Standard = nhẹ; Combo = mạnh + nhịp đôi.
@@ -172,7 +242,34 @@ export default function BonusToast({ items, total, isCombo }: BonusToastProps) {
     );
   }
 
-  // Single
+  // Đơn "trân trọng" (ngoài giờ / CN / Lễ): KHÔNG hiện phòng, có lời cảm ơn.
+  if (variant !== "normal") {
+    const it = items[0];
+    const cfg = APPRECIATION[variant];
+    return (
+      <div className={`bp-pop ${cfg.cls}`} role="status" aria-live="polite">
+        <div className="bp-rays" aria-hidden />
+        <Stars />
+        <span className="bp-mascot" aria-hidden>
+          {cfg.mascot}
+        </span>
+        <div className="bp-inner">
+          <div className="bp-head">
+            <span className="bp-kicker">{cfg.kicker}</span>
+            <span className="bp-badge">{cfg.badge}</span>
+          </div>
+          <div className="bp-body">
+            <div className="bp-amount">{formatBonusK(animated)}</div>
+            <div className="bp-work bp-work--solo">{workOf(it)}</div>
+          </div>
+          <div className="bp-thanks">{cfg.thanks}</div>
+        </div>
+        <div className="bp-shine" aria-hidden />
+      </div>
+    );
+  }
+
+  // Single (thường — giờ hành chính ngày thường)
   const it = items[0];
   return (
     <div className="bp-pop" role="status" aria-live="polite">
