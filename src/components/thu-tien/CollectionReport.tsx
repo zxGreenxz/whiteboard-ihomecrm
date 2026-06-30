@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCollectionReport } from '@/hooks/useCollectionReport';
 import {
   collectStatus,
@@ -32,10 +32,22 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
   const [bSel, setBSel] = useState(defaultBuildingId);
   const [tSel, setTSel] = useState<TimeSel>('all');
   const [day, setDay] = useState(todayISO());
+  const [timeOpen, setTimeOpen] = useState(false);
+  const timeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (show) setBSel(defaultBuildingId);
   }, [show, defaultBuildingId]);
+
+  // Đóng popover Thời gian khi chạm ra ngoài
+  useEffect(() => {
+    if (!timeOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (timeRef.current && !timeRef.current.contains(e.target as Node)) setTimeOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [timeOpen]);
 
   const { invoices } = useCollectionReport({
     building_id: bSel === 'all' ? undefined : bSel,
@@ -99,23 +111,54 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
               <ChevronRight />
             </div>
           </label>
-          <label className="rp-dd">
+          <div className="rp-dd rp-dd-time" ref={timeRef}>
             <span className="rp-dd-l">Thời gian</span>
             <div className="rp-dd-sel">
-              <select value={tSel} onChange={(e) => setTSel(e.target.value as TimeSel)}>
-                <option value="all">Cả kỳ {fmtBillingMonth(billingMonth)}</option>
-                <option value="today">Hôm nay</option>
-                <option value="date">Chọn ngày…</option>
-              </select>
+              <button
+                type="button"
+                className={'rp-dd-trigger' + (timeOpen ? ' open' : '')}
+                onClick={() => setTimeOpen((o) => !o)}
+              >
+                {timeName}
+              </button>
               <ChevronRight />
             </div>
-          </label>
-        </div>
-        {tSel === 'date' && (
-          <div className="rp-dateline">
-            <input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+            {timeOpen && (
+              <div className="rp-tpop">
+                <div className="rp-tpop-quick">
+                  <button
+                    type="button"
+                    className={'rp-tq' + (tSel === 'all' ? ' on' : '')}
+                    onClick={() => {
+                      setTSel('all');
+                      setTimeOpen(false);
+                    }}
+                  >
+                    Cả kỳ {fmtBillingMonth(billingMonth)}
+                  </button>
+                  <button
+                    type="button"
+                    className={'rp-tq' + (tSel === 'today' ? ' on' : '')}
+                    onClick={() => {
+                      setTSel('today');
+                      setTimeOpen(false);
+                    }}
+                  >
+                    Hôm nay
+                  </button>
+                </div>
+                <MiniCalendar
+                  selected={tSel === 'date' ? day : null}
+                  onPick={(iso) => {
+                    setDay(iso);
+                    setTSel('date');
+                    setTimeOpen(false);
+                  }}
+                />
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         <div className="sheet-scroll rp-body">
           <div className="rp-total">
@@ -207,6 +250,77 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
         </div>
       </div>
     </>
+  );
+}
+
+// Lịch tháng thu gọn — chọn 1 ngày cụ thể ngay trong popover Thời gian.
+const WEEKDAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+function MiniCalendar({
+  selected,
+  onPick,
+}: {
+  selected: string | null;
+  onPick: (iso: string) => void;
+}) {
+  const today = todayISO();
+  const [view, setView] = useState(() => {
+    const [y, m] = (selected ?? today).split('-').map(Number);
+    return { y, m: m - 1 };
+  });
+
+  const firstDow = (new Date(view.y, view.m, 1).getDay() + 6) % 7; // Thứ 2 = 0
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  const shift = (delta: number) =>
+    setView((v) => {
+      const m = v.m + delta;
+      return { y: v.y + Math.floor(m / 12), m: ((m % 12) + 12) % 12 };
+    });
+
+  return (
+    <div className="rp-cal">
+      <div className="rp-cal-head">
+        <button type="button" className="rp-cal-nav" onClick={() => shift(-1)} aria-label="Tháng trước">
+          <ChevronLeft />
+        </button>
+        <span className="rp-cal-mo">Tháng {view.m + 1}/{view.y}</span>
+        <button type="button" className="rp-cal-nav" onClick={() => shift(1)} aria-label="Tháng sau">
+          <ChevronRight />
+        </button>
+      </div>
+      <div className="rp-cal-wd">
+        {WEEKDAYS.map((w) => (
+          <span key={w} className={w === 'CN' ? 'sun' : undefined}>{w}</span>
+        ))}
+      </div>
+      <div className="rp-cal-grid">
+        {cells.map((d, i) =>
+          d === null ? (
+            <span key={i} className="rp-cd empty" />
+          ) : (
+            <button
+              key={i}
+              type="button"
+              className={
+                'rp-cd' +
+                (`${view.y}-${pad2(view.m + 1)}-${pad2(d)}` === selected ? ' sel' : '') +
+                (`${view.y}-${pad2(view.m + 1)}-${pad2(d)}` === today ? ' today' : '') +
+                (i % 7 === 6 ? ' sun' : '')
+              }
+              onClick={() => onPick(`${view.y}-${pad2(view.m + 1)}-${pad2(d)}`)}
+            >
+              {d}
+            </button>
+          ),
+        )}
+      </div>
+    </div>
   );
 }
 
