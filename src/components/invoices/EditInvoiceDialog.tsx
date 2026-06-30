@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { useUpdateInvoice, useExcessAmount } from '@/hooks/useInvoices';
 import type { InvoiceFormData, InvoiceWithRelations } from '@/types/invoice';
+import { roundInvoiceTotal } from '@/lib/invoiceUtils';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
@@ -271,7 +272,8 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       (s, it) => s + (it.quantity || 0) * (it.unit_price || 0),
       0,
     );
-  const totalAmount = Math.max(0, subtotal - watchedDiscount);
+  // làm tròn phần lẻ: <900đ → xuống, ≥900đ → lên bội số 1000 (khớp giá trị sẽ lưu)
+  const totalAmount = roundInvoiceTotal(Math.max(0, subtotal - watchedDiscount));
 
   const { data: creditBalance = 0 } = useExcessAmount(invoice.contract_id);
 

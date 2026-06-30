@@ -6,9 +6,39 @@ import {
   canApproveInvoice,
   getStatusColor,
   isOverdue,
+  roundInvoiceTotal,
   type TotalsItem,
 } from '../invoiceUtils';
 import type { InvoiceStatus } from '@/types/invoice';
+
+// =============================================
+// roundInvoiceTotal
+// =============================================
+
+describe('roundInvoiceTotal', () => {
+  it('rounds DOWN when remainder < 900', () => {
+    expect(roundInvoiceTotal(1_299_500)).toBe(1_299_000);
+    expect(roundInvoiceTotal(1_000_899)).toBe(1_000_000);
+    expect(roundInvoiceTotal(2_450_001)).toBe(2_450_000);
+  });
+
+  it('rounds UP when remainder >= 900', () => {
+    expect(roundInvoiceTotal(1_299_900)).toBe(1_300_000);
+    expect(roundInvoiceTotal(1_000_999)).toBe(1_001_000);
+    expect(roundInvoiceTotal(2_450_900)).toBe(2_451_000);
+  });
+
+  it('leaves exact multiples of 1000 unchanged', () => {
+    expect(roundInvoiceTotal(2_450_000)).toBe(2_450_000);
+    expect(roundInvoiceTotal(1_000)).toBe(1_000);
+  });
+
+  it('keeps 0, negatives and invalid values as-is', () => {
+    expect(roundInvoiceTotal(0)).toBe(0);
+    expect(roundInvoiceTotal(-1500)).toBe(-1500);
+    expect(roundInvoiceTotal(NaN)).toBeNaN();
+  });
+});
 
 // =============================================
 // calculateInvoiceTotals

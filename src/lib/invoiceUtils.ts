@@ -77,6 +77,23 @@ export function calculateInvoiceTotals(
   };
 }
 
+/**
+ * Làm tròn TỔNG TIỀN hoá đơn theo phần lẻ (3 chữ số cuối):
+ * - phần lẻ < 900đ  → làm tròn XUỐNG bội số 1000 gần nhất (bỏ phần lẻ)
+ * - phần lẻ >= 900đ → làm tròn LÊN bội số 1000 gần nhất
+ *
+ * VD: 1.299.500 → 1.299.000 ; 1.299.900 → 1.300.000 ; 2.450.000 → 2.450.000
+ * Chỉ áp dụng cho tổng dương; số 0/âm/không hợp lệ giữ nguyên.
+ */
+export function roundInvoiceTotal(total: number): number {
+  if (!Number.isFinite(total) || total <= 0) return total;
+  const remainder = total % 1000;
+  if (remainder === 0) return total;
+  return remainder >= 900
+    ? Math.ceil(total / 1000) * 1000
+    : Math.floor(total / 1000) * 1000;
+}
+
 // =============================================
 // Status Permission Checks
 // =============================================

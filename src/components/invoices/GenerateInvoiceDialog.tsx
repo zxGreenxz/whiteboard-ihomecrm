@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { useCreateInvoice, useExcessAmount } from '@/hooks/useInvoices';
 import type { InvoiceFormData, PreviousDebtSource } from '@/types/invoice';
+import { roundInvoiceTotal } from '@/lib/invoiceUtils';
 import { isContractInEffect } from '@/types/contract';
 import { useContracts } from '@/hooks/useContracts';
 import { useVehicles } from '@/hooks/useVehicles';
@@ -433,7 +434,10 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       0,
     );
   // total = tạm tính − giảm trừ (mình nợ khách) + nợ cũ (khách nợ mình)
-  const totalAmount = Math.max(0, subtotal - watchedDiscount + watchedPreviousDebt);
+  // làm tròn phần lẻ: <900đ → xuống, ≥900đ → lên bội số 1000 (khớp giá trị sẽ lưu)
+  const totalAmount = roundInvoiceTotal(
+    Math.max(0, subtotal - watchedDiscount + watchedPreviousDebt),
+  );
 
   const handleClose = () => {
     reset();

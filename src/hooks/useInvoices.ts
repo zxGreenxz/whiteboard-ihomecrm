@@ -16,7 +16,7 @@ import type {
   InvoiceFormItem,
   InvoiceStatus,
 } from '@/types/invoice';
-import { canEditInvoice, canDeleteInvoice } from '@/lib/invoiceUtils';
+import { canEditInvoice, canDeleteInvoice, roundInvoiceTotal } from '@/lib/invoiceUtils';
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 
 // Re-export types for backward compatibility
@@ -549,10 +549,12 @@ export const useCreateInvoice = () => {
         0,
       );
       // total = tạm tính − giảm trừ (mình nợ khách) + nợ cũ (khách nợ mình)
-      const total_amount =
+      // Làm tròn phần lẻ: <900đ → tròn xuống, ≥900đ → tròn lên bội số 1000
+      const total_amount = roundInvoiceTotal(
         subtotal
         - (invoiceFields.discount_amount || 0)
-        + (invoiceFields.previous_debt || 0);
+        + (invoiceFields.previous_debt || 0),
+      );
 
       // Generate invoice number
       const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
@@ -696,10 +698,12 @@ export const useUpdateInvoice = () => {
         0,
       );
       // total = tạm tính − giảm trừ + nợ cũ
-      const total_amount =
+      // Làm tròn phần lẻ: <900đ → tròn xuống, ≥900đ → tròn lên bội số 1000
+      const total_amount = roundInvoiceTotal(
         subtotal
         - (invoiceFields.discount_amount || 0)
-        + (invoiceFields.previous_debt || 0);
+        + (invoiceFields.previous_debt || 0),
+      );
 
       // Update invoice
       const { data: invoice, error: updateError } = await supabase

@@ -698,8 +698,9 @@ export async function generateInvoiceForContract(
   const { total: previousDebtAmount, sources: previousDebtSources } =
     await computePreviousDebt(contract.id);
 
-  // Calculate total
-  const totalAmount = subtotal + previousDebtAmount;
+  // Calculate total (làm tròn phần lẻ: <900đ → xuống, ≥900đ → lên bội số 1000)
+  const { roundInvoiceTotal } = await import('@/lib/invoiceUtils');
+  const totalAmount = roundInvoiceTotal(subtotal + previousDebtAmount);
 
   // Generate invoice number using proper sequential generation
   let invoiceNumber = await autoGenerateInvoiceNumber(userId);
