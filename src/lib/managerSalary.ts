@@ -14,6 +14,7 @@ export interface SalLedgerRow {
   place: string;
   job_type_name: string | null;
   is_repair: boolean;
+  is_contract: boolean;
   base_amount: number;
   weekend_amount: number;
   after_amount: number;
@@ -101,10 +102,12 @@ export function initialsOf(short: string): string {
 export function buildBonusAuto(ledger: SalLedgerRow[], requirePhoto = false): SalBonusLine[] {
   const lines: SalBonusLine[] = [];
 
-  // (1) JOB gộp theo loại việc — chỉ tính dòng đủ điều kiện (bonus_amount > 0)
+  // (1) JOB gộp theo loại việc — chỉ tính dòng đủ điều kiện (bonus_amount > 0).
+  // BỎ việc ký HĐ (is_contract) ra khỏi nhóm này — gộp riêng ở mục (3).
   const jobGroups = new Map<string, { count: number; total: number; per: number }>();
   for (const r of ledger) {
     if (r.item_type !== "JOB") continue;
+    if (r.is_contract) continue;
     const eligible = (r.bonus_amount ?? 0) > 0;
     if (!eligible) continue; // thiếu ảnh / không tính → bỏ khỏi tổng thưởng
     const key = r.job_type_name || "Việc";
@@ -136,14 +139,19 @@ export function buildBonusAuto(ledger: SalLedgerRow[], requirePhoto = false): Sa
     });
   }
 
-  // (3) CONTRACT — HĐ ngoài giờ / CN / lễ
-  const contractRows = ledger.filter((r) => r.item_type === "CONTRACT");
+  // (3) Ký HĐ ngoài giờ / CN / lễ — từ VIỆC loại checkin (is_contract, đủ điều kiện)
+  // + (legacy) dòng CONTRACT của snapshot cũ. icon "FileClock" → chốt vào contract_bonus.
+  const contractRows = ledger.filter(
+    (r) =>
+      r.item_type === "CONTRACT" ||
+      (r.item_type === "JOB" && r.is_contract && (r.bonus_amount ?? 0) > 0),
+  );
   if (contractRows.length) {
     const total = contractRows.reduce((s, r) => s + (r.bonus_amount ?? 0), 0);
-    const per = contractRows[0].after_amount || 0;
+    const per = contractRows[0].after_amount || contractRows[0].base_amount || 0;
     lines.push({
       icon: "FileClock",
-      label: "HĐ ngoài giờ / CN / lễ",
+      label: "Ký HĐ ngoài giờ / CN / lễ",
       note: `${contractRows.length} HĐ × ${fmtPlain(per)}`,
       amount: total,
     });
@@ -156,7 +164,12 @@ export function buildBonusAuto(ledger: SalLedgerRow[], requirePhoto = false): Sa
 export function computeStats(ledger: SalLedgerRow[]): Omit<SalStats, "streak"> {
   const jobs = ledger.filter((r) => r.item_type === "JOB").length;
   const repairs = ledger.filter((r) => r.item_type === "JOB" && r.is_repair).length;
-  const afterHour = ledger.filter((r) => r.item_type === "CONTRACT").length;
+  // Cú đêm / HĐ ngoài giờ: việc ký HĐ (checkin) đủ điều kiện thưởng + (legacy) dòng CONTRACT.
+  const afterHour = ledger.filter(
+    (r) =>
+      r.item_type === "CONTRACT" ||
+      (r.item_type === "JOB" && r.is_contract && (r.bonus_amount ?? 0) > 0),
+  ).length;
   const days = new Set(
     ledger.filter((r) => r.item_type !== "DAY_BONUS").map((r) => r.occurred_date)
   );

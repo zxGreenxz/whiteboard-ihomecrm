@@ -16,19 +16,20 @@ import {
 function job(staff: string, date: string, jobType: string, bonus: number, opts: Partial<SalLedgerRow> = {}): SalLedgerRow {
   return {
     staff_id: staff, item_type: "JOB", source_id: "x", occurred_date: date, day_label: "",
-    content: "v", place: "405PVB · 201", job_type_name: jobType, is_repair: bonus > 0,
+    content: "v", place: "405PVB · 201", job_type_name: jobType, is_repair: bonus > 0, is_contract: false,
     base_amount: bonus, weekend_amount: 0, after_amount: 0, cash_amount: null,
     has_photo: true, bonus_amount: bonus, reason: jobType, ...opts,
   };
 }
 function day(staff: string, date: string): SalLedgerRow {
   return { staff_id: staff, item_type: "DAY_BONUS", source_id: null, occurred_date: date, day_label: "CN",
-    content: "CN", place: "", job_type_name: null, is_repair: true, base_amount: 0, weekend_amount: 20000,
+    content: "CN", place: "", job_type_name: null, is_repair: true, is_contract: false, base_amount: 0, weekend_amount: 20000,
     after_amount: 0, cash_amount: null, has_photo: null, bonus_amount: 20000, reason: "CN/Lễ" };
 }
+// Dòng CONTRACT legacy (snapshot cũ trước khi bỏ nhánh (C))
 function contract(staff: string, date: string): SalLedgerRow {
   return { staff_id: staff, item_type: "CONTRACT", source_id: "c", occurred_date: date, day_label: "",
-    content: "HĐ", place: "", job_type_name: null, is_repair: false, base_amount: 0, weekend_amount: 0,
+    content: "HĐ", place: "", job_type_name: null, is_repair: false, is_contract: false, base_amount: 0, weekend_amount: 0,
     after_amount: 50000, cash_amount: null, has_photo: null, bonus_amount: 50000, reason: "HĐ ngoài giờ" };
 }
 
@@ -64,6 +65,23 @@ describe("buildBonusAuto", () => {
     const lines = buildBonusAuto(led);
     expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(0);
   });
+
+  it("việc ký HĐ (is_contract) → gộp vào dòng FileClock, không nằm nhóm việc Wrench", () => {
+    const led = [
+      job("h", "2026-06-02", "Sửa", 30000),
+      job("h", "2026-06-05", "Ký HĐ", 50000, { is_repair: false, is_contract: true }),
+      job("h", "2026-06-06", "Ký HĐ", 50000, { is_repair: false, is_contract: true }),
+    ];
+    const lines = buildBonusAuto(led);
+    const wrench = lines.filter((l) => l.icon === "Wrench");
+    const fileClock = lines.find((l) => l.icon === "FileClock");
+    expect(wrench.length).toBe(1); // chỉ nhóm "Sửa"
+    expect(wrench[0].amount).toBe(30000);
+    expect(fileClock?.amount).toBe(100000); // 2 việc ký HĐ × 50k
+    expect(fileClock?.note).toContain("2 HĐ");
+    // tổng = 30k + 100k
+    expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(130000);
+  });
 });
 
 describe("salCalc", () => {
@@ -93,6 +111,16 @@ describe("computeStats / computeStreak", () => {
     expect(s.repairs).toBe(2);
     expect(s.afterHour).toBe(1);
     expect(s.workdays).toBe(3); // 02, 03, 05 (DAY_BONUS không tính)
+  });
+
+  it("afterHour đếm việc ký HĐ (checkin) đủ điều kiện, bỏ việc checkin không thưởng", () => {
+    const led = [
+      job("h", "2026-06-05", "Ký HĐ", 50000, { is_repair: false, is_contract: true }),
+      job("h", "2026-06-06", "Ký HĐ", 0, { is_repair: false, is_contract: true, bonus_amount: 0 }), // giờ thường → 0
+    ];
+    const s = computeStats(led);
+    expect(s.jobs).toBe(2);
+    expect(s.afterHour).toBe(1); // chỉ việc checkin có thưởng
   });
 
   it("streak ngày liên tục gần nhất", () => {
