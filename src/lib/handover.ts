@@ -7,6 +7,8 @@
 
 export type HandoverStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED';
 
+export type VoucherType = 'INCOME' | 'EXPENSE';
+
 export interface HandoverItemLite {
   voucher_id: string;
   amount: number;
@@ -14,6 +16,8 @@ export interface HandoverItemLite {
   voucher_date?: string | null;
   room_name?: string | null;
   building_name?: string | null;
+  /** Phân loại phiếu gốc — bàn giao net gộp cả phiếu CHI. */
+  voucher_type?: VoucherType | null;
 }
 
 export interface HandoverLite {
@@ -23,7 +27,12 @@ export interface HandoverLite {
   receiver_id: string;
   giver_name?: string | null;
   receiver_name?: string | null;
+  /** Tiền thực nộp (ròng) = gross_amount − expense_amount. */
   total_amount: number;
+  /** Tổng phiếu THU trong phiên. */
+  gross_amount?: number | null;
+  /** Tổng phiếu CHI trong phiên (đã trừ khỏi total_amount). */
+  expense_amount?: number | null;
   voucher_count: number;
   status: HandoverStatus;
   cancel_requested_by?: string | null;
@@ -43,6 +52,28 @@ export const sumSelected = <T extends { id: string; total_amount?: number | null
     (s, v) => (set.has(v.id) ? s + (Number(v.total_amount) || 0) : s),
     0,
   );
+};
+
+/**
+ * Tổng THU / CHI / RÒNG của các phiếu đang được tick (bàn giao theo số dư):
+ * net = Σthu − Σchi = đúng tiền mặt thực nộp.
+ */
+export const netSelected = <
+  T extends { id: string; type?: VoucherType | string | null; total_amount?: number | null },
+>(
+  vouchers: T[],
+  selectedIds: ReadonlySet<string> | string[],
+): { gross: number; expense: number; net: number } => {
+  const set = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+  let gross = 0;
+  let expense = 0;
+  for (const v of vouchers) {
+    if (!set.has(v.id)) continue;
+    const amt = Number(v.total_amount) || 0;
+    if (v.type === 'EXPENSE') expense += amt;
+    else gross += amt;
+  }
+  return { gross, expense, net: gross - expense };
 };
 
 export type HandoverRole = 'giver' | 'receiver' | 'none';

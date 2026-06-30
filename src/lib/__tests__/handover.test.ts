@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   sumSelected,
+  netSelected,
   myRole,
   handoverStatusLabel,
   needsMyAction,
@@ -58,6 +59,63 @@ describe('sumSelected', () => {
           const expectedSet = vs.reduce((s, v) => s + (ids.has(v.id) ? v.total_amount : 0), 0);
           expect(all).toBe(expectedSet);
           expect(expected).toBeGreaterThanOrEqual(0);
+        },
+      ),
+    );
+  });
+});
+
+describe('netSelected (bàn giao theo số dư = thu − chi)', () => {
+  const vs = [
+    { id: 'a', type: 'INCOME', total_amount: 5_000_000 },
+    { id: 'b', type: 'INCOME', total_amount: 3_000_000 },
+    { id: 'c', type: 'EXPENSE', total_amount: 2_000_000 },
+  ];
+
+  it('net = Σthu − Σchi của các phiếu tick', () => {
+    expect(netSelected(vs, ['a', 'b', 'c'])).toEqual({
+      gross: 8_000_000,
+      expense: 2_000_000,
+      net: 6_000_000,
+    });
+  });
+
+  it('chỉ tick thu → net = gross (tương thích ngược)', () => {
+    expect(netSelected(vs, ['a', 'b'])).toEqual({ gross: 8_000_000, expense: 0, net: 8_000_000 });
+  });
+
+  it('chi > thu → net âm (FE chặn submit)', () => {
+    expect(netSelected(vs, ['b', 'c'])).toEqual({ gross: 3_000_000, expense: 2_000_000, net: 1_000_000 });
+    expect(netSelected([{ id: 'c', type: 'EXPENSE', total_amount: 2_000_000 }], ['c'])).toEqual({
+      gross: 0,
+      expense: 2_000_000,
+      net: -2_000_000,
+    });
+  });
+
+  it('thiếu type coi như THU; amount null tính 0', () => {
+    expect(
+      netSelected([{ id: 'x', total_amount: 1000 }, { id: 'y', type: 'EXPENSE', total_amount: null }], ['x', 'y']),
+    ).toEqual({ gross: 1000, expense: 0, net: 1000 });
+  });
+
+  it('property: net = gross − expense, luôn nhất quán', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            id: fc.uuid(),
+            type: fc.constantFrom('INCOME', 'EXPENSE'),
+            total_amount: fc.integer({ min: 0, max: 1e9 }),
+          }),
+          { maxLength: 30 },
+        ),
+        (arr) => {
+          const ids = arr.map((v) => v.id);
+          const { gross, expense, net } = netSelected(arr, ids);
+          expect(net).toBe(gross - expense);
+          expect(gross).toBeGreaterThanOrEqual(0);
+          expect(expense).toBeGreaterThanOrEqual(0);
         },
       ),
     );

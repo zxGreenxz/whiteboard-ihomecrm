@@ -35,7 +35,7 @@ import {
   isOpenHandover,
   myRole,
   needsMyAction,
-  sumSelected,
+  netSelected,
 } from '@/lib/handover';
 
 interface Props {
@@ -87,7 +87,9 @@ export function HandoverSheet({ show, onClose }: Props) {
     () => vouchers.filter((v) => !unticked.has(v.id)).map((v) => v.id),
     [vouchers, unticked],
   );
-  const selectedSum = sumSelected(vouchers, selectedIds);
+  const { gross, expense, net } = netSelected(vouchers, selectedIds);
+  const incomeVouchers = useMemo(() => vouchers.filter((v) => v.type !== 'EXPENSE'), [vouchers]);
+  const expenseVouchers = useMemo(() => vouchers.filter((v) => v.type === 'EXPENSE'), [vouchers]);
 
   const openList = useMemo(() => handovers.filter(isOpenHandover), [handovers]);
   const historyList = useMemo(
@@ -164,23 +166,59 @@ export function HandoverSheet({ show, onClose }: Props) {
     }
   };
 
-  const renderItems = (h: CashHandover) => (
-    <div className="ho-items">
-      <div className="rp-lhead">
-        <span>Phòng</span>
-        <span>Số tiền</span>
-      </div>
-      {(h.items ?? []).map((it) => (
-        <div className="rp-row" key={it.voucher_id}>
-          <div className="rp-rl">
-            <span className="rp-code">{it.room_name ?? '—'}</span>
-            <span className="rp-note">{it.building_name ?? ''} · {fmtDate(it.voucher_date)}</span>
-          </div>
-          <span className="rp-amt">{fmtFull(it.amount)}</span>
+  const voucherRow = (v: (typeof vouchers)[number]) => {
+    const checked = !unticked.has(v.id);
+    const isExp = v.type === 'EXPENSE';
+    return (
+      <label className={'ho-vrow' + (checked ? '' : ' off') + (isExp ? ' ho-vexp' : '')} key={v.id}>
+        <input type="checkbox" checked={checked} onChange={() => toggleVoucher(v.id)} />
+        <span className="ho-vmain">
+          <span className="ho-vroom">{v.room?.name ?? v.name ?? '—'}</span>
+          <span className="ho-vsub">
+            {v.building?.name ?? ''} · {fmtDate(v.voucher_date)} · {v.code}
+          </span>
+        </span>
+        <span className="ho-vamt">{isExp ? '−' : ''}{fmtFull(v.total_amount)}</span>
+      </label>
+    );
+  };
+
+  const renderItems = (h: CashHandover) => {
+    const items = h.items ?? [];
+    const inc = items.filter((it) => it.voucher_type !== 'EXPENSE');
+    const exp = items.filter((it) => it.voucher_type === 'EXPENSE');
+    return (
+      <div className="ho-items">
+        <div className="rp-lhead">
+          <span>Phòng đã thu</span>
+          <span>Số tiền</span>
         </div>
-      ))}
-    </div>
-  );
+        {inc.map((it) => (
+          <div className="rp-row" key={it.voucher_id}>
+            <div className="rp-rl">
+              <span className="rp-code">{it.room_name ?? '—'}</span>
+              <span className="rp-note">{it.building_name ?? ''} · {fmtDate(it.voucher_date)}</span>
+            </div>
+            <span className="rp-amt">{fmtFull(it.amount)}</span>
+          </div>
+        ))}
+        {exp.length > 0 && (
+          <>
+            <div className="ho-vgroup">Đã chi từ sổ — trừ vào tiền nộp</div>
+            {exp.map((it) => (
+              <div className="rp-row" key={it.voucher_id}>
+                <div className="rp-rl">
+                  <span className="rp-code">{it.room_name ?? it.building_name ?? 'Khoản chi'}</span>
+                  <span className="rp-note">{fmtDate(it.voucher_date)}</span>
+                </div>
+                <span className="rp-amt" style={{ color: 'var(--c-unpaid)' }}>−{fmtFull(it.amount)}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderCard = (h: CashHandover, withActions: boolean) => {
     const role = myRole(h, myId);
@@ -202,6 +240,9 @@ export function HandoverSheet({ show, onClose }: Props) {
           <span className="ho-sum">{fmtFull(h.total_amount)}</span>
         </div>
         <div className="ho-meta">
+          {(h.expense_amount ?? 0) > 0
+            ? `thu ${fmtFull(h.gross_amount ?? 0)} − chi ${fmtFull(h.expense_amount ?? 0)} · `
+            : ''}
           {h.voucher_count} phiếu · tạo {fmtDate(h.created_at)}
           {h.status === 'CONFIRMED' && h.confirmed_at ? ` · nhận ${fmtDateTime(h.confirmed_at)}` : ''}
           {h.note ? ` · ${h.note}` : ''}
@@ -318,7 +359,7 @@ export function HandoverSheet({ show, onClose }: Props) {
         <div className="rp-topbar">
           <div>
             <div className="rp-title">Bàn giao tiền mặt</div>
-            <div className="rp-sub">Tổng kết tiền đã thu · xác nhận 2 phía để không lộn tiền</div>
+            <div className="rp-sub">Nộp số dư (thu − chi) · xác nhận 2 phía để không lộn tiền</div>
           </div>
           <button type="button" className="rp-x" onClick={onClose}>
             <X />
@@ -354,17 +395,19 @@ export function HandoverSheet({ show, onClose }: Props) {
               ) : vouchers.length === 0 ? (
                 <div className="c-empty">
                   <div className="e-ic">🎉</div>
-                  <p>Không còn phiếu thu nào chưa bàn giao trong sổ của bạn.</p>
+                  <p>Không còn phiếu thu/chi nào chưa bàn giao trong sổ của bạn.</p>
                 </div>
               ) : (
                 <>
                   <div className="rp-total">
                     <div className="rp-total-main">
-                      <span className="rp-tl">Tổng bàn giao</span>
-                      <span className="rp-tv">{fmtFull(selectedSum)}</span>
+                      <span className="rp-tl">Tiền thực nộp</span>
+                      <span className="rp-tv">{fmtFull(net)}</span>
                     </div>
                     <div className="rp-total-sub">
-                      {selectedIds.length}/{vouchers.length} phiếu được chọn
+                      Thu {fmtFull(gross)}
+                      {expense > 0 ? <> · <span className="neg">Chi {fmtFull(expense)}</span></> : ''}
+                      {' · '}{selectedIds.length}/{vouchers.length} phiếu
                     </div>
                   </div>
 
@@ -390,35 +433,34 @@ export function HandoverSheet({ show, onClose }: Props) {
                   </div>
 
                   <div className="ho-vlist">
-                    {vouchers.map((v) => {
-                      const checked = !unticked.has(v.id);
-                      return (
-                        <label className={'ho-vrow' + (checked ? '' : ' off')} key={v.id}>
-                          <input type="checkbox" checked={checked} onChange={() => toggleVoucher(v.id)} />
-                          <span className="ho-vmain">
-                            <span className="ho-vroom">{v.room?.name ?? v.name ?? '—'}</span>
-                            <span className="ho-vsub">
-                              {v.building?.name ?? ''} · {fmtDate(v.voucher_date)} · {v.code}
-                            </span>
-                          </span>
-                          <span className="ho-vamt">{fmtFull(v.total_amount)}</span>
-                        </label>
-                      );
-                    })}
+                    {incomeVouchers.map((v) => voucherRow(v))}
+                    {expenseVouchers.length > 0 && (
+                      <>
+                        <div className="ho-vgroup">Đã chi từ sổ — trừ vào tiền nộp</div>
+                        {expenseVouchers.map((v) => voucherRow(v))}
+                      </>
+                    )}
                   </div>
 
                   <div className="ho-submit">
                     <button
                       type="button"
                       className="ho-btn primary big"
-                      disabled={busy || !selectedIds.length || !receiverId}
+                      disabled={busy || !selectedIds.length || !receiverId || net < 0}
                       onClick={submitCreate}
                     >
-                      Xác nhận giao {fmtFull(selectedSum)}
+                      Xác nhận giao {fmtFull(net)}
                     </button>
-                    <p className="ho-hint">
-                      Tiền vẫn nằm trong sổ của bạn cho tới khi người nhận bấm "Xác nhận đã nhận".
-                    </p>
+                    {net < 0 ? (
+                      <p className="ho-hint" style={{ color: 'var(--c-unpaid)' }}>
+                        Phần chi đang lớn hơn phần thu — không thể bàn giao số âm. Bỏ bớt phiếu chi
+                        hoặc thêm phiếu thu.
+                      </p>
+                    ) : (
+                      <p className="ho-hint">
+                        Tiền vẫn nằm trong sổ của bạn cho tới khi người nhận bấm "Xác nhận đã nhận".
+                      </p>
+                    )}
                   </div>
                 </>
               )}

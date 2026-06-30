@@ -23,6 +23,8 @@ export interface UnhandedVoucher {
   id: string;
   code: string | null;
   name: string | null;
+  /** THU hoặc CHI — bàn giao theo số dư gộp cả phiếu chi. */
+  type: 'INCOME' | 'EXPENSE';
   total_amount: number;
   voucher_date: string | null;
   room?: { name: string | null } | null;
@@ -37,7 +39,12 @@ export interface CashHandover extends HandoverLite {
   items: HandoverItemLite[];
 }
 
-/** Phiếu thu TM chưa bàn giao trong sổ "…Thu" của chính mình. */
+/**
+ * Phiếu CHƯA bàn giao trong sổ "…Thu" của chính mình — CẢ phiếu THU lẫn CHI
+ * (bàn giao theo số dư ròng). Loại phiếu CHI chuyển ("Bàn giao tiền mặt →" do
+ * confirm sinh ra, mang handover_transfer_id) để không trừ trùng; phiếu THU
+ * chuyển ("Nhận bàn giao") vẫn cho quét để bàn giao tiếp.
+ */
 export const useUnhandedVouchers = () => {
   const { data: accounts = [] } = useAccounts();
   const { data: currentUser } = useAuth();
@@ -52,12 +59,13 @@ export const useUnhandedVouchers = () => {
     queryFn: async (): Promise<UnhandedVoucher[]> => {
       const { data, error } = await (supabase as any)
         .from('income_expenses')
-        .select('id, code, name, total_amount, voucher_date, room:rooms(name), building:buildings(name)')
+        .select('id, code, name, type, total_amount, voucher_date, room:rooms(name), building:buildings(name)')
         .eq('account_id', accountId)
-        .eq('type', 'INCOME')
+        .in('type', ['INCOME', 'EXPENSE'])
         .eq('approval_status', 'APPROVED')
         .is('deleted_at', null)
         .is('handover_id', null)
+        .or('handover_transfer_id.is.null,type.eq.INCOME')
         .order('voucher_date', { ascending: false })
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -121,7 +129,14 @@ export const useCreateHandover = () => {
         p_note: args.note ?? null,
       });
       if (error) throw new Error(error.message);
-      return data as { id: string; code: string; total_amount: number; voucher_count: number };
+      return data as {
+        id: string;
+        code: string;
+        total_amount: number;
+        gross_amount?: number;
+        expense_amount?: number;
+        voucher_count: number;
+      };
     },
     onSuccess: invalidate,
   });
