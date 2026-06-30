@@ -477,6 +477,24 @@ All colors MUST be HSL.
   50%      { transform: translateY(-5px) rotate(4deg); }
 }
 
+/* Khung TO hơn đơn thường + đệm rộng (lời cảm ơn là điểm nhấn) */
+.bp-pop--night, .bp-pop--medal, .bp-pop--fest {
+  width: min(92vw, 500px);
+  border-radius: 24px;
+}
+.bp-pop--night .bp-inner,
+.bp-pop--medal .bp-inner,
+.bp-pop--fest .bp-inner { padding: 18px 22px 20px; }
+
+/* Badge "trân trọng" nổi bật: pill to (13px · 5/14) + đổ bóng vàng */
+.bp-pop--night .bp-badge,
+.bp-pop--medal .bp-badge,
+.bp-pop--fest .bp-badge {
+  font-size: 13px; letter-spacing: .07em;
+  padding: 5px 14px;
+  box-shadow: 0 3px 12px rgba(245,158,11,.45);
+}
+
 /* 4A — đêm/indigo (ngoài giờ) */
 .bp-pop--night {
   background:
@@ -490,7 +508,7 @@ All colors MUST be HSL.
 .bp-pop--night .bp-rays { display: none; }
 .bp-pop--night .bp-kicker { color: #c7d2fe; }
 .bp-pop--night .bp-badge { color: #1e1b4b; }
-.bp-pop--night .bp-thanks { border-top-color: rgba(199,210,254,.18); color: #c7d2fe; }
+.bp-pop--night .bp-thanks { border-top-color: rgba(199,210,254,.2); color: #e0e7ff; }
 .bp-pop--night .bp-shine { background: linear-gradient(100deg, transparent, rgba(255,255,255,.32), transparent); }
 
 /* 4B — huân chương (Chủ Nhật): nền xanh + glow lục kế thừa .bp-pop */
@@ -511,8 +529,8 @@ All colors MUST be HSL.
   background: repeating-conic-gradient(from 0deg, rgba(253,224,71,.2) 0deg 10deg, transparent 10deg 24deg);
   animation-duration: 9s; opacity: .5;
 }
-.bp-pop--fest .bp-badge { color: #5e1212; }
-.bp-pop--fest .bp-thanks { border-top-color: rgba(253,224,71,.22); color: #ffe4b8; }
+.bp-pop--fest .bp-badge { color: #5e1212; box-shadow: 0 3px 12px rgba(245,158,11,.5); }
+.bp-pop--fest .bp-thanks { border-top-color: rgba(253,224,71,.24); color: #ffe9cf; }
 
 /* Số tiền thẻ trân trọng = 60px (đơn thường 64px) */
 .bp-pop--night .bp-amount,
@@ -536,12 +554,12 @@ All colors MUST be HSL.
 .bp-stars { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .bp-star { position: absolute; animation: bp_twinkle 2.6s ease-in-out infinite; }
 
-/* Lời cảm ơn từ quản lý (gạch ngăn trên) */
+/* Lời cảm ơn từ quản lý — ĐIỂM NHẤN (chữ to 19px, gạch ngăn trên) */
 .bp-thanks {
-  margin-top: 13px; padding-top: 11px;
-  border-top: 1px solid rgba(253,224,71,.2);
-  font-size: 12.5px; font-weight: 500; line-height: 1.4;
-  color: rgba(255,255,255,.85);
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid rgba(253,224,71,.22);
+  font-size: 19px; font-weight: 600; line-height: 1.5;
+  color: #fff;
 }
 
 /* Thoát (Sonner đặt data-removed khi đóng) */
