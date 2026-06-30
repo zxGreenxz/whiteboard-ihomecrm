@@ -232,88 +232,233 @@ All colors MUST be HSL.
 }
 
 /* ============================================================
-   Reward snackbar — Dark Mode glassmorphism gamification.
-   Render qua Sonner toast.custom (BonusToast.tsx, top-center, unstyled).
+   Popup thưởng (BonusToast) — port từ Claude Design
+   "Bonus Popup.dc.html" (bản thiết kế lại 2026-06-30).
+   Render qua Sonner toast.custom (top-center, unstyled).
    NGOÀI .sal-root → dùng hex/rgba tường minh.
-   • .reward-toast          → STANDARD (1 khoản): accent Neon Green #00E676.
-   • .reward-toast--combo   → COMBO (≥2 khoản): accent Vàng #FFD700/#FF9100 + glow.
-   Entrance spring slide-down; count-up + confetti + haptic ở component.
-   Auto-dismiss + vuốt-để-đóng do Sonner xử lý.
+   • .bp-pop          → ĐƠN (1 khoản): thẻ XANH, glow lục.
+   • .bp-pop--combo   → COMBO (≥2 khoản): thẻ VÀNG-lục, glow vàng + lửa.
+   Đơn: số tiền TO bên trái · nội dung việc bên phải (📍 phòng align-end).
+   Combo: tổng + tag ngày + bảng phân rã (icon tile · nội dung · +K).
+   count-up / confetti / haptic ở component; auto-dismiss + vuốt do Sonner.
    ============================================================ */
-@keyframes rewardIn {
-  0%   { opacity: 0; transform: translateY(-100%) scale(.96); }
-  60%  { opacity: 1; transform: translateY(8px)   scale(1.012); }
-  80%  {             transform: translateY(-3px)  scale(.998); }
+@keyframes bp_drop {
+  0%   { opacity: 0; transform: translateY(-48px) scale(.62); }
+  55%  { opacity: 1; transform: translateY(7px)   scale(1.06); }
+  72%  {             transform: translateY(-3px)  scale(.985); }
   100% { opacity: 1; transform: translateY(0)     scale(1); }
 }
-@keyframes rewardOut { to { opacity: 0; transform: translateY(-20px); } }
-@keyframes rewardIconPulse { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.14); } }
-@keyframes rewardGlow {
-  0%, 100% { box-shadow: 0 8px 32px rgba(0,0,0,.45), 0 0 20px rgba(255,145,0,.22); }
-  50%      { box-shadow: 0 8px 36px rgba(0,0,0,.5),  0 0 36px rgba(255,145,0,.42); }
+@keyframes bp_out { to { opacity: 0; transform: translateY(-20px) scale(.96); } }
+@keyframes bp_glowGreen {
+  0%, 100% { box-shadow: 0 18px 46px -14px rgba(5,150,105,.55), 0 0 0 1px rgba(16,185,129,.45); }
+  50%      { box-shadow: 0 20px 52px -12px rgba(5,150,105,.72), 0 0 0 1px rgba(52,211,153,.7); }
 }
+@keyframes bp_glowGold {
+  0%, 100% { box-shadow: 0 20px 52px -12px rgba(180,83,9,.55), 0 0 0 1px rgba(250,204,21,.7), 0 0 28px rgba(250,204,21,.28); }
+  50%      { box-shadow: 0 24px 62px -10px rgba(180,83,9,.85), 0 0 0 2px rgba(253,224,71,.95), 0 0 52px rgba(250,204,21,.6); }
+}
+@keyframes bp_rays { to { transform: translateX(-50%) rotate(360deg); } }
+@keyframes bp_shine {
+  0%       { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
+  18%      { opacity: 1; }
+  60%,100% { transform: translateX(360%) skewX(-18deg); opacity: 0; }
+}
+@keyframes bp_coin {
+  0%   { opacity: 0;   transform: translateY(14px) scale(.5) rotate(0); }
+  22%  { opacity: .85; }
+  100% { opacity: 0;   transform: translateY(-58px) scale(1) rotate(22deg); }
+}
+@keyframes bp_amount {
+  0%   { transform: scale(.78); }
+  60%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@keyframes bp_badge {
+  0%, 100% { transform: scale(1);    box-shadow: 0 2px 8px rgba(245,158,11,.5); }
+  50%      { transform: scale(1.08); box-shadow: 0 3px 14px rgba(245,158,11,.75); }
+}
+@keyframes bp_fire {
+  0%, 100% { transform: scale(1) rotate(-4deg); }
+  50%      { transform: scale(1.16) rotate(4deg); }
+}
+@keyframes bp_row { 0% { transform: translateY(6px); } 100% { transform: none; } }
 
-.reward-toast {
-  display: flex; align-items: center; gap: 12px;
-  width: min(90vw, 400px); padding: 16px;
-  border-radius: 16px;
-  background: rgba(30, 30, 30, 0.72);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+/* —— Container —— */
+.bp-pop {
+  position: relative;
+  width: min(92vw, 388px);
+  border-radius: 20px;
+  overflow: hidden;
   font-family: Inter, Roboto, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: #fff;
-  animation: rewardIn .5s cubic-bezier(.18, 1.4, .4, 1);
+  background:
+    radial-gradient(120% 140% at 88% -20%, #16a34a 0%, transparent 55%),
+    radial-gradient(95% 120% at 0% 120%, #064e3b 0%, transparent 60%),
+    linear-gradient(160deg, #075e44 0%, #053627 100%);
+  animation:
+    bp_drop .52s cubic-bezier(.18,1.4,.4,1) both,
+    bp_glowGreen 2s ease-in-out .5s infinite;
 }
-.reward-toast--combo {
-  border-color: rgba(255, 215, 0, 0.4);
-  animation: rewardIn .5s cubic-bezier(.18, 1.4, .4, 1),
-             rewardGlow 1.8s ease-in-out .5s infinite;
+.bp-pop--combo {
+  border-radius: 22px;
+  background:
+    radial-gradient(130% 120% at 80% -25%, #f0a821 0%, transparent 54%),
+    radial-gradient(95% 120% at 0% 120%, #0b5e38 0%, transparent 58%),
+    linear-gradient(160deg, #0a6b42 0%, #053a26 100%);
+  animation:
+    bp_drop .52s cubic-bezier(.18,1.4,.4,1) both,
+    bp_glowGold 1.5s ease-in-out .5s infinite;
 }
 
-.reward-toast__icon {
-  flex-shrink: 0; width: 48px; height: 48px; border-radius: 999px;
-  display: flex; align-items: center; justify-content: center; font-size: 22px;
-  background: rgba(0, 230, 118, 0.2);
-  box-shadow: 0 0 16px rgba(0, 230, 118, 0.28), inset 0 0 0 1px rgba(0, 230, 118, 0.32);
-  animation: rewardIconPulse .7s ease-out .15s 1;
+/* —— Tia jackpot xoay —— */
+.bp-rays {
+  position: absolute; top: -45%; left: 50%;
+  width: 230%; height: 230%;
+  transform: translateX(-50%);
+  background: repeating-conic-gradient(from 0deg, rgba(250,204,21,.16) 0deg 11deg, transparent 11deg 26deg);
+  animation: bp_rays 11s linear infinite;
+  pointer-events: none; opacity: .4;
 }
-.reward-toast--combo .reward-toast__icon {
-  background: rgba(255, 215, 0, 0.2);
-  box-shadow: 0 0 18px rgba(255, 145, 0, 0.45), inset 0 0 0 1px rgba(255, 215, 0, 0.42);
+.bp-pop--combo .bp-rays {
+  top: -48%; width: 240%; height: 240%;
+  background: repeating-conic-gradient(from 0deg, rgba(255,224,120,.26) 0deg 9deg, transparent 9deg 22deg);
+  animation-duration: 7s; opacity: .7;
 }
 
-.reward-toast__mid { flex: 1; min-width: 0; }
-.reward-toast__title {
-  font-size: 15px; font-weight: 600; color: #fff; line-height: 1.3;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+/* —— Xu bay —— */
+.bp-coins {
+  position: absolute; z-index: 1; pointer-events: none;
+  bottom: 14px; left: 18px; width: 120px; height: 40px; opacity: .45;
 }
-.reward-toast__sub {
-  margin-top: 2px; font-size: 12px; font-weight: 400; color: #b3b3b3; line-height: 1.3;
+.bp-coin {
+  position: absolute; bottom: 0; font-size: 14px;
+  left: calc(6% + var(--i) * 36%);
+  animation: bp_coin 1.9s ease-out calc(.15s + var(--i) * .45s) infinite;
+}
+.bp-pop--combo .bp-coins {
+  top: 50px; right: 16px; bottom: auto; left: auto;
+  width: 108px; height: 58px; opacity: .55;
+}
+.bp-pop--combo .bp-coin {
+  font-size: 15px;
+  left: calc(6% + var(--i) * 32%);
+  animation-duration: 1.8s;
+  animation-delay: calc(.1s + var(--i) * .45s);
+}
+
+/* —— Nội dung —— */
+.bp-inner {
+  position: relative; z-index: 2;
+  padding: 14px 18px 16px;
+  background: radial-gradient(140% 90% at 50% 0%, rgba(255,255,255,.07), transparent 62%);
+}
+.bp-pop--combo .bp-inner {
+  padding: 16px 18px 18px;
+  background: radial-gradient(140% 90% at 50% 0%, rgba(255,255,255,.09), transparent 62%);
+}
+
+.bp-head { display: flex; align-items: center; gap: 8px; }
+.bp-gift { font-size: 18px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+.bp-gift--fire { animation: bp_fire 1.4s ease-in-out infinite; }
+.bp-kicker {
+  font-size: 11px; font-weight: 800; letter-spacing: .16em;
+  text-transform: uppercase; color: #fde68a;
+}
+.bp-pop--combo .bp-kicker { color: #ffe7a0; }
+
+.bp-badge {
+  margin-left: auto;
+  font-size: 9.5px; font-weight: 900; letter-spacing: .06em;
+  color: #052e1a; background: linear-gradient(180deg, #fde047, #f59e0b);
+  padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  animation: bp_badge 1.5s ease-in-out infinite;
+}
+.bp-badge--combo {
+  font-size: 11px; letter-spacing: .1em; color: #fff;
+  background: linear-gradient(180deg, #f97316, #dc2626);
+  padding: 3px 11px;
+  box-shadow: 0 2px 12px rgba(220,38,38,.55);
+  animation: bp_badge 1.4s ease-in-out infinite;
+}
+
+/* Số tiền lớn (gradient vàng, count-up ở component) */
+.bp-amount {
+  flex-shrink: 0;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900; font-size: 64px; line-height: .92; letter-spacing: -.03em;
+  background: linear-gradient(180deg, #fff7cc 0%, #fde047 38%, #f59e0b 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 12px rgba(245,158,11,.5));
+  animation: bp_amount .62s cubic-bezier(.18,1.4,.4,1) .14s both;
+}
+.bp-pop--combo .bp-amount {
+  font-size: 60px; line-height: 1; letter-spacing: -.02em;
+  background: linear-gradient(180deg, #fff7cc 0%, #ffe176 36%, #f59e0b 100%);
+  -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 4px 16px rgba(245,158,11,.7));
+}
+
+/* Đơn: số tiền trái · cột nội dung phải */
+.bp-body { display: flex; align-items: center; gap: 16px; margin-top: 11px; }
+.bp-work-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bp-work { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.28; }
+.bp-place {
+  align-self: flex-end; margin-top: 8px;
+  font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,.78); white-space: nowrap;
+}
+
+/* Combo: hàng tổng + tag ngày */
+.bp-amount-row { display: flex; align-items: baseline; gap: 9px; margin-top: 9px; }
+.bp-daytag { font-size: 12px; font-weight: 700; color: #ffe7a0; }
+
+/* Combo: bảng phân rã từng khoản */
+.bp-panel {
+  margin-top: 13px; border-radius: 14px;
+  background: rgba(0,0,0,.26);
+  border: 1px solid rgba(253,224,71,.22);
+  overflow: hidden;
+}
+.bp-row {
+  display: flex; align-items: center; gap: 11px; padding: 11px 13px;
+  animation: bp_row .45s ease both;
+}
+.bp-row + .bp-row { border-top: 1px solid rgba(253,224,71,.16); }
+.bp-row-ic {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; background: rgba(255,255,255,.1);
+}
+.bp-row-ic--day { background: rgba(249,115,22,.18); }
+.bp-row-main { flex: 1; min-width: 0; }
+.bp-row-name {
+  font-size: 13.5px; font-weight: 700; color: #fff; line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-
-.reward-toast__right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; }
-.reward-toast__amount {
-  font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -.01em;
-  color: #00E676; font-variant-numeric: tabular-nums;
-}
-.reward-toast--combo .reward-toast__amount {
-  background: linear-gradient(180deg, #FFE082 0%, #FFD700 45%, #FF9100 100%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.reward-toast__pill {
-  margin-top: 5px; font-size: 10px; font-weight: 700; line-height: 1.4;
-  color: #FFD700; background: rgba(255, 215, 0, 0.2);
-  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
-}
-.reward-toast__breakdown {
-  margin-top: 4px; font-size: 10px; color: #b3b3b3; font-variant-numeric: tabular-nums; white-space: nowrap;
+.bp-row-sub { font-size: 10.5px; color: rgba(255,255,255,.55); }
+.bp-row-amt {
+  flex-shrink: 0;
+  font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-weight: 800; font-size: 15px; color: #ffe176; white-space: nowrap;
 }
 
-/* Exit (Sonner đặt data-removed khi đóng) */
-[data-sonner-toast][data-removed="true"] .reward-toast { animation: rewardOut .2s ease forwards; }
+/* Vệt sáng lướt (chạy 2 lần lúc xuất hiện) */
+.bp-shine {
+  position: absolute; inset: 0 auto 0 0; width: 34%; z-index: 3;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.4), transparent);
+  animation: bp_shine 2.4s ease-in-out .55s 2;
+  pointer-events: none;
+}
+.bp-pop--combo .bp-shine {
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
+}
+
+/* Thoát (Sonner đặt data-removed khi đóng) */
+[data-sonner-toast][data-removed="true"] .bp-pop { animation: bp_out .2s ease forwards; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reward-toast, .reward-toast--combo, .reward-toast__icon { animation: none; }
+  .bp-pop, .bp-pop--combo, .bp-rays, .bp-coin, .bp-amount,
+  .bp-badge, .bp-badge--combo, .bp-gift--fire, .bp-row, .bp-shine {
+    animation: none !important;
+  }
 }
