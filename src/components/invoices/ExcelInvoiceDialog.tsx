@@ -218,7 +218,8 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
           .in('meter_id', meterIds)
           .eq('status', 'APPROVED')
           .is('deleted_at', null)
-          .order('reading_date', { ascending: false });
+          .order('reading_date', { ascending: false })
+          .order('created_at', { ascending: false });
         for (const r of readings || []) {
           if (!lastReading.has(r.meter_id)) {
             lastReading.set(r.meter_id, Number(r.current_reading) || 0);
@@ -505,6 +506,7 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
     setSubmitting(true);
     let ok = 0;
     let fail = 0;
+    const readingFails: string[] = [];
     const periodStart = startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date()));
     const periodEnd = endOfMonth(periodStart);
     const fromDate = format(periodStart, 'yyyy-MM-dd');
@@ -512,16 +514,19 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
 
     for (const row of selected) {
       try {
-        // 1) If user entered a current reading, record an UNAPPROVED meter reading.
+        // 1) If user entered a current reading, "chốt" (lock in) the meter
+        //    reading so next month's CHỈ SỐ ĐẦU carries forward from it.
+        //    reading_date = cuối kỳ thanh toán → trigger DB suy ra đúng
+        //    settlement_month và dòng này luôn là chỉ số mới nhất.
         const consumption =
           (Number(row.current_reading) || 0) - (Number(row.prev_reading) || 0);
         if (row.meter_id && row.current_reading !== '' && consumption >= 0) {
           const user = await getSessionUser();
           if (user) {
-            await supabase.from('meter_readings').insert({
+            const { error: readingErr } = await supabase.from('meter_readings').insert({
               user_id: user.id,
               meter_id: row.meter_id,
-              reading_date: issueDate,
+              reading_date: toDate,
               settlement_month: billingMonth,
               previous_reading: row.prev_reading,
               current_reading: Number(row.current_reading),
@@ -532,6 +537,11 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
               service_id: row.elec_service_id,
               recorded_by: user.id,
             } as any);
+            if (readingErr) {
+              // KHÔNG chặn tạo hoá đơn, nhưng phải báo để không "mất" chỉ số âm thầm.
+              console.error('Persist meter reading failed for', row.room_name, readingErr);
+              readingFails.push(row.room_name);
+            }
           }
         }
 
@@ -639,6 +649,13 @@ export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
       title: 'Hoàn tất tạo hoá đơn',
       description: `Thành công: ${ok}${fail > 0 ? ` — Lỗi: ${fail}` : ''}`,
     });
+    if (readingFails.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Chưa lưu được chỉ số điện',
+        description: `Đã tạo hoá đơn nhưng KHÔNG lưu được chỉ số điện cho phòng: ${readingFails.join(', ')}. Vui lòng kiểm tra lại.`,
+      });
+    }
     if (fail === 0) handleClose();
   };
 
