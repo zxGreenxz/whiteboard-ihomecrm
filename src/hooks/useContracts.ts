@@ -1192,8 +1192,10 @@ export const useContractsLegacy = (filters?: {
 
       const { data, error } = await query;
       if (error) {
+        // KHÔNG nuốt lỗi: throw để React Query retry thay vì cache "rỗng-thành-công".
+        // Caller (IncomeExpenseForm) đã default `= []` nên không vỡ UI khi lỗi.
         console.error("useContractsLegacy error:", error);
-        return [];
+        throw error;
       }
       return (data || []) as unknown as LegacyContractWithRelations[];
     },

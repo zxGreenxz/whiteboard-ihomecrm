@@ -87,5 +87,11 @@
 6. **Quyết định compute**: sau khi đo lại, nếu vẫn spike → nâng **Small (~$15/tháng)**. Bật add-on qua dashboard (không tự bật vì tốn phí).
 7. **Service worker** `updateViaCache:'none'` (bảo hiểm rẻ chống shell cũ sau deploy).
 
+## 5b. Đợt 2 (cùng ngày) — mở rộng sang Hợp đồng + Công việc
+Sau khi user hỏi "đã xử lý Hợp đồng + Công việc chưa?", đo lại + mở rộng đúng fix P0:
+- **Công việc**: `useJobs` (src/hooks/useJobs.ts) **throw thay vì nuốt lỗi** (`return []`); `TaskManagementPage` + `TasksMobilePage` bắt `isError` → panel lỗi + nút "Thử lại" (hết "Chưa có việc" GIẢ). Lưu công việc treo = môi trường (INSERT 21ms) → không sửa code lưu.
+- **Hợp đồng**: trang danh sách (`useContractsPaged`) đã tối ưu + đã throw sẵn; thêm bắt `isError` ở `ContractsPage` + `ContractsMobilePage`; `useContractsLegacy` throw thay vì `return []` (caller IncomeExpenseForm đã default `[]`).
+- **Đo RLS per-row** (EXPLAIN, server-side): contracts list scoped **32ms** vs owner 1ms; invoice_items scoped **120ms** vs 46ms → vẫn để dành (đo `__perfReport()` trước, chỉ rewrite nếu còn chậm). Không đụng RLS/bảo mật đợt này.
+
 ## 6. Kế hoạch gốc
 Xem `C:\Users\Nguyen Tam\.claude\plans\ki-m-tra-to-n-di-n-snoopy-cerf.md`.

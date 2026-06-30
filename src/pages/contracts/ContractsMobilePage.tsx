@@ -97,7 +97,7 @@ export default function ContractsMobilePage() {
     stat === 'TERMINATED' ? 'TERMINATED' : 'ACTIVE';
   const buildingIds = buildingId ? [buildingId] : undefined;
 
-  const { data: paged, isLoading } = useContractsPaged(
+  const { data: paged, isLoading, isError, refetch } = useContractsPaged(
     {
       search: debounced || undefined,
       building_ids: buildingIds,
@@ -222,6 +222,11 @@ export default function ContractsMobilePage() {
 
             {isLoading ? (
               <div className="stub"><p>Đang tải hợp đồng…</p></div>
+            ) : isError ? (
+              <div className="stub">
+                <p>Không tải được hợp đồng.</p>
+                <button onClick={() => refetch()} style={{ marginTop: 8, textDecoration: 'underline' }}>Thử lại</button>
+              </div>
             ) : rows.length === 0 ? (
               <div className="stub"><p>Không có hợp đồng nào phù hợp bộ lọc.</p></div>
             ) : (

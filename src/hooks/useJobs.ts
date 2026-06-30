@@ -49,8 +49,10 @@ export const useJobs = (filters?: TaskFilters) => {
       const { data, error } = await query;
 
       if (error) {
+        // KHÔNG nuốt lỗi: throw để vào isError + retry (trước trả [] làm hiện
+        // "Chưa có việc" GIẢ khi RLS/timeout/5xx). Giống fix useInvoices.
         console.error("useJobs error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

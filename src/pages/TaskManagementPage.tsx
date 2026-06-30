@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense } from "react";
 import MainLayout from "@/components/layout/MainLayout";
-import { ClipboardList, Plus, SlidersHorizontal, Search } from "lucide-react";
+import { ClipboardList, Plus, SlidersHorizontal, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -70,7 +70,7 @@ function TaskManagementDesktopPage() {
   const pagination = usePagination(isMobile ? 50 : 20);
 
   // Data hooks
-  const { data: allJobs = [], isLoading } = useJobs(appliedFilters);
+  const { data: allJobs = [], isLoading, isError, error, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
 
   // Tab filter
@@ -367,22 +367,33 @@ function TaskManagementDesktopPage() {
       )}
 
       {/* Table */}
-      <TaskTable
-        data={paginatedData}
-        isLoading={isLoading}
-        onViewDetail={handleViewDetail}
-        onComplete={handleRequestComplete}
-        onEdit={handleEdit}
-        onAddNotes={handleAddNotes}
-        onDelete={handleDelete}
-        pagination={{
-          page: pagination.page,
-          pageSize: pagination.pageSize,
-          onPageChange: pagination.setPage,
-          onPageSizeChange: pagination.setPageSize,
-        }}
-        totalCount={totalCount}
-      />
+      {isError ? (
+        <div className="p-8 flex flex-col items-center gap-3 text-center border rounded-lg bg-white">
+          <AlertTriangle className="h-10 w-10 text-destructive" />
+          <div className="font-medium">Không tải được danh sách công việc</div>
+          <div className="text-sm text-muted-foreground max-w-md break-words">
+            {(error as Error)?.message || "Lỗi kết nối hoặc máy chủ. Vui lòng thử lại."}
+          </div>
+          <Button variant="outline" onClick={() => refetch()}>Thử lại</Button>
+        </div>
+      ) : (
+        <TaskTable
+          data={paginatedData}
+          isLoading={isLoading}
+          onViewDetail={handleViewDetail}
+          onComplete={handleRequestComplete}
+          onEdit={handleEdit}
+          onAddNotes={handleAddNotes}
+          onDelete={handleDelete}
+          pagination={{
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPage,
+            onPageSizeChange: pagination.setPageSize,
+          }}
+          totalCount={totalCount}
+        />
+      )}
 
       {dialogs}
     </MainLayout>

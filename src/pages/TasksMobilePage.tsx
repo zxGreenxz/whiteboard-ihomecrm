@@ -84,7 +84,7 @@ export default function TasksMobilePage() {
   const [completeTarget, setCompleteTarget] = useState<JobWithRelations | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  const { data: allJobs = [], isLoading } = useJobs(appliedFilters);
+  const { data: allJobs = [], isLoading, isError, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
 
   const myUserId = authUser?.id ?? null;
@@ -223,6 +223,11 @@ export default function TasksMobilePage() {
 
             {isLoading ? (
               <div className="stub"><p>Đang tải công việc…</p></div>
+            ) : isError ? (
+              <div className="stub">
+                <p>Không tải được công việc.</p>
+                <button onClick={() => refetch()} style={{ marginTop: 8, textDecoration: 'underline' }}>Thử lại</button>
+              </div>
             ) : shown.length === 0 ? (
               <div className="stub"><p>Không có công việc nào phù hợp.</p></div>
             ) : (
