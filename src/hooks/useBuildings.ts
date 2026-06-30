@@ -32,8 +32,9 @@ export const useBuildings = (options?: { includeVirtual?: boolean }) => {
       const { data, error } = await q.order("created_at", { ascending: false });
 
       if (error) {
+        // KHÔNG nuốt lỗi: throw để vào isError + retry (trước trả [] làm ô lọc toà rỗng âm thầm).
         console.error('useBuildings error:', error);
-        return [];
+        throw error;
       }
 
       // Transform: rooms count + bung membership khu vực thành area_ids/areas

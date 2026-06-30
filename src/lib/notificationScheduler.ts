@@ -15,23 +15,30 @@ import { differenceInDays, format } from 'date-fns';
 import { createPaymentReminderNotification, createOverdueNotification } from './invoiceHelpers';
 
 /**
- * Check and create contract expiry reminders
- * Should be called daily
- *
- * @param userId - User ID
+ * Đọc cấu hình thông báo của user. Tách riêng để runScheduledNotifications nạp
+ * MỘT lần rồi truyền xuống — trước đây 3 hàm con mỗi hàm tự query
+ * notification_config gây 3 request trùng mỗi lần mở app.
  */
-export async function checkContractExpiryReminders(userId: string): Promise<void> {
-  // Get notification settings
-  const { data: settings } = await supabase
+async function fetchNotificationConfig(userId: string): Promise<any | null> {
+  const { data } = await supabase
     .from('settings')
     .select('value')
     .eq('user_id', userId)
     .eq('key', 'notification_config')
     .maybeSingle();
+  return (data?.value as any) ?? null;
+}
 
-  const reminderDays = settings?.value
-    ? ((settings.value as any).contract_expiry_reminder_days || [30, 15, 7])
-    : [30, 15, 7];
+/**
+ * Check and create contract expiry reminders
+ * Should be called daily
+ *
+ * @param userId - User ID
+ */
+export async function checkContractExpiryReminders(userId: string, config?: any): Promise<void> {
+  // Dùng config đã nạp sẵn nếu có; nếu gọi lẻ thì tự nạp (giữ tương thích).
+  const cfg = config ?? (await fetchNotificationConfig(userId));
+  const reminderDays = cfg?.contract_expiry_reminder_days || [30, 15, 7];
 
   // Get active contracts
   const { data: contracts } = await supabase
@@ -87,18 +94,9 @@ export async function checkContractExpiryReminders(userId: string): Promise<void
  *
  * @param userId - User ID
  */
-export async function checkInvoicePaymentReminders(userId: string): Promise<void> {
-  // Get notification settings
-  const { data: settings } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('user_id', userId)
-    .eq('key', 'notification_config')
-    .maybeSingle();
-
-  const reminderDays = settings?.value
-    ? ((settings.value as any).invoice_reminder_days || [7, 3, 1])
-    : [7, 3, 1];
+export async function checkInvoicePaymentReminders(userId: string, config?: any): Promise<void> {
+  const cfg = config ?? (await fetchNotificationConfig(userId));
+  const reminderDays = cfg?.invoice_reminder_days || [7, 3, 1];
 
   // Get unpaid/partial paid invoices
   const { data: invoices } = await supabase
@@ -155,18 +153,9 @@ export async function checkInvoicePaymentReminders(userId: string): Promise<void
  *
  * @param userId - User ID
  */
-export async function checkOverdueInvoices(userId: string): Promise<void> {
-  // Get notification settings
-  const { data: settings } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('user_id', userId)
-    .eq('key', 'notification_config')
-    .maybeSingle();
-
-  const frequency = settings?.value
-    ? ((settings.value as any).overdue_reminder_frequency || 'WEEKLY')
-    : 'WEEKLY';
+export async function checkOverdueInvoices(userId: string, config?: any): Promise<void> {
+  const cfg = config ?? (await fetchNotificationConfig(userId));
+  const frequency = cfg?.overdue_reminder_frequency || 'WEEKLY';
 
   if (frequency === 'NONE') return;
 
@@ -185,30 +174,37 @@ export async function checkOverdueInvoices(userId: string): Promise<void> {
     .in('status', ['APPROVED', 'PARTIAL_PAID'])
     .lt('due_date', new Date().toISOString());
 
-  if (!invoices) return;
+  if (!invoices || invoices.length === 0) return;
 
   const today = new Date();
+
+  // Nạp lần-gửi-cuối của TẤT CẢ hoá đơn quá hạn trong 1 query (trước đây N+1:
+  // mỗi hoá đơn 1 query notifications). Sắp xếp desc → bản đầu cho mỗi invoice_id
+  // là mới nhất.
+  const invoiceIds = invoices.map((inv) => inv.id);
+  const { data: lastNotifs } = await supabase
+    .from('notifications')
+    .select('invoice_id, created_at')
+    .in('invoice_id', invoiceIds)
+    .eq('type', 'OVERDUE_INVOICE')
+    .order('created_at', { ascending: false });
+  const lastByInvoice = new Map<string, string>();
+  for (const n of (lastNotifs ?? []) as Array<{ invoice_id: string; created_at: string }>) {
+    if (!lastByInvoice.has(n.invoice_id)) lastByInvoice.set(n.invoice_id, n.created_at);
+  }
 
   for (const invoice of invoices) {
     const remainingAmount = ((invoice as any).total_amount || 0) - ((invoice as any).paid_amount || 0);
 
-    // Check last notification
-    const { data: lastNotification } = await supabase
-      .from('notifications')
-      .select('created_at')
-      .eq('invoice_id', invoice.id)
-      .eq('type', 'OVERDUE_INVOICE')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const lastSentAt = lastByInvoice.get(invoice.id);
 
     // Determine if we should send based on frequency
     let shouldSend = false;
 
-    if (!lastNotification) {
+    if (!lastSentAt) {
       shouldSend = true; // Never sent
     } else {
-      const lastSent = new Date(lastNotification.created_at);
+      const lastSent = new Date(lastSentAt);
       const daysSinceLastSent = differenceInDays(today, lastSent);
 
       if (frequency === 'DAILY' && daysSinceLastSent >= 1) {
@@ -322,10 +318,12 @@ export async function checkDepositTopupReminders(userId: string): Promise<void> 
  */
 export async function runScheduledNotifications(userId: string): Promise<void> {
   try {
+    // Nạp notification_config MỘT lần rồi truyền xuống (bỏ 3 query trùng).
+    const config = await fetchNotificationConfig(userId);
     await Promise.all([
-      checkContractExpiryReminders(userId),
-      checkInvoicePaymentReminders(userId),
-      checkOverdueInvoices(userId),
+      checkContractExpiryReminders(userId, config),
+      checkInvoicePaymentReminders(userId, config),
+      checkOverdueInvoices(userId, config),
       checkDepositTopupReminders(userId),
     ]);
   } catch (error) {

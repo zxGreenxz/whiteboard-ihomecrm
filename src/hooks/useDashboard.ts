@@ -182,7 +182,12 @@ export const useDashboardStats = (buildingId?: string | null) => {
         reservedRooms,
       };
     },
-    refetchInterval: 60000,
+    // Stats dashboard không cần tươi từng phút: 60s → 5 phút + dừng khi tab ẩn.
+    // Mutation (ghi thu/đổi HĐ…) vẫn invalidate ngay nên số liệu vẫn cập nhật khi
+    // có thay đổi thật; đây chỉ là lưới an toàn nền → bớt bắn 7 query/phút.
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: false,
   });
 };
 

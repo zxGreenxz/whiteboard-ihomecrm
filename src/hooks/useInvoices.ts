@@ -173,8 +173,10 @@ export const useInvoices = (
 
       const { data, error, count } = await query;
       if (error) {
+        // KHÔNG nuốt lỗi: throw để React Query vào isError + retry. Trước đây
+        // return {data:[]} khiến trang hiện "Chưa có hoá đơn" GIẢ khi RLS/timeout/5xx.
         console.error('useInvoices error:', error);
-        return { data: [], count: 0 };
+        throw error;
       }
 
       return {

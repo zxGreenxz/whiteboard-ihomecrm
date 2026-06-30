@@ -321,8 +321,12 @@ export function useZaloAccounts() {
       if (error) { console.error('useZaloAccounts', error); return []; }
       return (data || []).map(mapAccount);
     },
-    // poll nhẹ phòng khi realtime accounts chưa kịp (lúc đang quét QR)
-    refetchInterval: 4000,
+    // poll nhẹ phòng khi realtime accounts chưa kịp (lúc đang quét QR).
+    // 4s → 15s: realtime đã subscribe zalo_accounts (useZaloRealtime) nên poll
+    // chỉ là phòng hờ; refetchIntervalInBackground=false để DỪNG hẳn khi tab ẩn
+    // (bớt request nền + bớt tranh CPU trên gói compute nhỏ).
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
   });
 }
 

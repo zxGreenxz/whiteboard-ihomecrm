@@ -32,8 +32,9 @@ export const useRooms = (buildingId?: string) => {
       const { data, error } = await query;
 
       if (error) {
+        // KHÔNG nuốt lỗi: throw để vào isError + retry (trước trả [] làm dropdown rỗng âm thầm).
         console.error('useRooms error:', error);
-        return [] as RoomWithRelations[];
+        throw error;
       }
 
       // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...) — áp dụng

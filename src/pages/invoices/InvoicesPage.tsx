@@ -2,8 +2,9 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } fro
 import MainLayout from '@/components/layout/MainLayout';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
-import { Receipt } from 'lucide-react';
+import { Receipt, AlertTriangle } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/button';
 import { usePhoneViewport } from '@/hooks/use-mobile';
 
 const InvoicesMobilePage = lazy(() => import('./InvoicesMobilePage'));
@@ -109,7 +110,13 @@ const InvoicesDesktopPage = () => {
   };
 
   // Data fetching
-  const { data: invoicesData, isLoading: isLoadingRaw } = useInvoices(effectiveFilters, { page, pageSize });
+  const {
+    data: invoicesData,
+    isLoading: isLoadingRaw,
+    isError,
+    error,
+    refetch,
+  } = useInvoices(effectiveFilters, { page, pageSize });
   const isLoading = isLoadingRaw || resolvedSearch.pending;
   const invoices = invoicesData?.data ?? [];
   const totalCount = invoicesData?.count ?? 0;
@@ -310,6 +317,17 @@ const InvoicesDesktopPage = () => {
           <div className="bg-white rounded-lg border">
             {isLoading ? (
               <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
+            ) : isError ? (
+              // Phân biệt LỖI (RLS/timeout/5xx) vs RỖNG THẬT: trước đây hook nuốt lỗi
+              // và rơi vào EmptyState "Chưa có hoá đơn" GIẢ. Nay hiện lỗi + nút thử lại.
+              <div className="p-8 flex flex-col items-center gap-3 text-center">
+                <AlertTriangle className="h-10 w-10 text-destructive" />
+                <div className="font-medium">Không tải được danh sách hoá đơn</div>
+                <div className="text-sm text-muted-foreground max-w-md break-words">
+                  {(error as Error)?.message || 'Lỗi kết nối hoặc máy chủ. Vui lòng thử lại.'}
+                </div>
+                <Button variant="outline" onClick={() => refetch()}>Thử lại</Button>
+              </div>
             ) : invoices.length === 0 ? (
               <EmptyState
                 icon={Receipt}
