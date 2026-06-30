@@ -72,6 +72,7 @@ export default function TaskTypeFormDialog({
       default_department_id: "",
       bonus_amount: 0,
       is_repair: false,
+      is_contract: false,
       counts_for_salary: true,
     },
   });
@@ -91,6 +92,7 @@ export default function TaskTypeFormDialog({
           default_department_id: jobType.default_department_id ?? "",
           bonus_amount: jobType.bonus_amount ?? 0,
           is_repair: jobType.is_repair ?? false,
+          is_contract: jobType.is_contract ?? false,
           counts_for_salary: jobType.counts_for_salary ?? true,
         });
       } else {
@@ -105,6 +107,7 @@ export default function TaskTypeFormDialog({
           default_department_id: "",
           bonus_amount: 0,
           is_repair: false,
+          is_contract: false,
           counts_for_salary: true,
         });
       }
@@ -414,7 +417,19 @@ export default function TaskTypeFormDialog({
                 name="is_repair"
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-between">
-                    <FormLabel className="cursor-pointer">Là việc sửa chữa (dùng cho thưởng +20k cả ngày nếu rơi CN/Lễ)</FormLabel>
+                    <FormLabel className="cursor-pointer">Là việc sửa chữa (dùng cho phụ cấp CN/Lễ; thưởng theo việc luôn được tính)</FormLabel>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="is_contract"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <FormLabel className="cursor-pointer">Là việc ký hợp đồng (chỉ thưởng khi hoàn thành sau 18h hoặc CN/Lễ)</FormLabel>
                     <FormControl>
                       <Switch checked={field.value} onCheckedChange={field.onChange} />
                     </FormControl>

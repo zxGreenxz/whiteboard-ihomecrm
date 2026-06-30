@@ -17,6 +17,7 @@ export const jobTypeFormSchema = z.object({
   // Bảng lương: thưởng theo loại việc
   bonus_amount: z.number().int().min(0).default(0),
   is_repair: z.boolean().default(false),
+  is_contract: z.boolean().default(false),
   counts_for_salary: z.boolean().default(true),
 });
 

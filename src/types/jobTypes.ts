@@ -42,6 +42,7 @@ export interface JobType {
   // Bảng lương: thưởng khi hoàn thành 1 việc loại này
   bonus_amount: number | null;
   is_repair: boolean | null;
+  is_contract: boolean | null;
   counts_for_salary: boolean | null;
   created_at: string;
   updated_at: string;
