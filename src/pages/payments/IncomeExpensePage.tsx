@@ -37,6 +37,7 @@ import {
   useIncomeExpenses,
   useIncomeExpenseStats,
   useCancelIncomeExpense,
+  useRestoreIncomeExpense,
   useApproveVoucher,
   useUnapproveVoucher,
   useGenerateRecurringVouchers,
@@ -113,6 +114,7 @@ const IncomeExpenseDesktopPage = () => {
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
@@ -169,6 +171,7 @@ const IncomeExpenseDesktopPage = () => {
     useIncomeExpenseStats(effectiveFilters);
 
   const cancelMutation = useCancelIncomeExpense();
+  const restoreMutation = useRestoreIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
   const unapproveMutation = useUnapproveVoucher();
@@ -278,6 +281,17 @@ const IncomeExpenseDesktopPage = () => {
   const handleCancelVoucher = useCallback((id: string) => {
     setCancelTarget(id);
   }, []);
+
+  const handleRestoreVoucher = useCallback((id: string) => {
+    setRestoreTarget(id);
+  }, []);
+
+  const confirmRestore = useCallback(() => {
+    if (restoreTarget) {
+      restoreMutation.mutate(restoreTarget);
+    }
+    setRestoreTarget(null);
+  }, [restoreTarget, restoreMutation]);
 
   const handleCancelBatch = useCallback((batchId: string) => {
     setCancelBatchTarget(batchId);
@@ -412,6 +426,7 @@ const IncomeExpenseDesktopPage = () => {
             isLoading={isLoading || parsedSearch.pending}
             onView={handleView}
             onCancel={handleCancelVoucher}
+            onRestore={handleRestoreVoucher}
             onStopRecurring={(id) => stopRecurringMutation.mutate(id)}
             onEdit={handleEditVoucher}
             onQuickEdit={handleQuickEditVoucher}
@@ -457,6 +472,7 @@ const IncomeExpenseDesktopPage = () => {
         }}
         voucher={detailVoucher}
         onCancel={handleCancelVoucher}
+        onRestore={handleRestoreVoucher}
         onEdit={handleEditVoucher}
         onQuickEdit={handleQuickEditVoucher}
         onApprove={handleApproveVoucher}
@@ -515,6 +531,32 @@ const IncomeExpenseDesktopPage = () => {
               className="bg-red-600 hover:bg-red-700"
             >
               Huỷ phiếu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!restoreTarget}
+        onOpenChange={() => setRestoreTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận khôi phục phiếu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Phiếu sẽ trở lại trạng thái <b>Đã ghi nhận</b> và tính lại vào{" "}
+              <b>tồn quỹ</b>. Nếu là phiếu thu theo hoá đơn, khoản thanh toán
+              tương ứng trên hoá đơn cũng được phục hồi. Thao tác được ghi vào
+              lịch sử của phiếu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmRestore}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Khôi phục
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

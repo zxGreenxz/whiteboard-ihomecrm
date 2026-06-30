@@ -20,7 +20,7 @@ import {
   type PaginationState,
 } from '@/hooks/usePagination';
 import type { IncomeExpenseWithRelations } from '@/hooks/useIncomeExpenses';
-import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
@@ -35,6 +35,7 @@ import {
   Repeat,
   CalendarX,
   Undo2,
+  RotateCcw,
 } from 'lucide-react';
 import {
   HoverCard,
@@ -49,6 +50,8 @@ interface IncomeExpenseListProps {
   isLoading: boolean;
   onView: (voucher: IncomeExpenseWithRelations) => void;
   onCancel: (id: string) => void;
+  /** Khôi phục phiếu đã huỷ (chỉ super admin). */
+  onRestore?: (id: string) => void;
   /** Dừng lặp lại cho 1 phiếu gốc (repeat_cycle != NONE, không phải phiếu con). */
   onStopRecurring?: (id: string) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
@@ -155,6 +158,7 @@ const IncomeExpenseList = ({
   isLoading,
   onView,
   onCancel,
+  onRestore,
   onStopRecurring,
   onEdit,
   onQuickEdit,
@@ -169,6 +173,7 @@ const IncomeExpenseList = ({
     [pagination.page, pagination.pageSize, totalCount],
   );
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
   const currentUserId = authUser?.id ?? null;
@@ -332,6 +337,19 @@ const IncomeExpenseList = ({
                         title="Huỷ phiếu"
                       >
                         <Ban className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Khôi phục phiếu đã huỷ — chỉ super admin */}
+                    {isCancelled && isSuperAdmin && onRestore && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => onRestore(voucher.id)}
+                        title="Khôi phục phiếu (Super Admin)"
+                      >
+                        <RotateCcw className="h-4 w-4" />
                       </Button>
                     )}
 

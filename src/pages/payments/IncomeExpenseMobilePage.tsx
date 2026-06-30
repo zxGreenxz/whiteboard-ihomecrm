@@ -31,6 +31,7 @@ import {
   useIncomeExpenseStats,
   useIncomeExpenseBatches,
   useCancelIncomeExpense,
+  useRestoreIncomeExpense,
   useApproveVoucher,
   useCancelIncomeExpenseBatch,
   type IncomeExpenseWithRelations,
@@ -154,6 +155,7 @@ export default function IncomeExpenseMobilePage() {
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
@@ -207,6 +209,7 @@ export default function IncomeExpenseMobilePage() {
   const positive = statsData.difference >= 0;
 
   const cancelMutation = useCancelIncomeExpense();
+  const restoreMutation = useRestoreIncomeExpense();
   const approveMutation = useApproveVoucher();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
 
@@ -463,6 +466,7 @@ export default function IncomeExpenseMobilePage() {
               onQuickEdit={(v) => setQuickEditVoucher(v)}
               onApprove={(id) => setApproveTarget(id)}
               onCancel={(id) => setCancelTarget(id)}
+              onRestore={(id) => setRestoreTarget(id)}
             />
           )}
 
@@ -650,6 +654,35 @@ export default function IncomeExpenseMobilePage() {
               className="bg-red-600 hover:bg-red-700"
             >
               Huỷ phiếu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!restoreTarget}
+        onOpenChange={() => setRestoreTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận khôi phục phiếu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Phiếu sẽ trở lại trạng thái <b>Đã ghi nhận</b> và tính lại vào{" "}
+              <b>tồn quỹ</b>. Nếu là phiếu thu theo hoá đơn, khoản thanh toán
+              tương ứng trên hoá đơn cũng được phục hồi. Thao tác được ghi vào
+              lịch sử của phiếu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (restoreTarget) restoreMutation.mutate(restoreTarget);
+                setRestoreTarget(null);
+              }}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Khôi phục
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

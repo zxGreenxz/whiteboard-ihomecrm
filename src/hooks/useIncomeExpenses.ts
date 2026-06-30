@@ -1215,6 +1215,13 @@ export const useCancelIncomeExpense = () => {
           throw payErr;
         }
       }
+
+      // Ghi nhật ký thao tác HUỶ (best-effort — không chặn nếu log lỗi).
+      await (supabase as any).rpc("log_income_expense_action", {
+        p_id: id,
+        p_action: "CANCELLED",
+        p_note: null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
@@ -1227,6 +1234,68 @@ export const useCancelIncomeExpense = () => {
     },
     onError: (error) => {
       console.error("Error cancelling income expense:", error);
+    },
+  });
+};
+
+// Khôi phục phiếu thu/chi đã huỷ (CANCELLED → APPROVED). CHỈ super admin —
+// RPC restore_income_expense tự kiểm quyền (is_super_admin). Với phiếu THU theo
+// hoá đơn đã mất payment khi huỷ, RPC tạo lại payment (chặn trùng) để hoá đơn
+// trở lại đã thu. Thao tác được ghi vào nhật ký (income_expense_audit_log).
+export const useRestoreIncomeExpense = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).rpc("restore_income_expense", {
+        p_id: id,
+      });
+      if (error) {
+        toast.error(error.message || "Không thể khôi phục phiếu");
+        throw error;
+      }
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
+      queryClient.invalidateQueries({ queryKey: ["ie-history", id] });
+      toast.success("Đã khôi phục phiếu");
+    },
+    onError: (error) => {
+      console.error("Error restoring income expense:", error);
+    },
+  });
+};
+
+// Một dòng nhật ký thao tác trên phiếu thu/chi.
+export interface IncomeExpenseAuditLog {
+  id: string;
+  action: string; // 'CANCELLED' | 'RESTORED'
+  actor_id: string | null;
+  actor_name: string | null;
+  old_status: string | null;
+  new_status: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+// Nhật ký thao tác (huỷ / khôi phục) của 1 phiếu — đọc qua RPC SECURITY DEFINER
+// get_income_expense_history để không vướng RLS.
+export const useIncomeExpenseHistory = (id: string | null, enabled = true) => {
+  return useQuery({
+    queryKey: ["ie-history", id],
+    enabled: enabled && !!id,
+    queryFn: async (): Promise<IncomeExpenseAuditLog[]> => {
+      const { data, error } = await (supabase as any).rpc(
+        "get_income_expense_history",
+        { p_id: id }
+      );
+      if (error) throw error;
+      return (data ?? []) as IncomeExpenseAuditLog[];
     },
   });
 };

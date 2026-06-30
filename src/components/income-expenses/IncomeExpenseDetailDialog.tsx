@@ -17,11 +17,14 @@ import {
   ExternalLink,
   Banknote,
   Undo2,
+  RotateCcw,
+  History,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import { supabase } from "@/integrations/supabase/client";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
+import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
@@ -41,6 +44,8 @@ interface Props {
   onApprove?: (id: string) => void;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
+  /** Khôi phục phiếu đã huỷ (chỉ super admin). */
+  onRestore?: (id: string) => void;
 }
 
 const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -76,13 +81,21 @@ export function IncomeExpenseDetailDialog({
   onQuickEdit,
   onApprove,
   onUnapprove,
+  onRestore,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
+
+  // Nhật ký thao tác (huỷ / khôi phục) — chỉ tải khi mở dialog.
+  const { data: history = [] } = useIncomeExpenseHistory(
+    voucher?.id ?? null,
+    open
+  );
 
   // Deep-link sang hoá đơn liên quan (phiếu thu sinh từ thanh toán hoá đơn).
   // Query nhỏ chỉ chạy khi mở dialog và phiếu có invoice_id.
@@ -227,6 +240,20 @@ export function IncomeExpenseDetailDialog({
                   }}
                 >
                   <Ban className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {isCancelled && isSuperAdmin && onRestore && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-green-600 hover:bg-green-700"
+                  title="Khôi phục phiếu (Super Admin)"
+                  onClick={() => {
+                    onRestore(voucher.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4 text-white" />
                 </Button>
               )}
               <Button
@@ -459,6 +486,55 @@ export function IncomeExpenseDetailDialog({
                     )}
                   </button>
                 ))}
+              </div>
+            </>
+          )}
+
+          {/* Nhật ký thao tác (huỷ / khôi phục) */}
+          {history.length > 0 && (
+            <>
+              <SectionTitle>
+                <span className="inline-flex items-center gap-1.5">
+                  <History className="h-4 w-4" />
+                  Lịch sử thao tác
+                </span>
+              </SectionTitle>
+              <div className="rounded-md border border-zinc-200 overflow-hidden divide-y divide-zinc-200">
+                {history.map((h) => {
+                  const isRestore = h.action === "RESTORED";
+                  return (
+                    <div key={h.id} className="flex items-start gap-2 px-4 py-2.5">
+                      <span
+                        className={`shrink-0 mt-0.5 px-2 py-0.5 text-xs rounded ${
+                          isRestore
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {isRestore ? "Khôi phục" : "Huỷ phiếu"}
+                      </span>
+                      <div className="text-sm min-w-0">
+                        <div className="text-foreground">
+                          {h.actor_name || "—"}
+                          <span className="text-muted-foreground">
+                            {" · "}
+                            {h.created_at
+                              ? format(
+                                  new Date(h.created_at),
+                                  "dd-MM-yyyy HH:mm"
+                                )
+                              : ""}
+                          </span>
+                        </div>
+                        {h.note && (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {h.note}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}

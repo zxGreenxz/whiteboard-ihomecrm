@@ -9,6 +9,8 @@ import {
   ChevronRight,
   Banknote,
   FileText,
+  RotateCcw,
+  History,
 } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -16,10 +18,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { formatPeriod } from "@/lib/monthPeriod";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
-import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
+import {
+  useIncomeExpenseHistory,
+  type IncomeExpenseWithRelations,
+} from "@/hooks/useIncomeExpenses";
 
 interface Props {
   voucher: IncomeExpenseWithRelations;
@@ -28,6 +33,8 @@ interface Props {
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
   onApprove?: (id: string) => void;
   onCancel?: (id: string) => void;
+  /** Khôi phục phiếu đã huỷ (chỉ super admin). */
+  onRestore?: (id: string) => void;
 }
 
 const fmtVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -57,14 +64,17 @@ export function IncomeExpenseDetailMobile({
   onQuickEdit,
   onApprove,
   onCancel,
+  onRestore,
 }: Props) {
   const navigate = useNavigate();
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
+  const { data: history = [] } = useIncomeExpenseHistory(v.id);
 
   const invoiceId = v.invoice_id ?? null;
   const { data: relatedInvoice } = useQuery({
@@ -180,6 +190,19 @@ export function IncomeExpenseDetailMobile({
                 }}
               >
                 <Ban size={15} />
+              </button>
+            )}
+            {isCancelled && isSuperAdmin && onRestore && (
+              <button
+                className="vd-act"
+                style={{ background: "#16a34a" }}
+                aria-label="Khôi phục"
+                onClick={() => {
+                  onRestore(v.id);
+                  onClose();
+                }}
+              >
+                <RotateCcw size={15} />
               </button>
             )}
             <button
@@ -370,6 +393,52 @@ export function IncomeExpenseDetailMobile({
                   )}
                 </button>
               ))}
+            </div>
+          </>
+        )}
+
+        {history.length > 0 && (
+          <>
+            <div className="vd-sec">
+              <span className="vd-sec-t">
+                <History size={14} style={{ marginRight: 5, verticalAlign: -2 }} />
+                Lịch sử thao tác
+              </span>
+            </div>
+            <div className="vd-table">
+              {history.map((h) => {
+                const isRestore = h.action === "RESTORED";
+                return (
+                  <div className="vd-irow" key={h.id}>
+                    <div className="vd-irow-l">
+                      <span
+                        className="vd-tag"
+                        style={
+                          isRestore
+                            ? { color: "#15803d", background: "#dcfce7" }
+                            : { color: "#b91c1c", background: "#fee2e2" }
+                        }
+                      >
+                        {isRestore ? "Khôi phục" : "Huỷ phiếu"}
+                      </span>
+                      <span style={{ marginLeft: 8 }}>{h.actor_name || "—"}</span>
+                      {h.note ? (
+                        <div className="vd-irow-desc" style={{ marginTop: 3 }}>
+                          {h.note}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div
+                      className="vd-irow-amt"
+                      style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 400 }}
+                    >
+                      {h.created_at
+                        ? format(new Date(h.created_at), "dd-MM-yyyy HH:mm")
+                        : ""}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}

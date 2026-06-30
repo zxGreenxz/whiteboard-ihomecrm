@@ -27,3 +27,28 @@ export const useIsAdmin = () => {
     retry: 1,
   });
 };
+
+/**
+ * Mirror của SQL `public.is_super_admin()` (migration
+ * 20260506000003_super_admin_tier.sql): true khi auth.uid() ∈ super_admins.
+ *
+ * KHÁC `useIsAdmin` (gồm cả role Admin của tenant): đây là tier cao nhất,
+ * cross-tenant. Dùng để gate đúng các thao tác CHỈ super admin (vd khôi phục
+ * phiếu thu/chi đã huỷ) — khớp chính xác guard của RPC restore_income_expense,
+ * tránh hiện nút cho người mà RPC sẽ từ chối.
+ */
+export const useIsSuperAdmin = () => {
+  return useQuery({
+    queryKey: ["auth", "is_super_admin"],
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await (supabase as any).rpc("is_super_admin");
+      if (error) {
+        console.error("useIsSuperAdmin error:", error);
+        return false;
+      }
+      return !!data;
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+};
