@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { ChevronDown, ChevronRight, ArrowDown } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowDown, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,11 +13,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useMaterialUsages } from '@/hooks/useMaterialUsages';
+import MaterialUsageFormDialog from '@/components/materials/MaterialUsageFormDialog';
 import { format } from 'date-fns';
 
 export default function MaterialUsagesContent() {
   const { data: usages = [], isLoading } = useMaterialUsages();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [formOpen, setFormOpen] = useState(false);
 
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => {
@@ -28,10 +30,16 @@ export default function MaterialUsagesContent() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Phiếu xuất tạo tự động khi staff khai báo vật tư trong phiếu công việc.
-        Mỗi job có nhiều nhất 1 phiếu xuất — sửa qua dialog "Chi tiết công việc".
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Phiếu xuất tạo tự động khi staff khai báo vật tư trong phiếu công việc.
+          Mỗi job có nhiều nhất 1 phiếu xuất — sửa qua dialog "Chi tiết công việc".
+          Ngoài ra có thể tạo phiếu xuất bằng tay (không gắn job).
+        </p>
+        <Button size="sm" className="gap-1 shrink-0" onClick={() => setFormOpen(true)}>
+          <Plus className="h-4 w-4" /> Tạo phiếu xuất
+        </Button>
+      </div>
 
       <Card>
         <CardContent className="p-0">
@@ -42,6 +50,7 @@ export default function MaterialUsagesContent() {
                 <TableHead>Mã phiếu</TableHead>
                 <TableHead>Ngày xuất</TableHead>
                 <TableHead>Phiếu công việc</TableHead>
+                <TableHead>Người tạo</TableHead>
                 <TableHead className="text-right">Tổng SL</TableHead>
                 <TableHead className="text-right">Chi phí</TableHead>
               </TableRow>
@@ -49,13 +58,13 @@ export default function MaterialUsagesContent() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     Đang tải…
                   </TableCell>
                 </TableRow>
               ) : usages.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     Chưa có phiếu xuất nào. Tạo phiếu công việc và thêm vật tư
                     để tự động phát sinh phiếu xuất.
                   </TableCell>
@@ -112,6 +121,15 @@ export default function MaterialUsagesContent() {
                             </span>
                           )}
                         </TableCell>
+                        <TableCell className="text-xs">
+                          <span>{u.creator?.full_name ?? '—'}</span>
+                          <span
+                            className="text-muted-foreground ml-1"
+                            title={format(new Date(u.created_at), 'dd/MM/yyyy HH:mm')}
+                          >
+                            · {format(new Date(u.created_at), 'HH:mm')}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-right font-mono">
                           {totalQty.toLocaleString('vi-VN')}
                         </TableCell>
@@ -121,7 +139,7 @@ export default function MaterialUsagesContent() {
                       </TableRow>
                       {expanded.has(u.id) && (
                         <TableRow>
-                          <TableCell colSpan={6} className="p-0 bg-muted/30">
+                          <TableCell colSpan={7} className="p-0 bg-muted/30">
                             <div className="px-6 py-3">
                               <div className="text-xs text-muted-foreground uppercase mb-2 font-semibold">
                                 Chi tiết phiếu xuất
@@ -184,6 +202,8 @@ export default function MaterialUsagesContent() {
           </Table>
         </CardContent>
       </Card>
+
+      <MaterialUsageFormDialog open={formOpen} onOpenChange={setFormOpen} />
     </div>
   );
 }

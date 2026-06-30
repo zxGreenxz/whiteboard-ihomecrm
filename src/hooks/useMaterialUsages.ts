@@ -9,6 +9,7 @@ export interface MaterialUsageWithItems extends MaterialUsage {
 
 export interface MaterialUsageWithJob extends MaterialUsageWithItems {
   job: { id: string; code: string; title: string } | null;
+  creator: { full_name: string | null } | null;
 }
 
 export const useMaterialUsages = () => {
@@ -26,7 +27,24 @@ export const useMaterialUsages = () => {
         console.error('useMaterialUsages error:', error);
         return [];
       }
-      return (data ?? []) as unknown as MaterialUsageWithJob[];
+      const rows = (data ?? []) as unknown as MaterialUsageWithJob[];
+
+      // Gắn tên người tạo (user_id → profiles.full_name). user_id tham chiếu
+      // auth.users nên không embed trực tiếp được — fetch profiles riêng rồi map.
+      const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase
+          .from('profiles' as any)
+          .select('id, full_name')
+          .in('id', userIds);
+        const nameMap = new Map<string, string | null>(
+          ((profs ?? []) as any[]).map((p) => [p.id as string, p.full_name as string | null]),
+        );
+        for (const r of rows) {
+          r.creator = r.user_id ? { full_name: nameMap.get(r.user_id) ?? null } : null;
+        }
+      }
+      return rows;
     },
   });
 };
@@ -135,6 +153,58 @@ export const useUpsertJobMaterialUsage = () => {
       qc.invalidateQueries({ queryKey: ['material-usages', 'by-job', input.job_id] });
       qc.invalidateQueries({ queryKey: ['materials'] });
       toast.success('Đã lưu vật tư sử dụng cho phiếu công việc');
+    },
+  });
+};
+
+interface CreateUsageInput {
+  usage_date: string;
+  notes: string | null;
+  items: Array<{ material_id: string; quantity: number; unit_cost_at_usage: number }>;
+}
+
+/**
+ * Tạo phiếu xuất kho BẰNG TAY (không gắn job). user_id (ai tạo) + created_at
+ * (thời điểm) do trigger tự ghi. Trừ tồn kho tự động khi insert items.
+ */
+export const useCreateMaterialUsage = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateUsageInput) => {
+      if (input.items.length === 0) {
+        throw new Error('Cần ít nhất 1 dòng vật tư');
+      }
+      const { data: ins, error: iErr } = await supabase
+        .from('material_usages' as any)
+        .insert({ job_id: null, usage_date: input.usage_date, notes: input.notes })
+        .select()
+        .single();
+      if (iErr || !ins) {
+        toast.error(iErr?.message || 'Không thể tạo phiếu xuất');
+        throw iErr ?? new Error('insert failed');
+      }
+      const usageId = (ins as any).id as string;
+
+      const { error: insItErr } = await supabase.from('material_usage_items' as any).insert(
+        input.items.map((it) => ({
+          usage_id: usageId,
+          material_id: it.material_id,
+          quantity: it.quantity,
+          unit_cost_at_usage: it.unit_cost_at_usage,
+        })),
+      );
+      if (insItErr) {
+        // Rollback header để không để lại phiếu rỗng
+        await supabase.from('material_usages' as any).delete().eq('id', usageId);
+        toast.error(insItErr.message || 'Không thể tạo dòng vật tư');
+        throw insItErr;
+      }
+      return usageId;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['material-usages', 'list'] });
+      qc.invalidateQueries({ queryKey: ['materials'] });
+      toast.success('Đã tạo phiếu xuất kho');
     },
   });
 };
