@@ -19,7 +19,8 @@ import BonusToast, { formatBonusK } from '@/components/tasks/BonusToast';
 export interface AwardedBonus {
   bonus_kind: 'JOB' | 'DAY_BONUS';
   amount: number;
-  label: string;
+  label: string; // loại việc (vd "Sửa chữa") / tên phụ cấp
+  note: string | null; // ghi chú công việc = jobs.title (vd "vòi nước nhà tắm")
   place: string;
   content: string;
   icon: string;
@@ -53,16 +54,19 @@ export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonu
   const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
   const isCombo = rows.length >= 2;
 
-  // Một popup "phần thưởng" nổi ở TOP-CENTER (unstyled để thẻ game-farm chiếm trọn).
+  // Một reward snackbar nổi TOP-CENTER (unstyled để thẻ glassmorphism chiếm trọn).
+  // Auto-dismiss 4000ms; combo lâu hơn chút để đọc breakdown. Vuốt = Sonner tự lo.
   toast.custom(
     () => createElement(BonusToast, { items: rows, total, isCombo }),
-    { duration: isCombo ? 7000 : 6000, position: 'top-center', unstyled: true },
+    { duration: isCombo ? 4500 : 4000, position: 'top-center', unstyled: true },
   );
 
   // Một Web Push (thanh trạng thái) — nuốt lỗi êm (chưa bật push → sent:0).
   const pushTitle = `🎉 ${formatBonusK(total)}${isCombo ? ' COMBO' : ' thưởng'}`;
   const pushBody = isCombo
-    ? rows.map((r) => `${r.icon} ${r.label}: ${formatBonusK(r.amount)}`).join('\n')
+    ? rows
+        .map((r) => `${r.icon} ${r.label}${r.note ? ' ' + r.note : ''}: ${formatBonusK(r.amount)}`)
+        .join('\n')
     : rows[0].content;
   supabase.functions
     .invoke('send-push', {
