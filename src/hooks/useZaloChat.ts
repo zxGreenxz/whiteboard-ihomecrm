@@ -2,7 +2,7 @@
 // Map row DB → shape ZaloConversation/ZaloMessage mà các component Phần 1 dùng
 // (JSX giữ nguyên). RPC mới cast `as any` cho gọn (types.ts đã regen nhưng tránh
 // vướng kiểu hàm sinh tự động).
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,6 +11,18 @@ import type {
 } from '@/components/chat-zalo/types';
 
 const db = supabase as any;
+
+// CHỈ lấy đúng cột FE dùng (mapConv/mapMsg) thay vì select('*') — giảm payload mỗi lần
+// refetch. Kèm LIMIT để chặn trường hợp danh sách/lịch sử quá dài kéo cả nghìn dòng.
+// (Bối cảnh: cú spike egress 26/06 do worker bulk-sync bắn realtime → FE refetch
+//  select('*') toàn bộ danh sách nhiều lần = O(N²).)
+const CONV_COLS = 'id, account_id, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, profile';
+const MSG_COLS = 'id, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to';
+// Trần an toàn (chống kéo cả chục nghìn dòng nếu DB phình to). Đặt cao hơn dữ liệu
+// hiện tại (≈1.8k hội thoại) để KHÔNG ẩn bớt gì hôm nay — phần giảm egress đến từ
+// debounce + chọn cột, không phải từ limit.
+const CONV_LIMIT = 5000;
+const MSG_LIMIT = 1000;
 
 // ── format giờ/ngày hiển thị ──
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -107,8 +119,9 @@ export function useZaloConversations() {
     queryFn: async (): Promise<ZaloConversation[]> => {
       const { data, error } = await db
         .from('zalo_conversations')
-        .select('*')
-        .order('last_message_at', { ascending: false, nullsFirst: false });
+        .select(CONV_COLS)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .limit(CONV_LIMIT);
       if (error) { console.error('useZaloConversations', error); return []; }
       return (data || []).map(mapConv);
     },
@@ -121,13 +134,17 @@ export function useZaloMessages(convId?: string) {
     queryKey: QK.messages(convId || ''),
     enabled: !!convId,
     queryFn: async (): Promise<ZaloMessage[]> => {
+      // Lấy MSG_LIMIT tin MỚI nhất (desc) rồi đảo lại thành tăng dần để hiển thị —
+      // tránh kéo toàn bộ lịch sử mỗi lần refetch. "Tải thêm" (useLoadHistory) vẫn
+      // nạp tin cũ hơn qua worker khi cần.
       const { data, error } = await db
         .from('zalo_messages')
-        .select('*')
+        .select(MSG_COLS)
         .eq('conversation_id', convId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(MSG_LIMIT);
       if (error) { console.error('useZaloMessages', error); return []; }
-      return (data || []).map(mapMsg);
+      return (data || []).slice().reverse().map(mapMsg);
     },
   });
 }
@@ -360,31 +377,48 @@ export function useDisconnectAccount() {
 // ── Realtime: cập nhật danh sách + luồng tin + trạng thái tài khoản tức thì ──
 export function useZaloRealtime(activeId?: string) {
   const qc = useQueryClient();
+
+  // Gom nhiều event realtime trong một cửa sổ ngắn → CHỈ 1 lần invalidate/refetch.
+  // Khi worker bulk-sync (hàng nghìn dòng), mỗi dòng bắn 1 event; nếu invalidate ngay
+  // từng event thì FE refetch danh sách N lần (egress O(N²) — chính là cú spike 26/06).
+  // Debounce gộp cơn bão đó về ~1 refetch mỗi đợt sync; chat lẻ vẫn cập nhật < nửa giây.
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const debouncedInvalidate = useCallback((key: readonly unknown[], ms = 400) => {
+    const k = key.join('|');
+    const t = timers.current;
+    if (t[k]) clearTimeout(t[k]);
+    t[k] = setTimeout(() => { delete t[k]; qc.invalidateQueries({ queryKey: key as any }); }, ms);
+  }, [qc]);
+  useEffect(() => {
+    const t = timers.current;
+    return () => { for (const k in t) clearTimeout(t[k]); };
+  }, []);
+
   useEffect(() => {
     const convCh = supabase
       .channel('zalo-convs')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_conversations' }, () => {
-        qc.invalidateQueries({ queryKey: QK.conversations });
+        debouncedInvalidate(QK.conversations);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_accounts' }, () => {
-        qc.invalidateQueries({ queryKey: QK.accounts });
+        debouncedInvalidate(QK.accounts, 200);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_labels' }, () => {
-        qc.invalidateQueries({ queryKey: QK.labels });
+        debouncedInvalidate(QK.labels);
       })
       .subscribe();
     return () => { supabase.removeChannel(convCh); };
-  }, [qc]);
+  }, [debouncedInvalidate]);
 
   useEffect(() => {
     if (!activeId) return;
     const msgCh = supabase
       .channel(`zalo-msg-${activeId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'zalo_messages', filter: `conversation_id=eq.${activeId}` }, () => {
-        qc.invalidateQueries({ queryKey: QK.messages(activeId) });
-        qc.invalidateQueries({ queryKey: QK.conversations });
+        debouncedInvalidate(QK.messages(activeId));
+        debouncedInvalidate(QK.conversations);
       })
       .subscribe();
     return () => { supabase.removeChannel(msgCh); };
-  }, [activeId, qc]);
+  }, [activeId, debouncedInvalidate]);
 }
