@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, HandCoins, Plug } from 'lucide-react';
+import { ArrowLeft, HandCoins, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useInvoices } from '@/hooks/useInvoices';
@@ -43,6 +43,8 @@ const ThuTien = () => {
   // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
   const canRecordPayment = canUse(perms, 'thu_tien', 'collect');
   const canViewReport = canUse(perms, 'thu_tien', 'report');
+  // Báo cáo Chu kỳ Thu → Bàn giao (self-view; quản lý xem của mình).
+  const canCycleReport = canUse(perms, 'reports_finance', 'collection_cycle');
 
   const [buildingId, setBuildingId] = useState('');
   const [billingMonth, setBillingMonth] = useState(currentMonth());
@@ -263,6 +265,16 @@ const ThuTien = () => {
             {canRecordPayment && (
               <button type="button" className="tt-utility" title="Đóng tiền điện nước" onClick={openUtility}>
                 <Plug />
+              </button>
+            )}
+            {canCycleReport && (
+              <button
+                type="button"
+                className="tt-utility"
+                title="Chu kỳ Thu → Bàn giao (công nợ tòa của tôi)"
+                onClick={() => navigate('/reports/finance/thu-ban-giao')}
+              >
+                <Repeat />
               </button>
             )}
             <div className="hdr-period">

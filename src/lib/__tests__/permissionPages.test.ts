@@ -22,6 +22,23 @@ import {
   type PermissionsMap,
 } from "@/lib/permissions";
 
+describe("collection_cycle: người thu tiền tự xem được (fallback record_payment)", () => {
+  // Quản lý (Quản Lý Tòa): reports_finance.view = false nhưng invoices.record_payment = true.
+  const managerPerms: PermissionsMap = {
+    invoices: { record_payment: true, view: true },
+    reports_finance: { view: false, edit: false, create: false, delete: false, export: false },
+  };
+  it("collection_cycle = TRUE cho người có invoices.record_payment (dù reports_finance.view=false)", () => {
+    expect(canUse(managerPerms, "reports_finance", "collection_cycle")).toBe(true);
+    // Không mở các báo cáo tài chính khác:
+    expect(canUse(managerPerms, "reports_finance", "analysis")).toBe(false);
+    expect(canUse(managerPerms, "reports_finance", "daily_cashbook")).toBe(false);
+  });
+  it("collection_cycle = FALSE cho người không thu tiền & không có reports_finance", () => {
+    expect(canUse({ leads: { view: true } } as PermissionsMap, "reports_finance", "collection_cycle")).toBe(false);
+  });
+});
+
 describe("catalog ↔ registry consistency", () => {
   it("mọi (module × action) trong registry đều có mặt trong catalog (không quyền mồ côi)", () => {
     expect(findOrphanRegistryKeys()).toEqual([]);
