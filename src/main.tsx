@@ -9,11 +9,12 @@ import { initPerfTrace } from "./lib/perfTrace";
 // Lưu vết hiệu năng (đo request Supabase chậm + tổng hợp __perfReport()).
 initPerfTrace();
 
-// Sau mỗi lần deploy, chunk hash cũ bị 404 khi điều hướng → Vite bắn
-// vite:preloadError. Tự reload để lấy index.html mới; nếu guard chống loop
-// từ chối (đã reload trong vòng 1 phút) thì để lỗi rơi xuống ErrorBoundary.
+// Sau mỗi lần deploy, chunk hash cũ bị 404/poisoned khi điều hướng → Vite bắn
+// vite:preloadError (event.payload = lỗi gốc). Bust cache độc + reload lấy
+// index.html mới; nếu guard chống loop từ chối thì để lỗi rơi xuống ErrorBoundary.
 window.addEventListener("vite:preloadError", (event) => {
-  if (reloadOnceForStaleChunk()) event.preventDefault();
+  const payload = (event as Event & { payload?: unknown }).payload;
+  if (reloadOnceForStaleChunk(payload)) event.preventDefault();
 });
 
 createRoot(document.getElementById("root")!).render(<App />);

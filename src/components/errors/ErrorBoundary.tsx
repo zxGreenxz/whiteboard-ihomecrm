@@ -28,9 +28,10 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Chunk lazy 404 sau deploy mới (Vite emit bare import() cho chunk không có
-    // dep nên không qua vite:preloadError) → tự reload 1 lần lấy bản mới.
-    if (isChunkLoadError(error) && reloadOnceForStaleChunk()) {
+    // Chunk lazy 404/poisoned sau deploy mới (Vite emit bare import() cho chunk
+    // không có dep nên không qua vite:preloadError) → bust cache độc + reload lấy
+    // bản mới. Truyền `error` để rút URL chunk hỏng mà bust đúng entry.
+    if (isChunkLoadError(error) && reloadOnceForStaleChunk(error)) {
       return;
     }
     console.error("ErrorBoundary caught an error:", error, errorInfo);
