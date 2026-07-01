@@ -40,17 +40,18 @@ export interface CashHandover extends HandoverLite {
 }
 
 /**
- * Phiếu CHƯA bàn giao trong sổ "…Thu" của chính mình — CẢ phiếu THU lẫn CHI
- * (bàn giao theo số dư ròng). Loại phiếu CHI chuyển ("Bàn giao tiền mặt →" do
- * confirm sinh ra, mang handover_transfer_id) để không trừ trùng; phiếu THU
- * chuyển ("Nhận bàn giao") vẫn cho quét để bàn giao tiếp.
+ * Phiếu CHƯA bàn giao trong 1 SỔ của chính mình — CẢ phiếu THU lẫn CHI (bàn
+ * giao theo số dư ròng). Mặc định sổ "…Thu" của user; truyền `sourceAccountId`
+ * để bàn giao từ sổ khác (vd sổ chuyển khoản tkHiep). Loại phiếu CHI chuyển
+ * ("Bàn giao tiền mặt →" do confirm sinh ra, mang handover_transfer_id) để
+ * không trừ trùng; phiếu THU chuyển ("Nhận bàn giao") vẫn cho quét để bàn giao tiếp.
  */
-export const useUnhandedVouchers = () => {
+export const useUnhandedVouchers = (sourceAccountId?: string) => {
   const { data: accounts = [] } = useAccounts();
   const { data: currentUser } = useAuth();
   const accountId = useMemo(
-    () => ownCashAccountId(accounts as any[], currentUser?.id),
-    [accounts, currentUser],
+    () => sourceAccountId || ownCashAccountId(accounts as any[], currentUser?.id),
+    [sourceAccountId, accounts, currentUser],
   );
 
   const query = useQuery({

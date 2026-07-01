@@ -52,14 +52,6 @@ export function HandoverSheet({ show, onClose }: Props) {
   const { data: currentUser } = useAuth();
   const { data: accounts = [] } = useAccounts();
   const { data: staffUsers = [] } = useStaffUsers();
-  const { data: vouchers = [], accountId, isLoading: loadingVouchers } = useUnhandedVouchers();
-  const { data: handovers = [], actionCount } = useCashHandoverList();
-
-  const createMut = useCreateHandover();
-  const confirmMut = useConfirmHandover();
-  const requestCancelMut = useRequestCancelHandover();
-  const confirmCancelMut = useConfirmCancelHandover();
-  const rejectCancelMut = useRejectCancelHandover();
 
   const [tab, setTab] = useState<Tab>('create');
   // Mặc định tick HẾT: lưu tập "bỏ tick" để khỏi đồng bộ khi list thay đổi.
@@ -71,6 +63,9 @@ export function HandoverSheet({ show, onClose }: Props) {
   // Phiên đang mở ô nhập lý do hủy.
   const [cancelFor, setCancelFor] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  // Sổ NGUỒN muốn bàn giao ('' = sổ "…Thu" mặc định). Cho phép chọn sổ khác
+  // (vd sổ chuyển khoản tkHiep) — bàn giao net-sweep chạy cho mọi loại sổ.
+  const [sourceAccountId, setSourceAccountId] = useState('');
 
   const myId = currentUser?.id;
   const receivers = useMemo(
@@ -81,7 +76,28 @@ export function HandoverSheet({ show, onClose }: Props) {
     () => (accounts as any[]).filter((a) => a.user_id === myId),
     [accounts, myId],
   );
-  const defaultToAccount = ownCashAccountId(accounts as any[], myId);
+  // Sổ có thể bàn giao: sổ thu tiền mặt ("…Thu") hoặc sổ ngân hàng ("TK…" /
+  // có bank_name) do tôi sở hữu — bỏ sổ "…Thối"/audit khác cho gọn.
+  const sourceBooks = useMemo(
+    () => myAccounts.filter((a: any) => {
+      const n = (a.name ?? '').trim();
+      return n.endsWith('Thu') || /^tk/i.test(n) || !!a.bank_name;
+    }),
+    [myAccounts],
+  );
+  const ownId = useMemo(() => ownCashAccountId(accounts as any[], myId), [accounts, myId]);
+  const effectiveSource = sourceAccountId || ownId || sourceBooks[0]?.id || '';
+  const defaultToAccount = ownId;
+
+  const { data: vouchers = [], accountId, isLoading: loadingVouchers } =
+    useUnhandedVouchers(effectiveSource);
+  const { data: handovers = [], actionCount } = useCashHandoverList();
+
+  const createMut = useCreateHandover();
+  const confirmMut = useConfirmHandover();
+  const requestCancelMut = useRequestCancelHandover();
+  const confirmCancelMut = useConfirmCancelHandover();
+  const rejectCancelMut = useRejectCancelHandover();
 
   const selectedIds = useMemo(
     () => vouchers.filter((v) => !unticked.has(v.id)).map((v) => v.id),
@@ -390,12 +406,31 @@ export function HandoverSheet({ show, onClose }: Props) {
         <div className="sheet-scroll rp-body">
           {tab === 'create' && (
             <>
+              {/* Chọn sổ nguồn — chỉ hiện khi tôi có >1 sổ (vd Hiệp: "Hiệp Thu"
+                  tiền mặt + "TKHIEP" chuyển khoản). Đổi sổ → tải lại phiếu. */}
+              {sourceBooks.length > 1 && (
+                <div className="ho-form" style={{ paddingBottom: 0 }}>
+                  <label className="rp-dd">
+                    <span className="rp-dd-l">Sổ bàn giao</span>
+                    <div className="rp-dd-sel">
+                      <select
+                        value={effectiveSource}
+                        onChange={(e) => { setSourceAccountId(e.target.value); setUnticked(new Set()); }}
+                      >
+                        {sourceBooks.map((a: any) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </label>
+                </div>
+              )}
               {!accountId ? (
                 <div className="c-empty">
                   <div className="e-ic">📒</div>
                   <p>
-                    Bạn chưa có sổ quỹ "…Thu" của riêng mình nên chưa tổng kết được tiền đã thu.
-                    Tạo sổ tên kết thúc bằng "Thu" trong Sổ quỹ trước nhé.
+                    Bạn chưa có sổ quỹ nào của riêng mình nên chưa tổng kết được tiền.
+                    Tạo sổ quỹ (tên kết thúc "Thu" cho tiền mặt) trong Sổ quỹ trước nhé.
                   </p>
                 </div>
               ) : loadingVouchers ? (
