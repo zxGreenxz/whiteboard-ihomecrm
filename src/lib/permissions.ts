@@ -98,7 +98,10 @@ export type ActionKey =
   | "payment_schedule"
   | "overpayment"
   | "deposits_report"
-  | "analysis";
+  | "analysis"
+  | "handover_report"
+  // Đối soát/chốt số sổ quỹ (báo cáo bàn giao)
+  | "reconcile";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -227,7 +230,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "reports_finance",
         label: "Báo cáo tài chính",
         core: ["view"],
-        extra: ["analysis", "daily_cashbook", "cash_flow", "profit_distribution", "debt", "customer_debt", "payment_schedule", "overpayment", "deposits_report", "export"],
+        extra: ["analysis", "daily_cashbook", "cash_flow", "profit_distribution", "debt", "customer_debt", "payment_schedule", "overpayment", "deposits_report", "handover_report", "reconcile", "export"],
       },
     ],
   },
@@ -324,6 +327,8 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   overpayment:    "BC Tiền thừa",
   deposits_report: "BC Danh sách cọc",
   analysis:       "BC Phân tích tài chính",
+  handover_report: "BC Bàn giao tiền & Đối soát",
+  reconcile:      "Chốt số / đối soát sổ",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */

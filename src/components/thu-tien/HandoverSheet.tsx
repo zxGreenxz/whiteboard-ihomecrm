@@ -125,10 +125,18 @@ export function HandoverSheet({ show, onClose }: Props) {
   };
 
   const submitConfirm = async (h: CashHandover) => {
+    // Sổ nhận: đã chọn → sổ "…Thu" mặc định → sổ đầu tiên của tôi → null
+    // (null: confirm_cash_handover tự fallback "…Thu"; nếu KHÔNG có sổ nào thì
+    // báo lỗi rõ ràng thay vì gửi null âm thầm).
+    const toId = toAccount[h.id] || defaultToAccount || myAccounts[0]?.id || '';
+    if (!toId) {
+      toast.error('Bạn chưa có sổ quỹ nào để nhận — tạo sổ quỹ trước khi nhận bàn giao');
+      return;
+    }
     try {
       const res = await confirmMut.mutateAsync({
         handoverId: h.id,
-        toAccountId: toAccount[h.id] || defaultToAccount || null,
+        toAccountId: toId,
       });
       toast.success(`Đã nhận ${fmtFull(h.total_amount)} — phiên ${res.code} hoàn tất, tiền đã vào sổ của bạn`);
     } catch (e) {

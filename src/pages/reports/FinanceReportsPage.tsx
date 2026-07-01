@@ -9,6 +9,7 @@ import {
   Coins,
   Wallet,
   BarChart3,
+  HandCoins,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
@@ -23,6 +24,14 @@ const reports = [
     path: "/report/finance/analysis",
     color: "text-violet-600",
     bgColor: "bg-violet-50",
+  },
+  {
+    title: "Bàn giao tiền & Đối soát sổ",
+    description: "Theo từng sổ: đã thu, đã chi, đã bàn giao cho chủ, còn phải nộp — và chốt số sổ chuyển khoản",
+    icon: HandCoins,
+    path: "/reports/finance/ban-giao",
+    color: "text-teal-600",
+    bgColor: "bg-teal-50",
   },
   {
     title: "Sổ quỹ theo ngày",
@@ -107,7 +116,7 @@ const FinanceReportsPage = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
             <p className="text-muted-foreground">
-              10 loại báo cáo phân tích tài chính và dòng tiền
+              11 loại báo cáo phân tích tài chính và dòng tiền
             </p>
           </div>
         </div>
