@@ -6,7 +6,7 @@
 >
 > Nền: [BAN-TRON-CO-CHE-LUONG-THUONG-V3.md](BAN-TRON-CO-CHE-LUONG-THUONG-V3.md) · Kỹ thuật: [THIET-KE-BANG-LUONG-KPI-GAMING.md](THIET-KE-BANG-LUONG-KPI-GAMING.md).
 >
-> Cập nhật: 2026-07-01.
+> Cập nhật: 2026-07-01. · **v4.1 (chủ chỉnh):** chuyên cần full 6tr = **đủ 26 ngày** (thay 22) — đơn giá ~231k/ngày; nghỉ-có-phép mất tiền-công-ngày nhưng giữ streak. Xem §B.2/§B.5.
 
 ---
 
@@ -84,9 +84,9 @@ Suốt v1→v3, cả hội đồng **chốt "streak phải NHỎ (≤1tr), phi-t
         │      POOL CHUYÊN CẦN = 6tr        │     POOL STREAK = 3tr      │
         │      (đo TỔNG ngày = COUNT)       │  (đo MAX chuỗi liên tiếp) │
         ├──────────────────┬───────────────┤                           │
-        │  SÀN 3tr         │  LEO 3tr      │   BẬC THANG banked         │
-        │  (khi ≥13 ngày,  │  (333k/ngày,  │   6 mốc, best-of-month,    │
-        │   CHỦ gánh)      │   ngày 13→22) │   reset mỗi tháng, ≤600k/mốc│
+        │  SÀN MỀM 3tr     │  LEO 3tr      │   BẬC THANG banked         │
+        │  (tuỳ chọn,      │  (~231k/ngày, │   6 mốc, best-of-month,    │
+        │   khi ≥13 ngày)  │   đủ 26 = 6tr)│   reset mỗi tháng, ≤600k/mốc│
         │  ← chống turnover│  ← at-risk    │   ← at-risk, KHÔNG sàn      │
         └──────────────────┴───────────────┴──────────────────────────┘
               ↑ tiền-để-SỐNG                    ↑ thưởng ĐỘ-BỀN đã chứng minh
@@ -105,19 +105,23 @@ Dải dao động THỰC của người đi làm đều = 6–9tr (KHÔNG phải
 | Tham số | Giá trị | Ghi chú |
 |---|---|---|
 | `DENOM` | 26 | ngày-làm T2–T7, CN không tính |
-| `FLOOR_PAY` | 3.000.000đ | SÀN cứng, trả khi ngày-công ≥ FLOOR_DAY |
-| `FLOOR_DAY` | 13 | nửa tháng chẵn — mở sàn |
-| `FULL_DAYS` | 22 | đạt 22 → full 6tr |
-| `RATE_PER_DAY` | 333.333đ | = 3.000.000 / (22 − 13) |
+| `FULL_DAYS` | **26** | **đủ 26 ngày-công = full 6tr** — chuyên cần THẬT = đi làm đủ (chủ chốt, thay 22) |
+| `RATE_PER_DAY` | **230.769đ** (~231k) | = 6.000.000 / 26 |
+| `FLOOR_SOFT` | 3.000.000đ khi ngày-công ≥ 13 | sàn MỀM tuỳ chọn (linear đã cho đúng 3tr tại 13 ngày; sàn chỉ nâng người 8–12 ngày) |
 
 ```
-attend_pay = 3.000.000 + 3.000.000 × clamp((ngày_công − 13) / (22 − 13), 0, 1)   (khi ngày_công ≥ 13)
-             = 3.000.000 × (ngày_công / 13)                                        (khi < 13, pro-rate, không sàn)
+attend_pay = 6.000.000 × clamp(ngày_công_THẬT / 26, 0, 1)
+             [+ tuỳ chọn sàn: max(.., 3.000.000) nếu ngày_công ≥ 13]   ← chống turnover
 ```
 
-| ngày-công | 8 | 10 | 12 | **13** | 14 | 16 | 18 | 20 | **22+** |
+- **Đủ 26 ngày → full 6tr.** Mỗi ngày đi làm thật ≈ **231k**; thiếu ngày nào bớt ngày đó (chuyên cần = tiền TRẢ THEO NGÀY ĐI LÀM).
+- **Nghỉ CÓ PHÉP (phép-duyệt):** mặc định KHÔNG cộng tiền chuyên cần ngày nghỉ (bạn không đi làm ngày đó), NHƯNG **bảo vệ STREAK** (không đứt chuỗi) → cục tiền lớn 3tr an toàn, chỉ mất ~231k tiền-công-ngày. *(Nếu chủ muốn phép-duyệt CŨNG được trả đủ chuyên cần — "chuyên cần bảo vệ phép" — bật cờ `paid_leave=true`; khi đó đủ 26 = ngày-công thật + ngày-phép.)*
+
+| ngày-công | 8 | 10 | **13** | 16 | 18 | 20 | 22 | 24 | **26** |
 |---|---|---|---|---|---|---|---|---|---|
-| **chuyên cần** | 1,85tr | 2,31tr | 2,77tr | **3,00tr (sàn)** | 3,33tr | 4,00tr | 4,67tr | 5,33tr | **6,00tr** |
+| **chuyên cần** | 1,85tr | 2,31tr | **3,00tr** | 3,69tr | 4,15tr | 4,62tr | 5,08tr | 5,54tr | **6,00tr** |
+
+*(Sàn mềm bật: cột 8→3,00tr, 10→3,00tr; ≥13 giữ nguyên như trên.)*
 
 ## B.3 — STREAK → 3tr (best-of-month, banked, reset tháng)
 
@@ -164,16 +168,16 @@ Cùng `COUNT=20`, streak chênh ~2,2tr vì `MAX-run` khác → 2 truy vấn khá
 
 | Chân dung | ngày-công | chuỗi dài nhất | **Chuyên cần** | **Streak** | **TỔNG** |
 |---|---|---|---|---|---|
-| **① SIÊNG** — 22 ngày liền mạch | 22 | 22, đứt=0 | 6,00tr | 3,00tr (5 mốc + không-đứt) | **9,00tr** |
-| **② BÌNH THƯỜNG** — 20 ngày, đứt 1–2 lần | 20 | 16 | 5,33tr | 2,00tr (mốc 4+8+12+16) | **7,33tr** |
-| **③ ĐỦ-SỐNG** — 18 ngày, ngắt quãng | 18 | 8 | 4,67tr | 0,80tr (mốc 4+8) | **5,47tr** |
-| **④ ĐI-CHO-CÓ** — 13 ngày, rải rác | 13 | 4 | 3,00tr (sàn) | 0,30tr (mốc 4) | **3,30tr** |
-| **⑤ ỐM-CÓ-PHÉP** — 13 ngày, phép đóng băng | 13 | 12 (freeze) | 3,00tr (sàn) | 1,40tr (mốc 4+8+12) | **4,40tr** |
+| **① SIÊNG** — đủ **26 ngày** liền mạch | 26 | 26, đứt=0 | 6,00tr | 3,00tr (5 mốc + không-đứt) | **9,00tr** |
+| **② BÌNH THƯỜNG** — 22 ngày, đứt 1–2 lần | 22 | 16 | 5,08tr | 2,00tr (mốc 4+8+12+16) | **7,08tr** |
+| **③ ĐỦ-SỐNG** — 18 ngày, ngắt quãng | 18 | 8 | 4,15tr | 0,80tr (mốc 4+8) | **4,95tr** |
+| **④ ĐI-CHO-CÓ** — 13 ngày, rải rác | 13 | 4 | 3,00tr | 0,30tr (mốc 4) | **3,30tr** |
+| **⑤ ỐM-CÓ-PHÉP** — 13 ngày làm, phép đóng băng | 13 | 12 (freeze) | 3,00tr | 1,40tr (mốc 4+8+12) | **4,40tr** |
 
-- **Xuất sắc = 9tr** chỉ khi VỪA đủ ngày VỪA liền mạch (①) — hiếm, đúng ý "trần cho người xuất sắc".
-- **Bình thường ~7,3tr** (②): đủ ngày nhưng ngắt quãng, thiếu ~1,7tr so với ① → **bằng chứng chống đo-trùng** (cùng ~20 ngày, streak phân biệt độ-đều).
-- **Lười rớt RÕ**: ④ về đúng sàn 3,3tr; ③ 5,47tr — tín hiệu sớm.
-- **Không ai rơi tự do**: ⑤ ốm-có-phép vẫn 4,4tr nhờ sàn + best-streak + freeze.
+- **Xuất sắc = 9tr** chỉ khi đi **đủ 26 ngày** VÀ liền mạch (①) — chuyên cần thật, đúng ý "trần cho người xuất sắc".
+- **Bình thường ~7,1tr** (②): 22 ngày ngắt quãng, thiếu 4 ngày chuyên cần (~0,92tr) + streak chỉ tới mốc 16 → **bằng chứng chống đo-trùng** (streak phân biệt độ-đều).
+- **Lười rớt RÕ**: ④ về ~3,3tr (13 ngày); ③ 4,95tr — tín hiệu sớm.
+- **Không ai rơi tự do**: ⑤ ốm-có-phép vẫn 4,4tr nhờ sàn mềm + best-streak được freeze bảo vệ (phép giữ streak 3tr, chỉ mất tiền-công những ngày nghỉ).
 
 ## B.6 — Tích hợp kỹ thuật
 
@@ -200,7 +204,7 @@ Cùng `COUNT=20`, streak chênh ~2,2tr vì `MAX-run` khác → 2 truy vấn khá
 - **Geofence ≥90% chuẩn** trước khi bật tiền.
 - **Đo phân bố thực:** trung vị ngày-công, phân bố **best-streak**, độ-đứt-chuỗi, % dùng khiên.
 - **Van hai chiều (chỉ HẠ, KHÔNG NÂNG trên dữ liệu):**
-  - Trung vị ngày-công < 22 → HẠ FULL_DAYS.
+  - `FULL_DAYS = 26` là **chủ chốt** (chuyên cần thật = đủ 26 ngày). Phase 0 chỉ HẠ nếu trung vị người-làm-thật quá thấp khiến "đủ 26" thành bất khả (kẻo cắt lương ngầm) — cân với ý "phải đủ mới full".
   - Trung vị best-streak < 12 → HẠ mốc streak (kẻo 3tr thành "bánh vẽ").
   - >60% full streak → siết mốc (kẻo lương cứng trá hình).
   - >70% chạm mốc nhờ vá khiên → siết cap tiêu về 1.
@@ -210,9 +214,10 @@ Cùng `COUNT=20`, streak chênh ~2,2tr vì `MAX-run` khác → 2 truy vấn khá
 | # | Vấn đề | Phương án | Ai quyết |
 |---|---|---|---|
 | 1 | **Mức sàn** | 2tr / 2,4tr / **3tr (tạm)** / 4,5tr | Chủ (khẩu vị chi phí cố định × N) |
-| 2 | **Ngày kích sàn** | 10 / **13 (tạm)** | Phase 0 |
-| 3 | **Đơn giá chuyên cần** | 214k / 300k / **333k (tạm)** / 400k | Hệ quả (1)+(2)+FULL |
-| 4 | **FULL_DAYS** | 20 / **22 (tạm)** | Phase 0 trung vị |
+| 2 | **Sàn mềm bật/tắt + ngày kích** | tắt (pure linear) / bật @ 13 ngày **(tạm bật)** | Chủ |
+| 3 | **Đơn giá chuyên cần** | **230.769đ (~231k)** = 6tr/26 — CHỐT theo FULL=26 | (hệ quả FULL=26) |
+| 4 | **FULL_DAYS** | **26 (CHỦ CHỐT — chuyên cần thật)**; chỉ hạ nếu Phase 0 cho thấy median bất khả | Chủ |
+| 4b | **Phép-duyệt có trả chuyên cần không** | mặc định KHÔNG (chỉ bảo vệ streak) / bật `paid_leave` để trả đủ | Chủ |
 | 5 | **Bộ mốc streak** | 5 bộ đề xuất lệch nhau; **4/8/12/16/20+không-đứt (tạm)** | Phase 0 phân bố best-streak |
 | 6 | **Ngày-công thường vs SẠCH** | MVP thường / Phase 2 cổng chất lượng | Đồng thuận (CSKH đòi) |
 | 7 | **Cap tiêu khiên** | 1 / **2 (van Phase 0)** | Dữ liệu |
@@ -225,9 +230,10 @@ Cùng `COUNT=20`, streak chênh ~2,2tr vì `MAX-run` khác → 2 truy vấn khá
 
 ## Tóm tắt cho chủ doanh nghiệp (v4)
 
-*"**3tr chốt cứng** nếu đi làm nửa tháng (≥13 ngày) → **leo tới 6tr** theo số ngày (mỗi ngày +333k, đủ 22 ngày = 6tr) → **cộng tối đa 3tr** thưởng nếu đi làm ĐỀU liền mạch (mốc 4/8/12/16/20 ngày + tháng-không-đứt). **Đã leo mốc nào là khoá mốc đó** — ốm-có-phép/đứt sau đó KHÔNG mất. Tối đa 9tr."*
+*"Chuyên cần **~231k mỗi ngày đi làm**, **đủ 26 ngày = full 6tr** (thiếu ngày nào bớt ngày đó) → **cộng tối đa 3tr** thưởng nếu đi làm ĐỀU liền mạch (mốc 4/8/12/16/20 ngày + tháng-không-đứt). **Đã leo mốc nào là khoá mốc đó** — ốm-có-phép/đứt sau đó KHÔNG mất streak. Tối đa 9tr."*
 
-- **Người siêng (đi đều 22 ngày liền) = 9tr.** Bình thường ~7,3tr. Đi-cho-có = sàn 3,3tr. Không ai rơi tự do.
+- **Người siêng (đi đủ 26 ngày liền) = 9tr.** Bình thường (22 ngày) ~7,1tr. Đi-cho-có (13 ngày) ~3,3tr.
+- **Nghỉ có phép:** mất tiền-công ngày đó (~231k/ngày) nhưng **giữ nguyên streak 3tr** (phép đóng băng chuỗi) → không ép đi-làm-ốm vì cục tiền lớn an toàn.
 - **Streak an toàn nhờ "best-streak banked"** (đạt rồi giữ) + sàn + phép-duyệt đóng băng → không biến 3tr thành áp lực đi-làm-ốm.
 - **Bắt buộc 3 tháng shadow** (trả đủ 9tr, chỉ hiện thanh) để đo phân bố ngày-công + chuỗi thực rồi mới chốt mốc/ngưỡng. Có **đường lui về v3** nếu lộ presenteeism.
 
