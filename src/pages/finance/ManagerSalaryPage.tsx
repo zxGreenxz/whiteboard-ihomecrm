@@ -94,10 +94,13 @@ export default function ManagerSalaryPage() {
   const onSaveAdjustment = (staffId: string, p: SalAdjustPayload) =>
     saveAdj.mutate({ ownerId, staffId, periodMonth, id: p.id, kind: p.kind, label: p.label, amount: p.amount, note: p.note });
   const onRemoveAdjustment = (id: string) => delAdj.mutate(id);
+  // Hoá đơn tiền phòng của quản lý (để trả lương tự gạch nợ / cấn trừ vào lương).
+  const rentInvoiceOf = (staffId: string) =>
+    managers.find((m) => m.id === staffId)?.roomRentInvoice ?? null;
   const onPayout = (staffId: string, staffName: string, amount: number, accountId: string, voucherDate: string, note: string) =>
-    payout.mutate({ ownerId, staffId, staffName, periodMonth, amount, account_id: accountId, voucher_date: voucherDate, note });
+    payout.mutate({ ownerId, staffId, staffName, periodMonth, amount, account_id: accountId, voucher_date: voucherDate, note, rentInvoice: rentInvoiceOf(staffId) });
   const onBulkPayout = (rows: { staffId: string; staffName: string; amount: number }[], accountId: string) =>
-    rows.forEach((r) => payout.mutate({ ownerId, staffId: r.staffId, staffName: r.staffName, periodMonth, amount: r.amount, account_id: accountId, voucher_date: today(), note: `Lương ${period.label}/${period.year}` }));
+    rows.forEach((r) => payout.mutate({ ownerId, staffId: r.staffId, staffName: r.staffName, periodMonth, amount: r.amount, account_id: accountId, voucher_date: today(), note: `Lương ${period.label}/${period.year}`, rentInvoice: rentInvoiceOf(r.staffId) }));
   const onLock = () => lockM.mutate({ ownerId, periodMonth, managers });
   const onUnlock = () => unlockM.mutate({ periodMonth, staffIds: managers.map((m) => m.id) });
 

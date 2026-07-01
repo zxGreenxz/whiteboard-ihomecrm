@@ -84,14 +84,24 @@ export const useManagerSalary = (periodMonth: string) => {
 
       // Tiền phòng từ hoá đơn phòng nhân viên ở (giá ưu đãi)
       const roomIds: string[] = configs.map((c) => c.room_id).filter(Boolean);
-      const roomInvoice = new Map<string, { amount: number; label: string }>();
+      const roomInvoice = new Map<
+        string,
+        {
+          amount: number;
+          label: string;
+          invoiceId: string;
+          buildingId: string | null;
+          contractId: string | null;
+          remaining: number;
+        }
+      >();
       const roomNameById = new Map<string, string>();
       if (roomIds.length) {
         const [rmRes, invRes] = await Promise.all([
           (supabase.from("rooms" as any).select("id, name") as any).in("id", roomIds),
           (supabase
             .from("invoices" as any)
-            .select("room_id, total_amount, billing_month, created_at") as any)
+            .select("id, room_id, building_id, contract_id, total_amount, remaining_amount, billing_month, created_at") as any)
             .in("room_id", roomIds)
             .eq("billing_month", billingMonth)
             .is("deleted_at", null)
@@ -100,9 +110,14 @@ export const useManagerSalary = (periodMonth: string) => {
         for (const r of (rmRes.data || []) as any[]) roomNameById.set(r.id, r.name);
         for (const iv of (invRes.data || []) as any[]) {
           if (roomInvoice.has(iv.room_id)) continue; // hoá đơn mới nhất của phòng/tháng
+          const total = num(iv.total_amount);
           roomInvoice.set(iv.room_id, {
-            amount: num(iv.total_amount),
+            amount: total,
             label: `HĐ phòng ${roomNameById.get(iv.room_id) || ""} · T${rentMm}`,
+            invoiceId: iv.id,
+            buildingId: iv.building_id ?? null,
+            contractId: iv.contract_id ?? null,
+            remaining: iv.remaining_amount == null ? total : num(iv.remaining_amount),
           });
         }
       }
@@ -373,6 +388,20 @@ export const useManagerSalary = (periodMonth: string) => {
           advance,
           advanceItems,
           roomRentItems,
+          roomRentInvoice:
+            c.room_id && roomInvoice.has(c.room_id)
+              ? (() => {
+                  const inv = roomInvoice.get(c.room_id)!;
+                  return {
+                    invoiceId: inv.invoiceId,
+                    roomId: c.room_id,
+                    buildingId: inv.buildingId,
+                    contractId: inv.contractId,
+                    amount: inv.amount,
+                    remaining: inv.remaining,
+                  };
+                })()
+              : null,
           paid: locked ? num(mRow.paid) : num(mRow?.paid),
           stats,
           trend: [],
@@ -672,6 +701,17 @@ export interface SalaryPayoutInput {
   account_id: string;
   voucher_date: string;
   note?: string | null;
+  // Hoá đơn tiền phòng để gạch nợ (cấn trừ vào lương) khi trả lương. Nếu có &
+  // còn nợ: phiếu chi lương TÁCH 2 dòng (thực nhận + tiền phòng) + tự tạo phiếu
+  // thu gạch nợ (payment CT) vào CÙNG sổ quỹ → hoá đơn phòng thành ĐÃ THU, và sổ
+  // quỹ net = đúng tiền thực nhận (chi gross − thu tiền phòng).
+  rentInvoice?: {
+    invoiceId: string;
+    roomId: string | null;
+    buildingId: string | null;
+    contractId: string | null;
+    amount: number; // tiền phòng khấu trừ (total_amount hoá đơn)
+  } | null;
 }
 
 export const useSalaryPayout = () => {
@@ -682,6 +722,28 @@ export const useSalaryPayout = () => {
       if (!user) throw new Error("Chưa đăng nhập");
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string = meta.full_name || meta.name || user.email || "Người dùng";
+
+      // --- Tiền phòng gạch nợ: đọc lại hoá đơn (remaining tươi) để chốt số thu ---
+      let rentCollect = 0;
+      let rentInv: any = null;
+      if (input.rentInvoice?.invoiceId) {
+        const { data: invFresh } = await (supabase
+          .from("invoices")
+          .select(
+            "id, user_id, invoice_number, building_id, room_id, contract_id, total_amount, remaining_amount, room:rooms!invoices_room_id_fkey(name), building:buildings!invoices_building_id_fkey(name)",
+          )
+          .eq("id", input.rentInvoice.invoiceId)
+          .is("deleted_at", null)
+          .single() as any);
+        if (invFresh) {
+          const remaining =
+            Number((invFresh as any).remaining_amount ??
+              (invFresh as any).total_amount) || 0;
+          rentCollect = Math.min(num(input.rentInvoice.amount), remaining);
+          if (rentCollect > 0) rentInv = invFresh;
+          else rentCollect = 0;
+        }
+      }
 
       // tòa ảo Chung
       const { data: chung } = await (supabase
@@ -725,18 +787,103 @@ export const useSalaryPayout = () => {
         .select("id").single();
       if (vErr) throw vErr;
 
-      const { error: itErr } = await supabase.from("income_expense_items" as any).insert({
-        income_expense_id: (voucher as any).id,
-        income_expense_type_id: typeId,
-        description: input.note ?? null,
-        quantity: 1,
-        unit_price: input.amount,
-        start_date: input.voucher_date,
-        end_date: input.voucher_date,
-      });
+      // Phiếu chi lương: nếu gạch nợ tiền phòng → TÁCH 2 dòng (thực nhận + tiền
+      // phòng) ⇒ tổng phiếu chi = gross (thực nhận + tiền phòng). Ngược lại 1 dòng.
+      const salItems: any[] = [
+        {
+          income_expense_id: (voucher as any).id,
+          income_expense_type_id: typeId,
+          description: rentCollect > 0 ? `Tiền thực nhận — ${name}` : (input.note ?? null),
+          quantity: 1,
+          unit_price: input.amount,
+          start_date: input.voucher_date,
+          end_date: input.voucher_date,
+        },
+      ];
+      if (rentCollect > 0) {
+        salItems.push({
+          income_expense_id: (voucher as any).id,
+          income_expense_type_id: typeId,
+          description: `Tiền phòng (khấu trừ) · HĐ ${rentInv.invoice_number ?? ""}`.trim(),
+          quantity: 1,
+          unit_price: rentCollect,
+          start_date: input.voucher_date,
+          end_date: input.voucher_date,
+        });
+      }
+      const { error: itErr } = await supabase.from("income_expense_items" as any).insert(salItems);
       if (itErr) throw itErr;
 
-      // ghi nhận đã trả vào salary_monthly
+      // --- Phiếu THU gạch nợ tiền phòng (cấn trừ vào lương) vào CÙNG sổ quỹ ---
+      // Mirror useBulkRecordPayment: 1 payment (method CT) đánh dấu hoá đơn ĐÃ THU
+      // (trigger recompute) + 1 phiếu thu INCOME vào sổ quỹ. user_id = chủ hoá đơn
+      // để khớp RLS (giống thu tiền thường).
+      if (rentCollect > 0 && rentInv) {
+        const invOwner = (rentInv as any).user_id as string;
+
+        // loại thu doanh thu (không phải cọc)
+        const { data: incTypes } = await (supabase
+          .from("income_expense_types" as any)
+          .select("id, is_default, name, is_deposit") as any)
+          .eq("type", "income").limit(100);
+        const revenueTypes = ((incTypes || []) as any[]).filter((x) => !x.is_deposit);
+        const normT = (s?: string) => (s ?? "").trim().toLowerCase();
+        const incomeTypeId =
+          revenueTypes.find((x) => x.is_default)?.id ||
+          revenueTypes.find((x) => normT(x.name) === "thu tiền hoá đơn" || normT(x.name) === "thu tiền hóa đơn")?.id ||
+          [...revenueTypes].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))[0]?.id;
+        if (!incomeTypeId) throw new Error('Chưa có loại thu (không phải cọc) trong "Loại thu/chi".');
+
+        const roomNm = (rentInv as any).room?.name ?? "";
+        const bldNm = (rentInv as any).building?.name ?? "";
+
+        const { data: payRow, error: payErr } = await supabase
+          .from("payments" as any)
+          .insert({
+            user_id: invOwner,
+            invoice_id: (rentInv as any).id,
+            amount: rentCollect,
+            payment_method: "CT",
+            payment_date: input.voucher_date,
+            notes: `Khấu trừ vào lương ${input.staffName}`,
+          } as any)
+          .select("id").single();
+        if (payErr) throw payErr;
+
+        const { data: rentVoucher, error: rvErr } = await supabase
+          .from("income_expenses" as any)
+          .insert({
+            user_id: invOwner,
+            type: "INCOME",
+            name: `Thu tiền phòng HĐ ${roomNm}${bldNm ? "/" + bldNm : ""} (khấu trừ lương ${input.staffName})`,
+            building_id: (rentInv as any).building_id,
+            room_id: (rentInv as any).room_id,
+            contract_id: (rentInv as any).contract_id,
+            account_id: input.account_id,
+            invoice_id: (rentInv as any).id,
+            payment_id: (payRow as any).id,
+            voucher_date: input.voucher_date,
+            payer_name: `${input.staffName} (khấu trừ lương)`,
+            notes: `Cấn trừ tiền phòng vào lương ${input.staffName}`,
+            approval_status: "APPROVED",
+            creator_name: creatorName,
+          } as any)
+          .select("id").single();
+        if (rvErr) throw rvErr;
+
+        const { error: rItErr } = await supabase.from("income_expense_items" as any).insert({
+          income_expense_id: (rentVoucher as any).id,
+          income_expense_type_id: incomeTypeId,
+          description: `Thu tiền phòng HĐ ${roomNm}`.trim(),
+          quantity: 1,
+          unit_price: rentCollect,
+          start_date: input.voucher_date,
+          end_date: input.voucher_date,
+        });
+        if (rItErr) throw rItErr;
+      }
+
+      // ghi nhận đã trả vào salary_monthly (paid = tiền thực nhận, KHÔNG gồm tiền phòng)
       const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth);
       const { data: cur } = await (supabase.from("salary_monthly" as any).select("paid").eq("id", monthlyId) as any).single();
       const newPaid = (Number((cur as any)?.paid) || 0) + input.amount;
@@ -747,6 +894,9 @@ export const useSalaryPayout = () => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice-statistics"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
       toast.success("Đã ghi phiếu chi lương");
     },
     onError: (e: any) => toast.error(e?.message || "Không thể ghi phiếu"),

@@ -71,6 +71,17 @@ export interface SalManager {
   advance: number;
   advanceItems: SalAdvanceItem[];
   roomRentItems: SalAdvanceItem[];
+  // Hoá đơn tiền phòng (tháng T+1) mà khoản "Tiền phòng" khấu trừ vào — dùng để
+  // khi TRẢ LƯƠNG tự tạo phiếu thu gạch nợ (cấn trừ vào lương). null nếu tháng
+  // chưa có hoá đơn (dùng default_room_rent) hoặc quản lý không ở phòng ưu đãi.
+  roomRentInvoice: {
+    invoiceId: string;
+    roomId: string | null;
+    buildingId: string | null;
+    contractId: string | null;
+    amount: number; // = tiền phòng khấu trừ (total_amount hoá đơn)
+    remaining: number;
+  } | null;
   paid: number;
   stats: SalStats;
   trend: SalTrendPoint[];
