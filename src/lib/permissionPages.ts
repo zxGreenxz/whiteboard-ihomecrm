@@ -513,6 +513,7 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("reports_finance", "deposits_report", "Báo cáo Danh sách cọc", "view", { fallback: { action: "view" } }),
           f("reports_finance", "handover_report", "Báo cáo Bàn giao tiền & Đối soát sổ", "view", { fallback: { action: "view" } }),
           f("reports_finance", "reconcile", "Chốt số / đối soát sổ quỹ", "manage", { fallback: { action: "handover_report" } }),
+          f("reports_finance", "collection_cycle", "Báo cáo Chu kỳ Thu — Bàn giao (theo tòa QL)", "view", { fallback: { action: "view" } }),
           f("reports_finance", "export", "Xuất báo cáo tài chính", "manage"),
         ],
       },

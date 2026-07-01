@@ -94,6 +94,7 @@ const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport
 const ProfitHubPage = lazy(() => import("./pages/reports/finance/ProfitHubPage"));
 const FinancialAnalysisReport = lazy(() => import("./pages/reports/finance/FinancialAnalysisReport"));
 const BanGiaoReport = lazy(() => import("./pages/reports/finance/BanGiaoReport"));
+const BanGiaoCycleReport = lazy(() => import("./pages/reports/finance/BanGiaoCycleReport"));
 
 // Cài đặt
 const GeneralSettingsPage = lazy(() => import("./pages/settings/GeneralSettingsPage"));
@@ -358,6 +359,7 @@ const App = () => (
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><RequirePermission module="reports_finance" action="deposits_report"><DepositsReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/ban-giao" element={<ProtectedRoute><RequirePermission module="reports_finance" action="handover_report"><BanGiaoReport /></RequirePermission></ProtectedRoute>} />
+          <Route path="/reports/finance/thu-ban-giao" element={<ProtectedRoute><RequirePermission module="reports_finance" action="collection_cycle"><BanGiaoCycleReport /></RequirePermission></ProtectedRoute>} />
 
           {/* === CHIA LỢI NHUẬN CỔ ĐÔNG + VÍ THU CHI CÁ NHÂN === */}
           {/* Đã gộp vào trang Phân bổ lợi nhuận → redirect các URL cũ */}
