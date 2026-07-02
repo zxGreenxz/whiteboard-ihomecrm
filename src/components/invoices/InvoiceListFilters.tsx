@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { BuildingMultiSelect } from '@/components/buildings/BuildingMultiSelect';
+import { BuildingFilterSelect } from '@/components/buildings/BuildingFilterSelect';
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from '@/lib/roomSort';
 import type { InvoiceFilters } from '@/types/invoice';
 
@@ -20,9 +20,9 @@ const ALL_VALUE = '__all__';
 const MONTHS = ['Th1', 'Th2', 'Th3', 'Th4', 'Th5', 'Th6', 'Th7', 'Th8', 'Th9', 'Th10', 'Th11', 'Th12'];
 
 const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: InvoiceListFiltersProps) => {
-  // Khu vực + Toà nhà gộp thành BuildingMultiSelect (click tên khu = chọn cả
-  // nhóm toà). Staff không cần ẩn/khoá gì: useBuildings đã bị RLS cắt theo
-  // scope nên dropdown tự nhiên chỉ hiện toà được quản.
+  // Lọc toà = BuildingFilterSelect (phẳng, đơn-chọn: 1 toà hoặc tất cả).
+  // Staff không cần ẩn/khoá gì: useBuildings đã bị RLS cắt theo scope nên
+  // dropdown tự nhiên chỉ hiện toà được quản. State giữ shape mảng (0/1 phần tử).
   const buildingIds = filters.building_ids ?? [];
   // Nguồn phòng: 1 toà được chọn → phòng của toà đó; ngược lại mọi phòng
   // (lọc phòng theo TÊN, query .in(room_ids) giao với building_ids nên đúng).
@@ -100,8 +100,8 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
 
   return (
     <div className={compact ? 'flex flex-nowrap items-center gap-2 px-3 pt-3' : 'flex flex-wrap items-center gap-2 mb-4'}>
-      {/* Chọn toà nhà — nhiều toà, nhóm theo khu vực (click khu = cả nhóm) */}
-      <BuildingMultiSelect
+      {/* Chọn toà nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
+      <BuildingFilterSelect
         value={buildingIds}
         onChange={handleBuildingIdsChange}
         className={compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[220px]'}

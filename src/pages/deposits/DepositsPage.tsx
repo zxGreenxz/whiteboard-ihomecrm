@@ -38,7 +38,7 @@ import {
   summarizeByBuilding,
   type HeldDepositRow,
 } from "@/hooks/useDepositDashboard";
-import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
 import {
   ContractFormDialog,
@@ -222,9 +222,9 @@ const DepositsPage = () => {
           )}
         </div>
 
-        {/* Bộ lọc toà nhà (gom theo khu vực) — dùng chung mọi tab */}
+        {/* Bộ lọc toà nhà (1 toà hoặc tất cả) — dùng chung mọi tab */}
         <div className="flex flex-wrap items-end gap-3">
-          <BuildingMultiSelect
+          <BuildingFilterSelect
             value={buildingIds}
             onChange={setBuildingIds}
             className="w-[280px]"

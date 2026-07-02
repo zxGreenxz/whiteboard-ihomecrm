@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { usePaymentScheduleReport } from "@/hooks/useReports";
-import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -18,7 +18,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
 export default function PaymentScheduleReport() {
-  // Lọc nhiều toà (nhóm theo khu vực trong BuildingMultiSelect). [] = tất cả.
+  // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
   // Lọc client-side theo buildings.id trên invoices đã fetch, TRƯỚC khi gộp phòng.
   const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState<string>("all");
@@ -80,7 +80,7 @@ export default function PaymentScheduleReport() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <BuildingMultiSelect
+          <BuildingFilterSelect
             value={buildingIds}
             onChange={(ids) => {
               setBuildingIds(ids);

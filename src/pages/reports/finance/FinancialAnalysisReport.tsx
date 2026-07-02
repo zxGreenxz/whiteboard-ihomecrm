@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { useBuildings } from "@/hooks/useBuildings";
 import { monthToEndDate, monthToStartDate } from "@/lib/monthPeriod";
 import type { AnalysisFilters } from "@/components/finance-analysis/types";
@@ -111,7 +111,7 @@ export default function FinancialAnalysisReport() {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Toà nhà</span>
-            <BuildingMultiSelect
+            <BuildingFilterSelect
               value={buildingIds}
               onChange={setBuildingIds}
               buildings={buildingOptions}

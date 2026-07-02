@@ -1,4 +1,4 @@
-import { BuildingMultiSelect } from '@/components/buildings/BuildingMultiSelect';
+import { BuildingFilterSelect } from '@/components/buildings/BuildingFilterSelect';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useRooms } from '@/hooks/useRooms';
 import type { CustomerFilters } from '@/types/customer';
@@ -38,8 +38,8 @@ export default function CustomerListFilters({
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-      {/* Toà nhà (gom theo khu vực, chọn nhiều) — thay cặp Khu vực + Toà cũ */}
-      <BuildingMultiSelect
+      {/* Toà nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
+      <BuildingFilterSelect
         value={buildingIds}
         onChange={handleBuildingIdsChange}
         className="md:col-span-2"

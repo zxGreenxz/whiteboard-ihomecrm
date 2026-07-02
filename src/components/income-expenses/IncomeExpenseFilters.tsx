@@ -1,5 +1,5 @@
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { DateInput } from "@/components/ui/date-input";
 import { useRooms } from "@/hooks/useRooms";
@@ -20,7 +20,7 @@ export function IncomeExpenseFiltersBar({
   filters,
   onChange,
 }: IncomeExpenseFiltersProps) {
-  // Lọc nhiều toà (BuildingMultiSelect). [] = tất cả toà.
+  // Lọc toà đơn-chọn (BuildingFilterSelect) — state giữ shape mảng 0/1 phần tử.
   const buildingIds = filters.building_ids ?? [];
   // Phòng chỉ lọc được khi chọn đúng 1 toà (cascade phòng theo toà đơn).
   const singleBuildingId =
@@ -129,8 +129,8 @@ export function IncomeExpenseFiltersBar({
         placeholder="Đến ngày"
       />
 
-      {/* Tòa nhà — chọn nhiều, nhóm theo khu vực (click tên khu = chọn cả nhóm) */}
-      <BuildingMultiSelect
+      {/* Tòa nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
+      <BuildingFilterSelect
         value={buildingIds}
         onChange={handleBuildingIdsChange}
         className="w-full sm:w-[260px] h-9 text-sm"

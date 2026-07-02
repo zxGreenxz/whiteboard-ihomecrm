@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { ExportButtons } from "@/components/reports/ExportButtons";
-import BuildingMultiSelect from "@/components/buildings/BuildingMultiSelect";
+import BuildingFilterSelect from "@/components/buildings/BuildingFilterSelect";
 import { KpiCard } from "@/components/finance-analysis/KpiCard";
 import { ChartCard } from "@/components/finance-analysis/ChartCard";
 import { usePublicRoomTokens } from "@/hooks/usePublicRoomTokens";
@@ -93,7 +93,7 @@ export default function AnalyticsTab() {
         </div>
         <div className="grid gap-1">
           <span className="text-xs font-medium text-muted-foreground">Toà nhà</span>
-          <BuildingMultiSelect value={buildingIds} onChange={setBuildingIds} className="w-[240px]" />
+          <BuildingFilterSelect value={buildingIds} onChange={setBuildingIds} className="w-[240px]" />
         </div>
         <div className="flex items-center gap-2 pb-2">
           <Switch id="excl-staff" checked={excludeStaff} onCheckedChange={setExcludeStaff} />

@@ -1,8 +1,6 @@
 import { X } from "lucide-react";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
-import { useAreas } from "@/hooks/useAreas";
 import { useBuildings } from "@/hooks/useBuildings";
-import { groupBuildingsByArea, summarizeSelection } from "@/lib/buildingGroups";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
@@ -25,7 +23,6 @@ export function IncomeExpenseFilterChips({
   emptyFilters,
   onChange,
 }: Props) {
-  const { data: areas } = useAreas();
   const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
@@ -87,22 +84,15 @@ export function IncomeExpenseFilterChips({
     });
   }
 
-  // 1 chip cho bộ chọn nhiều toà: tên toà khi chọn 1, "Khu A (3 toà)" khi
-  // chọn trọn khu, "N toà" khi lẫn lộn (summarizeSelection).
+  // Chip toà nhà — lọc đơn-chọn (BuildingFilterSelect) nên nhãn = tên toà.
   const buildingIds = filters.building_ids ?? [];
   if (buildingIds.length > 0) {
-    const groups = groupBuildingsByArea(
-      (buildings || []).map((b) => ({
-        id: b.id,
-        name: b.name,
-        area_ids: b.area_ids ?? [],
-      })),
-      (areas || []).map((a) => ({ id: a.id, name: a.name })),
-    );
+    const names = buildingIds
+      .map((id) => (buildings || []).find((b) => b.id === id)?.name)
+      .filter(Boolean);
     chips.push({
       key: "building_ids",
-      label:
-        summarizeSelection(buildingIds, groups) || `${buildingIds.length} toà`,
+      label: names.join(", ") || `${buildingIds.length} toà`,
       patch: { building_ids: [], room_id: null, room_ids: null },
     });
   }

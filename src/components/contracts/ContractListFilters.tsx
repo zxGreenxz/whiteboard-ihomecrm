@@ -1,6 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import BuildingMultiSelect from '@/components/buildings/BuildingMultiSelect';
+import BuildingFilterSelect from '@/components/buildings/BuildingFilterSelect';
 import { uniqueRoomNames } from '@/lib/roomSort';
 import type { BuildingWithRelations } from '@/types/building';
 import type { RoomWithRelations } from '@/types/room';
@@ -39,7 +39,6 @@ export default function ContractListFilters({
   onLifecycleChange,
   monthFilter,
   onMonthChange,
-  areas,
   buildings,
   rooms,
 }: ContractListFiltersProps) {
@@ -58,12 +57,11 @@ export default function ContractListFilters({
         ]}
       />
 
-      {/* Khu vực + Toà nhà — chọn nhiều toà, nhóm theo khu */}
-      <BuildingMultiSelect
+      {/* Toà nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
+      <BuildingFilterSelect
         value={buildingIds}
         onChange={onBuildingIdsChange}
         buildings={buildings}
-        areas={areas}
         className="md:w-[260px]"
       />
 

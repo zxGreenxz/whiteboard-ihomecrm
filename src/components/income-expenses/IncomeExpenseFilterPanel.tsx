@@ -10,7 +10,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { MonthInput } from "@/components/ui/month-input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -71,7 +71,7 @@ export function IncomeExpenseFilterPanel({
     if (open) setDraft(filters);
   }, [open, filters]);
 
-  // Lọc nhiều toà (BuildingMultiSelect). [] = tất cả toà.
+  // Lọc toà đơn-chọn (BuildingFilterSelect) — state giữ shape mảng 0/1 phần tử.
   const draftBuildingIds = draft.building_ids ?? [];
   // Phòng chỉ lọc được khi chọn đúng 1 toà (cascade phòng theo toà đơn).
   const draftSingleBuildingId =
@@ -231,10 +231,10 @@ export function IncomeExpenseFilterPanel({
             </div>
           </div>
 
-          {/* Tòa nhà — chọn nhiều, nhóm theo khu vực (click tên khu = chọn cả nhóm) */}
+          {/* Tòa nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Tòa nhà</Label>
-            <BuildingMultiSelect
+            <BuildingFilterSelect
               value={draftBuildingIds}
               onChange={(ids) =>
                 patch({

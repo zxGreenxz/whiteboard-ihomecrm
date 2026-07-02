@@ -1,6 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import BuildingMultiSelect from '@/components/buildings/BuildingMultiSelect';
+import BuildingFilterSelect from '@/components/buildings/BuildingFilterSelect';
 import { Search } from 'lucide-react';
 import type { BuildingWithRelations } from '@/types/building';
 
@@ -29,7 +29,6 @@ export default function BuildingListFilters({
   onStatusChange,
   buildingIds,
   onBuildingIdsChange,
-  areas,
   buildings,
 }: BuildingListFiltersProps) {
   return (
@@ -54,12 +53,11 @@ export default function BuildingListFilters({
           { value: 'INACTIVE', label: 'Ngừng hoạt động' },
         ]}
       />
-      {/* Khu vực + Toà nhà — chọn nhiều toà, nhóm theo khu */}
-      <BuildingMultiSelect
+      {/* Toà nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
+      <BuildingFilterSelect
         value={buildingIds}
         onChange={onBuildingIdsChange}
         buildings={buildings}
-        areas={areas}
         className="w-full sm:w-[260px]"
       />
     </div>

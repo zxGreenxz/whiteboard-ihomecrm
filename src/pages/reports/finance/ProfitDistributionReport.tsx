@@ -17,7 +17,7 @@ import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useBuildings } from "@/hooks/useBuildings";
-import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect";
+import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -199,7 +199,7 @@ export default function ProfitDistributionContent() {
 function ProfitDistributionDesktop() {
   const now = new Date();
   const [monthStr, setMonthStr] = useState<string>(format(now, "MM-yyyy"));
-  // Lọc nhiều toà (nhóm theo khu vực trong BuildingMultiSelect). [] = tất cả.
+  // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
   const [buildingIds, setBuildingIds] = useState<string[]>([]);
   const [roomId, setRoomId] = useState<string>("all");
   const [voucherType, setVoucherType] = useState<string>("all");
@@ -751,7 +751,7 @@ function ProfitDistributionDesktop() {
             options={monthOptions.map((m) => ({ value: m, label: m }))}
           />
 
-          <BuildingMultiSelect
+          <BuildingFilterSelect
             value={buildingIds}
             onChange={(ids) => setBuildingIds(ids)}
             buildings={buildingOptions}
