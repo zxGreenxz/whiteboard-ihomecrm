@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -324,6 +324,7 @@ const IncomeExpenseForm = ({
     form.setValue('room_id', null);
     form.setValue('tenant_id', null);
     form.setValue('contract_id', null);
+    autoLinkedContractIdRef.current = null;
   };
 
   // Cascade: when room changes → clear tenant + contract
@@ -334,30 +335,54 @@ const IncomeExpenseForm = ({
     form.setValue('room_id', value);
     form.setValue('tenant_id', null);
     form.setValue('contract_id', null);
+    autoLinkedContractIdRef.current = null;
   };
+
+  // Phiếu có phải "phiếu cọc" hay không (có ít nhất 1 item is_deposit)?
+  const hasDepositItem = itemRows.some((r) =>
+    depositTypeIds.has(r.income_expense_type_id),
+  );
+
+  // HĐ do effect dưới TỰ gắn (phân biệt với user tự chọn trong dropdown) —
+  // chỉ giá trị auto mới được phép tự gỡ lại khi phiếu chuyển thành phiếu cọc.
+  const autoLinkedContractIdRef = useRef<string | null>(null);
 
   // Auto-prefill contract_id khi:
   //  • Đang tạo mới (chưa có voucher)
   //  • Đã pick room
   //  • Có đúng 1 HĐ ACTIVE trên phòng đó
   // Tránh ghi đè khi user đang edit phiếu cũ hoặc đã chọn HĐ rồi.
+  // NGOẠI LỆ phiếu CỌC: HĐ active đã đóng ĐỦ cọc → tiền cọc mới gần như chắc
+  // là của khách KẾ TIẾP (giữ chỗ) → mặc định "-- Không gắn HĐ --" để phiếu
+  // là cọc mồ côi, trigger DB tự link khi HĐ mới được tạo. Gắn nhầm vào HĐ
+  // active làm phồng deposit_paid của khách cũ + form tạo HĐ mới báo thiếu
+  // cọc (vụ PT2607014). HĐ active còn THIẾU cọc thì vẫn auto-gắn (thu bổ
+  // sung cọc của chính khách đó).
   useEffect(() => {
     if (voucher) return; // edit mode → giữ value cũ
     const activeContracts = roomContracts.filter(
       (c: any) => c.status === 'ACTIVE',
     );
-    if (activeContracts.length === 1) {
-      const currentValue = form.getValues('contract_id');
-      if (!currentValue) {
-        form.setValue('contract_id', activeContracts[0].id);
-      }
-    }
-  }, [roomContracts, voucher, form]);
+    if (activeContracts.length !== 1) return;
+    const active = activeContracts[0] as any;
+    const activeFullyDeposited =
+      Number(active.deposit_paid ?? 0) >= Number(active.total_deposit ?? 0);
+    const currentValue = form.getValues('contract_id');
 
-  // Phiếu có phải "phiếu cọc" hay không (có ít nhất 1 item is_deposit)?
-  const hasDepositItem = itemRows.some((r) =>
-    depositTypeIds.has(r.income_expense_type_id),
-  );
+    if (hasDepositItem && activeFullyDeposited) {
+      // Gỡ lại giá trị đã auto-gắn trước khi user thêm item cọc; giá trị do
+      // user tự chọn thì tôn trọng, không đụng.
+      if (currentValue && currentValue === autoLinkedContractIdRef.current) {
+        form.setValue('contract_id', null);
+        autoLinkedContractIdRef.current = null;
+      }
+      return;
+    }
+    if (!currentValue) {
+      form.setValue('contract_id', active.id);
+      autoLinkedContractIdRef.current = active.id;
+    }
+  }, [roomContracts, voucher, form, hasDepositItem]);
   // Giá trị "tự động" của cờ KQKD (khi business_result_accounting = null).
   const autoBusinessResult = !hasDepositItem;
 
@@ -693,9 +718,12 @@ const IncomeExpenseForm = ({
                         )}
                       </div>
                       <Select
-                        onValueChange={(v) =>
-                          field.onChange(v === '__none__' ? null : v)
-                        }
+                        onValueChange={(v) => {
+                          // User tự tay chọn → không còn là giá trị auto-gắn,
+                          // effect auto-link không được phép gỡ nữa.
+                          autoLinkedContractIdRef.current = null;
+                          field.onChange(v === '__none__' ? null : v);
+                        }}
                         value={field.value ?? '__none__'}
                         disabled={!canEdit}
                       >
