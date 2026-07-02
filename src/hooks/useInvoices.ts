@@ -40,8 +40,8 @@ const INVOICE_LIST_SELECT = `
       customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
     )
   ),
-  building:buildings!invoices_building_id_fkey (id, name, default_account_id_tt, default_account_id_tk),
-  room:rooms!invoices_room_id_fkey (id, name),  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
+  building:buildings!invoices_building_id_fkey (id, name, name_sort, default_account_id_tt, default_account_id_tk),
+  room:rooms!invoices_room_id_fkey (id, name, name_sort),  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
   payments (id, amount, payment_date, payment_method, notes, receipt_image_url)
 `;
 
@@ -75,10 +75,17 @@ export const useInvoices = (
         ? INVOICE_LIST_SELECT.replace('payments (', 'payments!inner (')
         : INVOICE_LIST_SELECT;
 
+      // Sort mặc định như mục Thu của Phân bổ LN: tòa A→Z → phòng (MB→G→L→số,
+      // so tự nhiên) → tháng mới nhất. name_sort = generated column mirror của
+      // src/lib/roomSort.ts (migration 20260702100000). Phải order server-side
+      // vì phân trang server-side (mỗi trang chỉ fetch 20 dòng).
       let query = (supabase
         .from('invoices')
         .select(listSelect, { count: 'exact' }) as any)
         .is('deleted_at', null)
+        .order('building(name_sort)', { ascending: true, nullsFirst: false })
+        .order('room(name_sort)', { ascending: true, nullsFirst: false })
+        .order('billing_month', { ascending: false })
         .order('created_at', { ascending: false });
 
       if (filters?.payment_method) {
