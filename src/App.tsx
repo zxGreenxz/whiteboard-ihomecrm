@@ -123,6 +123,7 @@ const GeneralCategoriesPage = lazy(() => import("./pages/settings/categories/Gen
 const FloorsPage = lazy(() => import("./pages/settings/categories/FloorsPage"));
 const TaskTypesPage = lazy(() => import("./pages/settings/categories/TaskTypesPage"));
 const TaskManagementPage = lazy(() => import("./pages/TaskManagementPage"));
+const MyDayPage = lazy(() => import("./pages/my-day/MyDayPage"));
 
 // Tài khoản + Info + Public
 const ProfilePage = lazy(() => import("./pages/account/ProfilePage"));
@@ -319,6 +320,7 @@ const App = () => (
 
           {/* === CÔNG VIỆC === */}
           <Route path="/tasks" element={<ProtectedRoute><RequirePermission module="tasks"><TaskManagementPage /></RequirePermission></ProtectedRoute>} />
+          <Route path="/my-day" element={<ProtectedRoute><MyDayPage /></ProtectedRoute>} />
 
           {/* === BÁO CÁO BĐS === */}
           <Route path="/reports/real-estate" element={<ProtectedRoute><RequirePermission module="reports_real_estate"><RealEstateReportsPage /></RequirePermission></ProtectedRoute>} />

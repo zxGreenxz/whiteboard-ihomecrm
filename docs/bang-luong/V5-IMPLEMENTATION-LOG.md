@@ -69,7 +69,20 @@ Nội dung: `v5_tick_attendance` (hàm lõi B5 — advisory lock, idempotent, m�
 
 **Commit:** `feat(salary-v5): S2 — engine dấu chân + cron/watchdog`
 
-## S3 — /my-day ⏳ (kế tiếp)
+## S3 — "Ngày hôm nay của tôi" + wiring FE (2026-07-03) ✅
+
+**Migration:** `20260703000004_v5_myday.sql` — đã apply live. **Rollback:** `scripts/v5_rollback_s3.sql`.
+RPC: `v5_daily_missions_self` (guard self) · `get_my_day_summary` (1 round-trip, lazy streak-touch) · `request_paid_leave`/`approve_leave` (phép 1-chạm 2 phía, quota theo config, notify 2 chiều gain-framing) · `report_device_issue`/`approve_device_issue` (US-2.8 → tick MANUAL_DEVICE_ISSUE).
+
+**FE mới:** `src/pages/my-day/MyDayPage.tsx` (route `/my-day`, khối A trạng-thái-ngày xanh/xám → D nhắc-treo check-sau-thu → B tuyến gợi ý (lý do bằng chữ + nút Bắt đầu) → C việc của tôi → F 2 thanh tiến trình TẠM TÍNH + chuỗi + khiên + mốc 🔒 banked → xin phép 1-chạm) · `src/components/inspections/InspectionRunner.tsx` (chạy phiên FULL/QUICK: checklist → JobCaptureCamera tái dùng nguyên pipeline → sha256 client → submit → Hoàn tất; fail hiện missing gain-framing + resume; nút Báo sự cố thiết bị) · `src/hooks/useMyDay.ts` · `src/lib/v5PaymentGps.ts`.
+
+**FE patch:** `useBulkRecordPayment` (+`voucherIds` trả về) · `useQuickCollect` (bắn `captureGpsAndRecord` NỀN sau khi phiếu lưu — không bao giờ chặn thu) · `TaskCompleteDialog` (+`v5_tick_from_job` fire-and-forget) · `launcherTiles` (tile "Hôm nay" ☀️ hot) · `App.tsx` (route lazy `/my-day`).
+
+**Test:** phép flow SQL (request→quota-block→approve→N_chuẩn 27→26) ✅ · summary/missions bằng ngữ cảnh Joey ✅ · vitest 15/15 ✅ · `tsc` 0 lỗi mới (106 baseline; 1 lỗi khớp filter là pre-existing trong HEAD) ✅ · `vite build` ✅ · Playwright smoke trên ptcrm sau deploy (mục E2E).
+
+**Commit:** `feat(salary-v5): S3 — màn Ngày hôm nay + wiring FE`
+
+## S4 — Đo đếm + LOCK ⏳ (kế tiếp)
 
 ## S3 — /my-day ⏳
 

@@ -34,7 +34,7 @@ export const v5Copy = {
 
   // ── Thu tiền + check-nhà-nhanh (A1#3) ────────────────────────────────
   pendingCheckNotify: (buildingName: string) =>
-    `Cần check nhà ${buildingName} sau khi thu tiền — hoàn thành để chốt ngày công hôm nay`,
+    `Cần check nhà${buildingName ? ` ${buildingName}` : ""} sau khi thu tiền — hoàn thành để chốt ngày công hôm nay`,
   pendingCheckSnoozed: (buildingName: string, remindAt: string) =>
     `Sẽ nhắc lại lúc ${remindAt} — check nhà ${buildingName} để chốt ngày công`,
   quickCheckDone: "Đã check nhanh xong — ngày công hôm nay đã chốt ✅",

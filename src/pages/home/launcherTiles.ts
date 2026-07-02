@@ -10,6 +10,7 @@
    ============================================================= */
 import {
   LayoutDashboard,
+  Sun,
   Map,
   Home,
   DoorOpen,
@@ -58,6 +59,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
   {
     label: 'Vận hành',
     items: [
+      { id: 'my-day', title: 'Hôm nay', href: '/my-day', icon: Sun, accent: '#f59e0b', hot: true },
       { id: 'dashboard', title: 'Bảng tin', href: '/dashboard', icon: LayoutDashboard, accent: '#1f7a52' },
       { id: 'map', title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, accent: '#2563eb', module: 'buildings' },
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },

@@ -68,6 +68,8 @@ export interface BulkPaymentFailure {
 export interface BulkPaymentResult {
   ok: string[]; // invoice_ids
   failures: BulkPaymentFailure[];
+  /** v5: id các phiếu thu (income_expenses) vừa tạo — dùng bắn GPS thu-tại-chỗ. */
+  voucherIds?: string[];
 }
 
 export const useBulkRecordPayment = () => {
@@ -109,6 +111,7 @@ export const useBulkRecordPayment = () => {
 
       const ok: string[] = [];
       const failures: BulkPaymentFailure[] = [];
+      const voucherIds: string[] = []; // v5: phiếu thu vừa tạo (bắn GPS sau khi lưu)
 
       for (const item of params.items) {
         try {
@@ -309,6 +312,7 @@ export const useBulkRecordPayment = () => {
               .select()
               .single();
             if (vErr) throw vErr;
+            voucherIds.push((voucher as any).id); // v5: để bắn GPS thu-tại-chỗ sau khi phiếu lưu
 
             const { error: itemErr } = await supabase
               .from('income_expense_items' as any)
@@ -350,7 +354,7 @@ export const useBulkRecordPayment = () => {
         }
       }
 
-      return { ok, failures };
+      return { ok, failures, voucherIds };
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });

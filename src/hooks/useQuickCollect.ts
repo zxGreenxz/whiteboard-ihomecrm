@@ -29,6 +29,7 @@ import {
 import { findOwnChangeAccount } from '@/lib/changeAccounts';
 import { planCollect, type CollectPlanLine } from '@/lib/collectPlan';
 import { remainingOf, todayISO } from '@/lib/collect';
+import { captureGpsAndRecord } from '@/lib/v5PaymentGps';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 export interface QuickCollectArgs {
@@ -146,10 +147,14 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
       rounding_account_id: rounding > 0 && roundingAccountId ? roundingAccountId : null,
     };
 
-    return bulkMutation.mutateAsync({
+    const res = await bulkMutation.mutateAsync({
       payment_date: paymentDate || todayISO(),
       items: [item],
     });
+    // v5 (A1#3): GPS NỀN IM LẶNG sau khi phiếu lưu OK — không bao giờ chặn luồng thu.
+    // Server tự quyết: tick / thông báo treo "check nhà sau thu tiền" / piggyback.
+    if (res.voucherIds?.length) void captureGpsAndRecord(res.voucherIds);
+    return res;
   };
 
   return {

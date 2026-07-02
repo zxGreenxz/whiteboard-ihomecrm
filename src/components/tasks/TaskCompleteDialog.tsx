@@ -21,6 +21,7 @@ import JobCaptureCamera, {
   type JobCaptureResult,
 } from "@/components/tasks/JobCaptureCamera";
 import { awardAndNotifyJobBonus } from "@/lib/salaryBonusNotify";
+import { supabase } from "@/integrations/supabase/client";
 import type { JobWithRelations } from "@/types/jobs";
 
 interface TaskCompleteDialogProps {
@@ -104,6 +105,15 @@ export default function TaskCompleteDialog({
           queryClient.invalidateQueries({ queryKey: ["notifications"] });
         }
       });
+      // v5 (nguồn 1 — ma trận dấu chân): tick ngày-công QUA RPC, FE không tự cộng.
+      // Fire-and-forget; lỗi nuốt êm phía FE (server đã log salary_award_errors).
+      void (supabase.rpc as any)("v5_tick_from_job", { p_job_id: job.id })
+        .then(({ data }: { data: any }) => {
+          if (data?.ticked) {
+            queryClient.invalidateQueries({ queryKey: ["v5-my-day-summary"] });
+          }
+        })
+        .catch(() => {});
     } catch {
       // toast lỗi đã xử lý trong hook; giữ dialog mở để thử lại
     } finally {
