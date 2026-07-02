@@ -75,17 +75,18 @@ export const useInvoices = (
         ? INVOICE_LIST_SELECT.replace('payments (', 'payments!inner (')
         : INVOICE_LIST_SELECT;
 
-      // Sort mặc định như mục Thu của Phân bổ LN: tòa A→Z → phòng (MB→G→L→số,
-      // so tự nhiên) → tháng mới nhất. name_sort = generated column mirror của
+      // Sort mặc định: KỲ mới nhất trước (toàn bộ HĐ tháng 7 → tháng 6 → ...),
+      // trong cùng kỳ xếp như mục Thu của Phân bổ LN: tòa A→Z → phòng
+      // (MB→G→L→số, so tự nhiên). name_sort = generated column mirror của
       // src/lib/roomSort.ts (migration 20260702100000). Phải order server-side
       // vì phân trang server-side (mỗi trang chỉ fetch 20 dòng).
       let query = (supabase
         .from('invoices')
         .select(listSelect, { count: 'exact' }) as any)
         .is('deleted_at', null)
+        .order('billing_month', { ascending: false })
         .order('building(name_sort)', { ascending: true, nullsFirst: false })
         .order('room(name_sort)', { ascending: true, nullsFirst: false })
-        .order('billing_month', { ascending: false })
         .order('created_at', { ascending: false });
 
       if (filters?.payment_method) {
