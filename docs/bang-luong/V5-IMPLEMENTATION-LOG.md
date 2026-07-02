@@ -82,12 +82,22 @@ RPC: `v5_daily_missions_self` (guard self) · `get_my_day_summary` (1 round-trip
 
 **Commit:** `feat(salary-v5): S3 — màn Ngày hôm nay + wiring FE`
 
-## S4 — Đo đếm + LOCK ⏳ (kế tiếp)
+## S4 + S5 — Đo đếm + LOCK + Shadow/kill-switch (2026-07-03) ✅
 
-## S3 — /my-day ⏳
+**Migration:** `20260703000005_v5_money_lock.sql` — đã apply live. **Rollback:** `scripts/v5_rollback_s4.sql`.
+- `v5_month_money` (trần 6tr/3tr enforce trong hàm, sàn mềm config) · `get_salary_progress_v5` (lưới tháng self-view) · `v5_flag_day`/`v5_appeal`/`v5_verdict` (C2 đủ due-process: máy flag → 48h kháng nghị → chủ kết án; confirm → voided + TƯỚC banked tháng + reset_from_date, ngày sạch giữ) · `v5_lock_assert` (**3 ASSERT**: trần · không-nghi-án-mở · 100% tick PAYMENT join phiếu thu GPS thật) · `v5_apply_lock_adjustments` (**CHẶN khi flag OFF — assert cấm ghi trong shadow**; pass assert mới ghi 2 dòng `salary_adjustments` ATTEND_V5/STREAK_V5, idempotent) · `v5_shadow_report`.
+- **LỆCH SPEC CÓ CHỦ ĐÍCH:** nhánh UNION hiển thị trong `salary_work_ledger` → BACKLOG (display-only; tránh đụng hàm tiền legacy). Nguồn TIỀN duy nhất = `salary_adjustments` qua apply (đúng C9 phần tiền).
+- **FE:** `/reports/coverage` = **OwnerDashboardV5 5 tab** (Coverage map grid màu D · Nghi án + kết án 2 chiều · Đối soát tháng 3 ASSERT + nút "Ghi tiền v5" (disable khi shadow) · Shadow/Gates · Cài đặt v5: kill-switch flags + stage + chạy-lại 5 job + cron_runs) — *lệch nhỏ US-5.1: settings đặt tại dashboard v5 thay vì GeneralSettingsPage; chủ có đúng 1 nơi vận hành*. Banner **onboarding "Tôi đã hiểu"** ở /my-day (hiện từ chặng shadow_money, lưu `ui_preferences.v5_onboarding_ack`). **Runbook:** `docs/bang-luong/V5-RUNBOOK.md`.
 
-## S4 — Đo đếm + LOCK ⏳
+**Test (PASS):**
+| # | Ca | Kết quả |
+|---|---|---|
+| L1 | **Kill-switch/shadow guard:** flag OFF → apply RAISE "v5_money đang TẮT" (= biên bản diễn tập TẮT) | ✅ |
+| L2 | Flow tiền trọn vòng (rollback): tick 2 ngày → 444.444 (2×222.222, n=27) → 3 ASSERT ✅ → apply → đúng 1 dòng ATTEND_V5 → **apply lần 2 idempotent** → flag → a2=false **CHẶN LOCK** → verdict → voided + banked=[] + tiền tự về 222.222 (ngày sạch giữ — đúng C2) (= biên bản diễn tập BẬT) | ✅ |
+| L3 | tsc: 0 lỗi từ file v5 (đợt 106→118 xác minh do **phiên làm việc song song khác** trên working tree, không thuộc v5) | ✅ |
 
-## S5 — Shadow + kill-switch ⏳
+**Ghi chú vận hành:** working tree đang có phiên khác sửa nhiều file src — commit v5 CHỈ add đích danh file v5, tuyệt đối không `git add -A`.
 
-## E2E toàn trình ⏳
+**Commit:** `feat(salary-v5): S4+S5 — money/LOCK/verdict + dashboard chủ + kill-switch + runbook`
+
+## E2E toàn trình ⏳ (kế tiếp — Playwright smoke trên ptcrm)

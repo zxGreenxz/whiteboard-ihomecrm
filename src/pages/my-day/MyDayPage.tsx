@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { v5Copy } from "@/lib/v5Copy";
+import { useSetUiPreference, useUiPrefBool } from "@/hooks/useUiPreferences";
 import { useMyDaySummary, useMyMissions, useRequestLeave, type Mission } from "@/hooks/useMyDay";
 
 const InspectionRunner = lazy(() => import("@/components/inspections/InspectionRunner"));
@@ -78,6 +79,11 @@ export default function MyDayPage() {
   const ticked = s?.today.status === "ticked";
   const leaveToday = s?.today.status === "leave_approved" || s?.today.status === "pending_leave";
 
+  // Onboarding "Tôi đã hiểu" (US-6.5): bắt buộc trước khi bật tiền — hiện từ chặng shadow_money.
+  const v5Acked = useUiPrefBool("v5_onboarding_ack", false);
+  const setPref = useSetUiPreference();
+  const needAck = !v5Acked && (s?.stage === "shadow_money" || s?.stage === "live");
+
   const openRunner = (m: { building_id: string; building_name: string | null }, type: "FULL" | "QUICK") =>
     setRunner({ buildingId: m.building_id, buildingName: m.building_name ?? "toà", type });
 
@@ -108,6 +114,22 @@ export default function MyDayPage() {
             Xin phép {s ? `(còn ${s.leave.left})` : ""}
           </button>
         </div>
+
+        {/* Onboarding "Tôi đã hiểu" — bắt buộc trước khi bật tiền (US-6.5) */}
+        {needAck && (
+          <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm shadow-sm">
+            <div className="mb-1 font-semibold">Cách tính lương mới (v5) — 1 phút để hiểu</div>
+            <ul className="mb-2 list-inside list-disc text-xs text-slate-600">
+              <li>Mỗi ngày làm ≥1 việc thật (kiểm tra nhà / thu tiền + check / sửa chữa) = 1 ngày công.</li>
+              <li>Đủ ngày công chuẩn của tháng = trọn phần chuyên cần; đi đều liền mạch = thêm thưởng chuỗi (mốc đã đạt là KHOÁ 🔒).</li>
+              <li>Nghỉ phép có duyệt: chuỗi được bắc cầu, đơn giá ngày tự điều chỉnh — bạn không thiệt.</li>
+              <li>Số hiển thị hằng ngày là TẠM TÍNH; tiền chốt khi khoá sổ cuối tháng.</li>
+            </ul>
+            <Button size="sm" onClick={() => { setPref.mutate({ key: "v5_onboarding_ack", value: true }); }}>
+              Tôi đã hiểu
+            </Button>
+          </div>
+        )}
 
         {/* Xin phép 1-chạm */}
         {leaveOpen && (
