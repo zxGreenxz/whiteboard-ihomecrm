@@ -100,4 +100,17 @@ RPC: `v5_daily_missions_self` (guard self) · `get_my_day_summary` (1 round-trip
 
 **Commit:** `feat(salary-v5): S4+S5 — money/LOCK/verdict + dashboard chủ + kill-switch + runbook`
 
-## E2E toàn trình ⏳ (kế tiếp — Playwright smoke trên ptcrm)
+## E2E toàn trình (2026-07-03) ✅
+
+**Ma trận case đã chạy qua toàn bộ 5 phase (SQL trong transaction-rollback + Playwright trên ptcrm production):**
+
+| Nhóm | Case | Nơi test | KQ |
+|---|---|---|---|
+| Nền | 6 bảng + RLS + settings seed + flags OFF + calendar (T7=27/T9=25) + parity SQL≡TS 24 tháng + config staff-context + 💰 pending tháng kế + validate Σdeltas | SQL T1–T12 (S1) | ✅ |
+| Engine | tick idempotent · FULL fail→presence→resume→pass→tick+spawn-job · hash-dup chặn · C14 piggyback · pending_check→treo-dedup→QUICK→tick PAYMENT→notify READ · đơn giá động T6/T7 | SQL F-core→F4 (S2) | ✅ |
+| Jobs | cron idem · digest 3 người + dedup · close_period · edge fn live 401/run/skipped · missions khớp dự báo spec (65NTG 78→162NVK 55→32PVC 53) | SQL J1–J3 + HTTP E1–E3 (S2) | ✅ |
+| My-day | summary/missions Joey-context · phép: quota-block → approve → N_chuẩn 27→26 · phép idempotent | SQL (S3) | ✅ |
+| Tiền/LOCK | shadow-guard chặn khi OFF · money→3 ASSERT→apply idempotent→flag CHẶN LOCK→verdict tước-banked-giữ-ngày-sạch (C2) | SQL L1–L2 (S4) | ✅ |
+| **Production (Playwright)** | login → **/my-day**: header + Xin phép (còn 1) + "chưa có ngày công" + 0/27 TẠM TÍNH + "Đã tích 0đ/6.000.000đ — leo tiếp! 🚀" + chuỗi/mốc +300k + khiên 2+0 (tự tiêu đúng ngày 1/7 lỡ) + footer TẠM TÍNH · **/reports/coverage**: 5 tab render, Coverage 17 toà sort đúng D (65NTG "chưa từng" đứng đầu), Đối soát 3 nhân viên 3 ASSERT ✅ + nút chốt tiền **disabled "Đang SHADOW"** · **console 0 error** cả 2 màn | ptcrm.vercel.app | ✅ |
+
+**Trạng thái bàn giao:** hệ v5 code xong S0–S5 + E2E, flags OFF (hành vi hệ cũ nguyên vẹn). Việc còn lại là VẬN HÀNH theo V5-RUNBOOK.md: ① chủ thêm env `CRON_SECRET` trên Vercel; ② restart worker (nạp watchdog); ③ đặt stage=grace để bắt đầu chặng 0 → theo gates Ch.11. Backlog kỹ thuật: nhánh UNION hiển thị trong salary_work_ledger (display-only); hàng-chờ-duyệt phép/sự-cố dạng UI riêng (hiện duyệt qua thông báo + RPC); Playwright staff-flow đầy đủ khi có account nhân viên test.
