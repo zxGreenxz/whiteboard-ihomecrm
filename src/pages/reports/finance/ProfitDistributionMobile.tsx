@@ -104,10 +104,14 @@ export default function ProfitDistributionMobile() {
       }
     } else {
       for (const v of (cash?.data ?? []) as any[]) {
+        // Chế độ P&L (pnlOnly): tính PHẦN KQKD của phiếu (kqkd_amount — phiếu
+        // trộn thu HĐ gộp cọc chỉ tính phần doanh thu); tắt → cả phiếu.
+        const kqkd = Number(v.kqkd_amount ?? v.total_amount) || 0;
         const row: MRow = {
           key: v.id, desc: v.name || "", building: v.building?.name || "—", room: v.room?.name ?? null,
-          type: "—", period: "", notKqkd: v.counts_in_business_result === false,
-          invoiceId: v.invoice_id ?? null, amount: Number(v.total_amount) || 0,
+          type: "—", period: "", notKqkd: kqkd <= 0,
+          invoiceId: v.invoice_id ?? null,
+          amount: pnlOnly ? kqkd : Number(v.total_amount) || 0,
         };
         if (v.type === "INCOME") inc.push(row);
         else if (v.type === "EXPENSE") exp.push(row);
@@ -115,7 +119,7 @@ export default function ProfitDistributionMobile() {
     }
     return { incomeRows: inc, expenseRows: exp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accrualMode, accrual, cash, hideSpecialTypes, specialTypeIds, specialTypeNames]);
+  }, [accrualMode, accrual, cash, hideSpecialTypes, specialTypeIds, specialTypeNames, pnlOnly]);
 
   const incomeTotal = incomeRows.reduce((s, r) => s + r.amount, 0);
   const expenseTotal = expenseRows.reduce((s, r) => s + r.amount, 0);

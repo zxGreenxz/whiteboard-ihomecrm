@@ -13,6 +13,7 @@ import { useVoucherWithBatch } from '@/hooks/useVoucherDetail';
 import { StorageImage } from '@/components/ui/storage-image';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { formatPeriod } from '@/lib/monthPeriod';
+import { kqkdStatusLabel } from '@/lib/kqkd';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { IncomeExpenseWithRelations, IncomeExpenseBatchSummary } from '@/hooks/useIncomeExpenses';
 
@@ -142,13 +143,7 @@ function VoucherCard({
           value={v.created_at ? format(new Date(v.created_at), 'dd-MM-yyyy HH:mm') : '—'}
         />
         <Row label="Người tạo" value={v.creator_name} />
-        <Row
-          label="Hạch toán kết quả kinh doanh"
-          value={
-            (v.counts_in_business_result ? 'Có hạch toán' : 'Không hạch toán') +
-            (v.business_result_accounting == null ? ' (tự động)' : ' (override)')
-          }
-        />
+        <Row label="Hạch toán kết quả kinh doanh" value={kqkdStatusLabel(v)} />
         {v.notes && <Row label="Ghi chú" value={v.notes} />}
       </div>
 

@@ -607,6 +607,24 @@ async function createFirstInvoiceForContract(args: {
   const { generateInvoiceNumber } = await import("@/lib/invoiceUtils");
   const invoice_number = await generateInvoiceNumber(userId);
 
+  // Ghi chú nói RÕ nội dung hoá đơn (yêu cầu chủ): tiền phòng đầu tiên, và nếu
+  // có GỘP CỌC (item OTHER "Tiền cọc" — phần cọc còn thiếu) thì kèm số tiền.
+  // LƯU Ý: useFirstInvoiceDetails nhận diện HĐ tháng đầu fallback theo notes —
+  // regex bên đó phải khớp cả mẫu cũ ("tháng đầu") lẫn mẫu này ("đầu tiên").
+  const depositBundled = invoiceItems
+    .filter(
+      (it) =>
+        it.type === "OTHER" &&
+        (it.description ?? "").trim().toLowerCase() === "tiền cọc",
+    )
+    .reduce((s, it) => s + it.unit_price * it.quantity, 0);
+  const [bmY, bmM] = billing_month.split("-");
+  const bmLabel = bmM ? `T${Number(bmM)}/${bmY}` : billing_month;
+  const invoiceNotes =
+    depositBundled > 0
+      ? `Hoá đơn tiền phòng đầu tiên ${bmLabel} + kèm cọc ${depositBundled.toLocaleString("vi-VN")}đ (tự động)`
+      : `Hoá đơn tiền phòng đầu tiên ${bmLabel} (tự động)`;
+
   const { data: invoice, error: invErr } = await supabase
     .from("invoices")
     .insert({
@@ -628,7 +646,7 @@ async function createFirstInvoiceForContract(args: {
       prepaid_amount: 0,
       paid_amount: 0,
       previous_debt: 0,
-      notes: "Hoá đơn cọc + tháng đầu (tự động)",
+      notes: invoiceNotes,
       template_id: contractData.invoice_template_id || null,
     } as any)
     .select()

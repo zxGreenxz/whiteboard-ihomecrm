@@ -82,12 +82,12 @@ const PARENT_PAGE = 1000;
 // LƯU Ý: `!inner` cũng loại phiếu KHÔNG có item nào → bù lại bằng truy vấn (3)
 // (ACCRUAL_SELECT_NOITEM) để không thất thoát total_amount của phiếu trống item.
 const ACCRUAL_SELECT = `
-  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id,
+  id, name, type, voucher_date, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items!inner (
     id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date,
-    income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
+    income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
   )
 `;
 
@@ -97,13 +97,13 @@ const ACCRUAL_SELECT = `
 // như cách gom invoice_id). items KHÔNG `!inner`/không lọc kỳ → lấy mọi hạng mục
 // của phiếu (kỳ của item = ngày thu, không dùng để xếp tháng ở nhánh này).
 const ACCRUAL_SELECT_INV = `
-  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id, total_amount,
+  id, name, type, voucher_date, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id, total_amount,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   invoice:invoices!income_expenses_invoice_id_fkey!inner ( billing_month ),
   items:income_expense_items (
     id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date,
-    income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
+    income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
   )
 `;
 
@@ -170,7 +170,9 @@ export const useAccrualMonthReport = (
         } else if (filters.approval_status) {
           q = q.eq("approval_status", filters.approval_status);
         }
-        if (businessResultOnly) q = q.eq("counts_in_business_result", true);
+        // KQKD item-level: chỉ loại phiếu ÉP không-KQKD (override=false); phiếu
+        // trộn (thu HĐ gộp cọc) vẫn vào — item cọc bị bỏ ở bước transform.
+        if (businessResultOnly) q = q.not("business_result_accounting", "is", false);
         return q;
       };
 
@@ -271,6 +273,15 @@ export const useAccrualMonthReport = (
         if (isIncome) totalIncome += portion;
         else totalExpense += portion;
         const t = it.income_expense_type;
+        // Cờ KQKD theo TỪNG DÒNG (item-level): dòng cọc không tính (trừ phiếu
+        // ép TRUE); phiếu ép FALSE thì mọi dòng không tính. Phiếu trộn: dòng
+        // doanh thu vẫn counts=true dù cờ cả-phiếu counts_in_business_result=false.
+        const rowCounts =
+          voucher.business_result_accounting === false
+            ? false
+            : voucher.business_result_accounting === true
+              ? true
+              : !t?.is_deposit;
         rows.push({
           itemId: it.id,
           voucherId: voucher.id,
@@ -285,16 +296,24 @@ export const useAccrualMonthReport = (
           endDate,
           income: isIncome ? portion : 0,
           expense: isIncome ? 0 : portion,
-          countsInBusinessResult: voucher.counts_in_business_result ?? false,
+          countsInBusinessResult: rowCounts,
           invoiceId: voucher.invoice_id ?? null,
         });
       };
+
+      // KQKD item-level: bỏ item CỌC (trừ phiếu ép TRUE) — khớp
+      // fa_accrual_allocations sau migration 20260702120000_kqkd_item_level.
+      const skipDepositItem = (voucher: any, it: any) =>
+        businessResultOnly &&
+        !!it?.income_expense_type?.is_deposit &&
+        voucher.business_result_accounting !== true;
 
       // (1) Phiếu KHÔNG gắn hoá đơn: phân bổ theo kỳ của item; null-period →
       // ghi nhận trọn vào tháng của voucher_date.
       for (const voucher of nonInv) {
         const vMonth = (voucher.voucher_date ?? "").slice(0, 7);
         for (const it of (voucher.items ?? []) as any[]) {
+          if (skipDepositItem(voucher, it)) continue;
           const amount = Number(it.amount);
           const itemAmount = Number.isFinite(amount)
             ? amount
@@ -317,6 +336,7 @@ export const useAccrualMonthReport = (
       for (const voucher of inv) {
         const items = (voucher.items ?? []) as any[];
         for (const it of items) {
+          if (skipDepositItem(voucher, it)) continue;
           const amount = Number(it.amount);
           const itemAmount = Number.isFinite(amount)
             ? amount

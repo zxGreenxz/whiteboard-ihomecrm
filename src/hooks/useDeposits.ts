@@ -49,7 +49,7 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
         .from('income_expenses')
         .select(
           `id, code, name, total_amount, voucher_date, approval_status,
-           income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
+           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
         )
         .is('contract_id', null)
         .is('deleted_at', null)
@@ -68,14 +68,22 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
 
       const { data, error } = await query;
       if (error) throw error;
-      return ((data ?? []) as any[]).map((v) => ({
-        id: v.id,
-        code: v.code ?? null,
-        name: v.name,
-        total_amount: Number(v.total_amount) || 0,
-        voucher_date: v.voucher_date,
-        approval_status: v.approval_status,
-      }));
+      return ((data ?? []) as any[]).map((v) => {
+        // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — phiếu thuần cọc thì
+        // bằng total_amount; phiếu trộn (hiếm, nhập tay) không đếm thừa phần khác.
+        const depositSum = ((v.income_expense_items ?? []) as any[]).reduce(
+          (s, it) => s + (Number(it.amount) || 0),
+          0,
+        );
+        return {
+          id: v.id,
+          code: v.code ?? null,
+          name: v.name,
+          total_amount: depositSum || Number(v.total_amount) || 0,
+          voucher_date: v.voucher_date,
+          approval_status: v.approval_status,
+        };
+      });
     },
   });
 };
@@ -117,7 +125,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
            approval_status, building_id, room_id,
            building:buildings!income_expenses_building_id_fkey ( id, name ),
            room:rooms!income_expenses_room_id_fkey ( id, name ),
-           income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
+           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
         )
         .is('contract_id', null)
         .is('deleted_at', null)
@@ -139,12 +147,18 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
       for (const v of (data ?? []) as any[]) {
         if (seen.has(v.id)) continue;
         seen.add(v.id);
+        // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — không đếm thừa phần
+        // không-cọc nếu phiếu trộn nhập tay.
+        const depositSum = ((v.income_expense_items ?? []) as any[]).reduce(
+          (s: number, it: any) => s + (Number(it.amount) || 0),
+          0,
+        );
         rows.push({
           id: v.id,
           code: v.code ?? null,
           name: v.name,
           payer_name: v.payer_name ?? null,
-          total_amount: Number(v.total_amount) || 0,
+          total_amount: depositSum || Number(v.total_amount) || 0,
           voucher_date: v.voucher_date,
           approval_status: v.approval_status,
           building_id: v.building?.id ?? v.building_id ?? '',

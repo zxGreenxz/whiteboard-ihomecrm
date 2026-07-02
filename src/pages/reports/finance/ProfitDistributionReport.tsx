@@ -326,6 +326,9 @@ function ProfitDistributionDesktop() {
       }
     } else {
       for (const r of (result?.data ?? []) as any[]) {
+        // kqkd_amount (item-level, DB maintain): phần của phiếu tính vào KQKD.
+        // Phiếu TRỘN (thu HĐ gộp cọc) có 0 < kqkd < total.
+        const kqkd = Number(r.kqkd_amount ?? r.total_amount) || 0;
         const base = {
           description: r.name ?? "",
           buildingName: r.building_name ?? "",
@@ -334,21 +337,26 @@ function ProfitDistributionDesktop() {
           periodLabel: "—",
           // Mặc định null — gán đúng category theo từng item bên dưới (cột Chi).
           category: null as string | null,
-          notKqkd: r.counts_in_business_result === false,
+          notKqkd: kqkd <= 0,
           monthLabel: format(new Date(r.voucher_date), "MM/yyyy"),
         };
         const items = (r.items || []) as any[];
+        // Item cọc bị loại khỏi P&L trừ khi phiếu ép TRUE (khớp kqkd_amount DB).
+        const skipDeposit = (it: any) =>
+          pnlOnly && !!it.is_deposit && r.business_result_accounting !== true;
 
         // CHỈ phiếu thu tiền nhà hằng tháng (gắn hoá đơn) mới giữ nguyên 1
-        // dòng/phiếu để gộp theo hoá đơn ở bước sau.
+        // dòng/phiếu để gộp theo hoá đơn ở bước sau. Chế độ P&L (pnlOnly) lấy
+        // phần KQKD; chế độ "gồm khoản cọc" lấy cả phiếu.
         if (r.type === "INCOME" && r.invoice_id) {
+          const shownItems = items.filter((it) => !skipDeposit(it));
           const typeName =
-            items.map((it) => it.type_name).filter(Boolean).join(", ") || "—";
+            shownItems.map((it) => it.type_name).filter(Boolean).join(", ") || "—";
           rawInc.push({
             ...base,
             key: r.id,
             typeName,
-            amount: Number(r.total_amount),
+            amount: pnlOnly ? kqkd : Number(r.total_amount),
             invoiceId: r.invoice_id,
           });
           continue;
@@ -357,20 +365,24 @@ function ProfitDistributionDesktop() {
         // Phiếu thu/chi KHÁC → KHÔNG gộp, tách theo từng hạng mục (item).
         const rows =
           items.length > 0
-            ? items.map((it) => {
-                const amt = Number(it.amount);
-                const safe = Number.isFinite(amt)
-                  ? amt
-                  : Number(it.quantity) * Number(it.unit_price) || 0;
-                return {
-                  ...base,
-                  key: `${r.id}:${it.id}`,
-                  typeName: it.type_name || "—",
-                  category: it.category ?? null,
-                  typeId: it.income_expense_type_id ?? null,
-                  amount: safe,
-                };
-              })
+            ? items
+                .filter((it) => !skipDeposit(it))
+                .map((it) => {
+                  const amt = Number(it.amount);
+                  const safe = Number.isFinite(amt)
+                    ? amt
+                    : Number(it.quantity) * Number(it.unit_price) || 0;
+                  return {
+                    ...base,
+                    key: `${r.id}:${it.id}`,
+                    typeName: it.type_name || "—",
+                    category: it.category ?? null,
+                    typeId: it.income_expense_type_id ?? null,
+                    // Dòng cọc (hiện khi tắt pnlOnly) đánh dấu không-KQKD.
+                    notKqkd: base.notKqkd || (!!it.is_deposit && r.business_result_accounting !== true),
+                    amount: safe,
+                  };
+                })
             : [{ ...base, key: r.id, typeName: "—", amount: Number(r.total_amount) }];
 
         for (const row of rows) {
@@ -479,7 +491,7 @@ function ProfitDistributionDesktop() {
     }
     all.sort(sorter);
     return { incomeRows: all, expenseRows: exp };
-  }, [accrualMode, accrual, result, monthLabel, vacantNotes]);
+  }, [accrualMode, accrual, result, monthLabel, vacantNotes, pnlOnly]);
 
   // Lọc bỏ dòng thuộc hạng mục đặc biệt khi bật toggle (chỉ ẩn dòng — số tổng
   // 3 thẻ + header lấy từ stats/accrual nên KHÔNG đổi).

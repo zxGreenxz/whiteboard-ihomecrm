@@ -576,10 +576,11 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                     {fmtVND(Number(confirmTarget.amount) || 0)}
                   </span>{' '}
                   ({confirmTarget.payment_method}). Phiếu Thu liên kết trong sổ
-                  Thu/Chi cũng sẽ bị xoá. Thao tác này không thể hoàn tác.
+                  Thu/Chi (kể cả phiếu cọc tách kèm nếu có) cũng sẽ bị xoá.
+                  Thao tác này không thể hoàn tác.
                 </>
               ) : (
-                'Phiếu Thu liên kết trong sổ Thu/Chi cũng sẽ bị xoá. Thao tác này không thể hoàn tác.'
+                'Phiếu Thu liên kết trong sổ Thu/Chi (kể cả phiếu cọc tách kèm nếu có) cũng sẽ bị xoá. Thao tác này không thể hoàn tác.'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

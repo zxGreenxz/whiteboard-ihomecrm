@@ -47,9 +47,10 @@ export interface IncomeExpenseFilters {
   // Lọc theo trạng thái "đã kiểm tra": null = tất cả, "VERIFIED" = đã check,
   // "UNVERIFIED" = chưa check.
   verified_status?: "VERIFIED" | "UNVERIFIED" | null;
-  // Chỉ lấy phiếu CÓ hạch toán kết quả kinh doanh (counts_in_business_result=TRUE).
-  // Dùng cho báo cáo Lợi nhuận để loại "tiền cọc" (và khoản không-KQKD). Mặc
-  // định null/false = lấy hết (trang Thu chi giữ nguyên là sổ dòng tiền).
+  // Chỉ lấy phiếu có PHẦN hạch toán KQKD (kqkd_amount > 0, item-level — phiếu
+  // trộn thu HĐ gộp cọc vẫn vào với phần doanh thu). Dùng cho báo cáo Lợi nhuận
+  // để loại "tiền cọc" (và khoản override không-KQKD). Mặc định null/false =
+  // lấy hết (trang Thu chi giữ nguyên là sổ dòng tiền).
   business_result_only?: boolean | null;
   // Lọc theo KỲ ÁP DỤNG (theo tháng) của items: lấy phiếu có ÍT NHẤT 1 item mà
   // kỳ [start_date, end_date] giao với khoảng [period_start_month, period_end_month].
@@ -66,6 +67,8 @@ export interface IncomeExpenseItem {
   // Nhóm hạng mục (income_expense_types.category) — dùng để sắp xếp ưu tiên
   // khoản chi trong báo cáo Phân bổ lợi nhuận. Có thể null.
   category: string | null;
+  // Hạng mục CỌC (income_expense_types.is_deposit) — báo cáo KQKD loại dòng này.
+  is_deposit: boolean;
   description: string | null;
   quantity: number;
   unit_price: number;
@@ -103,6 +106,10 @@ export interface IncomeExpenseWithRelations {
   business_result_accounting: boolean | null;
   // Cờ hiệu lực do DB tính: có tính vào báo cáo Lợi nhuận hay không.
   counts_in_business_result: boolean;
+  // Phần tiền tính vào KQKD (DB maintain, item-level): override TRUE=total,
+  // FALSE=0, NULL=total − Σ item cọc. Phiếu TRỘN (thu HĐ gộp cọc) có
+  // 0 < kqkd_amount < total_amount.
+  kqkd_amount: number;
   receive_bank_name: string | null;
   receive_bank_account: string | null;
   creator_name: string | null;
@@ -402,9 +409,11 @@ export const useIncomeExpenses = (
       } else if (filters.verified_status === "UNVERIFIED") {
         query = query.is("verified_at", null);
       }
-      // Báo cáo Lợi nhuận: chỉ phiếu có hạch toán KQKD (loại tiền cọc).
+      // Báo cáo Lợi nhuận: chỉ phiếu có PHẦN hạch toán KQKD > 0 (item-level —
+      // phiếu trộn thu HĐ gộp cọc vẫn hiện với phần doanh thu; phiếu thuần cọc
+      // và phiếu override không-KQKD bị loại).
       if (filters.business_result_only) {
-        query = query.eq("counts_in_business_result", true);
+        query = query.gt("kqkd_amount", 0);
       }
 
       // Search SERVER-SIDE: name/code ilike trực tiếp; tenant_name nằm ở bảng
@@ -457,7 +466,7 @@ export const useIncomeExpenses = (
         .select(
           `
           *,
-          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
+          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
         `
         )
         .in("income_expense_id", voucherIds);
@@ -480,6 +489,7 @@ export const useIncomeExpenses = (
             income_expense_type_id: item.income_expense_type_id,
             type_name: item.income_expense_type?.name ?? "",
             category: item.income_expense_type?.category ?? null,
+            is_deposit: !!item.income_expense_type?.is_deposit,
             description: item.description,
             quantity: item.quantity,
             unit_price: Number(item.unit_price),
@@ -517,6 +527,7 @@ export const useIncomeExpenses = (
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? null,
           counts_in_business_result: v.counts_in_business_result ?? true,
+          kqkd_amount: Number(v.kqkd_amount ?? v.total_amount) || 0,
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,
@@ -585,7 +596,7 @@ export const useIncomeExpenseStats = (
 
       let query = supabase
         .from("income_expenses" as any)
-        .select("type, total_amount" + itemFilterJoinSelect(itemPlan))
+        .select("type, total_amount, kqkd_amount" + itemFilterJoinSelect(itemPlan))
         .is("deleted_at", null);
 
       query = applyItemFilterToQuery(query, itemPlan);
@@ -634,10 +645,11 @@ export const useIncomeExpenseStats = (
       } else if (filters.verified_status === "UNVERIFIED") {
         query = query.is("verified_at", null);
       }
-      // Báo cáo Lợi nhuận (P&L): chỉ phiếu có hạch toán KQKD → loại tiền cọc
-      // (và khoản override không-KQKD). Trang Thu chi không bật cờ này.
+      // Báo cáo Lợi nhuận (P&L): chỉ tính PHẦN hạch toán KQKD (kqkd_amount,
+      // item-level) → loại tiền cọc kể cả khi nằm chung phiếu với doanh thu.
+      // Trang Thu chi không bật cờ này (sổ dòng tiền — cộng total_amount).
       if (businessResultOnly) {
-        query = query.eq("counts_in_business_result", true);
+        query = query.gt("kqkd_amount", 0);
       }
 
       const { data, error } = await query;
@@ -656,7 +668,10 @@ export const useIncomeExpenseStats = (
       let totalExpense = 0;
 
       for (const row of rows) {
-        const amount = Number(row.total_amount) || 0;
+        // P&L cộng phần KQKD (loại item cọc); sổ dòng tiền cộng cả phiếu.
+        const amount = businessResultOnly
+          ? Number(row.kqkd_amount) || 0
+          : Number(row.total_amount) || 0;
         if (row.type === "INCOME") {
           totalIncome += amount;
         } else if (row.type === "EXPENSE") {
@@ -1734,7 +1749,7 @@ export const useIncomeExpenseBatches = (
                 .select(
                   `
           *,
-          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )
+          income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
         `
                 )
                 .in("income_expense_id", fetchedVoucherIds)
@@ -1750,6 +1765,7 @@ export const useIncomeExpenseBatches = (
           income_expense_type_id: item.income_expense_type_id,
           type_name: item.income_expense_type?.name ?? "",
           category: item.income_expense_type?.category ?? null,
+          is_deposit: !!item.income_expense_type?.is_deposit,
           description: item.description,
           quantity: item.quantity,
           unit_price: Number(item.unit_price),
@@ -1787,6 +1803,7 @@ export const useIncomeExpenseBatches = (
           attachments: v.attachments ?? [],
           business_result_accounting: v.business_result_accounting ?? null,
           counts_in_business_result: v.counts_in_business_result ?? true,
+          kqkd_amount: Number(v.kqkd_amount ?? v.total_amount) || 0,
           receive_bank_name: v.receive_bank_name ?? null,
           receive_bank_account: v.receive_bank_account ?? null,
           creator_name: v.creator_name ?? null,

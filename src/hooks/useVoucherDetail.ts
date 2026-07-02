@@ -33,7 +33,7 @@ async function fetchItemsByVoucher(
   const { data } = await supabase
     .from('income_expense_items' as any)
     .select(
-      `*, income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category )`,
+      `*, income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )`,
     )
     .in('income_expense_id', voucherIds);
   for (const item of (data ?? []) as any[]) {
@@ -45,6 +45,7 @@ async function fetchItemsByVoucher(
       income_expense_type_id: item.income_expense_type_id,
       type_name: item.income_expense_type?.name ?? '',
       category: item.income_expense_type?.category ?? null,
+      is_deposit: !!item.income_expense_type?.is_deposit,
       description: item.description,
       quantity: item.quantity,
       unit_price: Number(item.unit_price),
@@ -86,6 +87,7 @@ function mapVoucherRow(
     attachments: v.attachments ?? [],
     business_result_accounting: v.business_result_accounting ?? null,
     counts_in_business_result: v.counts_in_business_result ?? true,
+    kqkd_amount: Number(v.kqkd_amount ?? v.total_amount) || 0,
     receive_bank_name: v.receive_bank_name ?? null,
     receive_bank_account: v.receive_bank_account ?? null,
     creator_name: v.creator_name ?? null,

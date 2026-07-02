@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { formatPeriod } from "@/lib/monthPeriod";
+import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
@@ -329,13 +330,7 @@ export function IncomeExpenseDetailMobile({
               }
             />
           )}
-          <Row
-            label="Hạch toán KQKD"
-            value={
-              (v.counts_in_business_result ? "Có hạch toán" : "Không hạch toán") +
-              (v.business_result_accounting == null ? " (tự động)" : " (override)")
-            }
-          />
+          <Row label="Hạch toán KQKD" value={kqkdStatusLabel(v)} />
           {v.notes && <Row label="Ghi chú" value={v.notes} />}
         </div>
 

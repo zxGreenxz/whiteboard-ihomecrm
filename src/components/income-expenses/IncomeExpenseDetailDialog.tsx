@@ -23,6 +23,7 @@ import {
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import { supabase } from "@/integrations/supabase/client";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
+import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
@@ -407,10 +408,7 @@ export function IncomeExpenseDetailDialog({
             )}
             <Row
               label="Hạch toán kết quả kinh doanh"
-              value={
-                (voucher.counts_in_business_result ? "Có hạch toán" : "Không hạch toán") +
-                (voucher.business_result_accounting == null ? " (tự động)" : " (override)")
-              }
+              value={kqkdStatusLabel(voucher)}
             />
             {voucher.notes && <Row label="Ghi chú" value={voucher.notes} />}
           </div>

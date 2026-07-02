@@ -6,6 +6,9 @@
 // Quy trình:
 //   1. Soft-delete income_expenses voucher có payment_id = payment_id
 //      (deleted_at = NOW())
+//   1b. Soft-delete phiếu CỌC cặp CŨ nhận diện qua marker
+//      "[THU TACH COC <payment_id>]" (cơ chế tách phiếu đã bỏ — chỉ còn
+//      dữ liệu lịch sử).
 //   2. Hard-delete excess_amounts có source_payment_id = payment_id
 //      (credit "Nợ kỳ sau" sẽ huỷ theo)
 //   3. Hard-delete payments row → trigger DB
@@ -30,19 +33,33 @@ export const useDeletePayment = () => {
       // 1. Soft-delete voucher Thu/Chi liên kết (nếu có).
       //    Trigger trg_ie_handover_guard chặn nếu phiếu đang nằm trong
       //    phiên bàn giao tiền mặt chưa hủy ([HANDOVER_LOCKED]).
+      const handleVoucherErr = (err: any) => {
+        if (String(err.message ?? '').includes('[HANDOVER_LOCKED]')) {
+          throw new Error(
+            'Phiếu thu này đang nằm trong phiên bàn giao tiền mặt. Hãy hủy phiên bàn giao (cần cả 2 bên xác nhận) trước khi hoàn tác.',
+          );
+        }
+        throw err;
+      };
       const { error: vErr } = await (supabase as any)
         .from('income_expenses')
         .update({ deleted_at: new Date().toISOString() })
         .eq('payment_id', payment_id)
         .is('deleted_at', null);
-      if (vErr) {
-        if (String(vErr.message ?? '').includes('[HANDOVER_LOCKED]')) {
-          throw new Error(
-            'Phiếu thu này đang nằm trong phiên bàn giao tiền mặt. Hãy hủy phiên bàn giao (cần cả 2 bên xác nhận) trước khi hoàn tác.',
-          );
-        }
-        throw vErr;
-      }
+      if (vErr) handleVoucherErr(vErr);
+
+      // 1b. DỮ LIỆU CŨ (trước khi bỏ cơ chế tách phiếu): 1 payment từng tách
+      //     thành 2 phiếu — phiếu CỌC không mang payment_id, chỉ nhận diện qua
+      //     marker "[THU TACH COC <payment_id>]" trong notes. Không xoá kèm sẽ
+      //     mồ côi phiếu cọc → lệch sổ + deposit_paid ảo (trigger deposit tự
+      //     recompute khi soft-delete). Phiếu MỚI (1 phiếu/lần thu) không có
+      //     marker nên bước này no-op.
+      const { error: pairErr } = await (supabase as any)
+        .from('income_expenses')
+        .update({ deleted_at: new Date().toISOString() })
+        .like('notes', `%[THU TACH COC ${payment_id}]%`)
+        .is('deleted_at', null);
+      if (pairErr) handleVoucherErr(pairErr);
 
       // 2. Hard-delete excess_amounts (credit "Nợ kỳ sau") nếu có.
       const { error: eaErr } = await (supabase as any)
@@ -74,6 +91,8 @@ export const useDeletePayment = () => {
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-collectors'] });
       queryClient.invalidateQueries({ queryKey: ['handover-vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['first-invoice-details'] });
+      queryClient.invalidateQueries({ queryKey: ['contract-deposit-vouchers'] });
 
       toast({
         title: 'Đã xoá phiếu thanh toán',

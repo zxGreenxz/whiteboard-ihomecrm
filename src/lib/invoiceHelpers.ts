@@ -242,29 +242,35 @@ export async function calculateLateFee(
 export const PREVIOUS_DEBT_ROUND_THRESHOLD = 10000;
 
 /**
- * Phân bổ một lần thu hoá đơn (đã từng gộp cọc) thành phần CỌC và phần DOANH THU.
- * Quy ước: cọc-trước, doanh-thu-sau — mỗi đồng thu lấp phần cọc còn thiếu của
- * hoá đơn trước, phần dư mới tính doanh thu (để deposit_paid tiến nhanh về đủ).
+ * Phân bổ một lần thu hoá đơn (gộp cọc) thành phần DOANH THU và phần CỌC.
+ * Quy ước: PHÒNG-TRƯỚC, CỌC-SAU — mỗi đồng thu phủ phần tiền phòng/dịch vụ
+ * còn thiếu của hoá đơn trước, phần dư mới tính vào cọc. Thu đủ hoá đơn thì
+ * kết quả đúng bằng phân bổ theo hạng mục hoá đơn (doanh thu = tổng − cọc).
  *
  * Bất biến (property): với mọi chuỗi thanh toán cộng dồn không vượt tổng HĐ,
- *  Σ depositPortion = min(Σ thu, depositInInvoice); Σ revenuePortion = phần còn lại.
+ *  Σ revenuePortion = min(Σ thu, revenueTotal); Σ depositPortion = phần còn lại
+ *  (revenueTotal = collectibleTotal − depositInInvoice).
  *
  * @param paymentAmount  số tiền của LẦN thu hiện tại (≥ 0)
  * @param depositInInvoice  tổng phần cọc gộp trong hoá đơn (≥ 0)
  * @param paidBefore  số đã thu của hoá đơn TRƯỚC lần này (≥ 0)
+ * @param collectibleTotal  tổng phải thu của hoá đơn (total_amount + previous_debt)
  */
 export function allocateDepositPortion(opts: {
   paymentAmount: number;
   depositInInvoice: number;
   paidBefore: number;
+  collectibleTotal: number;
 }): { depositPortion: number; revenuePortion: number } {
   const paymentAmount = Math.max(0, opts.paymentAmount || 0);
   const depositInInvoice = Math.max(0, opts.depositInInvoice || 0);
   const paidBefore = Math.max(0, opts.paidBefore || 0);
-  const depositCoveredBefore = Math.min(paidBefore, depositInInvoice);
-  const depositRemainingOnInvoice = Math.max(0, depositInInvoice - depositCoveredBefore);
-  const depositPortion = Math.min(paymentAmount, depositRemainingOnInvoice);
-  const revenuePortion = paymentAmount - depositPortion;
+  const collectibleTotal = Math.max(0, opts.collectibleTotal || 0);
+  const revenueTotal = Math.max(0, collectibleTotal - depositInInvoice);
+  const revenueCoveredBefore = Math.min(paidBefore, revenueTotal);
+  const revenueRemaining = revenueTotal - revenueCoveredBefore;
+  const revenuePortion = Math.min(paymentAmount, revenueRemaining);
+  const depositPortion = paymentAmount - revenuePortion;
   return { depositPortion, revenuePortion };
 }
 

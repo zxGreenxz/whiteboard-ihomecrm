@@ -141,10 +141,11 @@ export const useBulkRecordPayment = () => {
             continue;
           }
 
-          // HĐ CŨ gộp cọc (item OTHER "Tiền cọc" hoặc previous_debt_sources type
-          // 'deposit') → KHÔNG thu hàng loạt (đường này không tách cọc theo từng
-          // sub-line). Báo thu qua màn hình hoá đơn (RecordPaymentDialog tự tách
-          // cọc thành phiếu is_deposit). Tránh cọc lọt vào KQKD.
+          // HĐ gộp cọc (item OTHER "Tiền cọc" hoặc previous_debt_sources type
+          // 'deposit') → KHÔNG thu hàng loạt (đường này không phân bổ phần cọc
+          // theo từng sub-line). Báo thu qua màn hình hoá đơn (RecordPaymentDialog
+          // tự phân bổ phòng-trước, phần cọc thành HẠNG MỤC is_deposit trên cùng
+          // phiếu). Tránh cọc lọt vào KQKD.
           const invItems2 = ((inv as any).invoice_items ?? []) as Array<{ type?: string; description?: string; amount?: number }>;
           const itemDeposit = invItems2
             .filter((it) => it.type === 'OTHER' && typeof it.description === 'string' && it.description.trim().toLowerCase() === 'tiền cọc')
@@ -158,7 +159,7 @@ export const useBulkRecordPayment = () => {
               invoice_id: item.invoice_id,
               invoice_number: item.invoice_number,
               room_name: item.room_name,
-              message: 'Hoá đơn có gộp tiền cọc — vui lòng thu qua màn hình hoá đơn để tách cọc đúng (không thu hàng loạt).',
+              message: 'Hoá đơn có gộp tiền cọc — vui lòng thu qua màn hình hoá đơn để phân bổ phần cọc đúng (không thu hàng loạt).',
             });
             continue;
           }
@@ -367,6 +368,9 @@ export const useBulkRecordPayment = () => {
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-collectors'] });
       queryClient.invalidateQueries({ queryKey: ['handover-vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['first-invoice-details'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payments-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['contract-deposit-vouchers'] });
     },
     onSuccess: (result) => {
       const okCount = result.ok.length;

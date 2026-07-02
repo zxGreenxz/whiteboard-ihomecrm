@@ -320,8 +320,10 @@ export interface FirstInvoiceDetail {
   contractId: string | null;
   rentFrom: string | null;
   rentTo: string | null;
-  // Tiền phòng + dịch vụ = total hoá đơn TRỪ phần cọc bị nhồi vào hoá đơn (HĐ cũ
-  // có item OTHER "Tiền cọc"); HĐ mới không nhồi cọc nên = total. Cọc tính riêng.
+  // Tiền phòng + dịch vụ = total hoá đơn TRỪ phần cọc gộp trong hoá đơn (item
+  // OTHER "Tiền cọc" — thiết kế hiện hành GỘP cọc còn thiếu vào HĐ tháng đầu).
+  // Quy ước PHÒNG-TRƯỚC (khớp allocateDepositPortion): tiền thu phủ phần
+  // phòng/DV trước, cọc sau cùng.
   rentServicePaid: number;
   rentServiceTotal: number;
   invoicePaid: number;
@@ -380,13 +382,17 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
             !!rent?.from_date &&
             !!startBilling &&
             String(rent.from_date).slice(0, 10) === String(startBilling).slice(0, 10);
+          // Khớp cả mẫu ghi chú CŨ ("Hoá đơn cọc + tháng đầu…") lẫn MỚI
+          // ("Hoá đơn tiền phòng đầu tiên…" — useContracts từ 2026-07-02).
           const byNotes =
-            typeof inv.notes === 'string' && /th[aá]ng[\s_]?đầu/i.test(inv.notes);
+            typeof inv.notes === 'string' &&
+            /th[aá]ng[\s_]?đầu|đầu\s*tiên/i.test(inv.notes);
           if (!sameStart && !byNotes) continue;
           const invoiceTotal = Number(inv.total_amount) || 0;
           const invoicePaid = Number(inv.paid_amount) || 0;
-          // Bỏ phần cọc nhồi trong HĐ → còn tiền phòng + dịch vụ (đã trừ giảm
-          // trừ). Quy ước: tiền thu phủ phần phòng/dịch vụ TRƯỚC, cọc sau.
+          // Bỏ phần cọc gộp trong HĐ → còn tiền phòng + dịch vụ (đã trừ giảm
+          // trừ). Quy ước PHÒNG-TRƯỚC: tiền thu phủ phần phòng/dịch vụ TRƯỚC,
+          // cọc sau — KHỚP với phân bổ hạng mục lúc thu (allocateDepositPortion).
           const depositInInvoice = depositAmountInInvoice(items);
           const rentServiceTotal = Math.max(0, invoiceTotal - depositInInvoice);
           const rentServicePaid = Math.max(0, Math.min(invoicePaid, rentServiceTotal));
@@ -502,7 +508,7 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
         .select(
           `id, code, total_amount, voucher_date, creator_name, attachments,
            account:accounts!income_expenses_account_id_fkey ( name ),
-           income_expense_items!inner ( id, income_expense_types!inner ( is_deposit ) )`,
+           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
         )
         .eq('contract_id', contractId)
         .eq('type', 'INCOME')
@@ -519,10 +525,16 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
       const map = new Map<string, ContractDepositVoucher>();
       for (const v of (data ?? []) as any[]) {
         if (map.has(v.id)) continue;
+        // Số CỌC = Σ item cọc (embed đã lọc is_deposit) — phiếu trộn không đếm
+        // thừa phần không-cọc.
+        const depositSum = ((v.income_expense_items ?? []) as any[]).reduce(
+          (s: number, it: any) => s + (Number(it.amount) || 0),
+          0,
+        );
         map.set(v.id, {
           id: v.id,
           code: v.code ?? null,
-          totalAmount: Number(v.total_amount) || 0,
+          totalAmount: depositSum || Number(v.total_amount) || 0,
           voucherDate: v.voucher_date ?? null,
           creatorName: v.creator_name ?? null,
           accountName: v.account?.name ?? null,
