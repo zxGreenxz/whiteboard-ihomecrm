@@ -44,9 +44,12 @@ export interface AccountFormValues {
 }
 
 // --- Query: select-list (dùng trong filter & form thu chi) ---
-export const useAccounts = () => {
+// opts.enabled: cho caller hoãn fetch tới khi thực sự cần (vd CollectDrawer
+// chỉ tải sổ quỹ khi mở sheet thu tiền). Mặc định true — 20+ call site cũ giữ nguyên.
+export const useAccounts = (opts?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["accounts"],
+    enabled: opts?.enabled ?? true,
     queryFn: async () => {
       const { data, error } = await (supabase
         .from("accounts" as any)

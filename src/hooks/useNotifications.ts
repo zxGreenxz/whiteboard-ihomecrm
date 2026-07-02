@@ -77,7 +77,9 @@ export function useNotifications() {
         .from('notifications')
         .select('*')
         .eq('channel', 'IN_APP')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        // Cap an toàn: trang thông báo không cần kéo toàn bộ lịch sử.
+        .limit(200);
 
       if (error) throw error;
       return data as Notification[];

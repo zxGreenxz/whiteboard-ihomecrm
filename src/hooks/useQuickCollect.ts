@@ -48,8 +48,8 @@ export interface QuickCollectArgs {
   paymentDate?: string;
 }
 
-export const useQuickCollect = () => {
-  const { data: accounts = [] } = useAccounts();
+export const useQuickCollect = (opts?: { enabled?: boolean }) => {
+  const { data: accounts = [] } = useAccounts(opts);
   const { data: currentUser } = useAuth();
   const bulkMutation = useBulkRecordPayment();
 

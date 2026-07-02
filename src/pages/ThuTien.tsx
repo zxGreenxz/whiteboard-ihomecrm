@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, HandCoins, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
-import { useInvoices } from '@/hooks/useInvoices';
+import { useThuTienInvoices } from '@/hooks/useCollectionReport';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import {
@@ -68,11 +68,13 @@ const ThuTien = () => {
     if (!buildingId && buildings.length) setBuildingId(buildings[0].id);
   }, [buildings, buildingId]);
 
-  const { data: invoicesData, isLoading } = useInvoices({
-    building_id: buildingId || undefined,
-    billing_month: billingMonth,
-  });
-  const allRooms = useMemo(() => invoicesData?.data ?? [], [invoicesData]);
+  // 1 query cả kỳ (mọi toà) dùng chung với ManagePanel/CollectionReport;
+  // slice theo toà đang chọn ở client → đổi tab toà không refetch.
+  const { data: monthInvoices, isLoading } = useThuTienInvoices(billingMonth);
+  const allRooms = useMemo(
+    () => (monthInvoices ?? []).filter((i) => !buildingId || i.building_id === buildingId),
+    [monthInvoices, buildingId],
+  );
 
   // Ai thu bao nhiêu (creator_name phiếu thu theo payment) cho ô phòng + drawer.
   const invoiceIds = useMemo(() => allRooms.map((i) => i.id), [allRooms]);

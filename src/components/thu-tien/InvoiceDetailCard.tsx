@@ -9,11 +9,13 @@ interface Props {
   invoice: InvoiceWithRelations;
   /** Lịch sử ai thu bao nhiêu (phiếu thu theo payment) — [] nếu chưa thu/không có dữ liệu. */
   collectors?: CollectorEntry[];
+  /** invoice_items nạp lazy (useInvoiceItemsLite); bỏ trống → lấy từ invoice. */
+  items?: { id: string; description: string | null; amount: number }[];
 }
 
 /** Thẻ số tiền (.is-amount) + chi tiết invoice_items (.is-break) + ai thu bao nhiêu. */
-export function InvoiceDetailCard({ invoice, collectors = [] }: Props) {
-  const items = invoice.invoice_items ?? [];
+export function InvoiceDetailCard({ invoice, collectors = [], items: itemsProp }: Props) {
+  const items = itemsProp ?? invoice.invoice_items ?? [];
   const remaining = remainingOf(invoice);
 
   return (

@@ -86,6 +86,7 @@ export const useCashHandoverList = () => {
     enabled: !!currentUser?.id,
     // Polling nhẹ để người nhận thấy phiên mới mà không cần reload.
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
     queryFn: async (): Promise<CashHandover[]> => {
       const { data, error } = await (supabase as any)
         .from('cash_handovers')

@@ -13,6 +13,7 @@ import {
   latestPaymentId,
 } from '@/lib/collect';
 import { useQuickCollect } from '@/hooks/useQuickCollect';
+import { useInvoiceItemsLite } from '@/hooks/useCollectionReport';
 import { useDeletePayment } from '@/hooks/useDeletePayment';
 import { useUpdateInvoiceNote } from '@/hooks/useUpdateInvoiceNote';
 import { uploadReceiptToStorage } from '@/lib/receiptUpload';
@@ -52,11 +53,18 @@ export function CollectDrawer({
   onClose,
   onNavigate,
 }: Props) {
-  const { collect, accountIdFor, changeAccountName, isCollecting } = useQuickCollect();
+  // Sổ quỹ chỉ tải khi sheet thực sự mở (drawer luôn mounted để chạy animation).
+  const { collect, accountIdFor, changeAccountName, isCollecting } = useQuickCollect({
+    enabled: !!invoice,
+  });
   const deletePayment = useDeletePayment();
   const updateNote = useUpdateInvoiceNote();
 
   const compact = mode === 'keypad';
+  // Chi tiết hoá đơn nạp lazy — list /thu-tien không còn kéo invoice_items.
+  const { data: lazyItems = [] } = useInvoiceItemsLite(
+    !compact && invoice ? invoice.id : undefined,
+  );
   // entered = null → mặc định "điền sẵn đúng số còn phải thu"; chuỗi = số (nghìn) tự nhập.
   const [entered, setEntered] = useState<string | null>(null);
   const [keepAsCredit, setKeepAsCredit] = useState(false);
@@ -226,7 +234,7 @@ export function CollectDrawer({
             </span>
           </div>
 
-          <InvoiceDetailCard invoice={invoice} collectors={collectors} />
+          <InvoiceDetailCard invoice={invoice} collectors={collectors} items={lazyItems} />
 
           {canRecordPayment && st !== 'paid' && (
             <>
