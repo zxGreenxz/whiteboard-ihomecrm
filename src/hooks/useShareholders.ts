@@ -72,6 +72,26 @@ export const useMyShareholder = () => {
   });
 };
 
+// Tên các tòa caller có cổ phần / hưởng lương LN — qua RPC SECURITY DEFINER
+// get_my_share_buildings (migration 20260701170000). Trang lợi nhuận dùng hook
+// này để hiện TÊN TÒA vì cổ đông KHÔNG còn quyền đọc bảng buildings (tách quyền
+// khỏi khu vận hành: can_access_building đã bỏ nhánh cổ đông).
+export interface ShareBuilding {
+  id: string;
+  name: string | null;
+}
+export const useMyShareBuildings = () => {
+  return useQuery({
+    queryKey: ["my-share-buildings"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<ShareBuilding[]> => {
+      const { data, error } = await (supabase as any).rpc("get_my_share_buildings");
+      if (error) return [];
+      return (data ?? []) as ShareBuilding[];
+    },
+  });
+};
+
 // Toàn bộ tỷ lệ % theo tòa (cho ma trận cấu hình).
 export const useBuildingShareholders = () => {
   return useQuery({

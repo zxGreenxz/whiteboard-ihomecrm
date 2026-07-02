@@ -13,7 +13,7 @@ import { Wallet, HandCoins, Scale, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { StatCard } from "./StatCard";
 import { colorAt, currentYear } from "./shareholderUtils";
-import { useBuildings } from "@/hooks/useBuildings";
+import { useMyShareBuildings } from "@/hooks/useShareholders";
 import {
   useProfitManagerAllocations,
   useManagerSalaryPayouts,
@@ -28,9 +28,10 @@ export default function ProfitManagerSelfView({ me }: { me: ProfitManager }) {
   const [month, setMonth] = useState<string>(ALL);
   const { data: allocations = [] } = useProfitManagerAllocations(); // RLS: chỉ của mình
   const { data: payouts = [] } = useManagerSalaryPayouts(); // RLS: chỉ của mình
-  const { data: buildings = [] } = useBuildings();
+  // Tên tòa qua RPC riêng (vai lợi-nhuận không còn quyền đọc bảng buildings).
+  const { data: buildings = [] } = useMyShareBuildings();
 
-  const buildingName = (id?: string) => buildings.find((b: any) => b.id === id)?.name ?? "—";
+  const buildingName = (id?: string) => buildings.find((b) => b.id === id)?.name ?? "—";
   const monthOf = (p?: string) => Number((p ?? "").slice(5, 7));
 
   const summary = useMemo(

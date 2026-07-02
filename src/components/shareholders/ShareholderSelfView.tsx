@@ -13,13 +13,12 @@ import { Wallet, HandCoins, Scale, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { StatCard } from "./StatCard";
 import { colorAt, currentYear } from "./shareholderUtils";
-import { useBuildings } from "@/hooks/useBuildings";
 import {
   useProfitAllocations,
   useShareholderDistributions,
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
-import type { Shareholder } from "@/hooks/useShareholders";
+import { useMyShareBuildings, type Shareholder } from "@/hooks/useShareholders";
 
 const ALL = "all";
 
@@ -28,9 +27,10 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   const [month, setMonth] = useState<string>(ALL); // "all" | "1".."12"
   const { data: allocations = [] } = useProfitAllocations(); // RLS: chỉ của mình
   const { data: distributions = [] } = useShareholderDistributions(); // RLS: chỉ của mình
-  const { data: buildings = [] } = useBuildings();
+  // Tên tòa qua RPC riêng (cổ đông không còn quyền đọc bảng buildings).
+  const { data: buildings = [] } = useMyShareBuildings();
 
-  const buildingName = (id?: string) => buildings.find((b: any) => b.id === id)?.name ?? "—";
+  const buildingName = (id?: string) => buildings.find((b) => b.id === id)?.name ?? "—";
   const monthOf = (p?: string) => Number((p ?? "").slice(5, 7));
 
   const summary = useMemo(
