@@ -563,6 +563,32 @@ log('Zalo worker khởi động →', SUPABASE_URL);
 tick();
 const timer = setInterval(() => { tick().catch((e) => log('tick error', e.message)); }, POLL_MS);
 
+// ── V5 WATCHDOG (fallback tầng 2 — C5): KHÔNG chứa logic lương v5.
+// Chỉ đọc heartbeat cron_runs; Vercel Cron bỏ lỡ thì gọi lại edge fn salary-v5-jobs (idempotent, cùng idem_key).
+// CAVEAT: sửa block này phải RESTART worker (ghi trong docs/bang-luong/V5-IMPLEMENTATION-LOG.md).
+const V5_WATCH = [
+  { job: 'nightly', heartbeatJob: 'tier', afterHourVN: 8 },  // cron chính 06:45 VN
+  { job: 'digest', heartbeatJob: 'digest', afterHourVN: 9 }, // cron chính 07:00 VN
+];
+async function v5Watchdog() {
+  try {
+    const vn = new Date(Date.now() + 7 * 3600_000);
+    const today = vn.toISOString().slice(0, 10);
+    for (const { job, heartbeatJob, afterHourVN } of V5_WATCH) {
+      if (vn.getUTCHours() < afterHourVN) continue;
+      const { data } = await sb.from('cron_runs').select('id').eq('job', heartbeatJob).eq('idem_key', today).limit(1);
+      if (data && data.length) continue; // heartbeat OK — cron chính đã chạy
+      log('v5 watchdog: chạy bù job', job, today);
+      await fetch(`${SUPABASE_URL}/functions/v1/salary-v5-jobs?job=${job}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+      }).catch((e) => log('v5 watchdog fetch error', e.message));
+    }
+  } catch (e) { log('v5 watchdog error', e.message); }
+}
+v5Watchdog();
+setInterval(() => { v5Watchdog(); }, 30 * 60 * 1000);
+
 // Graceful shutdown
 function shutdown() {
   log('shutting down…');

@@ -42,8 +42,18 @@
     ],
     "rewrites": [
         {
-            "source": "/((?!assets/).*)",
+            "source": "/((?!assets/|api/).*)",
             "destination": "/index.html"
+        }
+    ],
+    "crons": [
+        {
+            "path": "/api/salary-v5-cron?job=nightly",
+            "schedule": "45 23 * * *"
+        },
+        {
+            "path": "/api/salary-v5-cron?job=digest",
+            "schedule": "0 0 * * *"
         }
     ]
 }

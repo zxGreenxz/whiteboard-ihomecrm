@@ -45,7 +45,31 @@ Nội dung: 6 bảng (`inspection_sessions` [status KHÔNG có 'failed' — fail
 
 **Commit:** `feat(salary-v5): S1 — nền dữ liệu v5` *(điền SHA sau commit)*
 
-## S2 — Engine dấu chân ⏳ (kế tiếp)
+## S2 — Engine dấu chân (2026-07-03) ✅
+
+**Migrations:** `20260703000002_v5_engine.sql` + `20260703000003_v5_jobs.sql` — đã apply live (Node UTF-8). **Rollback:** `scripts/v5_rollback_s2.sql`.
+
+Nội dung: `v5_tick_attendance` (hàm lõi B5 — advisory lock, idempotent, mọi nguồn đi qua, log `salary_award_errors`) · `v5_recompute_streak` (banked + 2 tầng khiên + sim_cap2 + reset_from_date cho án gian lận) · `start_inspection` (RESUME đúng phiên + nâng cấp QUICK→FULL) · `submit_inspection_photo` (hash-dedup theo ngày, geofence audit từ config acceptance_geofence) · `complete_inspection` (gate tại toà: checklist + ảnh 4/5/7 + Σdwell 8/12/18′; fail=presence + missing gain-framing; "Có vấn đề"→tự sinh job sửa; QUICK pass chốt tick nguồn PAYMENT khi đang nợ check-sau-thu) · `v5_tick_from_job` (nguồn 1, chấp nhận ảnh ở attachments) · `record_payment_gps` (nguồn 3: ok→tick-nếu-đã-check / pending_check+notify-treo-dedup / C14 ngày-đã-tick→piggyback_prompt; KHÔNG BAO GIỜ fail phiếu) · `v5_expire_stale` · jobs: `v5_daily_missions` (score+màu+lý-do-bằng-chữ) · `v5_run_digest` (1 digest/người/ngày dedup, tắt CN/phép) · `v5_close_period` (vật chất hoá pending config + bank full_month khi đứt-không-phép=0 + carry/earn khiên) · `v5_cron_start/finish` (idem).
+
+**Hạ tầng cron (C5 — KHÔNG pg_cron):** edge fn `supabase/functions/salary-v5-jobs` (ĐÃ DEPLOY, auth = CRON_SECRET/service-key/admin-JWT; secret đã set vào Supabase) · Vercel Cron 2 job trong `vercel.json` (`nightly` 23:45 UTC = 06:45 VN gồm tier+score+close_period-ngày-1; `digest` 00:00 UTC = 07:00 VN) — **cần chủ thêm env `CRON_SECRET` trên Vercel** (giá trị = secret đã set ở Supabase; xem Edge Function Secrets) · `api/salary-v5-cron.js` (Vercel fn chuyển tiếp) · **worker watchdog** vài dòng cuối `worker/index.js` (đọc heartbeat `cron_runs`, 08h/09h VN chưa thấy thì gọi bù edge fn — CAVEAT: sửa block này phải RESTART worker). Lưu ý: `vercel.json` rewrites thêm exclude `api/` (giữ nguyên khối headers/cache — án lệ 85d9515); lịch close_period chạy 06:45 VN ngày 1 (gộp nightly) thay 03:00 do Vercel Hobby giới hạn 2 cron — chấp nhận vì job không sinh tiền.
+
+**Test đã chạy (PASS toàn bộ):**
+| # | Ca | Kết quả |
+|---|---|---|
+| F-core | tick 2 lần cùng ngày = 1 dòng SAD (idempotent) | ✅ |
+| F1 | FULL 65NTG: checklist sinh đúng (size nhỏ: 4 ảnh/480s + mục random + phòng trống) → hash trùng bị chặn → complete thiếu = **presence** + missing gain-framing → **resume giữ checklist** → pass → tick FULL + **tự sinh job sửa** | ✅ |
+| F2 | C14: thu tiền khi ngày ĐÃ tick → `piggyback_prompt`, KHÔNG treo | ✅ |
+| F3 | Thu tiền ngày chưa tick → `pending_check` + 1 thông báo treo (gọi lần 2 dedup) → QUICK 2 ảnh pass → **tick nguồn PAYMENT** + thông báo tự READ | ✅ |
+| F4 | Streak: current/best/next-milestone đúng; **đơn giá động tự chứng minh** (ngày rơi T6: n=26→230.769đ; T7: n=27→222.222đ) | ✅ |
+| J1 | `v5_cron_start` idempotent (true/false) | ✅ |
+| J2 | Digest 3 nhân viên, chạy lần 2 = 0 (dedup) | ✅ |
+| J3 | `close_period('2026-08-01')` xử lý 3 staff, tạo SSS tháng mới | ✅ |
+| E1-3 | Edge fn live: sai secret 401 · nightly chạy thật (tier+score 30 rows) · lần 2 skipped | ✅ |
+| M | `v5_daily_missions(Joey)` khớp DỰ BÁO SPEC: 65NTG 78 đỏ "Chưa có dấu chân nào" · 162NVK 55.1 · 32PVC 53.2 | ✅ |
+
+**Commit:** `feat(salary-v5): S2 — engine dấu chân + cron/watchdog`
+
+## S3 — /my-day ⏳ (kế tiếp)
 
 ## S3 — /my-day ⏳
 
