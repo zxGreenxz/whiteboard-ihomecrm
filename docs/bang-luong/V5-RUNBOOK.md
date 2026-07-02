@@ -4,19 +4,21 @@
 
 ## 1. Việc chủ cần làm MỘT LẦN sau deploy
 
-1. **Thêm env `CRON_SECRET` trên Vercel** (Settings → Environment Variables): giá trị = secret `CRON_SECRET` đã đặt trong Supabase → Edge Functions → Secrets. Chưa thêm thì Vercel Cron trả 500 — **worker watchdog vẫn tự chạy bù lúc 08h/09h VN** nên hệ không chết.
-2. **Restart worker Zalo** (`worker/index.js`) để nạp block watchdog v5 (caveat cố hữu của worker — như án lệ Web Push).
-3. Mở `/reports/coverage` → tab **Cài đặt v5**: đặt `stage = grace` khi bắt đầu chạy thử coverage.
+1. **Thêm env `CRON_SECRET` trên Vercel** (Settings → Environment Variables): giá trị = secret `CRON_SECRET` đã đặt trong Supabase → Edge Functions → Secrets. **Đây là kênh tự động DUY NHẤT** — chưa thêm thì job không tự chạy (hệ vẫn sống: xem mục 2).
+2. Mở `/reports/coverage` → tab **Cài đặt v5**: đặt `stage = grace` khi bắt đầu chạy thử coverage.
+
+> *v5 KHÔNG phụ thuộc worker Zalo. (Bản đầu có gắn watchdog dự phòng vào worker vì đó là tiến trình chạy 24/7 sẵn có; đã GỠ 2026-07-03 theo yêu cầu chủ — không dùng worker.)*
 
 ## 2. Lịch job tự động (KHÔNG pg_cron)
 
 | Job | Giờ VN | Kênh chính | Fallback |
 |---|---|---|---|
-| `nightly` (tier + score; **+ close_period nếu là ngày 1**) | 06:45 | Vercel Cron `45 23 * * *` UTC → `api/salary-v5-cron?job=nightly` | Watchdog worker 08:00 · Nút "nightly" tab Cài đặt v5 |
-| `digest` (push tuyến, 1 tin/người/ngày) | 07:00 | Vercel Cron `0 0 * * *` UTC | Watchdog 09:00 · Nút "digest" |
+| `nightly` (tier + score; **+ close_period nếu là ngày 1**) | 06:45 | Vercel Cron `45 23 * * *` UTC → `api/salary-v5-cron?job=nightly` | Nút "nightly" tab Cài đặt v5 (1 chạm, idempotent) |
+| `digest` (push tuyến, 1 tin/người/ngày) | 07:00 | Vercel Cron `0 0 * * *` UTC | Nút "digest" |
 
 - Mọi run ghi `cron_runs` (UNIQUE job+idem_key = idempotent, bấm lại vô hại).
 - **Job không sinh tiền** — cron chết cả tuần không làm sai lương.
+- **Nếu cron chưa/không chạy, hệ vẫn hoạt động:** /my-day tính tuyến + trạng thái LIVE khi mở màn (không cần job `score`); chỉ thiếu push digest 7h; riêng **ngày 1 hằng tháng** nên bấm nút `close_period` (hoặc `nightly`) trong tab Cài đặt v5 để chuyển khiên/chốt mốc trọn-tháng — config 💰 pending thì `get_salary_v5_config` đã tự áp lúc đọc nên tiền không sai.
 - Lệch lịch có chủ đích: close_period chạy 06:45 VN ngày 1 (gộp nightly) thay 03:00 — Vercel Hobby chỉ cho 2 cron/ngày.
 
 ## 3. 3 nút của chủ (<10 phút/ngày)
@@ -49,8 +51,7 @@
 
 | Triệu chứng | Xử lý |
 |---|---|
-| Digest không tới 07:00 | Xem `cron_runs` (tab Cài đặt v5). Thiếu heartbeat → chờ watchdog 09:00 hoặc bấm "digest". Kiểm CRON_SECRET Vercel. |
+| Digest không tới 07:00 | Xem `cron_runs` (tab Cài đặt v5). Thiếu heartbeat → kiểm env CRON_SECRET trên Vercel; cần gấp thì bấm nút "digest". |
 | "Làm xong sao không thấy công" | Query `salary_award_errors` theo staff/fn_name — mọi RPC v5 log lỗi tại đây, không nuốt im. |
 | GPS lệch trong toà bê tông | Nhân viên bấm "Báo sự cố thiết bị" trong phiên (nút khiên) → chủ duyệt 1 chạm. |
-| Sửa watchdog worker | Sửa block `V5 WATCHDOG` cuối `worker/index.js` → **PHẢI restart worker**. |
 | Revert toàn bộ v5 | Xem V5-IMPLEMENTATION-LOG: `git revert` các commit `feat(salary-v5)` (hoặc tag `pre-v5-salary`) + chạy `scripts/v5_rollback_s{4,3,2,1}.sql` theo thứ tự ngược. |
