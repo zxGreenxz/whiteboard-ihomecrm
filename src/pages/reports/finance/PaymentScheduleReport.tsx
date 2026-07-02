@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { usePaymentScheduleReport } from "@/hooks/useReports";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -20,10 +21,10 @@ import { vi } from "date-fns/locale";
 export default function PaymentScheduleReport() {
   // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
   // Lọc client-side theo buildings.id trên invoices đã fetch, TRƯỚC khi gộp phòng.
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [roomId, setRoomId] = useState<string>("all");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-payment-schedule:buildingIds", []);
+  const [roomId, setRoomId] = usePersistedState<string>("flt:rpt-payment-schedule:roomId", "all");
+  const [startDate, setStartDate] = usePersistedState<string>("flt:rpt-payment-schedule:startDate", "");
+  const [endDate, setEndDate] = usePersistedState<string>("flt:rpt-payment-schedule:endDate", "");
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { Receipt, AlertTriangle } from 'lucide-react';
 import EmptyState from '@/components/ui/EmptyState';
@@ -43,8 +44,8 @@ import ChangeBreakdownDialog from '@/components/invoices/ChangeBreakdownDialog';
 import DepositBreakdownDialog from '@/components/invoices/DepositBreakdownDialog';
 
 const InvoicesDesktopPage = () => {
-  // Filters
-  const [filters, setFilters] = useState<InvoiceFilters>({});
+  // Filters — giữ qua F5 trong cùng tab (sessionStorage)
+  const [filters, setFilters] = usePersistedState<InvoiceFilters>('flt:invoices:filters', {});
 
   // ctx chỉ còn dùng cho isSuper (restore/force-cancel). Cơ chế khoá staff vào
   // khu vực theo quy ước ngầm username = area.name (lockedAreaId) đã GỠ:
@@ -58,7 +59,7 @@ const InvoicesDesktopPage = () => {
   const canRecordPayment = canUse(perms, 'invoices', 'record_payment');
 
   // Search
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePersistedState('flt:invoices:search', '');
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);

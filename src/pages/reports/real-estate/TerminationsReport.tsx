@@ -1,4 +1,3 @@
-import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { XCircle, AlertCircle, TrendingDown, Percent } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -17,10 +16,11 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
+import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
 
 export default function TerminationsReport() {
-  const [buildingId, setBuildingId] = useState<string | undefined>();
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-terminations:buildingId", undefined);
+  const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-terminations:dateRange", {
     from: startOfMonth(new Date()),
     to: new Date(),
   });

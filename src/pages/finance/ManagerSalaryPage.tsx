@@ -18,6 +18,7 @@ import SalarySelf from "@/components/salary/SalarySelf";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import SalaryAdminMobile from "@/components/salary/SalaryAdminMobile";
 import { usePhoneViewport } from "@/hooks/use-mobile";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import "@/components/salary/salary.css";
 
 function currentPeriodMonth(): string {
@@ -41,8 +42,8 @@ export default function ManagerSalaryPage() {
   const canPay = canUse(perms, "salary", "distribute");
   const isAdmin = !!(perms as any)?.__superadmin || canLock || canManageSalary || canPay;
 
-  const [periodMonth, setPeriodMonth] = useState<string>(currentPeriodMonth());
-  const [tab, setTab] = useState<"sheet" | "ledger" | "config">("sheet");
+  const [periodMonth, setPeriodMonth] = usePersistedState<string>("flt:salary-manager:period", currentPeriodMonth());
+  const [tab, setTab] = usePersistedState<"sheet" | "ledger" | "config">("flt:salary-manager:tab", "sheet");
   const [view, setView] = useState<"admin" | "self">("admin");
   const [selfId, setSelfId] = useState<string | null>(null);
   const [ledgerFilter, setLedgerFilter] = useState<{ who?: string } | null>(null);

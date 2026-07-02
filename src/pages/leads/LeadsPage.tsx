@@ -15,6 +15,7 @@ import ExportExcelDialog from "@/components/import-export/ExportExcelDialog";
 import type { LeadWithRelations } from "@/hooks/useLeads";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const LEAD_STATUSES = [
   { value: "B1_LEAD", label: "Mới", color: "bg-blue-100 text-blue-800" },
@@ -31,7 +32,7 @@ const LeadsPage = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<LeadWithRelations | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = usePersistedState("flt:leads:search", "");
 
   const { data: leads = [], isLoading } = useLeads();
   const deleteMutation = useDeleteLead();

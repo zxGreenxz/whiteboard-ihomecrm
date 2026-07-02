@@ -22,6 +22,7 @@ import { useJobs, useDeleteJob } from '@/hooks/useJobs';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { isOverdue } from '@/lib/jobValidation';
 import { TaskFiltersPanel } from '@/components/tasks/TaskFiltersPanel';
 import TaskCreateDialog from '@/components/tasks/TaskCreateDialog';
@@ -67,12 +68,12 @@ export default function TasksMobilePage() {
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, 'tasks', 'create');
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePersistedState('flt:tasks-mb:search', '');
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<TaskFilters>(defaultTaskFilters);
-  const [appliedFilters, setAppliedFilters] = useState<TaskFilters>(defaultTaskFilters);
-  const [activeTab, setActiveTab] = useState<TaskTab>('ALL');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('IN_PROGRESS');
+  const [filters, setFilters] = usePersistedState<TaskFilters>('flt:tasks-mb:filters', defaultTaskFilters);
+  const [appliedFilters, setAppliedFilters] = usePersistedState<TaskFilters>('flt:tasks-mb:applied', defaultTaskFilters);
+  const [activeTab, setActiveTab] = usePersistedState<TaskTab>('flt:tasks-mb:tab', 'ALL');
+  const [statusFilter, setStatusFilter] = usePersistedState<StatusFilter>('flt:tasks-mb:status', 'IN_PROGRESS');
   const [visible, setVisible] = useState(40);
 
   // Dialog state

@@ -13,6 +13,7 @@ import { getRoomDisplayStatus } from "@/lib/roomStatus";
 import { Building2, Layers, Search, Filter } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInDays } from "date-fns";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "Tất cả trạng thái" },
@@ -24,10 +25,10 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const BuildingMapPage = () => {
-  const [selectedBuildingId, setSelectedBuildingId] = useState<string>("");
-  const [selectedFloor, setSelectedFloor] = useState<string>("all");
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedBuildingId, setSelectedBuildingId] = usePersistedState<string>("flt:building-map:buildingId", "");
+  const [selectedFloor, setSelectedFloor] = usePersistedState<string>("flt:building-map:floor", "all");
+  const [selectedStatus, setSelectedStatus] = usePersistedState<string>("flt:building-map:status", "all");
+  const [searchQuery, setSearchQuery] = usePersistedState<string>("flt:building-map:search", "");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 

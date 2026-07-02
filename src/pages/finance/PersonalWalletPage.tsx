@@ -31,9 +31,10 @@ import {
   useShareholderDistributions,
   computeShareholderSummary,
 } from "@/hooks/useShareholderProfit";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 export default function PersonalWalletPage() {
-  const [year, setYear] = useState(currentYear());
+  const [year, setYear] = usePersistedState("flt:personal-wallet:year", currentYear());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PersonalTransaction | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);

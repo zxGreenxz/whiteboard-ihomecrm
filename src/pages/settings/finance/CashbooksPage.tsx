@@ -20,6 +20,7 @@ import {
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
 import { usePagination } from "@/hooks/usePagination";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { useIsMobile } from "@/hooks/use-mobile";
 import CashbookList from "@/components/cashbooks/CashbookList";
 import CashbookListMobile from "@/components/cashbooks/CashbookListMobile";
@@ -30,8 +31,8 @@ import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
 const CashbooksPage = () => {
   const isMobile = useIsMobile();
   const pagination = usePagination(isMobile ? 50 : 10);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = usePersistedState("flt:cashbooks:searchQuery", "");
+  const [searchInput, setSearchInput] = usePersistedState("flt:cashbooks:search", "");
 
   const { data, isLoading } = useAccountsWithBalance({
     page: pagination.page,

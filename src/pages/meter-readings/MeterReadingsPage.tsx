@@ -27,12 +27,13 @@ import {
   type MeterReadingDetailed,
 } from "@/hooks/useMeterReadings";
 import { usePagination } from "@/hooks/usePagination";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 
 const MeterReadingsPage = () => {
   // --- Filters ---
-  const [filters, setFilters] = useState<MeterReadingFilters>({
+  const [filters, setFilters] = usePersistedState<MeterReadingFilters>("flt:meter-readings:filters", {
     building_id: null,
     room_id: null,
     meter_type: null,

@@ -9,6 +9,7 @@ import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useRenewedContractIds } from '@/hooks/useRenewedContracts';
 import { canUse } from '@/lib/permissionPages';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { uniqueRoomNames, compareBuildingThenRoom } from '@/lib/roomSort';
 import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import {
@@ -78,11 +79,11 @@ function depositBadge(c: ContractWithRelations): { label: string; c: string; bg:
 export default function ContractsMobilePage() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePersistedState('flt:contracts-mb:search', '');
   const [debounced, setDebounced] = useState('');
-  const [buildingId, setBuildingId] = useState(''); // '' = tất cả toà
-  const [roomName, setRoomName] = useState('all');
-  const [stat, setStat] = useState<ContractStatFilter>('ALL');
+  const [buildingId, setBuildingId] = usePersistedState('flt:contracts-mb:buildingId', ''); // '' = tất cả toà
+  const [roomName, setRoomName] = usePersistedState('flt:contracts-mb:roomName', 'all');
+  const [stat, setStat] = usePersistedState<ContractStatFilter>('flt:contracts-mb:stat', 'ALL');
   const [pageSize, setPageSize] = useState(30);
   const [formOpen, setFormOpen] = useState(false);
 

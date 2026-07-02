@@ -8,7 +8,7 @@
 // manager_collection_cycle_report (useCollectionCycleReport).
 // =============================================
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Repeat } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
@@ -20,9 +20,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
-import { DateRange } from 'react-day-picker';
 import { format, startOfMonth, subMonths } from 'date-fns';
 import { useCollectionCycleReport } from '@/hooks/useCollectionCycleReport';
+import { usePersistedState, usePersistedDateRange } from '@/hooks/usePersistedState';
 import { useStaffUsers } from '@/hooks/useStaffUsers';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -41,8 +41,8 @@ export default function BanGiaoCycleReport() {
   const { data: currentUser } = useAuth();
   const { data: staff = [] } = useStaffUsers();
 
-  const [managerId, setManagerId] = useState(''); // '' = self (chính mình)
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  const [managerId, setManagerId] = usePersistedState('flt:rpt-ban-giao-cycle:managerId', ''); // '' = self (chính mình)
+  const [dateRange, setDateRange] = usePersistedDateRange('flt:rpt-ban-giao-cycle:dateRange', {
     from: startOfMonth(subMonths(new Date(), 2)),
     to: new Date(),
   });

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { RefreshCw, ArrowRightLeft, FileCheck } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -18,11 +17,12 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 export default function RenewalsTransfersReport() {
-  const [buildingId, setBuildingId] = useState<string | undefined>();
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-renewals:buildingId", undefined);
+  const [startDate, setStartDate] = usePersistedState("flt:rpt-renewals:startDate", "");
+  const [endDate, setEndDate] = usePersistedState("flt:rpt-renewals:endDate", "");
 
   const { data: buildings } = useBuildings();
   const { data: contracts, isLoading } = useRenewalsTransfersReport(

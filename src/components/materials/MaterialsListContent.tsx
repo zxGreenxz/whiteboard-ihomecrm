@@ -39,13 +39,14 @@ import {
   useDeleteMaterialCategory,
 } from '@/hooks/useMaterialCategories';
 import type { Material, MaterialCategory } from '@/types/material';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 const ALL = '__all__';
 
 export default function MaterialsListContent() {
-  const [search, setSearch] = useState('');
-  const [categoryId, setCategoryId] = useState<string>(ALL);
-  const [stockTab, setStockTab] = useState<'all' | 'low'>('all');
+  const [search, setSearch] = usePersistedState('flt:materials:search', '');
+  const [categoryId, setCategoryId] = usePersistedState<string>('flt:materials:category', ALL);
+  const [stockTab, setStockTab] = usePersistedState<'all' | 'low'>('flt:materials:stockTab', 'all');
 
   const filters = useMemo(
     () => ({

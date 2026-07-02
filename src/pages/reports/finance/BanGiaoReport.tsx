@@ -25,9 +25,9 @@ import {
 } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { DateRangePicker } from '@/components/reports/DateRangePicker';
-import { DateRange } from 'react-day-picker';
 import { format, startOfMonth } from 'date-fns';
 import { useSettlementReport, type SettlementAccount } from '@/hooks/useSettlementReport';
+import { usePersistedDateRange } from '@/hooks/usePersistedState';
 import { useProposeReconciliation } from '@/hooks/useReconciliations';
 import { fmtDateTime } from '@/lib/handover';
 import { useStaffUsers } from '@/hooks/useStaffUsers';
@@ -41,7 +41,7 @@ const toDate = (d: Date) => format(d, 'yyyy-MM-dd');
 const fmtDay = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 
 export default function BanGiaoReport() {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  const [dateRange, setDateRange] = usePersistedDateRange('flt:rpt-ban-giao:dateRange', {
     from: startOfMonth(new Date()),
     to: new Date(),
   });

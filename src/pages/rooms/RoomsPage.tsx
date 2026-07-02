@@ -20,6 +20,7 @@ import type { RoomWithRelations } from '@/types/room';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
 import { compareBuildingThenRoom } from '@/lib/roomSort';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 export default function RoomsPage() {
   const [searchParams] = useSearchParams();
@@ -28,14 +29,15 @@ export default function RoomsPage() {
   // Pre-filter from URL query param
   const preselectedBuildingId = searchParams.get('building_id') || '';
 
-  // State
-  const [searchTerm, setSearchTerm] = useState('');
-  // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
-  const [buildingIds, setBuildingIds] = useState<string[]>(
-    preselectedBuildingId ? [preselectedBuildingId] : []
+  // State — bộ lọc giữ qua F5 (sessionStorage); ?building_id trên URL vẫn
+  // THẮNG giá trị khôi phục nhờ effect sync bên dưới.
+  const [searchTerm, setSearchTerm] = usePersistedState('flt:rooms:search', '');
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>(
+    'flt:rooms:buildingIds',
+    () => (preselectedBuildingId ? [preselectedBuildingId] : [])
   );
-  const [floorFilter, setFloorFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [floorFilter, setFloorFilter] = usePersistedState('flt:rooms:floor', 'all');
+  const [statusFilter, setStatusFilter] = usePersistedState('flt:rooms:status', 'all');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

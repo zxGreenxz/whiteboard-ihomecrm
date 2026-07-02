@@ -12,6 +12,7 @@ import BuildingFormDialog from '@/components/buildings/BuildingFormDialog';
 import ManageAreasDialog from '@/components/areas/ManageAreasDialog';
 import { useBuildings, useUpdateBuildingStatus } from '@/hooks/useBuildings';
 import { useAreas } from '@/hooks/useAreas';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -32,10 +33,10 @@ export default function BuildingsPage() {
   );
 
   // State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = usePersistedState('flt:buildings:search', '');
+  const [statusFilter, setStatusFilter] = usePersistedState('flt:buildings:status', 'all');
   // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>('flt:buildings:buildingIds', []);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingWithRelations | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');

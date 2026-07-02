@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -33,6 +33,7 @@ import { useDeposits } from "@/hooks/useDeposits";
 import { useBuildings } from "@/hooks/useBuildings";
 import { formatDistanceToNow, format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 /** Rút gọn tiền: 126.8tr · 84.5tr · 1.4 tỷ. */
 const compact = (n: number): string => {
@@ -86,7 +87,7 @@ const ACTIVITY = {
  */
 export default function DashboardMobilePage() {
   const navigate = useNavigate();
-  const [building, setBuilding] = useState<string>("");
+  const [building, setBuilding] = usePersistedState<string>("flt:dashboard-mb:building", "");
   const buildingId = building || null;
 
   const now = useMemo(() => new Date(), []);

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Percent, TrendingUp, DollarSign, Calendar } from "lucide-react";
 import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { DateRange } from "react-day-picker";
@@ -29,6 +29,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
 
 const CATEGORY_COLORS = [
   "#3B82F6",
@@ -58,9 +59,9 @@ export default function ExpenseRatioReport() {
     from: startOfMonth(subMonths(new Date(), 5)),
     to: endOfMonth(new Date()),
   };
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultRange);
-  const [category, setCategory] = useState<string | undefined>(undefined);
-  const [buildingId, setBuildingId] = useState<string | undefined>();
+  const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-expense-ratio:dateRange", defaultRange);
+  const [category, setCategory] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:category", undefined);
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:buildingId", undefined);
 
   const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: categoriesList } = useIncomeExpenseTypeCategories("expense");

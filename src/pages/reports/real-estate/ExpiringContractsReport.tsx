@@ -1,4 +1,3 @@
-import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Home, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -22,11 +21,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 export default function ExpiringContractsReport() {
-  const [daysFilter, setDaysFilter] = useState(30);
-  const [buildingId, setBuildingId] = useState<string | undefined>();
-  const [floorId, setFloorId] = useState<string | undefined>();
+  const [daysFilter, setDaysFilter] = usePersistedState("flt:rpt-expiring:days", 30);
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-expiring:buildingId", undefined);
+  const [floorId, setFloorId] = usePersistedState<string | undefined>("flt:rpt-expiring:floorId", undefined);
 
   const { data: buildings } = useBuildings();
   const { data: floors } = useFloors(buildingId);

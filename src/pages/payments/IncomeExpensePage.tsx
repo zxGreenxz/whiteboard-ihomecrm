@@ -51,6 +51,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
 import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
@@ -78,7 +79,8 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
 const IncomeExpenseDesktopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [filters, setFilters] = useState<IncomeExpenseFilters>(() => {
+  // Giữ qua F5 (sessionStorage); ?account_id trên URL vẫn THẮNG nhờ effect dưới.
+  const [filters, setFilters] = usePersistedState<IncomeExpenseFilters>("flt:income-expense:filters", () => {
     const accountId = searchParams.get("account_id");
     return accountId
       ? { ...EMPTY_FILTERS, account_id: accountId }
@@ -98,8 +100,8 @@ const IncomeExpenseDesktopPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"individual" | "batch">("individual");
+  const [searchQuery, setSearchQuery] = usePersistedState("flt:income-expense:search", "");
+  const [viewMode, setViewMode] = usePersistedState<"individual" | "batch">("flt:income-expense:viewMode", "individual");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);

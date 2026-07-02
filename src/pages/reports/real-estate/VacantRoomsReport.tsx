@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { Home, Building2, DoorOpen } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
@@ -19,10 +19,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 export default function VacantRoomsReport() {
-  const [buildingId, setBuildingId] = useState<string | undefined>();
-  const [floorId, setFloorId] = useState<string | undefined>();
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-vacant-rooms:buildingId", undefined);
+  const [floorId, setFloorId] = usePersistedState<string | undefined>("flt:rpt-vacant-rooms:floorId", undefined);
 
   const { data: buildings } = useBuildings();
   const { data: floors } = useFloors(buildingId);

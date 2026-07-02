@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, LineChart } from "lucide-react";
 import { format } from "date-fns";
@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { useBuildings } from "@/hooks/useBuildings";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { monthToEndDate, monthToStartDate } from "@/lib/monthPeriod";
 import type { AnalysisFilters } from "@/components/finance-analysis/types";
 import { monthsRange, shiftMonth } from "@/components/finance-analysis/utils";
@@ -28,10 +29,10 @@ import { OperationsTab } from "@/components/finance-analysis/OperationsTab";
  */
 export default function FinancialAnalysisReport() {
   // Kỳ phân tích "MM-yyyy" (convention month picker của ProfitDistributionReport)
-  const [monthStr, setMonthStr] = useState<string>(format(new Date(), "MM-yyyy"));
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
+  const [monthStr, setMonthStr] = usePersistedState<string>("flt:rpt-fin-analysis:month", format(new Date(), "MM-yyyy"));
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-fin-analysis:buildingIds", []);
   // Mặc định DỒN TÍCH để khớp Phân bổ lợi nhuận (cũng mặc định accrual).
-  const [accrual, setAccrual] = useState<boolean>(true);
+  const [accrual, setAccrual] = usePersistedState<boolean>("flt:rpt-fin-analysis:accrual", true);
 
   // 36 tháng gần nhất — đủ ngữ cảnh YoY khi xem lùi 2 năm.
   const monthOptions = useMemo(() => {

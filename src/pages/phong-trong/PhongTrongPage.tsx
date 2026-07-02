@@ -10,6 +10,7 @@ import { QuickDepositModal } from "./QuickDepositModal";
 import { useSession } from "@/hooks/useAuth";
 import { useMyPermissions, can } from "@/hooks/useMyPermissions";
 import { useTracking, TrackingProvider } from "./useTracking";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 /** Giá trị đặc biệt cho chip "Tổng hợp" trong hàng chọn tòa nhà (xem tất cả tòa). */
 const OVERVIEW = "__overview__";
@@ -41,9 +42,9 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const sourced = props.buildings ?? data;
   const buildings = sourced && sourced.length ? sourced : isEmbedded ? [] : SAMPLE_BUILDINGS;
 
-  const [propId, setPropId] = useState<string>(OVERVIEW);
-  const [view, setView] = useState<"map" | "list">("list");
-  const [district, setDistrict] = useState("all");
+  const [propId, setPropId] = usePersistedState<string>("flt:phong-trong:propId", OVERVIEW);
+  const [view, setView] = usePersistedState<"map" | "list">("flt:phong-trong:view", "list");
+  const [district, setDistrict] = usePersistedState("flt:phong-trong:district", "all");
   const showRented = false;
   const isOverview = propId === OVERVIEW;
 

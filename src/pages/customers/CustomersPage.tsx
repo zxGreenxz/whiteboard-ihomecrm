@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 
 const CustomersMobilePage = lazy(() => import('./CustomersMobilePage'));
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useCustomers, useCustomerStats, useCreateCustomer } from '@/hooks/useCustomers';
@@ -35,13 +36,13 @@ function CustomersDesktopPage() {
   const navigate = useNavigate();
 
   // State
-  const [activeTab, setActiveTab] = useState<CustomerStatus>('RENTING');
-  const [activeStatFilter, setActiveStatFilter] = useState<StatFilterType>('ALL');
-  const [filters, setFilters] = useState<CustomerFilters>({});
+  const [activeTab, setActiveTab] = usePersistedState<CustomerStatus>('flt:customers:tab', 'RENTING');
+  const [activeStatFilter, setActiveStatFilter] = usePersistedState<StatFilterType>('flt:customers:stat', 'ALL');
+  const [filters, setFilters] = usePersistedState<CustomerFilters>('flt:customers:filters', {});
   // Lọc toà nhà client-side ([] = tất cả) — khớp qua current_building_id
   // (toà của HĐ đang hiệu lực, enrich sẵn trong useCustomers).
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>('flt:customers:buildingIds', []);
+  const [searchQuery, setSearchQuery] = usePersistedState('flt:customers:search', '');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);

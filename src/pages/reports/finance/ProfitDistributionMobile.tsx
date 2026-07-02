@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, CircleDollarSign, BarChart3,
 } from "lucide-react";
 import { useBuildings } from "@/hooks/useBuildings";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import {
   useIncomeExpenses, useIncomeExpenseStats, type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
@@ -41,11 +42,11 @@ const CARD = "rounded-xl border border-[#e7e3da] bg-white shadow-sm";
 
 export default function ProfitDistributionMobile() {
   const now = new Date();
-  const [ym, setYm] = useState({ m: now.getMonth() + 1, y: now.getFullYear() });
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [side, setSide] = useState<"income" | "expense">("income");
-  const [accrualMode, setAccrualMode] = useState(true);
-  const [pnlOnly, setPnlOnly] = useState(true); // false ⇒ gồm khoản cọc/không KQKD
+  const [ym, setYm] = usePersistedState("flt:rpt-profit-dist-mb:ym", { m: now.getMonth() + 1, y: now.getFullYear() });
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-profit-dist-mb:buildingIds", []);
+  const [side, setSide] = usePersistedState<"income" | "expense">("flt:rpt-profit-dist-mb:side", "income");
+  const [accrualMode, setAccrualMode] = usePersistedState("flt:rpt-profit-dist-mb:accrualMode", true);
+  const [pnlOnly, setPnlOnly] = usePersistedState("flt:rpt-profit-dist-mb:pnlOnly", true); // false ⇒ gồm khoản cọc/không KQKD
   const [filterOpen, setFilterOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);

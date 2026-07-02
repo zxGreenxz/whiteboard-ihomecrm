@@ -52,6 +52,7 @@ import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExp
 import IncomeExpenseBatchListMobile from "@/components/income-expenses/IncomeExpenseBatchListMobile";
 import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeExpenseBatchDetailMobile";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = {
   building_ids: [],
@@ -117,11 +118,12 @@ export default function IncomeExpenseMobilePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistedState("flt:income-expense-mb:search", "");
   const [debounced, setDebounced] = useState("");
   // Vào /income-expense?account_id=xxx (vd "Xem thu chi" từ 1 sổ quỹ) → lọc sẵn
   // theo sổ đó, ĐỒNG BỘ với desktop. Không có param → xem tất cả (RLS lọc).
-  const [filters, setFilters] = useState<IncomeExpenseFilters>(() => {
+  // Giữ qua F5 (sessionStorage); ?account_id trên URL vẫn THẮNG nhờ effect dưới.
+  const [filters, setFilters] = usePersistedState<IncomeExpenseFilters>("flt:income-expense-mb:filters", () => {
     const accountId = searchParams.get("account_id");
     return accountId
       ? { ...EMPTY_FILTERS, account_id: accountId }
@@ -139,7 +141,7 @@ export default function IncomeExpenseMobilePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [viewMode, setViewMode] = useState<"individual" | "batch">("individual");
+  const [viewMode, setViewMode] = usePersistedState<"individual" | "batch">("flt:income-expense-mb:viewMode", "individual");
   const [filterOpen, setFilterOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 

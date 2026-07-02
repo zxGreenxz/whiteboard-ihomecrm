@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useOverpaymentReport } from "@/hooks/useReports";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -19,8 +20,8 @@ const formatCurrency = (n: number) =>
 export default function OverpaymentReport() {
   // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
   // Lọc client-side theo buildings.id trên rows đã fetch (hook không nhận filter).
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [roomId, setRoomId] = useState<string>("all");
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-overpayment:buildingIds", []);
+  const [roomId, setRoomId] = usePersistedState<string>("flt:rpt-overpayment:roomId", "all");
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 

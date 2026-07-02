@@ -8,6 +8,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import VehicleFormDialog from '@/components/vehicles/VehicleFormDialog';
 import type { VehicleWithRelations, VehicleFilters, VehicleType } from '@/types/vehicle';
 import type { BuildingWithRelations } from '@/types/building';
@@ -34,11 +35,11 @@ const zaloHref = (p?: string | null) => 'https://zalo.me/' + (p || '').replace(/
 export default function VehiclesMobilePage() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePersistedState('flt:vehicles-mb:search', '');
   const [debounced, setDebounced] = useState('');
-  const [vtype, setVtype] = useState<VehicleType | 'all'>('all');
-  const [buildingId, setBuildingId] = useState('all');
-  const [roomId, setRoomId] = useState('all');
+  const [vtype, setVtype] = usePersistedState<VehicleType | 'all'>('flt:vehicles-mb:vtype', 'all');
+  const [buildingId, setBuildingId] = usePersistedState('flt:vehicles-mb:buildingId', 'all');
+  const [roomId, setRoomId] = usePersistedState('flt:vehicles-mb:roomId', 'all');
   const [showFilter, setShowFilter] = useState(false);
   const [pageSize, setPageSize] = useState(30);
 

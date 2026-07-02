@@ -9,6 +9,7 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { supabase } from '@/integrations/supabase/client';
 import type { Customer, CustomerStatus, CustomerFilters } from '@/types/customer';
 import type { BuildingWithRelations } from '@/types/building';
@@ -53,10 +54,10 @@ const STATUS_TABS: { id: CustomerStatus; label: string }[] = [
 export default function CustomersMobilePage() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = usePersistedState('flt:customers-mb:search', '');
   const [debounced, setDebounced] = useState('');
-  const [status, setStatus] = useState<CustomerStatus>('RENTING');
-  const [buildingId, setBuildingId] = useState('');
+  const [status, setStatus] = usePersistedState<CustomerStatus>('flt:customers-mb:status', 'RENTING');
+  const [buildingId, setBuildingId] = usePersistedState('flt:customers-mb:buildingId', '');
   const [pageSize, setPageSize] = useState(30);
 
   useEffect(() => {

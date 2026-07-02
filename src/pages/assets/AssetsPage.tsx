@@ -29,6 +29,7 @@ import { AssetMaintenanceDialog } from "@/components/assets/AssetMaintenanceDial
 import { formatCurrency } from "@/lib/utils";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const CONDITION_CONFIG = {
   NEW: { label: "Mới", color: "bg-green-100 text-green-800" },
@@ -52,11 +53,11 @@ const AssetsPage = () => {
   const [movementDialogOpen, setMovementDialogOpen] = useState(false);
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetWithRelations | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
-  const [conditionFilter, setConditionFilter] = useState<string>("ALL");
-  const [buildingFilter, setBuildingFilter] = useState<string>("ALL");
-  const [roomFilter, setRoomFilter] = useState<string>("ALL");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = usePersistedState<string>("flt:assets:category", "ALL");
+  const [conditionFilter, setConditionFilter] = usePersistedState<string>("flt:assets:condition", "ALL");
+  const [buildingFilter, setBuildingFilter] = usePersistedState<string>("flt:assets:building", "ALL");
+  const [roomFilter, setRoomFilter] = usePersistedState<string>("flt:assets:room", "ALL");
+  const [searchQuery, setSearchQuery] = usePersistedState("flt:assets:search", "");
 
   const { data: buildings = [] } = useBuildings();
   const { data: rooms = [] } = useRooms(buildingFilter !== "ALL" ? buildingFilter : undefined);

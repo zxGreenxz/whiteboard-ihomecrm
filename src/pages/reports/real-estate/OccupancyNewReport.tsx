@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Building2, Home, DoorOpen, Wrench, TrendingUp } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -16,6 +15,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 const COLORS = {
   occupied: "#10B981",
@@ -25,7 +25,7 @@ const COLORS = {
 };
 
 export default function OccupancyNewReport() {
-  const [buildingId, setBuildingId] = useState<string | undefined>();
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-occupancy:buildingId", undefined);
 
   const { data: buildings } = useBuildings();
   const { data: occupancyData, isLoading } = useOccupancyReport(buildingId);

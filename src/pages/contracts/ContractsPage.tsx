@@ -33,6 +33,7 @@ import {
 } from '@/hooks/useContracts';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -64,18 +65,24 @@ function ContractsDesktopPage() {
   // State
   // =============================================
 
-  // Stats filter
-  const [activeStatFilter, setActiveStatFilter] = useState<ContractStatFilter>('ALL');
+  // Stats filter — giữ qua F5 trong cùng tab (sessionStorage)
+  const [activeStatFilter, setActiveStatFilter] = usePersistedState<ContractStatFilter>('flt:contracts:stat', 'ALL');
 
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = usePersistedState('flt:contracts:search', '');
   // Search đẩy xuống server → debounce để không bắn query mỗi phím gõ.
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  // Lọc theo nhiều toà nhà (khu vực = phím tắt chọn nhóm toà). [] = tất cả.
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [roomFilter, setRoomFilter] = useState('all');
-  const [lifecycleFilter, setLifecycleFilter] = useState<ContractLifecycleFilter>('ACTIVE');
-  const [monthFilter, setMonthFilter] = useState('');
+  // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>('flt:contracts:buildingIds', []);
+  // true khi F5 khôi phục được lựa chọn toà từ phiên này → bỏ qua default theo khu.
+  // Phải chốt NGAY lần render đầu (trước các effect) vì usePersistedState sẽ ghi
+  // đè sessionStorage ngay sau mount.
+  const hadPersistedBuildingIds = useRef(
+    typeof sessionStorage !== 'undefined' && sessionStorage.getItem('flt:contracts:buildingIds') !== null,
+  );
+  const [roomFilter, setRoomFilter] = usePersistedState('flt:contracts:room', 'all');
+  const [lifecycleFilter, setLifecycleFilter] = usePersistedState<ContractLifecycleFilter>('flt:contracts:lifecycle', 'ACTIVE');
+  const [monthFilter, setMonthFilter] = usePersistedState('flt:contracts:month', '');
   const [showFilters, setShowFilters] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const areaDefaultAppliedRef = useRef(false);
@@ -183,6 +190,11 @@ function ContractsDesktopPage() {
   // (khu vực = chọn sẵn toàn bộ toà nhà thuộc khu đó)
   useEffect(() => {
     if (areaDefaultAppliedRef.current) return;
+    // F5 đã khôi phục lựa chọn toà của user trong phiên → không áp default khu.
+    if (hadPersistedBuildingIds.current) {
+      areaDefaultAppliedRef.current = true;
+      return;
+    }
     if (!profile || areas.length === 0) return;
     const name = (profile.full_name || '').trim().toLowerCase();
     if (name === 'joey' || name === 'nathan') {

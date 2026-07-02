@@ -4,6 +4,7 @@ import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useCashFlowByDay } from "@/hooks/useCashBook";
 import { useBuildings } from "@/hooks/useBuildings";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -21,8 +22,8 @@ const QUARTER_LABEL = ["I", "II", "III", "IV"];
 
 export default function CashFlowReport() {
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState<number>(currentYear);
-  const [buildingId, setBuildingId] = useState<string>("all");
+  const [year, setYear] = usePersistedState<number>("flt:rpt-cash-flow:year", currentYear);
+  const [buildingId, setBuildingId] = usePersistedState<string>("flt:rpt-cash-flow:buildingId", "all");
   const [series, setSeries] = useState<{
     income: boolean;
     expense: boolean;

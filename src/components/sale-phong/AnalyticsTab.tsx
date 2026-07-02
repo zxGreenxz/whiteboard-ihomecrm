@@ -33,6 +33,7 @@ import {
   usePraByToken, usePraErrors,
   type PraFilters, type PraTopRoomRow, type PraTimeseriesRow,
 } from "@/hooks/usePublicRoomsAnalytics";
+import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
 
 /* ===== helpers ===== */
 const COLORS = { views: "#3b82f6", opens: "#f59e0b", impr: "#8b5cf6", contact: "#10b981" };
@@ -45,13 +46,13 @@ const roomLabel = (r: { room_code: string | null; room_name: string | null }) =>
 
 /* ===== Shell ===== */
 export default function AnalyticsTab() {
-  const [range, setRange] = useState<DateRange | undefined>({
+  const [range, setRange] = usePersistedDateRange("flt:sale-phong-analytics:range", {
     from: subDays(new Date(), 29),
     to: new Date(),
   });
-  const [token, setToken] = useState("");
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [excludeStaff, setExcludeStaff] = useState(false);
+  const [token, setToken] = usePersistedState("flt:sale-phong-analytics:token", "");
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:sale-phong-analytics:buildingIds", []);
+  const [excludeStaff, setExcludeStaff] = usePersistedState("flt:sale-phong-analytics:excludeStaff", false);
 
   const { data: tokens = [] } = usePublicRoomTokens();
   const tokenOptions = useMemo(

@@ -28,6 +28,7 @@ import {
 } from "@/hooks/useNotifications";
 import { format, formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 type NotifMeta = { label: string; Icon: typeof Bell; c: string; bg: string; line: string };
 
@@ -85,8 +86,8 @@ export default function NotificationsMobilePage() {
   const markAllAsRead = useMarkAllAsRead();
   const deleteNotification = useDeleteNotification();
 
-  const [tab, setTab] = useState<"all" | "unread">("all");
-  const [type, setType] = useState<NotificationType | "all">("all");
+  const [tab, setTab] = usePersistedState<"all" | "unread">("flt:notifications-mb:tab", "all");
+  const [type, setType] = usePersistedState<NotificationType | "all">("flt:notifications-mb:type", "all");
   const [sel, setSel] = useState<string | null>(null);
 
   const unread = useMemo(() => list.filter((n) => n.status !== "READ").length, [list]);

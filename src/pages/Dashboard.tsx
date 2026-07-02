@@ -29,9 +29,10 @@ import { useScheduledNotifications } from '@/hooks/useScheduledNotifications';
 import OnboardingWizard, { useOnboardingState } from '@/components/onboarding/OnboardingWizard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 const Dashboard = () => {
-  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
+  const [selectedBuilding, setSelectedBuilding] = usePersistedState<string | null>('flt:dashboard:building', null);
   const [vacantOpen, setVacantOpen] = useState(false);
   const buildingId = selectedBuilding === 'all' ? null : selectedBuilding;
   const navigate = useNavigate();

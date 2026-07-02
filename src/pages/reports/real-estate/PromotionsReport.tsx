@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Tag, TrendingDown, Gift, DollarSign } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -15,10 +14,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRange } from "react-day-picker";
+import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
 
 export default function PromotionsReport() {
-  const [buildingId, setBuildingId] = useState<string | undefined>();
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-promotions:buildingId", undefined);
+  const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-promotions:dateRange", undefined);
 
   const { data: buildings } = useBuildings();
   const { data: promotions, isLoading } = usePromotionsReport(

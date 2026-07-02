@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { useTenants } from "@/hooks/useTenants";
 import { usePagination, calculatePaginationInfo } from "@/hooks/usePagination";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +29,8 @@ type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 
 export default function TenantsPage() {
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = usePersistedState("flt:tenants:search", "");
+  const [activeTab, setActiveTab] = usePersistedState<string>("flt:tenants:tab", "all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

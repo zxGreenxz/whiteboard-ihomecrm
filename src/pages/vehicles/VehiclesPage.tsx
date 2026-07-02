@@ -4,6 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { usePagination, calculatePaginationInfo } from '@/hooks/usePagination';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import EmptyState from '@/components/ui/EmptyState';
 import { useIsMobile, usePhoneViewport } from '@/hooks/use-mobile';
@@ -38,13 +39,13 @@ export default function VehiclesPage() {
 function VehiclesDesktopPage() {
   // State
   const isMobile = useIsMobile();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePersistedState('flt:vehicles:search', '');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleWithRelations | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<VehicleWithRelations | null>(null);
-  const [extraFilters, setExtraFilters] = useState<VehicleFilters>(EMPTY_FILTERS);
+  const [extraFilters, setExtraFilters] = usePersistedState<VehicleFilters>('flt:vehicles:filters', EMPTY_FILTERS);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
   // Pagination

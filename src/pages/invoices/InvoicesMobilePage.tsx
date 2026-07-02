@@ -11,6 +11,7 @@ import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePagination } from "@/hooks/usePagination";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { uniqueRoomNames } from "@/lib/roomSort";
 import type {
   InvoiceFilters,
@@ -69,15 +70,15 @@ const STAT_TABS: { id: "all" | InvoiceStatus; label: string }[] = [
 export default function InvoicesMobilePage() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistedState("flt:invoices-mb:search", "");
   const [debounced, setDebounced] = useState("");
-  const [buildingId, setBuildingId] = useState("");
-  const [roomName, setRoomName] = useState("all");
-  const [stat, setStat] = useState<"all" | InvoiceStatus>("all");
+  const [buildingId, setBuildingId] = usePersistedState("flt:invoices-mb:buildingId", "");
+  const [roomName, setRoomName] = usePersistedState("flt:invoices-mb:roomName", "all");
+  const [stat, setStat] = usePersistedState<"all" | InvoiceStatus>("flt:invoices-mb:stat", "all");
   const [pageSize, setPageSize] = useState(30);
   const [createOpen, setCreateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [methodFilter, setMethodFilter] = useState<StatMethodKey | null>(null);
+  const [methodFilter, setMethodFilter] = usePersistedState<StatMethodKey | null>("flt:invoices-mb:method", null);
   const [changeOpen, setChangeOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
 

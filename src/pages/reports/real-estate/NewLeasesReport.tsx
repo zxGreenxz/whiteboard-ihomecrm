@@ -1,4 +1,3 @@
-import { useState } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { FileCheck, Plus, TrendingUp, DollarSign } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -16,10 +15,11 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
+import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
 
 export default function NewLeasesReport() {
-  const [buildingId, setBuildingId] = useState<string | undefined>();
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-new-leases:buildingId", undefined);
+  const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-new-leases:dateRange", {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });

@@ -17,6 +17,7 @@ import { useJobs, useDeleteJob } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile, usePhoneViewport } from "@/hooks/use-mobile";
 import { usePagination } from "@/hooks/usePagination";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { paginateJobs } from "@/lib/jobValidation";
 import { TaskStatusStats } from "@/components/tasks/TaskStatusStats";
 import { TaskFiltersPanel } from "@/components/tasks/TaskFiltersPanel";
@@ -52,14 +53,14 @@ function TaskManagementDesktopPage() {
   const { data: authUser } = useAuth();
   const isMobile = useIsMobile();
   // State management
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = usePersistedState("flt:tasks:search", "");
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<TaskFilters>(defaultTaskFilters);
-  const [appliedFilters, setAppliedFilters] = useState<TaskFilters>(defaultTaskFilters);
-  const [activeTab, setActiveTab] = useState<TaskTab>("ALL");
+  const [filters, setFilters] = usePersistedState<TaskFilters>("flt:tasks:filters", defaultTaskFilters);
+  const [appliedFilters, setAppliedFilters] = usePersistedState<TaskFilters>("flt:tasks:applied", defaultTaskFilters);
+  const [activeTab, setActiveTab] = usePersistedState<TaskTab>("flt:tasks:tab", "ALL");
   // Mặc định chỉ hiển thị phiếu chưa hoàn thành (đang làm + trễ hẹn).
   // Click vào stat card sẽ chuyển sang IN_PROGRESS hoặc COMPLETED.
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("IN_PROGRESS");
+  const [statusFilter, setStatusFilter] = usePersistedState<StatusFilter>("flt:tasks:status", "IN_PROGRESS");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobWithRelations | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);

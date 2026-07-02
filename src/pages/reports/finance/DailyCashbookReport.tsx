@@ -1,17 +1,17 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useCashFlowByDay, useCashBookSummary } from "@/hooks/useCashBook";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAccounts } from "@/hooks/useAccounts";
+import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
-import { DateRange } from "react-day-picker";
 import { addDays, format, startOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -32,14 +32,14 @@ const enumerateDays = (start: string, end: string): string[] => {
 };
 
 export default function DailyCashbookReport() {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-daily-cashbook:dateRange", {
     from: startOfMonth(new Date()),
     to: new Date(),
   });
   // Toà nhà giữ ĐƠN-chọn: useCashFlowByDay/useCashBookSummary chỉ nhận
   // building_id đơn (chưa hỗ trợ building_ids — không sửa hooks ở đây).
-  const [buildingId, setBuildingId] = useState<string>("all");
-  const [accountId, setAccountId] = useState<string>("all");
+  const [buildingId, setBuildingId] = usePersistedState<string>("flt:rpt-daily-cashbook:buildingId", "all");
+  const [accountId, setAccountId] = usePersistedState<string>("flt:rpt-daily-cashbook:accountId", "all");
 
   const startDate = dateRange?.from ? toLocalDateStr(dateRange.from) : undefined;
   const endDate = dateRange?.to ? toLocalDateStr(dateRange.to) : undefined;

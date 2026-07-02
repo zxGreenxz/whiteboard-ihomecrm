@@ -31,11 +31,12 @@ import { CreateServiceDialog } from "@/components/services/CreateServiceDialog";
 import { EditServiceDialog } from "@/components/services/EditServiceDialog";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 export default function ServicesPage() {
   const queryClient = useQueryClient();
-  const [buildingFilter, setBuildingFilter] = useState<string>("");
-  const [feeTypeFilter, setFeeTypeFilter] = useState<string>("");
+  const [buildingFilter, setBuildingFilter] = usePersistedState<string>("flt:services:building", "");
+  const [feeTypeFilter, setFeeTypeFilter] = usePersistedState<string>("flt:services:feeType", "");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

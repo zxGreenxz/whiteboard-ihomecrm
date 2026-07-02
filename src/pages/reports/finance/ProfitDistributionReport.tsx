@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { DollarSign, LayoutGrid } from "lucide-react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import ProfitDistributionMobile from "./ProfitDistributionMobile";
 import {
   useIncomeExpenses,
@@ -198,18 +199,18 @@ export default function ProfitDistributionContent() {
 
 function ProfitDistributionDesktop() {
   const now = new Date();
-  const [monthStr, setMonthStr] = useState<string>(format(now, "MM-yyyy"));
+  const [monthStr, setMonthStr] = usePersistedState<string>("flt:rpt-profit-dist:month", format(now, "MM-yyyy"));
   // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
-  const [roomId, setRoomId] = useState<string>("all");
-  const [voucherType, setVoucherType] = useState<string>("all");
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-profit-dist:buildingIds", []);
+  const [roomId, setRoomId] = usePersistedState<string>("flt:rpt-profit-dist:roomId", "all");
+  const [voucherType, setVoucherType] = usePersistedState<string>("flt:rpt-profit-dist:voucherType", "all");
   // Mặc định: chỉ tính khoản CÓ hạch toán KQKD (loại tiền cọc & khoản
   // override không-KQKD). Bật toggle để xem cả khoản không hạch toán.
-  const [pnlOnly, setPnlOnly] = useState<boolean>(true);
+  const [pnlOnly, setPnlOnly] = usePersistedState<boolean>("flt:rpt-profit-dist:pnlOnly", true);
   // Ghi nhận: false = theo Ngày phiếu (voucher_date, hành vi cũ);
   // true = theo Kỳ phân bổ (accrual — chia đều số tiền item ra các tháng trong kỳ).
   // Mặc định BẬT — đúng tên trang "Phân bổ lợi nhuận"; tắt toggle để xem theo ngày phiếu.
-  const [accrualMode, setAccrualMode] = useState<boolean>(true);
+  const [accrualMode, setAccrualMode] = usePersistedState<boolean>("flt:rpt-profit-dist:accrualMode", true);
   // Người dùng tự ép ẩn/hiện 1 cột — ghi đè lên mặc định tự-suy-từ-bộ-lọc.
   // Trống = theo mặc định (nút "Đặt lại mặc định" xoá hết override).
   const [colOverrides, setColOverrides] = useState<Partial<Record<ColKey, boolean>>>({});

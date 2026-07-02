@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
 import { usePhoneViewport } from '@/hooks/use-mobile';
 import { Bell, CheckCheck, Trash2, Filter, X } from 'lucide-react';
@@ -19,14 +19,16 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 // Bản tin mobile: web-app full-screen riêng (scope CSS .cm-app) — lazy.
 const NotificationsMobilePage = lazy(() => import('./NotificationsMobilePage'));
 
 const NotificationsDesktopPage = () => {
   const navigate = useNavigate();
-  const [selectedTab, setSelectedTab] = useState<'all' | 'unread'>('all');
-  const [selectedType, setSelectedType] = useState<NotificationType | 'all'>(
+  const [selectedTab, setSelectedTab] = usePersistedState<'all' | 'unread'>('flt:notifications:tab', 'all');
+  const [selectedType, setSelectedType] = usePersistedState<NotificationType | 'all'>(
+    'flt:notifications:type',
     'all'
   );
 

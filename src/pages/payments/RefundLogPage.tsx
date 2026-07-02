@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 interface RefundRow {
   id: string;
@@ -125,16 +126,18 @@ const RefundLogPage = () => {
   const isMobile = useIsMobile();
   const accountId = searchParams.get("account_id");
 
-  const [period, setPeriod] = useState<Period>("this-month");
-  const [customStart, setCustomStart] = useState<string>("");
-  const [customEnd, setCustomEnd] = useState<string>("");
-
-  // Default custom range = current month
-  useEffect(() => {
-    const now = new Date();
-    setCustomStart(format(startOfMonth(now), "yyyy-MM-dd"));
-    setCustomEnd(format(endOfMonth(now), "yyyy-MM-dd"));
-  }, []);
+  // Giữ qua F5 (sessionStorage). Default custom range = tháng hiện tại — đặt
+  // ngay trong initializer (thay vì effect set vô điều kiện như trước) để
+  // KHÔNG đè khoảng ngày user đã chọn khi khôi phục.
+  const [period, setPeriod] = usePersistedState<Period>("flt:refund-log:period", "this-month");
+  const [customStart, setCustomStart] = usePersistedState<string>(
+    "flt:refund-log:customStart",
+    () => format(startOfMonth(new Date()), "yyyy-MM-dd"),
+  );
+  const [customEnd, setCustomEnd] = usePersistedState<string>(
+    "flt:refund-log:customEnd",
+    () => format(endOfMonth(new Date()), "yyyy-MM-dd"),
+  );
 
   const { start, end } = useMemo(() => {
     const now = new Date();

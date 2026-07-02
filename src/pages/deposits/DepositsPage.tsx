@@ -47,6 +47,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
+import { usePersistedState } from "@/hooks/usePersistedState";
 
 // Trạng thái phiếu giữ chỗ (theo approval_status của phiếu thu cọc mồ côi).
 const RESV_STATUS = {
@@ -91,21 +92,21 @@ function KpiCard({
 
 const DepositsPage = () => {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = usePersistedState("flt:deposits:tab", "overview");
   const { data: perms } = useMyPermissions();
   const canCreateDeposit = canUse(perms, "deposits", "create");
   const canConvertDeposit = canUse(perms, "deposits", "convert");
 
   // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:deposits:buildingIds", []);
 
   // Tab "Phiếu giữ chỗ".
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [resvContractOpen, setResvContractOpen] = useState(false);
   const [resvPrefill, setResvPrefill] = useState<ContractPrefill | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [onlyShort, setOnlyShort] = useState(false);
+  const [statusFilter, setStatusFilter] = usePersistedState<string>("flt:deposits:status", "ALL");
+  const [searchQuery, setSearchQuery] = usePersistedState("flt:deposits:search", "");
+  const [onlyShort, setOnlyShort] = usePersistedState("flt:deposits:onlyShort", false);
 
   const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
   const { data: refunds = [], isLoading: refundsLoading } =

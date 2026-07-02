@@ -55,12 +55,17 @@ export function BuildingFilterSelect({
     ];
   }, [buildingsProp, fetchedBuildings]);
 
+  // Legacy/default có thể nhét >1 toà vào state (vd default theo khu) — UI đơn
+  // chọn không hiện checkbox được nên trigger ghi "N toà nhà"; chọn lại sẽ thay
+  // bằng đúng 1 toà.
+  const multi = value.length > 1;
+
   return (
     <SearchableSelect
-      value={value[0] ?? ALL}
+      value={multi ? undefined : (value[0] ?? ALL)}
       onValueChange={(v) => onChange(v === ALL ? [] : [v])}
       options={options}
-      placeholder={placeholder}
+      placeholder={multi ? `${value.length} toà nhà` : placeholder}
       searchPlaceholder="Tìm toà nhà..."
       className={className}
       disabled={disabled}

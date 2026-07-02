@@ -10,6 +10,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import {
   AlertTriangle,
   Building2,
@@ -564,8 +565,8 @@ function StaffTab() {
   const removeStaff = useRemoveStaffMember();
   const updatePerms = useUpdateStaffPermissions();
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterRoleId, setFilterRoleId] = useState<string>("");
+  const [searchTerm, setSearchTerm] = usePersistedState("flt:staff:search", "");
+  const [filterRoleId, setFilterRoleId] = usePersistedState<string>("flt:staff:role", "");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [form, setForm] = useState<StaffFormState | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);

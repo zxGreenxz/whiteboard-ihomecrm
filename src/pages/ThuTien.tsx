@@ -30,6 +30,7 @@ import { UtilityBillSheet } from '@/components/thu-tien/UtilityBillSheet';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 const currentMonth = () => {
   const d = new Date();
@@ -46,12 +47,14 @@ const ThuTien = () => {
   // Báo cáo Chu kỳ Thu → Bàn giao (self-view; quản lý xem của mình).
   const canCycleReport = canUse(perms, 'reports_finance', 'collection_cycle');
 
-  const [buildingId, setBuildingId] = useState('');
-  const [billingMonth, setBillingMonth] = useState(currentMonth());
-  const [timeFilter, setTimeFilter] = useState<TimeFilterValue>('today');
-  const [dateMode, setDateMode] = useState<'single' | 'range'>('single');
-  const [dateRange, setDateRange] = useState<CollectDateRange>({ start: todayISO(), end: todayISO() });
-  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');
+  // Bộ lọc giữ qua F5 trong cùng tab (sessionStorage); effect auto-chọn toà đầu
+  // tiên bên dưới chỉ chạy khi buildingId rỗng nên không đè giá trị khôi phục.
+  const [buildingId, setBuildingId] = usePersistedState('flt:thu-tien:buildingId', '');
+  const [billingMonth, setBillingMonth] = usePersistedState('flt:thu-tien:month', currentMonth);
+  const [timeFilter, setTimeFilter] = usePersistedState<TimeFilterValue>('flt:thu-tien:time', 'today');
+  const [dateMode, setDateMode] = usePersistedState<'single' | 'range'>('flt:thu-tien:dateMode', 'single');
+  const [dateRange, setDateRange] = usePersistedState<CollectDateRange>('flt:thu-tien:dateRange', () => ({ start: todayISO(), end: todayISO() }));
+  const [statusFilter, setStatusFilter] = usePersistedState<StatusFilterValue>('flt:thu-tien:status', 'all');
 
   // Sheet/dialog/report: giữ DOM + toggle .show để chạy animation translateY.
   const [drawer, setDrawer] = useState<{ id: string | null; mode: 'view' | 'keypad'; show: boolean }>({

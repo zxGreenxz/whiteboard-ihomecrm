@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
 import { useDepositsReport } from "@/hooks/useReports";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -28,10 +29,10 @@ const HOLDING_STATUSES = new Set(["PENDING", "CONFIRMED"]);
 const IN_INVOICE_STATUSES = new Set(["CONVERTED"]);
 
 export default function DepositsReport() {
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = usePersistedState<string>("flt:rpt-deposits:status", "all");
   // Lọc 1 toà (BuildingFilterSelect, state giữ shape mảng 0/1 phần tử). [] = tất cả.
   // Lọc client-side theo buildings.id trên rows đã fetch (hook không nhận filter).
-  const [buildingIds, setBuildingIds] = useState<string[]>([]);
+  const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:rpt-deposits:buildingIds", []);
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
