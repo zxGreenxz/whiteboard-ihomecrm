@@ -67,6 +67,7 @@ const EMPTY_FILTERS: IncomeExpenseFilters = {
   approval_status: "ALL_ACTIVE",
   income_type_id: null,
   expense_type_id: null,
+  type_category: null,
   creator_id: null,
   amount_target: null,
   verified_status: null,

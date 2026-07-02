@@ -14,7 +14,10 @@ import { BuildingMultiSelect } from "@/components/buildings/BuildingMultiSelect"
 import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
+import {
+  useIncomeExpenseTypes,
+  useIncomeExpenseTypeCategories,
+} from "@/hooks/useIncomeExpenseTypes";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
@@ -78,6 +81,7 @@ export function IncomeExpenseFilterPanel({
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
   const { data: expenseTypes } = useIncomeExpenseTypes("expense");
+  const { data: typeCategories } = useIncomeExpenseTypeCategories();
   const { data: staffUsers } = useStaffUsers();
 
   const patch = (p: Partial<IncomeExpenseFilters>) =>
@@ -321,6 +325,22 @@ export function IncomeExpenseFilterPanel({
               options={[
                 { value: "ALL", label: "Tất cả hạng mục chi" },
                 ...(expenseTypes || []).map((t) => ({ value: t.id, label: t.name })),
+              ]}
+            />
+          </div>
+
+          {/* Nhóm (Loại) hạng mục */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Nhóm (Loại) hạng mục</Label>
+            <SearchableSelect
+              value={draft.type_category ?? "ALL"}
+              onValueChange={(v) =>
+                patch({ type_category: v === "ALL" ? null : v })
+              }
+              placeholder="Tất cả nhóm"
+              options={[
+                { value: "ALL", label: "Tất cả nhóm" },
+                ...(typeCategories || []).map((c) => ({ value: c, label: c })),
               ]}
             />
           </div>

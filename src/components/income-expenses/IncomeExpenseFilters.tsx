@@ -4,7 +4,10 @@ import { uniqueRoomNames, roomIdsByName, roomNameFromIds } from "@/lib/roomSort"
 import { DateInput } from "@/components/ui/date-input";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
+import {
+  useIncomeExpenseTypes,
+  useIncomeExpenseTypeCategories,
+} from "@/hooks/useIncomeExpenseTypes";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
 
@@ -27,6 +30,7 @@ export function IncomeExpenseFiltersBar({
   const { data: accounts } = useAccounts();
   const { data: incomeTypes } = useIncomeExpenseTypes("income");
   const { data: expenseTypes } = useIncomeExpenseTypes("expense");
+  const { data: typeCategories } = useIncomeExpenseTypeCategories();
   const { data: staffUsers } = useStaffUsers();
 
   const handleChange = (patch: Partial<IncomeExpenseFilters>) => {
@@ -78,6 +82,10 @@ export function IncomeExpenseFiltersBar({
 
   const handleExpenseTypeChange = (value: string) => {
     handleChange({ expense_type_id: value === "ALL" ? null : value });
+  };
+
+  const handleTypeCategoryChange = (value: string) => {
+    handleChange({ type_category: value === "ALL" ? null : value });
   };
 
   const handleCreatorChange = (value: string) => {
@@ -176,6 +184,18 @@ export function IncomeExpenseFiltersBar({
         options={[
           { value: "ALL", label: "Hạng mục chi" },
           ...(expenseTypes || []).map((t) => ({ value: t.id, label: t.name })),
+        ]}
+      />
+
+      {/* Nhóm (Loại) hạng mục */}
+      <SearchableSelect
+        value={filters.type_category ?? "ALL"}
+        onValueChange={handleTypeCategoryChange}
+        className="w-[170px] h-9 text-sm"
+        placeholder="Nhóm (Loại)"
+        options={[
+          { value: "ALL", label: "Nhóm (Loại)" },
+          ...(typeCategories || []).map((c) => ({ value: c, label: c })),
         ]}
       />
 

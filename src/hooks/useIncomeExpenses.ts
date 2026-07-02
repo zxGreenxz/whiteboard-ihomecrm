@@ -35,6 +35,10 @@ export interface IncomeExpenseFilters {
   // Nếu cả 2 cùng có → union (phiếu thu khớp HOẶC phiếu chi khớp).
   income_type_id?: string | null;
   expense_type_id?: string | null;
+  // Lọc theo NHÓM (Loại) của hạng mục = income_expense_types.category. Lấy phiếu
+  // có ÍT NHẤT 1 item thuộc hạng mục nằm trong nhóm này. Nếu đi kèm
+  // income_type_id/expense_type_id thì GIAO (phiếu vừa khớp hạng mục vừa thuộc nhóm).
+  type_category?: string | null;
   // Lọc theo người tạo phiếu = user_id của profile (owner hoặc staff).
   creator_id?: string | null;
   // Lọc theo số tiền (đồng) — match phiếu có total_amount trong [target-5000, target+5000].
@@ -134,42 +138,75 @@ export interface IncomeExpenseWithRelations {
 // (name, type). Vì vậy phải expand selected id → tất cả id cùng (name, type),
 // nếu không sẽ bỏ sót phiếu của user khác.
 async function getItemTypeSiblingIds(
-  filters: Pick<IncomeExpenseFilters, "income_type_id" | "expense_type_id">
+  filters: Pick<
+    IncomeExpenseFilters,
+    "income_type_id" | "expense_type_id" | "type_category"
+  >
 ): Promise<string[] | null> {
   const selectedIds: string[] = [];
   if (filters.income_type_id) selectedIds.push(filters.income_type_id);
   if (filters.expense_type_id) selectedIds.push(filters.expense_type_id);
-  if (selectedIds.length === 0) return null;
+  const hasCategory = !!filters.type_category;
+  if (selectedIds.length === 0 && !hasCategory) return null;
 
-  // Bước 1: resolve selected ids → (name, type)
-  const { data: selectedRows, error: selErr } = await supabase
-    .from("income_expense_types" as any)
-    .select("id, name, type")
-    .in("id", selectedIds);
-  if (selErr) {
-    console.error("getItemTypeSiblingIds selectedRows error:", selErr);
-    return [];
-  }
-  const selRows = (selectedRows ?? []) as unknown as Array<{
-    id: string;
-    name: string;
-    type: "income" | "expense";
-  }>;
-  if (selRows.length === 0) return [];
-
-  // Bước 2: expand sang tất cả type_id cùng (name, type)
-  const expandedIds = new Set<string>(selectedIds);
-  for (const row of selRows) {
-    const { data: siblings } = await supabase
+  // --- Lọc theo NHÓM (Loại): mọi type_id có category khớp (mọi user, không cần
+  // expand sibling vì đã match trực tiếp chuỗi category). ---
+  let categoryIds: Set<string> | null = null;
+  if (hasCategory) {
+    const { data: catRows, error: catErr } = await supabase
       .from("income_expense_types" as any)
       .select("id")
-      .eq("type", row.type)
-      .eq("name", row.name);
-    for (const s of (siblings ?? []) as unknown as Array<{ id: string }>) {
-      expandedIds.add(s.id);
+      .eq("category", filters.type_category);
+    if (catErr) {
+      console.error("getItemTypeSiblingIds categoryRows error:", catErr);
+      return [];
     }
+    categoryIds = new Set(
+      ((catRows ?? []) as unknown as Array<{ id: string }>).map((r) => r.id)
+    );
+    if (categoryIds.size === 0) return [];
   }
-  return Array.from(expandedIds);
+
+  // --- Lọc theo hạng mục cụ thể (income_type_id/expense_type_id) ---
+  let siblingIds: Set<string> | null = null;
+  if (selectedIds.length > 0) {
+    // Bước 1: resolve selected ids → (name, type)
+    const { data: selectedRows, error: selErr } = await supabase
+      .from("income_expense_types" as any)
+      .select("id, name, type")
+      .in("id", selectedIds);
+    if (selErr) {
+      console.error("getItemTypeSiblingIds selectedRows error:", selErr);
+      return [];
+    }
+    const selRows = (selectedRows ?? []) as unknown as Array<{
+      id: string;
+      name: string;
+      type: "income" | "expense";
+    }>;
+    if (selRows.length === 0) return [];
+
+    // Bước 2: expand sang tất cả type_id cùng (name, type)
+    const expandedIds = new Set<string>(selectedIds);
+    for (const row of selRows) {
+      const { data: siblings } = await supabase
+        .from("income_expense_types" as any)
+        .select("id")
+        .eq("type", row.type)
+        .eq("name", row.name);
+      for (const s of (siblings ?? []) as unknown as Array<{ id: string }>) {
+        expandedIds.add(s.id);
+      }
+    }
+    siblingIds = expandedIds;
+  }
+
+  // --- Kết hợp: cả 2 = GIAO; chỉ 1 = tập đó; không có = null. ---
+  if (siblingIds && categoryIds) {
+    return Array.from(siblingIds).filter((id) => categoryIds!.has(id));
+  }
+  if (siblingIds) return Array.from(siblingIds);
+  return Array.from(categoryIds!);
 }
 
 // Trả về danh sách voucher_id có ÍT NHẤT 1 item mà kỳ áp dụng [start_date,
@@ -279,6 +316,7 @@ export const useIncomeExpenses = (
       filters.approval_status,
       filters.income_type_id,
       filters.expense_type_id,
+      filters.type_category,
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
@@ -527,6 +565,7 @@ export const useIncomeExpenseStats = (
       filters.approval_status,
       filters.income_type_id,
       filters.expense_type_id,
+      filters.type_category,
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
@@ -1581,6 +1620,7 @@ export const useIncomeExpenseBatches = (
       filters.approval_status,
       filters.income_type_id,
       filters.expense_type_id,
+      filters.type_category,
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
