@@ -532,11 +532,17 @@ function ProfitDistributionDesktop() {
   };
 
   // Note "thiếu/thừa so với hoá đơn": so tổng khoản thu (đã gộp) với total HĐ.
+  // Chế độ P&L (pnlOnly): row.amount là PHẦN KQKD (không gồm cọc) → phải so với
+  // phần phòng/DV của hoá đơn (total − cọc gộp trong HĐ), kẻo HĐ tháng đầu gộp
+  // cọc bị báo "thiếu" oan đúng bằng tiền cọc. Tắt pnlOnly: so tiền thật vs total.
   const noteFor = (row: DisplayRow): { text: string; cls: string } | null => {
     if (!row.invoiceId) return null;
     const inv = invoiceTotals?.get(row.invoiceId);
     if (!inv || !inv.total_amount) return null;
-    const diff = Math.round(row.amount - inv.total_amount);
+    const depositInInvoice = pnlOnly
+      ? firstInvoiceDetails?.get(row.invoiceId)?.depositInInvoice ?? 0
+      : 0;
+    const diff = Math.round(row.amount - (inv.total_amount - depositInInvoice));
     if (diff <= -1) return { text: `thiếu ${formatCurrency(-diff)}`, cls: "text-amber-600" };
     if (diff >= 1) return { text: `thừa ${formatCurrency(diff)}`, cls: "text-rose-600" };
     return null;
