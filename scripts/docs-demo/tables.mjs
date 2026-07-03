@@ -61,6 +61,10 @@ export const RESET_TABLES = [
   { tbl: 'lead_activities', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'leads', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'jobs', predicate: `user_id IN ${DU} OR building_id IN ${DB}`, restore: true },
+  // ===== CỔ ĐÔNG / VÍ CÁ NHÂN (P4) =====
+  { tbl: 'building_shareholders', predicate: `user_id IN ${DU} OR building_id IN ${DB}`, restore: true },
+  { tbl: 'shareholders', predicate: `user_id IN ${DU}`, restore: true },
+  { tbl: 'personal_transactions', predicate: `user_id IN ${DU}`, restore: true },
   // ===== KHO / TÀI SẢN =====
   { tbl: 'material_purchases', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'material_usages', predicate: `user_id IN ${DU}`, restore: true },
