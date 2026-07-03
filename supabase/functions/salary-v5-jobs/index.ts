@@ -10,6 +10,15 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
+// CORS: nút "Chạy lại" gọi thẳng từ trình duyệt (ptcrm.vercel.app) → cần preflight.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
 function vnDate(): string {
   return new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
 }
@@ -76,12 +85,13 @@ async function runDigest(idem: string) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const url = new URL(req.url);
   const job = url.searchParams.get("job") ?? "";
   const secretOk = CRON_SECRET !== "" && req.headers.get("x-cron-secret") === CRON_SECRET;
   const jwtOk = await isAdminJwt(req.headers.get("Authorization"));
   if (!secretOk && !jwtOk) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+    return json({ error: "unauthorized" }, 401);
   }
 
   const today = vnDate();
@@ -100,15 +110,10 @@ Deno.serve(async (req) => {
     } else if (job === "close_period") {
       out.push(await runOne("close_period", today.slice(0, 7)));
     } else {
-      return new Response(JSON.stringify({ error: "job không hợp lệ" }), { status: 400 });
+      return json({ error: "job không hợp lệ" }, 400);
     }
-    return new Response(JSON.stringify({ ok: true, ran: out }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ ok: true, ran: out });
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: String(err), ran: out }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ ok: false, error: String(err), ran: out }, 500);
   }
 });
