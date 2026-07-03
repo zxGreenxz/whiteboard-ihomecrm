@@ -208,6 +208,8 @@ export const useTerminateForfeit = () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["excess-amount"] });
+      // Banner "cọc chờ duyệt" trên trang HĐ cập nhật ngay, khỏi F5.
+      queryClient.invalidateQueries({ queryKey: ["contract-pending-forfeit"] });
       // B1 (audit 03/07): bỏ cọc là luồng TRÌ HOÃN — cọc chỉ vào doanh thu và
       // hoá đơn thanh lý chỉ tất toán khi phiếu "Doanh thu bỏ cọc" được DUYỆT
       // ở trang Thu chi. Toast phải nhắc + dẫn thẳng tới đó, không im lặng.
