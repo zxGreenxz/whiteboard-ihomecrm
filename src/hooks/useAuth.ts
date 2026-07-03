@@ -213,8 +213,17 @@ export const useLogout = () => {
 
   return useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      // scope 'local': chỉ đăng xuất thiết bị này. Mặc định 'global' thu hồi
+      // session ở MỌI thiết bị — 1 phiên (tab khác / máy khác / phiên test)
+      // đăng xuất là các phiên còn lại chết theo, lần đăng xuất sau dính
+      // 403 + "Auth session missing!".
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) {
+        // Session đã mất/bị thu hồi phía server → vẫn coi là đăng xuất
+        // thành công, chỉ cần dọn state local. Không throw để user không
+        // kẹt ở trạng thái nửa-đăng-nhập.
+        console.warn('[logout] signOut error (bỏ qua, vẫn dọn local):', error.message);
+      }
     },
     onSuccess: () => {
       // Clear all queries
