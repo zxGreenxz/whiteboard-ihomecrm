@@ -27,7 +27,10 @@ export default withMermaid(
       resolve: { dedupe: ['vue'] },
       optimizeDeps: { include: ['mermaid', 'dayjs', '@braintree/sanitize-url'] },
     },
-    head: [['meta', { name: 'robots', content: 'noindex, nofollow' }]],
+    head: [
+      ['meta', { name: 'robots', content: 'noindex, nofollow' }],
+      ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ],
     themeConfig: {
       sidebar,
       outline: { level: [2, 3], label: 'Trên trang này' },
