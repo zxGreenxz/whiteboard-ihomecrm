@@ -3,9 +3,11 @@
 // + nền tối tím-vàng). Desktop → SalarySelfDesktop; điện thoại → SalarySelfMobile.
 // Dùng chung dữ liệu SalManager + lùi-tháng-theo-chốt với trang Bảng lương quản lý.
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useManagerSalary, useMyManagerConfig, useStaffDisplayMonth } from "@/hooks/useManagerSalary";
 import { usePhoneViewport } from "@/hooks/use-mobile";
+import { supabase } from "@/integrations/supabase/client";
 import SalarySelfDesktop from "@/components/salary/SalarySelfDesktop";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 
@@ -39,7 +41,18 @@ export default function MySalaryPage() {
   const [override, setOverride] = useState<string | null>(null);
   const effPeriod = override || ceiling;
 
-  const { data, isLoading } = useManagerSalary(effPeriod);
+  // Chế độ lương (cũ/v5) — chỉ đổi SỐ LIỆU tháng chưa chốt, UI giữ nguyên.
+  const { data: v5cfg } = useQuery({
+    queryKey: ["v5-config-salary-engine"],
+    queryFn: async () => {
+      const { data } = await supabase.rpc("get_salary_v5_config" as any);
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+  const salaryEngine: "legacy" | "v5" = v5cfg?.system_v5?.salary_engine === "v5" ? "v5" : "legacy";
+
+  const { data, isLoading } = useManagerSalary(effPeriod, salaryEngine);
 
   if (myLoading || (!data && isLoading)) {
     return <Shell><div><Loader2 className="animate-spin" style={{ margin: "0 auto 10px", color: "#FFD23F" }} /><p style={{ fontSize: 14, color: "#9A8FC4" }}>Đang tải bảng lương…</p></div></Shell>;

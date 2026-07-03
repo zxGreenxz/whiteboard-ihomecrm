@@ -96,6 +96,7 @@ export default function OwnerDashboardV5() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v5-config-admin"] });
       qc.invalidateQueries({ queryKey: ["v5-config-salary-engine"] });
+      qc.invalidateQueries({ queryKey: ["manager-salary"] });
       toast.success("Đã lưu cấu hình");
     },
     onError: (e: any) => toast.error(e?.message ?? "Lỗi lưu cấu hình"),

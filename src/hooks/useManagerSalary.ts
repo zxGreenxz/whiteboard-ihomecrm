@@ -53,9 +53,9 @@ function fmtDM(iso: string): string {
   return `${d}/${m}`;
 }
 
-export const useManagerSalary = (periodMonth: string) => {
+export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = "legacy") => {
   return useQuery<ManagerSalaryData>({
-    queryKey: ["manager-salary", periodMonth],
+    queryKey: ["manager-salary", periodMonth, engine],
     enabled: !!periodMonth,
     queryFn: async () => {
       const { start, end } = monthRange(periodMonth);
@@ -307,6 +307,30 @@ export const useManagerSalary = (periodMonth: string) => {
       const trendByStaffMonth = new Map<string, any>();
       for (const r of trendRows) trendByStaffMonth.set(`${r.staff_id}|${r.period_month}`, r);
 
+      // CHẾ ĐỘ v5: số liệu lương tháng CHƯA chốt lấy từ engine v5 (chuyên cần + chuỗi).
+      // Gọi v5_month_money(staff, tháng) + current_streak; tháng đã chốt KHÔNG override.
+      const v5ByStaff = new Map<string, { attend: number; streak: number; ticked: number; nchuan: number; cur: number }>();
+      if (engine === "v5") {
+        const [v5Arr, sssRes] = await Promise.all([
+          Promise.all(staffIds.map(async (sid) => {
+            const { data } = await (supabase.rpc as any)("v5_month_money", { p_user: sid, p_month: periodMonth });
+            return { sid, data };
+          })),
+          (supabase.from("salary_streak_state" as any).select("user_id, current_streak") as any)
+            .in("user_id", staffIds).eq("period_month", periodMonth),
+        ]);
+        const curByStaff = new Map<string, number>(
+          ((sssRes.data || []) as any[]).map((r) => [r.user_id, num(r.current_streak)])
+        );
+        for (const { sid, data: mm } of v5Arr) {
+          v5ByStaff.set(sid, {
+            attend: num(mm?.attend_amount), streak: num(mm?.streak_amount),
+            ticked: num(mm?.ticked_days), nchuan: num(mm?.n_chuan),
+            cur: curByStaff.get(sid) || 0,
+          });
+        }
+      }
+
       let lockedAt: string | null = null;
 
       const managers: SalManager[] = configs.map((c, idx) => {
@@ -322,7 +346,7 @@ export const useManagerSalary = (periodMonth: string) => {
           ? snapByStaff.get(staff) || []
           : ledgerAll.filter((r) => r.staff_id === staff);
 
-        const bonusAuto = buildBonusAuto(ledger);
+        let bonusAuto = buildBonusAuto(ledger);
         const adjustments = mRow ? adjByMonthly.get(mRow.id) || [] : [];
 
         // đầu tư
@@ -347,7 +371,7 @@ export const useManagerSalary = (periodMonth: string) => {
           .map((x) => ({ date: fmtDM(x.voucher_date), label: x.name || "Ứng lương", amount: num(x.total_amount) }));
         const advance = advanceItems.reduce((s, x) => s + x.amount, 0);
 
-        const base = num(c.base_salary);
+        let base = num(c.base_salary);
         // Tiền phòng: ưu tiên hoá đơn phòng nhân viên ở; chưa có HĐ → số cố định
         let roomRent: number;
         let roomRentItems: { date: string; label: string; amount: number }[] = [];
@@ -365,6 +389,22 @@ export const useManagerSalary = (periodMonth: string) => {
         const stats0 = computeStats(ledger);
         const stats = { ...stats0, streak: computeStreak(ledger) };
 
+        let incomeGoal = num(c.income_goal) || base + investment;
+        // CHẾ ĐỘ v5 (chỉ tháng CHƯA chốt): lương cứng→chuyên cần, thưởng→chuỗi, ngày công→ticked.
+        // Giữ nguyên đầu tư/HH Sale/ứng/tiền phòng + toàn bộ UI. Tháng đã chốt dùng số đã đóng băng.
+        if (engine === "v5" && !locked) {
+          const v = v5ByStaff.get(staff);
+          if (v) {
+            base = v.attend;
+            bonusAuto = v.streak > 0
+              ? [{ icon: "Flame", label: "Thưởng chuỗi (v5)", note: "mốc chuỗi đã đạt", amount: v.streak }]
+              : [];
+            stats.workdays = v.ticked;
+            stats.streak = v.cur;
+            incomeGoal = 9_000_000; // trần v5 = 6tr chuyên cần + 3tr chuỗi
+          }
+        }
+
         const m: SalManager = {
           id: staff,
           name: full,
@@ -376,7 +416,7 @@ export const useManagerSalary = (periodMonth: string) => {
           workdays: stats.workdays,
           base,
           roomRent,
-          incomeGoal: num(c.income_goal) || base + investment,
+          incomeGoal,
           bonusAuto,
           adjustments,
           investment,

@@ -17,7 +17,6 @@ import SalaryConfig from "@/components/salary/SalaryConfig";
 import SalarySelf from "@/components/salary/SalarySelf";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import SalaryAdminMobile from "@/components/salary/SalaryAdminMobile";
-import V5SalaryView from "@/components/salary/V5SalaryView";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import "@/components/salary/salary.css";
@@ -54,7 +53,20 @@ export default function ManagerSalaryPage() {
   const { data: staffMonth } = useStaffDisplayMonth(myMgr?.staff_id, !isAdmin);
   const effPeriod = !isAdmin && staffMonth ? staffMonth : periodMonth;
 
-  const { data, isLoading, refetch } = useManagerSalary(effPeriod);
+  // Chế độ lương đang áp dụng (cũ/v5) — công tắc ở /reports/coverage tab Cài đặt v5.
+  // Chỉ ĐỔI SỐ LIỆU (base=chuyên cần, thưởng=chuỗi, ngày công=ticked) cho tháng CHƯA chốt;
+  // giao diện + tháng đã chốt giữ nguyên.
+  const { data: v5cfg } = useQuery({
+    queryKey: ["v5-config-salary-engine"],
+    queryFn: async () => {
+      const { data } = await supabase.rpc("get_salary_v5_config" as any);
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+  const salaryEngine: "legacy" | "v5" = v5cfg?.system_v5?.salary_engine === "v5" ? "v5" : "legacy";
+
+  const { data, isLoading, refetch } = useManagerSalary(effPeriod, salaryEngine);
   const { data: rulesData } = useBonusRules();
   const requirePhoto = !!rulesData?.rules?.requirePhoto;
 
@@ -74,17 +86,6 @@ export default function ManagerSalaryPage() {
   const lockM = useLockSalaryMonth();
   const unlockM = useUnlockSalaryMonth();
   const payout = useSalaryPayout();
-
-  // Chế độ lương đang áp dụng (cũ/v5) — công tắc ở /reports/coverage tab Cài đặt v5.
-  const { data: v5cfg } = useQuery({
-    queryKey: ["v5-config-salary-engine"],
-    queryFn: async () => {
-      const { data } = await supabase.rpc("get_salary_v5_config" as any);
-      return data as any;
-    },
-    staleTime: 60_000,
-  });
-  const salaryEngine: "legacy" | "v5" = v5cfg?.system_v5?.salary_engine === "v5" ? "v5" : "legacy";
 
   const managers = data?.managers || [];
   const period = data?.period || { label: "", year: 0, periodMonth, lockedAt: null };
@@ -118,15 +119,6 @@ export default function ManagerSalaryPage() {
   const onUnlock = () => unlockM.mutate({ periodMonth, staffIds: managers.map((m) => m.id) });
 
   // ===== Render =====
-  // CHẾ ĐỘ v5: cả admin lẫn nhân viên đều xem theo chuyên cần + chuỗi (TẠM TÍNH).
-  if (salaryEngine === "v5") {
-    return (
-      <MainLayout title={isAdmin ? "Bảng lương quản lý" : "Lương của tôi"} subtitle="Tài chính → Lương" icon={Wallet}>
-        <V5SalaryView isAdmin={isAdmin} />
-      </MainLayout>
-    );
-  }
-
   // Không phải admin: hiện self-view nếu là quản lý hưởng lương
   if (!isAdmin) {
     if (myLoading || isLoading) {
