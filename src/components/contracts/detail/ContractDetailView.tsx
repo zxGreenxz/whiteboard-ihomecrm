@@ -147,24 +147,52 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     },
   });
 
-  // B1 (audit 03/07): phiếu bỏ cọc đang CHỜ DUYỆT của HĐ này — nếu quên bước
-  // Duyệt ở Thu chi thì cọc không vào doanh thu & hoá đơn thanh lý treo mãi.
-  const { data: pendingForfeitCount = 0 } = useQuery({
+  // B1 (audit 03/07): phiếu thanh lý đang CHỜ XỬ LÝ của HĐ này:
+  //  - forfeit: cặp "cấn cọc bỏ cọc" chờ Duyệt (quên → cọc không vào doanh thu)
+  //  - refund: phiếu chi "Trả khách thanh lý" nháp, CHƯA CÓ SỔ QUỸ — phải chọn
+  //    sổ (Sửa phiếu) rồi duyệt thì tiền hoàn mới được ghi nhận chi.
+  const { data: pendingTermination = { forfeit: 0, refund: 0 } } = useQuery({
     queryKey: ['contract-pending-forfeit', id],
     enabled: !!id,
     queryFn: async () => {
-      const { count, error } = await (supabase as any)
-        .from('income_expenses')
-        .select('id', { count: 'exact', head: true })
+      const base = () =>
+        (supabase as any)
+          .from('income_expenses')
+          .select('id', { count: 'exact', head: true })
+          .eq('contract_id', id)
+          .eq('approval_status', 'UNAPPROVED')
+          .is('deleted_at', null);
+      const [f, r] = await Promise.all([
+        base().like('notes', '[CẤN CỌC BỎ CỌC%'),
+        base().like('notes', '[HOÀN KHÁCH THANH LÝ]%'),
+      ]);
+      return { forfeit: f.count ?? 0, refund: r.count ?? 0 };
+    },
+  });
+  const pendingForfeitCount = pendingTermination.forfeit;
+  const pendingRefundCount = pendingTermination.refund;
+
+  // Quyết toán thanh lý (audit contract_terminations) — trả lời "khách này
+  // thanh lý gồm những gì": cọc, khấu trừ, hoàn khách. Chi tiết từng khoản nằm
+  // trong Ghi chú hợp đồng + ghi chú phiếu "Trả khách thanh lý"/hoá đơn thanh lý.
+  const { data: terminationInfo } = useQuery({
+    queryKey: ['contract-termination-info', id, contract?.status],
+    enabled: !!id && contract?.status === 'TERMINATED',
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('contract_terminations')
+        .select(
+          'termination_type, actual_move_out_date, outstanding_debt, early_termination_fee, total_deposit, total_deductions, refund_amount',
+        )
         .eq('contract_id', id)
-        .eq('approval_status', 'UNAPPROVED')
-        .is('deleted_at', null)
-        .like('notes', '[CẤN CỌC BỎ CỌC%');
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) {
-        console.error('Fetch pending forfeit vouchers error:', error);
-        return 0;
+        console.error('Fetch termination info error:', error);
+        return null;
       }
-      return count ?? 0;
+      return data;
     },
   });
 
@@ -926,6 +954,80 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
             {/* Right Column - Summary */}
             <div className="space-y-6">
+              {/* Quyết toán thanh lý — trả lời "thanh lý gồm những gì" tại 1 chỗ.
+                  Nguồn: contract_terminations (audit); chi tiết đầy đủ trong
+                  Ghi chú hợp đồng + phiếu "Trả khách thanh lý". */}
+              {contract.status === 'TERMINATED' && terminationInfo && (
+                <Card className="border-rose-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-rose-800">
+                      <DollarSign className="h-5 w-5" />
+                      Quyết toán thanh lý
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Hình thức:</span>
+                      <span className="font-medium">
+                        {terminationInfo.termination_type === 'FORFEIT'
+                          ? 'Khách bỏ cọc'
+                          : 'Khách rời phòng'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Ngày thanh lý:</span>
+                      <span>
+                        {terminationInfo.actual_move_out_date
+                          ? format(new Date(terminationInfo.actual_move_out_date), 'dd/MM/yyyy')
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Cọc tính quyết toán:</span>
+                      <span className="font-medium">
+                        {formatCurrency(Number(terminationInfo.total_deposit || 0))}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Công nợ cấn trừ:</span>
+                      <span>{formatCurrency(Number(terminationInfo.outstanding_debt || 0))}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Phí phạt + thu thêm:</span>
+                      <span>{formatCurrency(Number(terminationInfo.early_termination_fee || 0))}</span>
+                    </div>
+                    <div className="border-t pt-2 flex justify-between">
+                      <span className="text-gray-900 font-medium">
+                        {terminationInfo.termination_type === 'FORFEIT'
+                          ? 'Cọc giữ làm doanh thu:'
+                          : 'Hoàn lại khách:'}
+                      </span>
+                      <span className="font-bold text-rose-700">
+                        {formatCurrency(
+                          terminationInfo.termination_type === 'FORFEIT'
+                            ? Number(terminationInfo.early_termination_fee || 0)
+                            : Math.max(Number(terminationInfo.refund_amount || 0), 0),
+                        )}
+                      </span>
+                    </div>
+                    {terminationInfo.termination_type !== 'FORFEIT' &&
+                      Number(terminationInfo.refund_amount || 0) < 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Khách còn phải trả:</span>
+                          <span className="font-medium text-red-600">
+                            {formatCurrency(Math.abs(Number(terminationInfo.refund_amount || 0)))}
+                          </span>
+                        </div>
+                      )}
+                    <p className="text-xs text-muted-foreground pt-1">
+                      Bản quyết toán chi tiết từng khoản nằm trong <b>Ghi chú</b>{' '}
+                      hợp đồng và ghi chú phiếu "Trả khách thanh lý" / hoá đơn
+                      thanh lý (mục "QUYẾT TOÁN THANH LÝ").
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Deposit Summary Card */}
               <Card>
                 <CardHeader>
@@ -935,19 +1037,30 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* B1: nhắc bước Duyệt phiếu bỏ cọc còn treo */}
-                  {pendingForfeitCount > 0 && (
+                  {/* B1: nhắc phiếu thanh lý còn treo (duyệt cọc bỏ / chọn sổ hoàn khách) */}
+                  {(pendingForfeitCount > 0 || pendingRefundCount > 0) && (
                     <Alert className="bg-amber-50 border-amber-300">
                       <AlertCircle className="h-4 w-4 text-amber-600" />
                       <AlertDescription className="text-amber-900 text-sm space-y-1">
                         <p className="font-medium">
-                          Cọc bỏ đang CHỜ DUYỆT ({pendingForfeitCount} phiếu)
+                          Phiếu thanh lý chờ xử lý (
+                          {pendingForfeitCount + pendingRefundCount} phiếu)
                         </p>
-                        <p className="text-xs">
-                          Vào <a href="/income-expense" className="underline font-medium">Thu chi</a>{' '}
-                          bấm <b>Duyệt</b> phiếu "Doanh thu bỏ cọc" thì cọc mới vào
-                          doanh thu và hoá đơn thanh lý mới tất toán.
-                        </p>
+                        {pendingForfeitCount > 0 && (
+                          <p className="text-xs">
+                            Vào <a href="/income-expense" className="underline font-medium">Thu chi</a>{' '}
+                            bấm <b>Duyệt</b> phiếu "Doanh thu bỏ cọc" thì cọc mới
+                            vào doanh thu và hoá đơn thanh lý mới tất toán.
+                          </p>
+                        )}
+                        {pendingRefundCount > 0 && (
+                          <p className="text-xs">
+                            Phiếu chi <b>"Trả khách thanh lý"</b> đang chờ: vào{' '}
+                            <a href="/income-expense" className="underline font-medium">Thu chi</a>{' '}
+                            → Sửa phiếu → <b>chọn sổ quỹ chi tiền</b> → Duyệt
+                            (chưa chọn sổ sẽ không duyệt được).
+                          </p>
+                        )}
                       </AlertDescription>
                     </Alert>
                   )}
