@@ -137,9 +137,13 @@
 .hl-app .tile-lbl { font-size: 11.5px; font-weight: 600; color: var(--ink-2); text-align: center; line-height: 1.25; letter-spacing: -.1px; }
 .hl-app .tile.hot .tile-lbl { color: var(--brand-600); font-weight: 700; }
 
-/* Entrance là enhancement-only: base state hiển thị đầy đủ, nếu animation
-   bị throttle/tắt thì nội dung vẫn hiện. */
+/* Entrance: CHỈ fade opacity, KHÔNG translateY.
+   Trước dùng translateY(8px)→0 (hlRouteIn): mỗi lần QUAY LẠI màn chính (kể cả
+   PWA đã cài trên iPhone) content vẽ đủ ở vị trí cuối RỒI animation restart từ
+   8px → "cả màn hình nhích 1 nhịp" (user báo 04/07, iOS Safari+Chrome+PWA).
+   Bỏ transform để hết nhích; fade opacity rất ngắn nên không gây "chớp". Base
+   state vẫn hiện đầy đủ nếu animation bị tắt (giữ chủ đích cũ). */
 @media (prefers-reduced-motion: no-preference) {
-  .hl-app .route-anim { animation: hlRouteIn .26s cubic-bezier(.22,.61,.36,1) both; }
-  @keyframes hlRouteIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .hl-app .route-anim { animation: hlRouteIn .16s ease-out both; }
+  @keyframes hlRouteIn { from { opacity: 0; } to { opacity: 1; } }
 }
