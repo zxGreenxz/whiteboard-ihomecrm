@@ -223,6 +223,12 @@ export const useLogout = () => {
         // thành công, chỉ cần dọn state local. Không throw để user không
         // kẹt ở trạng thái nửa-đăng-nhập.
         console.warn('[logout] signOut error (bỏ qua, vẫn dọn local):', error.message);
+        // signOut lỗi giữa chừng có thể CHƯA xoá session trong storage;
+        // nếu không dọn tay, getSession() vẫn thấy user → PublicRoute
+        // bounce từ /login ngược về "/" (verify trên prod 03/07).
+        Object.keys(localStorage)
+          .filter((k) => /^sb-.+-auth-token/.test(k))
+          .forEach((k) => localStorage.removeItem(k));
       }
     },
     onSuccess: () => {
