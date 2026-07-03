@@ -88,4 +88,40 @@ export const sidebar: DefaultTheme.Sidebar = [
       },
     ],
   },
+  {
+    text: '4. Báo cáo',
+    collapsed: true,
+    items: [
+      {
+        text: 'Báo cáo bất động sản',
+        collapsed: true,
+        items: [
+          { text: 'Tổng quan', link: '/04-bao-cao/hub-bds/' },
+          { text: 'Phòng trống', link: '/04-bao-cao/phong-trong/' },
+          { text: 'Hợp đồng sắp hết hạn', link: '/04-bao-cao/hd-sap-het-han/' },
+          { text: 'Gia hạn & chuyển nhượng', link: '/04-bao-cao/gia-han-chuyen-nhuong/' },
+          { text: 'Tỷ lệ lấp đầy', link: '/04-bao-cao/lap-day/' },
+          { text: 'Khuyến mãi', link: '/04-bao-cao/khuyen-mai/' },
+          { text: 'Cho thuê mới', link: '/04-bao-cao/cho-thue-moi/' },
+          { text: 'Thanh lý / bỏ trả', link: '/04-bao-cao/thanh-ly/' },
+          { text: 'Tỷ lệ chi phí', link: '/04-bao-cao/ty-le-chi-phi/' },
+        ],
+      },
+      {
+        text: 'Báo cáo tài chính',
+        collapsed: true,
+        items: [
+          { text: 'Tổng quan', link: '/04-bao-cao/hub-tai-chinh/' },
+          { text: 'Phân tích tài chính', link: '/04-bao-cao/phan-tich-tai-chinh/' },
+          { text: 'Sổ quỹ theo ngày', link: '/04-bao-cao/so-quy-ngay/' },
+          { text: 'Dòng tiền', link: '/04-bao-cao/dong-tien/' },
+          { text: 'Công nợ hợp đồng mới', link: '/04-bao-cao/cong-no-hd-moi/' },
+          { text: 'Khách nợ tiền', link: '/04-bao-cao/khach-no-tien/' },
+          { text: 'Lịch thanh toán', link: '/04-bao-cao/lich-thanh-toan/' },
+          { text: 'Danh sách tiền cọc', link: '/04-bao-cao/danh-sach-coc/' },
+          { text: 'Chu kỳ Thu → Bàn giao', link: '/04-bao-cao/thu-ban-giao/' },
+        ],
+      },
+    ],
+  },
 ]
