@@ -9,6 +9,7 @@ export const sidebar: DefaultTheme.Sidebar = [
     collapsed: false,
     items: [
       { text: 'Giới thiệu hệ thống', link: '/01-bat-dau/gioi-thieu/' },
+      { text: 'Sandbox — Môi trường thực hành', link: '/01-bat-dau/sandbox/' },
     ],
   },
 ]

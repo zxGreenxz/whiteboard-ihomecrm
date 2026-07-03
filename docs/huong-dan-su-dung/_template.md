@@ -42,6 +42,25 @@ màn hình nào trong tình huống nào. Không đặt heading "Mục đích".
 <!-- ::: warning cho hành động khó hoàn tác (xoá, duyệt, import hàng loạt) -->
 <!-- ::: tip cho mẹo làm nhanh -->
 
+<!-- ===== KHỐI THỬ TRỰC TIẾP — trang có action GHI mới thêm; trang read-only thêm view-only ===== -->
+## Thử trực tiếp trên sandbox
+
+<SandboxTry account="demo.ketoan" app-path="/thu-tien" app-label="Mở màn hình Thu tiền" fixtures="B101, B102">
+
+**Bài tập thực hành**
+
+1. Thu **đủ** hoá đơn phòng **B101** (1.000.000đ) bằng **Tiền mặt**.
+2. Thu **một phần** hoá đơn phòng B102 (nhập 2.000.000đ).
+
+**Kết quả mong đợi**
+
+- B101 chuyển **Đã thanh toán**; sổ quỹ có phiếu thu 1.000.000đ.
+- B102 chuyển **Thu một phần**, còn phải thu phần chênh.
+
+</SandboxTry>
+
+<!-- Trang read-only dùng: <SandboxTry account="demo.codong" app-path="/reports/..." view-only> nội dung "hãy nhìn thấy…" </SandboxTry> -->
+
 ## Các tính năng khác trên màn hình
 
 | Nút / Bộ lọc | Công dụng |
