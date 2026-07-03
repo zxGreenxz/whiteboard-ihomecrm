@@ -114,3 +114,11 @@ RPC: `v5_daily_missions_self` (guard self) · `get_my_day_summary` (1 round-trip
 | **Production (Playwright)** | login → **/my-day**: header + Xin phép (còn 1) + "chưa có ngày công" + 0/27 TẠM TÍNH + "Đã tích 0đ/6.000.000đ — leo tiếp! 🚀" + chuỗi/mốc +300k + khiên 2+0 (tự tiêu đúng ngày 1/7 lỡ) + footer TẠM TÍNH · **/reports/coverage**: 5 tab render, Coverage 17 toà sort đúng D (65NTG "chưa từng" đứng đầu), Đối soát 3 nhân viên 3 ASSERT ✅ + nút chốt tiền **disabled "Đang SHADOW"** · **console 0 error** cả 2 màn | ptcrm.vercel.app | ✅ |
 
 **Trạng thái bàn giao:** hệ v5 code xong S0–S5 + E2E, flags OFF (hành vi hệ cũ nguyên vẹn). Việc còn lại là VẬN HÀNH theo V5-RUNBOOK.md: ① chủ thêm env `CRON_SECRET` trên Vercel; ② restart worker (nạp watchdog); ③ đặt stage=grace để bắt đầu chặng 0 → theo gates Ch.11. Backlog kỹ thuật: nhánh UNION hiển thị trong salary_work_ledger (display-only); hàng-chờ-duyệt phép/sự-cố dạng UI riêng (hiện duyệt qua thông báo + RPC); Playwright staff-flow đầy đủ khi có account nhân viên test.
+
+## Vận hành đã thực thi (2026-07-03)
+
+- **Env `CRON_SECRET` trên Vercel** đã thêm (Sensitive, Production+Preview) + redeploy + verify live: `GET /api/salary-v5-cron?job=digest` → 200 `{ok:true, digest pushes:3}`, `cron_runs` ghi nhận (không lỗi). Cron Jobs nhận 2 lịch (nightly 45 23 UTC, digest 0 0 UTC), Enabled. Worker Zalo KHÔNG dùng (watchdog đã gỡ 66be930).
+- **SEED khởi động thử** (`scripts/v5_seed_trial_start_2026_07_03.sql`, revert `..._rollback.sql`): cho JOEY + NATHAN bắt đầu dùng v5 hôm nay **không mất chuỗi**.
+  - Tick ngày-công 01/07 + 02/07 (source FULL, evidence note `seed khởi động thử…`) → cả 2: `current=2, best=2, breaks_no_leave=0, khiên free=3`. Hôm nay tick tiếp = chuỗi 3; mốc 4 còn 2 ngày.
+  - 17 toà thật (rooms>0) mỗi toà 1 phiên FULL `passed` ngày 01/07 (attribution theo lịch sử job: Nathan 10, Joey 7; marker `condition_note='OK — seed khởi động thử v5 (2026-07-03)'`). Coverage: mọi toà D=2 (102LVT D=1 do job thật 02/07) — **không toà nào chạm SLA 4/3**. Verify Playwright /reports/coverage: 17 thẻ "Chạm 2 ngày trước", console 0 error.
+  - Idempotent + revert theo marker; recompute streak sau revert đưa SSS về trạng thái tự nhiên.
