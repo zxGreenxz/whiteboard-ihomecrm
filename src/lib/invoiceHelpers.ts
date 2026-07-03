@@ -253,21 +253,37 @@ export const PREVIOUS_DEBT_ROUND_THRESHOLD = 10000;
  *
  * @param paymentAmount  số tiền của LẦN thu hiện tại (≥ 0)
  * @param depositInInvoice  tổng phần cọc gộp trong hoá đơn (≥ 0)
- * @param paidBefore  số đã thu của hoá đơn TRƯỚC lần này (≥ 0)
- * @param collectibleTotal  tổng phải thu của hoá đơn (total_amount + previous_debt)
+ * @param paidBefore  số đã thu của hoá đơn TRƯỚC lần này (= invoices.paid_amount, ≥ 0)
+ * @param collectibleTotal  tổng phải thu của hoá đơn (= invoices.total_amount, ĐÃ gồm
+ *   nợ cũ — KHÔNG cộng previous_debt lần nữa)
+ * @param depositRecordedBefore  phần cọc ĐÃ ghi thành phiếu thu is_deposit cho HĐ này
+ *   TRƯỚC lần thu hiện tại (mặc định 0). Cần để KHÔNG ghi cọc ĐÔI khi hoá đơn từng
+ *   thu theo quy ước CŨ (cọc-trước): khi đó paidBefore đã gồm phần cọc này, phải trừ
+ *   ra để suy đúng "doanh thu đã phủ". Bỏ trống (=0) → hành vi y hệt bản cũ.
  */
 export function allocateDepositPortion(opts: {
   paymentAmount: number;
   depositInInvoice: number;
   paidBefore: number;
   collectibleTotal: number;
+  depositRecordedBefore?: number;
 }): { depositPortion: number; revenuePortion: number } {
   const paymentAmount = Math.max(0, opts.paymentAmount || 0);
   const depositInInvoice = Math.max(0, opts.depositInInvoice || 0);
   const paidBefore = Math.max(0, opts.paidBefore || 0);
   const collectibleTotal = Math.max(0, opts.collectibleTotal || 0);
   const revenueTotal = Math.max(0, collectibleTotal - depositInInvoice);
-  const revenueCoveredBefore = Math.min(paidBefore, revenueTotal);
+  // Cọc đã ghi trước đó (clamp [0, depositInInvoice]). paidBefore trừ phần cọc
+  // này mới là "đã phủ doanh thu" — nếu không trừ, hoá đơn từng thu cọc-trước sẽ
+  // bị tính lại cọc lần nữa (ghi đôi cọc, hụt doanh thu KQKD).
+  const depositRecordedBefore = Math.min(
+    Math.max(0, opts.depositRecordedBefore || 0),
+    depositInInvoice,
+  );
+  const revenueCoveredBefore = Math.min(
+    Math.max(0, paidBefore - depositRecordedBefore),
+    revenueTotal,
+  );
   const revenueRemaining = revenueTotal - revenueCoveredBefore;
   const revenuePortion = Math.min(paymentAmount, revenueRemaining);
   const depositPortion = paymentAmount - revenuePortion;

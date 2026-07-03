@@ -67,6 +67,116 @@ export const useRecordPaymentRPC = () => {
         .single() as any;
       const paidBefore = Number(inv?.paid_amount) || 0;
 
+      // ─────────────────────────────────────────────────────
+      // CHUẨN BỊ phiếu thu mirror — TÍNH TOÁN + PRE-CHECK TRƯỚC KHI GỌI RPC.
+      // Mọi thao tác đọc/kiểm tra có thể THROW (thiếu loại thu, tách cọc…) phải
+      // nằm TRƯỚC RPC: nếu để SAU thì payment đã ghi mà mutation vẫn throw →
+      // user bấm lại = payment ĐÔI. (Phiếu thu vẫn insert SAU RPC vì cần payment_id.)
+      // ─────────────────────────────────────────────────────
+      const willMirror = !!inv && !!data.account_id && data.amount > 0;
+
+      // Lấy loại thu: doanh thu (KHÔNG cọc) + cọc (is_deposit). Tách rõ để hạng
+      // mục doanh thu KHÔNG bao giờ dính is_deposit (DB hiện có 0 is_default →
+      // lọc is_deposit=false tường minh + sắp xếp ổn định + THROW nếu thiếu).
+      const { data: incTypes, error: incTypesErr } = await supabase
+        .from('income_expense_types' as any)
+        .select('id, is_default, type, name, is_deposit')
+        .eq('type', 'income')
+        .limit(100) as any;
+      if (incTypesErr) throw incTypesErr;
+      const allInc = (incTypes ?? []) as Array<{
+        id: string; is_default?: boolean; name?: string; is_deposit?: boolean;
+      }>;
+      const revenueTypes = allInc.filter((t) => !t.is_deposit);
+      const norm = (s?: string) => (s ?? '').trim().toLowerCase();
+      const incomeTypeId =
+        revenueTypes.find((t) => t.is_default)?.id ||
+        revenueTypes.find((t) => norm(t.name) === 'thu tiền hoá đơn' || norm(t.name) === 'thu tiền hóa đơn')?.id ||
+        [...revenueTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))[0]?.id;
+      const depositTypes = allInc.filter((t) => t.is_deposit);
+      const depositTypeId =
+        depositTypes.find((t) => (t.name ?? '').trim().toLowerCase() === 'tiền cọc')?.id ||
+        depositTypes[0]?.id;
+
+      const change = data.change_amount ?? 0;
+      const credit = data.credit_amount ?? 0;
+      const rounding = data.rounding_amount ?? 0;
+
+      // Phần cọc gộp trong HĐ: item OTHER đúng nhãn "Tiền cọc" (chuỗi cố định
+      // firstInvoiceBuilder phát ra) + nguồn nợ cũ type 'deposit'. So khớp CHÍNH
+      // XÁC 'tiền cọc' để KHÔNG bắt nhầm khoản thật ("Cọc xe máy"/"Cọc thẻ").
+      const invItems = ((inv as any)?.invoice_items ?? []) as Array<{ type?: string; description?: string; amount?: number }>;
+      const itemDeposit = invItems
+        .filter(
+          (it) =>
+            it.type === 'OTHER' &&
+            typeof it.description === 'string' &&
+            it.description.trim().toLowerCase() === 'tiền cọc',
+        )
+        .reduce((s, it) => s + (Number(it.amount) || 0), 0);
+      const pdSources = Array.isArray((inv as any)?.previous_debt_sources) ? (inv as any).previous_debt_sources : [];
+      const pdDeposit = (pdSources as any[])
+        .filter((s) => s?.type === 'deposit')
+        .reduce((s, x) => s + (Number(x.amount) || 0), 0);
+      const depositInInvoice = itemDeposit + pdDeposit;
+
+      // Chỉ tách cọc khi HĐ thực sự gộp cọc + có contract. KHÔNG chặn khi
+      // rounding > 0: tiền làm tròn thiếu chỉ là chênh nhỏ; nếu bỏ tách khi có
+      // rounding → toàn bộ cọc lọt vào doanh thu KQKD (bug). Vẫn bỏ qua khi
+      // credit > 0 (thu dư giữ credit — phần dư không thuộc cọc).
+      const canSplit = depositInInvoice > 0 && !!(inv as any)?.contract_id && credit === 0;
+
+      // Cọc ĐÃ ghi cho HĐ này bằng phiếu thu is_deposit trước đó (kể cả HĐ từng
+      // thu theo quy ước CŨ cọc-trước): phải trừ khỏi "doanh thu đã phủ" để KHÔNG
+      // ghi cọc ĐÔI. Chỉ query khi HĐ gộp cọc.
+      let depositRecordedBefore = 0;
+      if (willMirror && canSplit) {
+        const { data: prevVouchers } = await supabase
+          .from('income_expenses' as any)
+          .select('id')
+          .eq('invoice_id', (inv as any).id)
+          .is('deleted_at', null) as any;
+        const ieIds = ((prevVouchers ?? []) as Array<{ id: string }>).map((v) => v.id);
+        const depTypeIds = depositTypes.map((t) => t.id);
+        if (ieIds.length > 0 && depTypeIds.length > 0) {
+          const { data: depItems } = await supabase
+            .from('income_expense_items' as any)
+            .select('unit_price, quantity, income_expense_type_id')
+            .in('income_expense_id', ieIds)
+            .in('income_expense_type_id', depTypeIds) as any;
+          depositRecordedBefore = ((depItems ?? []) as Array<{ unit_price?: number; quantity?: number }>)
+            .reduce((s, it) => s + (Number(it.unit_price) || 0) * (Number(it.quantity) || 1), 0);
+        }
+      }
+
+      // PHÒNG-TRƯỚC, CỌC-SAU. collectibleTotal = total_amount (ĐÃ gồm nợ cũ —
+      // KHÔNG cộng previous_debt lần nữa, kẻo thổi phồng phần doanh thu → ghi
+      // thiếu cọc). depositRecordedBefore trừ phần cọc đã ghi (chống ghi đôi).
+      const collectibleTotal = Number((inv as any)?.total_amount) || 0;
+      const { depositPortion, revenuePortion } = canSplit
+        ? allocateDepositPortion({
+            paymentAmount: data.amount,
+            depositInInvoice,
+            paidBefore,
+            collectibleTotal,
+            depositRecordedBefore,
+          })
+        : { depositPortion: 0, revenuePortion: data.amount };
+
+      // Pre-check loại thu TRƯỚC RPC (thiếu loại → báo user tạo, CHƯA ghi tiền).
+      if (willMirror) {
+        if (depositPortion > 0 && !depositTypeId) {
+          throw new Error(
+            'Hoá đơn có phần cọc nhưng chưa có loại thu cọc (is_deposit). Vào Cài đặt → Loại thu/chi tạo loại "Tiền cọc".',
+          );
+        }
+        if (revenuePortion > 0 && !incomeTypeId) {
+          throw new Error(
+            'Chưa có loại thu (không phải cọc) trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
+          );
+        }
+      }
+
       // RBAC v2: bỏ p_user_id; quyền xác định qua can_do_on_building.
       const { data: result, error } = await (supabase.rpc as any)(
         'record_invoice_payment_v2',
@@ -85,42 +195,13 @@ export const useRecordPaymentRPC = () => {
       const newPaymentId = (result as any)?.payment_id ?? null;
 
       // ─────────────────────────────────────────────────────
-      // Mirror Resident: every invoice payment ⇒ 1 phiếu thu
+      // Mirror Resident: mỗi payment ⇒ 1 phiếu thu (đã CHUẨN BỊ + split ở trên).
       // ─────────────────────────────────────────────────────
-      // (inv đã fetch ở trên — trước RPC — để có paid_amount.)
-      // Lấy loại thu: doanh thu (KHÔNG cọc) + cọc (is_deposit). Tách rõ để hạng
-      // mục doanh thu KHÔNG bao giờ dính is_deposit (DB hiện có 0 is_default →
-      // phải lọc is_deposit=false tường minh + sắp xếp ổn định + THROW nếu thiếu).
-      const { data: incTypes, error: incTypesErr } = await supabase
-        .from('income_expense_types' as any)
-        .select('id, is_default, type, name, is_deposit')
-        .eq('type', 'income')
-        .limit(100) as any;
-      if (incTypesErr) throw incTypesErr;
-      const allInc = (incTypes ?? []) as Array<{
-        id: string; is_default?: boolean; name?: string; is_deposit?: boolean;
-      }>;
-      // Ưu tiên: is_default → hạng mục quy ước "Thu tiền hoá đơn" → đầu danh
-      // sách (sort theo tên cho ổn định). DB hiện KHÔNG có is_default income type.
-      const revenueTypes = allInc.filter((t) => !t.is_deposit);
-      const norm = (s?: string) => (s ?? '').trim().toLowerCase();
-      const incomeTypeId =
-        revenueTypes.find((t) => t.is_default)?.id ||
-        revenueTypes.find((t) => norm(t.name) === 'thu tiền hoá đơn' || norm(t.name) === 'thu tiền hóa đơn')?.id ||
-        [...revenueTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))[0]?.id;
-      const depositTypes = allInc.filter((t) => t.is_deposit);
-      const depositTypeId =
-        depositTypes.find((t) => (t.name ?? '').trim().toLowerCase() === 'tiền cọc')?.id ||
-        depositTypes[0]?.id;
-
-      if (inv && data.account_id && data.amount > 0) {
+      if (willMirror) {
         const meta = (user.user_metadata ?? {}) as Record<string, any>;
         const creatorName: string =
           meta.full_name || meta.name || user.email || 'Người dùng';
 
-        const change = data.change_amount ?? 0;
-        const credit = data.credit_amount ?? 0;
-        const rounding = data.rounding_amount ?? 0;
         const grossPaid = data.amount + change;
         const refundNote = change > 0
           ? `Thu ${grossPaid.toLocaleString('vi-VN')} – Thối ${change.toLocaleString('vi-VN')}`
@@ -132,41 +213,6 @@ export const useRecordPaymentRPC = () => {
         const composedNotes = [data.notes?.trim() || null, refundNote]
           .filter(Boolean)
           .join(' — ') || null;
-
-        // Phần cọc gộp trong HĐ cũ: item OTHER đúng nhãn "Tiền cọc" (chuỗi cố
-        // định firstInvoiceBuilder cũ phát ra) + nguồn nợ cũ type 'deposit'.
-        // Dùng so khớp CHÍNH XÁC 'tiền cọc' để KHÔNG bắt nhầm khoản thật như
-        // "Cọc xe máy"/"Cọc thẻ". (Khớp đúng 2 đường gộp cọc cũ; HĐ mới = 0.)
-        const invItems = (inv.invoice_items ?? []) as Array<{ type?: string; description?: string; amount?: number }>;
-        const itemDeposit = invItems
-          .filter(
-            (it) =>
-              it.type === 'OTHER' &&
-              typeof it.description === 'string' &&
-              it.description.trim().toLowerCase() === 'tiền cọc',
-          )
-          .reduce((s, it) => s + (Number(it.amount) || 0), 0);
-        const pdSources = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
-        const pdDeposit = (pdSources as any[])
-          .filter((s) => s?.type === 'deposit')
-          .reduce((s, x) => s + (Number(x.amount) || 0), 0);
-        const depositInInvoice = itemDeposit + pdDeposit;
-
-        // Chỉ phân bổ phần cọc khi HĐ thực sự gộp cọc + có contract. Bỏ qua khi
-        // có rounding/credit (paid_amount không cộng đúng data.amount → lệch).
-        const canSplit = depositInInvoice > 0 && !!inv.contract_id && rounding === 0 && credit === 0;
-        // PHÒNG-TRƯỚC, CỌC-SAU (hàm thuần allocateDepositPortion + property
-        // test): tiền thu phủ phần phòng/DV còn thiếu trước, dư mới vào cọc.
-        const collectibleTotal =
-          (Number(inv.total_amount) || 0) + (Number(inv.previous_debt) || 0);
-        const { depositPortion, revenuePortion } = canSplit
-          ? allocateDepositPortion({
-              paymentAmount: data.amount,
-              depositInInvoice,
-              paidBefore,
-              collectibleTotal,
-            })
-          : { depositPortion: 0, revenuePortion: data.amount };
 
         const shortTitle = getInvoiceShortTitle(inv as any);
 
@@ -182,18 +228,6 @@ export const useRecordPaymentRPC = () => {
         }
 
         if (!alreadyMirrored) {
-          // Pre-check loại thu TRƯỚC khi tạo phiếu (thiếu loại thì báo user tạo).
-          if (depositPortion > 0 && !depositTypeId) {
-            throw new Error(
-              'Hoá đơn có phần cọc nhưng chưa có loại thu cọc (is_deposit). Vào Cài đặt → Loại thu/chi tạo loại "Tiền cọc".',
-            );
-          }
-          if (revenuePortion > 0 && !incomeTypeId) {
-            throw new Error(
-              'Chưa có loại thu (không phải cọc) trong "Loại thu/chi". Vào Cài đặt → Loại thu/chi để tạo trước.',
-            );
-          }
-
           // 1 lần thu = ĐÚNG 1 phiếu thu (chứng từ khớp giao dịch thực — KHÔNG
           // tách phiếu). Phần cọc là HẠNG MỤC is_deposit trên CÙNG phiếu; báo
           // cáo KQKD tự loại phần cọc qua cột kqkd_amount (item-level, trigger

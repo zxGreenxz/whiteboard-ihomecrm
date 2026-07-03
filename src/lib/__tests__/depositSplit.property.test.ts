@@ -124,4 +124,62 @@ describe('allocateDepositPortion', () => {
     const p3 = allocateDepositPortion({ ...base, paymentAmount: 2_650_000, paidBefore: 3_300_000 });
     expect(p3).toEqual({ depositPortion: 2_300_000, revenuePortion: 350_000 });
   });
+
+  it('TRANSITION: HĐ 613701 đã thu 3.3tr theo quy ước CŨ (cọc-trước, cọc 2.3tr ĐÃ ghi) → thu nốt 2.65tr KHÔNG ghi cọc lần nữa', () => {
+    // Live: total 5.95tr, cọc gộp 2.3tr, paidBefore 3.3tr trong đó 2.3tr đã là
+    // phiếu cọc (quy ước cũ). Nếu KHÔNG truyền depositRecordedBefore → hàm tưởng
+    // phòng mới phủ 3.3tr → ghi lại cọc 2.3tr (ĐẾM ĐÔI). Truyền đúng → cọc = 0.
+    const r = allocateDepositPortion({
+      depositInInvoice: 2_300_000,
+      collectibleTotal: 5_950_000,
+      paidBefore: 3_300_000,
+      depositRecordedBefore: 2_300_000,
+      paymentAmount: 2_650_000,
+    });
+    expect(r).toEqual({ depositPortion: 0, revenuePortion: 2_650_000 });
+  });
+
+  it('TRANSITION: bỏ trống depositRecordedBefore cho kết quả y hệt bản cũ (an toàn ngược)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 50_000_000 }),
+        fc.integer({ min: 0, max: 20_000_000 }),
+        fc.integer({ min: 0, max: 30_000_000 }),
+        fc.integer({ min: 0, max: 50_000_000 }),
+        (paymentAmount, depositInInvoice, revenueOfInvoice, paidBefore) => {
+          const collectibleTotal = depositInInvoice + revenueOfInvoice;
+          const withParam = allocateDepositPortion({
+            paymentAmount, depositInInvoice, paidBefore, collectibleTotal,
+            depositRecordedBefore: 0,
+          });
+          const withoutParam = allocateDepositPortion({
+            paymentAmount, depositInInvoice, paidBefore, collectibleTotal,
+          });
+          expect(withParam).toEqual(withoutParam);
+        },
+      ),
+    );
+  });
+
+  it('TRANSITION cộng dồn: cọc-trước 2 đợt rồi chuyển sang phòng-trước — Σcọc KHÔNG vượt depositInInvoice', () => {
+    // Mô phỏng: HĐ gộp cọc 2tr, phòng 3tr (total 5tr). Đợt 1-2 thu 2tr ghi HẾT
+    // vào cọc (quy ước cũ). Sau đó chuyển luật: mỗi đợt sau truyền
+    // depositRecordedBefore = 2tr (cọc đã ghi) → phần còn lại toàn doanh thu.
+    const depositInInvoice = 2_000_000;
+    const collectibleTotal = 5_000_000; // phòng 3tr + cọc 2tr
+    // Sau 2 đợt cũ: paidBefore = 2tr, depositRecordedBefore = 2tr.
+    const r1 = allocateDepositPortion({
+      depositInInvoice, collectibleTotal,
+      paidBefore: 2_000_000, depositRecordedBefore: 2_000_000,
+      paymentAmount: 1_500_000,
+    });
+    expect(r1).toEqual({ depositPortion: 0, revenuePortion: 1_500_000 });
+    const r2 = allocateDepositPortion({
+      depositInInvoice, collectibleTotal,
+      paidBefore: 3_500_000, depositRecordedBefore: 2_000_000,
+      paymentAmount: 1_500_000,
+    });
+    expect(r2).toEqual({ depositPortion: 0, revenuePortion: 1_500_000 });
+    // Σ cọc toàn vòng đời = 2tr (đúng depositInInvoice), KHÔNG 4tr.
+  });
 });
