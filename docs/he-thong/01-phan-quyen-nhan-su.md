@@ -4,6 +4,11 @@
 > thu chi, báo cáo…) đều dựa vào các hàm RLS và bảng mô tả ở file này để quyết
 > định "ai thấy gì, ai sửa được gì". Đọc kỹ phần 4 (RPC/RLS) trước khi đọc tài
 > liệu các domain khác.
+>
+> Kèm theo: [Audit phân quyền toàn hệ thống 2026-07-02](docs/he-thong/phan-quyen-audit.md)
+> — bản đối chiếu **DB production live** (pg_policies + pg_get_functiondef) với
+> danh sách phát hiện 🔴/🟡/🟢; đọc nó khi cần biết trạng thái THẬT trên prod
+> thay vì mô hình thiết kế ở đây.
 
 ---
 
@@ -75,7 +80,16 @@ tại đây.
   owner mình phục vụ; nhờ vậy dropdown "người phụ trách"
   ([useStaffUsers](src/hooks/useStaffUsers.ts), lọc `is_active` client-side) hoạt
   động cho cả staff. Kèm `profiles_admin_insert` / `profiles_admin_update` (owner
-  tạo/sửa profile staff mình quản lý).
+  tạo/sửa profile staff mình quản lý). Từ 2026-06/07 thêm 2 policy SELECT
+  **additive**:
+  - `profiles_select_same_team` ([20260619120000](supabase/migrations/20260619120000_teams.sql)) —
+    thành viên **cùng đội** thấy profile nhau qua helper `same_team()` (xem 4.11);
+    phục vụ ô "Người nhận" khi bàn giao tiền mặt.
+  - `profiles_select_super_admin` ([20260701150000](supabase/migrations/20260701150000_profiles_super_admin_visible.sql)) —
+    **mọi** authenticated thấy profile của super admin (chủ) qua helper
+    `is_user_super_admin(id)`; vá vụ nhân viên KHÁC đội (Joey) không thấy CHỦ
+    trong ô "Người nhận" dù guard backend cho phép nộp tiền cho super admin
+    (commit 792e61c). Chỉ lộ đúng profile của chủ.
 - **Quan hệ FK (được tham chiếu)**: nhiều bảng nghiệp vụ trỏ tới `profiles.id`
   để chỉ "người phụ trách": `asset_maintenance.assigned_to`,
   `departments.manager_id`, `issues.assigned_to`/`reported_by_staff_id`,
@@ -166,31 +180,56 @@ tại đây.
   `created_by` (ai chia sẻ), `id`, `created_at`.
 - **Quan hệ FK (đi ra)**: `account_id → accounts.id` (sang domain Sổ quỹ).
 
-### 2.8 Enum liên quan
+### 2.8 `teams` / `team_members` — Đội ngũ (thêm 2026-06-19)
+
+Migration [20260619120000_teams.sql](supabase/migrations/20260619120000_teams.sql)
+(commit 978a157). Nhóm nhân viên thành **đội** để (1) thấy profile nhau và
+(2) chỉ bàn giao tiền mặt **nội đội** — xem quy tắc ở 4.11.
+
+- **`teams`**: `user_id` (chủ sở hữu đội, trigger `set_user_id_from_auth` tự gán),
+  `name` (NOT NULL), `description`, `deleted_at` (soft-delete), audit.
+- **`team_members`** (N-N người ↔ đội): `team_id → teams.id` (CASCADE),
+  `member_id → auth.users.id` (người trong đội), `user_id` (chủ — denormalize để
+  RLS khỏi join `teams`), UNIQUE `(team_id, member_id)`.
+- **RLS**: chủ (`user_id = auth.uid()`) + super admin toàn quyền ghi; SELECT thêm
+  cho chính thành viên và đồng đội (qua `same_team()`), admin. **Đội này không
+  thấy đội kia**. `REVOKE ALL … FROM anon`.
+- **FE**: [useTeams](src/hooks/useTeams.ts) (`useTeams` / `useSaveTeam` /
+  `useDeleteTeam`) + tab "Đội ngũ" trong [TeamsTab](src/components/staff/TeamsTab.tsx)
+  ở `/settings/staff` (xem 5.2).
+
+### 2.9 Enum liên quan
 
 Domain này **không** sở hữu enum riêng (các bảng dùng `boolean`/`jsonb`/`text`).
 Permissions không phải enum mà là JSONB tự do với khoá module/action do FE quy
 định trong [permissions.ts](src/lib/permissions.ts).
 
-- **Registry (redesign 2026-06-11)**: `PERMISSION_GROUPS` có **37 module trong
-  8 nhóm UI**, tổng ~190 khoá quyền `module.action`. Module mới: `thu_tien`
-  (trang Thu tiền mobile, FE-only), `materials` (Vật tư — RLS đã dùng khoá này
-  từ trước nhưng registry cũ THIẾU), `users` (trang Phân quyền — trước là khoá
-  "ma", nay là module thật cấp được qua matrix). Một số module đổi bộ action:
-  `sale_phong`/`shareholder_profit`/`reports_*` bỏ CRUD chuẩn, dùng action chi
-  tiết riêng (`ModuleDef.core` override).
+- **Registry (redesign 2026-06-11, cập nhật đến 2026-07-02)**: `PERMISSION_GROUPS`
+  có **39 module trong 9 nhóm UI**, tổng **208 khoá** quyền `module.action`.
+  Module mới đợt 06-11: `thu_tien` (trang Thu tiền mobile, FE-only), `materials`
+  (Vật tư — RLS đã dùng khoá này từ trước nhưng registry cũ THIẾU), `users`
+  (trang Phân quyền — trước là khoá "ma", nay là module thật cấp được qua
+  matrix). Module thêm sau đó: `chat_zalo` (nhóm UI mới "Kênh chat"; actions
+  `view · send · manage_automation · manage_templates`, DB guard qua `zalo_can()`)
+  và `salary` (Bảng lương quản lý, 2026-06-27; actions `view · lock · unlock ·
+  distribute · manage_salary · export`). Một số module đổi bộ action:
+  `sale_phong`/`shareholder_profit`/`salary`/`thu_tien`/`chat_zalo`/`reports_*`
+  bỏ CRUD chuẩn, dùng action chi tiết riêng (`ModuleDef.core` override).
 - **Action chi tiết theo chức năng**: ngoài 4 action chuẩn + extras cũ
   (`record_payment · approve · print · export · all_buildings · create_deposit`),
-  registry thêm ~40 action mới: vòng đời HĐ (`renew · transfer · terminate ·
+  registry thêm ~50 action mới: vòng đời HĐ (`renew · transfer · terminate ·
   handover`), cọc (`convert · refund`), hoá đơn (`cancel`), thu tiền (`collect ·
   undo · report`), lợi nhuận (`lock · unlock · distribute · manage_shareholders`),
   sale phòng (`manage_tokens · manage_settings · manage_images ·
-  edit_floor_plan`), tài sản (`move · maintain`), từng báo cáo riêng lẻ
-  (8 BC BĐS + 8 BC tài chính), v.v.
+  edit_floor_plan · manage_pass_listings · view_analytics · create_deposit`),
+  thu chi hạn chế (`restricted_create · restricted_view` — RLS RESTRICTIVE thật
+  ở DB, xem doc Thu chi), tài sản (`move · maintain`), từng báo cáo riêng lẻ
+  (8 BC BĐS + 12 BC tài chính, gồm `handover_report · reconcile ·
+  collection_cycle` thêm 2026-07-01), v.v.
 - **Catalog theo TRANG**: [permissionPages.ts](src/lib/permissionPages.ts) là
-  nguồn sự thật cho UI phân quyền mới — `PAGE_GROUPS` (9 nhóm × ~38 trang), mỗi
-  trang liệt kê từng chức năng (`PageFeature` gồm `tier` view/manage/elevated +
-  `fallback` legacy). **Fallback legacy**: JSONB cũ chưa có key chi tiết →
+  nguồn sự thật cho UI phân quyền mới — `PAGE_GROUPS` (**10 nhóm × 39 trang**),
+  mỗi trang liệt kê từng chức năng (`PageFeature` gồm `tier` view/manage/elevated
+  + `fallback` legacy). **Fallback legacy**: JSONB cũ chưa có key chi tiết →
   `canFeature`/`canUse` rơi về quyền gốc (vd `contracts.renew` rơi về
   `contracts.edit`; `thu_tien.*` rơi về `invoices.record_payment`) nên nhân viên
   hiện hữu không mất quyền. Test bất biến (catalog phủ đủ registry, fallback,
@@ -215,6 +254,9 @@ erDiagram
     profiles ||--o{ departments : "manager_id"
     accounts ||--o{ account_shared_users : "account_id"
     auth_users ||--o{ account_shared_users : "user_id (được chia sẻ)"
+    auth_users ||--o{ teams : "user_id (chủ đội)"
+    teams ||--o{ team_members : "team_id"
+    auth_users ||--o{ team_members : "member_id (thành viên)"
 
     profiles {
         uuid id PK "= auth.users.id"
@@ -255,9 +297,9 @@ flowchart TD
     B -- "không" --> C{"có staff_assignments<br/>(staff_id=mình, user_id≠mình)?"}
     C -- "có" --> D{"role có __superadmin<br/>hoặc name='Admin'?"}
     D -- "có" --> AD["TENANT ADMIN<br/>bypass RLS trong tenant (qua is_admin)"]
-    D -- "không" --> ST["STAFF thường<br/>quyền theo COALESCE(sa.permissions, role.permissions)<br/>× scope toà (building_id)"]
-    C -- "không" --> E{"có trong shareholders<br/>(auth_user_id, chưa xoá)?"}
-    E -- "có" --> SH["CỔ ĐÔNG<br/>get_my_permissions: bộ quyền chỉ-xem<br/>+ shareholder_profit.view + personal_finance;<br/>SELECT theo building_shareholders"]
+    D -- "không" --> ST["STAFF thường<br/>quyền theo COALESCE(sa.permissions, role.permissions)<br/>× scope (toà lẻ / khu live / full)<br/>kiêm cổ đông → merge thêm shareholder_profit.view"]
+    C -- "không" --> E{"có trong shareholders /<br/>profit_managers<br/>(auth_user_id, chưa xoá)?"}
+    E -- "có" --> SH["CỔ ĐÔNG / QUẢN LÝ LỢI NHUẬN<br/>get_my_permissions: ĐÚNG 1 quyền<br/>shareholder_profit.view (từ 2026-07-02);<br/>dữ liệu qua RLS self module lợi nhuận<br/>+ RPC get_my_share_buildings —<br/>KHÔNG còn SELECT bảng vận hành"]
     E -- "không" --> O["USER THƯỜNG (không assignment)<br/>bảng ngoài RBAC: auth.uid()=user_id<br/>bảng RBAC: KHÔNG thấy gì<br/>(owner gốc thực tế nằm trong super_admins)"]
 ```
 
@@ -329,12 +371,16 @@ cũ — xem 4.4/4.5.
 [20260527000053_rbac_helpers.sql](supabase/migrations/20260527000053_rbac_helpers.sql) —
 riêng `can_access_org_entity` gốc ở
 [20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql);
-bản hiện hành **Tier-2 aware** của `can_do_on_building`/`can_access_org_entity` ở
-[20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql)):
+Tier-2 aware từ
+[20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql);
+bản hiện hành của `can_do_on_building` — 3 nhánh scope toà lẻ/khu-live/full + Tier 2 — ở
+[20260611110000_staff_assignments_area_scope.sql](supabase/migrations/20260611110000_staff_assignments_area_scope.sql);
+bản hiện hành của `can_access_building` ở
+[20260701170000_shareholder_scope_split.sql](supabase/migrations/20260701170000_shareholder_scope_split.sql)):
 
 | Helper | Dùng cho | Logic |
 |--------|----------|-------|
-| `can_access_building(b)` | SELECT | super/admin pass; staff pass nếu có row `building_id IS NULL` (full scope) hoặc `= b`; **cổ đông** pass đúng các toà trong `building_shareholders` của mình (bản `20260603000002_shareholder_access_and_perms`). |
+| `can_access_building(b)` | SELECT | super/admin pass; staff pass nếu có row full-scope (`building_id IS NULL AND area_id IS NULL`), row `building_id = b`, hoặc row **khu live** (`area_id` có `b` trong `area_buildings`); **quản lý lợi nhuận** (`profit_managers`) pass các toà gắn qua `profit_manager_salary_buildings`. ⚠️ **Nhánh cổ đông đã BỎ** 2026-07-02 ([20260701170000](supabase/migrations/20260701170000_shareholder_scope_split.sql), commit 3cd0d90) — cổ đông không còn SELECT được 32 bảng vận hành của toà góp vốn; dữ liệu lợi nhuận đi qua RLS self của module Cổ đông (xem 4.7 và doc 12). |
 | `can_do_on_building(t, a, b)` | INSERT/UPDATE/DELETE | super/admin pass; staff cần row scope khớp **và** `COALESCE(sa.permissions, r.permissions) -> t ->> a = true` — tức **override Tier 2 được enforce ngay ở DB**. |
 | `can_access_org_entity(r, a)` | entity không gắn toà (customers, tenants, services, suppliers, hotlines, templates…) | như trên nhưng **không** check building. |
 | `building_of_contract / building_of_invoice / building_of_payment(id)` | traversal | trả `building_id` qua chain FK cho bảng con (contract_*, deposits, invoice_items, payments…). |
@@ -371,6 +417,37 @@ Quy ước & điểm cần nhớ:
 - Mapping `tbl → perm_key` vẫn như mô hình cũ: nhiều bảng vật lý chia sẻ 1 khoá
   quyền (`contract_extensions/terminations/transfers` → `'contracts'`;
   `payments` → `'invoices'`; `issues/jobs/job_groups/task_flows` → `'tasks'`…).
+
+**Perf RLS đợt 2026-07-02 — initplan wrap + set-based SELECT** (commit 86c01a5,
+[20260702150000_rls_initplan_setbased_select.sql](supabase/migrations/20260702150000_rls_initplan_setbased_select.sql)).
+Nguyên nhân đo được trên prod (staff scoped): policy gọi hàm **từng dòng** —
+Postgres không hoist hàm STABLE, mỗi row lại chạy `is_admin()`/
+`can_access_building(cột)` (mỗi lần = 2 check + 2 EXISTS) → trang chậm 2–16s.
+Hai fix, **ngữ nghĩa giữ nguyên**:
+
+1. **Initplan wrap**: TOÀN BỘ policy `<t>_admin_all` / `<t>_super_admin_all`
+   (FOR ALL, ~170 policy trên live, ALTER động qua `pg_policies`) đổi
+   `USING (is_admin())` → `USING ((SELECT is_admin()))` — thành InitPlan chạy
+   **1 lần/statement** (pattern chuẩn Supabase `auth_rls_initplan`).
+2. **Set-based rewrite** `*_select_rbac` của **9 bảng nóng** (`invoices ·
+   invoice_items · payments · contracts · contract_customers · rooms ·
+   buildings · area_buildings · income_expenses`): thay
+   `can_access_building(<cột dòng>)` per-row bằng
+   `(SELECT has_full_building_scope()) OR <cột> IN (SELECT accessible_building_ids())`
+   (bảng con dùng `accessible_invoice_ids()`/`accessible_room_ids()`/
+   `accessible_contract_ids()`) — subquery uncorrelated → Hashed SubPlan build
+   1 lần. Đúng phép tách `v_priv`/`v_bids` đã verify ở
+   `get_invoice_statistics_v2` (403ms→22ms, `20260630120000`).
+
+Helper mới (STABLE SECURITY DEFINER, mirror ĐÚNG các nhánh
+`can_access_building` bản 20260701170000 — không cổ đông):
+`has_full_building_scope()` ≡ super/admin/staff-full-scope;
+`accessible_building_ids()` ≡ toà gán trực tiếp ∪ toà theo khu ∪ toà hưởng
+lương LN. ✅ **Quy ước cho policy/RPC mới**: tái dùng cặp helper này (hoặc ít
+nhất bọc `(SELECT fn())`) thay vì gọi `can_access_building` per-row;
+`can_access_building` vẫn là chuẩn ngữ nghĩa và là bản rollback (nguyên văn
+USING cũ ghi cuối migration). Chỉ SELECT policy được rewrite — policy
+insert/update/delete, RESTRICTIVE (hạng mục hạn chế) và self/share giữ nguyên.
 
 **Bất biến**: staff được tick N toà chỉ ghi được dữ liệu trong N toà đó (qua
 `can_do_on_building`) — đúng cho mọi bảng building-keyed (contracts, invoices,
@@ -463,29 +540,42 @@ không tự query được context/permissions của chính mình. Cả hai `SEC
     nào dùng** nữa.
 
 - **`get_my_permissions()`** (phiên bản mới nhất:
-  [20260603000002_shareholder_access_and_perms.sql](supabase/migrations/20260603000002_shareholder_access_and_perms.sql),
-  kế thừa [20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql)):
+  [20260701170000_shareholder_scope_split.sql](supabase/migrations/20260701170000_shareholder_scope_split.sql),
+  kế thừa [20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql)
+  và bản cổ đông cũ `20260603000002`):
   trả JSONB permissions của caller theo thứ tự ưu tiên:
   1. super admin → sentinel `{"__superadmin": true}`.
   2. staff → `COALESCE(sa.permissions, role.permissions)` của assignment đầu tiên
      (ưu tiên row full-scope `building_id IS NULL`, rồi `created_at` sớm nhất) —
      tức **đã** tính tới override Tier 2.
-  3. **cổ đông** (có trong `shareholders.auth_user_id`) → bộ quyền **chỉ-xem** cố
-     định + `shareholder_profit.view` + toàn quyền `personal_finance`; nếu đồng
-     thời là staff thì **merge** `v_sh_perms || v_perms` (quyền staff ghi đè base).
-  4. owner thật (không staff, không cổ đông) → sentinel `__superadmin`.
+  3. **cổ đông hoặc quản lý lợi nhuận** (`shareholders.auth_user_id` /
+     `profit_managers.auth_user_id`, chưa xoá) → từ 2026-07-02 (commit 3cd0d90)
+     chỉ còn **ĐÚNG 1 quyền** `{"shareholder_profit": {"view": true}}` — bộ
+     ~20 module chỉ-xem + `personal_finance` của bản `20260603000002` đã **CẮT**.
+     Nếu đồng thời là staff → **merge** `v_sh_perms || v_perms` (quyền staff giữ
+     nguyên, chỉ cộng thêm cửa vào trang lợi nhuận). Muốn cổ đông xem thêm gì
+     thì thêm vào TRANG chia LN, không mở module khác (comment trong migration).
+  4. owner thật (không staff, không cổ đông, không quản lý) → sentinel `__superadmin`.
   - **Bất biến quan trọng**: cổ đông không-staff trước đây rơi vào nhánh "owner
-    thật → superadmin bypass" gây lỗ hổng; nhánh cổ đông (3) đóng lỗ hổng này
-    bằng cách trả permissions read-only tường minh.
+    thật → superadmin bypass" gây lỗ hổng; nhánh (3) đóng lỗ hổng từ
+    `20260603000002` và đến `20260701170000` siết tiếp về đúng 1 quyền —
+    audit 2026-07-02 đã verify live: cổ đông thuần chỉ nhận
+    `{"shareholder_profit":{"view":true}}`.
   - ⚠️ **Chỉ đọc 1 row**: với staff nhiều assignment, RPC lấy đúng 1 row (ưu tiên
     `building_id IS NULL`, rồi `created_at ASC`). Nếu các row của 1 staff lệch
     `permissions` (xem gotcha 5.2), quyền hiệu lực phụ thuộc thứ tự tạo row.
 
+- **`get_my_share_buildings()`** (cùng `20260701170000`, SECURITY DEFINER, REVOKE
+  anon): trả `id + name` các toà caller có cổ phần (`building_shareholders`) hoặc
+  hưởng lương LN (`profit_manager_salary_buildings`). Tồn tại vì cổ đông đã mất
+  quyền SELECT bảng `buildings` — trang chia LN cần TÊN TOÀ qua RPC này. FE:
+  [useMyShareBuildings](src/hooks/useShareholders.ts).
 - `get_my_permissions` đi kèm `can_do_on_building(_table,_action,_building_id)` và
   `can_access_org_entity(_resource,_action)` (4.3) — bản kiểm quyền có scope toà /
   không scope, đều đọc `COALESCE(sa.permissions, role.permissions)` (tôn trọng Tier 2).
-- `can_access_building(_building_id)` (4.3) còn có nhánh **cổ đông**: cổ đông
-  SELECT được đúng các toà có trong `building_shareholders` của mình.
+- `can_access_building(_building_id)` (4.3) **không còn** nhánh cổ đông; nhánh
+  còn lại ngoài staff là **quản lý lợi nhuận** (toà gắn trong
+  `profit_manager_salary_buildings`).
 
 ### 4.8 Gate phía FE: RequirePermission · AdminOnlyRoute · useIsAdmin · useMyBuildingScope
 
@@ -552,6 +642,55 @@ migrate role cũ (Admin→Super Admin — chính là **self-assignment của own
 nhắc ở 4.2, Manager→Quản Lý Tòa) và snapshot permissions vào mọi row
 `staff_assignments`.
 
+### 4.11 `same_team()` & Đội ngũ — visibility đồng đội + guard bàn giao
+
+[20260619120000_teams.sql](supabase/migrations/20260619120000_teams.sql)
+(commit 978a157, 2026-06-19; bảng xem 2.8).
+
+- **`same_team(_target)`** — SECURITY DEFINER + `SET search_path = public`
+  (bypass RLS của chính `team_members`, chống đệ quy): true khi caller và
+  `_target` có chung ≥1 đội (`team_members a JOIN team_members b ON a.team_id =
+  b.team_id`). GRANT cho `authenticated`/`service_role`, **không** anon.
+- **Dùng ở 2 chỗ**:
+  1. Policy `profiles_select_same_team` (additive trên `profiles`) — đồng đội
+     thấy tên nhau → ô "Người nhận" trong
+     [HandoverSheet](src/components/thu-tien/HandoverSheet.tsx) (`/thu-tien`,
+     nguồn `useStaffUsers` đọc `profiles` theo RLS) hiện được đồng đội.
+  2. Guard trong RPC **`create_cash_handover`**: sau bước xác thực người nhận,
+     chặn `RAISE 'Người nhận không cùng đội với bạn'` nếu
+     `NOT (is_super_admin() OR same_team(p_receiver_id))` — bàn giao tiền mặt
+     chỉ nội đội, **trừ** nộp cho super admin (chủ).
+- **Vá tiếp 2026-07-01** (commit 792e61c,
+  [20260701150000](supabase/migrations/20260701150000_profiles_super_admin_visible.sql)):
+  nhân viên KHÁC đội với chủ không thấy chủ trong ô "Người nhận" dù guard cho
+  phép → thêm helper `is_user_super_admin(p_user)` + policy
+  `profiles_select_super_admin` cho mọi authenticated thấy profile super admin.
+- Lý do ra đời: trước Teams, ô "Người nhận" bàn giao rỗng vì `profiles` chỉ mở
+  2 chiều owner↔staff — nhân viên không thấy nhân viên khác.
+
+### 4.12 Quy tắc: trigger sinh mã trên bảng có RLS phải SECURITY DEFINER + advisory lock
+
+[20260701000001_secdef_code_generators.sql](supabase/migrations/20260701000001_secdef_code_generators.sql)
+(commit 13bf498, 2026-07-01) — **bug class** đã chứng minh trên prod:
+
+- **Root cause**: trigger BEFORE INSERT sinh mã kiểu `MAX(...)+1`/`COUNT(...)+1`
+  đọc chính bảng có RLS mà chạy SECURITY INVOKER (mặc định) → chạy dưới RLS của
+  **caller**. Staff scoped chỉ thấy một phần bảng (vd nathan thấy 8/90 row
+  `CSS2607…`) → MAX tính thiếu → sinh mã đã tồn tại → unique violation 23505 →
+  **staff lưu fail trong khi chủ (is_admin, thấy hết) test không lộ lỗi**.
+- **Fix pattern** (mẫu chuẩn có sẵn: `generate_job_code`): `SECURITY DEFINER`
+  (SELECT nội bộ bỏ qua RLS, thấy đủ bảng) + `SET search_path = public` (chống
+  hijack) + `pg_advisory_xact_lock(hashtext(<prefix logic>))` (serialize insert
+  song song, chống race MAX+1).
+- Đã áp cho **7 hàm**: `auto_generate_reading_code` (CSS — chính là bug được
+  báo, kết hợp global MAX ở
+  [20260630000001](supabase/migrations/20260630000001_fix_reading_code_global_unique.sql)),
+  `set_material_purchase_code` / `set_material_usage_code` /
+  `set_material_adjustment_code` (MP/MU/MA), `auto_generate_voucher_code`
+  (PT/PC), `generate_template_code` (MT), `generate_invoice_number_v2`.
+- ✅ **Quy ước**: mọi generator mã mới trên bảng có RLS PHẢI theo pattern này;
+  test bằng tài khoản **staff scoped** (không phải chủ) mới lộ được lỗi.
+
 ---
 
 ## 5. Quy trình theo từng trang
@@ -588,26 +727,42 @@ link email.
 
 ### 5.2 `/settings/staff` — Phân quyền nhân viên (trang chính của domain)
 
-[StaffPage.tsx](src/pages/settings/StaffPage.tsx). Mục đích: quản lý **template**
-(tab "Mẫu phân quyền") và **nhân viên** (tab "Nhân viên"). Dữ liệu:
-`useStaffAssignments`, `useRoles`, `useBuildings`, `useAreas`.
+[StaffPage.tsx](src/pages/settings/StaffPage.tsx). Mục đích: quản lý **nhân viên**
+(tab "Nhân viên"), **đội ngũ** (tab "Đội ngũ", thêm 2026-06-19) và **template**
+(tab "Mẫu phân quyền"). Dữ liệu: `useStaffAssignments`, `useRoles`,
+`useBuildings`, `useAreas`, `useTeams`.
 
-Route được gate bằng `RequirePermission module="users"` — module **phantom**
-(không có trong registry), nên thực tế chỉ ai có `__superadmin` vào được trang
-này (xem cảnh báo 4.8).
+Route được gate bằng `RequirePermission module="users" action="view"` — từ
+2026-06-11 `users` là module **thật** trong registry (nhóm Cấu hình, tier
+elevated, xem 4.8): owner uỷ quyền quản lý nhân sự cho staff được qua matrix.
+Trong trang, từng nút gate tiếp bằng `canUse`: Thêm/Sửa/Xoá nhân viên theo
+`users.create/edit/delete`, tab Mẫu phân quyền theo `users.manage_templates`.
 
 #### Tab "Mẫu phân quyền"
 
 - Hiển thị 4 card system + N card custom (đếm số staff/role qua `useStaffAssignments`).
-- Thao tác: xem mẫu (Sheet + `PermissionMatrix` read-only); custom → sửa
-  (`useUpdateRole`) / xoá (`useDeleteRole`, chặn nếu đang được gán); system →
-  "Tạo bản sao" (`useCreateRole`). Validate: tên mẫu không trống.
+- Thao tác: xem mẫu (Sheet + `PagePermissionMatrix` với `disabled` khi không
+  được sửa); custom → sửa (`useUpdateRole`) / xoá (`useDeleteRole`, chặn nếu
+  đang được gán); system → "Tạo bản sao" (`useCreateRole`). Validate: tên mẫu
+  không trống.
+
+#### Tab "Đội ngũ" — nhóm nhân viên bàn giao tiền nội đội
+
+[TeamsTab.tsx](src/components/staff/TeamsTab.tsx) + [useTeams](src/hooks/useTeams.ts)
+(bảng & quy tắc: 2.8 / 4.11).
+
+- Chủ tạo nhiều đội (Sheet tên + mô tả + tick thành viên từ `useStaffUsers`,
+  gồm cả chính mình); sửa/xoá đội (xoá = soft-delete `deleted_at`).
+- Hệ quả nghiệp vụ: thành viên cùng đội **thấy tên nhau** (policy
+  `profiles_select_same_team`) và chỉ bàn giao tiền mặt được cho người **cùng
+  đội** hoặc **chủ** (guard `create_cash_handover` + policy
+  `profiles_select_super_admin` — xem 4.11). Đội này không thấy đội kia.
 
 #### Tab "Nhân viên" — thêm/sửa qua Sheet 4 bước
 
 > **UI bước ④ đổi 2026-06-11**: `PermissionMatrix` (accordion module × action)
 > đã bị XOÁ, thay bằng [PagePermissionMatrix](src/components/staff/PagePermissionMatrix.tsx) —
-> nav dọc theo TRANG (9 nhóm × ~38 trang, badge bật/tổng + chấm diff), panel
+> nav dọc theo TRANG (10 nhóm × 39 trang, badge bật/tổng + chấm diff), panel
 > phải liệt kê TỪNG CHỨC NĂNG của trang (checkbox + mô tả + badge "Nhạy cảm"
 > cho tier elevated), search xuyên trang, nút nhanh per-page (Bỏ hết / Chỉ xem /
 > Tất cả) + preset toàn cục. Checkbox hiển thị GIÁ TRỊ HIỆU LỰC (key tường minh
@@ -763,18 +918,25 @@ thông tin của mình.
   `staff_can('cashbooks', …)` — **role-only, lệch Tier 2** (4.4). Cờ
   `income_expenses.all_buildings` + RPC `ie_form_buildings`/`ie_form_rooms` gói
   scope "mọi toà" trong form thu chi (4.6); list/ô lọc vẫn theo scope toà.
-- → **Cổ đông & Tài chính**: `get_my_permissions` và `can_access_building` có
-  nhánh riêng cho cổ đông (`shareholders.auth_user_id`, `building_shareholders`)
-  → cổ đông read-only theo toà có cổ phần + toàn quyền `personal_finance`.
-- → **Sale Phòng / Phòng trống công khai** (**WIP — chưa commit**, working tree
-  2026-06-10): action mới `sale_phong.create_deposit` — user đăng nhập có quyền
-  này thấy nút "Tạo cọc nhanh" trên trang công khai `/r/:token`
+  **Bàn giao tiền mặt** (`create_cash_handover`, `/thu-tien`) phụ thuộc Đội ngũ:
+  guard `same_team()` + visibility `profiles_select_same_team`/
+  `profiles_select_super_admin` (4.11).
+- → **Cổ đông & Tài chính**: từ 2026-07-02 (3cd0d90) cổ đông/quản lý LN thuần chỉ
+  còn `shareholder_profit.view` từ `get_my_permissions`; `can_access_building`
+  **không còn** nhánh cổ đông (chỉ còn nhánh quản lý LN qua
+  `profit_manager_salary_buildings`) → dữ liệu trang chia LN đi qua RLS **self**
+  của module Cổ đông (`current_shareholder_id()`/`current_profit_manager_id()`,
+  xem doc 12) + tên toà qua RPC `get_my_share_buildings` (4.7).
+- → **Sale Phòng / Phòng trống công khai**: module `sale_phong` gate từng tab
+  trang quản trị `/sale-phong` bằng action riêng (`manage_tokens ·
+  manage_settings · manage_images · edit_floor_plan · manage_pass_listings ·
+  view_analytics` — xem 2.9); action `create_deposit` cho user đăng nhập thấy
+  nút "Tạo cọc nhanh" trên trang công khai `/r/:token`
   ([PhongTrongPage](src/pages/phong-trong/PhongTrongPage.tsx) gate qua
   `can(perms, "sale_phong", "create_deposit")`).
   [QuickDepositModal](src/pages/phong-trong/QuickDepositModal.tsx) tạo phiếu thu
   cọc: sổ "CỌC (giữ hộ khách)" qua RPC `get_or_create_deposit_account`, loại thu
-  qua RPC mới `ensure_room_deposit_type` (migration untracked
-  `20260608100000`, đảm bảo `is_deposit = TRUE`) → trigger
+  qua RPC `ensure_room_deposit_type` (đảm bảo `is_deposit = TRUE`) → trigger
   `recompute_room_reservation` set `rooms.status = RESERVED` (liên kết Đặt cọc +
   Bất động sản).
 
@@ -784,5 +946,8 @@ thông tin của mình.
   user_id`, `super_admins.user_id` (cascade xoá khi xoá auth user).
 - **Bất động sản** — `staff_assignments.building_id`; `areas` chỉ phục vụ nhóm toà trong UI gán phạm vi (`BuildingMultiSelect`).
 - **Sổ quỹ** — `account_shared_users.account_id` trỏ tới `accounts`.
-- **Cổ đông** — `get_my_permissions`/`can_access_building` đọc `shareholders` +
-  `building_shareholders` (định nghĩa ở domain Cổ đông).
+- **Cổ đông & Lương** — `get_my_permissions` đọc `shareholders` +
+  `profit_managers` (cờ "là cổ đông/quản lý LN"); `can_access_building` /
+  `accessible_building_ids` đọc `profit_manager_salary_buildings` (nhánh quản lý
+  LN); `get_my_share_buildings` đọc `building_shareholders` (định nghĩa ở domain
+  Cổ đông & Lương).

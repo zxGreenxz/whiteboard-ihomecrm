@@ -9,7 +9,7 @@ Nguồn code chính:
 
 - Page: [MaterialsPage.tsx](src/pages/materials/MaterialsPage.tsx) (hub 3+1 tab), [SuppliersPage.tsx](src/pages/settings/categories/SuppliersPage.tsx) (placeholder).
 - Hooks: [useMaterials.ts](src/hooks/useMaterials.ts), [useMaterialCategories.ts](src/hooks/useMaterialCategories.ts), [useMaterialPurchases.ts](src/hooks/useMaterialPurchases.ts), [useMaterialUsages.ts](src/hooks/useMaterialUsages.ts), [useMaterialAdjustments.ts](src/hooks/useMaterialAdjustments.ts). (Lưu ý: `useMaterials.ts` còn export `useMaterial` — hook detail theo id — hiện **không component nào dùng** (dead export) và **không** lọc `deleted_at`.)
-- Components: thư mục [src/components/materials/](src/components/materials/). UI tạo/sửa **phiếu xuất** nằm bên domain Công việc: [MaterialUsageSection](src/components/materials/MaterialUsageSection.tsx) nhúng trong [TaskDetailDialog](src/components/tasks/TaskDetailDialog.tsx) **và** [MaterialUsageItemsEditor](src/components/materials/MaterialUsageItemsEditor.tsx) nhúng trong [TaskCreateDialog](src/components/tasks/TaskCreateDialog.tsx).
+- Components: thư mục [src/components/materials/](src/components/materials/). UI tạo/sửa **phiếu xuất gắn job** nằm bên domain Công việc: [MaterialUsageSection](src/components/materials/MaterialUsageSection.tsx) nhúng trong [TaskDetailDialog](src/components/tasks/TaskDetailDialog.tsx) **và** [MaterialUsageItemsEditor](src/components/materials/MaterialUsageItemsEditor.tsx) nhúng trong [TaskCreateDialog](src/components/tasks/TaskCreateDialog.tsx); từ 2026-06-30 (40369a7) có thêm [MaterialUsageFormDialog](src/components/materials/MaterialUsageFormDialog.tsx) — tạo phiếu xuất **bằng tay, không gắn job** ngay trên tab Phiếu xuất.
 - Validation: [materialValidation.ts](src/lib/materialValidation.ts).
 - Migration: [20260529000004_create_materials_inventory.sql](supabase/migrations/20260529000004_create_materials_inventory.sql).
 
@@ -31,7 +31,7 @@ Vòng đời một vật tư xoay quanh **3 loại phiếu (movement)** tác đ�
 | Loại phiếu | Bảng header / items | Hướng tồn | Mã sinh tự động | Nguồn phát sinh |
 |---|---|---|---|---|
 | **Nhập** (purchase) | `material_purchases` / `material_purchase_items` | **+** (cộng tồn, cập nhật giá vốn) | `MP-YYYYMMDD-NNNN` | Tab "Phiếu nhập" trên MaterialsPage |
-| **Xuất** (usage) | `material_usages` / `material_usage_items` | **−** (trừ tồn) | `MU-YYYYMMDD-NNNN` | Gắn vào **phiếu công việc (job)** — tạo/sửa từ dialog "Chi tiết công việc" (TaskDetailDialog) **hoặc** ngay khi tạo công việc mới (TaskCreateDialog) |
+| **Xuất** (usage) | `material_usages` / `material_usage_items` | **−** (trừ tồn) | `MU-YYYYMMDD-NNNN` | Gắn vào **phiếu công việc (job)** — tạo/sửa từ dialog "Chi tiết công việc" (TaskDetailDialog) **hoặc** ngay khi tạo công việc mới (TaskCreateDialog); **hoặc tạo bằng tay không gắn job** từ tab "Phiếu xuất" (MaterialUsageFormDialog, từ 2026-06-30) |
 | **Điều chỉnh / kiểm kê** (adjustment) | `material_adjustments` / `material_adjustment_items` | **±** (IN cộng / OUT trừ) | `MA-YYYYMMDD-NNNN` | Tab "Kiểm kê" trên MaterialsPage |
 
 Hai con số quan trọng nhất trên bảng `materials` — `on_hand` (tồn) và
@@ -117,7 +117,7 @@ Header `material_usages`:
 
 - `code` (UNIQUE NOT NULL): auto-gen `MU-YYYYMMDD-NNNN`.
 - `usage_date` (DATE, default CURRENT_DATE).
-- `job_id` → `jobs.id` (nullable, `ON DELETE CASCADE`): **liên kết sang domain Công việc**. Có **UNIQUE partial index** `WHERE job_id IS NOT NULL` → **mỗi job nhiều nhất 1 phiếu xuất**.
+- `job_id` → `jobs.id` (nullable, `ON DELETE CASCADE`): **liên kết sang domain Công việc**. Có **UNIQUE partial index** `WHERE job_id IS NOT NULL` → **mỗi job nhiều nhất 1 phiếu xuất**. Phiếu xuất **tạo bằng tay** có `job_id = NULL` (hợp lệ — UNIQUE chỉ áp khi job_id NOT NULL); tab Phiếu xuất hiển thị "(không gắn job)".
 - `notes`, `user_id` (audit), timestamps.
 
 Items `material_usage_items`:
@@ -305,10 +305,16 @@ phiếu → trigger lo.
 
 > Đây là điểm khác biệt với `materials.code`: mã **vật tư** do user tự nhập (nullable, không auto), mã **phiếu** auto-gen và UNIQUE.
 
-> **Race condition**: cách sinh `MAX() + 1` **không khoá** (không sequence/advisory lock) —
-> 2 user tạo phiếu cùng ngày cùng lúc có thể sinh trùng code → UNIQUE violation, insert fail,
-> app không retry (chỉ toast lỗi khó hiểu). Với tần suất hiện tại chấp nhận được, nhưng cần
-> biết khi debug lỗi tạo phiếu chập chờn.
+> **Đã vá SECURITY DEFINER + advisory lock (2026-07-01, 13bf498)** — migration
+> [20260701000001_secdef_code_generators.sql](supabase/migrations/20260701000001_secdef_code_generators.sql):
+> bản gốc là SECURITY INVOKER, tính `MAX()+1` trên bảng **có RLS** → staff (non-admin) chỉ
+> thấy một phần phiếu, tính MAX thiếu → sinh mã đã tồn tại → 23505, insert fail **chỉ với
+> staff** (chủ là admin thấy hết nên test bằng chủ không lộ lỗi — bug class chung của mọi
+> generator MAX()/COUNT() trên bảng RLS, phát hiện từ vụ `reading_code` bên chỉ số điện).
+> Cả 3 hàm `set_material_{purchase,usage,adjustment}_code` giờ chạy `SECURITY DEFINER` +
+> `SET search_path = public` + `pg_advisory_xact_lock(hashtext('MP-'||ngày))` (serialize
+> cấp số trong ngày → hết luôn race 2 user tạo phiếu đồng thời). Mẫu chuẩn tham chiếu là
+> `generate_job_code()` của domain Công việc.
 
 ### 4.5. Audit & updated_at
 
@@ -333,25 +339,23 @@ Bảng items không có policy riêng theo parent — chúng cũng kiểm `mater
 
 `suppliers` có RLS riêng (xem domain Cài đặt/danh mục) — không thuộc namespace `materials`.
 
-> **Thực trạng quan trọng — chuỗi cấp quyền đứt ở FE**: module `materials` **KHÔNG có**
-> trong `PERMISSION_GROUPS` của [permissions.ts](src/lib/permissions.ts) (nguồn dữ liệu cho
-> [PermissionMatrix](src/components/staff/PermissionMatrix.tsx) — có `warehouses`, `suppliers`
-> trong nhóm Tài sản nhưng không có "Kho vật tư"), và seed role templates
-> ([20260529000002](supabase/migrations/20260529000002_seed_system_role_templates.sql)) cũng
-> không nhắc tới `materials`. Hệ quả: **không thể cấp quyền kho vật tư cho staff qua UI** —
-> thực tế chỉ admin/super_admin dùng được domain này; staff muốn dùng phải sửa JSON
-> `permissions` bằng tay. Kết hợp thêm:
+> **Chuỗi cấp quyền FE đã được nối lại (2026-06-11, f528cd8 — thiết kế lại trang phân
+> quyền theo TRANG)**: catalog [permissionPages.ts](src/lib/permissionPages.ts) (nguồn dữ
+> liệu cho [PagePermissionMatrix](src/components/staff/PagePermissionMatrix.tsx) — thay
+> PermissionMatrix cũ đã xoá) có trang `materials` ("Vật tư", nhóm "Tài sản & Kho", features
+> CRUD) → **cấp được quyền kho vật tư cho staff qua UI**. Đồng bộ cùng đợt:
 >
-> - Route `/materials*` chỉ bọc `ProtectedRoute` (auth), **không** có `RequirePermission`
->   (khác `/sale-phong`); mục menu "Kho vật tư" ([Sidebar](src/components/layout/Sidebar.tsx),
->   mục "Danh mục dữ liệu" nhóm "QUẢN LÝ & VẬN HÀNH") hiện cho **mọi** user đăng nhập
->   (Sidebar không lọc theo quyền).
-> - Các hook list **nuốt lỗi** (`console.error` → `return []`).
+> - Route `/materials*` bọc `ProtectedRoute` + **`RequirePermission module="materials"`**
+>   ([App.tsx](src/App.tsx)) — thiếu quyền bị redirect về `/`.
+> - Mục menu "Kho vật tư" ([Sidebar](src/components/layout/Sidebar.tsx), nhóm "Danh mục
+>   dữ liệu") khai báo `module: 'materials'` — Sidebar **ẩn mục** với user thiếu quyền
+>   (không còn hiện cho mọi user đăng nhập).
 >
-> → staff không quyền vẫn thấy menu, vào được trang, và gặp danh sách **trống im lặng**
-> ("Chưa có vật tư") thay vì thông báo cấm truy cập — dễ hiểu nhầm là "mất dữ liệu kho".
-> Nghịch lý: cấp được quyền NCC (`suppliers` có trong matrix) nhưng không cấp được quyền
-> kho vật tư.
+> Tồn đọng: các hook list vẫn **nuốt lỗi** (`console.error` → `return []`) — nếu quyền FE
+> và RLS lệch nhau (vd sửa JSON tay) thì danh sách vẫn "trống im lặng" thay vì báo lỗi;
+> seed role templates ([20260529000002](supabase/migrations/20260529000002_seed_system_role_templates.sql))
+> vẫn không có `materials`, role hệ thống cũ không tự kèm quyền này (phải tick thêm ở
+> trang phân quyền).
 
 ---
 
@@ -359,12 +363,12 @@ Bảng items không có policy riêng theo parent — chúng cũng kiểm `mater
 
 ### 5.1. `MaterialsPage` — hub kho vật tư
 
-- **Route**: `/materials`, `/materials/purchases`, `/materials/usages`, `/materials/adjustments` (cả 4 cùng render `MaterialsPage`, tab xác định theo `location.pathname`). Đăng ký trong [App.tsx](src/App.tsx) dòng 236-239 — chỉ bọc `ProtectedRoute` (auth), **không** `RequirePermission` (xem note ở 4.6).
+- **Route**: `/materials`, `/materials/purchases`, `/materials/usages`, `/materials/adjustments` (cả 4 cùng render `MaterialsPage`, tab xác định theo `location.pathname`). Đăng ký trong [App.tsx](src/App.tsx) — bọc `ProtectedRoute` + `RequirePermission module="materials"` (từ f528cd8, xem 4.6).
 - **Mục đích**: một trang 4 tab — Vật tư / Phiếu nhập / Phiếu xuất / Kiểm kê. Đổi tab = `navigate()` đổi URL (deep-link được).
 
 #### Tab "Vật tư" — [MaterialsListContent.tsx](src/components/materials/MaterialsListContent.tsx)
 
-- **Dữ liệu**: `useMaterials(filters)` (filter `search` lọc client-side theo tên/mã/mô tả, `categoryId`, `onlyLowStock`), `useMaterialCategories()`.
+- **Dữ liệu**: `useMaterials(filters)` (filter `search` lọc client-side theo tên/mã/mô tả, `categoryId`, `onlyLowStock`), `useMaterialCategories()`. Ô tìm kiếm + danh mục + sub-tab tồn kho **giữ qua F5** bằng `usePersistedState` (sessionStorage key `flt:materials:*` — đợt 7fd2d3f).
 - **Hiển thị**: bảng Mã / Tên / Danh mục / Đơn vị / Tồn (qua `StockBadge`) / Giá vốn TB. Sub-tab "Tất cả" vs "Sắp hết" (đếm `on_hand <= reorder_level`). Panel "Danh mục" gập/mở để CRUD `material_categories`.
 - **Thêm/Sửa vật tư** ([MaterialFormDialog](src/components/materials/MaterialFormDialog.tsx)): react-hook-form + `materialFormSchema`. Validate: `name` min 1, `unit` min 1, `reorder_level ≥ 0`, `category_id` phải là UUID hợp lệ hoặc null. `useCreateMaterial` / `useUpdateMaterial` insert/update vào `materials` (KHÔNG ghi `on_hand`/`avg_unit_cost` — để default/trigger lo).
 - **Xoá vật tư**: `useSoftDeleteMaterial` chỉ set `deleted_at` → lịch sử phiếu giữ nguyên (vì FK RESTRICT chặn xoá cứng).
@@ -412,8 +416,8 @@ sequenceDiagram
 
 #### Tab "Phiếu xuất" — [MaterialUsagesContent.tsx](src/components/materials/MaterialUsagesContent.tsx)
 
-- **Read-only list**. Phiếu xuất **không tạo từ đây** — tạo từ phiếu công việc (2 luồng, xem dưới). Banner ghi rõ: *"Phiếu xuất tạo tự động khi staff khai báo vật tư trong phiếu công việc. Mỗi job có nhiều nhất 1 phiếu xuất — sửa qua dialog 'Chi tiết công việc'."*
-- **Dữ liệu**: `useMaterialUsages()` — join `items(+material)` + `job(id,code,title)`, fetch **toàn bộ lịch sử không phân trang** (giống 2 tab phiếu còn lại). Mỗi hàng hiện mã MU, ngày, link tới job (`/tasks`), tổng SL, tổng chi phí (`Σ quantity × unit_cost_at_usage`). Expand xem dòng kèm "Giá vốn lúc xuất".
+- **Hết read-only từ 2026-06-30 (40369a7)**: có nút **"Tạo phiếu xuất"** mở [MaterialUsageFormDialog](src/components/materials/MaterialUsageFormDialog.tsx) tạo phiếu **bằng tay, không gắn job** (luồng 3 dưới đây); phiếu gắn job vẫn tạo/sửa từ phiếu công việc (luồng 1-2). Banner: *"Phiếu xuất tạo tự động khi staff khai báo vật tư trong phiếu công việc. Mỗi job có nhiều nhất 1 phiếu xuất — sửa qua dialog 'Chi tiết công việc'. Ngoài ra có thể tạo phiếu xuất bằng tay (không gắn job)."*
+- **Dữ liệu**: `useMaterialUsages()` — join `items(+material)` + `job(id,code,title)`, fetch **toàn bộ lịch sử không phân trang** (giống 2 tab phiếu còn lại). Mỗi hàng hiện mã MU, ngày, link tới job (`/tasks`) hoặc nhãn "(không gắn job)", cột **"Người tạo"** (tên + giờ tạo — `user_id` trỏ `auth.users` không embed được nên hook fetch `profiles` riêng rồi map `full_name`), tổng SL, tổng chi phí (`Σ quantity × unit_cost_at_usage`). Expand xem dòng kèm "Giá vốn lúc xuất".
 - **Luồng 1 — sửa/tạo từ "Chi tiết công việc"**: [MaterialUsageSection](src/components/materials/MaterialUsageSection.tsx), nhúng trong [TaskDetailDialog](src/components/tasks/TaskDetailDialog.tsx) (2 vị trí mobile/desktop):
   1. `useMaterialUsageByJob(jobId)` lấy phiếu hiện có của job (nếu có).
   2. User thêm dòng vật tư + số lượng ([MaterialUsageItemsEditor](src/components/materials/MaterialUsageItemsEditor.tsx)). Editor cảnh báo (viền vàng) khi `qty > on_hand + alreadyCounted` — **chỉ cảnh báo, không chặn** (cho phép xuất âm tồn).
@@ -423,9 +427,14 @@ sequenceDiagram
   1. Submit → `createJob` tạo job trước; nếu có dòng vật tư hợp lệ (`material_id` + `quantity > 0`) thì gọi tiếp `useUpsertJobMaterialUsage` với `usage_date` = ngày hiện tại, `unit_cost_at_usage` snapshot từ `avg_unit_cost` hiện tại.
   2. **Không rollback**: nếu phần vật tư lỗi thì job **vẫn được tạo** (chỉ toast lỗi — comment trong code ghi rõ "job đã tạo nên không rollback").
   3. Editor ở đây **không** truyền `existingQuantitiesByMaterial` → cảnh báo vượt tồn so với `on_hand` thuần.
+- **Luồng 3 — tạo bằng tay không gắn job** (2026-06-30, 40369a7): [MaterialUsageFormDialog](src/components/materials/MaterialUsageFormDialog.tsx) mở từ nút "Tạo phiếu xuất" trên tab:
+  1. Nhập **Ngày xuất** (mặc định hôm nay — user đổi được, khác 2 luồng job hard-code ngày hiện tại), các dòng vật tư (tái dùng `MaterialUsageItemsEditor` — cảnh báo vượt tồn, không chặn), ghi chú tuỳ chọn.
+  2. Submit → lọc dòng hợp lệ (`material_id` + `quantity > 0`; 0 dòng → toast lỗi) → [useCreateMaterialUsage](src/hooks/useMaterialUsages.ts): insert header `{ job_id: null, usage_date, notes }` (trigger sinh MU-…, `user_id`/`created_at` do trigger audit ghi) rồi insert items với snapshot `unit_cost_at_usage = avg_unit_cost` hiện tại. **Items lỗi → rollback xoá header** (giống luồng tạo phiếu nhập).
+  3. `onSuccess` invalidate `['material-usages','list']` + `['materials']` → tab tự cập nhật (khác luồng job — xem gotcha invalidate dưới).
+  4. Phiếu tay **không sửa được** sau khi tạo (dialog chỉ có create; upsert/sửa chỉ tồn tại cho phiếu gắn job qua dialog công việc) và cũng chưa có nút xoá trên tab.
 - **Cảnh báo re-snapshot giá vốn**: vì upsert **replace toàn bộ dòng** và caller luôn gán `unit_cost_at_usage = avg_unit_cost` **hiện tại** cho cả các dòng không đổi → chỉ cần bấm "Lưu vật tư" lại sau khi giá vốn đã thay đổi (do phiếu nhập mới) là **chi phí lịch sử của job bị ghi đè** theo giá mới — snapshot chỉ "đóng băng" đến lần lưu kế tiếp, không tuyệt đối. Tương tự, cả 2 caller đều hard-code `usage_date = ngày hiện tại` khi lưu → **ngày phiếu xuất cũng trôi** về lần lưu cuối, không giữ ngày xuất ban đầu.
 - **Cảnh báo không transaction**: tương tự phiếu nhập — nhánh update là delete-all + insert qua các request rời; insert mới fail → phiếu rỗng nhưng header còn (trường hợp này header rỗng chỉ bị dọn ở nhánh "xoá hết item" chủ động, không phải khi lỗi).
-- **Gotcha invalidate**: `onSuccess` chỉ invalidate `['material-usages','by-job',jobId]` + `['materials']` — **không** invalidate query list `['material-usages','list']` → tab Phiếu xuất dựa vào remount/staleTime mặc định để tự cập nhật sau khi lưu từ job.
+- **Gotcha invalidate**: `useUpsertJobMaterialUsage.onSuccess` chỉ invalidate `['material-usages','by-job',jobId]` + `['materials']` — **không** invalidate query list `['material-usages','list']` → tab Phiếu xuất dựa vào remount/staleTime mặc định để tự cập nhật sau khi lưu **từ job**. (Luồng tạo tay `useCreateMaterialUsage` thì có invalidate list.)
 - **Edge case**: UNIQUE index `job_id` đảm bảo 1 job ↔ 1 phiếu xuất; xoá job → CASCADE xoá phiếu xuất → trigger **cộng trả tồn** (kể cả khi vật tư đã tiêu hao thật ngoài đời — rủi ro nghiệp vụ cần lưu ý khi xoá job).
 
 #### Tab "Kiểm kê" — [MaterialAdjustmentsContent.tsx](src/components/materials/MaterialAdjustmentsContent.tsx)
@@ -468,12 +477,12 @@ flowchart TD
 
 | Hướng | Bảng/route nguồn | Bảng/route đích | Vì sao |
 |---|---|---|---|
-| **Ra → Công việc (Jobs)** | `material_usages.job_id` | `jobs.id` (`ON DELETE CASCADE`, UNIQUE per job) | Phiếu xuất gắn job để quy chi phí vật tư về từng công việc bảo trì. UI tạo/sửa xuất nằm bên domain tasks ở **2 chỗ**: [TaskDetailDialog](src/components/tasks/TaskDetailDialog.tsx) (qua `MaterialUsageSection`) và [TaskCreateDialog](src/components/tasks/TaskCreateDialog.tsx) (kèm khi tạo job) — không phải trên MaterialsPage. |
+| **Ra → Công việc (Jobs)** | `material_usages.job_id` | `jobs.id` (`ON DELETE CASCADE`, UNIQUE per job, nullable) | Phiếu xuất gắn job để quy chi phí vật tư về từng công việc bảo trì. UI tạo/sửa xuất gắn job nằm bên domain tasks ở **2 chỗ**: [TaskDetailDialog](src/components/tasks/TaskDetailDialog.tsx) (qua `MaterialUsageSection`) và [TaskCreateDialog](src/components/tasks/TaskCreateDialog.tsx) (kèm khi tạo job); phiếu **không gắn job** tạo trực tiếp trên MaterialsPage (tab Phiếu xuất, từ 2026-06-30). |
 | **Ra → Nhà cung cấp** | `material_purchases.supplier_id` | `suppliers.id` (`ON DELETE SET NULL`) | Ghi nguồn nhập. `suppliers` dùng chung với domain Tài sản. |
 | **Vào ← Tài sản (Assets)** | `assets.supplier_id` | `suppliers.id` | Domain Tài sản chia sẻ cùng bảng `suppliers` → mọi thay đổi danh mục NCC ảnh hưởng cả hai. Lưu ý hành xử lệch: Assets **không** lọc `deleted_at` khi đổ dropdown (xem 2.6). |
 | **Ra → Chi phí / Báo cáo** | `material_usage_items.unit_cost_at_usage × quantity` | (tính toán — **tiềm năng, chưa có code**) chi phí vật tư của job | Snapshot giá vốn cho phép tổng hợp chi phí bảo trì theo job/toà nhà. **Hiện chưa report nào tiêu thụ** cột này (chỉ tab Phiếu xuất hiển thị); muốn báo cáo theo toà phải tự join `material_usages → jobs.building_id` — `useMaterialUsages` hiện chỉ lấy `job(id,code,title)`, không lấy building. |
 | **Vào ← Auth** | `user_id` mọi bảng header | `auth.users.id` (`ON DELETE CASCADE`) | Xoá tài khoản auth xoá dây chuyền dữ liệu kho người đó tạo (xem mục 2). |
-| **Quyền** | RLS mọi bảng materials | `can_access_org_entity('materials', …)` ([per_staff_permissions](supabase/migrations/20260529000001_per_staff_permissions.sql)) | Quyền org-level (không scope building) — đồng bộ mô hình RBAC chung của hệ thống. **Nhưng** module `materials` không có trong permission matrix FE → thực tế chỉ admin dùng được (xem 4.6). |
+| **Quyền** | RLS mọi bảng materials | `can_access_org_entity('materials', …)` ([per_staff_permissions](supabase/migrations/20260529000001_per_staff_permissions.sql)) | Quyền org-level (không scope building) — đồng bộ mô hình RBAC chung của hệ thống. Từ 2026-06-11, trang `materials` có trong catalog phân quyền theo trang ([permissionPages.ts](src/lib/permissionPages.ts)) + route/sidebar gate theo quyền → cấp được cho staff qua UI (xem 4.6). |
 
 **Điểm cần lưu ý cho người tích hợp:**
 

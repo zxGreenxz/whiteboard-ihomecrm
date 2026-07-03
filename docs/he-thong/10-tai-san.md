@@ -202,7 +202,9 @@ Bộ policy gốc ("Users can manage own…", chỉ `auth.uid() = user_id`) đã
 - `get_my_permissions()` cấp cho cổ đông bộ quyền read-only cố định, trong đó có `assets: {view}`.
 - → Cổ đông **SELECT được `assets`** của các toà có cổ phần (qua nhánh `can_access_building` của policy SELECT), và cả **`asset_handovers`** của HĐ thuộc toà đó (vì SELECT handover chỉ cần `can_access_building`). KHÔNG xem được `asset_movements`/`asset_maintenance`/`asset_categories` (org-entity check fail vì cổ đông không có `staff_assignments`).
 
-**Module quyền FE `asset_types` — mồ côi so với RLS**: ma trận quyền FE ([`permissions.ts`](src/lib/permissions.ts)) có module `asset_types` ("Loại tài sản") trong nhóm assets (cạnh `warehouses`, `suppliers`). Mapping cũ `asset_categories → 'asset_types'` ([`20260510000056_staff_write_rls.sql`](supabase/migrations/20260510000056_staff_write_rls.sql)) đã bị drop policy ở batch F ([`20260528000003`](supabase/migrations/20260528000003_rbac_batch_f_drop_legacy.sql)); policy hiện hành của `asset_categories` (phase 5) dùng entity `'assets'`. → **Tick/untick "Loại tài sản" trong role editor KHÔNG có hiệu lực gì** với quyền DB trên `asset_categories`.
+**Ma trận quyền FE (từ 2026-06-11, f528cd8)**: trang phân quyền đã thiết kế lại theo TRANG — catalog [`permissionPages.ts`](src/lib/permissionPages.ts) (render bởi [`PagePermissionMatrix`](src/components/staff/PagePermissionMatrix.tsx); PermissionMatrix cũ đã xoá) có nhóm **"Tài sản & Kho"** gồm các trang `assets` (CRUD + 2 quyền chi tiết `move` "Di chuyển tài sản" và `maintain` "Tạo phiếu bảo trì/sửa chữa", cả hai fallback về quyền `edit`), `materials`, `asset_types`, `warehouses`, `suppliers`. Riêng nút "Biên bản bàn giao" trên `/assets` gate bằng quyền **`contracts.handover`** (khai báo ở trang contracts của catalog) — không phải quyền assets.
+
+**Module quyền FE `asset_types` — vẫn mồ côi so với RLS**: mapping cũ `asset_categories → 'asset_types'` ([`20260510000056_staff_write_rls.sql`](supabase/migrations/20260510000056_staff_write_rls.sql)) đã bị drop policy ở batch F ([`20260528000003`](supabase/migrations/20260528000003_rbac_batch_f_drop_legacy.sql)); policy hiện hành của `asset_categories` (phase 5) dùng entity `'assets'`. → **Tick/untick "Loại tài sản" trong trang phân quyền KHÔNG có hiệu lực gì** với quyền DB trên `asset_categories` (trang `/settings/categories/asset-types` cũng vẫn là placeholder — mục 5.4).
 
 **Template role hệ thống** ([`20260529000002_seed_system_role_templates.sql`](supabase/migrations/20260529000002_seed_system_role_templates.sql)): "Quản Lý Tòa" được seed full CRUD cho `assets`/`asset_types`/`warehouses`/`suppliers`; "Viewer" chỉ `assets: view`; "Partner" không có quyền assets nào.
 
@@ -224,10 +226,10 @@ Xoá tài sản là soft-delete: `useDeleteAsset` chỉ `UPDATE assets SET delet
 
 File: [`AssetsPage.tsx`](src/pages/assets/AssetsPage.tsx). Đây là page chính, gom toàn bộ thao tác của domain qua các dialog.
 
-**Điều hướng & gate quyền**: entry sidebar "Tài sản" nằm trong nhóm **"Danh mục dữ liệu"** ([`Sidebar.tsx`](src/components/layout/Sidebar.tsx)), ngay cạnh "Kho vật tư" `/materials` (domain 09 — hoàn toàn tách biệt, đừng nhầm với `asset_warehouses`). Route `/assets` trong [`App.tsx`](src/App.tsx) chỉ bọc `ProtectedRoute` (auth-only), **không có FE permission-gate** — mọi chặn quyền dồn về RLS.
+**Điều hướng & gate quyền**: entry sidebar "Tài sản" nằm trong nhóm **"Danh mục dữ liệu"** ([`Sidebar.tsx`](src/components/layout/Sidebar.tsx)), ngay cạnh "Kho vật tư" `/materials` (domain 09 — hoàn toàn tách biệt, đừng nhầm với `asset_warehouses`). Từ 2026-06-11 (f528cd8): route `/assets` trong [`App.tsx`](src/App.tsx) bọc `ProtectedRoute` + **`RequirePermission module="assets"`** (thiếu quyền → redirect `/`), Sidebar khai báo `module: 'assets'` nên ẩn mục với user thiếu quyền, và 4 nút hành động đầu trang gate bằng `canUse` ([`permissionPages.ts`](src/lib/permissionPages.ts)): "Di chuyển" = `assets.move`, "Bảo trì" = `assets.maintain`, "Tạo tài sản" = `assets.create`, "Biên bản bàn giao" = **`contracts.handover`**. Nút "Sửa" từng dòng **không** gate FE — chặn write còn lại dồn về RLS.
 
 **Dữ liệu hiển thị**:
-- `useAssets({category_id, building_id, condition})` — danh sách tài sản (join category/supplier/building/room), lọc server-side theo loại/toà/tình trạng; lọc theo **căn hộ** và **từ khoá** là client-side ở `filteredAssets`.
+- `useAssets({category_id, building_id, condition})` — danh sách tài sản (join category/supplier/building/room), lọc server-side theo loại/toà/tình trạng; lọc theo **căn hộ** và **từ khoá** là client-side ở `filteredAssets`. Cả 5 ô lọc/tìm kiếm **giữ qua F5** bằng `usePersistedState` (sessionStorage key `flt:assets:*` — đợt 7fd2d3f).
 - `useAssetMovements()` — lịch sử di chuyển (tab 2).
 - `useAssetMaintenance()` — lịch sử sửa chữa (tab 3).
 - `useQuery(["asset-categories"])`, `useBuildings()`, `useRooms(buildingFilter)` — đổ dropdown filter (dùng `SearchableSelect` đúng quy ước repo).
@@ -287,6 +289,7 @@ flowchart TD
 - Không phân trang/limit: `useAssets`/`useAssetMovements`/`useAssetMaintenance` kéo toàn bộ bảng về client; movements/maintenance fetch eager ngay cả khi đang ở tab Danh sách.
 - Tìm kiếm tên/mã/loại và lọc căn hộ chạy **client-side**, bỏ phí GIN index `idx_assets_search` và `idx_assets_room_id` (mục 2.7).
 - Các dropdown loại tài sản/nhà cung cấp dùng `select('*')` full row dù chỉ cần `id, name`; query loại tài sản lặp cùng queryFn ở 3 nơi (AssetsPage, CreateAssetDialog, EditAssetDialog), query nhà cung cấp lặp ở 2 dialog Create/Edit.
+- Đợt perf 2026-06-11 (e3c819e): toàn bộ hooks/dialogs của domain đã thay `supabase.auth.getUser()` (round-trip mạng mỗi lần gọi) bằng `getSessionUser` từ [`lib/authSession`](src/lib/authSession.ts) — chỉ đổi cách lấy user, logic giữ nguyên.
 
 ### 5.2 `/settings/categories/warehouses` — Kho tài sản
 

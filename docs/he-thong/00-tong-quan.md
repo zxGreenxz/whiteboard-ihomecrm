@@ -1,6 +1,6 @@
 ﻿# Kiến trúc & Tổng quan hệ thống CRM BĐS
 
-> Tài liệu nóc của bộ `docs/he-thong/`. Mô tả toàn cảnh hệ thống CRM quản lý bất động sản cho thuê (kiểu iHomeCRM): stack, 15 domain nghiệp vụ, mô hình multi-tenant + phân quyền RLS, sơ đồ quan hệ dữ liệu cốt lõi, phụ thuộc giữa các domain, bảng tra cứu enum trạng thái và các quy ước chung. Mỗi domain có file chi tiết riêng — xem cột "Tài liệu" trong [§2](#2-bản-đồ-15-domain).
+> Tài liệu nóc của bộ `docs/he-thong/`. Mô tả toàn cảnh hệ thống CRM quản lý bất động sản cho thuê (kiểu iHomeCRM): stack, 17 domain nghiệp vụ, mô hình multi-tenant + phân quyền RLS, sơ đồ quan hệ dữ liệu cốt lõi, phụ thuộc giữa các domain, bảng tra cứu enum trạng thái và các quy ước chung. Mỗi domain có file chi tiết riêng — xem cột "Tài liệu" trong [§2](#2-bản-đồ-17-domain). *(Cập nhật 2026-07-03.)*
 
 ---
 
@@ -12,14 +12,20 @@
 
 **Backend.** Supabase = Postgres + Auth + Storage + RLS + RPC. Không có server tự viết: logic nghiệp vụ nặng nằm trong Postgres dưới dạng:
 
-- **RPC** (`SECURITY DEFINER` / `INVOKER`) — ví dụ `renew_contract`, `record_invoice_payment_v2`, `generate_invoices_for_building_v2`, `monthly_building_profit`. Pattern phổ biến: RPC public bọc một `*_impl` chứa logic gốc, lớp ngoài lo kiểm quyền (xem `project_contract_rpc_authz`). Một số ít RPC `SECURITY DEFINER` được GRANT cho `anon` phục vụ kênh công khai (`get_public_available_rooms` của trang `/r/:token`, tra cứu hoá đơn/HĐ theo mã public `/c/:code`) — tự lọc theo token/mã, role `anon` không có quyền trực tiếp trên bảng nào (xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md)).
+- **RPC** (`SECURITY DEFINER` / `INVOKER`) — ví dụ `renew_contract`, `record_invoice_payment_v2`, `generate_invoices_for_building_v2`, `fa_monthly_pnl_accrual`. Pattern phổ biến: RPC public bọc một `*_impl` chứa logic gốc, lớp ngoài lo kiểm quyền (xem `project_contract_rpc_authz`). Một số ít RPC `SECURITY DEFINER` được GRANT cho `anon` phục vụ kênh công khai (`get_public_available_rooms` của trang `/r/:token`, tra cứu hoá đơn/HĐ theo mã public `/c/:code`) — tự lọc theo token/mã, role `anon` không có quyền trực tiếp trên bảng nào (xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md)).
 - **Trigger** — sinh mã, đồng bộ trạng thái phòng theo HĐ, recompute tồn vật tư/giá vốn, recompute `paid_amount` hoá đơn, recompute `deposit_paid`, gắn audit user_id…
 - **View** — `accounts_with_balance`, `meter_readings_detailed`, `meters_with_latest_reading`… (một số view bỏ qua RLS để tính số dư — xem `project_ie_fund_owner_visibility`).
-- **Edge Function** — admin tạo user (vd `admin-create-user` cho login cổ đông/nhân viên).
+- **Edge Function** — `admin-create-user` (tạo user cho cổ đông/nhân viên), `send-push` (gửi Web Push, đọc `push_subscriptions` bằng service role), `salary-v5-jobs` (transport job hệ lương v5 — logic job nằm trong DB `v5_run_job`, idempotent qua `cron_runs`).
 
-Migrations versioned theo timestamp ở `supabase/migrations/`. Cron tác vụ định kỳ dùng `pg_cron` (vd `run_recurring_vouchers_job` sinh phiếu thu chi lặp).
+Migrations versioned theo timestamp ở `supabase/migrations/` (từ giữa 2026 team **apply SQL trực tiếp qua Management API** — `schema_migrations` trong DB không phản ánh đủ). Cron tác vụ định kỳ dùng `pg_cron` (vd `run_recurring_vouchers_job` sinh phiếu thu chi lặp); riêng hệ lương v5 **không dùng pg_cron** — **Vercel Cron** (`vercel.json crons` → [api/salary-v5-cron.js](../../api/salary-v5-cron.js), auth `x-cron-secret`) gọi edge fn `salary-v5-jobs`, worker Node giữ vai watchdog gọi bù khi lỡ giờ (xem [17 §4.10](17-luong-thuong.md)).
 
-**RLS (Row Level Security).** Mọi bảng nghiệp vụ bật RLS. Quyền không kiểm ở frontend mà ở từng policy DB, gọi xuống một bộ helper chung — bộ mặt hiện hành là **RBAC theo toà** (`is_super_admin`, `is_admin`, `can_access_building`, `can_do_on_building`, `can_access_org_entity`, `building_of_*`); `staff_can` / `current_visible_owner_ids` là lớp legacy chỉ còn hiệu lực trên vài bảng ngoài RBAC (xem [§3](#3-mô-hình-phân-quyền--multi-tenant)). Đây là hàng rào thật — frontend chỉ điều khiển hiển thị.
+**Hạ tầng ngoài Supabase/Vercel** (2026-06/07):
+
+- **Cloudflare R2** cho ảnh public của kênh Sale Phòng: FE đọc qua custom domain `img.chillhome.io.vn` (edge cache, egress $0), upload qua Worker `storage.chillhome.io.vn` (secret R2 chỉ ở Worker); lớp định tuyến [r2Config.ts](src/lib/r2Config.ts) theo bucket + nén WebP trước upload. Các bucket private còn lại vẫn ở Supabase Storage + signed URL (xem [15 §2.5](15-kenh-cong-khai-sale-thu-tien.md)).
+- **Worker Node zca-js** ([worker/index.js](../../worker/index.js)) — tiến trình chạy **ngoài Vercel** (local/VPS, pm2) giữ **service-role key**: kết nối Zalo cá nhân cho `/chat-zalo` (poll `zalo_send_queue` để gửi, nghe WebSocket Zalo ghi `zalo_messages` → Realtime đẩy sang FE) + kiêm **watchdog cron v5**. Xem [18-zalo-chat.md](18-zalo-chat.md).
+- **Web Push PWA**: service worker [public/sw.js](../../public/sw.js) + [push.ts](src/lib/push.ts) + bảng `push_subscriptions` + edge fn `send-push` (VAPID private trong Supabase secret) — thông báo đẩy tận status bar (tin Zalo mới, thưởng hoàn thành việc, digest tuyến v5). Xem [13 §4.5](13-bao-cao-dashboard-thong-bao.md).
+
+**RLS (Row Level Security).** Mọi bảng nghiệp vụ bật RLS. Quyền không kiểm ở frontend mà ở từng policy DB, gọi xuống một bộ helper chung — bộ mặt hiện hành là **RBAC theo toà** (`is_super_admin`, `is_admin`, `can_access_building`, `can_do_on_building`, `can_access_org_entity`, `building_of_*`; từ đợt perf `20260702150000` policy SELECT các bảng nóng dùng cặp set-based `has_full_building_scope()`/`accessible_building_ids()` + ~170 policy wrap `(SELECT fn())` — xem [§3](#3-mô-hình-phân-quyền--multi-tenant)); `staff_can` / `current_visible_owner_ids` là lớp legacy chỉ còn hiệu lực trên vài bảng ngoài RBAC. Đây là hàng rào thật — frontend chỉ điều khiển hiển thị.
 
 **Kiểm thử & chất lượng.** Vitest + fast-check (property-based) — `npx vitest run <path>`. Type check: `npx tsc --noEmit`. Quy trình mỗi thay đổi (xem [CLAUDE.md](../../CLAUDE.md)): type-check + test xanh → kiểm trực tiếp trên web bằng Playwright → seed/cleanup dữ liệu test qua Supabase Management API nếu cần → commit (stage file cụ thể) → push `origin/main`.
 
@@ -35,22 +41,32 @@ flowchart LR
     auth["Auth (auth.users)"]
     pg[("Postgres + RLS")]
     rpc["RPC / Trigger / View"]
-    storage["Storage (private + signed URL; room-sale-images PUBLIC)"]
+    storage["Storage (private + signed URL)"]
     cron["pg_cron jobs"]
+    edgefn["Edge Functions<br/>admin-create-user · send-push · salary-v5-jobs"]
     pg --- rpc
     pg --- cron
+  end
+  subgraph EXT["Ngoài Supabase/Vercel"]
+    r2["Cloudflare R2<br/>img.chillhome.io.vn (đọc)<br/>Worker storage.chillhome.io.vn (upload)"]
+    zworker["Worker Node zca-js (worker/index.js)<br/>Zalo 2 chiều + watchdog v5 — service-role"]
+    vcron["Vercel Cron<br/>api/salary-v5-cron.js"]
   end
   hooks -->|"supabase-js"| pg
   hooks -->|"rpc()"| rpc
   hooks -->|"signed URL"| storage
+  hooks -->|"ảnh sale (public)"| r2
   auth --> pg
+  vcron -->|"x-cron-secret"| edgefn
+  zworker <-->|"service_role"| pg
+  edgefn -->|"Web Push (sw.js + push_subscriptions)"| pages
 ```
 
 ---
 
-## 2. Bản đồ 15 domain
+## 2. Bản đồ 17 domain
 
-Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo **vòng đời dữ liệu**: phân quyền → cơ cấu BĐS → khách/lead → cọc → hợp đồng → chỉ số → hoá đơn → thu chi → (vật tư/tài sản/công việc hỗ trợ) → cổ đông → báo cáo → cài đặt. Domain 15 là lớp **kênh công khai & mobile** (2026-06) xây bên trên các domain lõi, không có vòng đời dữ liệu riêng.
+Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo **vòng đời dữ liệu**: phân quyền → cơ cấu BĐS → khách/lead → cọc → hợp đồng → chỉ số → hoá đơn → thu chi → (vật tư/tài sản/công việc hỗ trợ) → cổ đông → báo cáo → cài đặt. Domain 15 là lớp **kênh công khai & mobile** (2026-06) xây bên trên các domain lõi, không có vòng đời dữ liệu riêng; 17 (**Bảng lương & Thưởng**) và 18 (**Chat Zalo**) là 2 domain mới 2026-06/07 — lớp trả công vận hành và lớp giao tiếp khách hàng. (File [16-thanh-ly-hop-dong.md](16-thanh-ly-hop-dong.md) là deep-dive dòng tiền thanh lý của domain 05, không phải domain riêng.)
 
 | # | Domain | Mục đích | Bảng chính | Route chính | Tài liệu |
 |---|--------|----------|------------|-------------|----------|
@@ -65,10 +81,12 @@ Mỗi domain là một file tài liệu chi tiết. Thứ tự gần đúng theo
 | 09 | Kho vật tư tiêu hao | Nhập/xuất/kiểm kê vật tư; xuất gắn job để quy chi phí về toà | `materials`, `material_purchases`, `material_usages`, `material_adjustments`, `suppliers` | `/materials` (4 tab) | [09-kho-vat-tu.md](09-kho-vat-tu.md) |
 | 10 | Tài sản & Nội thất | Tài nguyên hỗ trợ; bàn giao gắn HĐ + dữ liệu chi phí | `assets`, `asset_categories`, `asset_movements`, `asset_maintenance`, `asset_handovers` | `/assets`, `/settings/categories/warehouses` | [10-tai-san.md](10-tai-san.md) |
 | 11 | Công việc · Sự cố · Quy trình | Giao việc + ticket sự cố có workflow/SLA; xuất vật tư trừ kho | `jobs`, `issues`, `job_types`, `task_flows`, `task_phases`, `departments` | `/tasks`, `/settings/categories/task-types` | [11-cong-viec-su-co.md](11-cong-viec-su-co.md) |
-| 12 | Cổ đông · Lợi nhuận · Ví cá nhân | Chốt-khoá LN tháng theo toà → phân bổ → sinh phiếu chi chia tiền cổ đông | `shareholders`, `building_shareholders`, `profit_monthly`, `profit_allocations`, `personal_transactions` | `/finance/shareholder-profit`, `/finance/personal-wallet` | [12-co-dong-loi-nhuan.md](12-co-dong-loi-nhuan.md) |
+| 12 | Cổ đông · Lợi nhuận · Ví cá nhân | Chốt-khoá LN tháng theo toà (nguồn `fa_monthly_pnl_accrual`) → trừ lương điều hành → phân bổ → sinh phiếu chi chia tiền cổ đông | `shareholders`, `building_shareholders`, `profit_monthly`, `profit_allocations`, `profit_managers` (+`_salaries/_salary_buildings/_allocations`), `personal_transactions` | `/reports/finance/profit-distribution` (ProfitHubPage — URL cũ `/finance/shareholder-profit` redirect), `/finance/personal-wallet` | [12-co-dong-loi-nhuan.md](12-co-dong-loi-nhuan.md) |
 | 13 | Báo cáo · Dashboard · Thông báo | Đọc tổng hợp dựng KPI + 17 báo cáo (8 BĐS + 9 tài chính) + đẩy cảnh báo | `notifications`, `notification_templates`, `notification_logs` | `/` (Dashboard), `/notifications`, `/reports/*` | [13-bao-cao-dashboard-thong-bao.md](13-bao-cao-dashboard-thong-bao.md) |
 | 14 | Cài đặt · Danh mục · Tài liệu mẫu | Tham số điều khiển: mẫu in, công tắc hành vi, engine sinh mã, gói cước | `settings`, `document_templates`, `signature_templates`, `code_sequences`, `subscription_plans` | `/settings/*`, `/account/subscription` | [14-cai-dat-danh-muc-tai-lieu.md](14-cai-dat-danh-muc-tai-lieu.md) |
-| 15 | Kênh công khai & mobile | Trang Phòng trống công khai (anon, share token) + module quản trị Sale Phòng + trang thu tiền mặt mobile — "mặt tiền" trên domain 02/05/07/08 | `public_room_share_tokens`, `public_room_settings` (+ cột sale/public trên `rooms`/`buildings`: `sale_note`, `room_type`, `floor_layouts`, `public_contact_*`…) | `/r/:token` (anon), `/sale-phong`, `/thu-tien` | [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md) |
+| 15 | Kênh công khai & mobile | Trang Phòng trống công khai (anon, share token) + module quản trị Sale Phòng + trang thu tiền mặt mobile — "mặt tiền" trên domain 02/05/07/08 | `public_room_share_tokens`, `public_room_settings`, `public_room_events`, `room_pass_listings` (+ cột sale/public trên `rooms`/`buildings`: `sale_note`, `room_type`, `floor_layouts`…) | `/r/:token` (anon), `/sale-phong`, `/thu-tien` | [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md) |
+| 17 | Bảng lương & Thưởng | Lương quản lý tính từ dữ liệu vận hành thật (v3: ledger việc/HĐ/phiếu + chốt LOCK) + thưởng tức thời `award_job_bonus` + hệ **V5 "dấu chân"** ngày-công/chuỗi/coverage (đã deploy live, **flags OFF — shadow mode**) | `manager_salary_config`, `salary_monthly`, `salary_adjustments`, `salary_bonus_rules`, `salary_holidays`, `salary_work_ledger_snapshot`, `inspection_sessions` (+`_photos`), `salary_attendance_day`, `salary_streak_state`, `cron_runs` | `/finance/salary`, `/finance/my-salary`, `/my-day`, `/reports/coverage` | [17-luong-thuong.md](17-luong-thuong.md) |
+| 18 | Chat Zalo | Nhắn tin Zalo cá nhân 2 chiều trong CRM (worker zca-js ngoài Vercel, service-role; FE chỉ nói chuyện với Supabase + Realtime); nhãn phân loại + broadcast + Web Push tin mới; RLS owner-scoped + guard `zalo_can` | `zalo_accounts`, `zalo_conversations`, `zalo_messages`, `zalo_send_queue`, `zalo_labels`, `zalo_message_templates`, `zalo_automations` | `/chat-zalo` | [18-zalo-chat.md](18-zalo-chat.md) |
 
 ---
 
@@ -78,8 +96,8 @@ Hệ thống **multi-tenant theo owner**: mỗi *owner* là một `user_id` (aut
 
 - **Super admin** (`super_admins.user_id`) — bypass toàn cục, thấy mọi owner. Cổng: `is_super_admin()`.
 - **Owner / tenant** — `user_id` sở hữu dữ liệu, nhưng trên 63 bảng RBAC cột này giờ chủ yếu là **audit** (trigger `set_user_id_from_auth` tự fill): policy owner `auth.uid() = user_id` đã bị **drop** (batch F). Owner gốc vẫn toàn quyền vì nằm trong `super_admins` + có self-assignment role Super Admin từ seed; user mới không có assignment → **không thấy gì** trên bảng RBAC (chủ ý). `auth.uid() = user_id` chỉ còn trên các bảng **ngoài RBAC** (profiles, accounts, roles, staff_assignments, settings, notifications…). `is_admin()` (tenant-admin: role `__superadmin` hoặc `name='Admin'`) là tầng bypass trong phạm vi một owner.
-- **Staff (nhân viên)** — `staff_assignments` nối `staff_id ↔ owner ↔ building ↔ role`. Quyền là **2 tầng**: Tier 1 = `roles.permissions` (JSONB mẫu, 4 role hệ thống); Tier 2 = `staff_assignments.permissions` snapshot override per-staff — **enforce ngay ở DB** qua `COALESCE(sa.permissions, r.permissions)` trong `can_do_on_building`/`can_access_org_entity`. `building_id = NULL` nghĩa là full scope (tất cả toà của owner đó). Action keys trong JSONB: `view → create → edit → delete` (+ `record_payment`, `approve`, `print`, `export`, cờ phạm vi `all_buildings` của thu chi; `create_deposit` của sale_phong đang WIP chưa commit).
-- **Cổ đông** — nhánh read-only trong `get_my_permissions`/`can_access_building`: chỉ đọc các toà có cổ phần (`building_shareholders`) + toàn quyền `personal_finance`. Map login qua `shareholders.auth_user_id` / `current_shareholder_id()`.
+- **Staff (nhân viên)** — `staff_assignments` nối `staff_id ↔ owner ↔ building ↔ role`. Quyền là **2 tầng**: Tier 1 = `roles.permissions` (JSONB mẫu, 4 role hệ thống); Tier 2 = `staff_assignments.permissions` snapshot override per-staff — **enforce ngay ở DB** qua `COALESCE(sa.permissions, r.permissions)` trong `can_do_on_building`/`can_access_org_entity`. `building_id = NULL` nghĩa là full scope (tất cả toà của owner đó). Action keys trong JSONB: `view → create → edit → delete` (+ `record_payment`, `approve`, `print`, `export`, cờ phạm vi `all_buildings` của thu chi, `create_deposit` của sale_phong — cọc nhanh 1 chạm trên trang công khai, live từ 4b4f1cd).
+- **Cổ đông / quản lý lợi nhuận** — từ 2026-07-02 (commit 3cd0d90, migration `20260701170000`): `get_my_permissions` trả **ĐÚNG 1 quyền** `{"shareholder_profit": {"view": true}}` — bộ ~20 module chỉ-xem + `personal_finance` của bản cũ đã **CẮT**; `can_access_building` **bỏ nhánh cổ đông** → cổ đông thuần không còn SELECT được bảng vận hành của toà góp vốn; tên toà trang chia LN lấy qua RPC `get_my_share_buildings` (SECURITY DEFINER). Nhánh ngoài-staff còn lại trong `can_access_building` là **quản lý lợi nhuận** (toà trong `profit_manager_salary_buildings`). Kiêm staff → merge thêm quyền staff. Map login qua `shareholders.auth_user_id` / `profit_managers.auth_user_id` (`current_shareholder_id()` / `current_profit_manager_id()`).
 - **Khách anon (kênh công khai)** — không phải caller RLS thật: role `anon` không có policy trên bảng nào, chỉ EXECUTE vài RPC `SECURITY DEFINER` tự lọc theo token/mã (`get_public_available_rooms` cho `/r/:token`, tra cứu HĐ/hoá đơn theo mã public). Xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md).
 
 **Các helper RLS cốt lõi** (gọi xuyên suốt mọi domain — engine hiện hành ở trên, legacy ở dưới):
@@ -87,8 +105,10 @@ Hệ thống **multi-tenant theo owner**: mỗi *owner* là một `user_id` (aut
 | Helper | Vai trò |
 |--------|---------|
 | `is_super_admin()` / `is_admin()` | 2 tầng bypass (toàn cục / trong-owner) |
-| `can_access_building(building_id)` | Đọc theo toà: staff pass nếu có assignment full-scope (`building_id IS NULL`) hoặc đúng toà; **có nhánh cổ đông** (`building_shareholders`) |
+| `can_access_building(building_id)` | Đọc theo toà: staff pass nếu có assignment full-scope (`building_id IS NULL`), đúng toà, hoặc toà theo **khu live** (`staff_assignments.area_id`); nhánh ngoài-staff duy nhất là **quản lý LN** (`profit_manager_salary_buildings`) — nhánh cổ đông đã **BỎ** (3cd0d90, 2026-07-02) |
+| `has_full_building_scope()` / `accessible_building_ids()` | **Cặp helper set-based** (đợt perf initplan `20260702150000`, 86c01a5): mirror đúng các nhánh `can_access_building`; policy SELECT của 9 bảng nóng viết `(SELECT has_full_building_scope()) OR <cột> IN (SELECT accessible_building_ids())` thay vì gọi hàm per-row; ~170 policy admin/super_admin wrap `(SELECT fn())` thành InitPlan. ✅ **Quy ước tái dùng cho mọi policy/RPC mới** |
 | `can_do_on_building(table, action, building_id)` | Ghi theo toà — đọc quyền `COALESCE(staff_assignments.permissions, roles.permissions)` (Tier-2 aware) |
+| `same_team(uid)` | Đội ngũ (`teams`/`team_members`): đồng đội thấy profile nhau (policy `profiles_select_same_team`) + guard người nhận khi bàn giao tiền mặt (`create_cash_handover`) |
 | `can_access_org_entity(entity, action)` | Entity org-level **không scope toà** (customers, tenants, services, suppliers, vật tư, templates…) |
 | `building_of_contract / _invoice / _payment(id)` | Traversal: trả `building_id` qua chain FK cho bảng con (contract_*, deposits, invoice_items, payments…) |
 | `staff_can(table, action, owner)` | **Legacy** — sau batch F chỉ còn trên `accounts` (perm key `cashbooks`), `settings`, `notifications`; chỉ đọc `roles.permissions`, KHÔNG Tier 2 (lỗ hổng đã ghi nhận, xem doc 01 §4.4) |
@@ -108,7 +128,7 @@ flowchart TD
   admin -->|"Có"| allow
   admin -->|"Không"| kind{"Bảng thuộc nhóm nào?"}
   kind -->|"63 bảng RBAC keyed theo TOÀ"| op{"Thao tác?"}
-  op -->|"ĐỌC"| canread{"can_access_building(building_id)?<br/>scope toà của staff + nhánh cổ đông;<br/>bảng con traverse building_of_contract/_invoice"}
+  op -->|"ĐỌC"| canread{"can_access_building(building_id)?<br/>scope toà/khu của staff + nhánh quản lý LN<br/>(profit_manager_salary_buildings) — nhánh cổ đông ĐÃ BỎ;<br/>9 bảng nóng dùng cặp set-based<br/>has_full_building_scope()/accessible_building_ids();<br/>bảng con traverse building_of_contract/_invoice"}
   op -->|"GHI"| canwrite{"can_do_on_building(table, action, building)?<br/>quyền = COALESCE(sa.permissions, roles.permissions)"}
   kind -->|"entity org-level không toà<br/>(customers, services, suppliers, templates...)"| orgent{"can_access_org_entity(entity, action)?"}
   kind -->|"ngoài RBAC<br/>(profiles, accounts, roles, settings, notifications...)"| legacy{"auth.uid() = user_id?<br/>OR staff_can / current_visible_owner_ids"}
@@ -128,7 +148,7 @@ flowchart TD
 
 ## 4. Sơ đồ quan hệ dữ liệu CỐT LÕI (spine)
 
-Chỉ vẽ **xương sống** dòng giao dịch. ~80 bảng còn lại (trong tổng **96 bảng** — đếm từ khối `Tables` của `src/integrations/supabase/types.ts`, regen từ live DB 2026-06-07; kèm 5 view, ~86 RPC) được gom nhóm và chú thích bên dưới — KHÔNG vẽ hết vào một sơ đồ.
+Chỉ vẽ **xương sống** dòng giao dịch. ~100 bảng còn lại (trong tổng **~117 bảng** — 110 đếm từ khối `Tables` của `src/integrations/supabase/types.ts` regen từ live DB 2026-06-29, cộng các bảng áp thẳng qua Management API sau đó: `cashbook_reconciliations` + 6 bảng lương v5; kèm 6 view, ~130 RPC/function) được gom nhóm và chú thích bên dưới — KHÔNG vẽ hết vào một sơ đồ.
 
 ```mermaid
 erDiagram
@@ -213,16 +233,18 @@ erDiagram
 
 **Chú thích các nhóm bảng ngoài spine** (gắn vào spine qua FK đã nêu trong từng domain):
 
-- **Phân quyền** (`profiles`, `roles`, `user_roles`, `staff_assignments`, `super_admins`, `departments`) — gắn vào mọi `user_id` và `building_id`.
+- **Phân quyền & đội ngũ** (`profiles`, `roles`, `user_roles`, `staff_assignments`, `super_admins`, `departments`, `teams`, `team_members`, `area_buildings`) — gắn vào mọi `user_id` và `building_id`.
 - **Danh mục BĐS** (`services`, `building_services`, `service_quotas`, `service_quota_tiers`, `code_sequences`) — cấp giá/định mức cho `invoice_items`.
 - **HĐ mở rộng** (`contract_services`, `contract_extensions`, `contract_transfers`, `contract_terminations`, `contract_tenants`, `asset_handovers`) — quanh `contracts`.
 - **Cọc & credit** (`excess_amounts`) — gắn `contract_id` / `source_invoice_id` / `source_payment_id`.
-- **Thu chi mở rộng** (`income_expense_items`, `income_expense_types`, `income_expense_templates`, `income_expense_batches`, `account_shared_users`, `auto_debt_config`) — quanh `income_expenses`/`accounts`.
+- **Thu chi mở rộng** (`income_expense_items`, `income_expense_types`, `income_expense_templates`, `income_expense_batches`, `account_shared_users`, `auto_debt_config`, `cash_handovers` — bàn giao tiền mặt, `cashbook_reconciliations` — đối soát/chốt số sổ) — quanh `income_expenses`/`accounts`.
 - **Công tơ** (`meters`) — cha của `meter_readings`.
 - **Vật tư** (`materials`, `material_*`, `suppliers`) & **Tài sản** (`assets`, `asset_*`) — nhánh chi phí, gắn `building_id`/`room_id`/`job_id`/`contract_id`.
 - **Vận hành** (`jobs`, `issues`, `task_flows`, `task_phases`, `job_types`, `sla_configs`) — gắn `building_id`/`room_id`/`contract_id`/`profiles`.
-- **Cổ đông** (`shareholders`, `building_shareholders`, `profit_monthly`, `profit_allocations`, `personal_transactions`) — đọc từ `income_expenses`, ghi phiếu chia LN vào `income_expenses`.
-- **Báo cáo & thông báo** (`notifications`, `notification_*`) — chỉ đọc tổng hợp + deep-link.
+- **Cổ đông & lương điều hành** (`shareholders`, `building_shareholders`, `profit_monthly`, `profit_allocations`, `profit_managers`, `profit_manager_salaries/_salary_buildings/_allocations`, `personal_transactions`) — đọc từ `income_expenses`, ghi phiếu chia LN/lương điều hành vào `income_expenses`.
+- **Bảng lương & thưởng** (`manager_salary_config`, `salary_monthly`, `salary_adjustments`, `salary_bonus_rules`, `salary_holidays`, `salary_work_ledger_snapshot` + bộ v5: `inspection_sessions/photos`, `salary_attendance_day`, `salary_streak_state`, `cron_runs`, `salary_award_errors`) — đọc `jobs`/`contracts`/`income_expenses` làm bằng chứng, tiền chỉ vật chất hoá khi LOCK ([17](17-luong-thuong.md)).
+- **Chat Zalo** (`zalo_accounts/conversations/messages/send_queue/labels/message_templates/automations`) — owner-scoped, worker ngoài Vercel ghi bằng service-role; FK sang `customers`/`leads`/`contracts` chừa sẵn chưa ghi ([18](18-zalo-chat.md)).
+- **Báo cáo & thông báo** (`notifications`, `notification_*`, `push_subscriptions` — Web Push) — chỉ đọc tổng hợp + deep-link.
 - **Kênh công khai** (`public_room_share_tokens`, `public_room_settings`) — token chia sẻ + cấu hình trang Phòng trống `/r/:token`; không FK vào spine, RPC `get_public_available_rooms` (SECURITY DEFINER, grant `anon`) đọc xuyên `buildings/rooms/areas/hotlines/contracts/building_services` theo `owner_id` của token.
 - **Cấu hình** (`settings`, `document_templates`, `signature_templates`, `subscription_plans`, `hotlines`, `ai_*`) — tham số điều khiển.
 
@@ -230,7 +252,7 @@ erDiagram
 
 ## 5. Sơ đồ phụ thuộc domain-level
 
-15 domain là node; mũi tên = phụ thuộc dữ liệu chính (dựa crossLinks + FK). `A --> B` đọc là "A feed/ghi vào B" theo chiều dòng giao dịch.
+17 domain là node; mũi tên = phụ thuộc dữ liệu chính (dựa crossLinks + FK). `A --> B` đọc là "A feed/ghi vào B" theo chiều dòng giao dịch.
 
 ```mermaid
 flowchart TD
@@ -249,6 +271,8 @@ flowchart TD
   d13["13 Báo cáo · Dashboard · Thông báo"]
   d14["14 Cài đặt · Danh mục · Mẫu"]
   d15["15 Kênh công khai & mobile (/r/:token · sale-phong · thu-tien)"]
+  d17["17 Bảng lương & Thưởng (v3 + V5 dấu chân)"]
+  d18["18 Chat Zalo (worker zca-js)"]
 
   d01 -.->|"RLS gate mọi domain"| d02
   d14 -.->|"tham số: mẫu in, công tắc, sinh mã"| d05
@@ -282,10 +306,16 @@ flowchart TD
   d05 --> d15
   d07 --> d15
   d15 --> d08
-  d15 -.->|"(WIP) tạo cọc nhanh → RESERVED"| d04
+  d15 -.->|"tạo cọc nhanh 1 chạm → RESERVED"| d04
+  d11 -->|"việc + inspection = dấu chân/ledger"| d17
+  d17 -->|"phiếu chi lương/ứng + gạch nợ tiền phòng"| d08
+  d12 -.->|"LN đầu tư + lương điều hành"| d17
+  d17 -.->|"BonusToast + digest Web Push"| d13
+  d18 -.->|"Web Push tin mới"| d13
+  d18 -.->|"tư vấn khách/lead (FK chừa sẵn)"| d03
 ```
 
-Đọc nhanh: **02→03→04→05** là phễu mở (toà/phòng → khách/lead → cọc → HĐ). Từ HĐ tỏa ra **06 (chỉ số)** và **07 (hoá đơn)**; hoá đơn + cọc + HĐ + vật tư đều đáp xuống **08 (thu chi)** — trung tâm dòng tiền. **08** feed **12 (cổ đông)** và **13 (báo cáo)**; **12** lại ghi ngược phiếu chia LN vào **08**. **01** và **14** là 2 lớp ngang (gate quyền + tham số) phủ lên toàn bộ. **15** là lớp mặt tiền: đọc 02/05 (phòng trống public — `status_public` suy từ HĐ ACTIVE) và 07 (lưới thu tiền theo hoá đơn), ghi ngược `payments` + phiếu thu TM vào 08; flow tạo cọc nhanh (WIP chưa commit) ghi phiếu cọc `is_deposit` → phòng tự `RESERVED` (04).
+Đọc nhanh: **02→03→04→05** là phễu mở (toà/phòng → khách/lead → cọc → HĐ). Từ HĐ tỏa ra **06 (chỉ số)** và **07 (hoá đơn)**; hoá đơn + cọc + HĐ + vật tư đều đáp xuống **08 (thu chi)** — trung tâm dòng tiền. **08** feed **12 (cổ đông)** và **13 (báo cáo)**; **12** lại ghi ngược phiếu chia LN vào **08**. **01** và **14** là 2 lớp ngang (gate quyền + tham số) phủ lên toàn bộ. **15** là lớp mặt tiền: đọc 02/05 (phòng trống public — `status_public` suy từ HĐ ACTIVE) và 07 (lưới thu tiền theo hoá đơn), ghi ngược `payments` + phiếu thu TM vào 08; flow tạo cọc nhanh (live từ 4b4f1cd) ghi phiếu cọc `is_deposit` → phòng tự `RESERVED` (04). **17** ăn dữ liệu vận hành (việc/inspection của 11, phiếu của 08, phân bổ LN của 12) và ghi ngược phiếu chi lương vào 08; **18** chạy song song phục vụ giao tiếp khách (Web Push qua hạ tầng 13, FK khách/lead chừa sẵn sang 03).
 
 ---
 
@@ -311,7 +341,7 @@ flowchart TD
 | `deposit_status` | PENDING, CONFIRMED, CONVERTED, REFUNDED, FORFEITED | Trạng thái phiếu giữ chỗ (`deposits.status`). **KHÔNG phải nguồn sự thật** — RPC thanh lý không cập nhật; cọc thực nộp lấy từ IE `is_deposit` |
 | `invoice_status` | DRAFT, PENDING_APPROVAL, APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED | Trạng thái hoá đơn (`invoices.status`). FE tạo thẳng APPROVED; PAID/PARTIAL/OVERDUE do trigger suy ra; CANCELLED có thể restore→APPROVED |
 | `invoice_item_type` | RENT, SERVICE, PENALTY, DISCOUNT, OTHER | Loại khoản trong hoá đơn (`invoice_items.type`) |
-| `payment_method` | TM, TK, TT | Hình thức thu/chi (`payments`, `income_expenses`). **Giữ nguyên mã**, không dịch, không icon |
+| `payment_method` | TM, TK, TT, **CT** | Hình thức thu/chi (`payments`, `income_expenses`). **Giữ nguyên mã**, không dịch, không icon. `CT` (Cấn trừ — `20260619000001`) = **gạch nợ, KHÔNG phải tiền mặt** (dashboard tách thẻ riêng `payment_ct`), **không cho chọn tay** — chỉ sinh tự động bởi: trigger duyệt bỏ-cọc `trg_forfeit_settle_on_approve` ([16 §2.3](16-thanh-ly-hop-dong.md)) và gạch nợ tiền phòng khi trả lương quản lý ([17 §4.4](17-luong-thuong.md)); bản move-out hiện hành (`20260627000001`) đã **quay về `TM`** "Quyết toán khi thanh lý" |
 | `meter_type` | ELECTRICITY, WATER, GAS, OTHER | Loại công tơ (`meters`/`meter_readings`); UI dùng 3 đầu |
 | `fee_type` | TIEN_PHI_DICH_VU, TIEN_DIEN, TIEN_NUOC, TIEN_PHI_KHAC, TIEN_VE_SINH | Loại phí dịch vụ (`services.fee_type`) |
 | `pricing_type` | DON_GIA_CO_DINH_THANG, DON_GIA_CO_DINH_DONG_HO, DON_GIA_BIEN_DONG, DON_GIA_THEO_NGUOI, DON_GIA_THEO_PHONG | Cách tính giá dịch vụ; DONG_HO = tính theo chỉ số công tơ |
@@ -355,7 +385,7 @@ flowchart TD
 
 **Mã tự sinh (code_sequences).** Bảng `code_sequences` per-user + per-object-type (9 object_type seed sẵn) + 2 RPC `generate_code` / `generate_next_code` là engine sinh mã *theo thiết kế* — nhưng hiện là **engine mồ côi**: không FE/trigger nào gọi, `current_sequence` không nhúc nhích (xem [14 §4.5](14-cai-dat-danh-muc-tai-lieu.md)). Mã thực tế do từng domain tự sinh bằng trigger/helper chuyên biệt (vd `PT/PC{YYMM}{seq}` phiếu thu chi, `JOB-YYYYMMDD-NNNN`, `MP/MU/MA-YYYYMMDD-NNNN`, `CSS{YYMM}{seq}` cho chỉ số, `DCxxxxxx` cho cọc, retry client-side cho mã mẫu in) — thường kèm advisory lock để chống trùng.
 
-**payment_method TM / TK / TT.** Giữ nguyên mã (TM = tiền mặt, TK = tài khoản, TT = thanh toán) ở `payments` và `income_expenses`. **Không dịch** sang "Tiền mặt/Chuyển khoản", **không** đặt icon cạnh badge (xem `feedback_payment_method_codes`).
+**payment_method TM / TK / TT / CT.** Giữ nguyên mã (TM = tiền mặt, TK = tài khoản, TT = thanh toán) ở `payments` và `income_expenses`. **Không dịch** sang "Tiền mặt/Chuyển khoản", **không** đặt icon cạnh badge (xem `feedback_payment_method_codes`). Loại thứ 4 `CT` (Cấn trừ) chỉ do hệ thống tự sinh (gạch nợ — xem chú thích enum ở §6), người dùng không chọn được.
 
 **Soft-delete (`deleted_at`).** Hầu hết bảng nghiệp vụ có cột `deleted_at timestamptz`; xoá là set timestamp, không DELETE vật lý. Mọi query/trigger/aggregate lọc `deleted_at IS NULL` (vd `update_building_total_rooms` chỉ đếm phòng chưa xoá; số dư/báo cáo chỉ tính phiếu APPROVED + chưa xoá). RPC `soft_delete_customer` là ví dụ điển hình (set `deleted_at`, kiểm `user_id = auth.uid()` OR `is_super_admin()` — bản `20260514000005`).
 
@@ -365,14 +395,16 @@ flowchart TD
 
 **Kỳ tháng dạng `YYYY-MM`.** Hoá đơn (`billing_month`), chỉ số (`settlement_month`), chốt LN (`profit_monthly`) đều dùng chuỗi `YYYY-MM` làm khoá chốt tháng — tiện so sánh/nhóm mà không lệ thuộc timezone.
 
-**Khu vực = nhãn nhóm toà (bộ lọc), không phải đơn vị quyền.** Từ 2026-06-10 (commit 099102f + 9ad626d): `areas` chỉ còn là nhãn gom toà nhà — không status, không trang riêng (`/areas` redirect `/buildings`, quản lý qua dialog), không tham gia RLS (RLS 100% theo `building_id`). Mọi ô lọc Khu vực + Toà (đơn) toàn app gộp thành **`BuildingMultiSelect`** ([src/components/buildings/BuildingMultiSelect.tsx](src/components/buildings/BuildingMultiSelect.tsx) + logic thuần [buildingGroups.ts](src/lib/buildingGroups.ts)): chọn nhiều toà, click tên khu = chọn cả nhóm, `[]` = tất cả; filter hook nhận `building_ids: string[]` (RPC `get_invoice_statistics_v2` nhận `p_building_ids uuid[]`; `area_id` deprecated). Gán phạm vi staff cũng chọn theo khu kiểu **snapshot** (xem [01 §5.2](01-phan-quyen-nhan-su.md)).
+**Khu vực = nhãn nhóm toà (bộ lọc), không phải đơn vị quyền.** Từ 2026-06-10 (commit 099102f + 9ad626d): `areas` chỉ còn là nhãn gom toà nhà — không status, không trang riêng (`/areas` redirect `/buildings`, quản lý qua dialog), không tham gia RLS (RLS 100% theo `building_id`; quan hệ toà↔khu là N-N qua `area_buildings`, cột `buildings.area_id` đã DROP). **Ô LỌC toà toàn app = `BuildingFilterSelect` phẳng ĐƠN-CHỌN** ([src/components/buildings/BuildingFilterSelect.tsx](src/components/buildings/BuildingFilterSelect.tsx), 3c3b7fa — 1 toà hoặc tất cả, danh sách phẳng A→Z, không nhóm khu; state giữ shape mảng 0/1 phần tử, `[] = tất cả`); **`BuildingMultiSelect`** (+ [buildingGroups.ts](src/lib/buildingGroups.ts), chọn nhiều toà theo khu) **chỉ còn** cho màn scope/cấu hình: gán phạm vi staff (StaffPage), ProfitManagerForm, ManageAreasDialog. Filter hook vẫn nhận `building_ids: string[]` (RPC `get_invoice_statistics_v2` nhận `p_building_ids uuid[]`; `area_id` deprecated). Gán phạm vi staff theo khu là **scope LIVE** (`staff_assignments.area_id` — xem [01 §5.2](01-phan-quyen-nhan-su.md)).
+
+**Bộ lọc giữ qua F5 (`usePersistedState`).** Từ 7fd2d3f (2026-07-02): state ô lọc/tìm kiếm của mọi trang lưu sessionStorage qua hook [usePersistedState](src/hooks/usePersistedState.ts), key quy ước `flt:<trang>:<state>`; URL param **thắng** giá trị khôi phục (vd `?building_id=` ở RoomsPage); không persist dialog/selection/pagination. Trang mới có filter phải theo quy ước này.
 
 **Tòa ảo `is_virtual` ("Chung").** Mỗi owner có thể có toà ảo (`buildings.is_virtual = true`, tên "Chung") để hạch toán chi phí dùng chung không thuộc toà thật nào (vd phiếu chia LN cổ đông ghi vào toà ảo này). RPC tính LN/báo cáo theo toà thật loại trừ toà ảo khi cần.
 
-**Cờ KQKD (`counts_in_business_result`).** Phiếu thu chi có cờ suy từ `business_result_accounting` (NULL=auto / TRUE / FALSE) quyết định có vào Kết quả kinh doanh (P&L) hay không. Cọc (`is_deposit`) và phiếu chia LN cổ đông bị loại khỏi P&L để tránh méo lợi nhuận.
+**Hạch toán KQKD item-level (`kqkd_amount`).** Từ 2026-07-02 (migration `20260702120000` — áp live, loạt FE working-tree chưa commit): báo cáo P&L/`fa_*` cộng **`SUM(income_expenses.kqkd_amount)`** — cột do trigger tính ở mức **hạng mục**: `business_result_accounting` TRUE → `total_amount`, FALSE → 0, NULL (auto) → `total_amount − Σ(items is_deposit)`. Nhờ đó **1 lần thu = 1 phiếu trộn** doanh thu + cọc vẫn hạch toán đúng (phần cọc tự loại — xử tận gốc lớp bug "cọc rò vào doanh thu"). Cờ nhị phân cũ `counts_in_business_result` (= `COALESCE(business_result_accounting, NOT has_deposit)`) vẫn tồn tại cho filter/badge. Phiếu chia LN cổ đông / lương điều hành / lương quản lý đặt `business_result_accounting = false` → `kqkd_amount = 0`, ngoài P&L.
 
 **RPC bọc wrapper kiểm quyền.** RPC nghiệp vụ HĐ (renew/transfer/terminate_*) có guard quyền ở lớp ngoài, logic gốc nằm trong `*_impl`; RPC mới đụng HĐ phải tự kiểm quyền + revoke quyền `anon` (xem `project_contract_rpc_authz`).
 
 ---
 
-*Để xem chi tiết từng domain (quy trình page từng bước, hook → RPC → trigger → side-effect, edge case + zod validate), mở file tương ứng ở cột "Tài liệu" trong [§2](#2-bản-đồ-15-domain).*
+*Để xem chi tiết từng domain (quy trình page từng bước, hook → RPC → trigger → side-effect, edge case + zod validate), mở file tương ứng ở cột "Tài liệu" trong [§2](#2-bản-đồ-17-domain).*

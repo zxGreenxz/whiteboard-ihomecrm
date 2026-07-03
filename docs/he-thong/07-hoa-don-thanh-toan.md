@@ -22,7 +22,7 @@ Nợ cũ kỳ trước / cọc / credit   ─┘          │
 Vai trò chính:
 
 - **Phát hành hoá đơn** cho từng hợp đồng theo từng tháng (`billing_month` dạng `YYYY-MM`). Mỗi hợp đồng chỉ có **1 hoá đơn / kỳ** (unique index).
-- **Tính tổng tiền** = tạm tính (tiền phòng + điện + nước + dịch vụ + khoản tùy chỉnh) − giảm trừ + nợ cũ kỳ trước.
+- **Tính tổng tiền** = tạm tính (tiền phòng + điện + nước + dịch vụ + khoản tùy chỉnh) − giảm trừ + nợ cũ kỳ trước, sau đó **LÀM TRÒN theo phần lẻ 900đ** về bội số 1.000 (xem §4.13).
 - **Ghi nhận thanh toán** nhiều phương thức (TM/TK/TT), nhiều phần (partial), tự cập nhật trạng thái và **đẩy sang Thu chi** (mỗi payment ⇒ 1 phiếu thu `income_expenses`). Có 3 luồng thu: dialog đơn (§5.6), thu hàng loạt (§5.1 bước 6) và trang mobile **`/thu-tien`** (§5.9).
 - Xử lý **biên ngoài lề**: tiền thừa (excess/credit), tiền thối, làm tròn tiền thiếu < 10K, hoàn trả hoá đơn thanh lý (total âm).
 - **Audit log** mọi thao tác trên invoice/item/payment.
@@ -47,7 +47,7 @@ Các cột chủ chốt:
   - `subtotal` — tạm tính từ các item (`Σ unit_price·quantity·coefficient`).
   - `discount_amount` — giảm trừ (mình "nợ" khách), kèm `discount_notes`.
   - `previous_debt` — nợ cũ kỳ trước (khách nợ mình) cộng vào tổng, kèm `previous_debt_sources` (jsonb — danh sách nguồn nợ: từ hoá đơn cũ / cọc, mỗi phần tử `{type, id, amount, label}`). Đây không chỉ là metadata truy nguồn: khi HĐ chuyển sang `PAID`, trigger **cascade tất toán** từng nguồn (xem §4.4).
-  - `total_amount` = `subtotal − discount_amount + previous_debt` (CHECK `>= 0`).
+  - `total_amount` = `subtotal − discount_amount + previous_debt` **đã làm tròn phần lẻ 900đ** (CHECK `>= 0`). Từ `971abd1` (2026-06-30) mọi đường tạo/sửa HĐ ở FE đều bọc tổng qua [roundInvoiceTotal](src/lib/invoiceUtils.ts) trước khi lưu → tổng lưu DB là **bội số 1.000**, có thể lệch công thức thô tối đa 999đ (xem §4.13).
   - `prepaid_amount` — trả trước (ít dùng trong luồng hiện tại).
   - `paid_amount` — **đã thu net** (đã trừ tiền thối/hoàn trả), do trigger recompute tính lại; CHECK `>= 0`.
   - `remaining_amount` — cột **GENERATED** `total_amount − paid_amount` (FE thường tự tính lại từ 2 cột kia).
@@ -69,17 +69,19 @@ Cột chủ chốt: `type` (enum `invoice_item_type`), `description`, `unit_pric
 
 Enum dùng: `invoice_item_type` (RENT, SERVICE, PENALTY, DISCOUNT, OTHER).
 
+**Item đặc biệt — cọc GỘP trong hoá đơn tháng đầu** (`c09eda2`, 2026-06-21): với HĐ mới ở mode "Đóng đủ", phần **cọc còn thiếu** = 1 item `type='OTHER'` với `description` đúng chuỗi **"Tiền cọc"** trong HĐ tháng đầu ([firstInvoiceBuilder.ts](src/lib/firstInvoiceBuilder.ts)) — cọc là khoản PHẢI THU của hoá đơn, không phải phiếu thu lẻ ngoài HĐ. Mode "Nợ cọc" (`include_deposit=false`) thì KHÔNG gộp, chỉ theo dõi nợ ở `contracts.deposit_remaining`. Chuỗi `"Tiền cọc"` là **hợp đồng ngầm giữa builder và flow thu tiền**: khi thu, FE so khớp CHÍNH XÁC (case-insensitive) item `OTHER` + description "Tiền cọc" (cộng thêm `previous_debt_sources` type `'deposit'`) để tách phần cọc khỏi doanh thu (§5.6) — khoản thật như "Cọc xe máy" không bị bắt nhầm. Kiến trúc theo dõi cọc: [04-coc-giu-cho.md](docs/he-thong/04-coc-giu-cho.md).
+
 FK: `invoice_id → invoices` (ON DELETE CASCADE), `service_id → services`.
 
 ### 2.3. `payments` — Phiếu thanh toán
 
 Mục đích: mỗi lần khách trả tiền cho 1 hoá đơn.
 
-Cột chủ chốt: `invoice_id`, `amount` (CHECK `> 0`), `payment_method` (enum `payment_method`: **TM/TK/TT**), `payment_date` (mặc định hôm nay), `receipt_number`, `receipt_image_url`, `notes`, `user_id` (scope RLS — = owner của invoice).
+Cột chủ chốt: `invoice_id`, `amount` (CHECK `> 0`), `payment_method` (enum `payment_method`: **TM/TK/TT/CT**), `payment_date` (mặc định hôm nay), `receipt_number`, `receipt_image_url`, `notes`, `user_id` (scope RLS — = owner của invoice).
 
 Về ảnh chứng từ: upload vào bucket **`payment-receipts`**, nếu lỗi (bucket không tồn tại / không có quyền) thì fallback bucket **`documents`** dưới path `receipts/` (xem [RecordPaymentDialog](src/components/invoices/RecordPaymentDialog.tsx), [useUploadPaymentReceipt](src/hooks/useUploadPaymentReceipt.ts)). Giá trị lưu vào `receipt_image_url` là **publicUrl string**; vì bucket private nên khi hiển thị phải parse lại qua `StorageImage`/`openStoredFile` (signed URL), không dùng trực tiếp `<img src>`.
 
-Enum dùng: `payment_method` (TM = tiền mặt, TK = tài khoản/chuyển khoản, TT = thanh toán — **giữ nguyên mã, không dịch**).
+Enum dùng: `payment_method` (TM = tiền mặt, TK = tài khoản/chuyển khoản, TT = thanh toán — **giữ nguyên mã, không dịch**; và **CT = Cấn trừ**, thêm 2026-06-19 [`20260619000001_payment_method_cantru.sql`](supabase/migrations/20260619000001_payment_method_cantru.sql) — chỉ RPC thanh lý/bỏ cọc tự sinh để gạch nợ AR, KHÔNG phải tiền thật, KHÔNG cho chọn tay; trước đó các bút toán này hardcode 'TM' làm phồng ô thống kê TM).
 
 FK: `invoice_id → invoices` (ON DELETE **RESTRICT** — không thể xoá hoá đơn còn payment trừ khi hard-delete payment trước).
 Được tham chiếu bởi: `excess_amounts.source_payment_id`, **`income_expenses.payment_id`**.
@@ -149,7 +151,7 @@ erDiagram
     }
     payments {
         uuid id PK
-        payment_method method "TM/TK/TT"
+        payment_method method "TM/TK/TT/CT"
         numeric amount
         date payment_date
         text receipt_image_url
@@ -255,12 +257,14 @@ V1 lặp qua mọi hợp đồng `ACTIVE` của toà, **bỏ qua** hợp đồng
 
 ### 4.7. RPC thống kê — `get_invoice_statistics_v2`
 
-Trả các tổng (theo filter area/building/room/billing_month/status/payment_status), RBAC qua `can_access_building`:
+Trả các tổng (theo filter building/building_ids/room/billing_month/status/payment_status; `p_area_id` đã deprecated):
 
 - `total_amount/total_paid/total_remaining/total_count`, `total_refunded`.
 - Bóc tách theo loại: `rent_amount/electric_amount/water_amount/pdv_amount`.
-- Thu theo phương thức: `payment_tm/payment_tk/payment_tt`, `total_collected`.
-- `change_amount` (tiền thối — từ `income_expenses.change_amount > 0`), `deposit_collected` (cọc đã thu — IE INCOME có item `is_deposit`, tách riêng không trộn TM/TK/TT).
+- Thu theo phương thức: `payment_tm/payment_tk/payment_tt` + **`payment_ct`** (Cấn trừ — §2.3), `total_collected`.
+- `change_amount` (tiền thối — từ `income_expenses.change_amount > 0`), `deposit_collected` (cọc đã thu — từ `20260702120000` tính **Σ ITEM `is_deposit`** thay vì total của phiếu có item cọc, để phiếu trộn doanh-thu+cọc không bị đếm thừa phần doanh thu vào cọc; tách riêng không trộn TM/TK/TT).
+
+**Perf (đợt 2026-06-30 — 403ms → 22ms):** bản cũ check `can_access_building(building_id)` **per-row** trong WHERE; bản hiện hành tính phạm vi toà **MỘT lần** đầu hàm (`v_priv` cho super_admin/admin/staff full-scope, ngược lại `v_bids = array_agg` toà theo `staff_assignments` + khu + lương-quản-lý) rồi filter `building_id = ANY(v_bids)`. Chi tiết: [perf-2026-06-30-toi-uu-hieu-nang.md](docs/he-thong/perf-2026-06-30-toi-uu-hieu-nang.md).
 
 Dùng bởi [useInvoiceStatistics](src/hooks/useInvoices.ts) → component `InvoiceStatsSummary`.
 
@@ -297,6 +301,24 @@ Logic resolution hiện **lặp ở nhiều file** (chưa gom helper chung) nên
 
 Bản gốc (`20250601`) là policy `auth.uid() = user_id`. Đã được nâng cấp dần sang RBAC (staff theo toà): các RPC `*_v2` chạy SECURITY DEFINER + `can_do_on_building`/`can_access_building`; thống kê thấy đủ data trong scope (kể cả HĐ do staff khác tạo). `invoice_audit_log` dùng policy `invoice_audit_log_select_visible` (migration `20260514000007`): đọc được khi HĐ thoả `i.user_id = auth.uid()` **HOẶC** `is_admin()` **HOẶC** `is_super_admin()` **HOẶC** `i.user_id ∈ current_visible_owner_ids()` (staff theo owner được gán) — không còn giới hạn "chỉ HĐ của mình".
 
+### 4.13. Làm tròn TỔNG TIỀN hoá đơn theo phần lẻ 900đ (FE — `roundInvoiceTotal`)
+
+Từ `971abd1` (2026-06-30), **tổng tiền hoá đơn luôn là bội số 1.000đ**. Hàm thuần [roundInvoiceTotal](src/lib/invoiceUtils.ts) (có unit test trong `invoiceUtils.test.ts`):
+
+- Phần lẻ (`total % 1000`) **< 900đ** → làm tròn **XUỐNG** bội 1.000 (bỏ phần lẻ). VD `1.299.500 → 1.299.000`.
+- Phần lẻ **≥ 900đ** → làm tròn **LÊN** bội 1.000. VD `1.299.900 → 1.300.000`.
+- Tổng `0`/âm/không hợp lệ giữ nguyên (HĐ thanh lý total âm không bị đụng).
+
+Điểm áp dụng — mọi đường ghi `total_amount` từ FE: [useCreateInvoice](src/hooks/useInvoices.ts) và `useUpdateInvoice` (`roundInvoiceTotal(subtotal − discount + previous_debt)`), preview trong [GenerateInvoiceDialog](src/components/invoices/GenerateInvoiceDialog.tsx) / [EditInvoiceDialog](src/components/invoices/EditInvoiceDialog.tsx), và nhánh legacy `generateInvoiceForContract` ([invoiceHelpers.ts](src/lib/invoiceHelpers.ts)). Đây là làm tròn **ngay lúc lập hoá đơn** (khách không phải trả tiền lẻ), khác với 2 cơ chế cùng chữ "làm tròn" khi **thu**:
+
+| Cơ chế | Lúc nào | Số tiền | Ghi vào đâu |
+|--------|---------|---------|-------------|
+| `roundInvoiceTotal` (mục này) | Lập/sửa HĐ | phần lẻ < 1.000đ | Chỉ đổi `invoices.total_amount` — KHÔNG có bút toán |
+| "Làm tròn tiền thiếu" (§4.3, §5.6) | Thu tiền, residual `0 < x < 10K` | phần thiếu | Metadata `rounding_amount` + sổ **"Làm tròn tiền thiếu"**, trigger mark PAID |
+| Ngưỡng nợ cũ `PREVIOUS_DEBT_ROUND_THRESHOLD` | Tính nợ cũ | remaining < 10K | Bỏ qua, không thành nguồn nợ ([invoiceHelpers.ts](src/lib/invoiceHelpers.ts)) |
+
+> Sổ "Làm tròn tiền thiếu" là **sổ quỹ hệ thống** — chỉ tạo **1 sổ chung thuộc owner**, staff dùng chung qua RLS (KHÔNG tạo 1 sổ/user); FE resolve theo đúng TÊN `Làm tròn tiền thiếu` (§4.11).
+
 ---
 
 ## 5. Quy trình theo từng trang (page)
@@ -306,9 +328,11 @@ Bản gốc (`20250601`) là policy `auth.uid() = user_id`. Đã được nâng 
 - **Route**: `/invoices`. File [InvoicesPage.tsx](src/pages/invoices/InvoicesPage.tsx).
 - **Mục đích**: liệt kê, lọc, tìm kiếm, và thực hiện các thao tác hàng loạt trên hoá đơn.
 - **Dữ liệu hiển thị**:
-  - [useInvoices](src/hooks/useInvoices.ts)(filters, pagination) — list + count, select kèm contract/building/room/items/payments. Lọc theo `building_ids[]/building_id/room_ids/contract_id/status/payment_status/view_status/billing_month/date_range`; mặc định `view_status='active'` ẩn HĐ `CANCELLED`. **`building_ids: string[]`** (từ `BuildingMultiSelect`, commit 099102f) lọc thẳng `.in('building_id', ids)`; `area_id` còn lại là **đường legacy** (fetch building id thuộc area rồi `.in(...)` — 2 round-trip) chỉ chạy khi không có `building_id`/`building_ids`.
-  - ⚠️ **Ô tìm kiếm trên toolbar hiện là no-op**: `InvoiceFilters` có field `search` và trang merge `searchQuery` vào `effectiveFilters`, nhưng `queryFn` của `useInvoices` **không có nhánh nào xử lý** `filters.search` — user gõ gì danh sách cũng không đổi, chỉ làm đổi queryKey → 1 refetch cùng kết quả. Cần hoặc áp dụng search thật (ilike `invoice_number`/tên phòng) hoặc gỡ ô search khỏi `InvoiceListToolbar`.
-  - Ghi chú hiệu năng: `INVOICE_LIST_SELECT` khá nặng — `*` + contract (+contract_customers+customers) + building + room + **toàn bộ** invoice_items + payments cho mọi dòng; cùng select này dùng cho cả `useInvoice` detail lẫn trang `/thu-tien` (§5.9 — nơi thật sự cần items+payments).
+  - [useInvoices](src/hooks/useInvoices.ts)(filters, pagination) — list + count, select kèm contract/building/room/items/payments. Lọc theo `building_ids[]/building_id/room_ids/contract_id/status/payment_status/view_status/billing_month/date_range/payment_method`; mặc định `view_status='active'` ẩn HĐ `CANCELLED`. **`building_ids: string[]`** (từ `BuildingMultiSelect`, commit 099102f) lọc thẳng `.in('building_id', ids)`; `area_id` còn lại là **đường legacy** (fetch building id thuộc area rồi `.in(...)` — 2 round-trip) chỉ chạy khi không có `building_id`/`building_ids`.
+  - **SORT mặc định server-side, ưu tiên KỲ trước** (ce024db + 0263589, 2026-07-02): `billing_month DESC` (toàn bộ HĐ tháng 7 → tháng 6 → …) → trong cùng kỳ `building(name_sort) ASC` → `room(name_sort) ASC` → `created_at DESC`. `name_sort` là **generated column** trên `buildings`/`rooms` (migration [20260702100000_invoice_room_natural_sort.sql](supabase/migrations/20260702100000_invoice_room_natural_sort.sql)) — hàm SQL `natural_sort_key`/`room_sort_key` **mirror đúng** [roomSort.ts](src/lib/roomSort.ts) (tòa so tự nhiên `15KV < 102LVT`; phòng nhóm MB→G→L→số). Phải order server-side vì phân trang server-side (mỗi trang 20 dòng). ⚠️ 2 gotcha: (a) PostgREST chỉ `order('building(name_sort)')` được khi **cột đó có trong select embed** — `INVOICE_LIST_SELECT` phải giữ `name_sort` trong embed building/room; (b) **đổi `roomSort.ts` thì PHẢI đổi cả 2 hàm SQL** cho đồng bộ, không thì list HĐ và các trang sort client lệch nhau.
+  - **Ô tìm kiếm hoạt động thật** (không còn no-op như bản trước 2026-06-10): gõ text → `invoice_number ilike` **HOẶC** tên khách (resolve trước `customers.full_name ilike` → `contract_customers` → `contract_id.in(...)` rồi OR vào query); gõ **số tiền** → trang suy `amount_target` và lọc `total_amount` trong khoảng ±tolerance; lọc theo **phương thức thanh toán** dùng `payments!inner` + `eq('payments.payment_method', …)`.
+  - **Không nuốt lỗi nữa** (đợt perf 2026-06-30, 09a5864): `queryFn` giờ **throw** khi query lỗi để React Query vào `isError`/retry — bản cũ `return {data: []}` làm trang hiện "Chưa có hoá đơn" **GIẢ** khi RLS/timeout/5xx (một trong các thủ phạm "trang HĐ trắng").
+  - Ghi chú hiệu năng: `INVOICE_LIST_SELECT` khá nặng — `*` + contract (+contract_customers+customers) + building + room + **toàn bộ** invoice_items + payments cho mọi dòng; dùng cho cả `useInvoice` detail. Trang `/thu-tien` **không còn dùng select này** — có `THU_TIEN_SELECT` gọn riêng (§5.9). Toàn cảnh đợt tối ưu (RPC stats 403→22ms, trắng trang, RLS initplan): [perf-2026-06-30-toi-uu-hieu-nang.md](docs/he-thong/perf-2026-06-30-toi-uu-hieu-nang.md). Liên quan deploy: lỗi "route lazy hỏng sau deploy, reload vô ích" là **Vercel SPA-rewrite cache poisoning** — đã fix 85d9515 (`vercel.json` exclude `/assets/` khỏi rewrite + `chunkReload` bust cache độc), **đừng revert**.
   - Bộ lọc [InvoiceListFilters](src/components/invoices/InvoiceListFilters.tsx): cặp ô Khu vực + Toà nhà cũ gộp thành **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu, click tên khu = chọn cả nhóm — set `filters.building_ids`, clear `area_id`); ô **Phòng gộp theo TÊN** phòng (nhiều toà cùng "101" → 1 mục, map ra `room_ids` — query `.in(room_ids)` giao với `building_ids` nên vẫn đúng); status/payment_status/kỳ dùng `SearchableSelect`.
   - [useInvoiceStatistics](src/hooks/useInvoices.ts) → `InvoiceStatsSummary` (tổng tiền, đã thu, TM/TK/TT, thối, cọc...) — gọi RPC `get_invoice_statistics_v2` với **`p_building_ids uuid[]`** (migration [20260610100000](supabase/migrations/20260610100000_invoice_stats_building_ids.sql) — DROP+CREATE tránh PGRST203 ambiguous overload; `p_area_id` giữ lại nhưng **deprecated**); staff bị ẩn hàng tổng doanh thu (`hideAggregateRow`).
   - Phân quyền: `useMyPermissions` (`can(perms,'invoices', create/edit/delete/record_payment)`). Cơ chế **khoá `area_id` theo `ctx.defaultAreaId`** (quy ước ngầm username = tên khu) đã **GỠ** (9ad626d) — scope staff vốn do RLS per-building quyết định, `BuildingMultiSelect` (nguồn `useBuildings` bị RLS cắt) tự nhiên chỉ hiện toà staff quản; `ctx` chỉ còn dùng cho `isSuper` (restore/force-cancel).
@@ -317,7 +341,7 @@ Bản gốc (`20250601`) là policy `auth.uid() = user_id`. Đã được nâng 
   1. **Mở trang** → `useCheckOverdueInvoices` chạy 1 lần (ref guard) → set HĐ quá hạn thành `OVERDUE` → invalidate list/stats.
   2. **Lọc / tìm** → cập nhật `filters`, reset về page 1, clear selection.
   3. **Tạo hoá đơn** (nút Add, cần quyền `create`) → mở `GenerateInvoiceDialog` (xem 5.5).
-  4. **Excel / hàng loạt** → `ExcelInvoiceDialog`: tạo HĐ hàng loạt bằng cách lặp [useCreateInvoice](src/hooks/useInvoices.ts) (insert từng HĐ + items, đọc/đối chiếu qua `.from('invoices')`) — **không** gọi RPC bulk. RPC `generate_invoices_for_building_v2` hiện không được FE gọi ở đâu (chỉ khai báo trong `types.ts`).
+  4. **Excel / hàng loạt** → `ExcelInvoiceDialog`: tạo HĐ hàng loạt bằng cách lặp [useCreateInvoice](src/hooks/useInvoices.ts) (insert từng HĐ + items, đọc/đối chiếu qua `.from('invoices')`) — **không** gọi RPC bulk. RPC `generate_invoices_for_building_v2` hiện không được FE gọi ở đâu (chỉ khai báo trong `types.ts`). Từ `3181abe` (2026-06-30), mỗi phòng có nhập "chỉ số mới" sẽ **chốt luôn chỉ số điện**: INSERT 1 `meter_reading` APPROVED với `reading_date = ngày cuối kỳ` (trigger DB suy `settlement_month` đúng kỳ, chỉ số đầu tháng sau carry-forward từ đây); lỗi insert reading **không chặn tạo HĐ** nhưng được gom lại toast đỏ "Chưa lưu được chỉ số điện" theo phòng (bản cũ nuốt lỗi làm mất chỉ số — đã backfill; chi tiết + bug generator trùng mã: [06-cong-to-chi-so.md §4.3/§6](docs/he-thong/06-cong-to-chi-so.md)).
   5. **Ghi nhận thanh toán** từng dòng → `handleRecordPayment` → mở `RecordPaymentDialog` **hoặc** `RecordRefundDialog` (chọn theo dấu: nếu `total < 0` hoặc `paid > total` → refund).
   6. **Thu hàng loạt** → `BulkRecordPaymentDialog` → [useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts). Dialog này **tự-chứa, không liên quan selection của bảng**: chọn toà + kỳ rồi tự load HĐ `status IN (APPROVED, PARTIAL_PAID, OVERDUE)` AND `remaining_amount > 0` — gồm cả HĐ **đã thu 1 phần**. (Quy tắc "chỉ chọn HĐ `paid_amount === 0`" là của **checkbox select-all trên bảng list**, phục vụ bulk DELETE — không phải bulk thu.)
   7. **Sửa** (`canEdit` + `canEditInvoice`) → `EditInvoiceDialog` → [useUpdateInvoice](src/hooks/useInvoices.ts) (chặn nếu trạng thái không cho sửa).
@@ -378,7 +402,7 @@ flowchart TD
     A["Chọn hợp đồng + kỳ"] --> B["Auto-fill: tiền phòng, chỉ số điện/nước, dịch vụ"]
     B --> C["Tính điện = (current-prev)*đơn giá; nước; PDV; khoản tùy chỉnh"]
     C --> D["Nợ cũ kỳ trước (computePreviousDebt) + áp credit (excess) vào giảm trừ"]
-    D --> E["total = subtotal − discount + previous_debt"]
+    D --> E["total = roundInvoiceTotal(subtotal − discount + previous_debt)<br/>(làm tròn phần lẻ 900đ — §4.13)"]
     E --> F["useCreateInvoice.mutate → INSERT invoices (status APPROVED) + invoice_items"]
     F --> G{applied_credit>0?}
     G -->|có| H["INSERT excess_amounts âm (tiêu credit)"]
@@ -394,9 +418,11 @@ File [RecordPaymentDialog.tsx](src/components/invoices/RecordPaymentDialog.tsx) 
 
 Mỗi sub-line (TM/TK/TT) gọi `record_invoice_payment_v2` rồi insert kèm **1 phiếu thu `income_expenses` INCOME** (gắn `invoice_id`, `payment_id`, `account_id`, `creator_name`). Xử lý 3 cơ chế đặc biệt, tất cả là **metadata audit không trừ số dư**:
 
-- **Tiền thối** (`change_amount` + `change_account_id`): khấu trừ vào line TM (`amount = line − change`), ghi note "Thu X – Thối Y". Validate: chỉ áp TM, `change ≤ tổng TM`.
+- **Tiền thối** (`change_amount` + `change_account_id`): khấu trừ vào line TM (`amount = line − change`), ghi note "Thu X – Thối Y". Validate: chỉ áp TM, `change ≤ tổng TM`. **`total_amount` của phiếu thu đã là số RÒNG** — sổ "…Thối" chỉ là ledger audit ghi nhận, KHÔNG trừ tiền lần nữa.
 - **Giữ credit** (`keep_as_credit`): không khấu trừ, insert `excess_amounts` dương cho contract.
-- **Làm tròn thiếu** (`rounding_amount` + `rounding_account_id`): residual < 10K, gắn lên line cuối; trigger DB tự mark `PAID`.
+- **Làm tròn thiếu** (`rounding_amount` + `rounding_account_id`): residual < 10K, gắn lên line cuối; trigger DB tự mark `PAID`. Sổ "Làm tròn tiền thiếu" là sổ hệ thống 1-sổ-chung của owner (§4.13).
+
+**Tách phần CỌC khi thu HĐ gộp cọc** (tháng đầu — item OTHER "Tiền cọc", §2.2): [useRecordPaymentRPC](src/hooks/useInvoicePayments.ts) tính `depositInInvoice` = Σ item "Tiền cọc" + Σ nguồn nợ cũ type `'deposit'`, rồi phân bổ lần thu bằng hàm thuần [allocateDepositPortion](src/lib/invoiceHelpers.ts) theo quy ước **PHÒNG-TRƯỚC, CỌC-SAU** (mỗi đồng thu phủ phần tiền phòng/DV còn thiếu trước, dư mới tính vào cọc — có property test `depositSplit.property.test.ts`). Kết quả ghi sổ theo mô hình **1 lần thu = ĐÚNG 1 phiếu thu** (đổi 2026-07-02, migration [20260702120000_kqkd_item_level.sql](supabase/migrations/20260702120000_kqkd_item_level.sql)): phần doanh thu và phần cọc là **2 HẠNG MỤC trên CÙNG phiếu** (item cọc dùng loại thu `is_deposit` — bắt buộc tồn tại, thiếu thì throw hướng dẫn tạo loại "Tiền cọc"); báo cáo KQKD tự loại phần cọc qua cột **`income_expenses.kqkd_amount`** (trigger DB tính `total − Σ item is_deposit`, item-level). *Mô hình cũ (c09eda2 → trước 2026-07-02) tách 2 phiếu doanh-thu/cọc riêng — các cặp phiếu cũ vẫn đúng số sau backfill.* Bỏ qua tách khi lần thu có rounding/credit. Có **idempotency check**: đã có phiếu thu gắn `payment_id` này (retry) → không mirror lại. Luồng **bulk/quick-collect KHÔNG tách cọc** — HĐ có gộp cọc bị [useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts) **từ chối** với thông báo "vui lòng thu qua màn hình hoá đơn" (tránh cọc lọt vào KQKD). Kiến trúc cọc: [04-coc-giu-cho.md](docs/he-thong/04-coc-giu-cho.md).
 
 `RecordRefundDialog` ([useRecordRefundRPC](src/hooks/useInvoicePayments.ts)) dùng cho HĐ thanh lý **total âm**: tạo phiếu chi EXPENSE loại "Hoàn trả thanh lý" với marker `[Hoàn trả thanh lý]` trong notes.
 
@@ -418,13 +444,13 @@ File [PaymentsSummaryDialog.tsx](src/components/invoices/PaymentsSummaryDialog.t
 
 - **Route**: `/thu-tien` (khai báo trong [App.tsx](src/App.tsx) — **lazy-load** + CSS cô lập `thu-tien.css` scope dưới `.tt-page`, font riêng Be Vietnam Pro / Space Mono chỉ nạp khi mở trang, không đụng theme site). Sidebar: mục "Thu tiền" trong nhóm Tài chính.
 - **Mục đích**: trang mobile-first thu tiền **MẶT** nhanh theo lưới ô phòng — chọn 1 toà + 1 kỳ, mỗi ô phòng = 1 hoá đơn.
-- **Cấu trúc**: [ThuTien.tsx](src/pages/ThuTien.tsx) + 13 component trong [src/components/thu-tien/](src/components/thu-tien/) + helpers thuần ([collect.ts](src/lib/collect.ts) — không side-effect, test dễ):
-  - `BuildingPills` chọn toà (từ `useBuildings` — đã scope RLS theo user/staff, auto chọn toà đầu tiên); input kỳ `type="month"`. **Không có lọc khu vực**.
-  - `TimeFilter`/`DatePanel` lọc theo **ngày thu** (so `payment_date` của payments, client-side); `StatusFilter` đã thu / chưa thu / tất cả.
+- **Cấu trúc**: [ThuTien.tsx](src/pages/ThuTien.tsx) + các component trong [src/components/thu-tien/](src/components/thu-tien/) (grid thu + `CollectionReport` báo cáo + `HandoverSheet` bàn giao tiền mặt + `UtilityBillSheet` đóng tiền điện nước + `ManagePanel`) + helpers thuần ([collect.ts](src/lib/collect.ts), [collectPlan.ts](src/lib/collectPlan.ts) — không side-effect, test dễ):
+  - `BuildingPills` chọn toà (từ `useBuildings` — đã scope RLS theo user/staff, auto chọn toà đầu tiên); input kỳ `type="month"`. **Không có lọc khu vực**. Toàn bộ bộ lọc (toà/kỳ/thời gian/trạng thái) **giữ qua F5** bằng `usePersistedState` key `flt:thu-tien:*`.
+  - `TimeFilter` 3 chip **Tất cả / Hôm nay / Chọn ngày** + `DatePanel` (1 ngày hoặc khoảng ngày) lọc theo **ngày thu** (so `payment_date` của payments, client-side); `StatusFilter` đã thu / chưa thu / tất cả.
   - `RoomCellGrid`/`RoomCell`: ô phòng tô màu theo `collectStatus()` — 3 trạng thái thu suy từ HĐ (`paid` = PAID hoặc remaining ≤ 0; `partial` = PARTIAL_PAID hoặc đã thu > 0; `unpaid` = còn lại). Nút **"Thu đủ"** (qua `ConfirmCollectDialog` chống bấm nhầm) / **"Thu 1P"** (mở keypad); nút **Zalo** khách đại diện (`repCustomer` + `zaloUrl`).
-  - `CollectDrawer`: sheet chi tiết HĐ + `CollectKeypad` nhập số tiền theo **nghìn đồng** + nút **Hoàn tác** + `NoteEditor` ghi chú; điều hướng prev/next trong danh sách đã lọc.
-  - `CollectionReport`: báo cáo thu theo toà/ngày/kỳ — [useCollectionReport](src/hooks/useCollectionReport.ts) tái dùng `useInvoices({building_id?, billing_month})`; option **"Tất cả tòa"** → `building_id` undefined → mọi toà trong scope RLS, group client-side theo tên toà.
-- **Data flow** (phối hợp domain Thu chi — trang này TẠO payments + phiếu thu `income_expenses` THẬT):
+  - `CollectDrawer`: sheet chi tiết HĐ + `CollectKeypad` nhập số tiền theo **nghìn đồng** + nút **Hoàn tác** + `NoteEditor` ghi chú; điều hướng prev/next trong danh sách đã lọc. Chi tiết `invoice_items` nạp **LAZY** khi mở drawer (`useInvoiceItemsLite` — list không kéo items).
+  - `CollectionReport`: báo cáo thu theo toà/ngày/kỳ — [useCollectionReport](src/hooks/useCollectionReport.ts) giờ chỉ là wrapper **lọc client-side trên cache chung** của `useThuTienInvoices` (không còn bắn query `useInvoices` riêng); option **"Tất cả tòa"** = bỏ filter toà. Popover **"Thời gian"** (21dd862): 2 nút nhanh **"Cả kỳ {tháng}" / "Hôm nay"** + `MiniCalendar` chọn ngày 1 chạm.
+- **Data flow — 1 query/kỳ dùng chung** (8190d18, 2026-07-02): [useThuTienInvoices](src/hooks/useCollectionReport.ts) là **nguồn dữ liệu DUY NHẤT** của trang — `queryKey: ['invoices', 'thu-tien', billing_month]` (root `'invoices'` giữ nguyên để mọi `invalidateQueries(['invoices'])` hiện có vẫn bắt được), fetch **CẢ KỲ mọi toà** (RLS tự giới hạn) bằng `THU_TIEN_SELECT` gọn: đúng cột trang dùng, **KHÔNG kéo `invoice_items`**, payments chỉ `(id, amount, payment_date)`, không `count:'exact'`. Phone grid / `ManagePanel` / `CollectionReport` đều slice client-side → **đổi tab toà / mở báo cáo = 0 request**. Sổ quỹ (`useAccounts`) cũng nạp lazy qua `opts.enabled` trong `useQuickCollect`. (Trước đó khung phone + ManagePanel bắn 2 query `INVOICE_LIST_SELECT` khổng lồ song song, đổi toà refetch nguyên bộ.) Trang này TẠO payments + phiếu thu `income_expenses` THẬT (phối hợp domain Thu chi):
 
 ```mermaid
 flowchart TD
@@ -438,11 +464,11 @@ flowchart TD
     D -.->|"residual sau thu dưới 10K"| H["rounding metadata + sổ 'Làm tròn tiền thiếu' → PAID"]
 ```
 
-  - [useQuickCollect](src/hooks/useQuickCollect.ts) **bọc** [useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts) (không phát minh lại mutation): cap `amount ≤ remaining`; resolve sổ quỹ TM **theo TÊN** (sổ "…Thu" của user đăng nhập → sổ "Chung" → sổ trùng tên toà — **throw** nếu không có, chặn insert `account_id` rỗng — xem convention §4.11); residual sau thu `0 < x < 10K` → tự đính **rounding metadata** (`rounding_amount` + sổ "Làm tròn tiền thiếu") để trigger DB mark `PAID`.
-  - **Hoàn tác** = [useDeletePayment](src/hooks/useDeletePayment.ts) xoá payment "gần nhất". ⚠️ Chọn payment qua `latestPaymentId` ([collect.ts](src/lib/collect.ts)) so sánh `payment_date` (**DATE, không có giờ**) — nhiều payment cùng ngày → lấy phần tử cuối theo thứ tự mảng trả về (không deterministic, vì select `payments` trong `INVOICE_LIST_SELECT` không có `created_at`) ⇒ có thể xoá nhầm phiếu cùng ngày. Fix gợi ý: thêm `created_at` vào select và sort theo nó.
+  - [useQuickCollect](src/hooks/useQuickCollect.ts) **bọc** [useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts) (không phát minh lại mutation): cap `amount ≤ remaining`; resolve sổ quỹ TM **theo TÊN** (sổ "…Thu" của user đăng nhập → sổ "Chung" → sổ trùng tên toà — **throw** nếu không có, chặn insert `account_id` rỗng — xem convention §4.11); residual sau thu `0 < x < 10K` → tự đính **rounding metadata** (`rounding_amount` + sổ "Làm tròn tiền thiếu") để trigger DB mark `PAID`. Vì đi qua bulk hook, HĐ **gộp cọc tháng đầu bị từ chối thu ở đây** — phải thu qua dialog đơn để tách cọc (§5.6).
+  - **Hoàn tác** = [useDeletePayment](src/hooks/useDeletePayment.ts) xoá payment "gần nhất". ⚠️ Chọn payment qua `latestPaymentId` ([collect.ts](src/lib/collect.ts)) so sánh `payment_date` (**DATE, không có giờ**) — nhiều payment cùng ngày → lấy phần tử cuối theo thứ tự mảng trả về (không deterministic, vì `THU_TIEN_SELECT` chỉ chọn `payments (id, amount, payment_date)`, không có `created_at`) ⇒ có thể xoá nhầm phiếu cùng ngày. Fix gợi ý: thêm `created_at` vào select và sort theo nó.
   - **Ghi chú** ghi thẳng vào `invoices.notes` qua [useUpdateInvoiceNote](src/hooks/useUpdateInvoiceNote.ts) (note đứng-một-mình khi phòng chưa thu, không cần payment).
-- **Quyền**: nút thu gate bởi `can(perms,'invoices','record_payment')`; RLS cho staff thao tác HĐ trong phạm vi phụ trách.
-- **Giới hạn**: không phân trang (kéo toàn bộ HĐ của toà+kỳ — và mọi toà khi báo cáo "Tất cả tòa" — với full relations một phát; chấp nhận được ở quy mô vài trăm phòng); **không chạy** `useCheckOverdueInvoices` → trạng thái `OVERDUE` có thể lệch với `/invoices` trong ngày (xem §4.1).
+- **Quyền**: nút thu gate bởi quyền trang riêng `canUse(perms, 'thu_tien', 'collect')` (fallback legacy `invoices.record_payment`), báo cáo `thu_tien.report`; RLS cho staff thao tác HĐ trong phạm vi phụ trách.
+- **Giới hạn**: không phân trang — kéo toàn bộ HĐ của **KỲ** (mọi toà trong scope) một phát, nhưng với select gọn `THU_TIEN_SELECT` (không items, payments 3 cột) nên nhẹ hơn nhiều bản cũ; chấp nhận được ở quy mô vài trăm phòng. **Không chạy** `useCheckOverdueInvoices` → trạng thái `OVERDUE` có thể lệch với `/invoices` trong ngày (xem §4.1). Bối cảnh trang trong hệ sinh thái mobile/công khai: [15-kenh-cong-khai-sale-thu-tien.md](docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md).
 
 ---
 
@@ -453,8 +479,8 @@ flowchart TD
 - → **Thu chi (income_expenses)**: liên kết mạnh nhất. Mỗi payment ⇒ 1 phiếu thu INCOME (`income_expenses.invoice_id` + `payment_id`). Có **3 đường ghi**: `RecordPaymentDialog` (RPC v2 + insert voucher rời), `BulkRecordPaymentDialog` và trang **`/thu-tien`** (§5.9) — 2 đường sau qua `useBulkRecordPayment` insert thẳng payments + voucher (`user_id` = owner của invoice, `approval_status='APPROVED'`). Chiều ngược: **xoá payment** (`PaymentsSummaryDialog` §5.8 / nút Hoàn tác `/thu-tien`) **soft-delete voucher liên kết**. Phiếu chi loại **"Tiền thối"** gắn `invoice_id` được trigger recompute đọc ngược để trừ vào `paid_amount` net (xem §4.3 — bản recompute hiện chỉ đọc loại `'Tiền thối'`; phiếu chi marker `[Hoàn trả thanh lý]` mà FE vẫn ghi thì recompute hiện KHÔNG còn nhận diện — xem ghi chú §5.6). Sổ quỹ (`accounts`) nhận tiền qua `account_id` của phiếu thu.
 - → **Hợp đồng (contracts)**: hoá đơn luôn gắn `contract_id`; tạo HĐ chỉ cho hợp đồng đang hiệu lực (`isContractInEffect` — chỉ `ACTIVE`, xem §5.5); `previous_debt_sources` truy nguồn nợ từ HĐ cũ / cọc — khi HĐ mới `PAID`, trigger `trg_settle_previous_debt` (§4.4) tự tất toán HĐ nợ gốc và **cộng `contracts.deposit_paid`** (chảy vào kiến trúc theo dõi cọc). `contracts.public_code` cấp link QR công khai.
 - → **Toà nhà / Phòng (buildings/rooms)**: scope RBAC (`can_do_on_building`; bộ lọc nhiều toà `building_ids` từ `BuildingMultiSelect`), `default_account_id_tt/tk` của toà gợi ý sổ quỹ khi thu.
-- → **Chỉ số công tơ (meter_readings) & Dịch vụ (services/contract_services)**: nguồn dữ liệu auto-fill khoản điện/nước/dịch vụ khi tạo HĐ; `invoice_items.service_id → services`.
-- → **Cọc (deposits / contract_terminations)**: nợ cũ có thể trừ cọc; thanh lý bỏ cọc giữ tiền đã thu khiến HĐ tháng đó CANCELLED nhưng vẫn còn payment (lý do recompute giữ CANCELLED).
+- → **Chỉ số công tơ (meter_readings) & Dịch vụ (services/contract_services)**: nguồn dữ liệu auto-fill khoản điện/nước/dịch vụ khi tạo HĐ; `invoice_items.service_id → services`. Chiều **ghi ngược**: `GenerateInvoiceDialog`/`ExcelInvoiceDialog` khi submit **chốt luôn 1 reading APPROVED** (Mode Excel từ 3181abe, có báo lỗi riêng nếu không lưu được), và RPC thanh lý cũng chốt số điện vào `meter_readings` (prefix `TLY…`) — chi tiết [06-cong-to-chi-so.md §6](docs/he-thong/06-cong-to-chi-so.md).
+- → **Cọc (deposits / contract_terminations)**: cọc còn thiếu **GỘP** vào HĐ tháng đầu (item OTHER "Tiền cọc" — §2.2); khi thu, phần cọc tách thành hạng mục `is_deposit` và bị loại khỏi KQKD qua `kqkd_amount` (§5.6); thanh lý bỏ cọc giữ tiền đã thu khiến HĐ tháng đó CANCELLED nhưng vẫn còn payment (lý do recompute giữ CANCELLED) — xem [04-coc-giu-cho.md](docs/he-thong/04-coc-giu-cho.md) + [16-thanh-ly-hop-dong.md](docs/he-thong/16-thanh-ly-hop-dong.md).
 - → **Mẫu in (document_templates)**: `template_id` cho bản in.
 
 **Đi VÀO (domain khác đọc/tham chiếu hoá đơn):**

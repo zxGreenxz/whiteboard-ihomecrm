@@ -21,7 +21,7 @@ Domain này quản lý **danh tính con người** ở 3 giai đoạn vòng đ�
 
 - Ban đầu hệ thống dùng `tenants` làm hồ sơ người thuê. Hợp đồng (`contracts.tenant_id`), cọc (`deposits.tenant_id`), hoá đơn/thu chi (`income_expenses.tenant_id`), công việc (`issues.reported_by_tenant_id`) đều FK tới `tenants`.
 - Sau này refactor sang `customers` làm hồ sơ chuẩn (45 cột, đầy đủ giấy tờ/địa chỉ/tổ chức). Liên kết khách ↔ hợp đồng chuyển sang junction `contract_customers` (xem [useContracts.ts](src/hooks/useContracts.ts) — `contracts.tenant_id` để NULL trên row mới, link thật nằm ở `contract_customers`).
-- UI hợp nhất về "Khách hàng": route `/tenants` → `Navigate` sang `/customers`, `/tenants/:id` → `/customers/:id` (xem [App.tsx](src/App.tsx) `TenantToCustomerRedirect`). `TenantsPage` là **dead code**: vẫn bị import trong `App.tsx` nhưng **không còn route nào render** nó; nút "Xem" trong page trỏ `/customers/{tenant.id}` — dùng id của bảng `tenants` tra vào bảng `customers` nên nếu page được gắn lại route sẽ luôn ra "Không tìm thấy khách hàng".
+- UI hợp nhất về "Khách hàng": route `/tenants` → `Navigate` sang `/customers`, `/tenants/:id` → `/customers/:id` (xem [App.tsx](src/App.tsx) `TenantToCustomerRedirect`). `TenantsPage` là **dead code hoàn toàn**: file còn nhưng **không nơi nào import nữa** (App.tsx đã bỏ cả import); nút "Xem" trong page trỏ `/customers/{tenant.id}` — dùng id của bảng `tenants` tra vào bảng `customers` nên nếu page được gắn lại route sẽ luôn ra "Không tìm thấy khách hàng".
 - **Hệ quả tài liệu hoá:** `tenants` là *legacy nhưng còn sống* (nhiều FK đang trỏ vào). `customers` là *hồ sơ chính của UI hiện tại*. Hai bảng KHÔNG đồng bộ tự động; chúng tồn tại song song.
 
 **Hai trục trạng thái của customers (đừng nhầm):**
@@ -235,7 +235,7 @@ flowchart TD
 
 - **Helpers** ([20260527000053_rbac_helpers.sql](supabase/migrations/20260527000053_rbac_helpers.sql)): `can_access_building(b)` = super_admin/admin hoặc có row `staff_assignments` khớp toà (hoặc `building_id IS NULL` = full scope); `can_do_on_building(table, action, b)` check thêm quyền `{table: {action: true}}` trong permissions JSONB. Từ [20260529000001_per_staff_permissions.sql](supabase/migrations/20260529000001_per_staff_permissions.sql), các helper ghi quyền dùng `COALESCE(staff_assignments.permissions, roles.permissions)` — **override quyền per-staff** ưu tiên hơn role.
 - **Trigger auto-fill `user_id`:** các bảng `customers`, `tenants`, `leads`, `lead_activities`, `vehicles` ([20260527000009_rbac_phase5_misc.sql](supabase/migrations/20260527000009_rbac_phase5_misc.sql)) và `ct01_declarations` ([20260528000001_rbac_batch_a_config_tables.sql](supabase/migrations/20260528000001_rbac_batch_a_config_tables.sql)) có trigger `*_set_user_id_audit` BEFORE INSERT gọi `set_user_id_from_auth()` — FE không còn bắt buộc gửi `user_id` (dù các hook vẫn gửi kèm).
-- **Ma trận quyền FE:** [permissions.ts](src/lib/permissions.ts) nhóm "Khách hàng" gồm module `leads` (extra `export`), `deposits` (extra `print`), `contracts` (extra `approve/print/export`), `customers` — nhãn "Cư dân" (extra `print/export`), `vehicles`; tên module khớp key trong `roles.permissions`/`staff_assignments.permissions`.
+- **Ma trận quyền FE:** [permissions.ts](src/lib/permissions.ts) nhóm "Khách hàng" gồm module `leads` (extra `convert/export`), `deposits` (extra `convert/refund/print`), `contracts` (extra `approve/renew/transfer/terminate/handover/print/export`), `customers` — nhãn "Cư dân" (extra `import/print/export`), `vehicles`; tên module khớp key trong `roles.permissions`/`staff_assignments.permissions`. Từ f528cd8 (2026-06-11), gate hành động chi tiết trên UI đi qua **catalog theo TRANG** [permissionPages.ts](src/lib/permissionPages.ts) + helper `canUse` (fallback về quyền gốc) — vd [CustomerListToolbar](src/components/customers/CustomerListToolbar.tsx) kiểm `canUse(perms, 'customers', 'create'/'import'/'export'/'print')` bên cạnh `hasAnyScope`.
 - **Mirror UI qua `useMyBuildingScope`** (RPC `get_my_assignments` đọc `staff_assignments`):
   - Trang Khách hàng: [CustomerListToolbar](src/components/customers/CustomerListToolbar.tsx) ẩn nút Thêm + Nhập Excel khi `!hasAnyScope`; [CustomerListTable](src/components/customers/CustomerListTable.tsx) ẩn Sửa/Xoá per-row qua `canManageBuilding(current_building_id)` — khách chưa thuê (`current_building_id` NULL) thì cho phép. Đây chính là lý do `useCustomers` enrich `current_building_id` (xem 5.2).
   - Trang Phương tiện: [VehicleListToolbar](src/components/vehicles/VehicleListToolbar.tsx) ẩn Thêm/Nhập khi `!hasAnyScope`; [VehicleListTable](src/components/vehicles/VehicleListTable.tsx) per-row theo `canManageBuilding(vehicle.building_id)` — xe không gắn toà chỉ người `canManageAll` quản.
@@ -253,7 +253,7 @@ Khi tạo HĐ ([useContracts.ts](src/hooks/useContracts.ts)): insert `contracts`
 
 **Mục đích:** bảng Kanban 5 cột theo `lead_status`, theo dõi phễu sale.
 
-**Dữ liệu:** `useLeads()` ([useLeads.ts](src/hooks/useLeads.ts)) — select `leads` + embed `building`, `room(+building)`, sort `created_at` desc, **không phân trang** (tải toàn bộ leads). (Lưu ý: hook **không** lọc `deleted_at` dù delete là soft, và RLS RBAC cũng không lọc ⇒ **lead đã xoá vẫn hiện lại** trên Kanban sau invalidate — nút Xoá trông như "không ăn".) Lọc client-side theo tên/SĐT/email/căn/tòa; chia cột bằng `getLeadsByStatus`.
+**Dữ liệu:** `useLeads()` ([useLeads.ts](src/hooks/useLeads.ts)) — select `leads` + embed `building`, `room(+building)`, sort `created_at` desc, **không phân trang** (tải toàn bộ leads). (Lưu ý: hook **không** lọc `deleted_at` dù delete là soft, và RLS RBAC cũng không lọc ⇒ **lead đã xoá vẫn hiện lại** trên Kanban sau invalidate — nút Xoá trông như "không ăn".) Lọc client-side theo tên/SĐT/email/căn/tòa (ô tìm kiếm **giữ qua F5** — `usePersistedState` key `flt:leads:search`, 7fd2d3f); chia cột bằng `getLeadsByStatus`. Nút thao tác gate qua `canUse(perms, 'leads', ...)` (xem 4.4).
 
 **Thao tác từng-bước:**
 
@@ -278,23 +278,27 @@ flowchart TD
 ```
 
 - **Validate (zod `convertSchema`):** `room_id` bắt buộc, `amount >= 0`, `deposit_date` & `hold_until_date` bắt buộc.
-- **Edge case:** không chọn/không tạo tenant → throw `"Phải chọn hoặc tạo khách hàng"`. Lưu ý convert tạo **tenant** (bảng legacy) + **deposit**, KHÔNG tạo bản ghi `customers`; `useConvertLeadToDeposit` hiện chỉ `update({ status: 'CONVERTED' })`, **không** gắn `deposit_id` lẫn `conversion_date` ngược lại lead.
+- **Edge case:** không chọn/không tạo tenant → throw `"Phải chọn hoặc tạo khách hàng"`. Lưu ý convert (theo thiết kế) tạo **tenant** (bảng legacy) + **deposit**, KHÔNG tạo bản ghi `customers`; `useConvertLeadToDeposit` chỉ `update({ status: 'CONVERTED' })`, **không** gắn `deposit_id` lẫn `conversion_date` ngược lại lead.
 - **UI dialog:** ô "Căn hộ *" lấy `useRooms()` **toàn bộ phòng mọi toà, mọi trạng thái** (kể cả đang thuê) bằng Select thường (không gõ-tìm); ô "Chọn khách hàng" cũng là Select thường load toàn bộ `tenants` legacy (`useTenantsLegacy`).
-- **⚠️ Lệch kiến trúc cọc:** flow này đổ vào thế giới cọc **LEGACY** (row bảng `deposits` status `PENDING` + `tenants` status `DEPOSITED`), trong khi nguồn sự thật cọc hiện hành là phiếu thu chi `is_deposit` → `deposit_remaining` + `rooms.status = RESERVED`. Hệ quả: cọc sinh từ convert **không** xuất hiện trên dashboard cọc mới (đọc `contracts.deposit_remaining`), **không** tự giữ phòng (RESERVED), và khi ký HĐ phải nhập lại hồ sơ `customers` từ đầu (xem doc domain Đặt cọc).
+- **🐞 BUG đang hỏng toàn flow:** payload insert gửi key **`hold_until_date`** trong khi cột thật của `deposits` là **`hold_until`** → PostgREST từ chối INSERT (PGRST204) → `createDeposit` throw → convert **fail hoàn toàn** (tenant mới có thể đã tạo, deposit không tạo, lead **không** flip CONVERTED; lỗi chỉ ra console). Đây là điểm ghi cuối cùng còn trỏ vào bảng `deposits` toàn hệ (các form khác đã viết lại — doc 04 §5.4).
+- **⚠️ Lệch kiến trúc cọc (kể cả khi sửa bug trên):** flow này đổ vào thế giới cọc **LEGACY** (row bảng `deposits` status `PENDING` + `tenants` status `DEPOSITED`) — bảng `deposits` nay đã **chết** (0 dòng, doc 04 §2.1); nguồn sự thật cọc giữ chỗ hiện hành là **phiếu thu cọc mồ côi trong `income_expenses`** (item `is_deposit`, `contract_id NULL`). Hệ quả: cọc sinh từ convert **không** xuất hiện ở tab "Phiếu giữ chỗ" `/deposits` (đọc `income_expenses`), **không** tự giữ phòng qua nhánh IE, và khi ký HĐ phải nhập lại hồ sơ `customers` từ đầu. Hướng đúng: viết lại theo cơ chế `CreateDepositDialog` mới (doc 04 §5.4).
 
 ### 5.2. `/customers` — [CustomersPage.tsx](src/pages/customers/CustomersPage.tsx)
 
 **Mục đích:** danh sách khách hàng có tab trạng thái, thẻ thống kê, lọc vị trí, phân trang, import/export.
 
-**Dữ liệu:**
+**Rẽ nhánh mobile (f0950a2, 2026-06-17):** viewport phone (`usePhoneViewport()`, ≤767px) → lazy-load **[CustomersMobilePage.tsx](src/pages/customers/CustomersMobilePage.tsx)** — màn app full-screen riêng NGOÀI MainLayout (CSS scope độc lập `src/styles/mobileApp.css`): tab trạng thái + dropdown toà (lọc client theo `current_building_id` như desktop) + tìm kiếm; thẻ KH hiện tên + **SĐT kèm nút copy** (78b761b) + CCCD/ngày sinh/địa chỉ/phòng + **chip loại xe + biển số** (query gộp `vehicles` theo customer_id) + nút **Gọi · Zalo** — nút Zalo chỉ là **deep-link `https://zalo.me/{SĐT}`** mở app Zalo ngoài, KHÔNG liên quan module Chat Zalo nội bộ ([doc 18](docs/he-thong/18-zalo-chat.md), chưa có gắn dữ liệu khách ↔ hội thoại). Hàng chip lọc loại KH trên mobile đã gỡ (e4a260f). Desktop giữ nguyên bảng.
+
+**Dữ liệu (desktop):**
 - `useCustomers(effectiveFilters, {page,pageSize})` — lọc `status_v2` theo tab; `statFilter` (ALL/INDIVIDUAL/ORGANIZATION/FOREIGN); search `full_name/phone/email/id_number`; lọc building/room qua `contract_customers`; phân trang `range`. Sau khi lấy trang, **enrich** thêm `current_building_id/_name` + `current_room_name` từ HĐ còn-hiệu-lực (`isContractInEffect`, query `contract_customers` theo chunk 80 id) — vừa hiển thị "Căn hộ đang ở" vừa phục vụ per-row scope check (xem 4.4). Lỗi query bị **nuốt** (trả mảng rỗng thay vì throw) ⇒ lỗi RLS/network hiển thị như "Chưa có khách hàng nào".
-- Ô lọc vị trí ([CustomerListFilters.tsx](src/components/customers/CustomerListFilters.tsx)) — đổi ở 9ad626d (2026-06-10): **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu vực — thay cặp dropdown Khu vực + Toà cũ) + **Phòng** (`useRooms(singleBuildingId)`, chỉ bật khi chọn đúng 1 toà; đổi phạm vi toà reset `room_id`). Bộ lọc toà chạy **client-side trên trang dữ liệu hiện tại**: so `buildingIds.includes(customer.current_building_id)` (toà của HĐ còn-hiệu-lực enrich sẵn) — KHÔNG vào query server.
+- Ô lọc vị trí ([CustomerListFilters.tsx](src/components/customers/CustomerListFilters.tsx)) — từ 3c3b7fa (2026-06-30): **`BuildingFilterSelect`** ([BuildingFilterSelect](src/components/buildings/BuildingFilterSelect.tsx) — danh sách **phẳng A→Z, chọn 1 toà hoặc tất cả**, thay `BuildingMultiSelect` nhóm-theo-khu của 9ad626d; state giữ shape mảng 0/1 phần tử) + **Phòng** (SearchableSelect, `useRooms(singleBuildingId)`, chỉ bật khi chọn đúng 1 toà; đổi phạm vi toà reset `room_id`). Bộ lọc toà chạy **client-side trên trang dữ liệu hiện tại**: so `buildingIds.includes(customer.current_building_id)` (toà của HĐ còn-hiệu-lực enrich sẵn) — KHÔNG vào query server.
+- Tab / statFilter / bộ lọc / ô search **giữ qua F5** bằng `usePersistedState` key `flt:customers:*` (7fd2d3f).
 - `useCustomerStats(statsFilters)` — đếm total/individual/organization/foreign (kéo toàn bộ rows khớp filter rồi đếm client-side; chạy lại mỗi keystroke vì ô search không debounce).
 
 **Thao tác:**
 1. **Đổi tab** (`RENTING/MOVED_OUT/WALK_IN`) → reset statFilter & page=1.
 2. **Click thẻ thống kê** → set `statFilter`.
-3. **Thêm** → điều hướng `/customers/new` (nút Thêm + Nhập Excel chỉ hiện khi `hasAnyScope` — xem 4.4).
+3. **Thêm** → điều hướng `/customers/new` (nút Thêm + Nhập Excel chỉ hiện khi `hasAnyScope` **và** `canUse(perms, 'customers', 'create'/'import')`; Xuất/In theo `canUse(..., 'export'/'print')` — xem 4.4).
 4. **Xem** → `CustomerDetailModal`; **Sửa** → `/customers/:id/edit`; **Xoá** → `DeleteCustomerDialog` (Sửa/Xoá ẩn per-row khi khách đang thuê toà ngoài scope — `canManageBuilding(current_building_id)`).
 5. **Import** → `CustomerImportExportDialog`; mỗi dòng `useCreateCustomer.mutateAsync` (mặc định INDIVIDUAL), tải ảnh CCCD từ URL cột L (`uploadIdImagesFromUrls`) rồi update `id_images`; gom kết quả thành công/thất bại; map mã lỗi PG (`23505`→trùng SĐT/CCCD, `23514`→SĐT sai định dạng, `22008`→ngày sai).
 6. **Export** → `exportCustomers`.
@@ -316,6 +320,8 @@ flowchart TD
 
 **Mục đích:** trang chi tiết khách (thông tin cá nhân, ảnh CCCD, địa chỉ, phương tiện, hợp đồng, liên hệ khẩn cấp, ghi chú).
 
+**Rẽ nhánh mobile (f0950a2):** viewport phone → lazy-load **[CustomerDetailMobilePage.tsx](src/pages/customers/CustomerDetailMobilePage.tsx)** — header + hàng nút kéo-cuộn (Gọi/Zalo deep-link/Sao chép/Sửa/CT01/Xoá, ẩn-hiện theo quyền); thẻ Thông tin cá nhân / Địa chỉ / Phương tiện / Hợp đồng từ cùng nguồn dữ liệu thật; tái dùng `DeleteCustomerDialog`.
+
 - Dữ liệu: `useCustomer(id)`; `useVehicles({customer_id:id})`; query riêng `customer-contracts` đọc `contract_customers` → embed `contract(+room+building)`, lọc bỏ HĐ `deleted_at`.
 - Ảnh CCCD render bằng `StorageImage` (bucket private + signed URL — đúng quy ước bảo mật).
 - Thao tác: Sao chép thông tin (clipboard), Sửa, **Mẫu CT01** (`/customers/:id/ct01`), Xoá (`DeleteCustomerDialog` → `soft_delete_customer`). Badge HĐ map `CONTRACT_STATUS_LABEL` chỉ gồm **ACTIVE/TRANSFERRED/TERMINATED/EXPIRED/DRAFT** — `EXTENDED` đã bị bỏ khỏi map (khớp việc ngưng dùng status này 2026-06-06; status lạ rơi vào fallback hiển thị raw text). Trang **không** hiển thị `RenewedBadge` ("đã gia hạn" không xuất hiện ở chi tiết khách). Cờ "Đại diện" lấy từ `is_representative`. Bảng phương tiện hiển thị cả `parking_fee` — cột này KHÔNG nhập được từ `VehicleFormDialog` (xem 5.7).
@@ -332,7 +338,7 @@ flowchart TD
 
 ### 5.6. `/tenants` (legacy) — [TenantsPage.tsx](src/pages/tenants/TenantsPage.tsx)
 
-**Mục đích:** trang người-thuê cũ — hiện là **dead code**: [App.tsx](src/App.tsx) vẫn import nhưng **không còn route nào render** nó (`/tenants` → `Navigate` `/customers`, `/tenants/:id` → `TenantToCustomerRedirect`).
+**Mục đích:** trang người-thuê cũ — hiện là **dead code hoàn toàn**: [App.tsx](src/App.tsx) đã bỏ cả import, không route nào render nó (`/tenants` → `Navigate` `/customers`, `/tenants/:id` → `TenantToCustomerRedirect`).
 
 - Dữ liệu: `useTenants({status}, {page,pageSize})` — lọc `tenants` theo `status`, `.is(deleted_at,null)`, phân trang.
 - Thao tác: Thêm (`CreateTenantDialog`), Sửa (`EditTenantDialog`), Xoá (`DeleteTenantDialog` → `useDeleteTenant` soft delete), Xem → trỏ `/customers/{tenant.id}` — dùng id bảng `tenants` tra vào bảng `customers` nên nếu page được gắn lại route sẽ luôn ra "Không tìm thấy khách hàng" (xem mục 1).
@@ -340,9 +346,11 @@ flowchart TD
 
 ### 5.7. `/vehicles` — [VehiclesPage.tsx](src/pages/vehicles/VehiclesPage.tsx)
 
-**Mục đích:** danh sách phương tiện (đang ghim cứng `MOTORBIKE`), tìm kiếm, lọc, phân trang.
+**Mục đích:** danh sách phương tiện (desktop ghim cứng `MOTORBIKE`), tìm kiếm, lọc, phân trang.
 
-- Dữ liệu: `useVehicles(filters, {page,pageSize})` ([useVehicles.ts](src/hooks/useVehicles.ts)) — embed `customer/building/room`, `.is(deleted_at,null)`. Search ghép biển số/tên xe/owner + `customer_id.in.(…)` từ khách khớp tên (vì PostgREST `.or()` không OR xuyên bảng embed). Hook còn hỗ trợ filter `contract_id`, `customer_id`, `vehicle_name`, `color`, `room_ids`; lỗi query bị **nuốt** (trả mảng rỗng).
+**Rẽ nhánh mobile (f0950a2):** viewport phone → lazy-load **[VehiclesMobilePage.tsx](src/pages/vehicles/VehiclesMobilePage.tsx)** — panel lọc (loại·toà·phòng) + chip lọc đang áp + thẻ xe; tái dùng `VehicleFormDialog`. **Khác desktop: bản mobile cho lọc ĐỦ loại xe** (desktop khoá Xe máy).
+
+- Dữ liệu: `useVehicles(filters, {page,pageSize})` ([useVehicles.ts](src/hooks/useVehicles.ts)) — embed `customer/building/room`, `.is(deleted_at,null)`. Search ghép biển số/tên xe/owner + `customer_id.in.(…)` từ khách khớp tên (vì PostgREST `.or()` không OR xuyên bảng embed). Hook còn hỗ trợ filter `contract_id`, `customer_id`, `vehicle_name`, `color`, `room_ids`; lỗi query bị **nuốt** (trả mảng rỗng). Bộ lọc + search **giữ qua F5** (`usePersistedState` key `flt:vehicles:*` — 7fd2d3f; khi đổi filter, `vehicle_type` luôn bị ép lại `MOTORBIKE` trên desktop).
 - Bộ lọc ([VehicleFilterPanel.tsx](src/components/vehicles/VehicleFilterPanel.tsx) — drawer chỉ mở được trên **mobile**, nút `SlidersHorizontal` nằm trong `if (isMobile)`): 4 ô `SearchableSelect` — **Toà nhà** (`building_id` eq trực tiếp trên cột `vehicles.building_id`); **Phòng** gộp theo TÊN xuyên toà (`roomIdsByName` → `.in('room_id', room_ids)` — nhiều toà cùng phòng "101" thành 1 mục); **Dòng xe** & **Màu** lấy distinct từ `useDistinctVehicleValues` (quét toàn bộ `vehicles` rồi distinct client-side).
 - Thao tác: Thêm/Sửa (`VehicleFormDialog`), Xoá (`DeleteVehicleDialog` → `useDeleteVehicle` soft delete). **Nút Xuất/Nhập Excel là stub** — `handleExport`/`handleImport` ở [VehiclesPage.tsx](src/pages/vehicles/VehiclesPage.tsx) chỉ `console.log`, chưa có chức năng. Toggle grid/list cũng là nút chết (luôn render bảng list).
 - Form ([VehicleFormDialog.tsx](src/components/vehicles/VehicleFormDialog.tsx)) chỉ expose `vehicle_type/vehicle_name/color/license_plate/owner_name/ticket_number/building/room/customer/image_url` — **KHÔNG nhập được `parking_fee`, `brand`, `model`, `notes`, `images` (jsonb)** dù cột tồn tại và `parking_fee` được hiển thị ở chi tiết khách (5.4). Dropdown chọn khách load `useCustomers(undefined, {page:1, pageSize:500})` — dialog được render sẵn cùng trang (không mount theo nút Thêm/Sửa) nên query này kèm cả vòng enrich HĐ chạy ngay khi vào trang `/vehicles`.
@@ -363,7 +371,7 @@ flowchart TD
 **Vào (domain khác trỏ về đây):**
 
 - **Hợp đồng** ↔ `customers` qua `contract_customers` (link chính, có đại diện) và `contracts.tenant_id` → `tenants` (legacy). `contract_transfers.old/new_tenant_id` → `tenants` khi chuyển nhượng.
-- **Đặt cọc** (`deposits.tenant_id`) → `tenants`: cọc gắn người thuê; convert lead tạo deposit + tenant — đây là thế giới cọc **legacy**, tồn tại song song kiến trúc cọc mới `deposit_remaining` từ phiếu thu chi `is_deposit` (xem cảnh báo ở 5.1 và doc domain Đặt cọc).
+- **Đặt cọc** (`deposits.tenant_id`) → `tenants`: cọc gắn người thuê — thế giới cọc **legacy, bảng `deposits` nay đã chết** (0 dòng — doc 04 §2.1); convert lead là code cuối cùng còn trỏ vào và đang hỏng (bug 5.1). Kiến trúc cọc hiện hành gắn khách qua `income_expenses.tenant_id`/`payer_name` trên phiếu thu cọc `is_deposit` (doc 04). Dialog "Tạo đặt cọc" mới ở `/deposits` và `ConvertLeadDialog` vẫn tạo **tenant** legacy `status='DEPOSITED'` khi tick "Tạo khách hàng mới".
 - **Hoá đơn / Thu chi** (`income_expenses.tenant_id`) → `tenants`: dòng tiền gắn người thuê.
 - **Công việc / Sự cố** (`issues.reported_by_tenant_id`) → `tenants`: ai báo sự cố.
 - **Người dùng / Phân quyền:** RLS của domain này chạy trên `roles.permissions` + `staff_assignments.permissions` (override per-staff) qua các helper RBAC (xem 4.4); FE đọc scope qua RPC `get_my_assignments` (`useMyBuildingScope`). RBAC gom `tenants` + `ct01_declarations` dưới quyền module `customers`, `lead_activities` dưới `leads`; còn `contract_customers/_tenants` đi theo quyền module `contracts`.

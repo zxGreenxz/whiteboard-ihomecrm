@@ -27,6 +27,15 @@ Domain này gom 7 bảng phục vụ 4 nhóm chức năng, tất cả đều **p
 
 **Đặc điểm "phi toà nhà":** cả 7 bảng đều **không có cột `building_id`/`area_id`** — scope duy nhất là `user_id` owner; không trang nào trong domain có ô lọc toà nhà/khu vực. Điểm chạm per-building duy nhất là chiều ngược: `buildings`/`rooms` giữ FK mẫu mặc định trỏ về `document_templates` (§2.2).
 
+**Ranh giới với các kho cấu hình KHÁC bảng `settings`** (mọc thêm 2026-06 → 07, dễ tìm nhầm chỗ):
+
+| Cấu hình | Nằm ở đâu | Chi tiết |
+|----------|-----------|---------|
+| Hiển thị trang Phòng trống công khai (`soon_days`, `show_rented`, `hotline_id`) | Bảng riêng **`public_room_settings`** (1 dòng/owner, RLS owner-only), KHÔNG phải key settings | [usePublicRoomSettings](src/hooks/usePublicRoomSettings.ts), tab Cài đặt hiển thị `/sale-phong` — xem [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md) |
+| Lương-thưởng v5 (chuyên cần/streak/coverage + **feature flags & kill-switch** `system_v5.feature_flags`/`stage`) | Cột jsonb **`salary_bonus_rules.rules`** (khối `attendance_v5`/`streak_v5`/`coverage_v5`/`system_v5`), đọc/ghi qua RPC `get_salary_v5_config`/`set_salary_v5_config` (owner-only, audit, key 💰 hiệu lực tháng kế) | [20260703000001_v5_foundation.sql](supabase/migrations/20260703000001_v5_foundation.sql) — xem [17-luong-thuong.md](17-luong-thuong.md) |
+| Tuỳ chọn UI nhỏ per-USER (không phải per-owner) | Cột jsonb **`profiles.ui_preferences`** | §2.8 |
+| Bộ lọc đang chọn của từng trang | **sessionStorage** key `flt:*` qua [usePersistedState](src/hooks/usePersistedState.ts) (per-tab, mất khi đóng tab — chủ ý, KHÔNG lưu server) | commit 7fd2d3f |
+
 > **Ghi chú về subsystem AI (RAG):** DB có 4 bảng `ai_conversations`, `ai_messages`, `ai_memory_embeddings`, `ai_usage_stats` — đây là **backend cho trợ lý AI dạng RAG** (Retrieval-Augmented Generation): lưu hội thoại + tin nhắn, sinh embedding (`embedding vector` + index HNSW/pgvector) để `search_similar_memories()` truy hồi "trí nhớ" theo độ tương đồng cosine, và `ai_usage_stats` theo dõi token/chi phí theo kỳ. Có sẵn trigger `auto_generate_conversation_title`, `update_conversation_stats_on_message`, RPC `get_conversation_context`. **Hiện chưa rõ UI** nào trong `src/pages` gắn vào subsystem này — coi như hạ tầng backend đã dựng sẵn, chưa lộ ra giao diện ở domain cài đặt.
 
 ---
@@ -40,7 +49,7 @@ Domain này gom 7 bảng phục vụ 4 nhóm chức năng, tất cả đều **p
 Cột chủ chốt:
 - `user_id` — chủ cấu hình.
 - `key` (text) — tên khoá cấu hình. Có **2 phong cách key** cùng tồn tại:
-  - **Key gộp (object)**: `company_info`, `contract_config`, `invoice_config`, `payment_config`, `notification_config`, `code_generation_config` — mỗi key chứa nguyên một object cấu hình (định nghĩa kiểu trong [useSettings.ts](src/hooks/useSettings.ts): `CompanyInfo`, `ContractConfig`…).
+  - **Key gộp (object)**: `company_info`, `contract_config`, `invoice_config`, `payment_config`, `notification_config`, `code_generation_config` + **`acceptance_geofence`** (thêm 2026-06-28 — `{enabled: boolean, radius_m: number}`, mặc định `{true, 70}`: bật/tắt kiểm tra GPS + bán kính geo-fence khi nghiệm thu công việc) — mỗi key chứa nguyên một object cấu hình (định nghĩa kiểu trong [useSettings.ts](src/hooks/useSettings.ts): `CompanyInfo`, `ContractConfig`, `AcceptanceGeofenceSetting`…).
   - **Key đơn (scalar)**: 20 key riêng lẻ như `invoice_auto_approve`, `contract_e_signing_enabled`, `invoice_payment_deadline_days` — mỗi key 1 giá trị boolean/number/string. Đây là nhóm mà `GeneralSettingsPage` đọc/ghi. **Lưu ý:** chỉ `payment_auto_approve` có consumer thật ngoài trang cài đặt (xem §5.1/§6).
   - **Key ngoài 2 nhóm trên**: `onboarding_completed` (boolean) — do [OnboardingWizard](src/components/onboarding/OnboardingWizard.tsx) đọc/ghi qua `useIndividualSetting` để đánh dấu hoàn tất luồng onboarding.
 - `value` (jsonb, NOT NULL) — giá trị. Scalar được lưu dưới dạng JSONB literal (`'false'::jsonb`, `'5'::jsonb`, `'"monthly"'::jsonb`).
@@ -92,7 +101,7 @@ Không FK ra/vào cứng. **Lưu ý hiện trạng:** trang [SignaturesPage.tsx]
 
 Cột: `name`, `phone_number` (cả hai CHECK không rỗng — `hotlines_name_not_empty`/`hotlines_phone_not_empty`), `description`, `is_active`, `user_id`. Bảng phẳng, không FK ra/vào. RLS: policy `hotlines_*_rbac` dùng `can_access_org_entity('hotline', view/create/edit/delete)` — quyền org-wide, policy owner-only cũ đã drop (xem §1/§4.7).
 
-**Consumer thực ngoài trang CRUD:** module **Sale Phòng** — [DisplaySettingsTab](src/components/sale-phong/DisplaySettingsTab.tsx) dùng `useHotlines` cho ô "Hotline hiển thị" của trang Phòng trống công khai `/r/:token` (để "Mặc định" sẽ lấy hotline đầu tiên).
+**Consumer thực ngoài trang CRUD:** module **Sale Phòng** — [DisplaySettingsTab](src/components/sale-phong/DisplaySettingsTab.tsx) dùng `useHotlines` cho ô "Hotline hiển thị" của trang Phòng trống công khai `/r/:token`; lựa chọn được **lưu vào `public_room_settings.hotline_id`** (bảng cấu hình riêng 1 dòng/owner — xem bảng ranh giới §1 + [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md)), để "Mặc định" (`hotline_id = NULL`) sẽ lấy hotline đầu tiên.
 
 ### 2.5. `code_sequences` — Engine sinh mã định danh
 
@@ -124,6 +133,15 @@ Cột chủ chốt: `name`, `description`, `price` (numeric, CHECK ≥0), `durat
 **Mục đích:** bản ghi owner đã mua gói nào, hiệu lực từ–đến.
 
 Cột chủ chốt: `user_id`, `plan_id` (**FK → subscription_plans, ON DELETE RESTRICT** — không cho xoá gói đang được đăng ký), `start_date`, `end_date`, `status` (text, **CHECK IN ('active','expired','cancelled')**, mặc định `active`). RLS thuần `user_id = auth.uid()` (+ bypass `*_admin_all`, xem §1).
+
+### 2.8. `profiles.ui_preferences` — Tuỳ chọn UI per-USER (2026-06-27)
+
+Không phải bảng mới mà là **cột jsonb trên `profiles`** ([20260627000001_profiles_ui_preferences.sql](supabase/migrations/20260627000001_profiles_ui_preferences.sql), `NOT NULL DEFAULT '{}'`) — kho lưu các **toggle hiển thị nhỏ theo TỪNG user** (khác `settings` per-owner): giữ qua F5 **và đồng bộ đa thiết bị**. Quy ước dự án: **KHÔNG tạo bảng riêng cho prefs nhỏ** — thêm key vào đây.
+
+- Hook [useUiPreferences.ts](src/hooks/useUiPreferences.ts): `useUiPreferences()` đọc cả object; `useUiPrefBool(key, fallback)` lấy 1 toggle; `useSetUiPreference()` ghi **merge từng key** (đọc bản hiện tại → spread → update, không đè key khác) + **optimistic update** (rollback nếu lỗi).
+- RLS: tận dụng policy sẵn có của `profiles` (user tự update hàng `id = auth.uid()`) — không cần policy mới.
+- Key đang dùng: `pd_hideStatCards` / `pd_hideTotals` / `pd_hideSpecialTypes` (ẩn thẻ thống kê / số tổng / hạng mục đặc biệt ở trang Phân bổ lợi nhuận — cả bản desktop lẫn mobile), `v5_onboarding_ack` (đã xem giới thiệu lương v5 ở trang "Ngày hôm nay của tôi").
+- Phân biệt 3 tầng "nhớ trạng thái UI": `settings` (per-OWNER, hành vi nghiệp vụ) · `profiles.ui_preferences` (per-USER, server, toggle hiển thị) · sessionStorage `flt:*` qua [usePersistedState](src/hooks/usePersistedState.ts) (per-TAB, bộ lọc đang chọn — commit 7fd2d3f, URL param thắng giá trị khôi phục).
 
 ---
 
@@ -197,6 +215,7 @@ flowchart TD
     seq["code_sequences<br/>(prefix + seq + date)"] -.->|"generate_code / generate_next_code<br/>KHÔNG ai gọi — engine mồ côi"| codes["Mã định danh<br/>(thực tế sinh bởi trigger riêng / client-side)"]
     settings["settings (key-value)"] -->|payment_auto_approve| collect["CollectPaymentDialog<br/>(tự duyệt phiếu thu)"]
     settings -->|onboarding_completed| onboard["OnboardingWizard"]
+    settings -->|"acceptance_geofence<br/>(RPC secdef doc cua OWNER)"| geo["Hoàn thành công việc<br/>(geo-fence nghiệm thu)"]
     settings -.->|"19 key đơn còn lại<br/>chưa có consumer nào"| ghost["(chưa điều khiển gì)"]
     tpl["document_templates"] -->|FK *_template_id| domains["Toà nhà · Phòng · HĐ · Hoá đơn"]
     tpl -->|"file .docx + ~99 placeholder"| pc["PrintContractDialog<br/>(contractTemplateEngine)"]
@@ -223,7 +242,7 @@ Trigger `BEFORE INSERT OR UPDATE ON document_templates WHEN (NEW.is_default = TR
 
 Flow tạo mẫu thực tế trong `useCreateDocumentTemplate`: **upload file TRƯỚC** → tính code → `INSERT` với **vòng retry tối đa 25 lần** tăng số liên tiếp khi gặp `23505`; chỉ toast "Mã mẫu đã tồn tại" khi hết 25 lần (lỗi khác 23505 thì dừng ngay). Insert thất bại hẳn → rollback xoá file đã upload.
 
-**Hạn chế đã biết:** sinh mã client-side vốn race-prone (2 tab/2 staff cùng đọc max rồi cùng insert) — retry tự chữa được phần lớn, nhưng worst-case tốn 26 round-trip; phương án bền hơn là chuyển về DB (trigger BEFORE INSERT, hoặc `generate_next_code` có `FOR UPDATE` đang bỏ không — §4.5).
+**Hạn chế đã biết:** sinh mã client-side vốn race-prone (2 tab/2 staff cùng đọc max rồi cùng insert) — retry tự chữa được phần lớn, nhưng worst-case tốn 26 round-trip; phương án bền hơn là chuyển về DB (trigger BEFORE INSERT theo mẫu secdef + advisory lock — xem bug class 13bf498 ở §4.5, hoặc `generate_next_code` có `FOR UPDATE` đang bỏ không).
 > Lưu ý đặt tên: RPC trigger tên `generate_template_code()` trong DB **không thuộc** bảng này — nó sinh mã `MT...` cho `income_expense_templates` (domain Thu chi). Đừng nhầm.
 
 ### 4.4. Upload file mẫu lên Storage (bucket private)
@@ -241,6 +260,8 @@ Hai hàm trên `code_sequences`:
 **Invariant:** mã sinh ra duy nhất tăng dần trong kỳ; bộ đếm reset theo `reset_period`. `code_sequences` không có UI riêng trong domain — nó được điều khiển gián tiếp qua object `code_generation_config` (settings) ở mức ý niệm.
 
 **Hiện trạng: engine "mồ côi" hoàn toàn.** `generate_code`/`generate_next_code` KHÔNG được FE gọi ở bất kỳ đâu (grep toàn `src` chỉ match định nghĩa kiểu trong `types.ts`) và cũng không có trigger SQL nào gọi chúng. Mọi mã thực tế trong hệ thống sinh bởi trigger riêng (`generate_contract_number`, `generate_invoice_number_v2` — dùng `COUNT(*)+1` theo năm, xem cảnh báo lệch key ở §6; `generate_template_code` cho `income_expense_templates` bên Thu chi) hoặc client-side (`MHD` của `document_templates`, §4.3). Bảng đã được seed 9 `object_type` cho mọi profile (§2.5) nhưng `current_sequence` không bao giờ nhúc nhích.
+
+**Bug class đã vá trên các trigger sinh mã thực tế (2026-07-01, commit 13bf498):** trigger tính `MAX()`/`COUNT()` trên bảng có RLS mà chạy `SECURITY INVOKER` (mặc định) sẽ đếm trên **góc nhìn RLS của người gọi** — staff chỉ thấy phần bảng thuộc toà mình được gán → MAX quá thấp → sinh mã đã tồn tại → 23505, insert fail âm thầm với staff trong khi chủ (is_admin thấy hết) test không lộ lỗi. Fix ở [20260701000001_secdef_code_generators.sql](supabase/migrations/20260701000001_secdef_code_generators.sql): **7 hàm** (`auto_generate_reading_code`, `set_material_purchase_code`, `set_material_usage_code`, `set_material_adjustment_code`, `auto_generate_voucher_code`, `generate_template_code`, `generate_invoice_number_v2`) chuyển **SECURITY DEFINER + `SET search_path = public` + `pg_advisory_xact_lock` theo prefix** (chống race MAX+1), logic giữ nguyên. **Quy ước:** trigger sinh mã MỚI phải theo mẫu `generate_job_code` (secdef + search_path + advisory lock); riêng `generate_invoice_number_v2` counter vẫn là `COUNT(*)+1` theo năm (xoá hoá đơn vẫn có thể trùng số — chỉ race đã được khoá).
 
 ### 4.6. Trigger `updated_at`
 `settings`, `document_templates`, `signature_templates`, `code_sequences` gắn trigger `update_updated_at_column()` (`set_*_updated_at`) để tự cập nhật `updated_at` mỗi lần UPDATE — `settings`/`signature_templates`/`code_sequences` ở [008_triggers_functions.sql](supabase/migrations/008_triggers_functions.sql), `document_templates` ở [016_document_templates.sql](supabase/migrations/016_document_templates.sql). Riêng `hotlines`, `subscription_plans`, `user_subscriptions` có cột `updated_at` nhưng **KHÔNG có trigger** — giá trị chỉ đổi khi client ghi trực tiếp (các hook không set nên thực tế giữ nguyên).
@@ -278,7 +299,7 @@ Tính năng tiêu thụ lớn nhất của `document_templates`: in HĐ thuê t�
 ### 5.1. `GeneralSettingsPage` — Cài đặt chung
 **Route:** `/settings/general` · **File:** [GeneralSettingsPage.tsx](src/pages/settings/GeneralSettingsPage.tsx)
 
-**Mục đích:** bật/tắt và chỉnh ~20 cấu hình hành vi hệ thống, gom theo 5 tab: Cài đặt cơ bản (logo) · Hợp đồng · Hoá đơn · Thu chi · Thông báo.
+**Mục đích:** bật/tắt và chỉnh ~20 cấu hình hành vi hệ thống, gom theo 5 tab: Cài đặt cơ bản (logo + geo-fence nghiệm thu) · Hợp đồng · Hoá đơn · Thu chi · Thông báo.
 
 **Dữ liệu hiển thị:**
 - `useGeneralSettings()` — query 1 lần toàn bộ key đơn (`.in('key', keys)`), merge với `GENERAL_SETTINGS_DEFAULTS` để mọi key luôn có giá trị.
@@ -292,9 +313,13 @@ Tính năng tiêu thụ lớn nhất của `document_templates`: in HĐ thuê t�
 
 Tab cơ bản: nút "Tải lên logo" mở file picker; hiện tại chỉ tạo `URL.createObjectURL` preview cục bộ và lưu vào `company_info.company_logo_url` (comment trong code ghi rõ "in production, upload to Supabase Storage" — chưa upload thật). **Hậu quả:** `blob:` URL chỉ sống trong session hiện tại nhưng vẫn bị **persist vào DB** kèm toast "CẬP NHẬT thành công" — sau reload/máy khác ảnh chết. Cần upload thật lên bucket (private + signed URL theo quy ước dự án) trước khi tin tính năng này.
 
+Tab cơ bản còn có card **"Kiểm tra vị trí khi nghiệm thu"** (2026-06-28): Switch bật/tắt geo-fence + NumberInput bán kính (10–2000m, mặc định 70) → `useAcceptanceGeofenceSetting`/`useUpdateAcceptanceGeofenceSetting` upsert **key gộp `acceptance_geofence`** (§2.1). Cấu hình này quyết định việc gắn toạ độ GPS + cảnh báo khoảng cách khi staff bấm "Hoàn thành công việc" (audit-only, KHÔNG chặn; mốc so là `buildings.latitude/longitude` — xem [02-co-cau-toa-nha-phong-dich-vu.md](02-co-cau-toa-nha-phong-dich-vu.md) §2.2 + [11-cong-viec-su-co.md](11-cong-viec-su-co.md)). Migration [20260628000001_acceptance_geofence.sql](supabase/migrations/20260628000001_acceptance_geofence.sql).
+
 > ⚠️ **19/20 key là "cấu hình ma":** trong 20 key đơn của trang này, **chỉ duy nhất `payment_auto_approve` có consumer thật** ([CollectPaymentDialog](src/components/payments/CollectPaymentDialog.tsx) tự query settings để auto-duyệt phiếu thu). 19 key còn lại (`invoice_auto_approve`, `contract_e_signing_enabled`, `invoice_payment_deadline_days`, `notification_*`…) **không được đọc ở bất kỳ đâu** ngoài chính trang này + `useSettings` — gạt switch không đổi hành vi gì của hệ thống. Phía DB cũng không có trigger nào đọc các key đơn này. Chi tiết xem §6.
 
 > ⚠️ **Settings KHÔNG chảy từ owner xuống staff:** `useSetting`/`useIndividualSetting`/`useGeneralSettings` đọc theo RLS `auth.uid()` (không filter `user_id` owner), còn upsert luôn ghi `user_id = user.id` của người thao tác. Staff mở `/settings/general` sẽ thấy toàn default và gạt switch tạo bản ghi settings **của chính staff** — cấu hình owner bật không có hiệu lực với staff (consumer duy nhất `payment_auto_approve` cũng đọc theo `user.id` người lập phiếu). DB có policy `settings_staff_update` cho staff sửa settings của owner nhưng FE không bao giờ dùng (và staff không SELECT được dòng owner để mà sửa).
+>
+> **NGOẠI LỆ duy nhất — `acceptance_geofence` CÓ chảy owner→staff:** staff không đọc key này trực tiếp mà qua RPC **`get_acceptance_geofence_config()`** (SECURITY DEFINER, [20260628000001](supabase/migrations/20260628000001_acceptance_geofence.sql)) — hàm tự resolve owner của workspace (qua `staff_assignments`, super-admin = chính mình) rồi đọc dòng settings **của owner**, trả `{enabled, radius_m}` (fallback an toàn `{true, 70}`). FE dùng [useAcceptanceGeofence.ts](src/hooks/useAcceptanceGeofence.ts) ở luồng hoàn thành công việc. Đây là **mẫu nên theo** khi cần một setting của owner có hiệu lực với toàn bộ staff.
 
 **Validate / edge case:**
 - Mỗi item có kiểu (`toggle`/`select`/`number`) với `min`/`max` (vd hạn thanh toán 1–90 ngày) ở UI; không có zod riêng — giá trị được upsert thẳng dưới dạng JSONB scalar.
@@ -422,11 +447,14 @@ flowchart TD
 - **`settings` → toàn hệ thống — thực tế dòng chảy gần như ĐỨT:**
   - Consumer thật duy nhất của 20 key đơn: **`payment_auto_approve`** → [CollectPaymentDialog](src/components/payments/CollectPaymentDialog.tsx) (domain Thu chi) tự query settings để auto-duyệt phiếu thu — và đọc theo `user_id` của **người thao tác**, nên owner bật mà staff lập phiếu thì không có hiệu lực.
   - 19 key còn lại (`invoice_auto_approve`, `invoice_auto_approve_meter`, `contract_e_signing_enabled`, `contract_auto_create_on_renewal`, `invoice_payment_deadline_days`, `notification_*`…) **chưa nơi nào đọc** — "cấu hình ma", xem cảnh báo §5.1.
-  - Key `onboarding_completed` (ngoài 20 key đơn + 6 key gộp) do [OnboardingWizard](src/components/onboarding/OnboardingWizard.tsx) đọc/ghi qua `useIndividualSetting` — phục vụ luồng onboarding sau đăng ký.
-  - **Lệch key giữa FE và trigger DB sinh số:** `generate_invoice_number(_v2)`/`generate_contract_number` đọc settings key **`invoice_number_format`/`contract_number_format`** (field `value->>'invoice_prefix'`/`'contract_prefix'`), nhưng FE chỉ ghi key **`invoice_config`/`contract_config`** với field `invoice_number_prefix`/`contract_number_prefix` → prefix tuỳ chỉnh **không bao giờ được áp**, mã luôn fallback `INV-YYYY-00001`/`HD-YYYY-00001`. Counter cũng là `COUNT(*)+1` theo năm — xoá hoá đơn có thể gây trùng số. (Hướng sửa: đồng bộ tên key, hoặc chuyển sang `code_sequences`/`generate_next_code` có `FOR UPDATE` đang bỏ không.)
+  - Key `onboarding_completed` (ngoài 20 key đơn + 7 key gộp) do [OnboardingWizard](src/components/onboarding/OnboardingWizard.tsx) đọc/ghi qua `useIndividualSetting` — phục vụ luồng onboarding sau đăng ký.
+  - Key gộp **`acceptance_geofence`** → domain **Công việc**: luồng "Hoàn thành công việc" đọc `{enabled, radius_m}` qua RPC `get_acceptance_geofence_config()` (SECURITY DEFINER — consumer thật thứ hai, và là key duy nhất chảy owner→staff, xem §5.1) để gắn GPS + cảnh báo khoảng cách so `buildings.latitude/longitude` ([11-cong-viec-su-co.md](11-cong-viec-su-co.md)).
+  - **Lệch key giữa FE và trigger DB sinh số:** `generate_invoice_number(_v2)`/`generate_contract_number` đọc settings key **`invoice_number_format`/`contract_number_format`** (field `value->>'invoice_prefix'`/`'contract_prefix'`), nhưng FE chỉ ghi key **`invoice_config`/`contract_config`** với field `invoice_number_prefix`/`contract_number_prefix` → prefix tuỳ chỉnh **không bao giờ được áp**, mã luôn fallback `INV-YYYY-00001`/`HD-YYYY-00001`. Counter cũng là `COUNT(*)+1` theo năm — xoá hoá đơn có thể gây trùng số (race song song thì ĐÃ được khoá từ 13bf498: `generate_invoice_number_v2` nay SECURITY DEFINER + advisory lock, xem §4.5 — nhưng lệch key và counter đếm-lỗ vẫn còn nguyên). (Hướng sửa: đồng bộ tên key, hoặc chuyển sang `code_sequences`/`generate_next_code` có `FOR UPDATE` đang bỏ không.)
 - **`hotlines` → module Sale Phòng**: [DisplaySettingsTab](src/components/sale-phong/DisplaySettingsTab.tsx) (`/sale-phong`) chọn "Hotline hiển thị" cho trang Phòng trống công khai `/r/:token` (mặc định lấy hotline đầu tiên).
 - **`code_sequences` → (không ai)**: engine `generate_code`/`generate_next_code` hiện mồ côi — không FE/trigger nào gọi (§4.5); mọi mã thực tế sinh bởi trigger riêng hoặc client-side.
 - **`subscription_plans.max_rooms/max_buildings` → Toà nhà / Phòng**: giới hạn tài nguyên (hiện chưa enforce cứng — §5.7).
+- **`profiles.ui_preferences` → các trang có toggle hiển thị**: Phân bổ lợi nhuận (ẩn thẻ thống kê/số tổng/hạng mục đặc biệt — desktop + mobile), trang "Ngày hôm nay của tôi" (`v5_onboarding_ack`) — xem §2.8.
+- **Cấu hình "họ hàng" nằm NGOÀI domain này** (đừng tìm trong `settings`): `public_room_settings` (hiển thị kênh công khai — [15-kenh-cong-khai-sale-thu-tien.md](15-kenh-cong-khai-sale-thu-tien.md)) và cấu hình lương v5 + kill-switch trong `salary_bonus_rules.rules` qua RPC `get/set_salary_v5_config` ([17-luong-thuong.md](17-luong-thuong.md)) — bảng ranh giới ở §1.
 
 **Vào (domain này điều hướng / phụ thuộc nơi khác):**
 - **`CategoriesPage` → Tài chính / Tài sản / Chỉ số / Vận hành**: hub link sang `/finance/cashbooks`, loại thu chi, định mức dịch vụ, đồng hồ công tơ, nhà cung cấp, kho/loại tài sản, tầng, loại công việc — domain Cài đặt đóng vai "cổng vào" các danh mục con thuộc domain khác. Lưu ý: bảng `income_expense_types` (trang chính `/settings/income-expense-types`, doc 04) đi theo trục quyền RBAC `can_access_org_entity('categories', ...)` từ [batch A](supabase/migrations/20260528000001_rbac_batch_a_config_tables.sql) — key `categories` chính là module trong group `settings` của permissions.ts (§4.9).

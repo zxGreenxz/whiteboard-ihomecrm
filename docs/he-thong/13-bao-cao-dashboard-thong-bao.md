@@ -2,8 +2,10 @@
 
 > Domain "tổng hợp & cảnh báo" của CRM. Phần lớn là **READ tổng hợp** dữ liệu từ
 > các domain khác (HĐ, hoá đơn, thu chi, cọc, lead, công việc) để dựng KPI, biểu
-> đồ, danh sách báo cáo; cộng thêm **3 bảng riêng** cho hệ thống thông báo
-> (`notifications`, `notification_logs`, `notification_templates`).
+> đồ, danh sách báo cáo; cộng thêm **4 bảng riêng** cho hệ thống thông báo
+> (`notifications`, `notification_logs`, `notification_templates`,
+> `push_subscriptions`) + các RPC báo cáo (`fa_*`, `cashbook_settlement_report`,
+> `manager_collection_cycle_report`). Chốt theo code 2026-07-03.
 
 ## 1. Tổng quan & vai trò nghiệp vụ
 
@@ -12,17 +14,21 @@ Domain này gồm 3 nhóm chức năng tách biệt về dữ liệu nhưng cùn
 
 | Nhóm | Vai trò | Sở hữu bảng? |
 |------|---------|--------------|
-| **Dashboard** (`/`, [Dashboard.tsx](src/pages/Dashboard.tsx)) | KPI tổng (số căn, lấp đầy, trống — **đã trừ phòng đã cọc**, doanh thu tháng, công nợ; không có card "Đã cọc" riêng, nhóm này chỉ hiện thành segment trên OccupancyChart), biểu đồ doanh thu/lấp đầy/công nợ, danh sách cảnh báo & hoạt động gần đây, khu thẻ "Báo cáo & Phân tích" | Không — đọc `rooms`/`contracts`/`payments`/`invoices`/`issues`/`leads`/`deposits` |
+| **Dashboard** (`/`, [Dashboard.tsx](src/pages/Dashboard.tsx); trên điện thoại: `/dashboard` → [DashboardMobilePage](src/pages/DashboardMobilePage.tsx) qua [DashboardRoute](src/pages/home/DashboardRoute.tsx) rẽ `usePhoneViewport` — a3b5af4) | KPI tổng (số căn, lấp đầy, trống — **đã trừ phòng đã cọc**, doanh thu tháng, công nợ; không có card "Đã cọc" riêng, nhóm này chỉ hiện thành segment trên OccupancyChart), biểu đồ doanh thu/lấp đầy/công nợ, danh sách cảnh báo & hoạt động gần đây, khu thẻ "Báo cáo & Phân tích" | Không — đọc `rooms`/`contracts`/`payments`/`invoices`/`issues`/`leads`/`deposits` |
 | **Báo cáo BĐS** (`/reports/real-estate/*`) | 8 báo cáo vận hành bất động sản: phòng trống, HĐ sắp hết hạn, lấp đầy, gia hạn/chuyển nhượng, khuyến mại, cho thuê mới, bỏ trả/thanh lý, tỉ lệ chi phí | Không — đọc `rooms`/`contracts`/`contract_extensions`/`income_expenses` |
-| **Báo cáo Tài chính** (`/reports/finance/*`) | 9 báo cáo dòng tiền/công nợ: sổ quỹ ngày, dòng tiền, phân bổ lợi nhuận, chia LN cổ đông, công nợ HĐ mới, khách nợ, lịch thanh toán, tiền thừa, danh sách cọc | Không — đọc `income_expenses`/`invoices`/`payments`/`deposits` |
-| **Thông báo** (`/notifications`, chuông header) | Hàng đợi thông báo đa kênh (IN_APP đang dùng); auto-sinh nhắc HĐ hết hạn, nhắc/quá hạn hoá đơn, thiếu cọc | **Có** — `notifications`, `notification_logs`, `notification_templates` |
+| **Báo cáo Tài chính** (`/reports/finance/*`) | **12** báo cáo dòng tiền/công nợ (hub ghi "12 loại"): **Phân tích tài chính (§5.8)**, **Bàn giao tiền & Đối soát sổ (§5.9)**, **Chu kỳ Thu — Bàn giao (§5.10)**, sổ quỹ ngày, dòng tiền, phân bổ lợi nhuận (trang gộp ProfitHubPage — xem [doc 12](docs/he-thong/12-co-dong-loi-nhuan.md)), chia LN cổ đông (redirect vào trang gộp), công nợ HĐ mới, khách nợ, lịch thanh toán, tiền thừa, danh sách cọc | Không — đọc `income_expenses`/`invoices`/`payments`/`deposits` + RPC (`fa_*`, `cashbook_settlement_report`, `manager_collection_cycle_report`) |
+| **Thông báo** (`/notifications`, chuông header; trên điện thoại rẽ sang [NotificationsMobilePage](src/pages/NotificationsMobilePage.tsx)) | Hàng đợi thông báo đa kênh (IN_APP + **Web Push PWA** đang chạy thật — §4.5); auto-sinh nhắc HĐ hết hạn, nhắc/quá hạn hoá đơn, thiếu cọc; thông báo thưởng việc `SALARY_BONUS` | **Có** — `notifications`, `notification_logs`, `notification_templates`, **`push_subscriptions`** |
 
 **Điểm cốt lõi cần nhớ:**
 
-- **Báo cáo = view-only.** Không có RPC báo cáo riêng trong DB; mọi báo cáo được
-  tính **client-side** trong hook React Query (`useReports`, `useDashboard`,
-  `useCashBook`, `useAccrualReport`). Tính đúng/sai phụ thuộc vào việc query đúng
-  bảng nguồn + RLS lọc dữ liệu theo quyền.
+- **Báo cáo = view-only, nhưng KHÔNG còn thuần client-side.** Nhóm báo cáo cũ
+  vẫn tính trong hook React Query (`useReports`, `useDashboard`, `useCashBook`,
+  `useAccrualReport`); từ 2026-06-11 trở đi các báo cáo mới chuyển tính toán
+  xuống **RPC chuyên dụng** (`SECURITY DEFINER` + tự kiểm scope bằng
+  `can_access_building()`, KHÔNG lọc `user_id` → tính đủ phiếu nhân viên tạo):
+  họ `fa_*` (Phân tích tài chính, §5.8), `cashbook_opening_balance` (sổ quỹ),
+  `cashbook_settlement_report` (§5.9), `manager_collection_cycle_report`
+  (§5.10). Tính đúng/sai phụ thuộc query đúng bảng nguồn + RLS/scope.
 - **Sổ quỹ/dòng tiền lấy 1 nguồn duy nhất** = `income_expenses` (canonical
   ledger). Mỗi payment hoá đơn đã có row mirror trong `income_expenses` → tuyệt
   đối **không** cộng thêm bảng `payments`/`expenses` (đã từng gây double-count,
@@ -35,9 +41,13 @@ Domain này gồm 3 nhóm chức năng tách biệt về dữ liệu nhưng cùn
   `recompute_room_reservation` set từ phiếu cọc IE) **không** tính là trống và
   **không** tính là đã thuê — Dashboard stats, OccupancyChart, báo cáo lấp đầy
   và báo cáo phòng trống đều tách/loại nhóm "Đã cọc" này.
-- **Thông báo hiện chỉ chạy kênh IN_APP.** Các kênh EMAIL/SMS/ZALO/PUSH có trong
-  enum + cột template nhưng chưa có worker gửi thật; `notification_logs` chưa
-  được ghi từ code app (chỉ có schema + RLS đọc).
+- **Thông báo chạy 2 kênh thật: IN_APP + Web Push PWA** (từ 2026-06-27, xem
+  §4.5): service worker [public/sw.js](public/sw.js) + [push.ts](src/lib/push.ts)
+  + edge function `send-push` + bảng `push_subscriptions`. Lưu ý kênh push đi
+  **đường riêng** (edge fn đọc `push_subscriptions`), KHÔNG ghi row
+  `notifications.channel='PUSH'`. Các kênh EMAIL/SMS/ZALO vẫn chỉ là khung enum
+  + cột template; `notification_logs` chưa được ghi từ code app (chỉ có schema
+  + RLS đọc).
 - **Auto-sinh thông báo chạy ở client và scope theo OWNER**, không phải cron DB:
   hook [useScheduledNotifications](src/hooks/useScheduledNotifications.ts) gọi
   `runScheduledNotifications(userId)` khi mount Dashboard và lặp mỗi 6 giờ.
@@ -69,6 +79,12 @@ Cột chủ chốt:
 - `invoice_id` / `contract_id` / `issue_id` (uuid) — **deep-link** tới thực thể
   liên quan; UI điều hướng theo thứ tự ưu tiên invoice → contract → issue
   (riêng nhánh issue hiện là link chết — xem §5.2).
+- `job_id` (uuid, FK → `jobs`, CASCADE) + `metadata` (jsonb, default `{}`) —
+  thêm từ [20260629000011_award_job_bonus.sql](supabase/migrations/20260629000011_award_job_bonus.sql)
+  cho thông báo thưởng việc `SALARY_BONUS`: metadata chứa `bonus_kind`
+  (`JOB`/`DAY_BONUS`), số tiền…; 2 **unique partial index** theo
+  `(user_id, job_id)` và `(user_id, metadata->>'bonus_date')` làm chốt chống
+  trùng thưởng (dedup ở DB — chặt hơn cơ chế query-rồi-insert của scheduler §4.2).
 - `scheduled_at` (timestamptz) — thời điểm hẹn phát (cho kênh có lịch); auto-sinh
   IN_APP để null (phát ngay).
 - `sent_at` (timestamptz), `status` (`notification_status`, default `PENDING`),
@@ -129,12 +145,21 @@ và [invoiceHelpers.ts](src/lib/invoiceHelpers.ts) (helper `getNotificationConte
 nội dung mẫu nhưng hiện là dead code — xem §6), **không** đọc từ bảng này.
 Bảng là khung mở rộng.
 
+### 2.3b. `push_subscriptions` — đăng ký Web Push theo thiết bị
+
+[20260627000001_push_subscriptions.sql](supabase/migrations/20260627000001_push_subscriptions.sql).
+Mỗi dòng = 1 subscription trình duyệt/thiết bị của 1 user: `user_id`,
+`endpoint` (UNIQUE), khoá `p256dh`/`auth`, `user_agent`. RLS own-only (user
+tự đăng ký/hủy); edge function `send-push` (service role) đọc bảng này để
+bắn push tới **mọi thiết bị** của user đích, tự xoá subscription chết
+(endpoint 404/410). Xem luồng ở §4.5.
+
 ### 2.4. Enum của domain
 
 | Enum | Nhãn | Ghi chú dùng thực tế |
 |------|------|----------------------|
-| `notification_type` | `NEW_INVOICE, PAYMENT_REMINDER, OVERDUE_INVOICE, CONTRACT_EXPIRING, ISSUE_RESOLVED, GENERAL_ANNOUNCEMENT, CUSTOM, DEPOSIT_SHORTFALL` | Auto-sinh thực tế: `CONTRACT_EXPIRING`, `PAYMENT_REMINDER`, `OVERDUE_INVOICE`, `DEPOSIT_SHORTFALL`. `NEW_INVOICE`/`ISSUE_RESOLVED`/`GENERAL_ANNOUNCEMENT`/`CUSTOM` **hiện không được sinh từ đâu** — helper tạo có sẵn (`createInvoiceNotification`/`createPaymentConfirmationNotification` trong invoiceHelpers, `useCreateNotification`) nhưng đều không có call site (dead code, xem §6). `DEPOSIT_SHORTFALL` chưa nằm trong type union của hook (dòng 7–14) lẫn danh sách nút lọc của trang `/notifications` nhưng đã được insert ở scheduler — rơi vào nhánh badge "Khác". |
-| `notification_channel` | `IN_APP, EMAIL, SMS, ZALO, PUSH` | Chỉ `IN_APP` được tạo & hiển thị; còn lại là khung. |
+| `notification_type` | `NEW_INVOICE, PAYMENT_REMINDER, OVERDUE_INVOICE, CONTRACT_EXPIRING, ISSUE_RESOLVED, GENERAL_ANNOUNCEMENT, CUSTOM, DEPOSIT_SHORTFALL, SALARY_BONUS` | Auto-sinh thực tế: `CONTRACT_EXPIRING`, `PAYMENT_REMINDER`, `OVERDUE_INVOICE`, `DEPOSIT_SHORTFALL` (scheduler §4.2) + `SALARY_BONUS` (RPC `award_job_bonus` khi hoàn thành việc có thưởng — §4.5, đã có trong type union của hook). `NEW_INVOICE`/`ISSUE_RESOLVED`/`GENERAL_ANNOUNCEMENT`/`CUSTOM` **hiện không được sinh từ đâu** — helper tạo có sẵn (`createInvoiceNotification`/`createPaymentConfirmationNotification` trong invoiceHelpers, `useCreateNotification`) nhưng đều không có call site (dead code, xem §6). `DEPOSIT_SHORTFALL` chưa nằm trong type union của hook lẫn danh sách nút lọc của trang `/notifications` nhưng đã được insert ở scheduler — rơi vào nhánh badge "Khác". |
+| `notification_channel` | `IN_APP, EMAIL, SMS, ZALO, PUSH` | Chỉ `IN_APP` được tạo & hiển thị trong bảng `notifications`. Web Push **không dùng** nhãn `PUSH` của bảng này — đi đường riêng qua `push_subscriptions` + edge fn `send-push` (§4.5). EMAIL/SMS/ZALO là khung. |
 | `notification_status` | `PENDING, SENT, FAILED, CANCELLED, READ` | Với IN_APP: `PENDING`=chưa đọc, `READ`=đã đọc. `SENT/FAILED/CANCELLED` dành cho kênh ngoài. |
 
 ## 3. Sơ đồ quan hệ dữ liệu
@@ -146,7 +171,9 @@ erDiagram
     notifications ||--o{ notification_logs : "1 thông báo → N log giao"
     contracts ||--o{ notifications : "contract_id (deep-link)"
     issues ||--o{ notifications : "issue_id (deep-link)"
+    jobs ||--o{ notifications : "job_id (thưởng SALARY_BONUS)"
     invoices ||..o{ notifications : "invoice_id (uuid, không FK cứng)"
+    auth_users ||--o{ push_subscriptions : "thiết bị đăng ký Web Push"
 
     notifications {
         uuid id PK
@@ -156,10 +183,18 @@ erDiagram
         uuid invoice_id "deep-link"
         uuid contract_id FK
         uuid issue_id FK
+        uuid job_id FK "thưởng việc"
+        jsonb metadata "bonus_kind, dedup"
         text content
         enum status "PENDING=chưa đọc / READ"
         timestamptz scheduled_at
         timestamptz sent_at
+    }
+    push_subscriptions {
+        uuid user_id FK "own-only"
+        text endpoint "UNIQUE"
+        text p256dh
+        text auth
     }
     notification_logs {
         uuid id PK
@@ -230,16 +265,21 @@ flowchart TD
 > `<OperationsSummary>` (`useDeposits`, [OperationsSummary.tsx](src/components/dashboard/OperationsSummary.tsx)
 > dòng 7, 85). Riêng cảnh báo thiếu cọc lại đọc `contracts.deposit_remaining`
 > ([useDashboard.ts](src/hooks/useDashboard.ts) ~dòng 386–400), không phải bảng
-> `deposits`. Cạnh `ie → useIE`: trang Phân bổ lợi nhuận mặc định dùng
-> `useIncomeExpenses`/`useIncomeExpenseStats` của domain Thu chi (xem §5.5).
+> `deposits`. Cạnh `ie → useIE`: trang Phân bổ lợi nhuận **mặc định chạy chế độ
+> dồn tích** (`useAccrualMonthReport`); tắt toggle mới rơi về
+> `useIncomeExpenses`/`useIncomeExpenseStats` theo ngày phiếu (xem §5.5).
+> Sơ đồ trên chưa vẽ nhánh RPC mới (`fa_*`, settlement/cycle — §5.8–§5.10).
 
 ## 4. Quy tắc nghiệp vụ & tự động hoá
 
-Domain này **không có RPC/trigger DB riêng**. Tự động hoá nằm ở 2 chỗ: (a) bộ
-sinh thông báo client-side, (b) các phép tổng hợp trong hook báo cáo. Bảo vệ
-dữ liệu là RLS.
+Tự động hoá nằm ở 3 chỗ: (a) bộ sinh thông báo client-side (§4.2), (b) các
+phép tổng hợp trong hook báo cáo (§4.3), (c) **kênh đẩy Web Push** — service
+worker + edge function `send-push` (§4.5). Ngoài ra domain sở hữu các **RPC
+báo cáo** `fa_*` / `cashbook_settlement_report` / `manager_collection_cycle_report`
+(mô tả tại trang tương ứng §5.8–§5.10). Bảo vệ dữ liệu là RLS + scope
+`can_access_building()` trong RPC.
 
-### 4.1. RLS của 3 bảng thông báo
+### 4.1. RLS của các bảng thông báo
 
 Định nghĩa gốc tại [007_advanced_tables.sql](supabase/migrations/007_advanced_tables.sql)
 (dòng 211–313):
@@ -339,8 +379,8 @@ quá hạn riêng, tránh nhắc 2 lần cùng 1 khoản. Điều kiện `.or('d
   hạng mục có kỳ áp dụng `[start,end]` nhiều tháng → **chia đều** ra các tháng
   (`allocateAmountByMonth`); hạng mục null-period → ghi trọn vào tháng
   `voucher_date`. Invariant: `Σ` mọi phần qua mọi tháng của mọi item ==
-  `Σ total_amount` của voucher. Filter toà: **`building_ids: string[]`** (từ
-  `BuildingMultiSelect`) `.in('building_id', ids)` trực tiếp — không round-trip;
+  `Σ total_amount` của voucher. Filter toà: **`building_ids: string[]`** (nay từ
+  `BuildingFilterSelect` đơn-chọn, shape mảng 0/1) `.in('building_id', ids)` trực tiếp — không round-trip;
   `area_id` legacy (map khu → `buildings.area_id` → `.in`) vẫn còn nhánh nhưng
   UI không set nữa. `building_ids` nằm trong queryKey — đổi chọn toà không trả
   cache cũ.
@@ -355,15 +395,64 @@ quá hạn riêng, tránh nhắc 2 lần cùng 1 khoản. Điều kiện `.or('d
 - **Tỉ lệ bỏ trả** (`useTerminationsReport`): mẫu số = số HĐ chưa xoá, `status ≠ DRAFT`;
   ngày hiệu lực lấy `actual_end_date ?? end_date` (lọc client-side để fallback).
 
-### 4.4. Module quyền của domain trong catalog permissions
+### 4.4. Module quyền của domain — route ĐÃ gate theo từng trang (f528cd8)
 
-[permissions.ts](src/lib/permissions.ts) khai báo 4 module thuộc domain này:
-`dashboard`, `notifications` (nhóm "Tổng quan", dòng 48–49) và
-`reports_real_estate`, `reports_finance` (nhóm "Vận hành & Báo cáo", dòng
-109–110, có action `export`). **Hiện trạng:** các route `/reports/*` trong
-[App.tsx](src/App.tsx) (dòng 276–309) chỉ bọc `ProtectedRoute` thường — **chưa
-gate** theo module quyền; 2 key `reports_*` chưa được kiểm ở đâu ngoài catalog
-(chỉ phục vụ ma trận phân quyền UI).
+Từ đợt cải tổ phân quyền theo TRANG (2026-06-11), catalog chuyển sang
+[permissionPages.ts](src/lib/permissionPages.ts): mỗi báo cáo là 1 **feature key**
+trong module `reports_real_estate` / `reports_finance` (vd
+`reports_finance.analysis`, `daily_cashbook`, `cash_flow`,
+`profit_distribution`, `debt`, `customer_debt`, `payment_schedule`,
+`overpayment`, `deposits_report`, `handover_report`, `reconcile`,
+`collection_cycle`; BĐS: `vacant_rooms`, `expiring`, `renewals_transfers`,
+`occupancy`, `promotions`, `new_leases`, `terminations`, `expense_ratio`).
+
+**Hiện trạng route trong [App.tsx](src/App.tsx): ĐÃ gate đầy đủ** — mọi route
+`/reports/**` bọc `RequirePermission module=... action=...` theo đúng feature
+key (kiểm bằng `canUse` có fallback về quyền gốc `view` cho ma trận cũ). Ngoại
+lệ: `/reports/finance/profit-distribution` chỉ bọc `ProtectedRoute` vì
+ProfitHubPage **tự gate từng tab bên trong** (xem [doc 12](docs/he-thong/12-co-dong-loi-nhuan.md));
+`/reports/coverage` (dashboard chủ lương v5) bọc `AdminOnlyRoute`. Fallback
+đặc biệt: `collection_cycle` fallback về **`invoices.record_payment`** (75a4919)
+— người được thu tiền tự xem chu kỳ Thu→Bàn giao của MÌNH dù chủ tắt
+`reports_finance.view` (không mở được các báo cáo tài chính khác).
+
+### 4.5. Kênh thông báo đẩy — Web Push PWA (2026-06-27)
+
+Đẩy thông báo lên **thanh trạng thái điện thoại/desktop** kể cả khi không mở
+tab app. Hạ tầng 4 mảnh:
+
+- **Service worker [public/sw.js](public/sw.js)** — nhận sự kiện `push`, hiện
+  notification, click mở đúng `url` deep-link.
+- **[src/lib/push.ts](src/lib/push.ts)** — phía client: đăng ký SW, xin quyền,
+  subscribe PushManager rồi lưu vào bảng `push_subscriptions` (§2.3b). VAPID
+  **public** key nhúng FE (override được qua `VITE_VAPID_PUBLIC_KEY`); có
+  helper `isStandalone()`/`isIOS()` vì iOS chỉ cho push khi đã "Thêm vào màn
+  hình chính".
+- **Edge function [send-push](supabase/functions/send-push/index.ts)** — gửi
+  thật bằng VAPID private key (chỉ nằm trong **Supabase secrets**:
+  `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`). 2 chế độ theo
+  caller: **service role** (worker Zalo, trigger nội bộ — tin `body.userId`,
+  gửi cho user bất kỳ) vs **JWT user thường** (self-mode — chỉ gửi cho chính
+  mình, chống spam người khác). Tự dọn subscription chết (404/410).
+- **Bảng `push_subscriptions`** — RLS own-only.
+
+Nguồn phát hiện có 2 luồng:
+
+1. **Thưởng hoàn thành việc** ([salaryBonusNotify.ts](src/lib/salaryBonusNotify.ts),
+   8576430): hoàn thành job có thưởng → RPC `award_job_bonus(p_job_id)`
+   (SECURITY DEFINER, mirror `salary_work_ledger` + insert `notifications`
+   type `SALARY_BONUS` có `job_id`/`metadata` dedup ở DB) → hiện popup
+   [BonusToast](src/components/tasks/BonusToast.tsx) trong app + **self-push**
+   qua `send-push` (JWT mode, deep-link `/finance/salary`). Mọi lỗi nuốt êm —
+   không chặn UI hoàn thành việc. Chi tiết quy tắc thưởng: [doc 17](docs/he-thong/17-luong-thuong.md).
+2. **Tin nhắn Zalo mới** — worker Zalo ([worker/index.js](worker/index.js) L71+)
+   gọi `send-push` bằng service role khi có tin nhắn đến (fire & forget; đổi
+   logic phải restart worker). Chi tiết: [doc 18](docs/he-thong/18-zalo-chat.md).
+
+Lưu ý kiến trúc: Web Push **không đi qua** hàng đợi `notifications` với
+`channel='PUSH'` — 2 hệ độc lập (IN_APP lưu bảng, push bắn thẳng theo
+`push_subscriptions`); riêng luồng thưởng ghi CẢ notification IN_APP (để có
+lịch sử + BonusToast) lẫn push.
 
 ## 5. Quy trình theo từng trang
 
@@ -393,12 +482,13 @@ Dữ liệu hiển thị (hook trong [useDashboard.ts](src/hooks/useDashboard.ts
   ngày, chỉ `ACTIVE`), việc khẩn >24h, **thiếu cọc** (HĐ `ACTIVE`,
   `deposit_remaining ≥ 10.000`, loại mode `FIRST_INVOICE`); sắp xếp theo severity.
 - `<RecentActivities>` (`useRecentActivities`) → HĐ/thu tiền/việc mới 7 ngày.
-- Khu **"Báo cáo & Phân tích"** (dòng 205–293): 3 card điều hướng + dòng "Truy
-  cập 19 loại báo cáo chuyên sâu". Card "Báo cáo BĐS" (8 loại → `/reports/real-estate`),
-  card "Báo cáo Tài chính" ghi nhãn "8 loại báo cáo" — **nhãn sai**, hub thực tế
-  có 9 (→ `/reports/finance`), card "Báo cáo Công việc" (3 loại) link
-  `/reports/tasks` — **route không tồn tại** trong App.tsx → rơi NotFound
-  (module công việc đang xây lại).
+- Khu **"Báo cáo & Phân tích"**: 3 card điều hướng + dòng "Truy cập 19 loại
+  báo cáo chuyên sâu". Card "Báo cáo BĐS" (8 loại → `/reports/real-estate`),
+  card "Báo cáo Tài chính" ghi nhãn "8 loại báo cáo" — **nhãn sai**, hub thực
+  tế nay có 12 (→ `/reports/finance`, §5.5), card "Báo cáo Công việc" (3 loại)
+  link `/reports/tasks` — **route không tồn tại** trong App.tsx → rơi NotFound
+  (module công việc đang xây lại). Các nhãn số này chưa được cập nhật theo
+  hub mới.
 - `useScheduledNotifications()` → kích hoạt bộ sinh thông báo (xem §4.2).
 - `OnboardingWizard` hiển thị nếu chưa hoàn tất onboarding.
 
@@ -441,10 +531,33 @@ flowchart LR
     E --> F["Bấm cảnh báo → điều hướng<br/>/invoices · /contracts<br/>(link /issues/:id = route chết → NotFound)"]
 ```
 
+Cập nhật sau 2026-06-10:
+
+- **Bản mobile**: route `/dashboard` ([DashboardRoute](src/pages/home/DashboardRoute.tsx))
+  rẽ theo `usePhoneViewport` — điện thoại render [DashboardMobilePage](src/pages/DashboardMobilePage.tsx)
+  (a3b5af4, thiết kế "Bảng tin" warm-neutral kiểu web-app, mở từ ô Bảng tin
+  trên Home launcher; CSS scope riêng, lazy-load); desktop bị `Navigate` về `/`
+  (Dashboard gốc).
+- **Bộ lọc tòa giữ qua F5**: `usePersistedState('flt:dashboard:building')`
+  (7fd2d3f — sessionStorage, quy ước key `flt:*` toàn app).
+- **2 màn hình thuộc hệ lương v5** (không phải báo cáo tổng hợp của domain này
+  nhưng nằm cạnh trong điều hướng — chi tiết xem [doc 17](docs/he-thong/17-luong-thuong.md)):
+  - `/my-day` — [MyDayPage](src/pages/my-day/MyDayPage.tsx) "Ngày hôm nay của
+    tôi" (44a27d4, salary v5 S3): màn trung tâm phía **nhân viên** — trạng thái
+    ngày, tuyến việc gợi ý, việc đến hạn, tiến trình tiền "TẠM TÍNH"
+    (gain-framing, không màu đỏ/chữ trừ); hook `useMyDaySummary`/`useMyMissions`.
+  - `/reports/coverage` — [OwnerDashboardV5](src/pages/reports/OwnerDashboardV5.tsx)
+    (e20af21, salary v5 S4+S5): dashboard **chủ** bọc `AdminOnlyRoute` — tab
+    coverage/nghi án (máy flag, chủ kết án) + **kill-switch feature flags**
+    (`settings.system_v5.feature_flags.v5_money`/`v5_coverage` — flags đang
+    OFF, hệ cũ nguyên vẹn).
+
 ### 5.2. Trang Thông báo — `/notifications`
 
 [NotificationsPage.tsx](src/pages/NotificationsPage.tsx). Mục đích: trung tâm
-thông báo IN_APP đầy đủ.
+thông báo IN_APP đầy đủ. Trên điện thoại rẽ sang bản mobile "Bản tin"
+[NotificationsMobilePage](src/pages/NotificationsMobilePage.tsx) (a3b5af4).
+Type `SALARY_BONUS` (thưởng việc, §4.5) đã có trong union của hook.
 
 Dữ liệu: `useNotifications()` (lấy **mọi** thông báo `channel='IN_APP'`, mới nhất
 trước — query không `limit`, trang cũng không phân trang → bảng phình do
@@ -506,22 +619,25 @@ client-side — chỉ phần `rooms` được lọc server-side.
 
 ### 5.5. Hub Báo cáo Tài chính — `/reports/finance`
 
-[FinanceReportsPage.tsx](src/pages/reports/FinanceReportsPage.tsx). Lưới 9 thẻ.
+[FinanceReportsPage.tsx](src/pages/reports/FinanceReportsPage.tsx). Lưới **12 thẻ**.
 Báo cáo con:
 
 | Báo cáo | Route | Hook | Nguồn dữ liệu & bộ lọc |
 |---------|-------|------|------------------------|
-| Sổ quỹ theo ngày | `/reports/finance/daily-cashbook` (+ `/cash-book`, alias legacy `/report/finance/cashbook`) | `useCashFlowByDay` + `useCashBookSummary` | `income_expenses` APPROVED (số dư đầu/cuối ngày; đầu kỳ qua RPC `cashbook_opening_balance`). Filter: tòa **đơn** (gồm tòa ảo — hook chưa hỗ trợ `building_ids`) + **tài khoản** (`account_id`, dropdown từ `useAccounts`) — cả hai lọc server-side; ô "Chọn khu vực" chết đã **gỡ** (9ad626d) |
-| Dòng tiền | `/reports/finance/cash-flow` (+ alias legacy `/report/finance/cash-flow`) | `useCashFlowByDay` | `income_expenses` APPROVED → gom 12 tháng + 4 quý. Filter: năm + tòa (gồm tòa ảo); không có ô khu vực |
-| Phân bổ lợi nhuận | `/reports/finance/profit-distribution` | Mặc định **`useIncomeExpenses` + `useIncomeExpenseStats`** (theo **ngày phiếu**, `accrualMode=false`); bật toggle "Phân bổ theo kỳ áp dụng" mới chạy `useAccrualMonthReport` | `income_expenses` (+items). Toggle KQKD (`pnlOnly` mặc định true — loại khoản không hạch toán KQKD như tiền cọc); filter tòa = **`BuildingMultiSelect`** (nhiều toà nhóm theo khu, gồm tòa ảo — trang fetch `useBuildings({includeVirtual:true})` truyền vào component) → `building_ids` lọc thật ở cả 2 hook; phòng (dropdown hiện chỉ có 1 option "Tất cả phòng" — control chết), loại Thu/Chi; phân trang 10/20/50/100 |
-| Chia LN cổ đông | `/finance/shareholder-profit` (thẻ link thẳng; redirect chỉ từ `/reports/finance/shareholder-profit`) | (domain cổ đông) | → domain Cổ đông |
+| **Phân tích tài chính** (mới 2026-06-11) | `/reports/finance/analysis` (+ `/report/finance/analysis`) | `useFinancialAnalysis` (6 hook `useFa*`) | RPC họ `fa_*` — xem **§5.8** |
+| **Bàn giao tiền & Đối soát sổ** (mới 2026-07-01) | `/reports/finance/ban-giao` | `useSettlementReport` + `useReconciliations` | RPC `cashbook_settlement_report` + bảng `cashbook_reconciliations` — xem **§5.9**, [doc 08](docs/he-thong/08-thu-chi-so-quy.md) |
+| **Chu kỳ Thu — Bàn giao** (mới 2026-07-01) | `/reports/finance/thu-ban-giao` | `useCollectionCycleReport` | RPC `manager_collection_cycle_report` — xem **§5.10**, [doc 08](docs/he-thong/08-thu-chi-so-quy.md) |
+| Sổ quỹ theo ngày | `/reports/finance/daily-cashbook` (+ `/cash-book`, alias legacy `/report/finance/cashbook`) | `useCashFlowByDay` + `useCashBookSummary` | `income_expenses` APPROVED (số dư đầu/cuối ngày; đầu kỳ qua RPC `cashbook_opening_balance`). Filter: tòa **đơn** (gồm tòa ảo — hook chưa hỗ trợ `building_ids`) + **tài khoản** (`account_id`, dropdown từ `useAccounts`) — cả hai lọc server-side |
+| Dòng tiền | `/reports/finance/cash-flow` (+ alias legacy `/report/finance/cash-flow`) | `useCashFlowByDay` | `income_expenses` APPROVED → gom 12 tháng + 4 quý. Filter: năm + tòa (gồm tòa ảo) |
+| Phân bổ lợi nhuận | `/reports/finance/profit-distribution` — từ 4b5aed3 là **trang gộp [ProfitHubPage](src/pages/reports/finance/ProfitHubPage.tsx)** (tab báo cáo + 3 tab chia LN cổ đông + tab Lương của tôi, gate theo quyền BÊN TRONG) | Tab báo cáo: `useIncomeExpenses` + `useIncomeExpenseStats` (ngày phiếu) hoặc `useAccrualMonthReport` — toggle **"Phân bổ theo kỳ áp dụng" mặc định BẬT** (e37396f) | `income_expenses` (+items). Chế độ ngày-phiếu đọc **`kqkd_amount`** (KQKD item-level — phiếu trộn gộp cọc chỉ tính phần không-cọc); toggle KQKD `pnlOnly` mặc định true; lọc tòa = `BuildingFilterSelect` **đơn-chọn phẳng** (gồm tòa ảo); mobile = `ProfitDistributionMobile`; toggle ẩn thẻ/tổng/hạng mục `hide_in_report` lưu `profiles.ui_preferences`. Chi tiết: **[doc 12 §5.3](docs/he-thong/12-co-dong-loi-nhuan.md)** |
+| Chia LN cổ đông | `/finance/shareholder-profit` và `/reports/finance/shareholder-profit` đều **redirect** về trang gộp trên | (domain cổ đông) | → [doc 12](docs/he-thong/12-co-dong-loi-nhuan.md) |
 | Công nợ HĐ mới | `/reports/finance/new-contract-debt` (+ `/debt`) | `useDebtReport` | `invoices` APPROVED/PARTIAL_PAID/OVERDUE + aging. **Không** có filter tòa/khu vực nào — chỉ dựa RLS |
-| Khách nợ tiền | `/reports/finance/customer-debt` (+ alias legacy `/report/finance/debt` — ⚠️ KHÁC `/reports/finance/debt` vốn trỏ `DebtReport`) | `useCustomerDebtReport` | `invoices` gom theo khách (đại diện HĐ). Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` (ô khu vực chết đã gỡ); cột "Khu vực" trong bảng vẫn luôn "—" (hook chỉ select `buildings(id,name)`, không có area) |
-| Lịch thanh toán | `/reports/finance/payment-schedule` (+ alias legacy `/report/finance/billing-calendar`) | `usePaymentScheduleReport(365)` | **Gom theo PHÒNG**, không phải danh sách hoá đơn: mỗi phòng 1 dòng với "Đã lên hóa đơn đến ngày" = max(`billing_period_end ?? due_date`) của mọi hoá đơn từng phòng — nhưng cột `billing_period_end` **không tồn tại** trong schema `invoices` hiện tại nên thực tế luôn là `due_date` muộn nhất. Hook chỉ có `.lte('due_date', today+365)` — **không lọc status/deleted_at, không cận dưới** → tính cả hoá đơn nháp/huỷ/xoá mềm. Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` TRƯỚC khi gộp phòng (ô khu vực chết đã gỡ); dropdown phòng chỉ 1 option |
-| Tiền thừa | `/reports/finance/overpayment` (+ alias legacy `/report/finance/prepaid`) | `useOverpaymentReport` | `invoices` `paid_amount > total_amount` (lọc overpaid ở JS sau khi tải mọi invoice `paid_amount>0`; **không** lọc `deleted_at`/status). Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` (ô khu vực chết đã gỡ) |
-| Danh sách cọc | `/reports/finance/deposits` | `useDepositsReport` | `deposits` (+tenant +room). Lọc tòa = `BuildingMultiSelect` client-side theo `buildings.id` (ô khu vực chết đã gỡ); xem caveat kiến trúc cọc ở §5.6 |
+| Khách nợ tiền | `/reports/finance/customer-debt` (+ alias legacy `/report/finance/debt` — ⚠️ KHÁC `/reports/finance/debt` vốn trỏ `DebtReport`) | `useCustomerDebtReport` | `invoices` gom theo khách (đại diện HĐ). Lọc tòa = `BuildingFilterSelect` đơn-chọn client-side theo `buildings.id`; cột "Khu vực" trong bảng vẫn luôn "—" (hook chỉ select `buildings(id,name)`, không có area) |
+| Lịch thanh toán | `/reports/finance/payment-schedule` (+ alias legacy `/report/finance/billing-calendar`) | `usePaymentScheduleReport(365)` | **Gom theo PHÒNG**, không phải danh sách hoá đơn: mỗi phòng 1 dòng với "Đã lên hóa đơn đến ngày" = max(`billing_period_end ?? due_date`) của mọi hoá đơn từng phòng — nhưng cột `billing_period_end` **không tồn tại** trong schema `invoices` hiện tại nên thực tế luôn là `due_date` muộn nhất. Hook chỉ có `.lte('due_date', today+365)` — **không lọc status/deleted_at, không cận dưới** → tính cả hoá đơn nháp/huỷ/xoá mềm. Lọc tòa = `BuildingFilterSelect` đơn-chọn client-side TRƯỚC khi gộp phòng; dropdown phòng chỉ 1 option |
+| Tiền thừa | `/reports/finance/overpayment` (+ alias legacy `/report/finance/prepaid`) | `useOverpaymentReport` | `invoices` `paid_amount > total_amount` (lọc overpaid ở JS sau khi tải mọi invoice `paid_amount>0`; **không** lọc `deleted_at`/status). Lọc tòa = `BuildingFilterSelect` đơn-chọn client-side |
+| Danh sách cọc | `/reports/finance/deposits` | `useDepositsReport` | `deposits` (+tenant +room). Lọc tòa = `BuildingFilterSelect` đơn-chọn client-side; xem caveat kiến trúc cọc ở §5.6 |
 
-Lưu ý: hub ghi nhãn "9 loại báo cáo" và route `/debt` ≡ `/new-contract-debt` cùng
+Lưu ý: hub ghi nhãn "12 loại báo cáo" và route `/debt` ≡ `/new-contract-debt` cùng
 trỏ `DebtReport` (aging 0-30/31-60/61-90/>90). `CashFlowReport` dùng
 `useCashFlowByDay` (ledger). Trong [useReports.ts](src/hooks/useReports.ts) còn
 **3 hook legacy chết** không có call site: `useCashBookReport` (đọc `payments` —
@@ -531,10 +647,13 @@ di sản, không trang nào dùng.
 
 ```mermaid
 flowchart TD
-    H["/reports/finance hub"] --> CB["Sổ quỹ ngày<br/>useCashFlowByDay + useCashBookSummary<br/>(lọc tòa + tài khoản)"]
+    H["/reports/finance hub"] --> FA["Phân tích tài chính<br/>6 RPC fa_* (+ biến thể accrual)"]
+    H --> BG["Bàn giao & Đối soát<br/>cashbook_settlement_report"]
+    H --> CY["Chu kỳ Thu — Bàn giao<br/>manager_collection_cycle_report"]
+    H --> CB["Sổ quỹ ngày<br/>useCashFlowByDay + useCashBookSummary<br/>(lọc tòa + tài khoản)"]
     H --> CF["Dòng tiền<br/>useCashFlowByDay"]
-    H --> PD["Phân bổ LN<br/>useIncomeExpenses/Stats (ngày phiếu)<br/>toggle → useAccrualMonthReport"]
-    CB & CF & PD --> IE[("income_expenses<br/>APPROVED, !deleted")]
+    H --> PD["Phân bổ LN (ProfitHubPage)<br/>accrual mặc định BẬT<br/>tắt → kqkd_amount theo ngày phiếu"]
+    FA & BG & CY & CB & CF & PD --> IE[("income_expenses<br/>APPROVED, !deleted")]
     H --> DBT["Công nợ / Khách nợ / Lịch thu / Tiền thừa"]
     DBT --> INV[("invoices")]
     H --> DEP["Danh sách cọc"] --> DPT[("deposits")]
@@ -545,7 +664,7 @@ flowchart TD
 - **DepositsReport** ([DepositsReport.tsx](src/pages/reports/finance/DepositsReport.tsx)):
   map `deposit_status` (PENDING/CONFIRMED/CONVERTED/REFUNDED/FORFEITED) sang nhãn
   Việt; nhóm "đang giữ" = PENDING+CONFIRMED, "đã vào HĐ" = CONVERTED. Lọc tòa
-  bằng `BuildingMultiSelect` theo `rooms.buildings.id` (hết lọc theo **tên** tòa).
+  bằng `BuildingFilterSelect` đơn-chọn theo `rooms.buildings.id` (hết lọc theo **tên** tòa).
   **Caveat kiến trúc:** báo cáo này phân loại theo `deposits.status` trong khi
   kiến trúc cọc hiện hành quy định nguồn sự thật = phiếu thu chi `is_deposit`
   (`deposit_remaining`) và hoàn/bỏ cọc đọc từ `contract_terminations`, **không**
@@ -553,7 +672,12 @@ flowchart TD
   (`<OperationsSummary>` trên Dashboard cũng đọc `deposits.status` tương tự.)
 - **TerminationsReport** (`useTerminationsReport`): ghép `contract_terminations`
   để hiển thị lý do/loại chấm dứt; lọc khoảng ngày client-side với fallback
-  `actual_end_date ?? end_date`.
+  `actual_end_date ?? end_date`. ⚠️ **Gotcha audit**: dòng báo cáo lấy từ
+  `contracts`, nhưng `contract_terminations` hiện **chỉ có bản ghi FORFEIT**
+  (bỏ cọc) — thanh lý **move-out NORMAL không được ghi audit** (RPC bỏ qua vì
+  CHECK `refund_method` khi số ròng > 0) → các cột lý do/loại của move-out
+  thường trống; muốn phân loại đủ phải sửa RPC thanh lý set `refund_method`
+  hoặc suy từ phiếu thu chi. Xem [doc 16](docs/he-thong/16-thanh-ly-hop-dong.md).
 
 ### 5.7. Quy ước bộ lọc & hạn chế đã biết trên các trang báo cáo
 
@@ -562,12 +686,20 @@ ghi lại để tránh hiểu nhầm khi đọc số / để biết chỗ cần 
 
 - **Ô "Chọn khu vực" đã GỠ SẠCH** (9ad626d, 2026-06-10): 5 ô khu vực **chết**
   (DailyCashbook, PaymentSchedule, CustomerDebt, Overpayment, Deposits) đã bị
-  xoá; CustomerDebt/PaymentSchedule/Overpayment/Deposits chuyển sang
-  **`BuildingMultiSelect`** (chọn nhiều toà, nhóm theo khu) lọc client-side
-  theo `buildings.id`; ProfitDistribution lọc thật bằng `building_ids` xuống
-  hook (server-side). DailyCashbook giữ ô tòa **đơn** + tài khoản (hooks
+  xoá; ProfitDistribution lọc thật bằng `building_ids` xuống hook
+  (server-side). DailyCashbook giữ ô tòa **đơn** + tài khoản (hooks
   `useCashFlowByDay`/`useCashBookSummary` chưa hỗ trợ `building_ids`).
-- **Lọc tòa theo TÊN — đã sửa**: 4 trang trên giờ so sánh `buildings.id`,
+- **Ô lọc tòa = `BuildingFilterSelect` phẳng ĐƠN-CHỌN toàn app** (3c3b7fa,
+  2026-07-02): thay `BuildingMultiSelect` ở mọi Ô LỌC báo cáo (CustomerDebt,
+  PaymentSchedule, Overpayment, Deposits, ProfitDistribution,
+  FinancialAnalysis…) — không nhóm khu vực, không multi-chọn ở ô lọc;
+  `BuildingMultiSelect` chỉ còn cho form **cấu hình scope** (StaffPage,
+  ProfitManagerForm, ManageAreasDialog). State vẫn giữ shape mảng 0/1 phần tử
+  (`[] = tất cả`) để tương thích tham số `building_ids` của hook.
+- **Bộ lọc giữ qua F5** (7fd2d3f, 2026-07-02): mọi trang báo cáo dùng
+  `usePersistedState` (sessionStorage, key `flt:*`) cho tháng/tòa/toggle…;
+  URL param thắng giá trị khôi phục; KHÔNG persist dialog/selection/pagination.
+- **Lọc tòa theo TÊN — đã sửa**: các trang trên so sánh `buildings.id`,
   hết rủi ro 2 tòa trùng tên lẫn dữ liệu.
 - **Dropdown "Chọn phòng" chết**: PaymentSchedule/CustomerDebt/ProfitDistribution
   chỉ có đúng 1 option "Tất cả phòng" (ProfitDistribution có truyền `room_id`
@@ -577,7 +709,7 @@ ghi lại để tránh hiểu nhầm khi đọc số / để biết chỗ cần 
   khi fetch-all — không phải phân trang DB.
 - **Tòa ảo trong dropdown**: ExpenseRatio, CashFlow, DailyCashbook,
   ProfitDistribution gồm tòa ảo "Chung" (`useBuildings({ includeVirtual: true })`
-  — ProfitDistribution map kết quả này vào `BuildingMultiSelect`); các trang
+  — ProfitDistribution map kết quả này vào `BuildingFilterSelect`); các trang
   invoice-based dùng nguồn mặc định của component (không có tòa ảo).
 - **Hook thiếu điều kiện vệ sinh dữ liệu**: `usePaymentScheduleReport` không lọc
   `deleted_at`/status và không có cận dưới ngày (tải toàn bộ hoá đơn lịch sử);
@@ -592,6 +724,81 @@ ghi lại để tránh hiểu nhầm khi đọc số / để biết chỗ cần 
   invoices/contracts/customers, `ie_items(start_date,end_date)` partial,
   `invoices(building_id,billing_month)` partial, `income_expenses(voucher_date
   DESC)` partial) + RPC `cashbook_opening_balance`.
+
+### 5.8. Phân tích tài chính — `/reports/finance/analysis` (2026-06-11, 1dd75d4)
+
+[FinancialAnalysisReport.tsx](src/pages/reports/finance/FinancialAnalysisReport.tsx)
+(+ alias `/report/finance/analysis`; components ở
+[src/components/finance-analysis/](src/components/finance-analysis/OverviewTab.tsx)).
+Quyền `reports_finance.analysis`. Đây là báo cáo đầu tiên chuyển hẳn tính toán
+xuống DB — hook [useFinancialAnalysis.ts](src/hooks/useFinancialAnalysis.ts)
+gọi **6 RPC `fa_*`** ([20260611140000_financial_analysis_rpcs.sql](supabase/migrations/20260611140000_financial_analysis_rpcs.sql)):
+
+| RPC | Trả về |
+|-----|--------|
+| `fa_monthly_pnl` | P&L KQKD tháng × toà (doanh thu/chi phí/net — từ 20260702120000 cộng `kqkd_amount`) |
+| `fa_type_breakdown` | Cơ cấu thu/chi theo tháng × hạng mục |
+| `fa_occupancy_monthly` | Lấp đầy theo tháng (loại toà ảo) |
+| `fa_lease_events` | Sự kiện HĐ: ký mới/gia hạn/kết thúc |
+| `fa_invoice_collection` | Phát hành vs thực thu hoá đơn theo tháng |
+| `fa_snapshot_kpis` | KPI thời điểm: trạng thái phòng, vacancy loss, ARPU, cọc đang giữ, **phải thu + tuổi nợ theo `due_date`** (not_due/1-30/31-60/61-90/>90 — độc lập status `OVERDUE` vốn chỉ set client-side) |
+
+Đặc điểm chung của `fa_*` (đã ghi trong header migration): `SECURITY DEFINER`
++ CTE `allowed` lọc `can_access_building(b.id)` (scope 1 lần/toà, không
+per-row); **KHÔNG lọc `user_id`** → phiếu nhân viên tạo vẫn tính; **toà ảo chỉ
+xuất hiện trong pnl/breakdown** (cờ `is_virtual` để FE ẩn/hiện), các RPC vận
+hành loại `is_virtual=false`; chỉ trả tháng/toà CÓ dữ liệu — FE tự scaffold
+tháng trống.
+
+UI: **5 tab** — Tổng quan (KPI + insights [InsightsPanel](src/components/finance-analysis/InsightsPanel.tsx))
+· Doanh thu · Chi phí · Lợi nhuận · Vận hành. Bộ lọc: tháng neo + toà
+(`BuildingFilterSelect`) + switch **"Dồn tích (theo kỳ áp dụng)"** (2bcf50b —
+mặc định BẬT để khớp Phân bổ LN; bật thì gọi biến thể `fa_monthly_pnl_accrual`
+/ `fa_type_breakdown_accrual` từ [20260626000000_fa_accrual_pnl.sql](supabase/migrations/20260626000000_fa_accrual_pnl.sql),
+bung item theo kỳ áp dụng qua helper nội bộ `fa_accrual_allocations` — KHÔNG
+grant cho authenticated). Cửa sổ dữ liệu **fetch 13 tháng** (`t13Start` =
+cùng tháng năm trước → so YoY). Mọi filter persist key `flt:rpt-fin-analysis:*`.
+
+### 5.9. Bàn giao tiền & Đối soát sổ — `/reports/finance/ban-giao` (2026-07-01, 0d40096)
+
+[BanGiaoReport.tsx](src/pages/reports/finance/BanGiaoReport.tsx). Quyền
+`reports_finance.handover_report` (thao tác chốt số cần thêm `reconcile`).
+Chi tiết nghiệp vụ sổ quỹ/bàn giao: [doc 08](docs/he-thong/08-thu-chi-so-quy.md).
+
+- Hook [useSettlementReport](src/hooks/useSettlementReport.ts) → RPC
+  **`cashbook_settlement_report(p_from, p_to)`** ([20260701130000_cashbook_reconciliation_report.sql](supabase/migrations/20260701130000_cashbook_reconciliation_report.sql)):
+  báo cáo theo **TỪNG SỔ** — thu/chi thực trong kỳ (loại phiếu chuyển nội bộ)
+  · đã bàn giao cho chủ · **số dư hiện tại = CÒN PHẢI NỘP** + danh sách phiên
+  bàn giao CONFIRMED + lần chốt gần nhất. `system_balance` tính theo NGÀY
+  `as_of`.
+- **Đối soát/chốt số**: bảng **`cashbook_reconciliations`** — chụp
+  `system_balance` (snapshot `accounts_with_balance`) vs `counted_balance`
+  (đếm/đối chiếu thực), `diff = counted − system`, status
+  `PENDING/CONFIRMED/CANCELLED`. Ghi **chỉ qua 3 RPC** SECURITY DEFINER
+  `propose_reconciliation` / `confirm_reconciliation` / `cancel_reconciliation`
+  (hook [useReconciliations](src/hooks/useReconciliations.ts)): chủ tự chốt 1
+  mình, hoặc người phụ trách đề xuất → chủ xác nhận (**đồng-đội-không-chủ
+  không tự chốt hộ**). Dùng cho sổ CHUYỂN KHOẢN của chủ — "chốt số" = đối
+  soát, KHÔNG dịch chuyển tiền.
+
+### 5.10. Chu kỳ Thu — Bàn giao — `/reports/finance/thu-ban-giao` (2026-07-01, 27418f9)
+
+[BanGiaoCycleReport.tsx](src/pages/reports/finance/BanGiaoCycleReport.tsx).
+Quyền `reports_finance.collection_cycle` — fallback **`invoices.record_payment`**
+(75a4919): quản lý thu tiền (Nathan/Joey) tự xem chu kỳ của MÌNH dù bị tắt
+`reports_finance.view`; có nút vào trực tiếp từ `/thu-tien` (icon Repeat).
+
+Hook [useCollectionCycleReport](src/hooks/useCollectionCycleReport.ts) → RPC
+**`manager_collection_cycle_report(p_manager_id, p_from, p_to)`**
+([20260701160000](supabase/migrations/20260701160000_manager_collection_cycle_report.sql)):
+gắn tiền đã thu vào các **mốc bàn giao**, mỗi mốc chốt lại số **CHƯA THU
+point-in-time** trên toàn bộ hoá đơn các toà quản lý phụ trách (phạm vi toà =
+`staff_assignments` ∪ `area_buildings` live; full-scope/super admin = tất cả).
+Trả `summary` (đã thu kỳ · đã bàn giao kỳ · chưa thu hiện tại · tổng đã lên
+HĐ) + `buildings` (từng toà: tổng HĐ/đã thu/chưa thu/số HĐ chưa xong) +
+`timeline` (mỗi mốc bàn giao: thu trong đoạn · net · chưa thu tại mốc + dòng
+CURRENT). Guard trong RPC: `p_manager_id` NULL = chính mình; xem người khác
+phải là admin/super admin. Xem thêm [doc 08](docs/he-thong/08-thu-chi-so-quy.md).
 
 ## 6. Liên kết sang domain khác (vào / ra)
 
@@ -622,26 +829,39 @@ ghi lại để tránh hiểu nhầm khi đọc số / để biết chỗ cần 
   (`contract_expiry_reminder_days`, `invoice_reminder_days`,
   `overdue_reminder_frequency`, `send_payment_confirmation`) để lấy ngưỡng/nhịp
   nhắc.
-- → **Cổ đông**: thẻ "Chia LN cổ đông" redirect `/finance/shareholder-profit`.
+- → **Cổ đông**: thẻ "Chia LN cổ đông" (và URL cũ `/finance/shareholder-profit`)
+  redirect về trang gộp `/reports/finance/profit-distribution` (ProfitHubPage —
+  [doc 12](docs/he-thong/12-co-dong-loi-nhuan.md)).
+- → **Sổ quỹ / Bàn giao tiền**: 2 báo cáo mới §5.9–§5.10 đọc `accounts` /
+  `cash_handovers` / `cashbook_reconciliations` và RPC tương ứng — nghiệp vụ
+  gốc ở [doc 08](docs/he-thong/08-thu-chi-so-quy.md).
+- → **Lương thưởng (v5)**: BonusToast + push thưởng việc (§4.5), màn `/my-day`
+  và dashboard chủ `/reports/coverage` (§5.1) — chi tiết ở
+  [doc 17](docs/he-thong/17-luong-thuong.md).
+- → **Zalo**: worker Zalo bắn Web Push khi có tin nhắn mới (qua edge fn
+  `send-push`, service role) — [doc 18](docs/he-thong/18-zalo-chat.md).
 
 **Vào (domain khác ghi/đọc bảng của domain này):**
 
-- **Hiện không có domain nào tạo `notifications` thủ công.** Đường tạo có sẵn
-  nhưng đều là **dead code** chưa có call site: `useCreateNotification` +
-  `getNotificationContent()` ([useNotifications.ts](src/hooks/useNotifications.ts)
-  dòng 198, 285) và `createInvoiceNotification` (NEW_INVOICE — gate theo
-  settings nhưng check **nhầm** key `send_payment_confirmation`) +
+- **Domain Lương thưởng ghi `notifications` qua RPC `award_job_bonus`**
+  (SECURITY DEFINER, type `SALARY_BONUS` + `job_id`/`metadata` — §4.5): đây là
+  đường tạo thông báo DUY NHẤT ngoài scheduler. Các đường tạo thủ công khác
+  vẫn là **dead code** chưa có call site: `useCreateNotification` +
+  `getNotificationContent()` ([useNotifications.ts](src/hooks/useNotifications.ts))
+  và `createInvoiceNotification` (NEW_INVOICE — gate theo settings nhưng check
+  **nhầm** key `send_payment_confirmation`) +
   `createPaymentConfirmationNotification` (CUSTOM) trong
-  [invoiceHelpers.ts](src/lib/invoiceHelpers.ts) dòng 61, 161. Chỉ 2 helper
+  [invoiceHelpers.ts](src/lib/invoiceHelpers.ts). 2 helper
   `createPaymentReminderNotification`/`createOverdueNotification` còn sống —
   được chính scheduler của domain này gọi (§4.2).
 - `notifications.contract_id`/`issue_id` là **FK cứng** vào `contracts`/`issues`
   → xoá HĐ/việc có ràng buộc; `invoice_id` chỉ là uuid (không FK).
 - RLS thông báo dựa `staff_can('notifications', …)` từ domain Phân quyền/RBAC →
   nhân viên có module quyền thông báo của employer mới thao tác được; thêm
-  policy admin bypass (`is_admin()`) cho cả 3 bảng (§4.1). Catalog permissions
-  có module `dashboard`/`notifications`/`reports_real_estate`/`reports_finance`
-  nhưng route báo cáo chưa gate theo module (§4.4).
+  policy admin bypass (`is_admin()`) cho cả 3 bảng (§4.1). Catalog quyền theo
+  TRANG ([permissionPages.ts](src/lib/permissionPages.ts)) có feature key riêng
+  cho từng báo cáo và **route `/reports/**` đã gate đầy đủ** bằng
+  `RequirePermission` (§4.4).
 
 **Cross-link tóm tắt:**
 Báo cáo/Dashboard là tầng **đọc tổng hợp** ngồi trên gần như mọi domain vận hành;
