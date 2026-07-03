@@ -32,6 +32,8 @@ const DEMO_CONTRACTS = `(SELECT id FROM contracts WHERE user_id IN ${DU})`
 const DEMO_INVOICES = `(SELECT id FROM invoices WHERE user_id IN ${DU})`
 
 export const RESET_TABLES = [
+  // ===== EPHEMERAL tham chiếu nhiều bảng (xoá TRƯỚC tiên để không vướng FK) =====
+  { tbl: 'notifications', predicate: `user_id IN ${DU} OR contract_id IN (SELECT id FROM contracts WHERE user_id IN ${DU}) OR invoice_id IN (SELECT id FROM invoices WHERE user_id IN ${DU})`, restore: false },
   // ===== SỔ QUỸ / TIỀN (con trước) =====
   { tbl: 'cashbook_reconciliations', predicate: `proposed_by IN ${DU} OR counterparty_id IN ${DU} OR account_id IN (SELECT id FROM accounts WHERE user_id IN ${DU})`, restore: true },
   { tbl: 'cash_handovers', predicate: `giver_id IN ${DU} OR receiver_id IN ${DU}`, restore: true },
@@ -52,13 +54,13 @@ export const RESET_TABLES = [
   { tbl: 'deposits', predicate: `user_id IN ${DU} OR contract_id IN ${DEMO_CONTRACTS}`, restore: true },
   { tbl: 'vehicles', predicate: `user_id IN ${DU} OR contract_id IN ${DEMO_CONTRACTS}`, restore: true },
   { tbl: 'contracts', predicate: `user_id IN ${DU}`, restore: true },
+  { tbl: 'ct01_declarations', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'tenants', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'customers', predicate: `user_id IN ${DU}`, restore: true },
   // ===== LEAD / VẬN HÀNH =====
   { tbl: 'lead_activities', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'leads', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'jobs', predicate: `user_id IN ${DU} OR building_id IN ${DB}`, restore: true },
-  { tbl: 'notifications', predicate: `user_id IN ${DU}`, restore: false },
   // ===== KHO / TÀI SẢN =====
   { tbl: 'material_purchases', predicate: `user_id IN ${DU}`, restore: true },
   { tbl: 'material_usages', predicate: `user_id IN ${DU}`, restore: true },
