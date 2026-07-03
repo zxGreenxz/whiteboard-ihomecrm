@@ -12,7 +12,12 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "docs:dev": "npm --prefix docs-site run dev",
+    "docs:build": "npm --prefix docs-site run build",
+    "docs:preview": "npm --prefix docs-site run preview",
+    "docs:images": "npm --prefix docs-site run images",
+    "docs:check": "npm --prefix docs-site run images:check"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
