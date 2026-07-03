@@ -5,7 +5,9 @@
 --   2) Đánh dấu TOÀN BỘ 17 toà thật đã được nhân viên kiểm tra FULL vào 01/07
 --      → building_coverage: last_touch = 01/07, D = 2 hôm nay (dưới SLA 4/3), không toà nào quá hạn.
 -- Bỏ 7 toà ảo (Chung ×4, Kho Văn Phòng Chung, Test ×2 — 0 phòng).
--- Attribution inspection theo lịch sử job (Nathan busy 9 + 45/3TTT; Joey 6 + 65NTG).
+-- Attribution inspection theo staff_assignments.staff_id THẬT: Nathan 9, Joey 7,
+-- B.Huy 1 (45/3 Trần Thái Tông — toà này CHỈ giao B.Huy, không Joey/Nathan).
+-- (chỉ Joey+Nathan được tick ngày-công ở Part B — B.Huy ngoài đợt seed streak này.)
 -- Marker revert: inspection_sessions.condition_note = SEED_MARKER;
 --                salary_attendance_day.evidence[].note LIKE 'seed khởi động thử%'.
 -- REVERT: scripts/v5_seed_trial_start_2026_07_03_rollback.sql
@@ -24,7 +26,7 @@ SELECT s.staff_id, s.building_id, 'FULL', 'passed', DATE '2026-07-01',
        TIMESTAMPTZ '2026-07-01 09:00:00+07', TIMESTAMPTZ '2026-07-01 09:30:00+07',
        1200, 0, 'OK — seed khởi động thử v5 (2026-07-03)', '[]'::jsonb
 FROM (VALUES
-  -- NATHAN (df8d1df5) — 10 toà
+  -- NATHAN (df8d1df5) — 9 toà
   ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, '59c6fc2c-2369-4ec8-b253-1ac64abb2f45'::uuid), -- 102LVT
   ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, 'd76268b2-9513-460d-bd2d-149e613de1ac'::uuid), -- 1392QT
   ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, '835cd8b8-709d-4942-9c88-d7bd987381c2'::uuid), -- 15KV
@@ -34,7 +36,8 @@ FROM (VALUES
   ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, 'd6610998-457c-4b9c-8016-073fd0f827fe'::uuid), -- 44TL
   ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, '2d4dbefc-0a7e-4888-b179-d02f0a8369a4'::uuid), -- 481NVK
   ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, 'dfca120d-2f5a-46c7-8ee1-286be6b4e6bf'::uuid), -- 512TT
-  ('df8d1df5-1c24-4723-9733-4640c43c382b'::uuid, 'c4eb87df-758d-4e16-82dc-040f49e6adfc'::uuid), -- 45/3 Trần Thái Tông
+  -- B.Huy (d9729566) — 1 toà (45/3 Trần Thái Tông giao RIÊNG B.Huy, không Joey/Nathan)
+  ('d9729566-ea22-47a1-b866-d30e149318f4'::uuid, 'c4eb87df-758d-4e16-82dc-040f49e6adfc'::uuid), -- 45/3 Trần Thái Tông
   -- JOEY (d45a7506) — 7 toà
   ('d45a7506-5250-4d99-ac94-9f73cbd4df17'::uuid, '1eae0e82-9c58-4dba-aeb4-13ade8e1a146'::uuid), -- 111PVC
   ('d45a7506-5250-4d99-ac94-9f73cbd4df17'::uuid, '5f3b02fe-86b4-4605-8f5a-2d6e0503a7e2'::uuid), -- 158PVC
