@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePhoneViewport } from '@/hooks/use-mobile';
 import { Building2, MapPin, Plus, Search, RefreshCw, LayoutGrid, List } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
 
-export default function BuildingsPage() {
+function BuildingsDesktop() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: buildingsData, isLoading } = useBuildings();
@@ -237,4 +238,17 @@ export default function BuildingsPage() {
       </div>
     </MainLayout>
   );
+}
+
+const BuildingsMobilePage = lazy(() => import('./BuildingsMobilePage'));
+
+export default function BuildingsPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <BuildingsMobilePage />
+      </Suspense>
+    );
+  return <BuildingsDesktop />;
 }

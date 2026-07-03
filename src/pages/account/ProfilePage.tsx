@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, lazy, Suspense } from "react";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { toast } from "sonner";
 import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
 import PushNotificationSettings from "@/components/notifications/PushNotificationSettings";
 
-export default function ProfilePage() {
+function ProfileDesktop() {
   const { data: profile, isLoading } = useProfile();
   const updateProfile = useUpdateProfile();
   const uploadAvatar = useUploadAvatar();
@@ -232,4 +233,17 @@ export default function ProfilePage() {
       </div>
     </MainLayout>
   );
+}
+
+const AccountMobilePage = lazy(() => import("./AccountMobilePage"));
+
+export default function ProfilePage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <AccountMobilePage />
+      </Suspense>
+    );
+  return <ProfileDesktop />;
 }

@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, lazy, Suspense } from "react";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +32,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 
 const currentMonth = new Date().toISOString().slice(0, 7);
 
-const MeterReadingsPage = () => {
+const MeterReadingsDesktop = () => {
   // --- Filters ---
   const [filters, setFilters] = usePersistedState<MeterReadingFilters>("flt:meter-readings:filters", {
     building_id: null,
@@ -189,4 +190,15 @@ const MeterReadingsPage = () => {
   );
 };
 
-export default MeterReadingsPage;
+const MeterReadingsMobilePage = lazy(() => import("./MeterReadingsMobilePage"));
+
+export default function MeterReadingsPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <MeterReadingsMobilePage />
+      </Suspense>
+    );
+  return <MeterReadingsDesktop />;
+}

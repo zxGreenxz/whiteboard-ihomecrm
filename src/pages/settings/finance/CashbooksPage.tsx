@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, lazy, Suspense } from "react";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,7 @@ import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CashbookLockDialog from "@/components/cashbooks/CashbookLockDialog";
 import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
 
-const CashbooksPage = () => {
+const CashbooksDesktop = () => {
   const isMobile = useIsMobile();
   const pagination = usePagination(isMobile ? 50 : 10);
   const [searchQuery, setSearchQuery] = usePersistedState("flt:cashbooks:searchQuery", "");
@@ -242,4 +243,15 @@ const CashbooksPage = () => {
   );
 };
 
-export default CashbooksPage;
+const CashbooksMobilePage = lazy(() => import("./CashbooksMobilePage"));
+
+export default function CashbooksPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <CashbooksMobilePage />
+      </Suspense>
+    );
+  return <CashbooksDesktop />;
+}

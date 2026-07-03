@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -24,7 +25,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "MAINTENANCE", label: "Ngừng hoạt động" },
 ];
 
-const BuildingMapPage = () => {
+const BuildingMapDesktop = () => {
   const [selectedBuildingId, setSelectedBuildingId] = usePersistedState<string>("flt:building-map:buildingId", "");
   const [selectedFloor, setSelectedFloor] = usePersistedState<string>("flt:building-map:floor", "all");
   const [selectedStatus, setSelectedStatus] = usePersistedState<string>("flt:building-map:status", "all");
@@ -413,4 +414,15 @@ const BuildingMapPage = () => {
   );
 };
 
-export default BuildingMapPage;
+const BuildingMapMobilePage = lazy(() => import("./BuildingMapMobilePage"));
+
+export default function BuildingMapPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <BuildingMapMobilePage />
+      </Suspense>
+    );
+  return <BuildingMapDesktop />;
+}

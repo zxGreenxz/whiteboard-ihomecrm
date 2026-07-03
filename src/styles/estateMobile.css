@@ -1,0 +1,221 @@
+/* =============================================================
+   Bất động sản (mobile) — lớp bổ sung cho mobileApp.css.
+   Thêm các thành phần cho 6 màn hình web-app mobile: Sơ đồ toà nhà /
+   Toà nhà / Căn hộ / Sổ quỹ / Ghi chỉ số / Tài khoản (+ form & sheet chi
+   tiết) theo handoff Claude Design (iHomeCRM Mobile.dc.html). Cùng "ngôn
+   ngữ Thu tiền" (warm-neutral + emerald). Scope dưới .cm-app nên không rò
+   ra theme site. Nạp kèm '@/styles/mobileApp.css' (+ financeMobile.css cho
+   iestat/vd/cmenu/lrow/cd-pay). Nạp lười theo nhánh mobile.
+   ============================================================= */
+
+/* status pill (rooms / building-map) */
+.cm-app .rst { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.cm-app .rst.st-occ  { color:#15803d; background:#e6f5ec; border-color:#bfe6cd; }
+.cm-app .rst.st-free { color:#dc2626; background:#fdecea; border-color:#f6c9c4; }
+.cm-app .rst.st-res  { color:#c2740a; background:#fbf1da; border-color:#f0dca8; }
+.cm-app .rst.st-exp  { color:#7c3aed; background:#f1ebfd; border-color:#ddccf7; }
+.cm-app .rst.st-main { color:#6b7280; background:#eef0f2; border-color:#dcdfe3; }
+
+/* ===== Sơ đồ toà nhà (building map) ===== */
+.cm-app .bm-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:13px; }
+.cm-app .bm-stat { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:11px 12px; box-shadow:var(--sh-1); position:relative; overflow:hidden; }
+.cm-app .bm-stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--bmc,var(--line)); }
+.cm-app .bm-stat .n { font-family:var(--mono); font-size:21px; font-weight:700; line-height:1; letter-spacing:-1px; color:var(--bmc,var(--ink)); }
+.cm-app .bm-stat .l { font-size:10px; font-weight:600; color:var(--ink-3); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cm-app .bm-legend { display:flex; flex-wrap:wrap; gap:7px 13px; padding:11px 13px; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--sh-1); margin-bottom:14px; }
+.cm-app .bm-leg { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--ink-2); }
+.cm-app .bm-leg .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.cm-app .bm-floor { margin-bottom:16px; }
+.cm-app .bm-floor-h { display:flex; align-items:center; gap:8px; margin:0 2px 10px; font-size:13.5px; font-weight:700; color:var(--ink); letter-spacing:-.2px; }
+.cm-app .bm-floor-h svg { width:15px; height:15px; color:var(--ink-3); flex-shrink:0; }
+.cm-app .bm-floor-h .cnt { font-family:var(--mono); font-size:11px; font-weight:500; color:var(--ink-3); }
+.cm-app .bm-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.cm-app .bm-room { text-align:left; border:1.5px solid var(--line); border-radius:14px; padding:11px 12px; cursor:pointer; font-family:var(--font); transition:transform .12s; box-shadow:var(--sh-1); background:var(--surface); width:100%; }
+.cm-app .bm-room:active { transform:scale(.97); }
+.cm-app .bm-room.st-occ  { border-color:#c6e8d1; background:#eef8f1; }
+.cm-app .bm-room.st-free { border-color:#f4cfca; background:#fdeeec; }
+.cm-app .bm-room.st-res  { border-color:#f1dfae; background:#fcf4e2; }
+.cm-app .bm-room.st-exp  { border-color:#e0d1f8; background:#f5effd; }
+.cm-app .bm-room.st-main { border-color:#dee1e5; background:#f2f4f5; }
+.cm-app .bm-room-h { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.cm-app .bm-room .rno { font-size:16px; font-weight:800; letter-spacing:-.4px; color:var(--ink); }
+.cm-app .bm-room .rdot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.cm-app .bm-room.st-occ  .rdot { background:#1f9d57; } .cm-app .bm-room.st-occ  .rno { color:#15803d; }
+.cm-app .bm-room.st-free .rdot { background:#dc2626; } .cm-app .bm-room.st-free .rno { color:#c62f28; }
+.cm-app .bm-room.st-res  .rdot { background:#d97706; } .cm-app .bm-room.st-res  .rno { color:#b4690a; }
+.cm-app .bm-room.st-exp  .rdot { background:#7c3aed; } .cm-app .bm-room.st-exp  .rno { color:#6d31d6; }
+.cm-app .bm-room.st-main .rdot { background:#9ca3af; } .cm-app .bm-room.st-main .rno { color:#6b7280; }
+.cm-app .bm-room .rprice { font-family:var(--mono); font-size:12.5px; font-weight:700; margin-top:8px; letter-spacing:-.3px; color:var(--ink-2); }
+.cm-app .bm-room .rprice small { font-family:var(--font); font-size:10px; font-weight:600; color:var(--ink-3); }
+.cm-app .bm-room .rlabel { font-size:11px; font-weight:700; margin-top:8px; }
+.cm-app .bm-room.st-occ  .rlabel { color:#15803d; } .cm-app .bm-room.st-free .rlabel { color:#c62f28; }
+.cm-app .bm-room.st-res  .rlabel { color:#b4690a; } .cm-app .bm-room.st-exp  .rlabel { color:#6d31d6; }
+.cm-app .bm-room.st-main .rlabel { color:#6b7280; }
+.cm-app .bm-room .rtenant { font-size:11px; font-weight:600; color:var(--ink-3); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ===== Toà nhà — occupancy mini-bar inside sp-bcard ===== */
+.cm-app .bld-occ { display:flex; align-items:center; gap:8px; margin-top:9px; }
+.cm-app .bld-occ .track { flex:1; height:6px; border-radius:999px; background:var(--surface-2); overflow:hidden; border:1px solid var(--line-2); }
+.cm-app .bld-occ .fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#1f9d57,#1f7a52); }
+.cm-app .bld-occ .pct { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--brand-600); flex-shrink:0; }
+.cm-app .bld-chips { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+.cm-app .bld-chip { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--ink-2); background:var(--surface-2); border:1px solid var(--line); padding:3px 9px; border-radius:999px; }
+.cm-app .bld-chip b { font-family:var(--mono); font-weight:700; }
+.cm-app .bld-chip .d { width:6px; height:6px; border-radius:50%; }
+
+/* ===== Sổ quỹ — fund card ===== */
+.cm-app .fund { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:13px 14px; box-shadow:var(--sh-1); cursor:pointer; transition:transform .12s; }
+.cm-app .fund:active { transform:scale(.99); }
+.cm-app .fund.locked { border-color:#f0dca8; }
+.cm-app .fund-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.cm-app .fund-l { display:flex; align-items:center; gap:11px; min-width:0; }
+.cm-app .fund-ic { width:38px; height:38px; border-radius:11px; background:#fbf1da; color:#b45309; display:grid; place-items:center; flex-shrink:0; }
+.cm-app .fund-ic svg { width:19px; height:19px; }
+.cm-app .fund-nm { display:flex; align-items:center; gap:7px; min-width:0; }
+.cm-app .fund-nm b { font-size:14.5px; font-weight:700; color:var(--ink); letter-spacing:-.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cm-app .fund-sub { font-size:11.5px; font-weight:500; color:var(--ink-3); font-family:var(--mono); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cm-app .fund-r { text-align:right; flex-shrink:0; }
+.cm-app .fund-r .cap { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-3); }
+.cm-app .fund-bal { font-family:var(--mono); font-size:16.5px; font-weight:700; letter-spacing:-.5px; margin-top:2px; }
+.cm-app .fund-bal.neg { color:var(--c-unpaid); } .cm-app .fund-bal.pos { color:#1f9d57; }
+.cm-app .fund-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:11px; padding-top:10px; border-top:1px solid var(--line-2); font-size:11.5px; font-weight:500; color:var(--ink-3); }
+.cm-app .fund-foot .v { font-family:var(--mono); font-weight:700; color:var(--ink-2); }
+.cm-app .fund-lock { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; color:#b45309; background:#fbf1da; border:1px solid #f0dca8; padding:2px 8px; border-radius:999px; }
+.cm-app .fund-lock svg { width:11px; height:11px; }
+
+/* ===== Ghi chỉ số — meter reading row ===== */
+.cm-app .mtr { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:11px 12px; box-shadow:var(--sh-1); display:flex; gap:12px; align-items:center; cursor:pointer; transition:transform .12s; }
+.cm-app .mtr:active { transform:scale(.99); }
+.cm-app .mtr-ic { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; flex-shrink:0; }
+.cm-app .mtr-ic svg { width:21px; height:21px; }
+.cm-app .mtr-ic.elec { background:#e7eefc; color:#2563eb; }
+.cm-app .mtr-ic.water { background:#dff1f7; color:#0e8fb3; }
+.cm-app .mtr-body { flex:1; min-width:0; }
+.cm-app .mtr-l1 { display:flex; align-items:center; gap:7px; }
+.cm-app .mtr-room { font-size:13.5px; font-weight:700; color:var(--ink); letter-spacing:-.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.cm-app .mtr-sub { font-size:11.5px; font-weight:500; color:var(--ink-3); margin-top:2px; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cm-app .mtr-reads { display:flex; align-items:center; gap:6px; margin-top:6px; font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--ink-3); }
+.cm-app .mtr-reads b { color:var(--ink); }
+.cm-app .mtr-reads svg { width:13px; height:13px; opacity:.55; }
+.cm-app .mtr-r { text-align:right; flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
+.cm-app .mtr-cons { font-family:var(--mono); font-size:17px; font-weight:700; letter-spacing:-.6px; color:var(--ink); line-height:1; }
+.cm-app .mtr-cons small { font-size:9.5px; font-weight:700; color:var(--ink-3); margin-left:2px; }
+.cm-app .mtr-badge { display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:999px; }
+.cm-app .mtr-badge.ok { color:#15803d; background:#e6f5ec; border:1px solid #bfe6cd; }
+.cm-app .mtr-badge.no { color:#b45309; background:#fbf1da; border:1px solid #f0dca8; }
+
+/* ===== Floating action button ===== */
+.cm-app .fab { position:absolute; right:16px; bottom:20px; width:56px; height:56px; border-radius:50%; border:0; background:var(--brand); color:#fff; display:grid; place-items:center; cursor:pointer; box-shadow:0 10px 24px rgba(31,122,82,.42); z-index:30; transition:transform .18s; }
+.cm-app .fab:active { transform:scale(.92); }
+.cm-app .fab svg { width:26px; height:26px; transition:transform .2s; }
+.cm-app .fab.open svg { transform:rotate(45deg); }
+
+/* section subheading inside mbody */
+.cm-app .msub { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:2px 2px 11px; }
+.cm-app .msub-t { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--ink-3); }
+.cm-app .msub-n { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--brand-600); background:var(--brand-50); border:1px solid var(--brand-100); padding:2px 9px; border-radius:999px; }
+
+/* ===================================================================
+   Full-screen forms + detail-sheet extras (Thêm chỉ số / sổ quỹ / căn hộ / toà nhà)
+   =================================================================== */
+.cm-app .mtop-save { margin-left:auto; height:38px; padding:0 16px; border-radius:11px; border:0; background:var(--brand); color:#fff; font-family:var(--font); font-weight:700; font-size:13.5px; cursor:pointer; box-shadow:var(--sh-1); }
+.cm-app .mtop-save:active { background:var(--brand-600); }
+.cm-app .mtop-save:disabled { opacity:.55; }
+.cm-app .ff { margin-bottom:15px; }
+.cm-app .ff-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px; }
+.cm-app .ff-row .ff { margin-bottom:0; }
+.cm-app .ff-lbl { display:block; font-size:12px; font-weight:600; color:var(--ink-2); margin-bottom:7px; }
+.cm-app .ff-lbl .req { color:var(--c-unpaid); }
+.cm-app .ff-input, .cm-app .ff-sel { width:100%; height:47px; border:1px solid var(--line); border-radius:12px; padding:0 13px; font-family:var(--font); font-size:14.5px; font-weight:600; color:var(--ink); background:var(--surface); outline:none; }
+.cm-app .ff-input::placeholder { color:var(--ink-faint); font-weight:500; }
+.cm-app .ff-input:focus, .cm-app .ff-sel:focus { border-color:var(--brand-100); box-shadow:0 0 0 3px var(--brand-50); }
+.cm-app .ff-input.mono { font-family:var(--mono); letter-spacing:-.3px; }
+.cm-app .ff-sel { appearance:none; -webkit-appearance:none; cursor:pointer; padding-right:34px; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238d8678' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>"); background-repeat:no-repeat; background-position:right 11px center; }
+.cm-app .ff-ta { width:100%; min-height:82px; border:1px solid var(--line); border-radius:12px; padding:11px 13px; font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink); background:var(--surface); outline:none; resize:none; line-height:1.5; }
+.cm-app .ff-ta:focus { border-color:var(--brand-100); box-shadow:0 0 0 3px var(--brand-50); }
+.cm-app .ff-suffix { position:relative; }
+.cm-app .ff-suffix .ff-input { padding-right:36px; }
+.cm-app .ff-suffix .sfx { position:absolute; right:14px; top:0; height:47px; display:flex; align-items:center; font-size:13px; font-weight:700; color:var(--ink-3); pointer-events:none; }
+.cm-app .ff-hint { font-size:11px; font-weight:500; color:var(--ink-3); margin-top:6px; line-height:1.45; }
+.cm-app .ff-seg { display:flex; gap:0; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:3px; }
+.cm-app .ff-seg button { flex:1; height:41px; border:0; background:transparent; border-radius:9px; font-family:var(--font); font-weight:700; font-size:13.5px; color:var(--ink-3); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; transition:.14s; }
+.cm-app .ff-seg button svg { width:16px; height:16px; }
+.cm-app .ff-seg button.on { background:var(--surface); box-shadow:var(--sh-1); color:var(--ink); }
+.cm-app .ff-seg button.on.elec { color:#2563eb; }
+.cm-app .ff-seg button.on.water { color:#0e8fb3; }
+.cm-app .ff-sec { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--ink-3); margin:19px 2px 13px; display:flex; align-items:center; gap:10px; }
+.cm-app .ff-sec::after { content:""; flex:1; height:1px; background:var(--line); }
+.cm-app .ff-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:13px 15px; box-shadow:var(--sh-1); margin-bottom:15px; }
+.cm-app .ff-toggle .lb b { display:block; font-size:14px; font-weight:700; color:var(--ink); }
+.cm-app .ff-toggle .lb span { display:block; font-size:11.5px; font-weight:500; color:var(--ink-3); margin-top:2px; }
+.cm-app .ff-save { width:100%; height:51px; border-radius:14px; border:0; background:var(--brand); color:#fff; font-family:var(--font); font-weight:700; font-size:15px; cursor:pointer; box-shadow:0 8px 20px rgba(31,122,82,.28); display:inline-flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; margin:6px 0 2px; }
+.cm-app .ff-save:active { background:var(--brand-600); }
+.cm-app .ff-save:disabled { opacity:.55; box-shadow:none; }
+.cm-app .ff-save svg { width:18px; height:18px; }
+.cm-app .ff-save.ghost { background:var(--surface-2); color:var(--ink-2); border:1px solid var(--line); box-shadow:none; }
+
+/* meter entry card */
+.cm-app .ment { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 13px; box-shadow:var(--sh-1); margin-bottom:11px; }
+.cm-app .ment-h { display:flex; align-items:center; gap:10px; }
+.cm-app .ment-ic { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; flex-shrink:0; }
+.cm-app .ment-ic svg { width:19px; height:19px; }
+.cm-app .ment-ic.elec { background:#e7eefc; color:#2563eb; }
+.cm-app .ment-ic.water { background:#dff1f7; color:#0e8fb3; }
+.cm-app .ment-nm { font-size:13.5px; font-weight:700; color:var(--ink); }
+.cm-app .ment-sub { font-size:11px; font-weight:500; color:var(--ink-3); margin-top:1px; font-family:var(--mono); }
+.cm-app .ment-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:11px; }
+.cm-app .ment-cl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--ink-3); margin-bottom:5px; }
+.cm-app .ment-prev { height:44px; border:1px dashed var(--line); border-radius:11px; background:var(--surface-2); display:flex; align-items:center; padding:0 12px; font-family:var(--mono); font-size:14px; font-weight:700; color:var(--ink-3); }
+.cm-app .ment-new { height:44px; border:1.5px solid var(--brand-100); border-radius:11px; background:var(--brand-50); display:flex; align-items:center; padding:0 12px; font-family:var(--mono); font-size:14px; font-weight:700; color:var(--brand-600); width:100%; outline:none; }
+.cm-app .ment-foot { display:flex; align-items:center; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid var(--line-2); }
+.cm-app .ment-cons { font-size:12px; font-weight:600; color:var(--ink-2); }
+.cm-app .ment-cons b { font-family:var(--mono); color:var(--brand-600); }
+.cm-app .ment-cam { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; color:var(--ink-3); background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:6px 11px; cursor:pointer; }
+.cm-app .ment-cam svg { width:14px; height:14px; }
+
+/* service toggle row (building form) */
+.cm-app .svc { display:flex; align-items:center; gap:11px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 13px; box-shadow:var(--sh-1); margin-bottom:9px; }
+.cm-app .svc-ic { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; flex-shrink:0; }
+.cm-app .svc-ic svg { width:18px; height:18px; }
+.cm-app .svc-b { flex:1; min-width:0; }
+.cm-app .svc-nm { font-size:13.5px; font-weight:700; color:var(--ink); }
+.cm-app .svc-price { font-size:11.5px; font-weight:600; color:var(--ink-3); font-family:var(--mono); margin-top:2px; }
+
+/* toggle switch (reuse .sp-switch from mobileApp.css sale-phong layer) */
+.cm-app .sp-switch { width:46px; height:28px; border-radius:999px; border:0; cursor:pointer; position:relative; transition:.18s; flex-shrink:0; background:var(--line); }
+.cm-app .sp-switch.on { background:var(--brand); }
+.cm-app .sp-switch .knob { position:absolute; top:2px; left:2px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:.18s; }
+.cm-app .sp-switch.on .knob { transform:translateX(18px); }
+
+/* building / apartment detail sheet extras */
+.cm-app .bd-hero { display:flex; align-items:center; gap:13px; margin:14px 0 2px; }
+.cm-app .bd-tag { width:54px; height:54px; border-radius:15px; background:var(--brand-50); color:var(--brand-600); border:1px solid var(--brand-100); display:grid; place-items:center; font-family:var(--mono); font-weight:700; font-size:15px; flex-shrink:0; }
+.cm-app .bd-hero .nm { font-size:18px; font-weight:800; letter-spacing:-.4px; color:var(--ink); }
+.cm-app .bd-hero .ad { font-size:12.5px; font-weight:500; color:var(--ink-3); margin-top:4px; }
+.cm-app .bd-stat3 { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:16px 0; }
+.cm-app .bd-s { background:var(--surface-2); border:1px solid var(--line); border-radius:13px; padding:12px 10px; text-align:center; }
+.cm-app .bd-s .n { font-family:var(--mono); font-size:21px; font-weight:700; letter-spacing:-.6px; line-height:1; }
+.cm-app .bd-s .l { font-size:10px; font-weight:600; color:var(--ink-3); margin-top:6px; }
+.cm-app .sheet-acts { display:flex; gap:10px; margin-top:18px; }
+.cm-app .sheet-acts a, .cm-app .sheet-acts button { flex:1; height:47px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; gap:7px; font-family:var(--font); font-weight:700; font-size:13.5px; text-decoration:none; cursor:pointer; border:1px solid var(--line); }
+.cm-app .sheet-acts .ghost { background:var(--surface-2); color:var(--ink-2); }
+.cm-app .sheet-acts .primary { background:var(--brand); border-color:var(--brand); color:#fff; box-shadow:var(--sh-1); }
+.cm-app .sheet-acts svg { width:16px; height:16px; }
+
+/* ===================================================================
+   Tài khoản (account / profile)
+   =================================================================== */
+.cm-app .acc-hero { display:flex; align-items:flex-start; gap:14px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:15px; box-shadow:var(--sh-1); margin-bottom:16px; }
+.cm-app .acc-av { width:60px; height:60px; border-radius:18px; background:linear-gradient(150deg,#2a2620,#1b1813); color:#fff; display:grid; place-items:center; font-weight:800; font-size:24px; flex-shrink:0; }
+.cm-app .acc-hero-b { flex:1; min-width:0; }
+.cm-app .acc-name { font-size:18px; font-weight:800; letter-spacing:-.4px; color:var(--ink); }
+.cm-app .acc-mail { font-size:12.5px; font-weight:500; color:var(--ink-3); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cm-app .acc-role { display:inline-flex; align-items:center; gap:5px; margin-top:9px; font-size:11px; font-weight:700; color:var(--brand-600); background:var(--brand-50); border:1px solid var(--brand-100); padding:3px 10px; border-radius:999px; }
+.cm-app .acc-cam { width:34px; height:34px; border-radius:10px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink-2); display:grid; place-items:center; cursor:pointer; flex-shrink:0; }
+.cm-app .acc-cam svg { width:16px; height:16px; }
+.cm-app .acc-logout { width:100%; height:48px; border-radius:13px; border:1px solid #f2c8c4; background:#fcebe9; color:#d6453f; font-family:var(--font); font-weight:700; font-size:14px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; margin:8px 0 4px; }
+.cm-app .acc-logout svg { width:17px; height:17px; }
+.cm-app .acc-ver { text-align:center; font-size:11px; font-weight:500; color:var(--ink-faint); margin-top:14px; }
+.cm-app .acc-rows { display:flex; flex-direction:column; gap:10px; }
+.cm-app .acc-rows .sp-rowcard { margin-bottom:0; }
+.cm-app .cd-card .ff:last-of-type { margin-bottom:16px; }

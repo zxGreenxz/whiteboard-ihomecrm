@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { usePhoneViewport } from '@/hooks/use-mobile';
 import { Home, Plus, Search, RefreshCw, LayoutGrid, List } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { compareBuildingThenRoom } from '@/lib/roomSort';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
-export default function RoomsPage() {
+function RoomsDesktop() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
@@ -316,4 +317,17 @@ export default function RoomsPage() {
       </div>
     </MainLayout>
   );
+}
+
+const RoomsMobilePage = lazy(() => import('./RoomsMobilePage'));
+
+export default function RoomsPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <RoomsMobilePage />
+      </Suspense>
+    );
+  return <RoomsDesktop />;
 }
