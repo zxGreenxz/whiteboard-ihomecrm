@@ -208,7 +208,20 @@ export const useTerminateForfeit = () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["excess-amount"] });
-      toast.success("Thanh lý hợp đồng (bỏ cọc) thành công");
+      // B1 (audit 03/07): bỏ cọc là luồng TRÌ HOÃN — cọc chỉ vào doanh thu và
+      // hoá đơn thanh lý chỉ tất toán khi phiếu "Doanh thu bỏ cọc" được DUYỆT
+      // ở trang Thu chi. Toast phải nhắc + dẫn thẳng tới đó, không im lặng.
+      toast.success("Đã thanh lý (bỏ cọc) — CÒN 1 BƯỚC: duyệt phiếu cọc", {
+        description:
+          'Phiếu thu "Doanh thu bỏ cọc" đang CHỜ DUYỆT. Vào Thu chi bấm Duyệt thì cọc mới vào doanh thu và hoá đơn thanh lý mới tất toán.',
+        duration: 12000,
+        action: {
+          label: "Mở Thu chi",
+          onClick: () => {
+            window.location.href = "/income-expense";
+          },
+        },
+      });
     },
     onError: (error: any) => {
       console.error("Error terminating contract (forfeit):", error);
@@ -219,12 +232,16 @@ export const useTerminateForfeit = () => {
   });
 };
 
-// Consume toàn bộ credit còn dư của contract bằng cách INSERT excess_amounts
-// row âm. Dùng cho cả forfeit (xoá credit) và move-out (đã đưa credit vào
-// excess_rent của settlement invoice). Idempotent qua source_invoice rollback.
+// Consume credit còn dư của contract bằng cách INSERT excess_amounts row âm.
+// - forfeit: tiêu TOÀN BỘ (khách bỏ đi, credit bị forfeit) — maxAmount undefined.
+// - move-out: chỉ tiêu ĐÚNG phần đã áp vào quyết toán (excess_rent) — B2 audit
+//   03/07: trước đây luôn tiêu hết nên hạ ô "Tiền phòng thừa" xuống vẫn mất
+//   sạch credit của khách một cách im lặng.
+// Idempotent qua source_invoice rollback.
 async function consumeRemainingCredit(
   contractId: string,
   description: string,
+  maxAmount?: number,
 ): Promise<void> {
   const user = await getSessionUser();
   if (!user) return;
@@ -243,14 +260,16 @@ async function consumeRemainingCredit(
     if (row.source_invoice?.deleted_at) return sum;
     return sum + (Number(row.amount) || 0);
   }, 0);
-  if (total === 0) return;
+  const toConsume =
+    maxAmount === undefined ? total : Math.min(total, Math.max(maxAmount, 0));
+  if (toConsume <= 0) return;
 
   const { error: insertErr } = await supabase
     .from("excess_amounts" as any)
     .insert({
       user_id: user.id,
       contract_id: contractId,
-      amount: -total,
+      amount: -toConsume,
       description,
       source_invoice_id: null,
       source_payment_id: null,
@@ -278,6 +297,10 @@ export const useTerminateMoveOut = () => {
       outstandingDebt?: number;
       notes?: string;
       extraCharges?: ExtraChargeItem[];
+      // A5 (audit 03/07): 'PAID' = khách đã trả phần thiếu tại chỗ (ghi thu ngay,
+      // như cũ); 'DEBT' = ghi nợ — hoá đơn giữ công nợ thật chờ thu, KHÔNG tạo
+      // phiếu "Khách trả thêm" (tránh doanh thu ảo khi khách chưa trả).
+      shortfallMode?: "PAID" | "DEBT";
     }) => {
       const { data, error } = await (supabase as any).rpc(
         "terminate_contract_move_out",
@@ -290,16 +313,18 @@ export const useTerminateMoveOut = () => {
           p_outstanding_debt: params.outstandingDebt ?? 0,
           p_notes: params.notes ?? null,
           p_extra_charges: params.extraCharges ?? [],
+          p_shortfall_mode: params.shortfallMode ?? "PAID",
         }
       );
 
       if (error) throw error;
 
-      // Tiêu hết credit còn dư của contract sau khi RPC tạo settlement invoice.
-      // UI đã pre-fill credit vào excess_rent → invoice line đã carry số tiền này.
+      // B2: chỉ tiêu credit ĐÚNG phần đã áp vào quyết toán (excess_rent) —
+      // phần còn lại giữ nguyên trên sổ credit của khách.
       await consumeRemainingCredit(
         params.contractId,
         `Tiêu credit khi thanh lý move-out ngày ${params.moveOutDate}`,
+        params.excessRent ?? 0,
       );
 
       return data;

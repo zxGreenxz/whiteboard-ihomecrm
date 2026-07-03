@@ -537,6 +537,10 @@ function ProfitDistributionDesktop() {
   // cọc bị báo "thiếu" oan đúng bằng tiền cọc. Tắt pnlOnly: so tiền thật vs total.
   const noteFor = (row: DisplayRow): { text: string; cls: string } | null => {
     if (!row.invoiceId) return null;
+    // Dòng thanh lý/bỏ cọc: phiếu doanh thu có amount = cọc-cấn-nợ (trải trên NHIỀU
+    // hoá đơn khác), KHÔNG so được với mệnh giá 1 hoá đơn quyết toán nó gắn vào
+    // → cờ "thừa/thiếu" là artifact gây hiểu nhầm, bỏ qua (B5 — audit 03/07).
+    if (isLiquidationRow(row)) return null;
     const inv = invoiceTotals?.get(row.invoiceId);
     if (!inv || !inv.total_amount) return null;
     const depositInInvoice = pnlOnly

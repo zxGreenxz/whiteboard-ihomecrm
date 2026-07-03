@@ -147,6 +147,27 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     },
   });
 
+  // B1 (audit 03/07): phiếu bỏ cọc đang CHỜ DUYỆT của HĐ này — nếu quên bước
+  // Duyệt ở Thu chi thì cọc không vào doanh thu & hoá đơn thanh lý treo mãi.
+  const { data: pendingForfeitCount = 0 } = useQuery({
+    queryKey: ['contract-pending-forfeit', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { count, error } = await (supabase as any)
+        .from('income_expenses')
+        .select('id', { count: 'exact', head: true })
+        .eq('contract_id', id)
+        .eq('approval_status', 'UNAPPROVED')
+        .is('deleted_at', null)
+        .like('notes', '[CẤN CỌC BỎ CỌC%');
+      if (error) {
+        console.error('Fetch pending forfeit vouchers error:', error);
+        return 0;
+      }
+      return count ?? 0;
+    },
+  });
+
   // Fetch contract services
   const [contractServices, setContractServices] = useState<ContractService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
@@ -914,6 +935,22 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* B1: nhắc bước Duyệt phiếu bỏ cọc còn treo */}
+                  {pendingForfeitCount > 0 && (
+                    <Alert className="bg-amber-50 border-amber-300">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-900 text-sm space-y-1">
+                        <p className="font-medium">
+                          Cọc bỏ đang CHỜ DUYỆT ({pendingForfeitCount} phiếu)
+                        </p>
+                        <p className="text-xs">
+                          Vào <a href="/income-expense" className="underline font-medium">Thu chi</a>{' '}
+                          bấm <b>Duyệt</b> phiếu "Doanh thu bỏ cọc" thì cọc mới vào
+                          doanh thu và hoá đơn thanh lý mới tất toán.
+                        </p>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Tổng tiền cọc:</span>

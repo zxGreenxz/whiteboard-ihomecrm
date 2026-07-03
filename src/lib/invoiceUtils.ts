@@ -208,7 +208,19 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
 
   const notes = invoice.notes ?? '';
   const isLiquidation = /thanh\s*lý/i.test(notes);
-  if (isLiquidation) return suffix ? `Hóa đơn thanh lý - ${suffix}` : 'Hóa đơn thanh lý';
+  if (isLiquidation) {
+    // B6 (audit 03/07): billing_month của hoá đơn thanh lý chỉ là "slot" kỹ thuật
+    // (né UNIQUE contract+kỳ nên có thể rơi vào tháng tương lai 08/09...) → hiển
+    // thị NGÀY LẬP thật thay vì kỳ, và tách nhãn "thu thêm" khỏi hoá đơn bù cọc.
+    const isExtra = /thu\s*thêm/i.test(notes);
+    const issueDisplay = (() => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(invoice.issue_date ?? '');
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : monthDisplay;
+    })();
+    const liqSuffix = [loc, issueDisplay].filter(Boolean).join(' - ');
+    const label = isExtra ? 'Hóa đơn thu thêm (thanh lý)' : 'Hóa đơn thanh lý';
+    return liqSuffix ? `${label} - ${liqSuffix}` : label;
+  }
 
   const hasRent = invoice.invoice_items?.some((i) => i.type === 'RENT');
   const hasService = invoice.invoice_items?.some(

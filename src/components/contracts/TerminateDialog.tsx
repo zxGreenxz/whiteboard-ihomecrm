@@ -30,6 +30,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowLeft, Ban, LogOut, ReceiptText } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import {
   terminateForfeitFormSchema,
@@ -180,22 +191,30 @@ function StepSelectType({
       <p className="text-sm text-muted-foreground">
         Chọn hình thức thanh lý hợp đồng:
       </p>
+      {/* B3 (audit 03/07): nêu rõ hệ quả rất khác nhau của 2 hình thức ngay tại
+          bước chọn — cả 2 đều gần như không thể hoàn tác. */}
       <div className="grid grid-cols-2 gap-4">
         <Button
           variant="outline"
-          className="h-24 flex flex-col items-center gap-2 hover:border-red-300 hover:bg-red-50"
+          className="h-auto min-h-28 flex flex-col items-center gap-1.5 py-3 whitespace-normal hover:border-red-300 hover:bg-red-50"
           onClick={() => onSelect("FORFEIT")}
         >
           <Ban className="h-6 w-6 text-red-500" />
           <span className="font-medium">Khách bỏ cọc</span>
+          <span className="text-[11px] font-normal text-muted-foreground leading-snug text-center">
+            Huỷ mọi hoá đơn còn nợ, giữ cọc làm doanh thu (cần Duyệt phiếu sau)
+          </span>
         </Button>
         <Button
           variant="outline"
-          className="h-24 flex flex-col items-center gap-2 hover:border-orange-300 hover:bg-orange-50"
+          className="h-auto min-h-28 flex flex-col items-center gap-1.5 py-3 whitespace-normal hover:border-orange-300 hover:bg-orange-50"
           onClick={() => onSelect("MOVE_OUT")}
         >
           <LogOut className="h-6 w-6 text-orange-500" />
           <span className="font-medium">Khách rời phòng</span>
+          <span className="text-[11px] font-normal text-muted-foreground leading-snug text-center">
+            Hoàn cọc sau khi trừ công nợ/thu thêm — quyết toán ngay
+          </span>
         </Button>
       </div>
     </div>
@@ -233,11 +252,33 @@ function StepForfeit({
   const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
+  // B4 (audit 03/07): số cọc THỰC sẽ chuyển thành doanh thu = LEAST(cọc theo HĐ,
+  // cọc đã thu) — khớp công thức server; hiển thị rõ trước khi chốt.
+  const forfeitAmount = Math.min(
+    Number(contract.total_deposit || 0),
+    Number(contract.deposit_paid ?? contract.total_deposit ?? 0)
+  );
+  const depositShort =
+    Number(contract.deposit_paid ?? contract.total_deposit ?? 0) <
+    Number(contract.total_deposit || 0);
+
+  // B4: xác nhận hệ quả trước khi chạy — thao tác không thể hoàn tác.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingData, setPendingData] =
+    useState<TerminateForfeitFormData | null>(null);
+
   const onSubmit = (data: TerminateForfeitFormData) => {
+    setPendingData(data);
+    setConfirmOpen(true);
+  };
+
+  const doTerminate = () => {
+    if (!pendingData) return;
+    setConfirmOpen(false);
     terminateForfeit.mutate(
       {
         contractId: contract.id,
-        forfeitDate: data.forfeit_date,
+        forfeitDate: pendingData.forfeit_date,
         extraCharges,
       },
       {
@@ -352,6 +393,20 @@ function StepForfeit({
           </div>
         )}
 
+        {/* B4: hiện rõ CON SỐ cọc sẽ chuyển doanh thu trước khi chốt */}
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-center justify-between gap-2">
+          <span>Tiền cọc chuyển thành doanh thu (chờ duyệt):</span>
+          <strong className="tabular-nums whitespace-nowrap">
+            {formatVND(forfeitAmount)} đ
+          </strong>
+        </div>
+        {depositShort && (
+          <p className="text-xs text-amber-700 -mt-2">
+            Cọc theo HĐ {formatVND(Number(contract.total_deposit || 0))}đ nhưng
+            mới thu {formatVND(forfeitAmount)}đ — chỉ giữ được phần đã thu.
+          </p>
+        )}
+
         <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
           Khi thanh lý bỏ cọc:{" "}
           <strong>tất cả hoá đơn còn nợ ở trên sẽ bị huỷ</strong> (phần đã thu —
@@ -401,6 +456,45 @@ function StepForfeit({
           </Button>
         </DialogFooter>
       </form>
+
+      {/* B4: xác nhận hệ quả — không thể hoàn tác */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận thanh lý — khách bỏ cọc</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span>Cọc chuyển thành doanh thu (chờ duyệt)</span>
+                  <b className="tabular-nums">{formatVND(forfeitAmount)} đ</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Hoá đơn còn nợ sẽ bị huỷ</span>
+                  <b className="tabular-nums">
+                    {unpaidInvoices.length} hoá đơn ({formatVND(totalRemaining)} đ)
+                  </b>
+                </div>
+                {extraTotal > 0 && (
+                  <div className="flex justify-between">
+                    <span>Thu thêm (hoá đơn công nợ riêng)</span>
+                    <b className="tabular-nums">{formatVND(extraTotal)} đ</b>
+                  </div>
+                )}
+                <p className="pt-2 text-muted-foreground">
+                  Thao tác này <b>không thể hoàn tác</b>. Sau khi chạy, vào Thu
+                  chi bấm <b>Duyệt</b> phiếu "Doanh thu bỏ cọc" để hoàn tất.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Xem lại</AlertDialogCancel>
+            <AlertDialogAction onClick={doTerminate}>
+              Xác nhận thanh lý
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Form>
   );
 }
@@ -430,13 +524,19 @@ function StepMoveOut({
   isPending: boolean;
   terminateMoveOut: ReturnType<typeof useTerminateMoveOut>;
 }) {
+  // A1 (audit 03/07): mặc định hoàn cọc theo cọc THỰC THU (deposit_paid), không
+  // phải cọc theo HĐ — server cũng kẹp LEAST(refund, deposit_paid) để không thể
+  // hoàn quá số khách đã đóng.
+  const totalDeposit = Number(contract.total_deposit || 0);
+  const depositPaid = Number(contract.deposit_paid ?? contract.total_deposit ?? 0);
+
   const form = useForm<TerminateMoveOutFormData>({
     resolver: zodResolver(terminateMoveOutFormSchema),
     defaultValues: {
       move_out_date: contract.expected_move_out_date
         ? contract.expected_move_out_date.split("T")[0]
         : new Date().toISOString().split("T")[0],
-      deposit_refund: contract.total_deposit || 0,
+      deposit_refund: Math.min(totalDeposit, depositPaid),
       excess_rent: 0,
       notes: "",
     },
@@ -444,6 +544,15 @@ function StepMoveOut({
 
   const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
+
+  // A5 (audit 03/07): khi quyết toán âm (khách còn phải trả), cho chọn
+  // "đã trả ngay" (ghi thu) hay "ghi nợ" (giữ công nợ thật chờ thu).
+  const [shortfallMode, setShortfallMode] = useState<"PAID" | "DEBT">("PAID");
+
+  // B4: xác nhận hệ quả trước khi chạy.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingData, setPendingData] =
+    useState<TerminateMoveOutFormData | null>(null);
 
   // Auto fill credit (excess_amounts) vào "Tiền phòng thừa" lần đầu khi user
   // chưa chỉnh tay. Chỉ thực hiện khi credit > 0 và excess_rent chưa được
@@ -474,15 +583,23 @@ function StepMoveOut({
   const settlementAmount = depositRefund + excessRent - totalDeductions;
 
   const onSubmit = (data: TerminateMoveOutFormData) => {
+    setPendingData(data);
+    setConfirmOpen(true);
+  };
+
+  const doTerminate = () => {
+    if (!pendingData) return;
+    setConfirmOpen(false);
     terminateMoveOut.mutate(
       {
         contractId: contract.id,
-        moveOutDate: data.move_out_date,
-        depositRefund: data.deposit_refund,
-        excessRent: data.excess_rent,
+        moveOutDate: pendingData.move_out_date,
+        depositRefund: pendingData.deposit_refund,
+        excessRent: pendingData.excess_rent,
         outstandingDebt,
-        notes: data.notes,
+        notes: pendingData.notes,
         extraCharges,
+        shortfallMode,
       },
       {
         onSuccess: () => {
@@ -654,6 +771,16 @@ function StepMoveOut({
                       name={field.name}
                     />
                   </FormControl>
+                  <p className="text-[11px] text-muted-foreground">
+                    Cọc theo HĐ: {formatVND(totalDeposit)}đ · Đã thu:{" "}
+                    {formatVND(depositPaid)}đ
+                  </p>
+                  {Number(field.value || 0) > depositPaid && (
+                    <p className="text-[11px] text-amber-700">
+                      Vượt cọc đã thu — hệ thống chỉ hoàn tối đa{" "}
+                      {formatVND(depositPaid)}đ.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -663,7 +790,11 @@ function StepMoveOut({
               name="excess_rent"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs">Tiền phòng thừa</FormLabel>
+                  {/* B2 (audit 03/07): nhãn nói đúng bản chất (credit khách trả dư);
+                      chỉ phần NHẬP ở đây được áp vào quyết toán & tiêu khỏi credit. */}
+                  <FormLabel className="text-xs">
+                    Tiền thừa của khách (credit) áp vào quyết toán
+                  </FormLabel>
                   <FormControl>
                     <CurrencyInput
                       className="h-9 text-sm text-right"
@@ -675,8 +806,9 @@ function StepMoveOut({
                   </FormControl>
                   {creditBalance > 0 && (
                     <p className="text-[11px] text-blue-700">
-                      Đã tự fill {formatVND(creditBalance)}đ tiền nợ khách (credit).
-                      Toàn bộ credit sẽ được tiêu hết khi thanh lý.
+                      Khách đang có {formatVND(creditBalance)}đ credit (tiền trả
+                      dư). Chỉ phần nhập ở đây được áp vào quyết toán và trừ
+                      khỏi credit; phần còn lại giữ nguyên.
                     </p>
                   )}
                   <FormMessage />
@@ -726,6 +858,21 @@ function StepMoveOut({
                   {formatVND(extraTotal)} đ
                 </span>
               </div>
+              {/* A3 (chủ ý nghiệp vụ giữ mặc định vệ sinh 200k — chỉ liệt kê rõ
+                  từng khoản để người duyệt nhìn thấy ngay, không gộp mờ). */}
+              {extraCharges
+                .filter((it) => (it.amount || 0) > 0)
+                .map((it, i) => (
+                  <div
+                    key={i}
+                    className="flex justify-between text-xs text-muted-foreground pl-4"
+                  >
+                    <span>· {it.description || it.kind}</span>
+                    <span className="tabular-nums">
+                      {formatVND(it.amount || 0)} đ
+                    </span>
+                  </div>
+                ))}
               <div className="flex justify-between border-t border-dashed pt-1.5">
                 <span className="text-muted-foreground">
                   Tổng khấu trừ <span className="text-xs">(công nợ + thu thêm)</span>
@@ -744,22 +891,50 @@ function StepMoveOut({
               }`}
             >
               <div className="flex flex-col">
-                <span className="font-semibold">Số tiền quyết toán</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="font-semibold">
                   {settlementAmount >= 0
                     ? "Chủ nhà trả lại khách"
-                    : "Khách phải trả thêm"}
+                    : "Khách còn phải trả"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Số tiền quyết toán
                 </span>
               </div>
+              {/* A5: bỏ dấu "−" gây nhiễu cho số tiền khách NỢ — hướng đã nói ở nhãn */}
               <span
                 className={`text-xl font-bold tabular-nums ${
                   settlementAmount >= 0 ? "text-emerald-700" : "text-red-700"
                 }`}
               >
-                {settlementAmount >= 0 ? "+" : "−"}
                 {formatVND(Math.abs(settlementAmount))} đ
               </span>
             </div>
+
+            {/* A5 (audit 03/07): quyết toán âm — hỏi rõ tiền phần thiếu đã thu chưa,
+                tránh ghi doanh thu ảo khi khách chưa trả. */}
+            {settlementAmount < 0 && (
+              <RadioGroup
+                value={shortfallMode}
+                onValueChange={(v) => setShortfallMode(v as "PAID" | "DEBT")}
+                className="mt-3 gap-2"
+              >
+                <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm cursor-pointer has-[[data-state=checked]]:border-emerald-400 has-[[data-state=checked]]:bg-emerald-50">
+                  <RadioGroupItem value="PAID" className="mt-0.5" />
+                  <span>
+                    <b>Khách đã trả đủ {formatVND(Math.abs(settlementAmount))}đ</b>{" "}
+                    khi rời phòng — ghi nhận thu ngay.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm cursor-pointer has-[[data-state=checked]]:border-amber-400 has-[[data-state=checked]]:bg-amber-50">
+                  <RadioGroupItem value="DEBT" className="mt-0.5" />
+                  <span>
+                    <b>Ghi nợ</b> — hoá đơn giữ công nợ{" "}
+                    {formatVND(Math.abs(settlementAmount))}đ chờ thu sau; không
+                    ghi doanh thu khi chưa thu được tiền.
+                  </span>
+                </label>
+              </RadioGroup>
+            )}
           </div>
         </div>
 
@@ -803,6 +978,63 @@ function StepMoveOut({
           </Button>
         </DialogFooter>
       </form>
+
+      {/* B4: xác nhận hệ quả — không thể hoàn tác */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận thanh lý — khách rời phòng</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span>Cọc hoàn/cấn (kẹp theo đã thu)</span>
+                  <b className="tabular-nums">
+                    {formatVND(Math.min(depositRefund, depositPaid))} đ
+                  </b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Công nợ được quyết toán</span>
+                  <b className="tabular-nums">{formatVND(outstandingDebt)} đ</b>
+                </div>
+                {extraTotal > 0 && (
+                  <div className="flex justify-between">
+                    <span>Thu thêm</span>
+                    <b className="tabular-nums">{formatVND(extraTotal)} đ</b>
+                  </div>
+                )}
+                {excessRent > 0 && (
+                  <div className="flex justify-between">
+                    <span>Tiền thừa (credit) áp vào quyết toán</span>
+                    <b className="tabular-nums">{formatVND(excessRent)} đ</b>
+                  </div>
+                )}
+                <div className="flex justify-between border-t pt-1.5">
+                  <span>
+                    {settlementAmount >= 0
+                      ? "Trả lại khách"
+                      : shortfallMode === "PAID"
+                        ? "Khách trả thêm (ghi thu ngay)"
+                        : "Khách còn nợ (ghi nợ chờ thu)"}
+                  </span>
+                  <b className="tabular-nums">
+                    {formatVND(Math.abs(settlementAmount))} đ
+                  </b>
+                </div>
+                <p className="pt-2 text-muted-foreground">
+                  Thao tác này <b>không thể hoàn tác</b>: hợp đồng chuyển "Đã
+                  thanh lý", phòng được giải phóng, phiếu thu/chi được tạo.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Xem lại</AlertDialogCancel>
+            <AlertDialogAction onClick={doTerminate}>
+              Xác nhận thanh lý
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Form>
   );
 }

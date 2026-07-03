@@ -64,16 +64,23 @@ const sumByType = (items: InvoiceWithRelations['invoice_items'], types: string[]
 };
 
 /**
- * Phân loại các invoice_items không phải RENT/DISCOUNT thành 3 nhóm:
- * Điện (desc chứa "điện"), Nước (desc chứa "nước"), PDV (còn lại).
+ * Phân loại các invoice_items không phải RENT/DISCOUNT thành 4 nhóm:
+ * Điện (desc chứa "điện"), Nước (desc chứa "nước"), Phạt (type PENALTY —
+ * vd phí phạt thanh lý/bỏ cọc, tách khỏi PDV kẻo đọc nhầm thành phí dịch vụ
+ * — B6, audit 03/07), PDV (còn lại).
  */
 const splitServiceAmounts = (items: InvoiceItem[] | undefined) => {
   let electric = 0;
   let water = 0;
   let pdv = 0;
-  if (!items) return { electric, water, pdv };
+  let penalty = 0;
+  if (!items) return { electric, water, pdv, penalty };
   for (const item of items) {
     if (item.type === 'RENT' || item.type === 'DISCOUNT') continue;
+    if (item.type === 'PENALTY') {
+      penalty += item.amount || 0;
+      continue;
+    }
     const desc = (item.description || '').toLowerCase();
     if (desc.includes('điện')) {
       electric += item.amount || 0;
@@ -83,7 +90,7 @@ const splitServiceAmounts = (items: InvoiceItem[] | undefined) => {
       pdv += item.amount || 0;
     }
   }
-  return { electric, water, pdv };
+  return { electric, water, pdv, penalty };
 };
 
 const InvoiceListTable = ({
@@ -216,7 +223,7 @@ const InvoiceListTable = ({
                 (invoice.total_amount || 0) > 0 &&
                 (invoice.paid_amount || 0) >= (invoice.total_amount || 0);
               const rentAmount = sumByType(invoice.invoice_items, ['RENT']);
-              const { electric, water, pdv } = splitServiceAmounts(invoice.invoice_items);
+              const { electric, water, pdv, penalty } = splitServiceAmounts(invoice.invoice_items);
 
               // Tô nền dòng theo trạng thái thanh toán:
               //  - PAID (kể cả đã làm tròn) → xanh nhạt
@@ -409,10 +416,16 @@ const InvoiceListTable = ({
                     </TableCell>
                   )}
 
-                  {/* PDV (phí dịch vụ khác) */}
+                  {/* PDV (phí dịch vụ khác) — tiền PHẠT (thanh lý/bỏ cọc) hiện dòng riêng
+                      có nhãn thay vì dồn chung vào PDV (B6, audit 03/07) */}
                   {v.pdv && (
                     <TableCell className="text-right text-sm">
-                      {pdv > 0 ? formatCurrency(pdv) : <span className="text-muted-foreground">—</span>}
+                      {pdv > 0 ? formatCurrency(pdv) : penalty > 0 ? null : <span className="text-muted-foreground">—</span>}
+                      {penalty > 0 && (
+                        <div className="text-xs text-amber-700 whitespace-nowrap">
+                          Phạt: {formatCurrency(penalty)}
+                        </div>
+                      )}
                     </TableCell>
                   )}
 
