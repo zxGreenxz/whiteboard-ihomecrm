@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -33,7 +35,7 @@ import {
 import { useCreateBuilding } from '@/hooks/useBuildings';
 import { useCreateRoom } from '@/hooks/useRooms';
 import { useCreateService } from '@/hooks/useServices';
-import { useIndividualSetting, useUpdateIndividualSetting } from '@/hooks/useSettings';
+import { useUpdateIndividualSetting } from '@/hooks/useSettings';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 
@@ -47,14 +49,43 @@ const STEPS = [
   { id: 'complete', title: 'Hoàn thành', icon: CheckCircle2 },
 ] as const;
 
+// Query CÔ LẬP, key ổn định (KHÔNG kèm user?.id) + không bao giờ refetch nền:
+// cờ onboarding gần như bất biến (đã true là mãi true). Bản cũ dùng
+// useIndividualSetting (key có user?.id) trên trang Dashboard bị REFETCH LOOP
+// ~1.6 lần/giây (poll vô hạn onboarding_completed dù cờ đã true) — key ổn định
+// + refetchOnMount:false chặn mọi kiểu trigger (remount/enable-flap). markCompleted
+// ghi qua mutation cũ RỒI set-cache trực tiếp để UI tắt wizard tức thì.
+const ONBOARDING_QK = ['onboarding-completed-flag'] as const;
+
 export function useOnboardingState() {
-  const { data: completed, isLoading } = useIndividualSetting(ONBOARDING_KEY, false);
+  const queryClient = useQueryClient();
   const updateSetting = useUpdateIndividualSetting(ONBOARDING_KEY);
+
+  const { data: completed, isLoading } = useQuery({
+    queryKey: ONBOARDING_QK,
+    queryFn: async (): Promise<boolean> => {
+      const { data } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', ONBOARDING_KEY)
+        .maybeSingle();
+      return data?.value === true;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
 
   return {
     isCompleted: completed === true,
     isLoading,
-    markCompleted: () => updateSetting.mutate(true),
+    markCompleted: () => {
+      queryClient.setQueryData(ONBOARDING_QK, true); // tắt wizard ngay
+      updateSetting.mutate(true); // ghi bền xuống settings
+    },
   };
 }
 
