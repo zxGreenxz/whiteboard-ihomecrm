@@ -95,6 +95,7 @@ export default function OwnerDashboardV5() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["v5-config-admin"] });
+      qc.invalidateQueries({ queryKey: ["v5-config-salary-engine"] });
       toast.success("Đã lưu cấu hình");
     },
     onError: (e: any) => toast.error(e?.message ?? "Lỗi lưu cấu hình"),
@@ -264,9 +265,35 @@ export default function OwnerDashboardV5() {
           </div>
         </TabsContent>
 
-        {/* TAB 5 — Cài đặt v5: flags/stage/jobs/cron_runs */}
+        {/* TAB 5 — Cài đặt v5: chế độ lương/flags/stage/jobs/cron_runs */}
         <TabsContent value="settings">
           <div className="max-w-xl space-y-4">
+            {/* Công tắc chọn CHẾ ĐỘ LƯƠNG đang áp dụng cho trang /finance/salary */}
+            <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/50 p-4">
+              <div className="mb-1 text-sm font-semibold">Chế độ lương đang áp dụng</div>
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                Cả hai cùng tính song song. Bật cái nào thì trang <b>Bảng lương</b> (/finance/salary) hiển thị &amp; chốt theo cái đó.
+              </p>
+              <div className="flex gap-2">
+                {[
+                  { key: "legacy", label: "Lương cũ (v4)" },
+                  { key: "v5", label: "Lương v5 (chuyên cần + chuỗi)" },
+                ].map((o) => {
+                  const cur = cfgQ.data?.system_v5?.salary_engine === "v5" ? "v5" : "legacy";
+                  return (
+                    <Button key={o.key} size="sm"
+                      variant={cur === o.key ? "default" : "outline"}
+                      onClick={() => setCfg.mutate({ system_v5: { salary_engine: o.key } })}>
+                      {o.label}
+                    </Button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Đổi tức thì. Lương v5 hiện <b>TẠM TÍNH</b>; ghi vào lương thật vẫn qua tab Đối soát (cần bật <code>v5_money</code>).
+              </p>
+            </div>
+
             <div className="rounded-xl border p-4">
               <div className="mb-2 text-sm font-semibold">Feature flags (kill-switch)</div>
               <div className="flex items-center justify-between py-1.5">
