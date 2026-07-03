@@ -29,6 +29,8 @@ export const useChangeBreakdown = (
   return useQuery({
     queryKey: ['change-breakdown', filters],
     enabled,
+    // Mở lại dialog cùng bộ lọc trong 60s → dùng cache, không chạy lại RPC.
+    staleTime: 60_000,
     queryFn: async (): Promise<ChangeBreakdownRow[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -88,6 +90,8 @@ export const useDepositBreakdown = (
   return useQuery({
     queryKey: ['deposit-breakdown', filters],
     enabled,
+    // Mở lại dialog cùng bộ lọc trong 60s → dùng cache, không chạy lại RPC.
+    staleTime: 60_000,
     queryFn: async (): Promise<DepositBreakdownRow[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');

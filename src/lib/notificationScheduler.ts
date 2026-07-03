@@ -57,34 +57,34 @@ export async function checkContractExpiryReminders(userId: string, config?: any)
 
   const today = new Date();
 
-  for (const contract of contracts) {
-    const endDate = new Date(contract.end_date);
-    const daysUntilExpiry = differenceInDays(endDate, today);
+  // Lọc HĐ tới mốc nhắc TRƯỚC, rồi kiểm tra "đã gửi hôm nay" bằng 1 query IN
+  // (bản cũ N+1: mỗi HĐ 1 query notifications).
+  const due = contracts.filter((c) =>
+    reminderDays.includes(differenceInDays(new Date(c.end_date), today)),
+  );
+  if (due.length === 0) return;
 
-    // Check if we should send reminder
-    if (reminderDays.includes(daysUntilExpiry)) {
-      // Check if notification already sent for this date
-      const { data: existing } = await supabase
-        .from('notifications')
-        .select('id')
-        .eq('contract_id', contract.id)
-        .eq('type', 'CONTRACT_EXPIRING')
-        .gte('created_at', format(today, 'yyyy-MM-dd'))
-        .maybeSingle();
+  const { data: sentToday } = await supabase
+    .from('notifications')
+    .select('contract_id')
+    .in('contract_id', due.map((c) => c.id))
+    .eq('type', 'CONTRACT_EXPIRING')
+    .gte('created_at', format(today, 'yyyy-MM-dd'));
+  const sentSet = new Set((sentToday ?? []).map((n: any) => n.contract_id));
 
-      if (existing) continue; // Already sent today
+  for (const contract of due) {
+    if (sentSet.has(contract.id)) continue; // Already sent today
 
-      // Create notification
-      await supabase.from('notifications').insert({
-        user_id: userId,
-        type: 'CONTRACT_EXPIRING',
-        channel: 'IN_APP',
-        subject: 'Hợp đồng sắp hết hạn',
-        content: `Hợp đồng ${contract.contract_number} của ${contract.tenant?.full_name} (căn hộ ${contract.room?.name}) sẽ hết hạn trong ${daysUntilExpiry} ngày. Vui lòng liên hệ để gia hạn.`,
-        contract_id: contract.id,
-        status: 'PENDING',
-      });
-    }
+    const daysUntilExpiry = differenceInDays(new Date(contract.end_date), today);
+    await supabase.from('notifications').insert({
+      user_id: userId,
+      type: 'CONTRACT_EXPIRING',
+      channel: 'IN_APP',
+      subject: 'Hợp đồng sắp hết hạn',
+      content: `Hợp đồng ${contract.contract_number} của ${contract.tenant?.full_name} (căn hộ ${contract.room?.name}) sẽ hết hạn trong ${daysUntilExpiry} ngày. Vui lòng liên hệ để gia hạn.`,
+      contract_id: contract.id,
+      status: 'PENDING',
+    });
   }
 }
 
@@ -116,34 +116,34 @@ export async function checkInvoicePaymentReminders(userId: string, config?: any)
 
   const today = new Date();
 
-  for (const invoice of invoices) {
-    const dueDate = new Date(invoice.due_date);
-    const daysUntilDue = differenceInDays(dueDate, today);
+  // Lọc hoá đơn tới mốc nhắc TRƯỚC, rồi kiểm "đã gửi hôm nay" bằng 1 query IN
+  // (bản cũ N+1: mỗi hoá đơn 1 query notifications).
+  const due = invoices.filter((inv) => {
+    const daysUntilDue = differenceInDays(new Date(inv.due_date), today);
+    return daysUntilDue > 0 && reminderDays.includes(daysUntilDue);
+  });
+  if (due.length === 0) return;
+
+  const { data: sentToday } = await supabase
+    .from('notifications')
+    .select('invoice_id')
+    .in('invoice_id', due.map((inv) => inv.id))
+    .eq('type', 'PAYMENT_REMINDER')
+    .gte('created_at', format(today, 'yyyy-MM-dd'));
+  const sentSet = new Set((sentToday ?? []).map((n: any) => n.invoice_id));
+
+  for (const invoice of due) {
+    if (sentSet.has(invoice.id)) continue; // Already sent today
+
     const remainingAmount = ((invoice as any).total_amount || 0) - ((invoice as any).paid_amount || 0);
-
-    // Check if we should send reminder
-    if (daysUntilDue > 0 && reminderDays.includes(daysUntilDue)) {
-      // Check if notification already sent for this date
-      const { data: existing } = await supabase
-        .from('notifications')
-        .select('id')
-        .eq('invoice_id', invoice.id)
-        .eq('type', 'PAYMENT_REMINDER')
-        .gte('created_at', format(today, 'yyyy-MM-dd'))
-        .maybeSingle();
-
-      if (existing) continue; // Already sent today
-
-      // Create reminder
-      await createPaymentReminderNotification(
-        invoice.id,
-        userId,
-        (invoice as any).contract?.tenant?.full_name || '',
-        invoice.invoice_number || '',
-        remainingAmount,
-        invoice.due_date
-      );
-    }
+    await createPaymentReminderNotification(
+      invoice.id,
+      userId,
+      (invoice as any).contract?.tenant?.full_name || '',
+      invoice.invoice_number || '',
+      remainingAmount,
+      invoice.due_date
+    );
   }
 }
 
@@ -262,6 +262,19 @@ export async function checkDepositTopupReminders(userId: string): Promise<void> 
 
   const today = new Date();
 
+  // Nạp lần-gửi-cuối của TẤT CẢ HĐ thiếu cọc trong 1 query (bản cũ N+1:
+  // mỗi HĐ 1 query notifications) — cùng khuôn checkOverdueInvoices.
+  const { data: lastNotifs } = await supabase
+    .from('notifications')
+    .select('contract_id, created_at')
+    .in('contract_id', (contracts as any[]).map((c) => c.id))
+    .eq('type', 'DEPOSIT_SHORTFALL')
+    .order('created_at', { ascending: false });
+  const lastByContract = new Map<string, string>();
+  for (const n of (lastNotifs ?? []) as Array<{ contract_id: string; created_at: string }>) {
+    if (!lastByContract.has(n.contract_id)) lastByContract.set(n.contract_id, n.created_at);
+  }
+
   for (const contract of contracts as any[]) {
     const remaining = Number(contract.deposit_remaining) || 0;
     if (remaining < SHORTFALL_THRESHOLD) continue;
@@ -271,17 +284,9 @@ export async function checkDepositTopupReminders(userId: string): Promise<void> 
 
     // Throttle: quá hẹn → nhắc tối đa 1 lần/ngày; chưa tới hẹn → 1 lần/tuần.
     const minGapDays = overdue ? 1 : 7;
-    const { data: lastNotification } = await supabase
-      .from('notifications')
-      .select('created_at')
-      .eq('contract_id', contract.id)
-      .eq('type', 'DEPOSIT_SHORTFALL')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (lastNotification) {
-      const daysSince = differenceInDays(today, new Date(lastNotification.created_at));
+    const lastSentAt = lastByContract.get(contract.id);
+    if (lastSentAt) {
+      const daysSince = differenceInDays(today, new Date(lastSentAt));
       if (daysSince < minGapDays) continue;
     }
 

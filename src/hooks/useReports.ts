@@ -19,9 +19,16 @@ import {
  * Get vacant rooms report
  * Returns rooms with status 'available' or no active contract
  */
-export function useVacantRoomsReport(buildingId?: string, floorId?: string) {
+export function useVacantRoomsReport(
+  buildingId?: string,
+  floorId?: string,
+  opts?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["reports", "vacant-rooms", buildingId, floorId],
+    // Cho phép gate theo UI (vd Dashboard chỉ fetch khi MỞ dialog phòng trống
+    // — hook này bắn 3 query full-table, không nên chạy ngầm mỗi lần mount).
+    enabled: opts?.enabled ?? true,
     queryFn: async () => {
       // Get all rooms
       let roomsQuery = supabase

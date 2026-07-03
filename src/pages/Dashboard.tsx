@@ -44,7 +44,12 @@ const Dashboard = () => {
 
   const { data: stats, isLoading } = useDashboardStats(buildingId);
   const { data: buildings = [] } = useBuildings();
-  const { data: vacantRooms, isLoading: vacantLoading } = useVacantRoomsReport(buildingId || undefined);
+  // Chỉ fetch khi user MỞ dialog (3 query full-table rooms+contracts×2).
+  const { data: vacantRooms, isLoading: vacantLoading } = useVacantRoomsReport(
+    buildingId || undefined,
+    undefined,
+    { enabled: vacantOpen },
+  );
 
   // Run scheduled notification checks
   useScheduledNotifications();

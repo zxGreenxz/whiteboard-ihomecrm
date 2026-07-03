@@ -3,9 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, UserPlus, Wallet, FileSignature } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useLeads } from "@/hooks/useLeads";
-import { useDeposits } from "@/hooks/useDeposits";
-import { useContractDashboardCounts } from "@/hooks/useContracts";
+import { useDashboardSummary } from "@/hooks/useDashboard";
 
 interface MiniStat {
   label: string;
@@ -79,41 +77,35 @@ function StatBlock({
 }
 
 export function OperationsSummary({ buildingId }: { buildingId?: string | null }) {
-  const { data: leads = [], isLoading: leadsLoading } = useLeads();
-  const { data: deposits = [], isLoading: depositsLoading } = useDeposits();
-  // HĐ: chỉ cần 4 con số → HEAD count server-side, không kéo cả bảng contracts
-  // (full-fetch cũ bị PostgREST max-rows cắt ngầm khi quá 1.000 HĐ).
-  const { data: contractCounts, isLoading: contractsLoading } =
-    useContractDashboardCounts(buildingId);
-
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Toàn bộ số liệu từ RPC gộp get_dashboard_summary (cùng queryKey với
+  // useDashboardStats → 0 request thêm). Trước đây widget này kéo TOÀN BỘ
+  // bảng leads + deposits (full row + embed, không limit) chỉ để đếm 6 số.
+  const { data: summary, isLoading } = useDashboardSummary(buildingId);
+  const leadsLoading = isLoading;
+  const depositsLoading = isLoading;
+  const contractsLoading = isLoading;
 
   // Leads
-  const newLeads = leads.filter((l: any) => {
-    const created = l.created_at ? new Date(l.created_at) : null;
-    return created && created >= startOfMonth;
-  }).length;
-  const convertedLeads = leads.filter((l: any) => l.status === "CONVERTED").length;
-  const conversionRate = leads.length
-    ? `${Math.round((convertedLeads / leads.length) * 100)}%`
+  const leadsTotal = summary?.leads_total ?? 0;
+  const newLeads = summary?.leads_new_month ?? 0;
+  const convertedLeads = summary?.leads_converted ?? 0;
+  const conversionRate = leadsTotal
+    ? `${Math.round((convertedLeads / leadsTotal) * 100)}%`
     : "0%";
 
   // Deposits
-  const newDeposits = deposits.filter((d: any) => {
-    const created = d.created_at ? new Date(d.created_at) : null;
-    return created && created >= startOfMonth;
-  }).length;
-  const movedIn = deposits.filter((d: any) => d.status === "CONVERTED").length;
-  const depositConversion = deposits.length
-    ? `${Math.round((movedIn / deposits.length) * 100)}%`
+  const depositsTotal = summary?.deposits_total ?? 0;
+  const newDeposits = summary?.deposits_new_month ?? 0;
+  const movedIn = summary?.deposits_moved_in ?? 0;
+  const depositConversion = depositsTotal
+    ? `${Math.round((movedIn / depositsTotal) * 100)}%`
     : "0%";
 
-  // Contracts — đếm server-side (useContractDashboardCounts).
-  const activeContracts = contractCounts?.active ?? 0;
-  const newThisMonth = contractCounts?.newThisMonth ?? 0;
-  const expiringSoon = contractCounts?.expiringSoon ?? 0;
-  const terminatedThisMonth = contractCounts?.terminatedThisMonth ?? 0;
+  // Contracts
+  const activeContracts = summary?.contracts_active ?? 0;
+  const newThisMonth = summary?.contracts_new_month ?? 0;
+  const expiringSoon = summary?.contracts_expiring_soon ?? 0;
+  const terminatedThisMonth = summary?.contracts_terminated_month ?? 0;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -127,7 +119,7 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
           { label: "Khách hẹn mới", value: newLeads, tone: "blue" },
           { label: "Đã chuyển đổi", value: convertedLeads, tone: "green" },
           { label: "Tỷ lệ chuyển đổi", value: conversionRate },
-          { label: "Tổng đang theo dõi", value: leads.length },
+          { label: "Tổng đang theo dõi", value: leadsTotal },
         ]}
       />
       <StatBlock
@@ -140,7 +132,7 @@ export function OperationsSummary({ buildingId }: { buildingId?: string | null }
           { label: "Cọc mới (tháng)", value: newDeposits, tone: "amber" },
           { label: "Khách vào thuê", value: movedIn, tone: "green" },
           { label: "Tỷ lệ chuyển đổi", value: depositConversion },
-          { label: "Tổng phiếu cọc", value: deposits.length },
+          { label: "Tổng phiếu cọc", value: depositsTotal },
         ]}
       />
       <StatBlock

@@ -18,31 +18,40 @@ export function DebtChart() {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // 1 QUERY cho cả 6 tháng rồi bucket theo tháng ở client — bản cũ chạy
+      // vòng lặp 6 query TUẦN TỰ (mỗi tháng 1 round-trip, cùng khuôn N+1 mà
+      // useRevenueChart đã sửa). due_date là cột DATE → so sánh bằng chuỗi
+      // ngày cục bộ 'yyyy-MM-dd' cho ranh giới tháng chuẩn (bản cũ gửi ISO-UTC
+      // bị cast lệch 1 ngày ở biên tháng).
+      const rangeStart = format(startOfMonth(subMonths(new Date(), 5)), "yyyy-MM-dd");
+      const rangeEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
+
+      const { data: invoices } = await supabase
+        .from("invoices")
+        .select("total_amount, paid_amount, due_date")
+        .in("status", ["APPROVED", "PARTIAL_PAID"])
+        .gte("due_date", rangeStart)
+        .lte("due_date", rangeEnd);
+
+      // Khởi tạo đủ 6 tháng (tháng không có nợ vẫn hiện 0).
+      const byMonth = new Map<string, number>();
       const data: DebtData[] = [];
-
-      // Get debt for last 6 months
       for (let i = 5; i >= 0; i--) {
-        const monthDate = subMonths(new Date(), i);
-        const monthStart = startOfMonth(monthDate);
-        const monthEnd = endOfMonth(monthDate);
-
-        // Get unpaid/partial paid invoices with due date in this month
-        const { data: invoices } = await supabase
-          .from("invoices")
-          .select("total_amount, paid_amount")
-          .in("status", ["APPROVED", "PARTIAL_PAID"])
-          .gte("due_date", monthStart.toISOString())
-          .lte("due_date", monthEnd.toISOString());
-
-        const debt = invoices?.reduce((sum, inv) => {
+        const key = format(subMonths(new Date(), i), "MM/yyyy");
+        byMonth.set(key, 0);
+        data.push({ month: key, debt: 0 });
+      }
+      for (const inv of invoices || []) {
+        const d = new Date((inv as any).due_date);
+        if (Number.isNaN(d.getTime())) continue;
+        const key = format(d, "MM/yyyy");
+        if (byMonth.has(key)) {
           const debtAmount = (inv.total_amount || 0) - (inv.paid_amount || 0);
-          return sum + debtAmount;
-        }, 0) || 0;
-
-        data.push({
-          month: format(monthDate, "MM/yyyy"),
-          debt,
-        });
+          byMonth.set(key, (byMonth.get(key) || 0) + debtAmount);
+        }
+      }
+      for (const row of data) {
+        row.debt = byMonth.get(row.month) || 0;
       }
 
       return data;

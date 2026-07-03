@@ -1,6 +1,9 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import Dashboard from '@/pages/Dashboard';
 
+// Cả 2 nhánh đều lazy: Dashboard từng import TĨNH ở đây khiến /login (và mọi
+// entry chưa đăng nhập) tải luôn shell Dashboard + MainLayout + data hooks —
+// trang eager duy nhất còn sót sau đợt code-split App.tsx.
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
 // Launcher: scoped CSS + font riêng → lazy để chỉ nạp khi thực sự mở trên mobile.
 const HomeLauncher = lazy(() => import('./HomeLauncher'));
 
@@ -35,7 +38,11 @@ const HomeRoute = () => {
       </Suspense>
     );
   }
-  return <Dashboard />;
+  return (
+    <Suspense fallback={null}>
+      <Dashboard />
+    </Suspense>
+  );
 };
 
 export default HomeRoute;

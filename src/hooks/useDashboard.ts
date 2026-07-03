@@ -48,146 +48,71 @@ export interface RecentActivity {
   amount?: number;
 }
 
-// Helper to get building IDs for filtering. Trust RLS for staff/admin/owner
-// visibility (buildings_select_staff already covers employer↔staff scope) so
-// staff users see employer's buildings instead of an empty list, which would
-// silently fall through to "all visible contracts" and produce nonsense like
-// totalRooms=0 + occupiedRooms=252 → availableRooms=-252.
-const getBuildingIds = async (_userId: string, buildingId?: string | null): Promise<string[]> => {
-  if (buildingId) return [buildingId];
-  const { data: userBuildings } = await supabase
-    .from("buildings")
-    .select("id")
-    .is("deleted_at", null);
-  return userBuildings?.map(b => b.id) || [];
-};
+// ==== get_dashboard_summary: 1 RPC gộp thay ~15 query widget ====
+// (migration 20260703180000, SECURITY INVOKER — RLS áp y hệt query cũ; đã
+// verify 6 user × 2 scope × 17 con số khớp 100%). useDashboardStats /
+// useOccupancyChart / OperationsSummary cùng ăn chung MỘT queryKey nên cả
+// Dashboard chỉ bắn đúng 1 request cho toàn bộ số liệu KPI.
+export interface DashboardSummary {
+  total_rooms: number;
+  occupied_rooms: number;
+  reserved_rooms: number;
+  revenue_this_month: number;
+  total_debt: number;
+  new_contracts_this_month: number;
+  unresolved_issues: number;
+  leads_total: number;
+  leads_converted: number;
+  leads_new_month: number;
+  deposits_total: number;
+  deposits_moved_in: number;
+  deposits_new_month: number;
+  contracts_active: number;
+  contracts_new_month: number;
+  contracts_expiring_soon: number;
+  contracts_terminated_month: number;
+}
 
-// Dashboard stats
+const dashboardSummaryQuery = (buildingId?: string | null) => ({
+  queryKey: ["dashboard-summary", buildingId ?? null] as const,
+  queryFn: async (): Promise<DashboardSummary> => {
+    const { data, error } = await (supabase.rpc as any)("get_dashboard_summary", {
+      p_building_id: buildingId ?? null,
+    });
+    if (error) throw error;
+    return data as DashboardSummary;
+  },
+  // Stats dashboard không cần tươi từng phút: 5 phút + dừng khi tab ẩn.
+  // Mutation vẫn invalidate queryKey nên số liệu cập nhật khi có thay đổi thật.
+  staleTime: 5 * 60_000,
+  refetchInterval: 5 * 60_000,
+  refetchIntervalInBackground: false,
+});
+
+export const useDashboardSummary = (buildingId?: string | null) =>
+  useQuery(dashboardSummaryQuery(buildingId));
+
+// Dashboard stats — GIỮ NGUYÊN interface cũ, dữ liệu lấy từ RPC gộp (select
+// map; cùng queryKey với useDashboardSummary → React Query dedupe 1 request).
 export const useDashboardStats = (buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["dashboard-stats", buildingId],
-    queryFn: async (): Promise<DashboardStats> => {
-      const userId = await getSessionUserId();
-      if (!userId) throw new Error('Not authenticated');
-
-      const buildingIds = await getBuildingIds(userId, buildingId);
-
-      const monthStart = startOfMonth(new Date());
-      const monthEnd = endOfMonth(new Date());
-
-      // Occupied rooms (active contracts) — filter theo toà của phòng.
-      let occupiedRoomsQuery = supabase
-        .from("contracts")
-        .select("room_id, room:rooms!inner(building_id)")
-        .in("status", ["ACTIVE"])
-        .not("room_id", "is", null);
-      if (buildingIds.length > 0) {
-        occupiedRoomsQuery = occupiedRoomsQuery.in("rooms.building_id", buildingIds);
-      }
-
-      // Doanh thu tháng — respect bộ lọc toà (bản cũ bỏ qua: chọn toà nhưng
-      // doanh thu vẫn là tổng mọi toà).
-      let paymentsQuery = supabase
-        .from("payments")
-        .select(
-          buildingId
-            ? "amount, invoice:invoices!inner(building_id)"
-            : "amount",
-        )
-        .gte("payment_date", monthStart.toISOString())
-        .lte("payment_date", monthEnd.toISOString());
-      if (buildingId) {
-        paymentsQuery = (paymentsQuery as any).eq("invoice.building_id", buildingId);
-      }
-
-      // Công nợ — respect bộ lọc toà.
-      let debtQuery = supabase
-        .from("invoices")
-        .select("total_amount, paid_amount")
-        .in("status", ["APPROVED", "PARTIAL_PAID"])
-        .is("deleted_at", null);
-      if (buildingIds.length > 0) {
-        debtQuery = debtQuery.in("building_id", buildingIds);
-      }
-
-      // 7 truy vấn độc lập — chạy SONG SONG (bản cũ await tuần tự từng cái,
-      // cộng dồn ~7 round-trip latency mỗi 60s).
-      const [
-        totalRoomsRes,
-        activeContractsRes,
-        reservedRoomsRes,
-        paymentsRes,
-        unpaidInvoicesRes,
-        newContractsRes,
-        unresolvedIssuesRes,
-      ] = await Promise.all([
-        buildingIds.length > 0
-          ? supabase
-              .from("rooms")
-              .select("*", { count: "exact", head: true })
-              .in("building_id", buildingIds)
-              .is("deleted_at", null)
-          : Promise.resolve({ count: 0 } as any),
-        occupiedRoomsQuery,
-        buildingIds.length > 0
-          ? supabase
-              .from("rooms")
-              .select("*", { count: "exact", head: true })
-              .in("building_id", buildingIds)
-              .is("deleted_at", null)
-              .eq("status", "RESERVED")
-          : Promise.resolve({ count: 0 } as any),
-        paymentsQuery,
-        debtQuery,
-        supabase
-          .from("contracts")
-          .select("*", { count: "exact", head: true })
-          .gte("created_at", monthStart.toISOString())
-          .lte("created_at", monthEnd.toISOString()),
-        supabase
-          .from("issues")
-          .select("*", { count: "exact", head: true })
-          .not("status", "in", '("RESOLVED","CLOSED")'),
-      ]);
-
-      const totalRooms = totalRoomsRes.count || 0;
-      const activeContracts = activeContractsRes.data;
-      const reservedRooms = reservedRoomsRes.count || 0;
-      const payments = paymentsRes.data;
-      const unpaidInvoices = unpaidInvoicesRes.data;
-      const newContracts = newContractsRes.count;
-      const unresolvedIssues = unresolvedIssuesRes.count;
-
-      const occupiedRooms = activeContracts?.length || 0;
-      const availableRooms = Math.max(0, (totalRooms || 0) - occupiedRooms - reservedRooms);
-      const occupancyRate = totalRooms ? (occupiedRooms / totalRooms) * 100 : 0;
-
-      const revenueThisMonth =
-        (payments as any[])?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0;
-
-      const totalDebt = unpaidInvoices?.reduce((sum, inv) => {
-        const debt = (inv.total_amount || 0) - (inv.paid_amount || 0);
-        return sum + debt;
-      }, 0) || 0;
-
+    ...dashboardSummaryQuery(buildingId),
+    select: (s: DashboardSummary): DashboardStats => {
+      const totalRooms = s.total_rooms || 0;
+      const occupiedRooms = s.occupied_rooms || 0;
+      const reservedRooms = s.reserved_rooms || 0;
       return {
-        totalRooms: totalRooms || 0,
+        totalRooms,
         occupiedRooms,
-        availableRooms,
-        occupancyRate,
-        revenueThisMonth,
-        totalDebt,
-        newContractsThisMonth: newContracts || 0,
-        unresolvedIssues: unresolvedIssues || 0,
         reservedRooms,
+        availableRooms: Math.max(0, totalRooms - occupiedRooms - reservedRooms),
+        occupancyRate: totalRooms ? (occupiedRooms / totalRooms) * 100 : 0,
+        revenueThisMonth: Number(s.revenue_this_month) || 0,
+        totalDebt: Number(s.total_debt) || 0,
+        newContractsThisMonth: s.new_contracts_this_month || 0,
+        unresolvedIssues: s.unresolved_issues || 0,
       };
     },
-    // Stats dashboard không cần tươi từng phút: 60s → 5 phút + dừng khi tab ẩn.
-    // Mutation (ghi thu/đổi HĐ…) vẫn invalidate ngay nên số liệu vẫn cập nhật khi
-    // có thay đổi thật; đây chỉ là lưới an toàn nền → bớt bắn 7 query/phút.
-    staleTime: 5 * 60_000,
-    refetchInterval: 5 * 60_000,
-    refetchIntervalInBackground: false,
   });
 };
 
@@ -253,54 +178,16 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
   });
 };
 
-// Occupancy chart data
+// Occupancy chart — suy trực tiếp từ RPC gộp (trước đây tự bắn lại 4 query
+// TRÙNG y hệt số useDashboardStats đã có). Cùng queryKey → 0 request thêm.
 export const useOccupancyChart = (buildingId?: string | null) => {
   return useQuery({
-    queryKey: ["occupancy-chart", buildingId],
-    queryFn: async (): Promise<OccupancyData[]> => {
-      const userId = await getSessionUserId();
-      if (!userId) throw new Error('Not authenticated');
-
-      const buildingIds = await getBuildingIds(userId, buildingId);
-
-      let totalRooms = 0;
-      if (buildingIds.length > 0) {
-        const { count } = await supabase
-          .from("rooms")
-          .select("*", { count: "exact", head: true })
-          .in("building_id", buildingIds)
-          .is("deleted_at", null);
-        totalRooms = count || 0;
-      }
-
-      // Get rooms by status
-      let contractsQuery = supabase
-        .from("contracts")
-        .select("room_id, room:rooms!inner(building_id)")
-        .in("status", ["ACTIVE"])
-        .not("room_id", "is", null);
-
-      if (buildingIds.length > 0) {
-        contractsQuery = contractsQuery.in("rooms.building_id", buildingIds);
-      }
-
-      const { data: activeContracts } = await contractsQuery;
-
-      // Phòng "cọc giữ chỗ" (RESERVED) — tách riêng, không gộp vào "Còn trống".
-      let reservedRooms = 0;
-      if (buildingIds.length > 0) {
-        const { count: rc } = await supabase
-          .from("rooms")
-          .select("*", { count: "exact", head: true })
-          .in("building_id", buildingIds)
-          .is("deleted_at", null)
-          .eq("status", "RESERVED");
-        reservedRooms = rc || 0;
-      }
-
-      const occupiedRooms = activeContracts?.length || 0;
+    ...dashboardSummaryQuery(buildingId),
+    select: (s: DashboardSummary): OccupancyData[] => {
+      const totalRooms = s.total_rooms || 0;
+      const occupiedRooms = s.occupied_rooms || 0;
+      const reservedRooms = s.reserved_rooms || 0;
       const availableRooms = Math.max(0, totalRooms - occupiedRooms - reservedRooms);
-
       const total = totalRooms || 1;
 
       const result: OccupancyData[] = [

@@ -34,6 +34,16 @@ export default defineConfig(({ mode }) => ({
           if (/[\\/]node_modules[\\/]@tanstack[\\/]react-query/.test(id)) {
             return "vendor-query";
           }
+          // UI kit + form stack: dùng bởi entry (auth/MainLayout) nên vốn đã
+          // nằm trong chunk đầu — tách riêng để deploy app-code KHÔNG bust
+          // cache ~30 gói ổn định này (an toàn với ghi chú recharts bên dưới:
+          // các gói này được import tĩnh từ entry, không phá lazy).
+          if (/[\\/]node_modules[\\/](@radix-ui|lucide-react|cmdk|vaul|embla-carousel|embla-carousel-react)[\\/]/.test(id)) {
+            return "vendor-ui";
+          }
+          if (/[\\/]node_modules[\\/](react-hook-form|@hookform|zod)[\\/]/.test(id)) {
+            return "vendor-forms";
+          }
           // recharts KHÔNG đưa vào manualChunks: mọi consumer của nó đều lazy
           // nên Rollup tự tách thành chunk chia sẻ chỉ tải khi mở chart;
           // ép vào vendor-charts từng khiến entry import tĩnh + modulepreload
