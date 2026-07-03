@@ -47,6 +47,8 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Toà nhà', link: '/03-quan-ly-van-hanh/toa-nha/' },
           { text: 'Căn hộ / Phòng', link: '/03-quan-ly-van-hanh/can-ho-phong/' },
           { text: 'Dịch vụ', link: '/03-quan-ly-van-hanh/dich-vu/' },
+          { text: 'Sale Phòng', link: '/03-quan-ly-van-hanh/sale-phong/' },
+          { text: 'Trang phòng trống công khai', link: '/03-quan-ly-van-hanh/trang-phong-trong/' },
         ],
       },
       {
@@ -93,6 +95,8 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Công việc & sự cố', link: '/03-quan-ly-van-hanh/cong-viec/' },
           { text: 'Kho vật tư', link: '/03-quan-ly-van-hanh/kho-vat-tu/' },
           { text: 'Tài sản', link: '/03-quan-ly-van-hanh/tai-san/' },
+          { text: 'Chat Zalo — hội thoại', link: '/03-quan-ly-van-hanh/chat-zalo/' },
+          { text: 'Chat Zalo — mẫu tin', link: '/03-quan-ly-van-hanh/zalo-mau-tin/' },
         ],
       },
     ],
@@ -160,6 +164,25 @@ export const sidebar: DefaultTheme.Sidebar = [
       { text: 'Nhân viên & Đội ngũ', link: '/05-cai-dat/nhan-vien-doi-ngu/' },
       { text: 'Phân quyền theo trang', link: '/05-cai-dat/phan-quyen/' },
       { text: 'Quản trị người dùng', link: '/05-cai-dat/admin-users/' },
+    ],
+  },
+  {
+    text: '6. Tài khoản',
+    collapsed: true,
+    items: [
+      { text: 'Thông tin cá nhân', link: '/06-tai-khoan/thong-tin-ca-nhan/' },
+      { text: 'Gói cước', link: '/06-tai-khoan/goi-cuoc/' },
+    ],
+  },
+  {
+    text: '7. Thông tin khác',
+    collapsed: true,
+    items: [
+      { text: 'Thuật ngữ & bảng trạng thái', link: '/07-thong-tin-khac/thuat-ngu/' },
+      { text: 'Bảng tra quyền nhanh', link: '/07-thong-tin-khac/tra-quyen-nhanh/' },
+      { text: 'Câu hỏi thường gặp (FAQ)', link: '/07-thong-tin-khac/faq/' },
+      { text: 'Ghi chú phiên bản', link: '/07-thong-tin-khac/ghi-chu-phien-ban/' },
+      { text: 'Kênh hỗ trợ', link: '/07-thong-tin-khac/kenh-ho-tro/' },
     ],
   },
 ]
