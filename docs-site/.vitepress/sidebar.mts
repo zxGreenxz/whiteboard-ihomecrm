@@ -86,6 +86,15 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Ví thu chi cá nhân', link: '/03-quan-ly-van-hanh/vi-ca-nhan/' },
         ],
       },
+      {
+        text: 'Vận hành',
+        collapsed: true,
+        items: [
+          { text: 'Công việc & sự cố', link: '/03-quan-ly-van-hanh/cong-viec/' },
+          { text: 'Kho vật tư', link: '/03-quan-ly-van-hanh/kho-vat-tu/' },
+          { text: 'Tài sản', link: '/03-quan-ly-van-hanh/tai-san/' },
+        ],
+      },
     ],
   },
   {
@@ -122,6 +131,35 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Chu kỳ Thu → Bàn giao', link: '/04-bao-cao/thu-ban-giao/' },
         ],
       },
+    ],
+  },
+  {
+    text: '5. Cài đặt hệ thống',
+    collapsed: true,
+    items: [
+      { text: 'Cài đặt chung', link: '/05-cai-dat/cai-dat-chung/' },
+      {
+        text: 'Danh mục khác',
+        collapsed: true,
+        items: [
+          { text: 'Tổng quan', link: '/05-cai-dat/danh-muc-khac/' },
+          { text: 'Tài khoản ngân hàng / sổ quỹ', link: '/05-cai-dat/tai-khoan-ngan-hang/' },
+          { text: 'Gạch nợ tự động', link: '/05-cai-dat/gach-no-tu-dong/' },
+          { text: 'Định mức dịch vụ', link: '/05-cai-dat/dinh-muc-dich-vu/' },
+          { text: 'Nhà cung cấp', link: '/05-cai-dat/nha-cung-cap/' },
+          { text: 'Kho (địa điểm lưu)', link: '/05-cai-dat/kho-cai-dat/' },
+          { text: 'Loại tài sản', link: '/05-cai-dat/loai-tai-san/' },
+          { text: 'Hotline', link: '/05-cai-dat/hotline/' },
+          { text: 'Danh mục chung', link: '/05-cai-dat/danh-muc-chung/' },
+          { text: 'Danh sách tầng', link: '/05-cai-dat/danh-sach-tang/' },
+          { text: 'Loại công việc', link: '/05-cai-dat/loai-cong-viec/' },
+        ],
+      },
+      { text: 'Mẫu biểu', link: '/05-cai-dat/mau-bieu/' },
+      { text: 'Chữ ký', link: '/05-cai-dat/chu-ky/' },
+      { text: 'Nhân viên & Đội ngũ', link: '/05-cai-dat/nhan-vien-doi-ngu/' },
+      { text: 'Phân quyền theo trang', link: '/05-cai-dat/phan-quyen/' },
+      { text: 'Quản trị người dùng', link: '/05-cai-dat/admin-users/' },
     ],
   },
 ]
