@@ -25,6 +25,8 @@ dist-ssr
 
 # Local crawl artifacts (contains auth cookies + scraped data)
 crawl-resident/
+# Playwright MCP session artifacts (snapshots, console logs)
+.playwright-mcp/
 .claude/scheduled_tasks.lock
 
 # Supabase service role key (DO NOT COMMIT)
