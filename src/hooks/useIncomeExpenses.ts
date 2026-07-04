@@ -690,120 +690,63 @@ export const incomeExpenseStatsQuery = (
         return EMPTY_STATS;
       }
 
-      let query = supabase
-        .from("income_expenses" as any)
-        .select("type, total_amount, kqkd_amount, approval_status, account_id, system_source, acc_v:accounts!income_expenses_account_id_fkey ( is_virtual )" + itemFilterJoinSelect(itemPlan))
-        .is("deleted_at", null);
-
-      query = applyItemFilterToQuery(query, itemPlan);
-      query = applyLayerFilters(query, { ...filters, layer: null });
-
-      // Apply same filters as useIncomeExpenses
-      if (filters.building_ids?.length) {
-        query = query.in("building_id", filters.building_ids);
-      }
-      if (filters.building_id) {
-        query = query.eq("building_id", filters.building_id);
-      }
-      if (filters.room_ids?.length) {
-        query = query.in("room_id", filters.room_ids);
-      } else if (filters.room_id) {
-        query = query.eq("room_id", filters.room_id);
-      }
-      if (filters.account_id) {
-        query = query.or(
-          `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
-        );
-      }
-      if (filters.type) {
-        query = query.eq("type", filters.type);
-      }
-      if (filters.start_date) {
-        query = query.gte("voucher_date", filters.start_date);
-      }
-      if (filters.end_date) {
-        query = query.lte("voucher_date", filters.end_date);
-      }
-      if (filters.approval_status === "ALL_ACTIVE") {
-        query = query.in("approval_status", ["APPROVED", "UNAPPROVED"]);
-      } else if (filters.approval_status) {
-        query = query.eq("approval_status", filters.approval_status);
-      }
-      if (filters.creator_id) {
-        query = query.eq("user_id", filters.creator_id);
-      }
-      if (filters.amount_target != null) {
-        query = query
-          .gte("total_amount", filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
-          .lte("total_amount", filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
-      }
-      if (filters.verified_status === "VERIFIED") {
-        query = query.not("verified_at", "is", null);
-      } else if (filters.verified_status === "UNVERIFIED") {
-        query = query.is("verified_at", null);
-      }
-      // Báo cáo Lợi nhuận (P&L): chỉ tính PHẦN hạch toán KQKD (kqkd_amount,
-      // item-level) → loại tiền cọc kể cả khi nằm chung phiếu với doanh thu.
-      // Trang Thu chi không bật cờ này (sổ dòng tiền — cộng total_amount).
-      if (businessResultOnly) {
-        query = query.gt("kqkd_amount", 0);
-      }
-
-      const { data, error } = await query;
+      // B4: aggregate SERVER-SIDE qua RPC — bản cũ SELECT rồi cộng client-side
+      // dính cap 1000 hàng của PostgREST → tenant thật (~1.356 phiếu) bị cộng
+      // thiếu âm thầm. RPC SECURITY INVOKER nên RLS vẫn áp per-user như cũ.
+      const groupSources =
+        filters.source_group && filters.source_group !== 'Nhập tay'
+          ? Object.entries(VOUCHER_SOURCES)
+              .filter(([, m]) => m.group === filters.source_group)
+              .map(([k]) => k)
+          : null;
+      const { data, error } = await (supabase.rpc as any)(
+        'get_income_expense_layer_stats',
+        {
+          p_building_ids: filters.building_ids?.length
+            ? filters.building_ids
+            : filters.building_id
+              ? [filters.building_id]
+              : null,
+          p_room_ids: filters.room_ids?.length
+            ? filters.room_ids
+            : filters.room_id
+              ? [filters.room_id]
+              : null,
+          p_account_id: filters.account_id ?? null,
+          p_type: filters.type ?? null,
+          p_start_date: filters.start_date ?? null,
+          p_end_date: filters.end_date ?? null,
+          p_approval: filters.approval_status ?? 'ALL_ACTIVE',
+          p_creator_id: filters.creator_id ?? null,
+          p_amount: filters.amount_target ?? null,
+          p_amount_tol: AMOUNT_SEARCH_TOLERANCE,
+          p_verified: filters.verified_status ?? null,
+          p_item_type_ids: itemPlan.typeSiblingIds,
+          p_voucher_ids: itemPlan.periodVoucherIds,
+          p_sources: groupSources,
+          p_source_manual: filters.source_group === 'Nhập tay',
+          p_internal_sources: INTERNAL_SOURCES,
+          p_kqkd_only: businessResultOnly,
+        }
+      );
 
       if (error) {
-        console.error("useIncomeExpenseStats error:", error);
+        console.error('useIncomeExpenseStats error:', error);
         return EMPTY_STATS;
       }
-
-      const rows = (data || []) as any[];
-      let totalIncome = 0;
-      let totalExpense = 0;
-      let internalCount = 0;
-      let internalIncome = 0;
-      let internalExpense = 0;
-      let pendingCount = 0;
-      let pendingTotal = 0;
-
-      for (const row of rows) {
-        const amount = businessResultOnly
-          ? Number(row.kqkd_amount) || 0
-          : Number(row.total_amount) || 0;
-        if (businessResultOnly) {
-          // P&L (kqkd) — hành vi cũ giữ nguyên.
-          if (row.type === "INCOME") totalIncome += amount;
-          else if (row.type === "EXPENSE") totalExpense += amount;
-          continue;
-        }
-        // B4 — trang Thu chi: 3 thẻ = TIỀN THẬT; nội bộ & chờ xử lý tách riêng.
-        const status = row.approval_status;
-        if (status === "CANCELLED") continue;
-        const isPending = status === "UNAPPROVED" || !row.account_id;
-        const isInternal =
-          row.acc_v?.is_virtual === true ||
-          INTERNAL_SOURCES.includes(row.system_source ?? "");
-        if (isPending) {
-          pendingCount += 1;
-          pendingTotal += Number(row.total_amount) || 0;
-        } else if (isInternal) {
-          internalCount += 1;
-          if (row.type === "INCOME") internalIncome += amount;
-          else if (row.type === "EXPENSE") internalExpense += amount;
-        } else {
-          if (row.type === "INCOME") totalIncome += amount;
-          else if (row.type === "EXPENSE") totalExpense += amount;
-        }
-      }
-
+      const s = Array.isArray(data) ? data[0] : data;
+      if (!s) return EMPTY_STATS;
+      const totalIncome = Number(s.cash_income) || 0;
+      const totalExpense = Number(s.cash_expense) || 0;
       return {
         totalIncome,
         totalExpense,
         difference: totalIncome - totalExpense,
-        internalCount,
-        internalIncome,
-        internalExpense,
-        pendingCount,
-        pendingTotal,
+        internalCount: Number(s.internal_count) || 0,
+        internalIncome: Number(s.internal_income) || 0,
+        internalExpense: Number(s.internal_expense) || 0,
+        pendingCount: Number(s.pending_count) || 0,
+        pendingTotal: Number(s.pending_total) || 0,
       };
     },
   });
