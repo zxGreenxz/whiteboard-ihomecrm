@@ -21,6 +21,9 @@ export interface Account {
   initial_amount: number;
   initial_date: string;        // YYYY-MM-DD
   lock_date: string | null;    // YYYY-MM-DD
+  /** Sổ ảo/kỹ thuật (CỌC giữ hộ, Cấn trừ nội bộ, Làm tròn, Thối...) — chỉ chứa
+   *  bút toán, không có két tiền thật. Thống kê TIỀN THẬT phải lọc false. */
+  is_virtual?: boolean;
   created_at: string;
   updated_at: string;
 }

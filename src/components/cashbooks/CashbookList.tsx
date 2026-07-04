@@ -90,13 +90,26 @@ const CashbookList = ({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((acc) => {
+          {/* M1: sổ ảo (bút toán) đẩy xuống cuối + badge nhận diện — số dư của
+              chúng không phải tiền trong két. */}
+          {[...rows]
+            .sort((a, b) => Number(!!a.is_virtual) - Number(!!b.is_virtual))
+            .map((acc) => {
             const isLocked = !!acc.lock_date;
             return (
-              <TableRow key={acc.id}>
+              <TableRow key={acc.id} className={acc.is_virtual ? "bg-muted/40" : undefined}>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{acc.code}</span>
+                    {acc.is_virtual && (
+                      <Badge
+                        variant="secondary"
+                        className="bg-slate-200 text-slate-700 hover:bg-slate-200"
+                        title="Sổ bút toán/kỹ thuật — không phải tiền thật trong két"
+                      >
+                        Sổ ảo
+                      </Badge>
+                    )}
                     {isLocked && (
                       <Badge
                         variant="secondary"

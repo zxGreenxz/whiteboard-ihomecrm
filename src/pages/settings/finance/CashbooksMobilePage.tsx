@@ -32,12 +32,18 @@ export default function CashbooksMobilePage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AccountWithBalance | null>(null);
 
+  // M1 (thống nhất tài chính 04/07): tách sổ TIỀN THẬT vs sổ THEO DÕI (ảo).
+  // TỔNG TỒN QUỸ chỉ cộng sổ thật — sổ bút toán (CỌC, Cấn trừ, Thối, Làm tròn)
+  // không phải tiền trong két, cộng vào chỉ gây nhiễu.
+  const realFunds = useMemo(() => funds.filter((f) => !f.is_virtual), [funds]);
+  const virtualFunds = useMemo(() => funds.filter((f) => !!f.is_virtual), [funds]);
+
   const stats = useMemo(() => {
-    const count = funds.length;
-    const locked = funds.filter((f) => !!f.lock_date).length;
-    const total = funds.reduce((s, f) => s + (f.current_amount || 0), 0);
+    const count = realFunds.length;
+    const locked = realFunds.filter((f) => !!f.lock_date).length;
+    const total = realFunds.reduce((s, f) => s + (f.current_amount || 0), 0);
     return { count, locked, total };
-  }, [funds]);
+  }, [realFunds]);
 
   const openCreate = () => {
     setEditing(null);
@@ -79,7 +85,7 @@ export default function CashbooksMobilePage() {
             </div>
 
             <div className="msub">
-              <span className="msub-t">Danh sách sổ quỹ</span>
+              <span className="msub-t">Sổ tiền thật</span>
               <span className="msub-n">{stats.count}</span>
             </div>
 
@@ -89,7 +95,7 @@ export default function CashbooksMobilePage() {
               <div className="stub"><p>Chưa có sổ quỹ nào. Tạo sổ mới qua nút (+).</p></div>
             ) : (
               <div className="rowlist">
-                {funds.map((f) => {
+                {realFunds.map((f) => {
                   const locked = !!f.lock_date;
                   const neg = (f.current_amount || 0) < 0;
                   return (
@@ -120,6 +126,45 @@ export default function CashbooksMobilePage() {
                   );
                 })}
               </div>
+            )}
+
+            {/* Sổ theo dõi (ảo) — chỉ chứa bút toán, không phải tiền trong két,
+                KHÔNG cộng vào Tổng tồn quỹ. */}
+            {!isLoading && virtualFunds.length > 0 && (
+              <>
+                <div className="msub" style={{ marginTop: 14 }}>
+                  <span className="msub-t">Sổ theo dõi (bút toán — không phải tiền thật)</span>
+                  <span className="msub-n">{virtualFunds.length}</span>
+                </div>
+                <div className="rowlist" style={{ opacity: 0.75 }}>
+                  {virtualFunds.map((f) => {
+                    const locked = !!f.lock_date;
+                    return (
+                      <div className={"fund" + (locked ? " locked" : "")} key={f.id} onClick={() => setDetail(f)}>
+                        <div className="fund-top">
+                          <div className="fund-l">
+                            <span className="fund-ic"><Wallet /></span>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="fund-nm">
+                                <b>{f.name}</b>
+                                <span className="fund-lock">Sổ ảo</span>
+                                {locked && (
+                                  <span className="fund-lock"><Lock />Khoá</span>
+                                )}
+                              </div>
+                              <div className="fund-sub">{[f.code, f.owner_name].filter(Boolean).join(" · ")}</div>
+                            </div>
+                          </div>
+                          <div className="fund-r">
+                            <div className="cap">Số dư bút toán</div>
+                            <div className="fund-bal" style={{ color: "#64748b" }}>{fmtVnd(f.current_amount)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
 

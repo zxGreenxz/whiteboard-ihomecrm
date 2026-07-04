@@ -67,6 +67,7 @@ export type Database = {
           id: string
           initial_amount: number
           initial_date: string
+          is_virtual: boolean
           is_default: boolean
           lock_date: string | null
           name: string
@@ -86,6 +87,7 @@ export type Database = {
           id?: string
           initial_amount?: number
           initial_date?: string
+          is_virtual?: boolean
           is_default?: boolean
           lock_date?: string | null
           name: string
@@ -105,6 +107,7 @@ export type Database = {
           id?: string
           initial_amount?: number
           initial_date?: string
+          is_virtual?: boolean
           is_default?: boolean
           lock_date?: string | null
           name?: string
@@ -6720,6 +6723,7 @@ export type Database = {
           id: string | null
           initial_amount: number | null
           initial_date: string | null
+          is_virtual: boolean | null
           is_default: boolean | null
           lock_date: string | null
           name: string | null
@@ -6739,6 +6743,7 @@ export type Database = {
           id?: string | null
           initial_amount?: number | null
           initial_date?: string | null
+          is_virtual?: boolean | null
           is_default?: boolean | null
           lock_date?: string | null
           name?: string | null
@@ -6758,6 +6763,7 @@ export type Database = {
           id?: string | null
           initial_amount?: number | null
           initial_date?: string | null
+          is_virtual?: boolean | null
           is_default?: boolean | null
           lock_date?: string | null
           name?: string | null
