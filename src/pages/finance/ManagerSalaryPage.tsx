@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Wallet, Eye, Settings } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,8 +33,45 @@ function shiftMonth(pm: string, delta: number): string {
 }
 const today = () => new Date().toISOString().slice(0, 10);
 
+// Màn chờ / rỗng MOBILE (shell tối khớp SalaryAdminMobile/SalarySelfMobile).
+// Dùng trong lúc chưa biết quyền để KHÔNG nháy khung MainLayout desktop.
+function MobileSalaryShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-[60] overflow-hidden flex justify-center"
+      style={{ background: "radial-gradient(80% 50% at 50% 0%, #241a44 0%, transparent 55%), #0d0a1a" }}>
+      <div className="relative w-full max-w-[440px] flex flex-col items-center justify-center px-8 text-center"
+        style={{ height: "100dvh", background: "radial-gradient(80% 30% at 50% 0%, #241a44 0%, transparent 55%), #17132A", paddingTop: "env(safe-area-inset-top)" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+function MobileSalaryBoot() {
+  return (
+    <MobileSalaryShell>
+      <div className="w-14 h-14 rounded-full border-[3px] animate-spin"
+        style={{ borderColor: "rgba(255,210,63,.2)", borderTopColor: "#FFD23F" }} />
+      <div className="mt-4 text-[15px] font-extrabold" style={{ color: "#FFD23F" }}>Đang tải bảng lương…</div>
+    </MobileSalaryShell>
+  );
+}
+function MobileSalaryEmpty() {
+  return (
+    <MobileSalaryShell>
+      <div className="w-16 h-16 rounded-2xl grid place-items-center mb-4"
+        style={{ background: "rgba(167,139,250,.16)", color: "#C4B5FD" }}>
+        <Wallet size={28} />
+      </div>
+      <div className="text-[16px] font-extrabold" style={{ color: "#EDEAF7" }}>Chưa được cấu hình hưởng lương</div>
+      <div className="mt-1.5 text-[13px]" style={{ color: "#9A8FC4" }}>Liên hệ quản trị để được thiết lập.</div>
+      <Link to="/" className="mt-6 px-5 py-2.5 rounded-xl text-[14px] font-bold no-underline"
+        style={{ background: "#FFD23F", color: "#17132A" }}>Về trang chủ</Link>
+    </MobileSalaryShell>
+  );
+}
+
 export default function ManagerSalaryPage() {
-  const { data: perms } = useMyPermissions();
+  const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const { data: myMgr, isLoading: myLoading } = useMyManagerConfig();
   const phone = usePhoneViewport();
 
@@ -119,6 +157,40 @@ export default function ManagerSalaryPage() {
   const onUnlock = () => unlockM.mutate({ periodMonth, staffIds: managers.map((m) => m.id) });
 
   // ===== Render =====
+  // PHONE: gộp TOÀN BỘ nhánh mobile — KHÔNG bao giờ dùng MainLayout desktop,
+  // kể cả lúc quyền đang tải. Trước đây khi useMyPermissions còn tải, isAdmin
+  // tạm = false → admin lẫn nhân viên đều RƠI xuống nhánh desktop MainLayout
+  // "Bảng lương / Đang tải…" (nháy giao diện phụ desktop) rồi mới nhảy sang
+  // shell mobile khi quyền về. Nay chờ bằng MobileSalaryBoot (shell tối).
+  if (phone) {
+    if (permsLoading) return <MobileSalaryBoot />; // chưa biết quyền → chờ tối
+    if (isAdmin) {
+      // Nhãn tháng suy TRỰC TIẾP từ periodMonth (React Query còn giữ data tháng
+      // cũ 1 nhịp khi đổi tháng → tránh loading hiện sai tháng). SalaryAdminMobile
+      // tự lo loading data trong shell tối (loading={isLoading}).
+      const [pyNum, pmNum] = periodMonth.split("-").map((x) => parseInt(x, 10));
+      const mobilePeriod = { label: `Tháng ${pmNum}`, year: pyNum };
+      return (
+        <SalaryAdminMobile
+          managers={managers} period={mobilePeriod} loading={isLoading} locked={monthLocked} accounts={accounts}
+          canLock={canLock} canPay={canPay} canManageSalary={canManageSalary}
+          onSaveAdjustment={onSaveAdjustment} onRemoveAdjustment={onRemoveAdjustment}
+          onPayout={onPayout} onBulkPayout={onBulkPayout}
+          onLock={onLock} onUnlock={onUnlock}
+          onPrevMonth={() => setPeriodMonth((p) => shiftMonth(p, -1))}
+          onNextMonth={() => setPeriodMonth((p) => shiftMonth(p, 1))}
+          onRecompute={() => refetch()}
+        />
+      );
+    }
+    // Nhân viên (self) trên phone
+    if (myLoading || isLoading) return <MobileSalaryBoot />;
+    if (!myMgr || managers.length === 0) return <MobileSalaryEmpty />;
+    const meMobile = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
+    return <SalarySelfMobile m={meMobile} period={period} />;
+  }
+
+  // ===== DESKTOP =====
   // Không phải admin: hiện self-view nếu là quản lý hưởng lương
   if (!isAdmin) {
     if (myLoading || isLoading) {
@@ -130,8 +202,6 @@ export default function ManagerSalaryPage() {
       </MainLayout>;
     }
     const me = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
-    // Mobile: shell web-app chiếm trọn màn (không MainLayout) — giống Thu tiền / Home launcher.
-    if (phone) return <SalarySelfMobile m={me} period={period} />;
     return (
       <MainLayout title="Lương của tôi" subtitle="Tài chính → Lương" icon={Wallet}>
         <div className="sal-root">
@@ -141,32 +211,8 @@ export default function ManagerSalaryPage() {
     );
   }
 
-  // Admin
+  // Admin (desktop)
   const previewMgr = view === "self" ? managers.find((m) => m.id === selfId) : null;
-
-  // Mobile: shell web-app chiếm trọn màn (không MainLayout) — 4 tab dưới đáy
-  // (Lương / Cá nhân / Bảng kê / Cấu hình). Bỏ role switcher + self-preview vì
-  // tab "Cá nhân" đã thay thế. Tự xử lý loading/empty trong shell tối (không
-  // rơi xuống nhánh desktop sáng) — đổi tháng = spinner gaming tại chỗ.
-  if (phone) {
-    // Nhãn tháng suy TRỰC TIẾP từ periodMonth (tháng đang yêu cầu), KHÔNG lấy
-    // từ data.period — vì khi đổi tháng React Query còn giữ data tháng cũ 1 nhịp
-    // → màn loading sẽ hiện sai tháng. periodMonth luôn là nguồn sự thật.
-    const [pyNum, pmNum] = periodMonth.split("-").map((x) => parseInt(x, 10));
-    const mobilePeriod = { label: `Tháng ${pmNum}`, year: pyNum };
-    return (
-      <SalaryAdminMobile
-        managers={managers} period={mobilePeriod} loading={isLoading} locked={monthLocked} accounts={accounts}
-        canLock={canLock} canPay={canPay} canManageSalary={canManageSalary}
-        onSaveAdjustment={onSaveAdjustment} onRemoveAdjustment={onRemoveAdjustment}
-        onPayout={onPayout} onBulkPayout={onBulkPayout}
-        onLock={onLock} onUnlock={onUnlock}
-        onPrevMonth={() => setPeriodMonth((p) => shiftMonth(p, -1))}
-        onNextMonth={() => setPeriodMonth((p) => shiftMonth(p, 1))}
-        onRecompute={() => refetch()}
-      />
-    );
-  }
 
   return (
     <MainLayout title="Bảng lương quản lý" subtitle="Tài chính → Lương" icon={Wallet}>
