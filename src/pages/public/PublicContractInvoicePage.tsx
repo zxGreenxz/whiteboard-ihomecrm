@@ -1,6 +1,5 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import {
   Card,
   CardContent,
@@ -8,8 +7,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Receipt, AlertCircle, CheckCircle, Building2 } from 'lucide-react';
+import { Receipt, AlertCircle, CheckCircle, Building2, WifiOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -89,20 +89,44 @@ const statusLabel = (s: string) => {
   }
 };
 
+/** Gọi RPC public bằng fetch thuần thay vì supabase-js: client supabase chờ
+ *  navigator.locks của module auth trước MỌI request — trong webview in-app
+ *  (Zalo/Messenger trên iOS) lock này có thể deadlock sau khi webview bị
+ *  suspend/restore → request treo vĩnh viễn, khách kẹt ở "Đang tải hoá đơn...".
+ *  Trang này không cần session nên bỏ hẳn tầng auth. */
+async function fetchPublicInvoice(code: string): Promise<PublicPayload | null> {
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/get_public_latest_invoice_by_code`;
+  const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+  // AbortSignal.timeout chưa có trên iOS cũ → tự dựng bằng AbortController.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Profile': 'public',
+        apikey,
+        Authorization: `Bearer ${apikey}`,
+      },
+      body: JSON.stringify({ p_code: code }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`RPC ${res.status}`);
+    return (await res.json()) as PublicPayload | null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function PublicContractInvoicePage() {
   const { code } = useParams<{ code: string }>();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['public-contract-invoice', code],
     enabled: !!code,
-    queryFn: async (): Promise<PublicPayload | null> => {
-      const { data, error } = await (supabase as any).rpc(
-        'get_public_latest_invoice_by_code',
-        { p_code: code },
-      );
-      if (error) throw error;
-      return data as PublicPayload | null;
-    },
+    retry: 2,
+    queryFn: () => fetchPublicInvoice(code!),
   });
 
   if (isLoading) {
@@ -113,8 +137,31 @@ export default function PublicContractInvoicePage() {
     );
   }
 
+  // Lỗi mạng/timeout ≠ mã sai: hiện màn riêng có nút thử lại, đừng báo nhầm
+  // "hợp đồng đã thanh lý" cho khách đang kẹt mạng/webview.
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 text-center space-y-3">
+            <WifiOff className="h-10 w-10 text-orange-500 mx-auto" />
+            <div className="font-medium">Không tải được hoá đơn</div>
+            <p className="text-sm text-gray-600">
+              Kết nối mạng đang chập chờn hoặc trình duyệt trong ứng dụng
+              (Zalo/Messenger) gặp sự cố. Vui lòng bấm thử lại, hoặc mở liên
+              kết bằng Safari/Chrome.
+            </p>
+            <Button onClick={() => refetch()} disabled={isRefetching}>
+              {isRefetching ? 'Đang thử lại…' : 'Thử lại'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // RPC trả NULL khi hợp đồng không tồn tại / bị xoá / đã thanh lý.
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
