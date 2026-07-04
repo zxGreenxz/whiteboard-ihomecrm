@@ -85,6 +85,46 @@ export interface InspectionSessionState {
   reqs: { rooms: number; size_idx: number; photos_min: number; dwell_min_seconds: number };
   photos_count: number;
   dwell_seconds: number;
+  /** Lúc bấm "Kiểm tra" lần đầu trong ngày — đồng hồ dwell chạy từ đây (server trả). */
+  started_at?: string;
+  /** Số ảnh đã chụp theo từng mục (resume phiên dở hiển thị đúng). */
+  slot_counts?: Record<string, number>;
+}
+
+/** Phiên kiểm tra ĐANG DỞ hôm nay (open/presence) — để mở lại app còn thấy mà làm tiếp. */
+export interface OpenInspectionSession {
+  id: string;
+  building_id: string;
+  type: "FULL" | "QUICK";
+  status: string;
+  photos_count: number;
+  building_name: string | null;
+}
+export function useMyOpenInspections(today?: string, userId?: string) {
+  return useQuery({
+    queryKey: ["v5-open-inspections", today, userId],
+    enabled: !!today && !!userId,
+    refetchOnWindowFocus: true,
+    queryFn: async (): Promise<OpenInspectionSession[]> => {
+      // Bảng v5 chưa có trong types generated → cast (RLS vẫn chỉ trả phiên của mình)
+      const { data, error } = await (supabase as any)
+        .from("inspection_sessions")
+        .select("id, building_id, type, status, photos_count, buildings(name)")
+        .eq("user_id", userId)
+        .eq("session_date", today)
+        .in("status", ["open", "presence"])
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as any[]).map((r) => ({
+        id: r.id,
+        building_id: r.building_id,
+        type: r.type,
+        status: r.status,
+        photos_count: r.photos_count,
+        building_name: r.buildings?.name ?? null,
+      }));
+    },
+  });
 }
 
 export function useStartInspection() {

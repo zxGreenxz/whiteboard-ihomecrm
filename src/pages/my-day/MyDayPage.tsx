@@ -17,7 +17,9 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { v5Copy } from "@/lib/v5Copy";
 import { useSetUiPreference, useUiPrefBool } from "@/hooks/useUiPreferences";
-import { useMyDaySummary, useMyMissions, useRequestLeave, type Mission } from "@/hooks/useMyDay";
+import {
+  useMyDaySummary, useMyMissions, useMyOpenInspections, useRequestLeave, type Mission,
+} from "@/hooks/useMyDay";
 
 const InspectionRunner = lazy(() => import("@/components/inspections/InspectionRunner"));
 
@@ -59,6 +61,9 @@ export default function MyDayPage() {
   const [leaveDate, setLeaveDate] = useState("");
 
   const s = summaryQ.data;
+  // Phiên kiểm tra ĐANG DỞ hôm nay — tắt app/mất mạng vẫn còn, bấm là làm tiếp
+  const openSessQ = useMyOpenInspections(s?.today.date, authUser?.id);
+  const openSessions = openSessQ.data ?? [];
   const missions = missionsQ.data ?? [];
   const suggested = useMemo(
     () => missions.filter((m) => m.color !== "green").slice(0, 3),
@@ -72,8 +77,9 @@ export default function MyDayPage() {
     const ids = new Set<string>();
     for (const m of suggested) ids.add(m.building_id);
     for (const p of s?.pending_checks ?? []) ids.add(p.building_id);
+    for (const o of openSessions) ids.add(o.building_id);
     return [...ids];
-  }, [suggested, s?.pending_checks]);
+  }, [suggested, s?.pending_checks, openSessions]);
   const coordsQ = useBuildingCoords(coordIds);
 
   const ticked = s?.today.status === "ticked";
@@ -150,6 +156,30 @@ export default function MyDayPage() {
             <p className="mt-1.5 text-[11px] text-slate-500">
               Ngày phép là ngày trung tính: chuỗi được bắc cầu, đơn giá ngày tự điều chỉnh — bạn không thiệt.
             </p>
+          </div>
+        )}
+
+        {/* KHỐI A0 — phiên kiểm tra ĐANG DỞ (resume): tắt app vẫn còn tới 23:59 */}
+        {openSessions.length > 0 && (
+          <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <div className="mb-2 text-sm font-semibold text-emerald-800">
+              Đang kiểm tra dở — bấm để làm tiếp (lưu tới 23:59)
+            </div>
+            {openSessions.map((o) => (
+              <button
+                key={o.id}
+                className="mb-1.5 flex w-full items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-sm"
+                onClick={() => openRunner({ building_id: o.building_id, building_name: o.building_name }, o.type)}
+              >
+                <span>
+                  <span className="font-medium">{o.building_name ?? "Toà"}</span>
+                  <span className="ml-2 text-xs text-slate-500">
+                    {o.type === "FULL" ? "kiểm tra nhà" : "check nhanh"} · đã chụp {o.photos_count} ảnh
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-emerald-600" />
+              </button>
+            ))}
           </div>
         )}
 
@@ -330,12 +360,12 @@ export default function MyDayPage() {
         <Suspense fallback={null}>
           <InspectionRunner
             open={!!runner}
-            onOpenChange={(o) => { if (!o) setRunner(null); }}
+            onOpenChange={(o) => { if (!o) { setRunner(null); openSessQ.refetch(); } }}
             buildingId={runner.buildingId}
             buildingName={runner.buildingName}
             buildingCoords={coordsQ.data?.[runner.buildingId] ?? null}
             type={runner.type}
-            onDone={() => { summaryQ.refetch(); missionsQ.refetch(); }}
+            onDone={() => { summaryQ.refetch(); missionsQ.refetch(); openSessQ.refetch(); }}
           />
         </Suspense>
       )}
