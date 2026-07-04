@@ -8,6 +8,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { VoucherStatusBadge, InternalBadge } from '@/components/income-expenses/VoucherStatusBadge';
+import { voucherLayer } from '@/lib/voucherSources';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
@@ -224,6 +226,14 @@ const IncomeExpenseList = ({
             const isCreator =
               !!currentUserId && voucher.user_id === currentUserId;
             const isVerified = !!voucher.verified_at;
+            // B4: lớp phiếu — Nội bộ (bút toán) hiển thị trung tính.
+            const layer = voucherLayer({
+              approval_status: voucher.approval_status,
+              account_id: voucher.account_id,
+              system_source: (voucher as any).system_source,
+              account_is_virtual: (voucher as any).account_is_virtual,
+            });
+            const isInternal = layer === 'INTERNAL';
             // Nháp: cây bút mở full form (giữ nguyên flow cũ).
             // Đã ghi nhận/đã huỷ: super admin vẫn mở full form; creator
             // (không phải admin) mở dialog sửa nhanh 3 field.
@@ -233,7 +243,8 @@ const IncomeExpenseList = ({
 
             const rowClass = [
               isCancelled ? 'opacity-60' : '',
-              isVerified && !isCancelled ? 'bg-emerald-50/70 hover:bg-emerald-50' : '',
+              isInternal && !isCancelled ? 'bg-muted/40' : '',
+              isVerified && !isCancelled && !isInternal ? 'bg-emerald-50/70 hover:bg-emerald-50' : '',
             ]
               .filter(Boolean)
               .join(' ');
@@ -398,27 +409,15 @@ const IncomeExpenseList = ({
                     >
                       {voucher.name}
                     </span>
-                    {isCancelled ? (
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 bg-red-100 text-red-700 hover:bg-red-100"
-                      >
-                        Đã huỷ
-                      </Badge>
-                    ) : isUnapproved ? (
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-100"
-                      >
-                        Nháp
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="default"
-                        className="shrink-0 bg-green-100 text-green-800 hover:bg-green-100"
-                      >
-                        Đã ghi nhận
-                      </Badge>
+                    {/* B4: badge trạng thái DÙNG CHUNG desktop=mobile */}
+                    <span className="shrink-0">
+                      <VoucherStatusBadge
+                        status={voucher.approval_status}
+                        verifiedAt={voucher.verified_at}
+                      />
+                    </span>
+                    {isInternal && !isCancelled && (
+                      <span className="shrink-0"><InternalBadge /></span>
                     )}
                     {/* Phiếu gốc đang lặp */}
                     {voucher.repeat_cycle &&
@@ -446,16 +445,23 @@ const IncomeExpenseList = ({
 
                 {/* Số tiền (có dấu + màu) */}
                 <TableCell className="text-right">
-                  <span
-                    className={
-                      voucher.type === 'INCOME'
-                        ? 'text-green-600 font-medium'
-                        : 'text-red-600 font-medium'
-                    }
-                  >
-                    {voucher.type === 'INCOME' ? '+' : '-'}
-                    {formatVND(voucher.total_amount)}
-                  </span>
+                  {/* B4: bút toán nội bộ hiển thị trung tính (không +/- xanh đỏ) */}
+                  {isInternal && !isCancelled ? (
+                    <span className="text-slate-500 font-medium">
+                      {formatVND(voucher.total_amount)}
+                    </span>
+                  ) : (
+                    <span
+                      className={
+                        voucher.type === 'INCOME'
+                          ? 'text-green-600 font-medium'
+                          : 'text-red-600 font-medium'
+                      }
+                    >
+                      {voucher.type === 'INCOME' ? '+' : '-'}
+                      {formatVND(voucher.total_amount)}
+                    </span>
+                  )}
                 </TableCell>
 
                 {/* Tòa nhà + Phòng (sub-line) */}

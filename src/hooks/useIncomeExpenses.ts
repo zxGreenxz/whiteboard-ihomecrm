@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { VOUCHER_SOURCES } from "@/lib/voucherSources";
 import type {
   IncomeExpenseFormValues,
   ExcelImportRow,
@@ -57,6 +58,14 @@ export interface IncomeExpenseFilters {
   // Định dạng 'YYYY-MM'. Chỉ xét item CÓ kỳ (bỏ qua item null-period).
   period_start_month?: string | null;
   period_end_month?: string | null;
+  // B4 (04/07 — thống nhất tài chính): LỚP phiếu cho trang Thu chi.
+  //  CASH    = tiền thật đã vào sổ (APPROVED, sổ thực, không phải nguồn nội bộ)
+  //  INTERNAL= bút toán nội bộ (nguồn termination.*/backfill/adjustment hoặc sổ ảo)
+  //  PENDING = chờ xử lý (Nháp hoặc CHƯA CHỌN SỔ, chưa huỷ)
+  // undefined/null = không lọc lớp (các trang khác giữ nguyên hành vi cũ).
+  layer?: 'CASH' | 'INTERNAL' | 'PENDING' | null;
+  // Lọc theo NHÓM NGUỒN sinh phiếu (voucherSources.ts); 'Nhập tay' = source NULL.
+  source_group?: string | null;
 }
 
 // Bộ lọc rỗng mặc định của trang Thu chi (desktop + mobile + prefetch dùng
@@ -80,6 +89,8 @@ export const EMPTY_INCOME_EXPENSE_FILTERS: IncomeExpenseFilters = {
   verified_status: null,
   period_start_month: null,
   period_end_month: null,
+  layer: null,
+  source_group: null,
 };
 
 export interface IncomeExpenseItem {
@@ -121,6 +132,9 @@ export interface IncomeExpenseWithRelations {
   payer_name: string | null;
   account_id: string | null;
   account_name: string | null;
+  // B4: sổ ảo? (embed accounts.is_virtual) + nguồn sinh phiếu (system_source).
+  account_is_virtual: boolean | null;
+  system_source: string | null;
   contract_id: string | null;
   // Hoá đơn liên quan — phiếu thu sinh từ thanh toán hoá đơn (deep-link 2 chiều).
   invoice_id: string | null;
@@ -327,6 +341,40 @@ function applyItemFilterToQuery<T>(query: T, plan: ItemFilterPlan): T {
 // --- Query Hooks ---
 
 // Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
+// B4: nguồn BÚT TOÁN NỘI BỘ theo bản chất (không có tiền thật di chuyển).
+const INTERNAL_SOURCES = Object.entries(VOUCHER_SOURCES)
+  .filter(([, m]) => m.internal)
+  .map(([k]) => k);
+
+// Áp lọc LỚP phiếu + NHÓM NGUỒN vào query (dùng chung list + stats-list).
+// CASH cần thêm inner-embed acc_v để lọc sổ thực — trả về select fragment.
+export const layerJoinSelect = (filters: IncomeExpenseFilters): string =>
+  filters.layer === 'CASH' ? ', acc_v:accounts!income_expenses_account_id_fkey!inner ( is_virtual )' : '';
+
+const applyLayerFilters = (query: any, filters: IncomeExpenseFilters) => {
+  if (filters.layer === 'CASH') {
+    query = query.eq('approval_status', 'APPROVED').not('account_id', 'is', null);
+    query = query.or('system_source.is.null,system_source.not.in.(' + INTERNAL_SOURCES.join(',') + ')');
+    query = query.eq('acc_v.is_virtual', false);
+  } else if (filters.layer === 'INTERNAL') {
+    query = query.eq('approval_status', 'APPROVED').in('system_source', INTERNAL_SOURCES);
+  } else if (filters.layer === 'PENDING') {
+    query = query.neq('approval_status', 'CANCELLED');
+    query = query.or('approval_status.eq.UNAPPROVED,account_id.is.null');
+  }
+  if (filters.source_group) {
+    if (filters.source_group === 'Nhập tay') {
+      query = query.is('system_source', null);
+    } else {
+      const srcs = Object.entries(VOUCHER_SOURCES)
+        .filter(([, m]) => m.group === filters.source_group)
+        .map(([k]) => k);
+      query = srcs.length ? query.in('system_source', srcs) : query;
+    }
+  }
+  return query;
+};
+
 // — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
 export const incomeExpensesListQuery = (
   filters: IncomeExpenseFilters,
@@ -351,6 +399,8 @@ export const incomeExpensesListQuery = (
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
+      filters.layer,
+      filters.source_group,
       filters.business_result_only,
       filters.period_start_month,
       filters.period_end_month,
@@ -378,13 +428,14 @@ export const incomeExpensesListQuery = (
           *,
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),          tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
-          account:accounts!income_expenses_account_id_fkey ( id, name )${itemFilterJoinSelect(itemPlan)}
+          account:accounts!income_expenses_account_id_fkey ( id, name, is_virtual )${itemFilterJoinSelect(itemPlan)}${layerJoinSelect(filters)}
         `,
           { count: "exact" }
         )
         .is("deleted_at", null);
 
       query = applyItemFilterToQuery(query, itemPlan);
+      query = applyLayerFilters(query, filters);
 
       // Apply filters
       // building_ids: mảng toà từ BuildingMultiSelect (khu vực = phím tắt chọn
@@ -546,6 +597,8 @@ export const incomeExpensesListQuery = (
           payer_name: v.payer_name ?? null,
           account_id: v.account_id ?? null,
           account_name: v.account?.name ?? null,
+          account_is_virtual: v.account?.is_virtual ?? null,
+          system_source: v.system_source ?? null,
           contract_id: v.contract_id ?? null,
           invoice_id: v.invoice_id ?? null,
           attachments: v.attachments ?? [],
@@ -609,6 +662,8 @@ export const incomeExpenseStatsQuery = (
       filters.creator_id,
       filters.amount_target,
       filters.verified_status,
+      filters.layer,
+      filters.source_group,
       filters.period_start_month,
       filters.period_end_month,
       businessResultOnly,
@@ -617,18 +672,30 @@ export const incomeExpenseStatsQuery = (
       totalIncome: number;
       totalExpense: number;
       difference: number;
+      // B4: bút toán nội bộ & chờ xử lý tách khỏi 3 thẻ tiền thật.
+      internalCount: number;
+      internalIncome: number;
+      internalExpense: number;
+      pendingCount: number;
+      pendingTotal: number;
     }> => {
+      const EMPTY_STATS = {
+        totalIncome: 0, totalExpense: 0, difference: 0,
+        internalCount: 0, internalIncome: 0, internalExpense: 0,
+        pendingCount: 0, pendingTotal: 0,
+      };
       const itemPlan = await planItemFilters(filters);
       if (itemPlan.empty) {
-        return { totalIncome: 0, totalExpense: 0, difference: 0 };
+        return EMPTY_STATS;
       }
 
       let query = supabase
         .from("income_expenses" as any)
-        .select("type, total_amount, kqkd_amount" + itemFilterJoinSelect(itemPlan))
+        .select("type, total_amount, kqkd_amount, approval_status, account_id, system_source, acc_v:accounts!income_expenses_account_id_fkey ( is_virtual )" + itemFilterJoinSelect(itemPlan))
         .is("deleted_at", null);
 
       query = applyItemFilterToQuery(query, itemPlan);
+      query = applyLayerFilters(query, { ...filters, layer: null });
 
       // Apply same filters as useIncomeExpenses
       if (filters.building_ids?.length) {
@@ -685,26 +752,45 @@ export const incomeExpenseStatsQuery = (
 
       if (error) {
         console.error("useIncomeExpenseStats error:", error);
-        return {
-          totalIncome: 0,
-          totalExpense: 0,
-          difference: 0,
-        };
+        return EMPTY_STATS;
       }
 
       const rows = (data || []) as any[];
       let totalIncome = 0;
       let totalExpense = 0;
+      let internalCount = 0;
+      let internalIncome = 0;
+      let internalExpense = 0;
+      let pendingCount = 0;
+      let pendingTotal = 0;
 
       for (const row of rows) {
-        // P&L cộng phần KQKD (loại item cọc); sổ dòng tiền cộng cả phiếu.
         const amount = businessResultOnly
           ? Number(row.kqkd_amount) || 0
           : Number(row.total_amount) || 0;
-        if (row.type === "INCOME") {
-          totalIncome += amount;
-        } else if (row.type === "EXPENSE") {
-          totalExpense += amount;
+        if (businessResultOnly) {
+          // P&L (kqkd) — hành vi cũ giữ nguyên.
+          if (row.type === "INCOME") totalIncome += amount;
+          else if (row.type === "EXPENSE") totalExpense += amount;
+          continue;
+        }
+        // B4 — trang Thu chi: 3 thẻ = TIỀN THẬT; nội bộ & chờ xử lý tách riêng.
+        const status = row.approval_status;
+        if (status === "CANCELLED") continue;
+        const isPending = status === "UNAPPROVED" || !row.account_id;
+        const isInternal =
+          row.acc_v?.is_virtual === true ||
+          INTERNAL_SOURCES.includes(row.system_source ?? "");
+        if (isPending) {
+          pendingCount += 1;
+          pendingTotal += Number(row.total_amount) || 0;
+        } else if (isInternal) {
+          internalCount += 1;
+          if (row.type === "INCOME") internalIncome += amount;
+          else if (row.type === "EXPENSE") internalExpense += amount;
+        } else {
+          if (row.type === "INCOME") totalIncome += amount;
+          else if (row.type === "EXPENSE") totalExpense += amount;
         }
       }
 
@@ -712,6 +798,11 @@ export const incomeExpenseStatsQuery = (
         totalIncome,
         totalExpense,
         difference: totalIncome - totalExpense,
+        internalCount,
+        internalIncome,
+        internalExpense,
+        pendingCount,
+        pendingTotal,
       };
     },
   });
@@ -1735,7 +1826,7 @@ export const useIncomeExpenseBatches = (
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),
           tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
-          account:accounts!income_expenses_account_id_fkey ( id, name )${itemFilterJoinSelect(itemPlan)}
+          account:accounts!income_expenses_account_id_fkey ( id, name, is_virtual )${itemFilterJoinSelect(itemPlan)}
         `
         )
         .is("deleted_at", null)
@@ -1834,6 +1925,8 @@ export const useIncomeExpenseBatches = (
           payer_name: v.payer_name ?? null,
           account_id: v.account_id ?? null,
           account_name: v.account?.name ?? null,
+          account_is_virtual: v.account?.is_virtual ?? null,
+          system_source: v.system_source ?? null,
           contract_id: v.contract_id ?? null,
           invoice_id: v.invoice_id ?? null,
           attachments: v.attachments ?? [],

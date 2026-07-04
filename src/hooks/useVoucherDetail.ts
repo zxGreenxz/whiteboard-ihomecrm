@@ -82,6 +82,8 @@ function mapVoucherRow(
     payer_name: v.payer_name ?? null,
     account_id: v.account_id ?? null,
     account_name: v.account?.name ?? null,
+    account_is_virtual: v.account?.is_virtual ?? null,
+    system_source: v.system_source ?? null,
     contract_id: v.contract_id ?? null,
     invoice_id: v.invoice_id ?? null,
     attachments: v.attachments ?? [],

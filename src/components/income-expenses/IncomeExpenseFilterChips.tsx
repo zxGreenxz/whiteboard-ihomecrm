@@ -141,6 +141,14 @@ export function IncomeExpenseFilterChips({
     });
   }
 
+  if (filters.source_group) {
+    chips.push({
+      key: "source_group",
+      label: "Nguồn: " + filters.source_group,
+      patch: { source_group: null },
+    });
+  }
+
   if (filters.creator_id && staffUsers) {
     const u = staffUsers.find((x) => x.id === filters.creator_id);
     if (u)

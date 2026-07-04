@@ -124,6 +124,8 @@ const IncomeExpenseDesktopPage = () => {
     // chọn đúng 1 toà thì truyền kèm building_id đơn để view đó vẫn lọc được
     // (với list/stats, building_ids ưu tiên nên không đổi kết quả).
     building_id: buildingIds.length === 1 ? buildingIds[0] : null,
+    // B4: lớp phiếu — mặc định TIỀN THẬT; user đổi qua tab (null = Tất cả).
+    layer: filters.layer === undefined ? 'CASH' : filters.layer,
     amount_target: parsedSearch.amountTarget,
     // Tìm theo mã phòng → ghi đè bộ lọc phòng (nếu có) bằng các phòng khớp.
     room_ids: parsedSearch.roomIds ?? filters.room_ids,
@@ -308,6 +310,11 @@ const IncomeExpenseDesktopPage = () => {
     totalIncome: 0,
     totalExpense: 0,
     difference: 0,
+    internalCount: 0,
+    internalIncome: 0,
+    internalExpense: 0,
+    pendingCount: 0,
+    pendingTotal: 0,
   };
 
 
@@ -368,7 +375,12 @@ const IncomeExpenseDesktopPage = () => {
           onChange={handleFiltersChange}
         />
 
-        <IncomeExpenseStats stats={statsData} isLoading={isStatsLoading} />
+        <IncomeExpenseStats
+          stats={statsData}
+          isLoading={isStatsLoading}
+          onShowInternal={() => handleFiltersChange({ ...filters, layer: 'INTERNAL' })}
+          onShowPending={() => handleFiltersChange({ ...filters, layer: 'PENDING' })}
+        />
 
         {/* View mode toggle + Search */}
         <div className="flex items-center gap-2">
@@ -384,6 +396,39 @@ const IncomeExpenseDesktopPage = () => {
               </TabsTrigger>
             </TabsList>
           </Tabs>
+          {/* B4: LỚP phiếu — Tiền thật (mặc định) / Nội bộ / Chờ xử lý / Tất cả */}
+          {viewMode === "individual" && (
+            <Tabs
+              value={filters.layer === undefined ? 'CASH' : filters.layer ?? 'ALL'}
+              onValueChange={(v) =>
+                handleFiltersChange({
+                  ...filters,
+                  layer: v === 'ALL' ? null : (v as 'CASH' | 'INTERNAL' | 'PENDING'),
+                })
+              }
+            >
+              <TabsList>
+                <TabsTrigger value="CASH">Tiền thật</TabsTrigger>
+                <TabsTrigger value="INTERNAL" className="gap-1">
+                  Nội bộ
+                  {(statsData.internalCount ?? 0) > 0 && (
+                    <span className="rounded-full bg-slate-200 px-1.5 text-[11px] tabular-nums">
+                      {statsData.internalCount}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="PENDING" className="gap-1">
+                  Chờ xử lý
+                  {(statsData.pendingCount ?? 0) > 0 && (
+                    <span className="rounded-full bg-amber-200 px-1.5 text-[11px] tabular-nums">
+                      {statsData.pendingCount}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="ALL">Tất cả</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
           <div className="relative flex-1 max-w-md ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input

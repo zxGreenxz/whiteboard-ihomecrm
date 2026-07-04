@@ -87,6 +87,7 @@ function countActiveFilters(f: IncomeExpenseFilters): number {
     f.period_start_month || f.period_end_month || undefined,
     f.verified_status,
     f.creator_id,
+    f.source_group,
     f.room_id || (f.room_ids?.length ?? 0) > 0 || undefined,
   ].filter(Boolean).length;
 }
@@ -168,6 +169,8 @@ export default function IncomeExpenseMobilePage() {
     ...filters,
     building_ids: buildingIds.length ? buildingIds : undefined,
     building_id: buildingIds.length === 1 ? buildingIds[0] : null,
+    // B4: lớp phiếu — mặc định TIỀN THẬT (null = Tất cả).
+    layer: filters.layer === undefined ? 'CASH' : filters.layer,
     amount_target: parsed.amountTarget,
     room_ids: parsed.roomIds ?? filters.room_ids,
   };
@@ -195,7 +198,16 @@ export default function IncomeExpenseMobilePage() {
       ? batches.find((b) => b.id === detailBatchId) ?? null
       : null;
 
-  const statsData = stats ?? { totalIncome: 0, totalExpense: 0, difference: 0 };
+  const statsData = stats ?? {
+    totalIncome: 0, totalExpense: 0, difference: 0,
+    internalCount: 0, internalIncome: 0, internalExpense: 0,
+    pendingCount: 0, pendingTotal: 0,
+  };
+  const curLayer = filters.layer === undefined ? "CASH" : filters.layer ?? "ALL";
+  const setLayer = (v: "CASH" | "INTERNAL" | "PENDING" | "ALL") => {
+    setFilters({ ...filters, layer: v === "ALL" ? null : v });
+    pagination.setPage(1);
+  };
   const positive = statsData.difference >= 0;
 
   const cancelMutation = useCancelIncomeExpense();
@@ -294,6 +306,31 @@ export default function IncomeExpenseMobilePage() {
                 </span>
               </div>
             </div>
+
+            {/* B4: LỚP phiếu — Tiền thật (mặc định) / Nội bộ / Chờ xử lý / Tất cả */}
+            {viewMode === "individual" && (
+              <div className="ieseg" style={{ marginTop: 8 }}>
+                {([
+                  ["CASH", "Tiền thật"],
+                  ["INTERNAL", "Nội bộ"],
+                  ["PENDING", "Chờ xử lý"],
+                  ["ALL", "Tất cả"],
+                ] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    className={"ieseg-b" + (curLayer === v ? " on" : "")}
+                    onClick={() => setLayer(v)}
+                  >
+                    {label}
+                    {v === "INTERNAL" && (statsData.internalCount ?? 0) > 0
+                      ? ` (${statsData.internalCount})`
+                      : v === "PENDING" && (statsData.pendingCount ?? 0) > 0
+                        ? ` (${statsData.pendingCount})`
+                        : ""}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Chip bộ lọc đang áp dụng */}
             <IncomeExpenseFilterChips

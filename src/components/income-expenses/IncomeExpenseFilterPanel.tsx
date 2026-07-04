@@ -20,6 +20,7 @@ import {
 } from "@/hooks/useIncomeExpenseTypes";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
+import { VOUCHER_GROUPS } from "@/lib/voucherSources";
 
 interface IncomeExpenseFilterPanelProps {
   open: boolean;
@@ -341,6 +342,22 @@ export function IncomeExpenseFilterPanel({
               options={[
                 { value: "ALL", label: "Tất cả nhóm" },
                 ...(typeCategories || []).map((c) => ({ value: c, label: c })),
+              ]}
+            />
+          </div>
+
+          {/* B4: Nhóm NGUỒN phiếu (hệ thống sinh) — theo system_source */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Nguồn phiếu</Label>
+            <SearchableSelect
+              value={draft.source_group ?? "ALL"}
+              onValueChange={(v) =>
+                patch({ source_group: v === "ALL" ? null : v })
+              }
+              placeholder="Tất cả nguồn"
+              options={[
+                { value: "ALL", label: "Tất cả nguồn" },
+                ...VOUCHER_GROUPS.map((g) => ({ value: g, label: g })),
               ]}
             />
           </div>
