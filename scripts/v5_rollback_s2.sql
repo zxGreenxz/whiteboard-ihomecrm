@@ -27,6 +27,8 @@ DROP FUNCTION IF EXISTS public.v5_tick_attendance(UUID, DATE, TEXT, UUID, TEXT);
 DROP FUNCTION IF EXISTS public.v5_checklist_for_building(UUID, DATE, TEXT);
 DROP FUNCTION IF EXISTS public.v5_building_reqs(UUID);
 DROP FUNCTION IF EXISTS public.v5_distance_m(NUMERIC, NUMERIC, NUMERIC, NUMERIC);
+-- 20260704150000 đổi signature sang float8 (buildings.lat/lng là double precision)
+DROP FUNCTION IF EXISTS public.v5_distance_m(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION);
 
 DROP INDEX IF EXISTS public.uq_notif_v5_digest;
 DROP INDEX IF EXISTS public.uq_notif_v5_pending_check;
