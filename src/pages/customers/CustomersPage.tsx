@@ -39,8 +39,8 @@ function CustomersDesktopPage() {
   const [activeTab, setActiveTab] = usePersistedState<CustomerStatus>('flt:customers:tab', 'RENTING');
   const [activeStatFilter, setActiveStatFilter] = usePersistedState<StatFilterType>('flt:customers:stat', 'ALL');
   const [filters, setFilters] = usePersistedState<CustomerFilters>('flt:customers:filters', {});
-  // Lọc toà nhà client-side ([] = tất cả) — khớp qua current_building_id
-  // (toà của HĐ đang hiệu lực, enrich sẵn trong useCustomers).
+  // Lọc toà nhà ([] = tất cả) — đẩy xuống server qua filters.building_id
+  // (match HĐ đang hiệu lực qua contract_customers trong useCustomers).
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>('flt:customers:buildingIds', []);
   const [searchQuery, setSearchQuery] = usePersistedState('flt:customers:search', '');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -58,25 +58,29 @@ function CustomersDesktopPage() {
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
 
-  // Build effective filters
+  // Build effective filters — lọc toà đi theo server-side (building_id) để
+  // count/phân trang/stats khớp nhau; lọc client trên trang đã phân trang
+  // từng làm list còn 1 dòng nhưng vẫn báo "477 mục / 48 trang".
   const effectiveFilters = useMemo<CustomerFilters>(
     () => ({
       ...filters,
+      building_id: buildingIds.length === 1 ? buildingIds[0] : undefined,
       status: activeTab,
       statFilter: activeStatFilter,
       search: searchQuery || undefined,
     }),
-    [filters, activeTab, activeStatFilter, searchQuery]
+    [filters, buildingIds, activeTab, activeStatFilter, searchQuery]
   );
 
   // Stats filters (same as effective but without statFilter to get all counts)
   const statsFilters = useMemo<CustomerFilters>(
     () => ({
       ...filters,
+      building_id: buildingIds.length === 1 ? buildingIds[0] : undefined,
       status: activeTab,
       search: searchQuery || undefined,
     }),
-    [filters, activeTab, searchQuery]
+    [filters, buildingIds, activeTab, searchQuery]
   );
 
   // Data fetching
@@ -87,19 +91,6 @@ function CustomersDesktopPage() {
   const customers = customersData?.data ?? [];
   const totalCount = customersData?.count ?? 0;
   const customerStats = stats ?? { total: 0, individual: 0, organization: 0, foreign: 0 };
-
-  // Lọc theo toà nhà (client-side) trên trang dữ liệu hiện tại.
-  const visibleCustomers = useMemo(
-    () =>
-      buildingIds.length === 0
-        ? customers
-        : customers.filter((c) =>
-            buildingIds.includes(
-              ((c as any).current_building_id as string | null) ?? ''
-            )
-          ),
-    [customers, buildingIds]
-  );
 
   // Pagination info
   const paginationInfo = useMemo(
@@ -154,8 +145,8 @@ function CustomersDesktopPage() {
   }, [navigate]);
 
   const handleExport = useCallback(() => {
-    exportCustomers(visibleCustomers, effectiveFilters);
-  }, [visibleCustomers, effectiveFilters]);
+    exportCustomers(customers, effectiveFilters);
+  }, [customers, effectiveFilters]);
 
   const handleImport = useCallback(() => {
     setImportDialogOpen(true);
@@ -271,7 +262,7 @@ function CustomersDesktopPage() {
         <div className="bg-white rounded-lg border">
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</div>
-          ) : visibleCustomers.length === 0 ? (
+          ) : customers.length === 0 ? (
             <EmptyState
               icon={Users}
               title="Chưa có khách hàng nào"
@@ -280,7 +271,7 @@ function CustomersDesktopPage() {
           ) : (
             <>
               <CustomerListTable
-                customers={visibleCustomers}
+                customers={customers}
                 onView={handleView}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

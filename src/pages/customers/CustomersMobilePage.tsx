@@ -47,7 +47,7 @@ const STATUS_TABS: { id: CustomerStatus; label: string }[] = [
 /**
  * Khách hàng — màn hình app full-screen trên mobile (web-app).
  * Dựng theo handoff Claude Design (ui_kits/mobile-app: CustomersScreen) nhưng nối
- * dữ liệu THẬT: useCustomers như desktop, lọc toà client-side theo current_building_id
+ * dữ liệu THẬT: useCustomers như desktop, lọc toà server-side qua filters.building_id
  * (đúng cách desktop CustomersPage làm). CSS scope riêng (.cm-stage/.cm-app), ngoài
  * MainLayout — ← về trang chủ, chạm thẻ → chi tiết.
  */
@@ -65,22 +65,21 @@ export default function CustomersMobilePage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Lọc toà server-side (building_id) — lọc client trên trang đã phân trang
+  // làm sót khách ở các trang sau + totalCount sai.
   const filters = useMemo<CustomerFilters>(
-    () => ({ status, search: debounced || undefined }),
-    [status, debounced],
+    () => ({
+      status,
+      search: debounced || undefined,
+      building_id: buildingId || undefined,
+    }),
+    [status, debounced, buildingId],
   );
 
   const { data: paged, isLoading } = useCustomers(filters, { page: 1, pageSize });
 
   const allRows = (paged?.data ?? []) as Customer[];
-  // Lọc toà nhà client-side theo current_building_id (enrich sẵn trong useCustomers).
-  const rows = useMemo(
-    () =>
-      buildingId
-        ? allRows.filter((c) => ((c as any).current_building_id as string | null) === buildingId)
-        : allRows,
-    [allRows, buildingId],
-  );
+  const rows = allRows;
   const totalCount = paged?.count ?? 0;
 
   // Lấy phương tiện (loại + biển số) của các KH trên trang hiện tại — 1 truy vấn
@@ -253,7 +252,7 @@ export default function CustomersMobilePage() {
                     </div>
                   );
                 })}
-                {totalCount > allRows.length && !buildingId && (
+                {totalCount > allRows.length && (
                   <button className="loadmore" onClick={() => setPageSize((s) => s + 30)}>
                     Tải thêm ({totalCount - allRows.length})
                   </button>

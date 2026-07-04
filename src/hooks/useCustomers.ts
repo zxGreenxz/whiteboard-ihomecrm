@@ -9,30 +9,58 @@ import type {
   CustomerFormData,
 } from "@/types/customer";
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
-import { isContractInEffect } from "@/types/contract";
+import { isContractInEffect, ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 
 // Resolve building/room filter → customer IDs.
 // contracts has no customer_id (link is via contract_customers) and no
-// building_id (building is reached via rooms.building_id). Returns [] when
+// building_id (building is reached via rooms.building_id). Chỉ tính HĐ đang
+// hiệu lực (khớp cột "Căn hộ đang ở" enrich phía dưới). Returns [] when
 // nothing matches so callers can short-circuit.
 async function resolveCustomerIdsByLocation(filters: {
   building_id?: string;
   room_id?: string;
 }): Promise<string[]> {
-  let contractIds: string[] = [];
-
   const sb = supabase as any;
+
+  let contractQuery = sb
+    .from("contracts")
+    .select("id, room:rooms!contracts_room_id_fkey!inner(building_id)")
+    .in("status", ACTIVE_CONTRACT_STATUSES)
+    .is("deleted_at", null);
+  if (filters.room_id) {
+    contractQuery = contractQuery.eq("room_id", filters.room_id);
+  }
+  if (filters.building_id) {
+    contractQuery = contractQuery.eq("room.building_id", filters.building_id);
+  }
+
+  const { data: contracts, error } = await contractQuery;
+  if (error) {
+    console.error("resolveCustomerIdsByLocation contracts error:", error);
+    return [];
+  }
+  const contractIds = ((contracts || []) as any[])
+    .map((c) => c.id)
+    .filter(Boolean) as string[];
   if (contractIds.length === 0) return [];
 
-  const { data: links } = await sb
-    .from("contract_customers")
-    .select("customer_id")
-    .in("contract_id", contractIds);
-  return [
-    ...new Set(
-      ((links || []) as any[]).map((l) => l.customer_id).filter(Boolean) as string[]
-    ),
-  ];
+  // Chunk để URL .in() không phình quá dài khi toà có nhiều HĐ.
+  const CHUNK = 100;
+  const customerIds = new Set<string>();
+  for (let i = 0; i < contractIds.length; i += CHUNK) {
+    const { data: links, error: linkError } = await sb
+      .from("contract_customers")
+      .select("customer_id")
+      .in("contract_id", contractIds.slice(i, i + CHUNK));
+    if (linkError) {
+      console.error("resolveCustomerIdsByLocation links error:", linkError);
+      return [];
+    }
+    for (const l of (links || []) as any[]) {
+      if (l.customer_id) customerIds.add(l.customer_id);
+    }
+  }
+  return [...customerIds];
 }
 
 // =============================================
@@ -86,7 +114,8 @@ export const useCustomers = (
       if (filters?.building_id || filters?.room_id ) {
         const customerIds = await resolveCustomerIdsByLocation({
           building_id: filters.building_id,
-          room_id: filters.room_id,        });
+          room_id: filters.room_id,
+        });
         if (customerIds.length === 0) return { data: [], count: 0 };
         query = query.in("id", customerIds);
       }
@@ -199,53 +228,58 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      let baseQuery = supabase
-        .from("customers")
-        .select("id, customer_type, is_foreign", { count: "exact" })
-        .is("deleted_at", null);
+      // Location filter (nếu có) resolve 1 lần rồi dùng chung cho các count.
+      let locationCustomerIds: string[] | null = null;
 
-      // Apply status filter
-      if (filters?.status) {
-        baseQuery = baseQuery.eq("status_v2", filters.status) as any;
-      }
-
-      // Apply location filters via contract_customers junction table
-      if (filters?.building_id || filters?.room_id ) {
-        const customerIds = await resolveCustomerIdsByLocation({
+      if (filters?.building_id || filters?.room_id) {
+        locationCustomerIds = await resolveCustomerIdsByLocation({
           building_id: filters.building_id,
-          room_id: filters.room_id,        });
-        if (customerIds.length === 0) {
+          room_id: filters.room_id,
+        });
+        if (locationCustomerIds.length === 0) {
           return { total: 0, individual: 0, organization: 0, foreign: 0 };
         }
-        baseQuery = baseQuery.in("id", customerIds) as any;
       }
 
-      // Apply search filter
-      if (filters?.search) {
-        const search = filters.search.trim();
+      // Đếm bằng count head trên server — SELECT rồi đếm client dính cap
+      // 1000 dòng của PostgREST (thiếu số khi >1000 khách).
+      const countWhere = (extra?: (q: any) => any) => {
+        let q = (supabase
+          .from("customers")
+          .select("id", { count: "exact", head: true }) as any)
+          .is("deleted_at", null);
+        if (filters?.status) q = q.eq("status_v2", filters.status);
+        if (locationCustomerIds) q = q.in("id", locationCustomerIds);
+        const search = filters?.search?.trim();
         if (search) {
-          baseQuery = baseQuery.or(
+          q = q.or(
             `full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%,id_number.ilike.%${search}%`
-          ) as any;
+          );
         }
-      }
+        if (extra) q = extra(q);
+        return q;
+      };
 
-      const { data, error } = await baseQuery;
-      if (error) {
-        console.error("useCustomerStats error:", error);
+      const [totalRes, individualRes, organizationRes, foreignRes] =
+        await Promise.all([
+          countWhere(),
+          countWhere((q) => q.eq("customer_type", "INDIVIDUAL")),
+          countWhere((q) => q.eq("customer_type", "ORGANIZATION")),
+          countWhere((q) => q.eq("is_foreign", true)),
+        ]);
+
+      const err =
+        totalRes.error || individualRes.error || organizationRes.error || foreignRes.error;
+      if (err) {
+        console.error("useCustomerStats error:", err);
         return { total: 0, individual: 0, organization: 0, foreign: 0 };
       }
 
-      const customers = data || [];
       return {
-        total: customers.length,
-        individual: customers.filter(
-          (c: any) => c.customer_type === "INDIVIDUAL"
-        ).length,
-        organization: customers.filter(
-          (c: any) => c.customer_type === "ORGANIZATION"
-        ).length,
-        foreign: customers.filter((c: any) => c.is_foreign === true).length,
+        total: totalRes.count || 0,
+        individual: individualRes.count || 0,
+        organization: organizationRes.count || 0,
+        foreign: foreignRes.count || 0,
       };
     },
   });
