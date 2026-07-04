@@ -89,7 +89,8 @@ export const EMPTY_INCOME_EXPENSE_FILTERS: IncomeExpenseFilters = {
   verified_status: null,
   period_start_month: null,
   period_end_month: null,
-  layer: null,
+  // Mặc định TIỀN THẬT — user mới & nút Reset đều về lớp này.
+  layer: "CASH",
   source_group: null,
 };
 

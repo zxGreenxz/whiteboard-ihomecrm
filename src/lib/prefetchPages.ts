@@ -154,6 +154,8 @@ function prefetchIncomeExpenses(qc: QueryClient) {
     ...filters,
     building_ids: buildingIds.length ? buildingIds : undefined,
     building_id: buildingIds.length === 1 ? buildingIds[0] : null,
+    // B4: khớp default lớp TIỀN THẬT của trang (persisted cũ thiếu key layer).
+    layer: filters.layer === undefined ? "CASH" : filters.layer,
     amount_target: parsed.amountTarget,
     room_ids: parsed.roomIds ?? filters.room_ids,
   };
