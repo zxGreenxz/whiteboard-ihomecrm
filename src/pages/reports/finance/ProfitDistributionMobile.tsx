@@ -15,6 +15,7 @@ import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
 import { formatPeriod } from "@/lib/monthPeriod";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
+import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 
 // Giao diện MOBILE cho báo cáo Phân bổ lợi nhuận (import từ thiết kế claude.ai/design
 // "Phân bổ lợi nhuận (mobile)"). Dùng CHUNG hook/dữ liệu với bản desktop
@@ -82,9 +83,12 @@ export default function ProfitDistributionMobile() {
   const { data: stats } = useIncomeExpenseStats(filters, { businessResultOnly: pnlOnly });
   const { data: detailInvoice } = useInvoice(detailInvoiceId ?? undefined);
 
-  const displayIncome = accrualMode ? accrual?.totalIncome ?? 0 : stats?.totalIncome ?? 0;
-  const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : stats?.totalExpense ?? 0;
-  const displayDiff = accrualMode ? accrual?.difference ?? 0 : stats?.difference ?? 0;
+  // Cùng công thức với desktop: tiền mặt + gồm-cọc → tổng MỌI khoản (allIncome).
+  const cashIncome = pnlOnly ? stats?.totalIncome ?? 0 : stats?.allIncome ?? stats?.totalIncome ?? 0;
+  const cashExpense = pnlOnly ? stats?.totalExpense ?? 0 : stats?.allExpense ?? stats?.totalExpense ?? 0;
+  const displayIncome = accrualMode ? accrual?.totalIncome ?? 0 : cashIncome;
+  const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : cashExpense;
+  const displayDiff = displayIncome - displayExpense;
 
   const isSpecial = (typeId?: string | null, typeName?: string) =>
     (!!typeId && specialTypeIds.has(typeId)) || specialTypeNames.has((typeName ?? "").trim().toLowerCase());
@@ -124,6 +128,24 @@ export default function ProfitDistributionMobile() {
   const incomeTotal = incomeRows.reduce((s, r) => s + r.amount, 0);
   const expenseTotal = expenseRows.reduce((s, r) => s + r.amount, 0);
   const rows = side === "income" ? incomeRows : expenseRows;
+
+  // B5: phần dòng bị ẩn bởi "Ẩn hạng mục đặc biệt" (mobile lọc ngay khi build
+  // rows nên tính lại từ nguồn để thanh kiểm chứng giải thích được số lệch).
+  const { hiddenCount, hiddenSum } = useMemo(() => {
+    if (!hideSpecialTypes) return { hiddenCount: 0, hiddenSum: 0 };
+    let c = 0, t = 0;
+    if (accrualMode) {
+      for (const r of (accrual?.rows ?? []) as any[]) {
+        if (isSpecial(r.typeId, r.typeName)) { c++; t += (r.income || 0) + (r.expense || 0); }
+      }
+    }
+    return { hiddenCount: c, hiddenSum: t };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hideSpecialTypes, accrualMode, accrual, specialTypeIds, specialTypeNames]);
+  const capWarning =
+    !accrualMode && (cash?.totalCount ?? 0) > (cash?.data?.length ?? 0)
+      ? { shown: cash?.data?.length ?? 0, total: cash?.totalCount ?? 0 }
+      : null;
 
   const filterCount =
     buildingIds.length + (hideSpecialTypes ? 1 : 0) + (!pnlOnly ? 1 : 0) + (hideStatCards ? 1 : 0);
@@ -193,6 +215,24 @@ export default function ProfitDistributionMobile() {
           </div>
         </div>
       )}
+
+      {/* B5: thanh kiểm chứng — cùng component với desktop */}
+      <ProfitVerificationBar
+        ym={ymStr}
+        startDate={startDate}
+        endDate={endDate}
+        buildingIds={buildingIds}
+        monthLabel={monthLabel}
+        accrualMode={accrualMode}
+        pnlOnly={pnlOnly}
+        totalIncome={displayIncome}
+        totalExpense={displayExpense}
+        shownIncomeSum={incomeTotal}
+        shownExpenseSum={expenseTotal}
+        hiddenCount={hiddenCount}
+        hiddenSum={hiddenSum}
+        capWarning={capWarning}
+      />
 
       {/* Chip chế độ */}
       <div className="flex gap-2">

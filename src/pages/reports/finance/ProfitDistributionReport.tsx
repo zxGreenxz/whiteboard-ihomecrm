@@ -10,6 +10,7 @@ import {
 } from "@/hooks/useIncomeExpenses";
 import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails, useInvoiceRentPeriods } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
+import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
@@ -288,17 +289,21 @@ function ProfitDistributionDesktop() {
   );
 
   // Giá trị 3 thẻ + tổng mỗi bên theo chế độ ghi nhận.
-  const displayIncome = accrualMode ? accrual?.totalIncome ?? 0 : stats?.totalIncome ?? 0;
-  const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : stats?.totalExpense ?? 0;
-  const displayDiff = accrualMode ? accrual?.difference ?? 0 : stats?.difference ?? 0;
+  // Tiền mặt + "gồm cả khoản ngoài KQKD": tổng MỌI khoản (kể cả bút toán nội
+  // bộ/chưa chọn sổ) — khớp danh sách bên dưới vốn không lọc lớp.
+  const cashIncome = pnlOnly ? stats?.totalIncome ?? 0 : stats?.allIncome ?? stats?.totalIncome ?? 0;
+  const cashExpense = pnlOnly ? stats?.totalExpense ?? 0 : stats?.allExpense ?? stats?.totalExpense ?? 0;
+  const displayIncome = accrualMode ? accrual?.totalIncome ?? 0 : cashIncome;
+  const displayExpense = accrualMode ? accrual?.totalExpense ?? 0 : cashExpense;
+  const displayDiff = displayIncome - displayExpense;
 
   const loading = accrualMode ? accrualLoading : isLoading;
 
   // Phòng trống trong tháng (đầu cột Thu, nền vàng cam). Chỉ tính khi panel Thu
   // hiển thị, không lọc 1 phòng cụ thể, và đã chọn ≥1 toà (cần danh sách phòng
   // đầy đủ của toà).
-  const vacancyEnabled =
-    voucherType !== "EXPENSE" && roomId === "all" && buildingIds.length > 0;
+  // B5: bật mặc định cả khi chưa chọn toà (hook tự quét mọi toà theo RLS).
+  const vacancyEnabled = voucherType !== "EXPENSE" && roomId === "all";
   const { data: vacantNotes } = useVacantRoomNotes(buildingIds, endDate, vacancyEnabled);
 
   // Chuẩn hoá dữ liệu thành 2 danh sách thu/chi + sắp theo thứ tự phòng.
@@ -508,6 +513,20 @@ function ProfitDistributionDesktop() {
     () => filterSpecial(expenseRows),
     [expenseRows, hideSpecialTypes, hasSpecialTypes, specialTypeIds, specialTypeNames]
   );
+
+  // B5: số liệu cho thanh kiểm chứng — Σ dòng hiển thị vs tổng thẻ.
+  const sumRows = (rows: DisplayRow[]) =>
+    rows.reduce((s, r) => (r.isNote ? s : s + r.amount), 0);
+  const shownIncomeSum = useMemo(() => sumRows(shownIncomeRows), [shownIncomeRows]);
+  const shownExpenseSum = useMemo(() => sumRows(shownExpenseRows), [shownExpenseRows]);
+  const hiddenSum =
+    sumRows(incomeRows) + sumRows(expenseRows) - shownIncomeSum - shownExpenseSum;
+  const hiddenCount =
+    incomeRows.length + expenseRows.length - shownIncomeRows.length - shownExpenseRows.length;
+  const capWarning =
+    !accrualMode && (result?.totalCount ?? 0) > LIST_LIMIT
+      ? { shown: LIST_LIMIT, total: result?.totalCount ?? 0 }
+      : null;
 
   // Tổng/đã trả của các hoá đơn xuất hiện trong cột Thu → tính note thiếu/thừa.
   const invoiceIds = useMemo(
@@ -764,6 +783,24 @@ function ProfitDistributionDesktop() {
             <StatCard label="Lợi nhuận" value={displayDiff} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
           </div>
         )}
+
+        {/* B5: thanh kiểm chứng — desktop + mobile dùng chung */}
+        <ProfitVerificationBar
+          ym={ym}
+          startDate={startDate}
+          endDate={endDate}
+          buildingIds={buildingIds}
+          monthLabel={monthLabel}
+          accrualMode={accrualMode}
+          pnlOnly={pnlOnly}
+          totalIncome={displayIncome}
+          totalExpense={displayExpense}
+          shownIncomeSum={shownIncomeSum}
+          shownExpenseSum={shownExpenseSum}
+          hiddenCount={hiddenCount}
+          hiddenSum={hiddenSum}
+          capWarning={capWarning}
+        />
 
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3">

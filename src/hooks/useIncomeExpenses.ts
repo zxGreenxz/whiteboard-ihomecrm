@@ -679,6 +679,10 @@ export const incomeExpenseStatsQuery = (
       internalExpense: number;
       pendingCount: number;
       pendingTotal: number;
+      // Tổng MỌI khoản (cash+internal+pending) — trang Phân bổ LN chế độ
+      // "gồm cả khoản ngoài KQKD" dùng; trang Thu chi bỏ qua.
+      allIncome?: number;
+      allExpense?: number;
     }> => {
       const EMPTY_STATS = {
         totalIncome: 0, totalExpense: 0, difference: 0,
@@ -738,10 +742,18 @@ export const incomeExpenseStatsQuery = (
       if (!s) return EMPTY_STATS;
       const totalIncome = Number(s.cash_income) || 0;
       const totalExpense = Number(s.cash_expense) || 0;
+      const allIncome = businessResultOnly
+        ? totalIncome
+        : totalIncome + (Number(s.internal_income) || 0) + (Number(s.pending_income) || 0);
+      const allExpense = businessResultOnly
+        ? totalExpense
+        : totalExpense + (Number(s.internal_expense) || 0) + (Number(s.pending_expense) || 0);
       return {
         totalIncome,
         totalExpense,
         difference: totalIncome - totalExpense,
+        allIncome,
+        allExpense,
         internalCount: Number(s.internal_count) || 0,
         internalIncome: Number(s.internal_income) || 0,
         internalExpense: Number(s.internal_expense) || 0,

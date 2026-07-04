@@ -148,14 +148,17 @@ export function useVacantRoomNotes(
   const sortedIds = [...buildingIds].sort();
   return useQuery({
     queryKey: ["reports", "vacant-room-notes", sortedIds, monthEndDate],
-    enabled: enabled && buildingIds.length > 0 && !!monthEndDate,
+    // B5: [] = quét MỌI toà trong scope RLS (bar Phân bổ LN bật mặc định).
+    enabled: enabled && !!monthEndDate,
     queryFn: async (): Promise<Map<string, VacantRoomNote>> => {
       // 1) Phòng trong các toà đã chọn (bỏ phòng đã xoá).
-      const { data: rooms, error: roomsErr } = await supabase
+      let roomsQ = supabase
         .from("rooms")
         .select("id, name, status, building_id, buildings(id, name)")
         .is("deleted_at", null)
-        .in("building_id", buildingIds);
+        .range(0, 4999);
+      if (buildingIds.length) roomsQ = roomsQ.in("building_id", buildingIds);
+      const { data: rooms, error: roomsErr } = await roomsQ;
       if (roomsErr) throw roomsErr;
       const roomList = (rooms ?? []) as any[];
       if (roomList.length === 0) return new Map();
@@ -163,11 +166,15 @@ export function useVacantRoomNotes(
 
       // 2) HĐ của các phòng (mọi status): ACTIVE để xác định "đang ở tại cuối
       //    tháng", TERMINATED/EXPIRED/TRANSFERRED để suy lý do.
-      const { data: contracts, error: cErr } = await supabase
+      // ALL toà: KHÔNG .in(room_id, [hàng trăm id]) — URL quá dài sẽ 400; lấy
+      // toàn bộ HĐ trong scope RLS rồi các set bên dưới tự khớp theo roomList.
+      let contractsQ = supabase
         .from("contracts")
         .select("id, room_id, status, start_date, start_billing_date, end_date, actual_end_date")
-        .in("room_id", roomIds)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        .range(0, 4999);
+      if (buildingIds.length) contractsQ = contractsQ.in("room_id", roomIds);
+      const { data: contracts, error: cErr } = await contractsQ;
       if (cErr) throw cErr;
       const contractList = (contracts ?? []) as any[];
 
