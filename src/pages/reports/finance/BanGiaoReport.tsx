@@ -28,7 +28,7 @@ import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { format, startOfMonth } from 'date-fns';
 import { useSettlementReport, type SettlementAccount } from '@/hooks/useSettlementReport';
 import { usePersistedDateRange } from '@/hooks/usePersistedState';
-import { useProposeReconciliation } from '@/hooks/useReconciliations';
+import { useProposeReconciliation, useCreateOpeningAdjustment } from '@/hooks/useReconciliations';
 import { fmtDateTime } from '@/lib/handover';
 import { useStaffUsers } from '@/hooks/useStaffUsers';
 import { useAuth } from '@/hooks/useAuth';
@@ -230,10 +230,13 @@ function ReconcileDialog({
   const { data: currentUser } = useAuth();
   const { data: staff = [] } = useStaffUsers();
   const proposeMut = useProposeReconciliation();
+  const adjustMut = useCreateOpeningAdjustment();
 
   const [counted, setCounted] = useState<string>(String(Math.round(account.current_balance)));
   const [note, setNote] = useState('');
   const [counterparty, setCounterparty] = useState('');
+  // B6 cut-over: khoá sổ tới ngày D + phiếu điều chỉnh chênh (ngoài-KQKD).
+  const [lockAfter, setLockAfter] = useState(false);
 
   const countedNum = Number(counted.replace(/[^\d-]/g, '')) || 0;
   const diff = countedNum - account.current_balance;
@@ -252,6 +255,18 @@ function ReconcileDialog({
           ? `Đã chốt số sổ ${account.name} — lệch ${fmt(res.diff)}`
           : `Đã gửi đối soát sổ ${account.name} — chờ xác nhận`,
       );
+      if (lockAfter) {
+        const adj = await adjustMut.mutateAsync({
+          accountId: account.account_id,
+          countedBalance: countedNum,
+          asOf: asOf || format(new Date(), 'yyyy-MM-dd'),
+        });
+        toast.success(
+          adj.voucher_id
+            ? `Đã khoá sổ tới ${fmtDay(adj.locked_to)} + phiếu điều chỉnh ${fmt(adj.diff)} (ngoài KQKD)`
+            : `Đã khoá sổ tới ${fmtDay(adj.locked_to)} — số dư khớp, không cần phiếu điều chỉnh`,
+        );
+      }
       onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -290,6 +305,23 @@ function ReconcileDialog({
               Lệch: {fmt(diff)} {diff !== 0 ? '(đếm − hệ thống)' : '· khớp'}
             </div>
           </div>
+
+          <label className="flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={lockAfter}
+              onChange={(e) => setLockAfter(e.target.checked)}
+            />
+            <span>
+              <b>Chốt số &amp; KHOÁ SỔ</b> tới hôm nay
+              <span className="block text-xs text-muted-foreground">
+                Số hệ thống lệch với số đếm sẽ được ghi 1 phiếu "Điều chỉnh số dư
+                đầu kỳ" (ngoài KQKD — không ảnh hưởng lợi nhuận); phiếu trước ngày
+                này bị chặn sửa. Không đổi số quá khứ.
+              </span>
+            </span>
+          </label>
 
           <div>
             <Label className="text-xs">Người xác nhận cùng (không bắt buộc)</Label>

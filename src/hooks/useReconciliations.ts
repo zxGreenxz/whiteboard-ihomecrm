@@ -57,6 +57,33 @@ export const useConfirmReconciliation = () => {
   });
 };
 
+// B6 cut-over: "Chốt số & khoá sổ" — kiểm kê ngày D, ghi phiếu "Điều chỉnh
+// số dư đầu kỳ" NGOÀI-KQKD cho phần chênh (nếu có) và set accounts.lock_date.
+// KHÔNG sửa số quá khứ / initial_amount (RPC 20260704150000).
+export const useCreateOpeningAdjustment = () => {
+  const invalidate = useInvalidateRecon();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { accountId: string; countedBalance: number; asOf?: string }) => {
+      const { data, error } = await (supabase as any).rpc("create_opening_adjustment", {
+        p_account_id: args.accountId,
+        p_counted_balance: args.countedBalance,
+        p_as_of: args.asOf ?? undefined,
+      });
+      if (error) throw new Error(error.message);
+      return data as {
+        account_id: string; system_balance: number; counted_balance: number;
+        diff: number; voucher_id: string | null; locked_to: string;
+      };
+    },
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+};
+
 export const useCancelReconciliation = () => {
   const invalidate = useInvalidateRecon();
   return useMutation({

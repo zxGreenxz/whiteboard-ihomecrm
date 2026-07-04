@@ -260,3 +260,24 @@ score = D × (1 + P/20)                        -- D = ngày (trừ CN) từ DẤ
 - **Setting:** ngày-nghỉ-có-lương/tháng = `paid_leave_days_per_month` (mặc định 1, chỉnh 0–4) + toàn bộ ngưỡng cadence/dwell/điểm đều chỉnh được không cần deploy.
 
 Thư mục `docs/bang-luong/`: kỹ thuật · bàn tròn v1 · v2 · v3 · v4 (cơ chế tiền) · **v4.3 file này (coverage xoay tua)**.
+
+---
+
+## Tham số CHỐT bởi chủ — 04/07/2026: trần 15 phút/phiên
+
+> Chủ chốt trong phiên trao đổi tài chính 04/07 (đối trọng với "dwell tối
+> thiểu" ở trên — dwell là SÀN chống hời hợt, mục này là TRẦN chống la cà).
+
+- **Thời gian ở lại mỗi toà TỐI ĐA 15 phút kể từ lúc bấm "Kiểm tra"** (check-in).
+- Spec UI/engine khi triển khai:
+  1. Bấm "Kiểm tra" → phiên mở, **đồng hồ đếm ngược 15:00** hiện trên màn checklist.
+  2. Hết 15:00 → **auto check-out**: phiên tự kết thúc, mọi mục checklist chưa
+     tick đánh dấu `"quá giờ/không hoàn tất"` (không cho tick bổ sung sau giờ).
+  3. **Thời lượng thực** (check-in → check-out/auto) lưu vào bản ghi kiểm tra —
+     dùng chấm ngày-công-việc + audit (dwell floor vẫn áp: phiên < dwell tối
+     thiểu theo cỡ toà = fail chất lượng; phiên chạm trần 15' nhiều lần liên
+     tục = cờ xem lại checklist toà đó có quá dài không).
+  4. Trần 15' là **per-toà per-phiên**; piggyback toà thứ 2 = phiên mới, đồng
+     hồ mới.
+- Tham số đặt trong settings (`inspection_session_max_minutes`, mặc định 15,
+  chỉnh được không cần deploy) — cùng nhóm với cadence/dwell/điểm.
