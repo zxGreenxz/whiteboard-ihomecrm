@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, Search, TrendingUp, Wallet, Building2 } from 'lucide-react';
 import './homeLauncher.css';
@@ -73,15 +73,26 @@ const LauncherSkeleton = () => (
   </>
 );
 
+// Entrance fade CHỈ chạy lần đầu mỗi phiên. Các lần QUAY LẠI màn chính
+// (vào page → back) render thẳng trạng thái cuối — không animation nào để
+// "nháy/giựt", kể cả khi main thread khựng vì prefetch/parse chunk nền
+// (iOS Safari không có requestIdleCallback nên burst prefetch dễ trúng đúng
+// nhịp fade đang chạy lại → đứng hình rồi nhảy phắt = giật; xem 5b87ddc).
+const enteredOnce = () => {
+  try { return sessionStorage.getItem('hl:entered') === '1'; } catch { return true; }
+};
+
 const HomeLauncher = () => {
   const { data: user } = useAuth();
   const { data: profile } = useProfile();
   const { data: stats, isLoading: statsLoading } = useDashboardStats(null);
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
+  const [animateIn] = useState(() => !enteredOnce());
 
   // Ẩn splash tức thì ngay khi launcher mount (skeleton bên dưới lo phần dữ liệu).
   useEffect(() => {
     hideAppSplash();
+    try { sessionStorage.setItem('hl:entered', '1'); } catch { /* ignore */ }
   }, []);
 
   // Tải nền trang đầu Hoá đơn/Thu chi/Hợp đồng/Công việc lúc rảnh — bấm ô
@@ -105,7 +116,7 @@ const HomeLauncher = () => {
   return (
     <div className="hl-stage">
       <div className="hl-app">
-        <div className="route route-anim">
+        <div className={animateIn ? 'route route-anim' : 'route'}>
           <header className="home-hdr">
             <div className="hh-top">
               <div className="hh-mark"><Building2 /></div>

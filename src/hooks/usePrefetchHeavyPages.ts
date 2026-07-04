@@ -32,7 +32,10 @@ export function usePrefetchHeavyPages() {
     };
 
     // Nhường màn chính tải xong trước — chạy lúc idle, trần 4s để không
-    // chờ vô hạn trên trang bận. Safari chưa có requestIdleCallback → setTimeout.
+    // chờ vô hạn trên trang bận. Safari chưa có requestIdleCallback → setTimeout;
+    // trên PHONE lùi hẳn 3s: burst 1.5s từng trúng đúng nhịp entrance fade của
+    // màn chính khi quay lại → parse chunk chặn main thread giữa fade = "giật
+    // màn hình" (bug 04/07). 3s = màn đã đứng yên, khựng nhẹ không thấy được.
     const w = window as Window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
@@ -41,7 +44,8 @@ export function usePrefetchHeavyPages() {
       const id = w.requestIdleCallback(run, { timeout: 4000 });
       return () => w.cancelIdleCallback?.(id);
     }
-    const t = setTimeout(run, 1500);
+    const isPhone = window.matchMedia("(max-width: 767px)").matches;
+    const t = setTimeout(run, isPhone ? 3000 : 1500);
     return () => clearTimeout(t);
   }, [perms, queryClient]);
 }

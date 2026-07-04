@@ -284,14 +284,26 @@ export function prefetchDomain(qc: QueryClient, domain: PrefetchDomain) {
 }
 
 /** Prefetch mọi domain user có quyền xem (gate = cùng RequirePermission của
- *  route: canUse(module, 'view')). Gọi từ màn chính lúc rảnh. */
+ *  route: canUse(module, 'view')). Gọi từ màn chính lúc rảnh.
+ *
+ *  PHONE: GIÃN mỗi domain 900ms thay vì bắn cả 4 cùng lúc — mỗi domain warm
+ *  2 chunk route (desktop + mobile), parse dồn một cục trên iPhone chặn main
+ *  thread 1 nhịp dài; nếu trúng lúc entrance fade của màn chính đang chạy →
+ *  đứng hình rồi nhảy phắt = "giật màn hình" (bug 04/07). Chia nhỏ để mỗi
+ *  nhịp khựng ngắn và rơi vào lúc màn đứng yên (mắt không thấy). */
 export function prefetchHeavyPages(
   qc: QueryClient,
   perms: Parameters<typeof canUse>[0],
 ) {
-  if (canUse(perms, "invoices", "view")) prefetchDomain(qc, "invoices");
-  if (canUse(perms, "income_expenses", "view"))
-    prefetchDomain(qc, "income-expenses");
-  if (canUse(perms, "contracts", "view")) prefetchDomain(qc, "contracts");
-  if (canUse(perms, "tasks", "view")) prefetchDomain(qc, "jobs");
+  const domains: PrefetchDomain[] = [];
+  if (canUse(perms, "invoices", "view")) domains.push("invoices");
+  if (canUse(perms, "income_expenses", "view")) domains.push("income-expenses");
+  if (canUse(perms, "contracts", "view")) domains.push("contracts");
+  if (canUse(perms, "tasks", "view")) domains.push("jobs");
+
+  const gapMs = isPhoneViewport() ? 900 : 0;
+  domains.forEach((d, i) => {
+    if (gapMs) setTimeout(() => prefetchDomain(qc, d), i * gapMs);
+    else prefetchDomain(qc, d);
+  });
 }
