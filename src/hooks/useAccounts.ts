@@ -49,16 +49,28 @@ export interface AccountFormValues {
 // --- Query: select-list (dùng trong filter & form thu chi) ---
 // opts.enabled: cho caller hoãn fetch tới khi thực sự cần (vd CollectDrawer
 // chỉ tải sổ quỹ khi mở sheet thu tiền). Mặc định true — 20+ call site cũ giữ nguyên.
+// Chủ/super-admin THẤY cả sổ sandbox demo qua RLS (code DEMO%) — lọc khỏi
+// dropdown + trang Sổ quỹ của tenant thật; tài khoản demo đăng nhập vẫn thấy
+// sổ của mình (không áp filter).
+const isDemoSession = async (): Promise<boolean> => {
+  const u = await getSessionUser();
+  return !!u?.email?.startsWith("demo.");
+};
+
 export const useAccounts = (opts?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["accounts"],
     enabled: opts?.enabled ?? true,
     queryFn: async () => {
-      const { data, error } = await (supabase
+      let query = (supabase
         .from("accounts" as any)
         .select("*") as any)
         .is("deleted_at", null)
         .order("name", { ascending: true });
+      if (!(await isDemoSession())) {
+        query = query.not("code", "ilike", "DEMO%");
+      }
+      const { data, error } = await query;
 
       if (error) {
         toast.error("Không thể tải danh sách sổ quỹ");
@@ -89,6 +101,9 @@ export const useAccountsWithBalance = (params?: {
       let query = supabase
         .from("accounts_with_balance" as any)
         .select("*", { count: "exact" });
+      if (!(await isDemoSession())) {
+        query = (query as any).not("code", "ilike", "DEMO%");
+      }
 
       if (searchQuery) {
         // search trên name + code
