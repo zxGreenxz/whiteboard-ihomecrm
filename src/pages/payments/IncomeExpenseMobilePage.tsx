@@ -376,9 +376,22 @@ export default function IncomeExpenseMobilePage() {
                 <div className="rowlist">
                   {vouchers.map((v) => {
                     const inc = v.type === "INCOME";
-                    const accent = inc ? "#10b981" : "#ef4444";
                     const cancelled = v.approval_status === "CANCELLED";
                     const draft = v.approval_status === "UNAPPROVED";
+                    // B4: bút toán nội bộ — trung tính, không xanh/đỏ tiền thật.
+                    const internal =
+                      !cancelled &&
+                      voucherLayer({
+                        approval_status: v.approval_status,
+                        account_id: v.account_id,
+                        system_source: v.system_source,
+                        account_is_virtual: v.account_is_virtual,
+                      }) === "INTERNAL";
+                    const accent = internal
+                      ? "#94a3b8"
+                      : inc
+                        ? "#10b981"
+                        : "#ef4444";
                     const canShareQR =
                       v.type === "EXPENSE" &&
                       !cancelled &&
@@ -417,14 +430,30 @@ export default function IncomeExpenseMobilePage() {
                               className="vch-tag"
                               style={{ color: "#b45309", background: "#fef3c7" }}
                             >
-                              Nháp
+                              Chờ duyệt
+                            </span>
+                          )}
+                          {internal && (
+                            <span
+                              className="vch-tag"
+                              style={{ color: "#475569", background: "#e2e8f0" }}
+                            >
+                              Nội bộ
+                            </span>
+                          )}
+                          {!cancelled && !draft && v.verified_at && (
+                            <span
+                              className="vch-tag"
+                              style={{ color: "#047857", background: "#d1fae5" }}
+                            >
+                              Đã đối chiếu
                             </span>
                           )}
                           <span
                             className="vch-amt"
                             style={{ color: accent, marginLeft: "auto" }}
                           >
-                            {inc ? "+" : "−"}
+                            {internal ? "" : inc ? "+" : "−"}
                             {compact(v.total_amount)}
                           </span>
                         </div>
