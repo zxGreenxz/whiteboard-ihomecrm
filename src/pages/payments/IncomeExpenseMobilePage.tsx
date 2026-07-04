@@ -34,10 +34,12 @@ import {
   useRestoreIncomeExpense,
   useApproveVoucher,
   useCancelIncomeExpenseBatch,
+  EMPTY_INCOME_EXPENSE_FILTERS,
   type IncomeExpenseWithRelations,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
 import { usePagination } from "@/hooks/usePagination";
+import { MOBILE_FIRST_PAGE_SIZE } from "@/lib/listPageSizes";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
 import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
@@ -54,25 +56,7 @@ import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeE
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 import { usePersistedState } from "@/hooks/usePersistedState";
 
-const EMPTY_FILTERS: IncomeExpenseFilters = {
-  building_ids: [],
-  room_id: null,
-  room_ids: null,
-  account_id: null,
-  cash_book_id: null,
-  type: null,
-  start_date: null,
-  end_date: null,
-  approval_status: "ALL_ACTIVE",
-  income_type_id: null,
-  expense_type_id: null,
-  type_category: null,
-  creator_id: null,
-  amount_target: null,
-  verified_status: null,
-  period_start_month: null,
-  period_end_month: null,
-};
+const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -163,7 +147,9 @@ export default function IncomeExpenseMobilePage() {
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
-  const pagination = usePagination(50);
+  // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
+  // trật cache key); "Tải thêm" vẫn nới +50.
+  const pagination = usePagination(MOBILE_FIRST_PAGE_SIZE);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 350);

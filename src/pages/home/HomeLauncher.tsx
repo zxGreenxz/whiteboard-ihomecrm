@@ -10,6 +10,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { LAUNCHER_SECTIONS, type LauncherTile } from './launcherTiles';
 import InstallHint from '@/components/pwa/InstallHint';
+import { usePrefetchHeavyPages } from '@/hooks/usePrefetchHeavyPages';
 
 // Rút gọn tiền cho ô hero: 18.4tr · 84.5tr · 1.2 tỷ (đồng bộ style Space Mono
 // của Thu tiền). Số nhỏ < 1.000 thì để nguyên.
@@ -82,6 +83,10 @@ const HomeLauncher = () => {
   useEffect(() => {
     hideAppSplash();
   }, []);
+
+  // Tải nền trang đầu Hoá đơn/Thu chi/Hợp đồng/Công việc lúc rảnh — bấm ô
+  // là hiện ngay, không "Đang tải".
+  usePrefetchHeavyPages();
 
   const booting = permsLoading || statsLoading;
   const name = profile?.full_name || user?.email || 'Bạn';

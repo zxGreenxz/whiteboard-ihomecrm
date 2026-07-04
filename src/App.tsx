@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import ErrorBoundary from "./components/errors/ErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
+import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
@@ -183,6 +184,9 @@ const App = () => (
       <ErrorBoundary>
         <Toaster />
         <Sonner />
+        {/* Hub realtime nghiệp vụ: invalidate + hâm cache prefetch khi
+            invoices/income_expenses/contracts/jobs/customers đổi. */}
+        <RealtimeDataSync />
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
           <Routes>

@@ -44,6 +44,7 @@ import {
   useStopRecurring,
   useIncomeExpenseBatches,
   useCancelIncomeExpenseBatch,
+  EMPTY_INCOME_EXPENSE_FILTERS,
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
@@ -55,26 +56,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
-const EMPTY_FILTERS: IncomeExpenseFilters = {
-  // Lọc nhiều toà (BuildingMultiSelect) — [] = tất cả toà.
-  building_ids: [],
-  room_id: null,
-  room_ids: null,
-  account_id: null,
-  cash_book_id: null,
-  type: null,
-  start_date: null,
-  end_date: null,
-  approval_status: "ALL_ACTIVE",
-  income_type_id: null,
-  expense_type_id: null,
-  type_category: null,
-  creator_id: null,
-  amount_target: null,
-  verified_status: null,
-  period_start_month: null,
-  period_end_month: null,
-};
+const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
 
 const IncomeExpenseDesktopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();

@@ -350,23 +350,32 @@ async function fetchContractsPagedOnce(
   };
 }
 
+// Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
+// — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
+export const contractsPagedQuery = (
+  filters?: ContractPagedFilters,
+  pagination?: ContractPagedParams,
+) => ({
+  queryKey: ["contracts", "paged", filters ?? null, pagination ?? null] as const,
+  queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
+    const range = pagination
+      ? {
+          from: (pagination.page - 1) * pagination.pageSize,
+          to: (pagination.page - 1) * pagination.pageSize + pagination.pageSize - 1,
+        }
+      : null;
+    return fetchContractsPagedOnce(filters, range);
+  },
+});
+
 export const useContractsPaged = (
   filters?: ContractPagedFilters,
   pagination?: ContractPagedParams,
 ) => {
   return useQuery({
-    queryKey: ["contracts", "paged", filters ?? null, pagination ?? null],
+    ...contractsPagedQuery(filters, pagination),
     // Giữ trang cũ khi đổi filter/trang để bảng không nhảy về "Đang tải".
     placeholderData: keepPreviousData,
-    queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
-      const range = pagination
-        ? {
-            from: (pagination.page - 1) * pagination.pageSize,
-            to: (pagination.page - 1) * pagination.pageSize + pagination.pageSize - 1,
-          }
-        : null;
-      return fetchContractsPagedOnce(filters, range);
-    },
   });
 };
 
@@ -415,10 +424,8 @@ const contractHeadCountBase = (buildingIds?: string[]) => {
   return q;
 };
 
-export const useContractStats = (buildingIds?: string[]) => {
-  return useQuery({
-    queryKey: ["contracts", "stats", buildingIds ?? []],
-    placeholderData: keepPreviousData,
+export const contractStatsQuery = (buildingIds?: string[]) => ({
+    queryKey: ["contracts", "stats", buildingIds ?? []] as const,
     queryFn: async (): Promise<ContractStats> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
@@ -457,6 +464,12 @@ export const useContractStats = (buildingIds?: string[]) => {
         terminated: terminated.count ?? 0,
       };
     },
+  });
+
+export const useContractStats = (buildingIds?: string[]) => {
+  return useQuery({
+    ...contractStatsQuery(buildingIds),
+    placeholderData: keepPreviousData,
   });
 };
 

@@ -59,6 +59,29 @@ export interface IncomeExpenseFilters {
   period_end_month?: string | null;
 }
 
+// Bộ lọc rỗng mặc định của trang Thu chi (desktop + mobile + prefetch dùng
+// chung — lệch shape là lệch query key, prefetch thành vô dụng).
+export const EMPTY_INCOME_EXPENSE_FILTERS: IncomeExpenseFilters = {
+  // Lọc nhiều toà (BuildingMultiSelect) — [] = tất cả toà.
+  building_ids: [],
+  room_id: null,
+  room_ids: null,
+  account_id: null,
+  cash_book_id: null,
+  type: null,
+  start_date: null,
+  end_date: null,
+  approval_status: "ALL_ACTIVE",
+  income_type_id: null,
+  expense_type_id: null,
+  type_category: null,
+  creator_id: null,
+  amount_target: null,
+  verified_status: null,
+  period_start_month: null,
+  period_end_month: null,
+};
+
 export interface IncomeExpenseItem {
   id: string;
   income_expense_id: string;
@@ -303,12 +326,13 @@ function applyItemFilterToQuery<T>(query: T, plan: ItemFilterPlan): T {
 
 // --- Query Hooks ---
 
-export const useIncomeExpenses = (
+// Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
+// — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
+export const incomeExpensesListQuery = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
   searchQuery?: string
-) => {
-  return useQuery({
+) => ({
     queryKey: [
       "income-expenses",
       "list",
@@ -554,14 +578,19 @@ export const useIncomeExpenses = (
       };
     },
   });
+
+export const useIncomeExpenses = (
+  filters: IncomeExpenseFilters,
+  pagination: { page: number; pageSize: number },
+  searchQuery?: string
+) => {
+  return useQuery(incomeExpensesListQuery(filters, pagination, searchQuery));
 };
 
-export const useIncomeExpenseStats = (
+export const incomeExpenseStatsQuery = (
   filters: IncomeExpenseFilters,
-  opts?: { businessResultOnly?: boolean }
-) => {
-  const businessResultOnly = opts?.businessResultOnly ?? false;
-  return useQuery({
+  businessResultOnly: boolean
+) => ({
     queryKey: [
       "income-expenses",
       "stats",
@@ -686,6 +715,13 @@ export const useIncomeExpenseStats = (
       };
     },
   });
+
+export const useIncomeExpenseStats = (
+  filters: IncomeExpenseFilters,
+  opts?: { businessResultOnly?: boolean }
+) => {
+  const businessResultOnly = opts?.businessResultOnly ?? false;
+  return useQuery(incomeExpenseStatsQuery(filters, businessResultOnly));
 };
 
 

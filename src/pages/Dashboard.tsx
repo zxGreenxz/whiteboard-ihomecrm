@@ -30,6 +30,7 @@ import OnboardingWizard, { useOnboardingState } from '@/components/onboarding/On
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { usePrefetchHeavyPages } from '@/hooks/usePrefetchHeavyPages';
 
 const Dashboard = () => {
   const [selectedBuilding, setSelectedBuilding] = usePersistedState<string | null>('flt:dashboard:building', null);
@@ -41,6 +42,10 @@ const Dashboard = () => {
   useEffect(() => {
     hideAppSplash();
   }, []);
+
+  // Tải nền trang đầu Hoá đơn/Thu chi/Hợp đồng/Công việc lúc rảnh — bấm vào
+  // là hiện ngay, không "Đang tải".
+  usePrefetchHeavyPages();
 
   const { data: stats, isLoading } = useDashboardStats(buildingId);
   const { data: buildings = [] } = useBuildings();

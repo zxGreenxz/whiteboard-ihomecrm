@@ -12,6 +12,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePagination } from "@/hooks/usePagination";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { MOBILE_FIRST_PAGE_SIZE } from "@/lib/listPageSizes";
 import { uniqueRoomNames } from "@/lib/roomSort";
 import type {
   InvoiceFilters,
@@ -75,7 +76,9 @@ export default function InvoicesMobilePage() {
   const [buildingId, setBuildingId] = usePersistedState("flt:invoices-mb:buildingId", "");
   const [roomName, setRoomName] = usePersistedState("flt:invoices-mb:roomName", "all");
   const [stat, setStat] = usePersistedState<"all" | InvoiceStatus>("flt:invoices-mb:stat", "all");
-  const [pageSize, setPageSize] = useState(30);
+  // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
+  // trật cache key); "Tải thêm" vẫn nới +30.
+  const [pageSize, setPageSize] = useState(MOBILE_FIRST_PAGE_SIZE);
   const [createOpen, setCreateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [methodFilter, setMethodFilter] = usePersistedState<StatMethodKey | null>("flt:invoices-mb:method", null);

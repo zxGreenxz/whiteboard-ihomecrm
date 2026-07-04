@@ -59,12 +59,13 @@ export interface InvoicePaginationParams {
 // Requirements: 10.2, 10.4, 10.5, 13.7
 // =============================================
 
-export const useInvoices = (
+// Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
+// để queryKey/queryFn chỉ có 1 nguồn — prefetch lệch key là vô dụng.
+export const invoicesListQuery = (
   filters?: InvoiceFilters,
   pagination?: InvoicePaginationParams,
-) => {
-  return useQuery({
-    queryKey: ['invoices', filters, pagination],
+) => ({
+    queryKey: ['invoices', filters, pagination] as const,
     queryFn: async (): Promise<PaginatedData<InvoiceWithRelations>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -193,6 +194,12 @@ export const useInvoices = (
       };
     },
   });
+
+export const useInvoices = (
+  filters?: InvoiceFilters,
+  pagination?: InvoicePaginationParams,
+) => {
+  return useQuery(invoicesListQuery(filters, pagination));
 };
 
 // Legacy hook for backwards compatibility (returns array directly)
@@ -1095,9 +1102,8 @@ export interface InvoiceStatistics {
   deposit_collected: number;
 }
 
-export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
-  return useQuery({
-    queryKey: ['invoice-statistics', filters],
+export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
+    queryKey: ['invoice-statistics', filters] as const,
     queryFn: async (): Promise<InvoiceStatistics> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -1139,6 +1145,9 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
       };
     },
   });
+
+export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
+  return useQuery(invoiceStatisticsQuery(filters));
 };
 
 // =============================================

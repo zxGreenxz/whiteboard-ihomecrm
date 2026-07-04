@@ -128,14 +128,23 @@ const InvoicesDesktopPage = () => {
   const restoreMutation = useRestoreInvoice();
   const forceCancelMutation = useForceCancelInvoice();
 
-  // Check and update overdue invoices on mount
+  // Check and update overdue invoices on mount — throttle 10 phút/phiên:
+  // đi qua đi lại giữa màn chính (đã prefetch) và trang này không bắn lại
+  // 2 request check mỗi lần mount; OVERDUE vốn chỉ đổi theo NGÀY.
   const checkOverdueMutation = useCheckOverdueInvoices();
   const overdueCheckedRef = useRef(false);
   useEffect(() => {
-    if (!overdueCheckedRef.current) {
-      overdueCheckedRef.current = true;
-      checkOverdueMutation.mutate();
+    if (overdueCheckedRef.current) return;
+    overdueCheckedRef.current = true;
+    const OVERDUE_CHECK_TTL_MS = 10 * 60_000;
+    try {
+      const last = Number(sessionStorage.getItem('invoices:overdue-checked-at') || 0);
+      if (Date.now() - last < OVERDUE_CHECK_TTL_MS) return;
+      sessionStorage.setItem('invoices:overdue-checked-at', String(Date.now()));
+    } catch {
+      // storage bị chặn → cứ check như cũ
     }
+    checkOverdueMutation.mutate();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pagination info

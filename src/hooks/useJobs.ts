@@ -4,9 +4,10 @@ import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { TaskFilters } from "@/types/jobs";
 
-export const useJobs = (filters?: TaskFilters) => {
-  return useQuery({
-    queryKey: ["jobs", filters],
+// Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
+// — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
+export const jobsQuery = (filters?: TaskFilters) => ({
+    queryKey: ["jobs", filters] as const,
     queryFn: async () => {
       let query = supabase
         .from("jobs")
@@ -58,6 +59,9 @@ export const useJobs = (filters?: TaskFilters) => {
       return data || [];
     },
   });
+
+export const useJobs = (filters?: TaskFilters) => {
+  return useQuery(jobsQuery(filters));
 };
 
 export const useCreateJob = () => {

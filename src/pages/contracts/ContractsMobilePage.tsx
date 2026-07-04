@@ -10,6 +10,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useRenewedContractIds } from '@/hooks/useRenewedContracts';
 import { canUse } from '@/lib/permissionPages';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { MOBILE_FIRST_PAGE_SIZE } from '@/lib/listPageSizes';
 import { uniqueRoomNames, compareBuildingThenRoom } from '@/lib/roomSort';
 import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
 import {
@@ -84,7 +85,9 @@ export default function ContractsMobilePage() {
   const [buildingId, setBuildingId] = usePersistedState('flt:contracts-mb:buildingId', ''); // '' = tất cả toà
   const [roomName, setRoomName] = usePersistedState('flt:contracts-mb:roomName', 'all');
   const [stat, setStat] = usePersistedState<ContractStatFilter>('flt:contracts-mb:stat', 'ALL');
-  const [pageSize, setPageSize] = useState(30);
+  // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
+  // trật cache key); "Tải thêm" vẫn nới +30.
+  const [pageSize, setPageSize] = useState(MOBILE_FIRST_PAGE_SIZE);
   const [formOpen, setFormOpen] = useState(false);
 
   useEffect(() => {
