@@ -46,6 +46,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import IncomeExpenseFilterPanel from "@/components/income-expenses/IncomeExpenseFilterPanel";
 import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpenseFilterChips";
+import { voucherLayer } from "@/lib/voucherSources";
 import IncomeExpenseDetailMobile from "@/components/income-expenses/IncomeExpenseDetailMobile";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
