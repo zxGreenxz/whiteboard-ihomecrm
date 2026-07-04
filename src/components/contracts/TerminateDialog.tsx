@@ -57,6 +57,14 @@ import {
 } from "@/hooks/useContractOperations";
 import { useUnpaidInvoices } from "@/hooks/useContracts";
 import { useExcessAmount } from "@/hooks/useInvoices";
+import { useAccounts } from "@/hooks/useAccounts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TerminationExtraCharges } from "./TerminationExtraCharges";
 import type { ExtraChargeItem } from "@/lib/contractValidation";
 
@@ -549,6 +557,12 @@ function StepMoveOut({
   // "đã trả ngay" (ghi thu) hay "ghi nợ" (giữ công nợ thật chờ thu).
   const [shortfallMode, setShortfallMode] = useState<"PAID" | "DEBT">("PAID");
 
+  // B3 (04/07): sổ THỰC nhận tiền "khách trả thêm" — mặc định để trống,
+  // server tự chọn sổ "%Thu" của người bấm. Chỉ hiện sổ tiền thật.
+  const [receiptAccountId, setReceiptAccountId] = useState<string>("");
+  const { data: allAccounts = [] } = useAccounts();
+  const realAccounts = allAccounts.filter((a) => !a.is_virtual);
+
   // B4: xác nhận hệ quả trước khi chạy.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingData, setPendingData] =
@@ -600,6 +614,7 @@ function StepMoveOut({
         notes: pendingData.notes,
         extraCharges,
         shortfallMode,
+        receiptAccountId: receiptAccountId || null,
       },
       {
         onSuccess: () => {
@@ -920,9 +935,36 @@ function StepMoveOut({
               >
                 <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm cursor-pointer has-[[data-state=checked]]:border-emerald-400 has-[[data-state=checked]]:bg-emerald-50">
                   <RadioGroupItem value="PAID" className="mt-0.5" />
-                  <span>
+                  <span className="flex-1">
                     <b>Khách đã trả đủ {formatVND(Math.abs(settlementAmount))}đ</b>{" "}
                     khi rời phòng — ghi nhận thu ngay.
+                    {shortfallMode === "PAID" && (
+                      <span className="mt-2 block" onClick={(e) => e.preventDefault()}>
+                        <span className="text-xs text-muted-foreground block mb-1">
+                          Sổ nhận tiền (tiền thật vào két nào)
+                        </span>
+                        <Select
+                          value={receiptAccountId || "auto"}
+                          onValueChange={(v) =>
+                            setReceiptAccountId(v === "auto" ? "" : v)
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-sm bg-white">
+                            <SelectValue placeholder="Tự chọn sổ Thu của bạn" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">
+                              Tự chọn (sổ Thu của bạn)
+                            </SelectItem>
+                            {realAccounts.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </span>
+                    )}
                   </span>
                 </label>
                 <label className="flex items-start gap-2 rounded-md border p-2.5 text-sm cursor-pointer has-[[data-state=checked]]:border-amber-400 has-[[data-state=checked]]:bg-amber-50">

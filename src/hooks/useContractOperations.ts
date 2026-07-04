@@ -303,6 +303,9 @@ export const useTerminateMoveOut = () => {
       // như cũ); 'DEBT' = ghi nợ — hoá đơn giữ công nợ thật chờ thu, KHÔNG tạo
       // phiếu "Khách trả thêm" (tránh doanh thu ảo khi khách chưa trả).
       shortfallMode?: "PAID" | "DEBT";
+      // B3 (04/07): sổ THỰC nhận tiền "khách trả thêm" — null = server tự chọn
+      // sổ "%Thu" của người bấm (ưu tiên is_default), fallback sổ vận hành toà.
+      receiptAccountId?: string | null;
     }) => {
       const { data, error } = await (supabase as any).rpc(
         "terminate_contract_move_out",
@@ -316,6 +319,7 @@ export const useTerminateMoveOut = () => {
           p_notes: params.notes ?? null,
           p_extra_charges: params.extraCharges ?? [],
           p_shortfall_mode: params.shortfallMode ?? "PAID",
+          p_receipt_account_id: params.receiptAccountId ?? null,
         }
       );
 
