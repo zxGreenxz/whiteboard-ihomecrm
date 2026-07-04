@@ -39,6 +39,7 @@ import {
   useCancelIncomeExpense,
   useRestoreIncomeExpense,
   useApproveVoucher,
+  useQuickUpdateIncomeExpense,
   useUnapproveVoucher,
   useGenerateRecurringVouchers,
   useStopRecurring,
@@ -47,6 +48,17 @@ import {
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { usePagination } from "@/hooks/usePagination";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
@@ -116,6 +128,8 @@ const IncomeExpenseDesktopPage = () => {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
+  const [approveAccountId, setApproveAccountId] = useState<string>("");
+  const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
   const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
@@ -174,9 +188,27 @@ const IncomeExpenseDesktopPage = () => {
   const restoreMutation = useRestoreIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
+  const quickUpdateMutation = useQuickUpdateIncomeExpense();
   const unapproveMutation = useUnapproveVoucher();
   const generateRecurringMutation = useGenerateRecurringVouchers();
   const stopRecurringMutation = useStopRecurring();
+  const { data: accounts = [] } = useAccounts();
+  const { data: authUser } = useAuth();
+
+  const approveVoucher =
+    approveTarget !== null
+      ? vouchers.find((v) => v.id === approveTarget) ?? null
+      : null;
+
+  useEffect(() => {
+    if (approveTarget && approveVoucher) {
+      setApproveAccountId(approveVoucher.account_id ?? "");
+      setApproveAttachments(approveVoucher.attachments ?? []);
+    } else if (!approveTarget) {
+      setApproveAccountId("");
+      setApproveAttachments([]);
+    }
+  }, [approveTarget, approveVoucher]);
 
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
@@ -260,12 +292,32 @@ const IncomeExpenseDesktopPage = () => {
     setApproveTarget(id);
   }, []);
 
-  const confirmApprove = useCallback(() => {
-    if (approveTarget) {
-      approveMutation.mutate(approveTarget);
+  const confirmApprove = useCallback(async () => {
+    if (!approveTarget) return;
+    const id = approveTarget;
+    const accountChanged =
+      approveAccountId !== (approveVoucher?.account_id ?? "");
+    const attachmentsChanged =
+      JSON.stringify(approveAttachments) !==
+      JSON.stringify(approveVoucher?.attachments ?? []);
+    if (accountChanged || attachmentsChanged) {
+      await quickUpdateMutation.mutateAsync({
+        id,
+        account_id: approveAccountId || null,
+        attachments: approveAttachments,
+        notes: approveVoucher?.notes ?? null,
+      });
     }
+    approveMutation.mutate(id);
     setApproveTarget(null);
-  }, [approveTarget, approveMutation]);
+  }, [
+    approveTarget,
+    approveMutation,
+    approveAccountId,
+    approveAttachments,
+    approveVoucher,
+    quickUpdateMutation,
+  ]);
 
   const handleUnapproveVoucher = useCallback((id: string) => {
     setUnapproveTarget(id);
@@ -574,9 +626,41 @@ const IncomeExpenseDesktopPage = () => {
               còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="approve-account-desktop">Sổ quỹ</Label>
+              <Select
+                value={approveAccountId}
+                onValueChange={setApproveAccountId}
+              >
+                <SelectTrigger id="approve-account-desktop">
+                  <SelectValue placeholder="Chọn sổ quỹ" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ảnh chứng từ</Label>
+              <AttachmentUpload
+                attachments={approveAttachments}
+                onChange={setApproveAttachments}
+                userId={authUser?.id ?? approveVoucher?.user_id ?? ""}
+              />
+            </div>
+          </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
+              disabled={quickUpdateMutation.isPending}
               onClick={confirmApprove}
               className="bg-green-600 hover:bg-green-700"
             >
