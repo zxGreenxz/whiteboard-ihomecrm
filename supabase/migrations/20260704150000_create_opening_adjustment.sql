@@ -49,12 +49,22 @@ BEGIN
   IF p_as_of > CURRENT_DATE THEN
     RAISE EXCEPTION 'Ngày chốt không được ở tương lai';
   END IF;
+  IF v_acc.lock_date IS NOT NULL AND v_acc.lock_date > p_as_of THEN
+    RAISE EXCEPTION 'Sổ đã khoá tới % — không thể chốt lùi về %',
+      v_acc.lock_date, p_as_of;
+  END IF;
 
   SELECT current_amount INTO v_system
   FROM accounts_with_balance WHERE id = p_account_id;
   v_diff := COALESCE(p_counted_balance, 0) - COALESCE(v_system, 0);
 
   IF abs(v_diff) >= 1 THEN
+    -- Trigger khoá sổ chặn phiếu có ngày ≤ lock_date — phiếu điều chỉnh ngày D
+    -- chính là ngày khoá, nên TẠM GỠ lock trong transaction (row đã FOR UPDATE)
+    -- rồi khoá lại ở cuối. Chốt lại lần 2 cùng ngày cũng đi đường này.
+    IF v_acc.lock_date IS NOT NULL THEN
+      UPDATE accounts SET lock_date = NULL WHERE id = p_account_id;
+    END IF;
     v_kind := CASE WHEN v_diff > 0 THEN 'income' ELSE 'expense' END;
     -- Hạng mục "Điều chỉnh số dư" (get-or-create) — ẩn khỏi báo cáo P&L.
     v_type_id := public._termination_ensure_type(
