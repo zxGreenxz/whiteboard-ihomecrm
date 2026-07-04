@@ -2758,6 +2758,7 @@ export type Database = {
           rounding_account_id: string | null
           rounding_amount: number | null
           shareholder_id: string | null
+          system_source: string | null
           tenant_id: string | null
           total_amount: number
           type: string
@@ -2806,6 +2807,7 @@ export type Database = {
           rounding_account_id?: string | null
           rounding_amount?: number | null
           shareholder_id?: string | null
+          system_source?: string | null
           tenant_id?: string | null
           total_amount?: number
           type: string
@@ -2854,6 +2856,7 @@ export type Database = {
           rounding_account_id?: string | null
           rounding_amount?: number | null
           shareholder_id?: string | null
+          system_source?: string | null
           tenant_id?: string | null
           total_amount?: number
           type?: string
