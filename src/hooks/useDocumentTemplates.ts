@@ -210,8 +210,14 @@ export const useDocumentTemplates = (category?: TemplateCategory) => {
 };
 
 // 1b. FETCH TEMPLATES BY TYPE
-export const useDocumentTemplatesByType = (type?: TemplateType) => {
+// options.enabled: dialog mounted-sẵn (vd PrintContractDialog) gate fetch khi
+// đóng (default true).
+export const useDocumentTemplatesByType = (
+  type?: TemplateType,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["document-templates", "by-type", type],
     queryFn: async () => {
       const user = await getSessionUser();

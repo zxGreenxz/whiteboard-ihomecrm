@@ -39,7 +39,12 @@ export function CustomerSelectionDialog({
   const [createOpen, setCreateOpen] = useState(false);
   const knownIdsRef = useRef<Set<string>>(new Set());
 
-  const { data: customerData, isLoading } = useCustomers(undefined, undefined);
+  // enabled: open — dialog này mounted sẵn bên trong ContractFormDialog (cũng
+  // mounted sẵn), trước đây kéo CẢ BẢNG customers + chuỗi enrichment mỗi lần
+  // tải trang /contracts dù chưa ai mở form.
+  const { data: customerData, isLoading } = useCustomers(undefined, undefined, {
+    enabled: open,
+  });
   const customers = customerData?.data ?? [];
 
   // Seed checked state + known ids each time the dialog opens. The parent

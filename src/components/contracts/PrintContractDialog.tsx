@@ -46,8 +46,11 @@ export function PrintContractDialog({
   // For now we surface contract templates (lease_contract). Later this could
   // branch by action — termination/extension/transfer — but the dialog stays
   // simple and works off the contract type the user is most likely to print.
-  const { data: templates = [], isLoading } =
-    useDocumentTemplatesByType("lease_contract");
+  // enabled: open — dialog mounted sẵn, chỉ fetch templates khi mở.
+  const { data: templates = [], isLoading } = useDocumentTemplatesByType(
+    "lease_contract",
+    { enabled: open },
+  );
 
   const [selectedId, setSelectedId] = useState<string>("");
   const [isRendering, setIsRendering] = useState(false);

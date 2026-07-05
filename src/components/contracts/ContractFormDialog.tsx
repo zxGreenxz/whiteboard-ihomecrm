@@ -213,7 +213,10 @@ export function ContractFormDialog({
 
   // Phiếu thu cọc — auto-tạo sau khi lưu HĐ thành công nếu user đã nhập
   // "Đã đặt cọc". Lookup id của type "Tiền cọc" và default account.
-  const { data: incomeTypes = [] } = useIncomeExpenseTypes("income");
+  // enabled: open — form mounted sẵn (đóng) không fetch types/accounts.
+  const { data: incomeTypes = [] } = useIncomeExpenseTypes("income", {
+    enabled: open,
+  });
   const depositIncomeType = useMemo(
     () =>
       incomeTypes.find(
@@ -221,7 +224,7 @@ export function ContractFormDialog({
       ),
     [incomeTypes],
   );
-  const { data: accounts = [] } = useAccounts();
+  const { data: accounts = [] } = useAccounts({ enabled: open });
   const createDepositVoucher = useCreateIncomeExpense();
   const { data: authUser } = useAuth();
 

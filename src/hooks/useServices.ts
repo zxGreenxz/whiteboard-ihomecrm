@@ -35,11 +35,16 @@ export type ServiceWithBuildings = Service & {
 };
 
 // Fetch services with building associations, optional filters
-export const useServices = (filters?: {
-  building_id?: string;
-  fee_type?: string;
-}) => {
+// options.enabled: dialog mounted-sẵn gate fetch khi đóng (default true).
+export const useServices = (
+  filters?: {
+    building_id?: string;
+    fee_type?: string;
+  },
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["services", filters],
     queryFn: async () => {
       let query = supabase

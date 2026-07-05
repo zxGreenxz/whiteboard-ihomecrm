@@ -47,7 +47,10 @@ export function ServiceSelectionDialog({
   // Hiển thị TOÀN BỘ dịch vụ trong danh mục (page Dịch vụ), không lọc theo
   // toà — để user gán bất kỳ dịch vụ nào cho HĐ (vd loại điện khác mặc định
   // toà). buildingId chỉ dùng để gắn nhãn "toà" cho dịch vụ là mặc định.
-  const { data: services = [], isLoading } = useServices();
+  // enabled: open — dialog mounted sẵn, chỉ fetch khi thực sự mở.
+  const { data: services = [], isLoading } = useServices(undefined, {
+    enabled: open,
+  });
 
   // Seed checked state each time the dialog opens. The parent controls `open`
   // directly (no DialogTrigger) and Radix doesn't fire onOpenChange for

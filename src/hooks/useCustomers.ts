@@ -70,9 +70,14 @@ async function resolveCustomerIdsByLocation(filters: {
 
 export const useCustomers = (
   filters?: CustomerFilters,
-  pagination?: { page: number; pageSize: number }
+  pagination?: { page: number; pageSize: number },
+  // options.enabled: dialog mounted-sẵn (vd CustomerSelectionDialog trong form
+  // HĐ) gate fetch khi đóng — tránh kéo cả bảng customers + chuỗi enrichment
+  // mỗi lần tải trang. Default true.
+  options?: { enabled?: boolean }
 ) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["customers", filters, pagination],
     queryFn: async (): Promise<PaginatedData<Customer>> => {
       const user = await getSessionUser();
