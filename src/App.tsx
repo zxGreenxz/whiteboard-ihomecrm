@@ -1,4 +1,8 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+// lazyWithRetry: thử lại import() page khi mạng chập chờn (tab idle → wifi ngủ →
+// request chunk đầu fail) trước khi để lỗi rơi xuống ErrorBoundary. Alias thành
+// `lazy` để mọi call site route bên dưới giữ nguyên.
+import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";

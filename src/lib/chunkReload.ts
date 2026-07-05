@@ -33,6 +33,33 @@ interface ReloadState {
   count: number;
 }
 
+// Cờ "reload đang được lên lịch" (từ ErrorBoundary hoặc vite:preloadError).
+// ErrorBoundary đọc để hiện spinner "Đang tải…" thay vì thẻ lỗi trong lúc chờ
+// location.reload() — tránh chớp thẻ đỏ ngay trước khi trang tự tải lại.
+let reloadPending = false;
+
+/** True khi một lần reload tự-cứu chunk đã được lên lịch (chưa kịp reload). */
+export function isReloadPending(): boolean {
+  return reloadPending;
+}
+
+/**
+ * Còn "ngân sách" auto-reload không (còn lượt trong cửa sổ + ghi được guard)?
+ * KHÔNG tăng bộ đếm — chỉ để ErrorBoundary quyết hiện spinner hay thẻ lỗi.
+ * Privacy mode (sessionStorage bị chặn) → false → hiện thẻ "Tải lại" thủ công.
+ */
+export function hasAutoReloadBudget(): boolean {
+  if (readState().count >= MAX_ATTEMPTS) return false;
+  try {
+    const probe = '__cr_probe__';
+    sessionStorage.setItem(probe, '1');
+    sessionStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function readState(): ReloadState {
   try {
     const raw = sessionStorage.getItem(KEY);
@@ -103,6 +130,7 @@ export function reloadOnceForStaleChunk(err?: unknown): boolean {
     // user vẫn có nút "Tải lại" thủ công ở ErrorBoundary.
     return false;
   }
+  reloadPending = true; // ErrorBoundary đọc để hiện spinner thay thẻ lỗi.
   const failingUrl = extractChunkUrl(err);
   // Bust cache (có trần thời gian) RỒI reload — không bao giờ treo trước reload.
   void Promise.race([
@@ -115,7 +143,7 @@ export function reloadOnceForStaleChunk(err?: unknown): boolean {
 /** Nhận diện lỗi load chunk động trên Chrome / Firefox / Safari. */
 export function isChunkLoadError(err: unknown): boolean {
   const msg = String((err as { message?: unknown })?.message ?? err ?? '');
-  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Failed to load module script/i.test(
+  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Failed to load module script|Unable to preload CSS|Loading chunk|ChunkLoadError/i.test(
     msg
   );
 }

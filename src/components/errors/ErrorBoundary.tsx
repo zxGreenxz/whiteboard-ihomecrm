@@ -1,7 +1,12 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { isChunkLoadError, reloadOnceForStaleChunk } from "@/lib/chunkReload";
+import {
+  isChunkLoadError,
+  reloadOnceForStaleChunk,
+  hasAutoReloadBudget,
+  isReloadPending,
+} from "@/lib/chunkReload";
 
 interface Props {
   children: ReactNode;
@@ -13,6 +18,9 @@ interface State {
   error: Error | null;
   errorInfo: ErrorInfo | null;
   isChunkError: boolean;
+  // Lỗi chunk-load còn "ngân sách" auto-reload → sẽ tự tải lại, hiện spinner
+  // thay vì thẻ lỗi để không chớp cảnh báo ngay trước khi trang tự hồi phục.
+  willAutoReload: boolean;
 }
 
 class ErrorBoundary extends Component<Props, State> {
@@ -21,17 +29,29 @@ class ErrorBoundary extends Component<Props, State> {
     error: null,
     errorInfo: null,
     isChunkError: false,
+    willAutoReload: false,
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error, errorInfo: null, isChunkError: isChunkLoadError(error) };
+    const chunk = isChunkLoadError(error);
+    return {
+      hasError: true,
+      error,
+      errorInfo: null,
+      isChunkError: chunk,
+      willAutoReload: chunk && hasAutoReloadBudget(),
+    };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Chunk lazy 404/poisoned sau deploy mới (Vite emit bare import() cho chunk
     // không có dep nên không qua vite:preloadError) → bust cache độc + reload lấy
     // bản mới. Truyền `error` để rút URL chunk hỏng mà bust đúng entry.
-    if (isChunkLoadError(error) && reloadOnceForStaleChunk(error)) {
+    if (isChunkLoadError(error)) {
+      if (reloadOnceForStaleChunk(error)) return;
+      // Hết lượt / privacy mode → không auto-reload nữa: rơi về thẻ "Có phiên
+      // bản mới" + nút Tải lại thủ công thay vì kẹt spinner vĩnh viễn.
+      this.setState({ willAutoReload: false });
       return;
     }
     console.error("ErrorBoundary caught an error:", error, errorInfo);
@@ -50,6 +70,21 @@ class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
+      }
+
+      // Đang tự cứu (retry import / bust-cache + reload đã lên lịch): hiện
+      // spinner trung tính thay vì chớp thẻ lỗi. `isReloadPending()` bắt cả khi
+      // reload được lên lịch từ vite:preloadError (main.tsx) mà một lỗi khác
+      // vẫn nổi lên boundary trong lúc chờ reload.
+      if (this.state.willAutoReload || isReloadPending()) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="text-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
+              <p className="mt-3 text-sm text-gray-600">Đang tải…</p>
+            </div>
+          </div>
+        );
       }
 
       // Chunk lazy 404 sau deploy mà auto-reload đã hết lượt (hoặc privacy mode):
