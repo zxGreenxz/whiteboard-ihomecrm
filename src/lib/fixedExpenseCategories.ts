@@ -39,7 +39,10 @@ export const FIXED_EXPENSE_CATEGORIES: FixedExpenseCategory[] = [
   { key: "nuoc", label: "Nước", match: (c, n) => c === "nuoc" || n.includes("tien nuoc") },
   { key: "internet", label: "Internet", match: (c, n) => c === "internet" || n.includes("internet") },
   { key: "quan_ly", label: "Quản Lý", match: (_c, n) => n.includes("quan ly") },
-  { key: "ve_sinh", label: "Vệ sinh tòa nhà định kỳ", match: (c, n) => c === "ve sinh" && !n.includes("rac") },
+  // Khớp theo category "Vệ sinh" HOẶC tên phiếu chứa "vệ sinh tòa nhà" (fallback khi
+  // category bị null — vd vai CỔ ĐÔNG bị RLS chặn income_expense_types → join trả NULL).
+  // Cụm "toa nha" đủ hẹp để KHÔNG nuốt "vệ sinh máy lạnh" (category Bảo Trì). Vẫn loại Rác.
+  { key: "ve_sinh", label: "Vệ sinh tòa nhà định kỳ", match: (c, n) => (c === "ve sinh" || n.includes("ve sinh toa nha")) && !n.includes("rac") },
   { key: "cong_an", label: "Công an", match: (c, n) => c === "ca" || n.includes("cong an") },
   { key: "rac", label: "Rác", match: (_c, n) => n.includes("rac") },
   { key: "thang_may", label: "Bảo Trì Thang Máy", match: (_c, n) => n.includes("thang may"), requiresElevator: true },

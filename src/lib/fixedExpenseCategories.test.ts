@@ -19,10 +19,8 @@ describe("FIXED_EXPENSE_CATEGORIES", () => {
   });
 
   it("mỗi hạng mục tự khớp bằng nhãn của chính nó (đảm bảo placeholder slot đúng)", () => {
-    // Bỏ qua vế "Vệ sinh": nhãn hiển thị 'Vệ sinh tòa nhà định kỳ' khớp qua fallback
-    // tên; category thật là 'Vệ sinh'. Kiểm riêng ở dưới.
+    // Cả "Vệ sinh" cũng phủ: nhãn 'Vệ sinh tòa nhà định kỳ' khớp qua fallback tên.
     FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
-      if (cat.key === "ve_sinh") return;
       expect(expenseRankOf(cat.label, cat.label)).toBe(i);
     });
   });
@@ -83,6 +81,14 @@ describe("expenseRankOf — ánh xạ theo MÔ TẢ phiếu (loại/không có i
     expect(expenseRankOf(null, "—", "Đóng tiền internet (tự động lập)")).toBe(3);
     expect(expenseRankOf(null, "—", "tiền công an T6, T7")).toBe(6);
     expect(expenseRankOf(null, "—", "tiền rác tháng 7")).toBe(7);
+  });
+
+  it("vai CỔ ĐÔNG: category null (RLS chặn loại) → khớp Vệ sinh qua TÊN phiếu", () => {
+    // useAccrualReport embed income_expense_type trả NULL cho cổ đông → category null,
+    // typeName '—', chỉ còn tên phiếu. 'Vệ sinh tòa nhà định kỳ' vẫn phải về rank 5.
+    expect(expenseRankOf(null, "—", "Vệ sinh tòa nhà định kỳ")).toBe(5);
+    // Nhưng 'vệ sinh máy lạnh' (Bảo Trì) KHÔNG được lọt nhóm dù cùng thiếu category.
+    expect(expenseRankOf(null, "—", "vệ sinh máy lạnh tháng 5")).toBe(9);
   });
 
   it("KHÔNG khớp nhầm: điện lạnh / vệ sinh máy lạnh không phải hạng mục cố định", () => {
