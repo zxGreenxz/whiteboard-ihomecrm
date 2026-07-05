@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { PieChart } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -32,30 +32,56 @@ export default function ProfitHubPage() {
   const canManageShareholders = canUse(perms, "shareholder_profit", "manage_shareholders");
   const isManager = !!perms?.__superadmin || canLock || canDistribute || canManageShareholders;
 
-  const tabs: { value: string; label: string; node: ReactNode }[] = [];
+  // Các tab nhạy cảm (Chốt LN tháng, Cổ đông & tỷ lệ, Lương của tôi) MẶC ĐỊNH ẨN.
+  // Nhấp 3 lần vào icon xanh bên trái tiêu đề để hiện ra (easter egg).
+  const [revealSecret, setRevealSecret] = useState(false);
+  const clickCount = useRef(0);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleIconClick = () => {
+    clickCount.current += 1;
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    if (clickCount.current >= 3) {
+      clickCount.current = 0;
+      setRevealSecret((prev) => !prev); // nhấp lại 3 lần để ẩn đi
+      return;
+    }
+    // reset chuỗi nhấp nếu chậm quá (mỗi nhịp cách nhau tối đa 600ms)
+    clickTimer.current = setTimeout(() => {
+      clickCount.current = 0;
+    }, 600);
+  };
+
+  const tabs: { value: string; label: string; node: ReactNode; secret?: boolean }[] = [];
   if (canReport) tabs.push({ value: "report", label: "Phân bổ lợi nhuận", node: <ProfitDistributionContent /> });
   if (isManager) {
     tabs.push({ value: "overview", label: "Tổng quan", node: <ProfitOverviewTab /> });
-    if (canLock) tabs.push({ value: "lock", label: "Chốt LN tháng", node: <ProfitLockTab /> });
-    if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab /> });
+    if (canLock) tabs.push({ value: "lock", label: "Chốt LN tháng", node: <ProfitLockTab />, secret: true });
+    if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab />, secret: true });
   }
   // Quản lý điều hành đang đăng nhập: thêm tab tự xem lương của mình.
   if (myManager) {
-    tabs.push({ value: "my-salary", label: "Lương của tôi", node: <ProfitManagerSelfView me={myManager} /> });
+    tabs.push({ value: "my-salary", label: "Lương của tôi", node: <ProfitManagerSelfView me={myManager} />, secret: true });
   }
 
+  const visibleTabs = tabs.filter((t) => revealSecret || !t.secret);
+
   return (
-    <MainLayout title="Phân bổ & chia lợi nhuận" subtitle="Báo cáo Tài chính → Cổ đông" icon={PieChart}>
+    <MainLayout
+      title="Phân bổ & chia lợi nhuận"
+      subtitle="Báo cáo Tài chính → Cổ đông"
+      icon={PieChart}
+      onIconClick={handleIconClick}
+    >
       {permsLoading ? (
         <p className="text-muted-foreground">Đang tải...</p>
-      ) : tabs.length > 0 ? (
-        <Tabs defaultValue={tabs[0].value} className="space-y-4">
+      ) : visibleTabs.length > 0 ? (
+        <Tabs key={revealSecret ? "revealed" : "hidden"} defaultValue={visibleTabs[0].value} className="space-y-4">
           <TabsList>
-            {tabs.map((t) => (
+            {visibleTabs.map((t) => (
               <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
             ))}
           </TabsList>
-          {tabs.map((t) => (
+          {visibleTabs.map((t) => (
             <TabsContent key={t.value} value={t.value}>{t.node}</TabsContent>
           ))}
         </Tabs>

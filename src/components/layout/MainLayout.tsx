@@ -10,6 +10,12 @@ interface MainLayoutProps {
   subtitle?: string;
   icon?: LucideIcon;
   /**
+   * Khi có: biến ô icon tiêu đề thành nút bấm được (dùng cho "easter egg" mở
+   * tab ẩn — vd nhấp 3 lần vào icon để hiện các tab nhạy cảm). Không truyền thì
+   * icon chỉ là trang trí như cũ.
+   */
+  onIconClick?: () => void;
+  /**
    * Trang chiếm trọn chiều cao (vd Chat Zalo): bỏ thanh breadcrumbs + bỏ padding,
    * cố định vùng nội dung = chiều cao viewport trừ header (h-16 = 4rem) và không
    * cho cuộn trang — để bên trong tự quản lý cuộn từng cột.
@@ -28,7 +34,7 @@ interface MainLayoutProps {
  * - Optional page title with icon
  * - fullBleed: bố cục full-height không padding/breadcrumbs (chat…)
  */
-const MainLayout = ({ children, title, subtitle, icon: Icon, fullBleed = false }: MainLayoutProps) => {
+const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBleed = false }: MainLayoutProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
@@ -66,9 +72,20 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, fullBleed = false }
               {title && (
                 <div className="flex items-center gap-3 mb-6">
                   {Icon && (
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Icon className="h-6 w-6 text-primary" />
-                    </div>
+                    onIconClick ? (
+                      <button
+                        type="button"
+                        onClick={onIconClick}
+                        aria-label={title}
+                        className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center select-none focus:outline-none"
+                      >
+                        <Icon className="h-6 w-6 text-primary" />
+                      </button>
+                    ) : (
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Icon className="h-6 w-6 text-primary" />
+                      </div>
+                    )
                   )}
                   <div>
                     <h1 className="text-2xl font-bold text-foreground">{title}</h1>
