@@ -14,12 +14,13 @@ import ShareholderSelfView from "@/components/shareholders/ShareholderSelfView";
 import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfView";
 
 /**
- * Trang gộp "Phân bổ & chia lợi nhuận" (/reports/finance/profit-distribution).
- * Gộp báo cáo Phân bổ lợi nhuận + module Chia lợi nhuận cổ đông thành 1 trang nhiều
- * tab phẳng. Tab hiển thị theo QUYỀN của người xem:
- *  - "Phân bổ lợi nhuận"  → quyền reports_finance.profit_distribution
- *  - "Tổng quan/Chốt LN/Cổ đông" → quyền shareholder_profit (như trang cũ)
- * Cổ đông thuần (không phải quản lý, không quyền báo cáo) → xem giao diện tự xem.
+ * Trang gộp "Báo cáo Lợi Nhuận" (/reports/finance/profit-distribution).
+ * Gộp báo cáo Doanh thu — Chi phí + module Chia lợi nhuận cổ đông thành 1 trang
+ * nhiều tab phẳng. Tab hiển thị theo QUYỀN của người xem:
+ *  - "Tổng quan"           → cổ đông-partner tự xem LN của mình (me && canReport)
+ *  - "BC Doanh Thu Chi Phí" → quyền reports_finance.profit_distribution
+ *  - "Tổng quan/Chốt LN/Cổ đông" (quản lý) → quyền shareholder_profit (như trang cũ)
+ * Quản lý điều hành đang đăng nhập → xem giao diện tự xem lương của mình.
  */
 export default function ProfitHubPage() {
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
@@ -31,6 +32,13 @@ export default function ProfitHubPage() {
   const canDistribute = canUse(perms, "shareholder_profit", "distribute");
   const canManageShareholders = canUse(perms, "shareholder_profit", "manage_shareholders");
   const isManager = !!perms?.__superadmin || canLock || canDistribute || canManageShareholders;
+
+  // Cổ đông-partner (B.Huy…) được cấp quyền xem báo cáo LN → thêm tab "Tổng quan"
+  // xem phần lợi nhuận của CHÍNH MÌNH (RLS tự lọc, không lộ cổ đông khác). Quản lý
+  // tòa (Joey/Nathan) tuy cũng là cổ đông nhưng KHÔNG có quyền báo cáo này nên không
+  // thấy tab — đúng yêu cầu chủ. Super admin / quản lý LN đã có tab "Tổng quan" quản
+  // lý (ProfitOverviewTab) nên loại trừ (!isManager) để khỏi trùng.
+  const canSeeOwnShare = !!me && canReport && !isManager;
 
   // Các tab nhạy cảm (Chốt LN tháng, Cổ đông & tỷ lệ, Lương của tôi) MẶC ĐỊNH ẨN.
   // Nhấp 3 lần vào icon xanh bên trái tiêu đề để hiện ra (easter egg).
@@ -52,7 +60,9 @@ export default function ProfitHubPage() {
   };
 
   const tabs: { value: string; label: string; node: ReactNode; secret?: boolean }[] = [];
-  if (canReport) tabs.push({ value: "report", label: "Phân bổ lợi nhuận", node: <ProfitDistributionContent /> });
+  // Tab tự-xem của cổ đông-partner ĐỨNG ĐẦU (mặc định) — xem [[canSeeOwnShare]].
+  if (canSeeOwnShare && me) tabs.push({ value: "my-overview", label: "Tổng quan", node: <ShareholderSelfView me={me} /> });
+  if (canReport) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
   if (isManager) {
     tabs.push({ value: "overview", label: "Tổng quan", node: <ProfitOverviewTab /> });
     if (canLock) tabs.push({ value: "lock", label: "Chốt LN tháng", node: <ProfitLockTab />, secret: true });
@@ -65,14 +75,18 @@ export default function ProfitHubPage() {
 
   const visibleTabs = tabs.filter((t) => revealSecret || !t.secret);
 
+  // Chờ cả perms + me + manager trước khi dựng tab để thứ tự tab (và tab mặc định)
+  // ổn định — tránh "Tổng quan" nhảy vào sau khiến trang mở nhầm tab.
+  const loading = permsLoading || meLoading || mgrLoading;
+
   return (
     <MainLayout
-      title="Phân bổ & chia lợi nhuận"
-      subtitle="Báo cáo Tài chính → Cổ đông"
+      title="Báo cáo Lợi Nhuận"
+      subtitle="Báo cáo Tài chính → Lợi nhuận"
       icon={PieChart}
       onIconClick={handleIconClick}
     >
-      {permsLoading ? (
+      {loading ? (
         <p className="text-muted-foreground">Đang tải...</p>
       ) : visibleTabs.length > 0 ? (
         <Tabs key={revealSecret ? "revealed" : "hidden"} defaultValue={visibleTabs[0].value} className="space-y-4">
@@ -85,16 +99,12 @@ export default function ProfitHubPage() {
             <TabsContent key={t.value} value={t.value}>{t.node}</TabsContent>
           ))}
         </Tabs>
-      ) : me || myManager ? (
-        <div className="space-y-6">
-          {me && <ShareholderSelfView me={me} />}
-          {myManager && <ProfitManagerSelfView me={myManager} />}
-        </div>
-      ) : meLoading || mgrLoading ? (
-        <p className="text-muted-foreground">Đang tải...</p>
+      ) : myManager ? (
+        // Quản lý điều hành thuần (không quyền báo cáo) → tự xem lương của mình.
+        <ProfitManagerSelfView me={myManager} />
       ) : (
         <p className="text-muted-foreground">
-          Bạn chưa được gán là cổ đông và không có quyền xem báo cáo này. Liên hệ quản trị.
+          Bạn không có quyền xem báo cáo này. Liên hệ quản trị.
         </p>
       )}
     </MainLayout>

@@ -59,20 +59,12 @@ const reports = [
     bgColor: "bg-green-50",
   },
   {
-    title: "Phân bổ lợi nhuận",
-    description: "Doanh thu, chi phí, lợi nhuận và tỷ lệ margin",
+    title: "Báo cáo Lợi Nhuận",
+    description: "Doanh thu, chi phí, lợi nhuận và tỷ lệ margin — kèm phần chia lợi nhuận cổ đông",
     icon: PieChart,
     path: "/reports/finance/profit-distribution",
     color: "text-indigo-600",
     bgColor: "bg-indigo-50",
-  },
-  {
-    title: "Chia lợi nhuận cổ đông",
-    description: "Lợi nhuận theo nhà/tháng, chia theo tỷ lệ, theo dõi đã ứng & còn lại",
-    icon: Users,
-    path: "/finance/shareholder-profit",
-    color: "text-amber-600",
-    bgColor: "bg-amber-50",
   },
   {
     title: "Công nợ hợp đồng mới",
@@ -125,7 +117,7 @@ const FinanceReportsPage = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
             <p className="text-muted-foreground">
-              12 loại báo cáo phân tích tài chính và dòng tiền
+              11 loại báo cáo phân tích tài chính và dòng tiền
             </p>
           </div>
         </div>

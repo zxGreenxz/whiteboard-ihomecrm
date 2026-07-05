@@ -63,7 +63,7 @@ const routeLabels: Record<string, string> = {
   '/reports/finance/daily-cashbook': 'Sổ quỹ theo ngày',
   '/reports/finance/cash-book': 'Sổ quỹ theo ngày',
   '/reports/finance/cash-flow': 'Dòng tiền',
-  '/reports/finance/profit-distribution': 'Phân bổ lợi nhuận',
+  '/reports/finance/profit-distribution': 'Báo cáo Lợi Nhuận',
   '/reports/finance/new-contract-debt': 'Công nợ hợp đồng mới',
   '/reports/finance/debt': 'Công nợ hợp đồng mới',
   '/reports/finance/customer-debt': 'Khách nợ tiền',
