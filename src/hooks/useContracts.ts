@@ -135,8 +135,14 @@ const CONTRACT_SELECT = `
 // bảng. Không truyền → giữ nguyên hành vi cũ (fetch tất cả).
 // =============================================
 
-export const useContracts = (opts?: { statuses?: ContractStatus[] }) => {
+export const useContracts = (opts?: {
+  statuses?: ContractStatus[];
+  // enabled: cho dialog mounted-sẵn-nhưng-đóng gate fetch (vd GenerateInvoiceDialog)
+  // — tránh kéo cả bảng HĐ full-PII mỗi lần tải trang. Default true.
+  enabled?: boolean;
+}) => {
   return useQuery({
+    enabled: opts?.enabled ?? true,
     queryKey: opts?.statuses?.length
       ? ["contracts", { statuses: opts.statuses }]
       : ["contracts"],

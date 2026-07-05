@@ -20,9 +20,12 @@ export type { VehicleWithRelations } from "@/types/vehicle";
 
 export const useVehicles = (
   filters?: VehicleFilters,
-  pagination?: { page: number; pageSize: number }
+  pagination?: { page: number; pageSize: number },
+  // options.enabled: dialog mounted-sẵn gate fetch khi đóng (default true).
+  options?: { enabled?: boolean }
 ) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["vehicles", filters, pagination],
     queryFn: async (): Promise<PaginatedData<VehicleWithRelations>> => {
       const user = await getSessionUser();

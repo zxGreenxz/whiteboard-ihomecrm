@@ -10,8 +10,13 @@ type RoomInsert = Database["public"]["Tables"]["rooms"]["Insert"];
 type RoomUpdate = Database["public"]["Tables"]["rooms"]["Update"];
 
 // Fetch all rooms (optionally filtered by building)
-export const useRooms = (buildingId?: string) => {
+// options.enabled: dialog/dropdown gate fetch khi chưa cần (default true).
+export const useRooms = (
+  buildingId?: string,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: buildingId ? ["rooms", "building", buildingId] : ["rooms"],
     queryFn: async () => {
       let query = supabase

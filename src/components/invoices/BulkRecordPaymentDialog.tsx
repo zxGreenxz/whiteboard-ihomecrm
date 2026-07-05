@@ -98,8 +98,9 @@ const parseVN = (s: string): number => {
 
 export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
-  const { data: buildings } = useBuildings();
-  const { data: accounts = [] } = useAccounts();
+  // enabled: open — dialog mounted sẵn (đóng) không fetch accounts/buildings.
+  const { data: buildings } = useBuildings({ enabled: open });
+  const { data: accounts = [] } = useAccounts({ enabled: open });
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
   const bulkMutation = useBulkRecordPayment();

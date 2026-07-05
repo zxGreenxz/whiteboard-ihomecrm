@@ -111,15 +111,19 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const createMutation = useCreateInvoice();
   // Chỉ kéo HĐ ACTIVE server-side — dialog lập hoá đơn không cần HĐ đã thanh
   // lý/nháp (filter client giữ lại như chốt chặn phụ).
-  const { data: contractsData } = useContracts({ statuses: ['ACTIVE'] });
+  // enabled: open — dialog mounted sẵn (đóng) không fetch, đỡ kéo cả bảng HĐ
+  // full-PII mỗi lần tải trang /invoices.
+  const { data: contractsData } = useContracts({ statuses: ['ACTIVE'], enabled: open });
   const allActiveContracts = (contractsData ?? []).filter((c: any) => isContractInEffect(c.status));
   const contracts = allActiveContracts.filter((c: any) => {
     if (filterBuildingId && c.room?.building_id !== filterBuildingId) return false;
     if (filterRoomId && c.room_id !== filterRoomId) return false;
     return true;
   });
-  const { data: buildings = [] } = useBuildings();
-  const { data: rooms = [] } = useRooms(filterBuildingId || undefined);
+  const { data: buildings = [] } = useBuildings({ enabled: open });
+  const { data: rooms = [] } = useRooms(filterBuildingId || undefined, {
+    enabled: open,
+  });
 
   const {
     register,
@@ -188,8 +192,12 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     (selectedContract as any)?.room?.building_id ||
     '';
   const { data: bldSvc } = useBuildingServices(buildingIdOfContract);
+  // Chỉ fetch xe của HĐ đã chọn — trước đây khi chưa chọn HĐ fetch TOÀN BỘ xe
+  // (count exact) ngay lúc tải trang dù dialog đang đóng.
   const { data: vehiclesData } = useVehicles(
     watchedContractId ? { contract_id: watchedContractId } : undefined,
+    undefined,
+    { enabled: open && !!watchedContractId },
   );
   const vehicles = vehiclesData?.data ?? [];
 

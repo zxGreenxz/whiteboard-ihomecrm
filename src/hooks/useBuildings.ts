@@ -13,9 +13,14 @@ type BuildingUpdate = Database["public"]["Tables"]["buildings"]["Update"];
 // Mặc định ẩn tòa ảo (is_virtual=true) — nó là "bucket tài chính" gom thu/chi không
 // thuộc toà thật (hiện là "Kho Văn Phòng Chung"), KHÔNG phải toà vật lý. Chỉ form/ô
 // lọc thu chi & báo cáo tài chính truyền { includeVirtual: true } để chọn được nó.
-export const useBuildings = (options?: { includeVirtual?: boolean }) => {
+export const useBuildings = (options?: {
+  includeVirtual?: boolean;
+  // enabled: dialog mounted-sẵn gate fetch khi đóng (default true).
+  enabled?: boolean;
+}) => {
   const includeVirtual = options?.includeVirtual ?? false;
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["buildings", { includeVirtual }],
     queryFn: async () => {
       let q = (supabase
