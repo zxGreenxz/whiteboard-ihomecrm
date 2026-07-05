@@ -627,12 +627,18 @@ export const incomeExpensesListQuery = (
     },
   });
 
+// options.enabled: trang Phân bổ LN gate list tiền-mặt khi đang ở chế độ DỒN
+// TÍCH (mặc định) — list 1000 dòng + items chỉ được đọc ở nhánh !accrualMode.
 export const useIncomeExpenses = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
-  searchQuery?: string
+  searchQuery?: string,
+  options?: { enabled?: boolean }
 ) => {
-  return useQuery(incomeExpensesListQuery(filters, pagination, searchQuery));
+  return useQuery({
+    ...incomeExpensesListQuery(filters, pagination, searchQuery),
+    enabled: options?.enabled ?? true,
+  });
 };
 
 export const incomeExpenseStatsQuery = (

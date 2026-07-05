@@ -251,10 +251,18 @@ function ProfitDistributionDesktop() {
   };
 
   // Sổ 2 cột hiển thị TẤT CẢ khoản trong tháng → fetch 1 trang lớn (không phân trang).
-  const { data: result, isLoading } = useIncomeExpenses(filters, {
-    page: 1,
-    pageSize: LIST_LIMIT,
-  });
+  // enabled: chế độ DỒN TÍCH (mặc định) lấy rows từ accrual — list tiền mặt
+  // 1000 dòng + items chỉ được đọc ở nhánh !accrualMode (kể cả capWarning),
+  // fetch sẵn chỉ tổ nghẽn pool mỗi lần đổi toà/kỳ.
+  const { data: result, isLoading } = useIncomeExpenses(
+    filters,
+    {
+      page: 1,
+      pageSize: LIST_LIMIT,
+    },
+    undefined,
+    { enabled: !accrualMode }
+  );
   // Tổng 3 thẻ tính trên TOÀN BỘ dữ liệu khớp filter.
   // businessResultOnly đồng bộ với toggle → loại tiền cọc khỏi Doanh thu/Lợi nhuận.
   const { data: stats } = useIncomeExpenseStats(filters, {

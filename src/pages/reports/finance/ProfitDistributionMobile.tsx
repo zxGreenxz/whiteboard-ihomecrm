@@ -85,7 +85,11 @@ export default function ProfitDistributionMobile() {
   };
 
   const { data: accrual } = useAccrualMonthReport(accrualMode ? ymStr : "", filters, { businessResultOnly: pnlOnly });
-  const { data: cash } = useIncomeExpenses(filters, { page: 1, pageSize: 2000 });
+  // enabled: cash chỉ được đọc ở nhánh !accrualMode (đồng bộ desktop) — đừng
+  // kéo 2000 dòng khi đang dồn tích.
+  const { data: cash } = useIncomeExpenses(filters, { page: 1, pageSize: 2000 }, undefined, {
+    enabled: !accrualMode,
+  });
   const { data: stats } = useIncomeExpenseStats(filters, { businessResultOnly: pnlOnly });
   const { data: detailInvoice } = useInvoice(detailInvoiceId ?? undefined);
 
