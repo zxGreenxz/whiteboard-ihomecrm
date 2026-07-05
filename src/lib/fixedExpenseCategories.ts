@@ -45,13 +45,23 @@ export const FIXED_EXPENSE_CATEGORIES: FixedExpenseCategory[] = [
   { key: "thang_may", label: "Bảo Trì Thang Máy", match: (_c, n) => n.includes("thang may"), requiresElevator: true },
 ];
 
+const NO_RANK = FIXED_EXPENSE_CATEGORIES.length;
+
+const matchRank = (c: string, n: string): number => {
+  const i = FIXED_EXPENSE_CATEGORIES.findIndex((x) => x.match(c, n));
+  return i === -1 ? NO_RANK : i;
+};
+
 // Thứ hạng ưu tiên của một dòng chi (0 = lên đầu). Không khớp hạng mục cố định
 // nào → xuống cuối (rank = số lượng hạng mục).
-//   - Khớp theo CATEGORY, TÊN loại, VÀ mô tả phiếu — phiếu "tự động lập"/không có
-//     item mang loại chung ("Không có hạng mục") nhưng TÊN PHIẾU nói rõ hạng mục
-//     (vd "Tiền nhà (tự động lập)") vẫn ánh xạ đúng. Predicate đủ đặc trưng nên
-//     KHÔNG khớp nhầm: "điện lạnh" ≠ "tiền điện", "vệ sinh máy lạnh" (category Bảo
-//     Trì, không phải "ve sinh") không lọt nhóm Vệ Sinh.
+//   - ƯU TIÊN khớp theo TRƯỜNG CÓ CẤU TRÚC (category + tên loại) — chính xác nhất.
+//     Chỉ khi cả hai KHÔNG khớp mới dò tới MÔ TẢ phiếu (cho phiếu "tự động lập"/
+//     không có item mang loại chung "Không có hạng mục" nhưng TÊN PHIẾU nói rõ
+//     hạng mục, vd "Tiền nhà (tự động lập)").
+//   - Vì cấu trúc thắng mô tả: phiếu tên "đóng tiền ĐIỆN NƯỚC" nhưng loại "Đóng
+//     tiền nước" vẫn về đúng nhóm Nước (không bị hút vào Điện do chữ "điện" trong
+//     tên). "điện lạnh" ≠ "tiền điện", "vệ sinh máy lạnh" (category Bảo Trì) không
+//     lọt nhóm Vệ Sinh.
 //   - `fixedRank` != null: dùng thẳng (cho dòng placeholder đã biết vị trí).
 export const expenseRankOf = (
   category: string | null | undefined,
@@ -61,7 +71,9 @@ export const expenseRankOf = (
 ): number => {
   if (fixedRank != null) return fixedRank;
   const c = nrm(category);
-  const n = nrm(`${typeName ?? ""} ${description ?? ""}`);
-  const i = FIXED_EXPENSE_CATEGORIES.findIndex((x) => x.match(c, n));
-  return i === -1 ? FIXED_EXPENSE_CATEGORIES.length : i;
+  const byStructured = matchRank(c, nrm(typeName));
+  if (byStructured < NO_RANK) return byStructured;
+  // Fallback: chỉ khi category + tên loại KHÔNG khớp hạng mục cố định nào.
+  if (description) return matchRank(c, nrm(description));
+  return NO_RANK;
 };

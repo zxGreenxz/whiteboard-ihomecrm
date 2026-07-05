@@ -97,4 +97,15 @@ describe("expenseRankOf — ánh xạ theo MÔ TẢ phiếu (loại/không có i
     expect(expenseRankOf("Tiền Nhà", "Tiền nhà", "Tiền nhà (tự động lập)")).toBe(0);
     expect(expenseRankOf("Điện", "Đóng tiền điện", "anh Huy đóng tiền điện - Đóng tiền điện")).toBe(1);
   });
+
+  it("CẤU TRÚC thắng MÔ TẢ: phiếu tên 'điện nước' nhưng loại 'Đóng tiền nước' → Nước, KHÔNG bị hút vào Điện", () => {
+    // Regression: tên phiếu chứa cả 'điện' lẫn 'nước'; loại là Nước → phải rank 2.
+    expect(
+      expenseRankOf("Nước", "Đóng tiền nước", "đóng tiền điện nước các nhà - Đóng tiền nước"),
+    ).toBe(2);
+    // Ngược lại, dòng điện cùng phiếu (loại 'Đóng tiền điện') → rank 1.
+    expect(
+      expenseRankOf("Điện", "Đóng tiền điện", "đóng tiền điện nước các nhà - Đóng tiền điện"),
+    ).toBe(1);
+  });
 });
