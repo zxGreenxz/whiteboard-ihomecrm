@@ -907,6 +907,7 @@ export type Database = {
           description: string | null
           district: string
           floor_layouts: Json | null
+          has_elevator: boolean
           id: string
           images: Json | null
           invoice_template_id: string | null
@@ -940,6 +941,7 @@ export type Database = {
           description?: string | null
           district: string
           floor_layouts?: Json | null
+          has_elevator?: boolean
           id?: string
           images?: Json | null
           invoice_template_id?: string | null
@@ -973,6 +975,7 @@ export type Database = {
           description?: string | null
           district?: string
           floor_layouts?: Json | null
+          has_elevator?: boolean
           id?: string
           images?: Json | null
           invoice_template_id?: string | null

@@ -47,6 +47,8 @@ export interface Building {
   description: string | null;
   images: any;
   amenities: any;
+  /** Toà có thang máy — bật để cảnh báo thiếu phiếu bảo trì thang máy ở Phân bổ lợi nhuận. */
+  has_elevator: boolean;
   commission_tiers: CommissionTier[];
   /** Sổ quỹ mặc định khi thanh toán hoá đơn phòng = TT (POS) cho toà này. */
   default_account_id_tt: string | null;
@@ -107,6 +109,7 @@ export interface BuildingFormData {
   latitude?: number | null;
   longitude?: number | null;
   status: BuildingStatus;
+  has_elevator?: boolean;
   contract_template_id?: string | null;
   invoice_template_id?: string | null;
   commission_tiers?: CommissionTier[];

@@ -14,6 +14,7 @@ import { useInvoice } from "@/hooks/useInvoices";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
 import { formatPeriod } from "@/lib/monthPeriod";
+import { FIXED_EXPENSE_CATEGORIES, expenseRankOf } from "@/lib/fixedExpenseCategories";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 
@@ -37,6 +38,11 @@ function fmtShort(n: number): string {
 interface MRow {
   key: string; desc: string; building: string; room: string | null;
   type: string; period: string; amount: number; notKqkd: boolean; invoiceId: string | null;
+  // category (income_expense_types.category) — dùng sắp ưu tiên + dò hạng mục cố định.
+  category?: string | null;
+  // Dòng placeholder "chưa có phiếu" cho hạng mục chi cố định còn thiếu.
+  isMissingExpense?: boolean;
+  fixedRank?: number;
 }
 
 const CARD = "rounded-xl border border-[#e7e3da] bg-white shadow-sm";
@@ -102,6 +108,7 @@ export default function ProfitDistributionMobile() {
           desc: r.voucherName || "", building: r.buildingName || "—", room: r.roomName ?? null,
           type: r.typeName || "—", period: formatPeriod(r.startDate, r.endDate) || "",
           notKqkd: r.countsInBusinessResult === false, invoiceId: r.invoiceId ?? null,
+          category: r.category ?? null,
         };
         if (r.income > 0) inc.push({ ...base, key: r.itemId, amount: r.income });
         if (r.expense > 0) exp.push({ ...base, key: r.itemId + "-e", amount: r.expense });
@@ -115,19 +122,64 @@ export default function ProfitDistributionMobile() {
           key: v.id, desc: v.name || "", building: v.building?.name || "—", room: v.room?.name ?? null,
           type: "—", period: "", notKqkd: kqkd <= 0,
           invoiceId: v.invoice_id ?? null,
+          category: null,
           amount: pnlOnly ? kqkd : Number(v.total_amount) || 0,
         };
         if (v.type === "INCOME") inc.push(row);
         else if (v.type === "EXPENSE") exp.push(row);
       }
     }
+    // Cột Chi: hạng mục cố định (Tiền nhà → Điện → … → Thang máy) lên đầu — cùng
+    // thứ tự với desktop (module dùng chung). Chế độ tiền mặt thiếu category ⇒ rank
+    // cuối, giữ nguyên thứ tự nguồn.
+    exp.sort(
+      (a, b) =>
+        expenseRankOf(a.category, a.type, a.fixedRank) -
+        expenseRankOf(b.category, b.type, b.fixedRank),
+    );
     return { incomeRows: inc, expenseRows: exp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accrualMode, accrual, cash, hideSpecialTypes, specialTypeIds, specialTypeNames, pnlOnly]);
 
   const incomeTotal = incomeRows.reduce((s, r) => s + r.amount, 0);
   const expenseTotal = expenseRows.reduce((s, r) => s + r.amount, 0);
-  const rows = side === "income" ? incomeRows : expenseRows;
+
+  // Toà đang lọc (chỉ khi đúng 1 toà) — đọc cờ has_elevator + tên cho placeholder.
+  const singleBuilding = useMemo(
+    () => (buildingIds.length === 1 ? (buildings as any[]).find((b) => b.id === buildingIds[0]) ?? null : null),
+    [buildings, buildingIds],
+  );
+  // Chèn dòng placeholder "chưa có phiếu" cho hạng mục chi cố định còn thiếu —
+  // CHỈ khi lọc đúng 1 toà & đang ở chế độ phân bổ theo kỳ (accrual, category tin
+  // cậy). `!accrual` = chưa tải xong → không hiện để tránh nháy 9 dòng thiếu.
+  // Placeholder KHÔNG vào expenseRows nên số đếm/tổng giữ nguyên.
+  const displayExpenseRows = useMemo(() => {
+    // Bỏ qua toà ẢO "Chung" (bucket chia LN cổ đông) — không có phiếu cố định.
+    if (!accrualMode || !singleBuilding || singleBuilding.is_virtual || !accrual) return expenseRows;
+    // Dò "đã có phiếu" trên NGUỒN accrual.rows đầy đủ (kể cả hạng mục đang bị ẩn
+    // bởi "Ẩn hạng mục đặc biệt") để không báo thiếu nhầm.
+    const present = new Set<number>();
+    for (const r of (accrual.rows ?? []) as any[])
+      if ((r.expense ?? 0) > 0) present.add(expenseRankOf(r.category, r.typeName));
+    const missing: MRow[] = [];
+    FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
+      if (present.has(i)) return;
+      if (cat.requiresElevator && !singleBuilding.has_elevator) return;
+      missing.push({
+        key: `missing-exp-${i}`, desc: cat.label, building: singleBuilding.name ?? "—",
+        room: null, type: cat.label, period: "", amount: 0, notKqkd: false,
+        invoiceId: null, category: null, isMissingExpense: true, fixedRank: i,
+      });
+    });
+    if (missing.length === 0) return expenseRows;
+    return [...expenseRows, ...missing].sort(
+      (a, b) =>
+        expenseRankOf(a.category, a.type, a.fixedRank) -
+        expenseRankOf(b.category, b.type, b.fixedRank),
+    );
+  }, [expenseRows, accrualMode, singleBuilding, accrual]);
+
+  const rows = side === "income" ? incomeRows : displayExpenseRows;
 
   // B5: phần dòng bị ẩn bởi "Ẩn hạng mục đặc biệt" (mobile lọc ngay khi build
   // rows nên tính lại từ nguồn để thanh kiểm chứng giải thích được số lệch).
@@ -302,7 +354,11 @@ export default function ProfitDistributionMobile() {
             const amtColor = side === "income" ? "text-[#0e7a47]" : "text-[#c2570f]";
             return (
               <div key={r.key} onClick={() => r.invoiceId && setDetailInvoiceId(r.invoiceId)}
-                className={`${CARD} p-3 ${r.invoiceId ? "active:bg-[#faf8f4] cursor-pointer" : ""}`}>
+                className={`${CARD} p-3 ${
+                  r.isMissingExpense
+                    ? "!bg-[#fffbeb] !border-[#fde68a]"
+                    : r.invoiceId ? "active:bg-[#faf8f4] cursor-pointer" : ""
+                }`}>
                 <div className="flex items-center gap-2">
                   {r.room && (
                     <span className="font-mono font-bold text-[12px] text-[#1b1813] bg-[#faf8f4] border border-[#e7e3da] px-2 py-0.5 rounded-md">
@@ -312,11 +368,16 @@ export default function ProfitDistributionMobile() {
                   {r.notKqkd && (
                     <span className="text-[10px] font-bold text-[#b45309] bg-[#fdebc4] px-1.5 py-0.5 rounded">không KQKD</span>
                   )}
-                  <span className={`ml-auto font-mono font-bold text-[14.5px] whitespace-nowrap ${amtColor}`}>
-                    {fmtFull(r.amount)}
+                  <span className={`ml-auto font-mono font-bold text-[14.5px] whitespace-nowrap ${r.isMissingExpense ? "text-[#b45309]" : amtColor}`}>
+                    {r.isMissingExpense ? "—" : fmtFull(r.amount)}
                   </span>
                 </div>
-                <div className="mt-1.5 text-[13px] font-semibold text-[#514c42] leading-snug">{r.desc}</div>
+                <div className="mt-1.5 text-[13px] font-semibold text-[#514c42] leading-snug">
+                  {r.desc}
+                  {r.isMissingExpense && (
+                    <span className="ml-1 text-[11px] font-bold text-[#b45309]">(chưa có phiếu)</span>
+                  )}
+                </div>
                 <div className="mt-1 flex items-center gap-1.5 flex-wrap text-[11.5px] text-[#8d8678]">
                   <span className="font-semibold text-[#514c42]">{r.type}</span>
                   <span className="text-[#b6b0a3]">·</span>

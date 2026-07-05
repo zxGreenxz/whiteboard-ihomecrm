@@ -23,6 +23,7 @@ export const buildingSchema = z.object({
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
+  has_elevator: z.boolean().default(false),
   contract_template_id: z.string().uuid().nullable().optional(),
   invoice_template_id: z.string().uuid().nullable().optional(),
   default_account_id_tt: z.string().uuid().nullable().optional(),

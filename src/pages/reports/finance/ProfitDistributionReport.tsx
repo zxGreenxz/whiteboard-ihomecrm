@@ -18,6 +18,7 @@ import { useVacantRoomNotes } from "@/hooks/useReports";
 import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
+import { FIXED_EXPENSE_CATEGORIES, expenseRankOf } from "@/lib/fixedExpenseCategories";
 import { useBuildings } from "@/hooks/useBuildings";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
@@ -78,6 +79,11 @@ interface DisplayRow {
   // Dòng ghi chú thuần (không phải khoản thật) "Trống phòng — <lý do>" — amount 0,
   // không tính vào "X khoản".
   isNote?: boolean;
+  // Dòng placeholder "chưa có phiếu" cho 1 hạng mục chi CỐ ĐỊNH còn thiếu →
+  // nền vàng nhạt, amount 0 (isNote=true nên không tính tổng/đếm).
+  isMissingExpense?: boolean;
+  // Ghim đúng vị trí trong 9 hạng mục cố định (dùng cho dòng placeholder).
+  fixedRank?: number;
   // Lý do trống ("Bỏ cọc" / "Thanh lý HĐ" / "Chuyển phòng" / …).
   vacantReason?: string;
 }
@@ -124,33 +130,10 @@ const isLiquidationRow = (r: DisplayRow): boolean => {
   return s.includes("bo coc") || s.includes("thanh ly");
 };
 
-// Thứ tự ƯU TIÊN hiển thị KHOẢN CHI: các hạng mục cố định hằng tháng nổi lên
-// đầu sổ đúng thứ tự nghiệp vụ; phần còn lại giữ thứ tự cũ (phòng → mô tả) ở dưới.
-// Khớp chủ yếu theo CATEGORY của loại thu chi (chuẩn hơn tên):
-//   - "Vệ Sinh" và "Rác" tách riêng dù chung category "Vệ sinh".
-//   - "vệ sinh máy lạnh"/"Vệ sinh máy giặt" (category Bảo Trì) KHÔNG lọt nhóm Vệ Sinh.
-// Mỗi vị có thêm fallback theo TÊN để chịu được loại trùng bị thiếu category.
-const EXPENSE_PRIORITY: ((cat: string, name: string) => boolean)[] = [
-  (c, n) => c === "tien nha" || n.includes("tien nha"),          // 1. Tiền nhà
-  (c, n) => c === "dien" || n.includes("tien dien"),             // 2. Điện
-  (c, n) => c === "nuoc" || n.includes("tien nuoc"),             // 3. Nước
-  (c, n) => c === "internet" || n.includes("internet"),          // 4. Internet
-  (_c, n) => n.includes("quan ly"),                              // 5. Quản Lý (loại "văn phòng")
-  (c, n) => c === "ve sinh" && !n.includes("rac"),               // 6. Vệ Sinh (trừ rác)
-  (c, n) => c === "ca" || n.includes("cong an"),                 // 7. Công an
-  (_c, n) => n.includes("rac"),                                  // 8. Rác
-  (_c, n) => n.includes("thang may"),                            // 9. Bảo Trì Thang Máy
-];
-
-// Thứ hạng ưu tiên (0 = lên đầu). Không khớp hạng mục nào → xuống cuối.
-const expenseRank = (r: DisplayRow): number => {
-  const c = nrm(r.category);
-  const n = nrm(r.typeName);
-  for (let i = 0; i < EXPENSE_PRIORITY.length; i++) {
-    if (EXPENSE_PRIORITY[i](c, n)) return i;
-  }
-  return EXPENSE_PRIORITY.length;
-};
+// Thứ tự ƯU TIÊN hiển thị KHOẢN CHI + danh sách hạng mục cố định hằng tháng nay
+// dùng chung với bản mobile — xem @/lib/fixedExpenseCategories
+// (FIXED_EXPENSE_CATEGORIES + expenseRankOf). Dòng chi không khớp hạng mục cố
+// định nào → xuống cuối; trong cùng nhóm vẫn theo phòng → mô tả.
 
 // true khi MỌI dòng cùng một giá trị cho cột → cột không phân biệt được gì
 // (đã bị bộ lọc ghim, vd lọc 1 toà / 1 tháng) → ẩn mặc định. <2 dòng: không ẩn.
@@ -428,7 +411,11 @@ function ProfitDistributionDesktop() {
       compareRoom(a.roomName, b.roomName) || a.description.localeCompare(b.description, "vi");
     // Cột Chi: hạng mục cố định (Tiền nhà → Điện → … → Thang máy) lên đầu,
     // trong cùng nhóm vẫn theo phòng → mô tả như cũ.
-    exp.sort((a, b) => expenseRank(a) - expenseRank(b) || sorter(a, b));
+    exp.sort(
+      (a, b) =>
+        expenseRankOf(a.category, a.typeName, a.fixedRank) -
+          expenseRankOf(b.category, b.typeName, b.fixedRank) || sorter(a, b),
+    );
 
     // Phòng-trống chỉ bật khi đã chọn ≥1 toà (vacantNotes !== undefined). Tắt → cũ.
     if (!vacantNotes) {
@@ -513,6 +500,63 @@ function ProfitDistributionDesktop() {
     () => filterSpecial(expenseRows),
     [expenseRows, hideSpecialTypes, hasSpecialTypes, specialTypeIds, specialTypeNames]
   );
+
+  // Toà đang lọc (chỉ khi đúng 1 toà) — lấy từ danh sách đã fetch để đọc cờ
+  // has_elevator + tên toà cho dòng placeholder.
+  const singleBuilding = useMemo(
+    () =>
+      buildingIds.length === 1
+        ? (buildings as any[]).find((b) => b.id === buildingIds[0]) ?? null
+        : null,
+    [buildings, buildingIds]
+  );
+
+  // Chèn dòng placeholder "chưa có phiếu" cho các hạng mục chi CỐ ĐỊNH còn thiếu.
+  // CHỈ khi đang lọc đúng 1 toà và không lọc riêng 1 phòng (9 khoản này là chi phí
+  // cố định theo TỪNG toà — "thiếu" chỉ rõ nghĩa trong ngữ cảnh 1 toà). Dòng
+  // placeholder là ghi chú (isNote) nên KHÔNG ảnh hưởng tổng 3 thẻ / "X khoản".
+  // Thang máy chỉ cảnh báo khi toà bật has_elevator.
+  const displayExpenseRows = useMemo(() => {
+    // Chỉ ở chế độ phân bổ theo kỳ (accrual) — chế độ tiền mặt gom theo NGÀY PHIẾU
+    // nên phiếu tháng lân cận bị lệch tháng → dò thiếu không tin cậy (đồng bộ mobile).
+    if (loading || voucherType === "INCOME" || !accrualMode) return shownExpenseRows;
+    // Bỏ qua TOÀ ẢO "Chung" (bucket chia LN cổ đông) — không phải toà vật lý, không
+    // bao giờ có phiếu Tiền nhà/Điện/… nên đừng báo thiếu nhầm.
+    if (!singleBuilding || singleBuilding.is_virtual || roomId !== "all") return shownExpenseRows;
+    // Dò "đã có phiếu" trên DANH SÁCH ĐẦY ĐỦ (expenseRows) — kể cả hạng mục đang
+    // bị ẩn bởi "Ẩn hạng mục đặc biệt" — để không báo thiếu nhầm khi nó đã có.
+    const present = new Set<number>();
+    for (const r of expenseRows)
+      if (!r.isNote) present.add(expenseRankOf(r.category, r.typeName));
+    const missing: DisplayRow[] = [];
+    FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
+      if (present.has(i)) return;
+      if (cat.requiresElevator && !singleBuilding.has_elevator) return;
+      missing.push({
+        key: `missing-exp-${i}`,
+        monthLabel,
+        description: cat.label,
+        buildingName: singleBuilding.name ?? "",
+        roomName: null,
+        periodLabel: "—",
+        typeName: cat.label,
+        category: null,
+        amount: 0,
+        notKqkd: false,
+        isNote: true,
+        isMissingExpense: true,
+        fixedRank: i,
+      });
+    });
+    if (missing.length === 0) return shownExpenseRows;
+    return [...shownExpenseRows, ...missing].sort(
+      (a, b) =>
+        expenseRankOf(a.category, a.typeName, a.fixedRank) -
+          expenseRankOf(b.category, b.typeName, b.fixedRank) ||
+        compareRoom(a.roomName, b.roomName) ||
+        a.description.localeCompare(b.description, "vi")
+    );
+  }, [shownExpenseRows, expenseRows, loading, voucherType, accrualMode, singleBuilding, roomId, monthLabel]);
 
   // B5: số liệu cho thanh kiểm chứng — Σ dòng hiển thị vs tổng thẻ.
   const sumRows = (rows: DisplayRow[]) =>
@@ -673,9 +717,12 @@ function ProfitDistributionDesktop() {
                 // Hoá đơn KHÔNG đủ ngày (prorate — khách vào/rời giữa tháng, có đoạn
                 // trống) → nền XANH LÁ nhạt + ghi chú kỳ tiền phòng.
                 const rp = r.invoiceId ? rentPeriods?.get(r.invoiceId) : null;
-                // Thứ tự ưu tiên nền: thiếu hoá đơn (ĐỎ) → phòng trống (vàng cam)
-                // → HĐ không đủ ngày (xanh lá) → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
-                const rowClass = r.isMissingInvoice
+                // Thứ tự ưu tiên nền: hạng mục chi thiếu phiếu (VÀNG NHẠT) → thiếu
+                // hoá đơn (ĐỎ) → phòng trống (vàng cam) → HĐ không đủ ngày (xanh lá)
+                // → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
+                const rowClass = r.isMissingExpense
+                  ? "bg-amber-50 hover:bg-amber-100"
+                  : r.isMissingInvoice
                   ? "bg-red-100 hover:bg-red-200"
                   : r.isVacant
                   ? `${clickable ? "cursor-pointer select-none " : ""}bg-amber-100 hover:bg-amber-200`
@@ -700,6 +747,9 @@ function ProfitDistributionDesktop() {
                     {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
                     <TableCell>
                       {displayDescription(r)}
+                      {r.isMissingExpense && (
+                        <span className="ml-1 text-xs font-medium text-amber-600">(chưa có phiếu)</span>
+                      )}
                       {r.groupCount && r.groupCount > 1 && (
                         <span className="ml-1 text-xs text-muted-foreground">({r.groupCount} lần)</span>
                       )}
@@ -947,7 +997,7 @@ function ProfitDistributionDesktop() {
         {/* Sổ 2 cột: Thu | Chi */}
         <div className={`grid gap-4 ${showThu && showChi ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
           {showThu && renderPanel("Khoản thu", "Doanh thu", displayIncome, shownIncomeRows, "text-emerald-700", "bg-emerald-50")}
-          {showChi && renderPanel("Khoản chi", "Chi phí", displayExpense, shownExpenseRows, "text-orange-700", "bg-orange-50")}
+          {showChi && renderPanel("Khoản chi", "Chi phí", displayExpense, displayExpenseRows, "text-orange-700", "bg-orange-50")}
         </div>
 
         <div className="text-sm text-muted-foreground">

@@ -89,6 +89,7 @@ export default function BuildingFormDialog({
       ward: '',
       street_address: '',
       status: 'ACTIVE',
+      has_elevator: false,
       commission_tiers: DEFAULT_COMMISSION_TIERS,
     },
   });
@@ -109,6 +110,8 @@ export default function BuildingFormDialog({
           longitude:
             (building as { longitude?: number | null }).longitude ?? null,
           status: building.status,
+          has_elevator:
+            (building as { has_elevator?: boolean }).has_elevator ?? false,
           contract_template_id:
             (building as { contract_template_id?: string | null })
               .contract_template_id ?? null,
@@ -136,6 +139,7 @@ export default function BuildingFormDialog({
           latitude: null,
           longitude: null,
           status: 'ACTIVE',
+          has_elevator: false,
           contract_template_id: null,
           invoice_template_id: null,
           default_account_id_tt: null,
@@ -187,6 +191,7 @@ export default function BuildingFormDialog({
             latitude: data.latitude ?? null,
             longitude: data.longitude ?? null,
             status: data.status,
+            has_elevator: data.has_elevator ?? false,
             contract_template_id: data.contract_template_id ?? null,
             invoice_template_id: data.invoice_template_id ?? null,
             default_account_id_tt: (data.default_account_id_tt ?? null) as any,
@@ -210,6 +215,7 @@ export default function BuildingFormDialog({
           latitude: data.latitude ?? null,
           longitude: data.longitude ?? null,
           status: data.status,
+          has_elevator: data.has_elevator ?? false,
           contract_template_id: data.contract_template_id ?? null,
           invoice_template_id: data.invoice_template_id ?? null,
           default_account_id_tt: (data.default_account_id_tt ?? null) as any,
@@ -232,6 +238,7 @@ export default function BuildingFormDialog({
     createBuilding.isPending || updateBuilding.isPending || upsertServices.isPending;
 
   const status = form.watch('status');
+  const hasElevator = form.watch('has_elevator');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -338,6 +345,23 @@ export default function BuildingFormDialog({
                   <h3 className="text-sm font-semibold text-gray-700 uppercase">
                     Cấu hình
                   </h3>
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="building-elevator-toggle" className="text-sm">
+                        Có thang máy
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Bật để cảnh báo khi toà thiếu phiếu bảo trì thang máy (ở báo cáo Phân bổ lợi nhuận).
+                      </p>
+                    </div>
+                    <Switch
+                      id="building-elevator-toggle"
+                      checked={!!hasElevator}
+                      onCheckedChange={(checked) =>
+                        form.setValue('has_elevator', checked)
+                      }
+                    />
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {isSuper && (
                       <FormField
