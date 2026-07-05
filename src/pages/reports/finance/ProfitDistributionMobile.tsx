@@ -134,8 +134,8 @@ export default function ProfitDistributionMobile() {
     // cuối, giữ nguyên thứ tự nguồn.
     exp.sort(
       (a, b) =>
-        expenseRankOf(a.category, a.type, a.fixedRank) -
-        expenseRankOf(b.category, b.type, b.fixedRank),
+        expenseRankOf(a.category, a.type, a.desc, a.fixedRank) -
+        expenseRankOf(b.category, b.type, b.desc, b.fixedRank),
     );
     return { incomeRows: inc, expenseRows: exp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,7 +160,7 @@ export default function ProfitDistributionMobile() {
     // bởi "Ẩn hạng mục đặc biệt") để không báo thiếu nhầm.
     const present = new Set<number>();
     for (const r of (accrual.rows ?? []) as any[])
-      if ((r.expense ?? 0) > 0) present.add(expenseRankOf(r.category, r.typeName));
+      if ((r.expense ?? 0) > 0) present.add(expenseRankOf(r.category, r.typeName, r.voucherName));
     const missing: MRow[] = [];
     FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
       if (present.has(i)) return;
@@ -174,8 +174,8 @@ export default function ProfitDistributionMobile() {
     if (missing.length === 0) return expenseRows;
     return [...expenseRows, ...missing].sort(
       (a, b) =>
-        expenseRankOf(a.category, a.type, a.fixedRank) -
-        expenseRankOf(b.category, b.type, b.fixedRank),
+        expenseRankOf(a.category, a.type, a.desc, a.fixedRank) -
+        expenseRankOf(b.category, b.type, b.desc, b.fixedRank),
     );
   }, [expenseRows, accrualMode, singleBuilding, accrual]);
 

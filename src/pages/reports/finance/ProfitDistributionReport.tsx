@@ -413,8 +413,8 @@ function ProfitDistributionDesktop() {
     // trong cùng nhóm vẫn theo phòng → mô tả như cũ.
     exp.sort(
       (a, b) =>
-        expenseRankOf(a.category, a.typeName, a.fixedRank) -
-          expenseRankOf(b.category, b.typeName, b.fixedRank) || sorter(a, b),
+        expenseRankOf(a.category, a.typeName, a.description, a.fixedRank) -
+          expenseRankOf(b.category, b.typeName, b.description, b.fixedRank) || sorter(a, b),
     );
 
     // Phòng-trống chỉ bật khi đã chọn ≥1 toà (vacantNotes !== undefined). Tắt → cũ.
@@ -527,7 +527,7 @@ function ProfitDistributionDesktop() {
     // bị ẩn bởi "Ẩn hạng mục đặc biệt" — để không báo thiếu nhầm khi nó đã có.
     const present = new Set<number>();
     for (const r of expenseRows)
-      if (!r.isNote) present.add(expenseRankOf(r.category, r.typeName));
+      if (!r.isNote) present.add(expenseRankOf(r.category, r.typeName, r.description));
     const missing: DisplayRow[] = [];
     FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
       if (present.has(i)) return;
@@ -551,8 +551,8 @@ function ProfitDistributionDesktop() {
     if (missing.length === 0) return shownExpenseRows;
     return [...shownExpenseRows, ...missing].sort(
       (a, b) =>
-        expenseRankOf(a.category, a.typeName, a.fixedRank) -
-          expenseRankOf(b.category, b.typeName, b.fixedRank) ||
+        expenseRankOf(a.category, a.typeName, a.description, a.fixedRank) -
+          expenseRankOf(b.category, b.typeName, b.description, b.fixedRank) ||
         compareRoom(a.roomName, b.roomName) ||
         a.description.localeCompare(b.description, "vi")
     );

@@ -69,7 +69,32 @@ describe("expenseRankOf — biên", () => {
   });
 
   it("fixedRank được ưu tiên tuyệt đối", () => {
-    expect(expenseRankOf("không-khớp-gì", "không-khớp-gì", 3)).toBe(3);
-    expect(expenseRankOf("Tiền nhà", "Tiền nhà", 8)).toBe(8);
+    expect(expenseRankOf("không-khớp-gì", "không-khớp-gì", undefined, 3)).toBe(3);
+    expect(expenseRankOf("Tiền nhà", "Tiền nhà", undefined, 8)).toBe(8);
+  });
+});
+
+describe("expenseRankOf — ánh xạ theo MÔ TẢ phiếu (loại/không có item chung)", () => {
+  it("phiếu 'tự động lập'/không item mang loại chung nhưng TÊN nói rõ hạng mục → khớp đúng", () => {
+    // typeName = 'Không có hạng mục' (phiếu trống item) nhưng mô tả rõ hạng mục.
+    expect(expenseRankOf(null, "Không có hạng mục", "Tiền nhà (tự động lập)")).toBe(0);
+    expect(expenseRankOf(null, "Không có hạng mục", "Đóng tiền điện tháng 6")).toBe(1);
+    expect(expenseRankOf(null, "Chi phí khác", "Tiền nước kỳ T6/2026")).toBe(2);
+    expect(expenseRankOf(null, "—", "Đóng tiền internet (tự động lập)")).toBe(3);
+    expect(expenseRankOf(null, "—", "tiền công an T6, T7")).toBe(6);
+    expect(expenseRankOf(null, "—", "tiền rác tháng 7")).toBe(7);
+  });
+
+  it("KHÔNG khớp nhầm: điện lạnh / vệ sinh máy lạnh không phải hạng mục cố định", () => {
+    // 'điện lạnh' ≠ 'tiền điện' → không lọt nhóm Điện.
+    expect(expenseRankOf("Bảo Trì", "vệ sinh máy lạnh", "thu chi điện lạnh - vệ sinh máy lạnh")).toBe(9);
+    expect(expenseRankOf("Bảo Trì", "vệ sinh máy giặt", "Thanh toán Điện Lạnh tháng 5")).toBe(9);
+    expect(expenseRankOf(null, "Mua đồ điện nước", "mua bóng đèn led")).toBe(9);
+    expect(expenseRankOf(null, "Thu chi khác", "In decal thông tây hội")).toBe(9);
+  });
+
+  it("khớp qua category vẫn ưu tiên (mô tả chỉ là bổ trợ)", () => {
+    expect(expenseRankOf("Tiền Nhà", "Tiền nhà", "Tiền nhà (tự động lập)")).toBe(0);
+    expect(expenseRankOf("Điện", "Đóng tiền điện", "anh Huy đóng tiền điện - Đóng tiền điện")).toBe(1);
   });
 });

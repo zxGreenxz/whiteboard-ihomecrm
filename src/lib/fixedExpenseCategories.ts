@@ -47,15 +47,21 @@ export const FIXED_EXPENSE_CATEGORIES: FixedExpenseCategory[] = [
 
 // Thứ hạng ưu tiên của một dòng chi (0 = lên đầu). Không khớp hạng mục cố định
 // nào → xuống cuối (rank = số lượng hạng mục).
+//   - Khớp theo CATEGORY, TÊN loại, VÀ mô tả phiếu — phiếu "tự động lập"/không có
+//     item mang loại chung ("Không có hạng mục") nhưng TÊN PHIẾU nói rõ hạng mục
+//     (vd "Tiền nhà (tự động lập)") vẫn ánh xạ đúng. Predicate đủ đặc trưng nên
+//     KHÔNG khớp nhầm: "điện lạnh" ≠ "tiền điện", "vệ sinh máy lạnh" (category Bảo
+//     Trì, không phải "ve sinh") không lọt nhóm Vệ Sinh.
 //   - `fixedRank` != null: dùng thẳng (cho dòng placeholder đã biết vị trí).
 export const expenseRankOf = (
   category: string | null | undefined,
   typeName: string | null | undefined,
+  description?: string | null,
   fixedRank?: number,
 ): number => {
   if (fixedRank != null) return fixedRank;
   const c = nrm(category);
-  const n = nrm(typeName);
+  const n = nrm(`${typeName ?? ""} ${description ?? ""}`);
   const i = FIXED_EXPENSE_CATEGORIES.findIndex((x) => x.match(c, n));
   return i === -1 ? FIXED_EXPENSE_CATEGORIES.length : i;
 };
