@@ -18,8 +18,12 @@ export default function CustomerListFilters({
   onBuildingIdsChange,
 }: CustomerListFiltersProps) {
   // Phòng thuộc về 1 toà cụ thể → chỉ cho chọn phòng khi đã khoanh đúng 1 toà.
+  // enabled: dropdown phòng vốn disabled khi chưa chọn toà → khỏi fetch TOÀN BỘ
+  // rooms lúc tải trang (trước đây useRooms(undefined) kéo cả bảng vô ích).
   const singleBuildingId = buildingIds.length === 1 ? buildingIds[0] : undefined;
-  const { data: rooms = [] } = useRooms(singleBuildingId);
+  const { data: rooms = [] } = useRooms(singleBuildingId, {
+    enabled: !!singleBuildingId,
+  });
 
   const handleBuildingIdsChange = (ids: string[]) => {
     onBuildingIdsChange(ids);
