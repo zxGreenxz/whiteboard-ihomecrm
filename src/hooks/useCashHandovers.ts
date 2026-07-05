@@ -85,12 +85,17 @@ export const useCashHandoverList = () => {
     queryKey: ['cash-handovers'],
     enabled: !!currentUser?.id,
     // Polling nhẹ để người nhận thấy phiên mới mà không cần reload.
-    refetchInterval: 30_000,
+    // 60s là đủ cho badge (trước 30s — x2 request nền vô ích trên instance nhỏ).
+    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<CashHandover[]> => {
+      // Select đúng cột UI dùng (CashHandover/HandoverItemLite) thay '*' —
+      // bỏ các cột transfer_*/updated_at không ai đọc, nhẹ payload poll.
       const { data, error } = await (supabase as any)
         .from('cash_handovers')
-        .select('*, items:cash_handover_items(*)')
+        .select(
+          'id, code, giver_id, receiver_id, giver_name, receiver_name, total_amount, gross_amount, expense_amount, voucher_count, status, cancel_requested_by, cancel_reason, cancel_requested_at, created_at, confirmed_at, cancelled_at, from_account_id, to_account_id, note, items:cash_handover_items(voucher_id, amount, voucher_code, voucher_date, room_name, building_name, voucher_type)',
+        )
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;

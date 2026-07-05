@@ -80,7 +80,13 @@ const ThuTien = () => {
   );
 
   // Ai thu bao nhiêu (creator_name phiếu thu theo payment) cho ô phòng + drawer.
-  const invoiceIds = useMemo(() => allRooms.map((i) => i.id), [allRooms]);
+  // Truyền CẢ THÁNG (không lọc toà) — map tra theo id nên thừa entry vô hại,
+  // đổi lại đổi tab toà = 0 refetch (trước đây key theo ids-đã-lọc-toà nên
+  // mỗi lần đổi tab là 1 request mới).
+  const invoiceIds = useMemo(
+    () => (monthInvoices ?? []).map((i) => i.id),
+    [monthInvoices],
+  );
   const { data: collectorsMap = {} } = useInvoiceCollectors(invoiceIds);
   const collectorNames = useMemo(() => {
     const out: Record<string, string[]> = {};
