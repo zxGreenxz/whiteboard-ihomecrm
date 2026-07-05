@@ -16,7 +16,13 @@ import type {
   InvoiceFormItem,
   InvoiceStatus,
 } from '@/types/invoice';
-import { canEditInvoice, canDeleteInvoice, roundInvoiceTotal } from '@/lib/invoiceUtils';
+import {
+  canEditInvoice,
+  canDeleteInvoice,
+  roundInvoiceTotal,
+  getInvoiceTitle,
+  isFirstMonthInvoice,
+} from '@/lib/invoiceUtils';
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 
 // Re-export types for backward compatibility
@@ -34,7 +40,7 @@ export interface UpdateInvoiceData {
 const INVOICE_LIST_SELECT = `
   *,
   contract:contracts!invoices_contract_id_fkey (
-    id, contract_number, status, public_code,
+    id, contract_number, status, public_code, start_billing_date,
     contract_customers!contract_customers_contract_id_fkey (
       id, is_representative,
       customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
@@ -276,6 +282,10 @@ export interface InvoiceTotalLite {
   total_amount: number;
   paid_amount: number;
   remaining_amount: number;
+  // Tên hoá đơn KHÔNG kèm phòng/toà (getInvoiceTitle trên bản ghi thiếu quan hệ
+  // room/building) — cột Thu bên BC Lợi Nhuận hiện đúng tên như trang /invoices
+  // nhưng gọn (phòng đã có cột riêng). Vd "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
+  displayTitle: string;
 }
 
 export const useInvoiceTotalsByIds = (ids: string[]) => {
@@ -292,7 +302,12 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
         const slice = sortedIds.slice(i, i + CHUNK);
         const { data, error } = await (supabase as any)
           .from('invoices')
-          .select('id, total_amount, paid_amount, remaining_amount')
+          .select(
+            `id, total_amount, paid_amount, remaining_amount,
+             billing_month, notes, issue_date,
+             contract:contracts!invoices_contract_id_fkey (start_billing_date),
+             invoice_items (type, from_date)`,
+          )
           .in('id', slice)
           .is('deleted_at', null);
         if (error) throw error;
@@ -302,6 +317,8 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
             total_amount: Number(row.total_amount) || 0,
             paid_amount: Number(row.paid_amount) || 0,
             remaining_amount: Number(row.remaining_amount) || 0,
+            // Không select room/building → title tự rớt phần "<phòng>/<toà>".
+            displayTitle: getInvoiceTitle(row),
           });
         }
       }
@@ -385,17 +402,10 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
             items.find((it) => it.type === 'RENT') ??
             null;
           const contract = inv.contract ?? null;
-          const startBilling: string | null = contract?.start_billing_date ?? null;
-          const sameStart =
-            !!rent?.from_date &&
-            !!startBilling &&
-            String(rent.from_date).slice(0, 10) === String(startBilling).slice(0, 10);
-          // Khớp cả mẫu ghi chú CŨ ("Hoá đơn cọc + tháng đầu…") lẫn MỚI
-          // ("Hoá đơn tiền phòng đầu tiên…" — useContracts từ 2026-07-02).
-          const byNotes =
-            typeof inv.notes === 'string' &&
-            /th[aá]ng[\s_]?đầu|đầu\s*tiên/i.test(inv.notes);
-          if (!sameStart && !byNotes) continue;
+          // Nhận diện dùng CHUNG với tên hoá đơn "TIỀN PHÒNG THÁNG ĐẦU TIÊN"
+          // (isFirstMonthInvoice): notes "tháng đầu"/"đầu tiên" HOẶC kỳ RENT
+          // bắt đầu đúng contracts.start_billing_date.
+          if (!isFirstMonthInvoice(inv)) continue;
           const invoiceTotal = Number(inv.total_amount) || 0;
           const invoicePaid = Number(inv.paid_amount) || 0;
           // Bỏ phần cọc gộp trong HĐ → còn tiền phòng + dịch vụ (đã trừ giảm

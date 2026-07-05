@@ -182,10 +182,37 @@ export function isOverdue(dueDate: string, status: InvoiceStatus): boolean {
 // =============================================
 
 /**
+ * HĐ THÁNG ĐẦU của hợp đồng (tự sinh khi ký HĐ) — nhận diện theo:
+ *  • notes tự động chứa "… tháng đầu" (mẫu cũ) / "… đầu tiên" (useContracts từ
+ *    2026-07-02), HOẶC
+ *  • kỳ tiền phòng (item RENT có from_date sớm nhất) bắt đầu ĐÚNG
+ *    contracts.start_billing_date.
+ * Dùng CHUNG cho tên hoá đơn (getInvoiceTitle) + useFirstInvoiceDetails (màu
+ * nền đỏ/xanh bên BC Lợi Nhuận) — sửa quy tắc thì chỉ sửa 1 nơi kẻo lệch nhau.
+ */
+export function isFirstMonthInvoice(invoice: {
+  notes?: string | null;
+  invoice_items?: Array<{ type?: string | null; from_date?: string | null }> | null;
+  contract?: { start_billing_date?: string | null } | null;
+}): boolean {
+  const notes = invoice.notes ?? '';
+  if (/th[aá]ng[\s_]?đầu|đầu\s*tiên/i.test(notes)) return true;
+  const startBilling = invoice.contract?.start_billing_date ?? null;
+  if (!startBilling) return false;
+  const rent = (invoice.invoice_items ?? [])
+    .filter((it) => it.type === 'RENT' && it.from_date)
+    .sort((a, b) => String(a.from_date).localeCompare(String(b.from_date)))[0];
+  return (
+    !!rent && String(rent.from_date).slice(0, 10) === String(startBilling).slice(0, 10)
+  );
+}
+
+/**
  * Build invoice display title from items + notes.
  *
  * Mọi loại HĐ đều chèn `<phòng>/<toà>` nếu có để khỏi cần dòng phụ bên dưới:
  * - Notes có "thanh lý" → "Hóa đơn thanh lý - <phòng>/<toà> - MM/YYYY"
+ * - HĐ tháng đầu (ký HĐ) → "TIỀN PHÒNG THÁNG ĐẦU TIÊN - <phòng>/<toà> - MM/YYYY"
  * - RENT + SERVICE → "TIỀN PHÒNG - <phòng>/<toà> - MM/YYYY"
  * - Chỉ RENT → "Hóa đơn tiền nhà - <phòng>/<toà> - MM/YYYY"
  * - Chỉ SERVICE/PENALTY → "Hóa đơn dịch vụ - <phòng>/<toà> - MM/YYYY"
@@ -227,6 +254,11 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
     (i) => i.type === 'SERVICE' || i.type === 'PENALTY',
   );
 
+  if (hasRent && isFirstMonthInvoice(invoice)) {
+    return suffix
+      ? `TIỀN PHÒNG THÁNG ĐẦU TIÊN - ${suffix}`
+      : 'TIỀN PHÒNG THÁNG ĐẦU TIÊN';
+  }
   if (hasRent && hasService) {
     return suffix ? `TIỀN PHÒNG - ${suffix}` : 'TIỀN PHÒNG';
   }

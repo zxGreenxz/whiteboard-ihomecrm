@@ -615,11 +615,17 @@ function ProfitDistributionDesktop() {
     return null;
   };
 
-  // Rút gọn tên dòng THU dài dòng (đã lọc theo 1 tháng nên không cần lặp lại tháng):
-  //  - Khoản thanh lý hợp đồng → "HĐ Thanh Lý Hợp Đồng".
-  //  - Phiếu thu tiền phòng theo HĐ → "Hóa Đơn Tiền Phòng T{tháng đang lọc}".
+  // Tên dòng THU:
+  //  - Khoản thanh lý hợp đồng → "HĐ Thanh Lý Hợp Đồng" (phiếu trải trên nhiều
+  //    HĐ, lấy tên 1 hoá đơn sẽ gây hiểu nhầm — giữ nhãn gộp).
+  //  - Dòng gắn hoá đơn → lấy ĐÚNG tên bên trang /invoices nhưng BỎ phần
+  //    "<phòng>/<toà>" (phòng đã có cột riêng) — vd "TIỀN PHÒNG - 05/2026",
+  //    HĐ tháng đầu là "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
+  //  - Chưa tải xong invoiceTotals → tạm rơi về nhãn rút gọn cũ.
   const displayDescription = (r: DisplayRow): string => {
     if (nrm(`${r.typeName} ${r.description}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
+    const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
+    if (invTitle) return invTitle;
     if (nrm(r.description).includes("thu tien theo hd tien phong"))
       return `Hóa Đơn Tiền Phòng T${mm || 1}`;
     return r.description;

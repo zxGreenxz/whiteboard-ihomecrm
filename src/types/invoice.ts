@@ -221,6 +221,8 @@ export interface InvoiceWithRelations extends Invoice {
     contract_number: string | null;
     status?: string;
     public_code?: string;
+    // Ngày bắt đầu tính tiền — nhận diện HĐ tháng đầu (isFirstMonthInvoice).
+    start_billing_date?: string | null;
     contract_customers?: Array<{
       id: string;
       is_representative: boolean;
