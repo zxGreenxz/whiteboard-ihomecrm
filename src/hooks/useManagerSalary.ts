@@ -785,10 +785,11 @@ export const useSalaryPayout = () => {
         }
       }
 
-      // tòa ảo Chung
+      // toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung")
       const { data: chung } = await (supabase
         .from("buildings" as any).select("id") as any)
-        .eq("is_virtual", true).eq("name", "Chung").is("deleted_at", null).limit(1).maybeSingle();
+        .eq("is_virtual", true).is("deleted_at", null)
+        .order("created_at", { ascending: true }).limit(1).maybeSingle();
 
       // hạng mục "Lương quản lý"
       let typeId: string;

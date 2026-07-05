@@ -10,8 +10,9 @@ type BuildingInsert = Database["public"]["Tables"]["buildings"]["Insert"];
 type BuildingUpdate = Database["public"]["Tables"]["buildings"]["Update"];
 
 // Fetch all buildings with areas (N-N qua area_buildings) and non-deleted rooms count.
-// Mặc định ẩn tòa ảo (is_virtual=true) — chỉ form thu/chi mới truyền { includeVirtual: true }
-// để cho phép chọn mục "Chung" (tòa ảo đại diện chi phí không thuộc tòa thật).
+// Mặc định ẩn tòa ảo (is_virtual=true) — nó là "bucket tài chính" gom thu/chi không
+// thuộc toà thật (hiện là "Kho Văn Phòng Chung"), KHÔNG phải toà vật lý. Chỉ form/ô
+// lọc thu chi & báo cáo tài chính truyền { includeVirtual: true } để chọn được nó.
 export const useBuildings = (options?: { includeVirtual?: boolean }) => {
   const includeVirtual = options?.includeVirtual ?? false;
   return useQuery({
