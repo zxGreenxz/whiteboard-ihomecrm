@@ -186,6 +186,8 @@ export default function IncomeExpenseMobilePage() {
       effectiveFilters,
       { page: pagination.page, pageSize: pagination.pageSize },
       parsed.text,
+      // Chỉ fetch Phiếu tổng khi đang xem tab đó (đồng bộ với bản desktop).
+      { enabled: viewMode === "batch" },
     );
   const { data: stats, isLoading: isStatsLoading } =
     useIncomeExpenseStats(effectiveFilters);

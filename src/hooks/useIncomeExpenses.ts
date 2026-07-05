@@ -9,6 +9,7 @@ import type {
   IncomeExpenseBatchFormValues,
 } from "@/lib/incomeExpenseValidation";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
+import { getAllIeTypesCached, type IeTypeLite } from "@/lib/ieTypesCache";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
 
@@ -194,20 +195,26 @@ async function getItemTypeSiblingIds(
   const hasCategory = !!filters.type_category;
   if (selectedIds.length === 0 && !hasCategory) return null;
 
+  // Bản cũ bắn 1+N query income_expense_types mỗi lần chạy (và chạy trong CẢ 3
+  // queryFn list/stats/batches) → burst nghẽn pool. Giờ resolve thuần JS trên
+  // cache 1-fetch (ieTypesCache, TTL 5', RLS áp như cũ) — giữ nguyên ngữ nghĩa
+  // match exact của .eq().
+  let allTypes: IeTypeLite[];
+  try {
+    allTypes = await getAllIeTypesCached();
+  } catch (err) {
+    console.error("getItemTypeSiblingIds types fetch error:", err);
+    return [];
+  }
+
   // --- Lọc theo NHÓM (Loại): mọi type_id có category khớp (mọi user, không cần
   // expand sibling vì đã match trực tiếp chuỗi category). ---
   let categoryIds: Set<string> | null = null;
   if (hasCategory) {
-    const { data: catRows, error: catErr } = await supabase
-      .from("income_expense_types" as any)
-      .select("id")
-      .eq("category", filters.type_category);
-    if (catErr) {
-      console.error("getItemTypeSiblingIds categoryRows error:", catErr);
-      return [];
-    }
     categoryIds = new Set(
-      ((catRows ?? []) as unknown as Array<{ id: string }>).map((r) => r.id)
+      allTypes
+        .filter((t) => t.category === filters.type_category)
+        .map((t) => t.id)
     );
     if (categoryIds.size === 0) return [];
   }
@@ -216,31 +223,17 @@ async function getItemTypeSiblingIds(
   let siblingIds: Set<string> | null = null;
   if (selectedIds.length > 0) {
     // Bước 1: resolve selected ids → (name, type)
-    const { data: selectedRows, error: selErr } = await supabase
-      .from("income_expense_types" as any)
-      .select("id, name, type")
-      .in("id", selectedIds);
-    if (selErr) {
-      console.error("getItemTypeSiblingIds selectedRows error:", selErr);
-      return [];
-    }
-    const selRows = (selectedRows ?? []) as unknown as Array<{
-      id: string;
-      name: string;
-      type: "income" | "expense";
-    }>;
+    const byId = new Map(allTypes.map((t) => [t.id, t]));
+    const selRows = selectedIds
+      .map((id) => byId.get(id))
+      .filter((t): t is IeTypeLite => !!t);
     if (selRows.length === 0) return [];
 
     // Bước 2: expand sang tất cả type_id cùng (name, type)
     const expandedIds = new Set<string>(selectedIds);
     for (const row of selRows) {
-      const { data: siblings } = await supabase
-        .from("income_expense_types" as any)
-        .select("id")
-        .eq("type", row.type)
-        .eq("name", row.name);
-      for (const s of (siblings ?? []) as unknown as Array<{ id: string }>) {
-        expandedIds.add(s.id);
+      for (const t of allTypes) {
+        if (t.type === row.type && t.name === row.name) expandedIds.add(t.id);
       }
     }
     siblingIds = expandedIds;
@@ -1702,12 +1695,16 @@ export const useCreateIncomeExpenseBatch = () => {
 };
 
 // Danh sách phiếu tổng (group by batch_id)
+// options.enabled: trang Thu chi gate theo viewMode — chỉ fetch khi user đang
+// xem tab Phiếu tổng (batches KHÔNG được prefetch nên gate không phí request).
 export const useIncomeExpenseBatches = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
-  searchQuery?: string
+  searchQuery?: string,
+  options?: { enabled?: boolean }
 ) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: [
       "income-expense-batches",
       "list",

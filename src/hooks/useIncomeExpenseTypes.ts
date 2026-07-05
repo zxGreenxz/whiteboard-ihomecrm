@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { invalidateIeTypesCache } from "@/lib/ieTypesCache";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -29,8 +30,17 @@ export interface IncomeExpenseType {
 
 // --- Query Hooks ---
 
-export const useIncomeExpenseTypes = (filterType?: "income" | "expense") => {
+// Loại thu chi gần như không đổi trong phiên → staleTime dài để các component
+// remount (form/dialog/filter) không refetch lại, đỡ request trên instance nhỏ.
+const IE_TYPES_STALE_TIME = 5 * 60_000;
+
+export const useIncomeExpenseTypes = (
+  filterType?: "income" | "expense",
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
+    staleTime: IE_TYPES_STALE_TIME,
     queryKey: ["income-expense-types", filterType],
     queryFn: async (): Promise<IncomeExpenseType[]> => {
       // RLS đã mở cho mọi user authenticated (migration 20260511000002),
@@ -88,6 +98,7 @@ export const useIncomeExpenseTypeCategories = (
   filterType?: "income" | "expense"
 ) => {
   return useQuery({
+    staleTime: IE_TYPES_STALE_TIME,
     queryKey: ["income-expense-type-categories", filterType],
     queryFn: async (): Promise<string[]> => {
       // Categories cũng dùng chung — không filter theo user_id (xem hook
@@ -126,6 +137,7 @@ export const useIncomeExpenseTypeCategories = (
  */
 export const useHiddenInReportTypes = () => {
   return useQuery({
+    staleTime: IE_TYPES_STALE_TIME,
     queryKey: ["ie-types-hidden-in-report"],
     queryFn: async (): Promise<{ id: string; name: string }[]> => {
       const { data, error } = await supabase
@@ -183,6 +195,7 @@ export const useCreateIncomeExpenseType = () => {
       return data;
     },
     onSuccess: () => {
+      invalidateIeTypesCache();
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
@@ -229,6 +242,7 @@ export const useUpdateIncomeExpenseType = () => {
       return data;
     },
     onSuccess: () => {
+      invalidateIeTypesCache();
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],
@@ -278,6 +292,7 @@ export const useDeleteIncomeExpenseType = () => {
       }
     },
     onSuccess: () => {
+      invalidateIeTypesCache();
       queryClient.invalidateQueries({ queryKey: ["income-expense-types"] });
       queryClient.invalidateQueries({
         queryKey: ["income-expense-type-categories"],

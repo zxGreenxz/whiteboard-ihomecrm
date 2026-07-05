@@ -141,7 +141,10 @@ const IncomeExpenseDesktopPage = () => {
     useIncomeExpenseBatches(
       effectiveFilters,
       { page: pagination.page, pageSize: pagination.pageSize },
-      parsedSearch.text
+      parsedSearch.text,
+      // Chỉ fetch Phiếu tổng khi đang xem tab đó — đỡ 1 query nặng mỗi lần
+      // tải trang ở tab Phiếu lẻ (mặc định).
+      { enabled: viewMode === "batch" }
     );
 
   const vouchers = listResult?.data ?? [];
