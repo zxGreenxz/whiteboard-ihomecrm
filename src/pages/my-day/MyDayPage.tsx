@@ -59,6 +59,8 @@ export default function MyDayPage() {
   } | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveDate, setLeaveDate] = useState("");
+  // Chủ nhật: mở lại tuyến gợi ý nếu muốn làm tự nguyện
+  const [showRouteOnRest, setShowRouteOnRest] = useState(false);
 
   const s = summaryQ.data;
   // Phiên kiểm tra ĐANG DỞ hôm nay — tắt app/mất mạng vẫn còn, bấm là làm tiếp
@@ -84,6 +86,12 @@ export default function MyDayPage() {
 
   const ticked = s?.today.status === "ticked";
   const leaveToday = s?.today.status === "leave_approved" || s?.today.status === "pending_leave";
+  // Chủ nhật = ngày nghỉ (dùng ngày VN từ summary, khớp "hôm nay" của hệ thống)
+  const isRestDay = useMemo(() => {
+    if (!s?.today.date) return false;
+    const [y, m, d] = s.today.date.split("-").map(Number);
+    return new Date(y, m - 1, d).getDay() === 0; // 0 = Chủ nhật
+  }, [s?.today.date]);
 
   // Onboarding "Tôi đã hiểu" (US-6.5): bắt buộc trước khi bật tiền — hiện từ chặng shadow_money.
   const v5Acked = useUiPrefBool("v5_onboarding_ack", false);
@@ -197,6 +205,19 @@ export default function MyDayPage() {
                 <div className="text-sm opacity-90">
                   +{fmtVnd(s?.attend.day_rate ?? 0)} TẠM TÍNH · chuỗi {s?.streak.current ?? 0} ngày 🔥
                 </div>
+                {isRestDay && (
+                  <div className="mt-1.5 text-sm font-medium opacity-95">
+                    {v5Copy.restDayThanksWorking}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : isRestDay && !leaveToday ? (
+            <div className="flex items-center gap-3">
+              <Sun className="h-9 w-9 text-amber-500" />
+              <div>
+                <div className="font-semibold">{v5Copy.restDayTitle}</div>
+                <div className="text-sm text-slate-500">{v5Copy.restDaySubtitle}</div>
               </div>
             </div>
           ) : leaveToday ? (
@@ -255,6 +276,16 @@ export default function MyDayPage() {
           </div>
           {missionsQ.isLoading ? (
             <div className="h-20 animate-pulse rounded-lg bg-slate-100" />
+          ) : isRestDay && !showRouteOnRest ? (
+            <div className="text-sm text-slate-500">
+              <p>Hôm nay là ngày nghỉ — danh sách gợi ý tạm thu gọn để bạn thảnh thơi.</p>
+              <button
+                className="mt-2 rounded-lg border px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50"
+                onClick={() => setShowRouteOnRest(true)}
+              >
+                {v5Copy.restDayShowRoute}
+              </button>
+            </div>
           ) : suggested.length === 0 ? (
             <p className="text-sm text-slate-500">Các toà của bạn đều mới được ghé gần đây — tuyệt vời! 🎉</p>
           ) : (

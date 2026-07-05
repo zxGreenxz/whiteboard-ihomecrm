@@ -48,6 +48,13 @@ export const v5Copy = {
       : "Ghé hôm nay là chắc 1 ngày công",
   progressAttend: (ticked: number, n: number) => `${ticked}/${n} ngày công · TẠM TÍNH — chốt khi khoá sổ`,
 
+  // ── Ngày nghỉ (Chủ nhật) ──────────────────────────────────────────────
+  restDayTitle: "Hôm nay là Chủ nhật — ngày nghỉ của bạn 🌿",
+  restDaySubtitle: "Cứ nghỉ ngơi cho lại sức nhé — chuyên cần và tiền của bạn vẫn nguyên vẹn.",
+  restDayThanksWorking:
+    "Chủ nhật mà bạn vẫn đi làm — cảm ơn sự tận tâm với khách hàng và với công ty 🙏",
+  restDayShowRoute: "Vẫn muốn xem tuyến gợi ý?",
+
   // ── Phép 1-chạm ──────────────────────────────────────────────────────
   leaveRequested: (date: string) => `Đã gửi xin phép ngày ${date} — đang chờ duyệt (chuỗi được giữ tạm)`,
   leaveApproved: (date: string) =>
