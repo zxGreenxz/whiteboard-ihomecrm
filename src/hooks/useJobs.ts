@@ -8,6 +8,7 @@ import { TaskFilters } from "@/types/jobs";
 // — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
 export const jobsQuery = (filters?: TaskFilters) => ({
     queryKey: ["jobs", filters] as const,
+    gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
     queryFn: async () => {
       let query = supabase
         .from("jobs")

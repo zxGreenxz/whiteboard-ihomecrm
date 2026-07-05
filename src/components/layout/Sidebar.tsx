@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { prefetchOnIntent } from '@/lib/prefetchIntent';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -210,6 +212,7 @@ interface SidebarProps {
 
 const Sidebar = ({ className }: SidebarProps) => {
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
 
   // Admin Bảng lương = có quyền chốt/quản lý/chi lương (hoặc superadmin). Nhân viên
@@ -299,8 +302,15 @@ const Sidebar = ({ className }: SidebarProps) => {
       );
     }
 
+    // Nạp nền theo ý định: rê chuột/focus vào mục → ấm cache trước khi bấm
+    // (chỉ 4 trang list nặng được map trong prefetchOnIntent; href khác no-op).
     return (
-      <Link key={item.href} to={item.href}>
+      <Link
+        key={item.href}
+        to={item.href}
+        onPointerEnter={() => prefetchOnIntent(queryClient, item.href)}
+        onFocus={() => prefetchOnIntent(queryClient, item.href)}
+      >
         {inner}
       </Link>
     );

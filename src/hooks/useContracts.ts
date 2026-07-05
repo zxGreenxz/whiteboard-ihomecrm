@@ -357,6 +357,7 @@ export const contractsPagedQuery = (
   pagination?: ContractPagedParams,
 ) => ({
   queryKey: ["contracts", "paged", filters ?? null, pagination ?? null] as const,
+  gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5' hay bị GC trước khi bấm)
   queryFn: async (): Promise<PaginatedData<ContractWithRelations>> => {
     const range = pagination
       ? {
@@ -426,6 +427,7 @@ const contractHeadCountBase = (buildingIds?: string[]) => {
 
 export const contractStatsQuery = (buildingIds?: string[]) => ({
     queryKey: ["contracts", "stats", buildingIds ?? []] as const,
+    gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
     queryFn: async (): Promise<ContractStats> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");

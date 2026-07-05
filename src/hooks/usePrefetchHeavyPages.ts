@@ -4,26 +4,30 @@
 // (requestIdleCallback) tải nền trang đầu + stats của các trang danh sách
 // nặng (xem src/lib/prefetchPages.ts) để bấm vào là hiện ngay.
 //
-// Chạy tối đa 1 lần mỗi phiên (cờ module-level) — việc giữ cache TƯƠI sau đó
-// do realtime hub (useRealtimeDataSync) đảm nhiệm, không cần prefetch lại
-// mỗi lần quay về màn chính.
+// HÂM LẠI mỗi lần về màn chính, throttle 60s (trước đây chặn vĩnh viễn 1 lần/
+// phiên → cache prefetch bị GC sau ~5' mà KHÔNG được nạp lại khi quay về Home,
+// nên bấm vào lại "Đang tải"). prefetchQuery tôn trọng staleTime 60s nên lần
+// hâm sau gần như miễn phí (data còn tươi = no-op); warmedChunks đã warm chunk
+// từ lần đầu nên không parse lại (an toàn với bug giật màn 04/07).
 // =============================================================
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 
-let ranThisSession = false;
+let lastPrefetchAt = 0;
+const REWARM_THROTTLE_MS = 60_000;
 
 export function usePrefetchHeavyPages() {
   const queryClient = useQueryClient();
   const { data: perms } = useMyPermissions();
 
   useEffect(() => {
-    if (!perms || ranThisSession) return;
+    if (!perms) return;
+    if (Date.now() - lastPrefetchAt < REWARM_THROTTLE_MS) return;
 
     const run = () => {
-      ranThisSession = true;
+      lastPrefetchAt = Date.now();
       // Import động: prefetchPages kéo theo hooks của 4 trang — không nhét
       // vào chunk màn chính, chỉ tải khi thật sự chạy prefetch (lúc idle).
       import("@/lib/prefetchPages")

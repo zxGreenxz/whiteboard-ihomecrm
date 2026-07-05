@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bell, Search, TrendingUp, Wallet, Building2 } from 'lucide-react';
+import { prefetchOnIntent } from '@/lib/prefetchIntent';
 import './homeLauncher.css';
 import { hideAppSplash } from '@/lib/appSplash';
 import { useAuth } from '@/hooks/useAuth';
@@ -83,6 +85,7 @@ const enteredOnce = () => {
 };
 
 const HomeLauncher = () => {
+  const queryClient = useQueryClient();
   const { data: user } = useAuth();
   const { data: profile } = useProfile();
   const { data: stats, isLoading: statsLoading } = useDashboardStats(null);
@@ -167,7 +170,12 @@ const HomeLauncher = () => {
                     const badge = badgeOf(t);
                     const soft = !(t.id === 'thu-tien' || t.id === 'invoices');
                     return (
-                      <Link key={t.id} to={t.href} className={'tile' + (t.hot ? ' hot' : '')}>
+                      <Link
+                        key={t.id}
+                        to={t.href}
+                        className={'tile' + (t.hot ? ' hot' : '')}
+                        onPointerDown={() => prefetchOnIntent(queryClient, t.href)}
+                      >
                         <span className="tile-ic" style={{ background: t.accent }}>
                           <Icon />
                           {badge ? (

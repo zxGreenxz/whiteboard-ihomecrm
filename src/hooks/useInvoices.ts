@@ -66,6 +66,7 @@ export const invoicesListQuery = (
   pagination?: InvoicePaginationParams,
 ) => ({
     queryKey: ['invoices', filters, pagination] as const,
+    gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5' hay bị GC trước khi bấm)
     queryFn: async (): Promise<PaginatedData<InvoiceWithRelations>> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
@@ -1104,6 +1105,7 @@ export interface InvoiceStatistics {
 
 export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
     queryKey: ['invoice-statistics', filters] as const,
+    gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
     queryFn: async (): Promise<InvoiceStatistics> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');

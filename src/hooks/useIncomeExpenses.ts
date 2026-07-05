@@ -382,6 +382,7 @@ export const incomeExpensesListQuery = (
   pagination: { page: number; pageSize: number },
   searchQuery?: string
 ) => ({
+    gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5' hay bị GC trước khi bấm)
     queryKey: [
       "income-expenses",
       "list",
@@ -645,6 +646,7 @@ export const incomeExpenseStatsQuery = (
   filters: IncomeExpenseFilters,
   businessResultOnly: boolean
 ) => ({
+    gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
     queryKey: [
       "income-expenses",
       "stats",
@@ -900,18 +902,19 @@ export const useCreateProfitDistribution = () => {
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
 
-      // 1) Tòa ảo "Chung"
+      // 1) Toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung").
+      //    RLS tự cắt theo tenant; chỉ còn 1 toà ảo non-deleted nên không mơ hồ.
       const { data: chung, error: bErr } = await (supabase
         .from("buildings" as any)
         .select("id") as any)
         .eq("is_virtual", true)
-        .eq("name", "Chung")
         .is("deleted_at", null)
+        .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
       if (bErr) throw bErr;
       if (!chung)
-        throw new Error("Chưa có tòa ảo 'Chung' để hạch toán phiếu chia lợi nhuận");
+        throw new Error("Chưa có toà chung để hạch toán phiếu chia lợi nhuận");
 
       // 2) Hạng mục "Chia lợi nhuận cổ đông" (tạo nếu thiếu)
       let typeId: string;
@@ -1028,18 +1031,19 @@ export const useCreateManagerSalaryPayout = () => {
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
 
-      // 1) Tòa ảo "Chung"
+      // 1) Toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung").
+      //    RLS tự cắt theo tenant; chỉ còn 1 toà ảo non-deleted nên không mơ hồ.
       const { data: chung, error: bErr } = await (supabase
         .from("buildings" as any)
         .select("id") as any)
         .eq("is_virtual", true)
-        .eq("name", "Chung")
         .is("deleted_at", null)
+        .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
       if (bErr) throw bErr;
       if (!chung)
-        throw new Error("Chưa có tòa ảo 'Chung' để hạch toán phiếu lương điều hành");
+        throw new Error("Chưa có toà chung để hạch toán phiếu lương điều hành");
 
       // 2) Hạng mục "Lương điều hành" (tạo nếu thiếu)
       let typeId: string;
