@@ -233,58 +233,30 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Location filter (nếu có) resolve 1 lần rồi dùng chung cho các count.
-      let locationCustomerIds: string[] | null = null;
-
-      if (filters?.building_id || filters?.room_id) {
-        locationCustomerIds = await resolveCustomerIdsByLocation({
-          building_id: filters.building_id,
-          room_id: filters.room_id,
-        });
-        if (locationCustomerIds.length === 0) {
-          return { total: 0, individual: 0, organization: 0, foreign: 0 };
-        }
-      }
-
-      // Đếm bằng count head trên server — SELECT rồi đếm client dính cap
-      // 1000 dòng của PostgREST (thiếu số khi >1000 khách).
-      const countWhere = (extra?: (q: any) => any) => {
-        let q = (supabase
-          .from("customers")
-          .select("id", { count: "exact", head: true }) as any)
-          .is("deleted_at", null);
-        if (filters?.status) q = q.eq("status_v2", filters.status);
-        if (locationCustomerIds) q = q.in("id", locationCustomerIds);
-        const search = filters?.search?.trim();
-        if (search) {
-          q = q.or(
-            `full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%,id_number.ilike.%${search}%`
-          );
-        }
-        if (extra) q = extra(q);
-        return q;
-      };
-
-      const [totalRes, individualRes, organizationRes, foreignRes] =
-        await Promise.all([
-          countWhere(),
-          countWhere((q) => q.eq("customer_type", "INDIVIDUAL")),
-          countWhere((q) => q.eq("customer_type", "ORGANIZATION")),
-          countWhere((q) => q.eq("is_foreign", true)),
-        ]);
-
-      const err =
-        totalRes.error || individualRes.error || organizationRes.error || foreignRes.error;
-      if (err) {
-        console.error("useCustomerStats error:", err);
+      // 1 RPC thay 4 HEAD-count + resolve location trùng lặp (migration
+      // 20260705210000). Trước đây khi lọc toà/phòng, hook này chạy LẠI
+      // resolveCustomerIdsByLocation mà useCustomers vừa chạy (1 query contracts
+      // + N query contract_customers), rồi thêm 4 count = burst request; giờ
+      // toàn bộ gói trong 1 câu SQL, SECURITY INVOKER giữ RLS như cũ.
+      const { data, error } = await (supabase.rpc as any)(
+        "get_customer_stats",
+        {
+          p_status: filters?.status ?? null,
+          p_search: filters?.search?.trim() || null,
+          p_building_id: filters?.building_id ?? null,
+          p_room_id: filters?.room_id ?? null,
+        },
+      );
+      if (error) {
+        console.error("useCustomerStats error:", error);
         return { total: 0, individual: 0, organization: 0, foreign: 0 };
       }
-
+      const row = (data ?? {}) as Record<string, number>;
       return {
-        total: totalRes.count || 0,
-        individual: individualRes.count || 0,
-        organization: organizationRes.count || 0,
-        foreign: foreignRes.count || 0,
+        total: Number(row.total) || 0,
+        individual: Number(row.individual) || 0,
+        organization: Number(row.organization) || 0,
+        foreign: Number(row.foreign) || 0,
       };
     },
   });

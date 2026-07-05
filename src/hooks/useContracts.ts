@@ -239,34 +239,41 @@ async function resolveContractSearchOr(rawTerm: string): Promise<string | null> 
   const pattern = `%${safe}%`;
   const orParts: string[] = [`contract_number.ilike.${star}`];
 
-  // Tên khách / SĐT → contract ids.
-  const { data: custs } = await (supabase as any)
-    .from("customers")
-    .select("id")
-    .or(`full_name.ilike.${star},phone.ilike.${star}`)
-    .limit(200);
-  const custIds = (custs || []).map((c: any) => c.id);
-  if (custIds.length > 0) {
-    const { data: ccs } = await (supabase as any)
-      .from("contract_customers")
-      .select("contract_id")
-      .in("customer_id", custIds)
-      .limit(500);
-    const contractIds = Array.from(
-      new Set((ccs || []).map((r: any) => r.contract_id).filter(Boolean)),
-    );
-    if (contractIds.length > 0) {
-      orParts.push(`id.in.(${contractIds.join(",")})`);
-    }
-  }
+  // 2 nhánh độc lập chạy song song: (khách → HĐ) và (tên phòng) — trước đây
+  // chạy nối tiếp làm mỗi lần gõ search chờ 3 round-trip liên tiếp.
+  const [contractIds, roomIds] = await Promise.all([
+    // Tên khách / SĐT → contract ids (2 bước phụ thuộc nhau, giữ tuần tự).
+    (async (): Promise<string[]> => {
+      const { data: custs } = await (supabase as any)
+        .from("customers")
+        .select("id")
+        .or(`full_name.ilike.${star},phone.ilike.${star}`)
+        .limit(200);
+      const custIds = (custs || []).map((c: any) => c.id);
+      if (custIds.length === 0) return [];
+      const { data: ccs } = await (supabase as any)
+        .from("contract_customers")
+        .select("contract_id")
+        .in("customer_id", custIds)
+        .limit(500);
+      return Array.from(
+        new Set((ccs || []).map((r: any) => r.contract_id).filter(Boolean)),
+      );
+    })(),
+    // Tên phòng → room ids.
+    (async (): Promise<string[]> => {
+      const { data: rms } = await (supabase as any)
+        .from("rooms")
+        .select("id")
+        .ilike("name", pattern)
+        .limit(200);
+      return (rms || []).map((r: any) => r.id);
+    })(),
+  ]);
 
-  // Tên phòng → room ids.
-  const { data: rms } = await (supabase as any)
-    .from("rooms")
-    .select("id")
-    .ilike("name", pattern)
-    .limit(200);
-  const roomIds = (rms || []).map((r: any) => r.id);
+  if (contractIds.length > 0) {
+    orParts.push(`id.in.(${contractIds.join(",")})`);
+  }
   if (roomIds.length > 0) {
     orParts.push(`room_id.in.(${roomIds.join(",")})`);
   }
@@ -443,33 +450,27 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
       in30d.setDate(in30d.getDate() + 30);
       const in30 = toLocalISODate(in30d);
 
-      const results = await Promise.all([
-        contractHeadCountBase(buildingIds),
-        contractHeadCountBase(buildingIds)
-          .not("status", "in", "(TERMINATED,TRANSFERRED,DRAFT)")
-          .is("expected_move_out_date", null)
-          .gte("end_date", today)
-          .lte("end_date", in30),
-        contractHeadCountBase(buildingIds)
-          .not("status", "in", "(TERMINATED,TRANSFERRED,DRAFT)")
-          .is("expected_move_out_date", null)
-          .lt("end_date", today),
-        contractHeadCountBase(buildingIds).eq("status", "TERMINATED"),
-      ]);
-
-      for (const r of results) {
-        if (r.error) {
-          console.error("useContractStats error:", r.error);
-          throw r.error;
-        }
+      // 1 RPC thay 4 HEAD-count (migration 20260705210000) — bớt 3 request +
+      // 3 lần plan RLS mỗi lần tải trang. SECURITY INVOKER nên RLS như cũ;
+      // p_today/p_in30 truyền từ FE để giữ đúng local-date (không lệch TZ).
+      const { data, error } = await (supabase.rpc as any)(
+        "get_contract_stats",
+        {
+          p_building_ids: buildingIds?.length ? buildingIds : null,
+          p_today: today,
+          p_in30: in30,
+        },
+      );
+      if (error) {
+        console.error("useContractStats error:", error);
+        throw error;
       }
-
-      const [total, expiring, expired, terminated] = results;
+      const row = (data ?? {}) as Record<string, number>;
       return {
-        total: total.count ?? 0,
-        expiring: expiring.count ?? 0,
-        expired: expired.count ?? 0,
-        terminated: terminated.count ?? 0,
+        total: Number(row.total) || 0,
+        expiring: Number(row.expiring) || 0,
+        expired: Number(row.expired) || 0,
+        terminated: Number(row.terminated) || 0,
       };
     },
   });
