@@ -71,6 +71,70 @@ export function useRequestLeave() {
   });
 }
 
+// ───────────────── Phép — chủ duyệt (admin) ─────────────────
+export interface PendingLeaveRequest {
+  user_id: string;
+  work_date: string;
+  reason: string | null;
+  requested_at: string | null;
+  staff_name: string;
+}
+
+/** Danh sách đơn xin phép đang chờ duyệt (status='pending_leave') — RLS chỉ trả đủ cho admin. */
+export function usePendingLeaveRequests(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["v5-pending-leaves"],
+    enabled,
+    queryFn: async (): Promise<PendingLeaveRequest[]> => {
+      const { data, error } = await (supabase
+        .from("salary_attendance_day" as any)
+        .select("user_id, work_date, evidence") as any)
+        .eq("status", "pending_leave")
+        .order("work_date", { ascending: true });
+      if (error) throw error;
+      const rows = (data ?? []) as any[];
+      const staffIds = [...new Set(rows.map((r) => r.user_id))];
+      let nameById = new Map<string, string>();
+      if (staffIds.length) {
+        const { data: profiles } = await (supabase.from("profiles" as any).select("id, full_name") as any).in("id", staffIds);
+        nameById = new Map(((profiles ?? []) as any[]).map((p) => [p.id, p.full_name]));
+      }
+      return rows.map((r) => {
+        const evidence = Array.isArray(r.evidence) ? r.evidence : [];
+        const leaveEvents = evidence.filter((e: any) => e?.kind === "leave_request");
+        const last = leaveEvents[leaveEvents.length - 1];
+        return {
+          user_id: r.user_id,
+          work_date: r.work_date,
+          reason: last?.reason ?? null,
+          requested_at: last?.at ?? null,
+          staff_name: nameById.get(r.user_id) ?? "Nhân viên",
+        };
+      });
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useApproveLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { user: string; date: string; approve: boolean }) => {
+      const { data, error } = await rpc("approve_leave", {
+        p_user: args.user,
+        p_date: args.date,
+        p_approve: args.approve,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["v5-pending-leaves"] });
+      qc.invalidateQueries({ queryKey: ["manager-salary"] });
+    },
+  });
+}
+
 // ───────────────── Phiên kiểm tra nhà ─────────────────
 export interface InspectionChecklistItem {
   key: string; label: string; required: boolean; done: boolean;

@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Wallet, Eye, Settings } from "lucide-react";
+import { Wallet, Eye, Settings, CalendarCheck } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
@@ -12,9 +12,11 @@ import {
   useLockSalaryMonth, useUnlockSalaryMonth, useSalaryPayout,
 } from "@/hooks/useManagerSalary";
 import { useBonusRules } from "@/hooks/useSalaryConfig";
+import { usePendingLeaveRequests } from "@/hooks/useMyDay";
 import SalaryMonthly, { type SalaryAccount, type SalAdjustPayload } from "@/components/salary/SalaryMonthly";
 import SalaryLedger from "@/components/salary/SalaryLedger";
 import SalaryConfig from "@/components/salary/SalaryConfig";
+import SalaryLeaveRequests from "@/components/salary/SalaryLeaveRequests";
 import SalarySelf from "@/components/salary/SalarySelf";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import SalaryAdminMobile from "@/components/salary/SalaryAdminMobile";
@@ -81,7 +83,7 @@ export default function ManagerSalaryPage() {
   const isAdmin = !!(perms as any)?.__superadmin || canLock || canManageSalary || canPay;
 
   const [periodMonth, setPeriodMonth] = usePersistedState<string>("flt:salary-manager:period", currentPeriodMonth());
-  const [tab, setTab] = usePersistedState<"sheet" | "ledger" | "config">("flt:salary-manager:tab", "sheet");
+  const [tab, setTab] = usePersistedState<"sheet" | "ledger" | "leave" | "config">("flt:salary-manager:tab", "sheet");
   const [view, setView] = useState<"admin" | "self">("admin");
   const [selfId, setSelfId] = useState<string | null>(null);
   const [ledgerFilter, setLedgerFilter] = useState<{ who?: string } | null>(null);
@@ -118,6 +120,8 @@ export default function ManagerSalaryPage() {
       return ((data || []) as any[]).map((a) => ({ id: a.id, name: a.name }));
     },
   });
+
+  const { data: pendingLeaves = [] } = usePendingLeaveRequests(isAdmin);
 
   const saveAdj = useSaveSalaryAdjustment();
   const delAdj = useDeleteSalaryAdjustment();
@@ -241,11 +245,17 @@ export default function ManagerSalaryPage() {
             <div className="sal-tabs">
               <button className="sal-tab" data-active={tab === "sheet"} onClick={() => setTab("sheet")}><Wallet size={16} />Bảng lương tháng</button>
               <button className="sal-tab" data-active={tab === "ledger"} onClick={() => setTab("ledger")}><Eye size={16} />Bảng kê công việc<span className="sal-tabcount">{ledgerAll.length}</span></button>
+              <button className="sal-tab" data-active={tab === "leave"} onClick={() => setTab("leave")}>
+                <CalendarCheck size={16} />Đơn xin nghỉ
+                {pendingLeaves.length > 0 && <span className="sal-tabcount">{pendingLeaves.length}</span>}
+              </button>
               {canManageSalary && <button className="sal-tab" data-active={tab === "config"} onClick={() => setTab("config")}><Settings size={16} />Cấu hình</button>}
             </div>
 
             {isLoading ? (
               <div className="sal-card"><div style={{ padding: 40, textAlign: "center", color: "hsl(var(--muted-foreground))" }}>Đang tải bảng lương...</div></div>
+            ) : tab === "leave" ? (
+              <SalaryLeaveRequests />
             ) : managers.length === 0 ? (
               <div className="sal-card"><div className="sal-empty">
                 <span className="ec"><Wallet size={28} /></span>
