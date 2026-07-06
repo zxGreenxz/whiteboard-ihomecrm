@@ -33,11 +33,23 @@ import {
   useCancelIncomeExpense,
   useRestoreIncomeExpense,
   useApproveVoucher,
+  useQuickUpdateIncomeExpense,
   useCancelIncomeExpenseBatch,
   EMPTY_INCOME_EXPENSE_FILTERS,
   type IncomeExpenseWithRelations,
   type IncomeExpenseFilters,
 } from "@/hooks/useIncomeExpenses";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { usePagination } from "@/hooks/usePagination";
 import { MOBILE_FIRST_PAGE_SIZE } from "@/lib/listPageSizes";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
@@ -147,6 +159,8 @@ export default function IncomeExpenseMobilePage() {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
+  const [approveAccountId, setApproveAccountId] = useState<string>("");
+  const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
@@ -216,7 +230,25 @@ export default function IncomeExpenseMobilePage() {
   const cancelMutation = useCancelIncomeExpense();
   const restoreMutation = useRestoreIncomeExpense();
   const approveMutation = useApproveVoucher();
+  const quickUpdateMutation = useQuickUpdateIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
+  const { data: accounts = [] } = useAccounts();
+  const { data: authUser } = useAuth();
+
+  const approveVoucher =
+    approveTarget !== null
+      ? vouchers.find((v) => v.id === approveTarget) ?? null
+      : null;
+
+  useEffect(() => {
+    if (approveTarget && approveVoucher) {
+      setApproveAccountId(approveVoucher.account_id ?? "");
+      setApproveAttachments(approveVoucher.attachments ?? []);
+    } else if (!approveTarget) {
+      setApproveAccountId("");
+      setApproveAttachments([]);
+    }
+  }, [approveTarget, approveVoucher]);
 
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
@@ -759,11 +791,58 @@ export default function IncomeExpenseMobilePage() {
               chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="approve-account">Sổ quỹ</Label>
+              <Select
+                value={approveAccountId}
+                onValueChange={setApproveAccountId}
+              >
+                <SelectTrigger id="approve-account">
+                  <SelectValue placeholder="Chọn sổ quỹ" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ảnh chứng từ</Label>
+              <AttachmentUpload
+                attachments={approveAttachments}
+                onChange={setApproveAttachments}
+                userId={authUser?.id ?? approveVoucher?.user_id ?? ""}
+              />
+            </div>
+          </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (approveTarget) approveMutation.mutate(approveTarget);
+              disabled={quickUpdateMutation.isPending}
+              onClick={async () => {
+                if (!approveTarget) return;
+                const id = approveTarget;
+                const accountChanged =
+                  approveAccountId !== (approveVoucher?.account_id ?? "");
+                const attachmentsChanged =
+                  JSON.stringify(approveAttachments) !==
+                  JSON.stringify(approveVoucher?.attachments ?? []);
+                if (accountChanged || attachmentsChanged) {
+                  await quickUpdateMutation.mutateAsync({
+                    id,
+                    account_id: approveAccountId || null,
+                    attachments: approveAttachments,
+                    notes: approveVoucher?.notes ?? null,
+                  });
+                }
+                approveMutation.mutate(id);
                 setApproveTarget(null);
               }}
               className="bg-green-600 hover:bg-green-700"
