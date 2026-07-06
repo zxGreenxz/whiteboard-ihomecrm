@@ -60,7 +60,7 @@ interface IncomeExpenseListProps {
   /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho người tạo phiếu
    *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
-  onApprove?: (id: string) => void;
+  onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
   onVerify?: (voucher: IncomeExpenseWithRelations) => void;
@@ -318,7 +318,7 @@ const IncomeExpenseList = ({
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                        onClick={() => onApprove(voucher.id)}
+                        onClick={() => onApprove(voucher)}
                         title="Duyệt phiếu (đã thanh toán)"
                       >
                         <CheckCircle2 className="h-4 w-4" />

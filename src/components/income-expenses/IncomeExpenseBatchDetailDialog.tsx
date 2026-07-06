@@ -45,7 +45,7 @@ interface Props {
   /** Huỷ 1 phiếu con riêng lẻ (khác với huỷ cả đợt). */
   onCancelVoucher?: (voucherId: string) => void;
   /** Duyệt 1 phiếu con (nếu còn nháp). */
-  onApproveVoucher?: (voucherId: string) => void;
+  onApproveVoucher?: (voucher: IncomeExpenseWithRelations) => void;
 }
 
 const formatVND = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
@@ -438,9 +438,9 @@ export function IncomeExpenseBatchDetailDialog({
         }
         onApprove={
           onApproveVoucher
-            ? (id) => {
+            ? (v) => {
                 setChildVoucher(null);
-                onApproveVoucher(id);
+                onApproveVoucher(v);
               }
             : undefined
         }

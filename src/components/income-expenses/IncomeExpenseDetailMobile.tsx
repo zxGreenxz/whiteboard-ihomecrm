@@ -32,7 +32,7 @@ interface Props {
   onClose: () => void;
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
-  onApprove?: (id: string) => void;
+  onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   onCancel?: (id: string) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
@@ -173,7 +173,7 @@ export function IncomeExpenseDetailMobile({
                 style={{ background: "#16a34a" }}
                 aria-label="Duyệt"
                 onClick={() => {
-                  onApprove(v.id);
+                  onApprove(v);
                   onClose();
                 }}
               >

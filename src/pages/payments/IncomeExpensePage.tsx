@@ -13,6 +13,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
+import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/hooks/useAuth";
 import { Plus, Upload, Search, Receipt, ListFilter, RefreshCcw, ChevronDown, Layers, FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -40,6 +51,7 @@ import {
   useRestoreIncomeExpense,
   useApproveVoucher,
   useUnapproveVoucher,
+  useQuickUpdateIncomeExpense,
   useGenerateRecurringVouchers,
   useStopRecurring,
   useIncomeExpenseBatches,
@@ -100,7 +112,11 @@ const IncomeExpenseDesktopPage = () => {
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
-  const [approveTarget, setApproveTarget] = useState<string | null>(null);
+  const [approveTarget, setApproveTarget] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  // Duyệt phiếu: cho bổ sung/đổi sổ quỹ + đính kèm ngay trước khi ghi vào tồn quỹ.
+  const [approveAccountId, setApproveAccountId] = useState<string>("");
+  const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
   const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
@@ -165,8 +181,20 @@ const IncomeExpenseDesktopPage = () => {
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
   const unapproveMutation = useUnapproveVoucher();
+  const quickUpdateMutation = useQuickUpdateIncomeExpense();
   const generateRecurringMutation = useGenerateRecurringVouchers();
   const stopRecurringMutation = useStopRecurring();
+
+  const { data: accounts = [] } = useAccounts();
+  const { data: authUser } = useAuth();
+
+  // Nạp giá trị hiện tại của phiếu mỗi khi mở hộp thoại duyệt.
+  useEffect(() => {
+    if (approveTarget) {
+      setApproveAccountId(approveTarget.account_id ?? "");
+      setApproveAttachments(approveTarget.attachments ?? []);
+    }
+  }, [approveTarget]);
 
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
@@ -246,16 +274,38 @@ const IncomeExpenseDesktopPage = () => {
     if (!open) setVerifyVoucher(null);
   }, []);
 
-  const handleApproveVoucher = useCallback((id: string) => {
-    setApproveTarget(id);
-  }, []);
+  const handleApproveVoucher = useCallback(
+    (voucher: IncomeExpenseWithRelations) => {
+      setApproveTarget(voucher);
+    },
+    []
+  );
 
-  const confirmApprove = useCallback(() => {
-    if (approveTarget) {
-      approveMutation.mutate(approveTarget);
+  // Nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
+  // (update_income_expense_quick chỉ áp cho phiếu nháp) rồi mới ghi vào tồn quỹ.
+  const confirmApprove = useCallback(async () => {
+    const target = approveTarget;
+    if (!target) return;
+    const nextAccountId = approveAccountId || null;
+    const accountChanged = nextAccountId !== (target.account_id ?? null);
+    const prevAttachments = target.attachments ?? [];
+    const attachmentsChanged =
+      JSON.stringify(prevAttachments) !== JSON.stringify(approveAttachments);
+    try {
+      if (accountChanged || attachmentsChanged) {
+        await quickUpdateMutation.mutateAsync({
+          id: target.id,
+          account_id: nextAccountId,
+          attachments: approveAttachments,
+          notes: target.notes ?? null,
+        });
+      }
+      await approveMutation.mutateAsync(target.id);
+      setApproveTarget(null);
+    } catch {
+      // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
     }
-    setApproveTarget(null);
-  }, [approveTarget, approveMutation]);
+  }, [approveTarget, approveAccountId, approveAttachments, approveMutation, quickUpdateMutation]);
 
   const handleUnapproveVoucher = useCallback((id: string) => {
     setUnapproveTarget(id);
@@ -597,9 +647,11 @@ const IncomeExpenseDesktopPage = () => {
 
       <AlertDialog
         open={!!approveTarget}
-        onOpenChange={() => setApproveTarget(null)}
+        onOpenChange={(o) => {
+          if (!o) setApproveTarget(null);
+        }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
             <AlertDialogDescription>
@@ -607,13 +659,57 @@ const IncomeExpenseDesktopPage = () => {
               còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="approve-account">Sổ quỹ</Label>
+              <Select
+                value={approveAccountId}
+                onValueChange={setApproveAccountId}
+              >
+                <SelectTrigger id="approve-account">
+                  <SelectValue placeholder="Chọn sổ quỹ" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Bổ sung hoặc đổi sổ quỹ ghi nhận phiếu này trước khi duyệt.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Hình ảnh đính kèm</Label>
+              <AttachmentUpload
+                attachments={approveAttachments}
+                onChange={setApproveAttachments}
+                userId={authUser?.id ?? approveTarget?.user_id ?? ""}
+              />
+            </div>
+          </div>
+
           <AlertDialogFooter>
-            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogCancel
+              disabled={approveMutation.isPending || quickUpdateMutation.isPending}
+            >
+              Đóng
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmApprove}
+              onClick={(e) => {
+                e.preventDefault();
+                confirmApprove();
+              }}
+              disabled={approveMutation.isPending || quickUpdateMutation.isPending}
               className="bg-green-600 hover:bg-green-700"
             >
-              Duyệt phiếu
+              {approveMutation.isPending || quickUpdateMutation.isPending
+                ? "Đang duyệt…"
+                : "Duyệt phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

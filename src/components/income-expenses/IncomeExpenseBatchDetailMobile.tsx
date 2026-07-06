@@ -19,7 +19,7 @@ interface Props {
   onCancelBatch?: (batchId: string) => void;
   onEditVoucher?: (voucher: IncomeExpenseWithRelations) => void;
   onCancelVoucher?: (voucherId: string) => void;
-  onApproveVoucher?: (voucherId: string) => void;
+  onApproveVoucher?: (voucher: IncomeExpenseWithRelations) => void;
 }
 
 const fmtVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -295,9 +295,9 @@ export function IncomeExpenseBatchDetailMobile({
           }
           onApprove={
             onApproveVoucher
-              ? (id) => {
+              ? (v) => {
                   setChild(null);
-                  onApproveVoucher(id);
+                  onApproveVoucher(v);
                 }
               : undefined
           }

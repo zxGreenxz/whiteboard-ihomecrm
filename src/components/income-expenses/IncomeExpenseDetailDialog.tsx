@@ -42,7 +42,7 @@ interface Props {
   /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho creator của
    *  phiếu đã ghi nhận/đã huỷ, không cần super admin. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
-  onApprove?: (id: string) => void;
+  onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
@@ -208,7 +208,7 @@ export function IncomeExpenseDetailDialog({
                   className="h-8 w-8 bg-green-600 hover:bg-green-700"
                   title="Duyệt phiếu (đã thanh toán)"
                   onClick={() => {
-                    onApprove(voucher.id);
+                    onApprove(voucher);
                     onOpenChange(false);
                   }}
                 >
