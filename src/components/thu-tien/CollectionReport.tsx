@@ -22,6 +22,20 @@ interface Props {
 type TimeSel = 'all' | 'today' | 'date';
 type MethodSel = 'all' | 'TM' | 'TT' | 'TK';
 
+// Giờ:phút theo múi giờ VN (created_at là timestamp UTC) — robust kể cả máy
+// đặt sai TZ. Trả '' nếu không có/không parse được.
+const clockFmt = new Intl.DateTimeFormat('vi-VN', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'Asia/Ho_Chi_Minh',
+});
+const fmtClock = (iso?: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : clockFmt.format(d);
+};
+
 const bName = (inv: InvoiceWithRelations) => inv.building?.name ?? '—';
 const byBuildingRoom = (a: InvoiceWithRelations, z: InvoiceWithRelations) =>
   bName(a) === bName(z)
@@ -80,6 +94,23 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
   };
   const scopeCollected = (inv: InvoiceWithRelations) => collectedOf(inv).sum;
   const inScope = (inv: InvoiceWithRelations) => collectedOf(inv).has;
+  // Thời điểm thu của phiếu thu MỚI NHẤT khớp phạm vi (thời gian + phương thức):
+  //  - Lọc kỳ  → "dd/mm HH:MM" (ngày/tháng payment_date + giờ created_at)
+  //  - Lọc ngày/hôm nay → "HH:MM" (ngày đã ở tiêu đề)
+  const scopeStampLabel = (inv: InvoiceWithRelations): string => {
+    let best: { payment_date: string; created_at?: string } | null = null;
+    for (const p of inv.payments ?? []) {
+      const inWindow = tSel === 'all' || (p.payment_date >= scopeDay && p.payment_date <= scopeDay);
+      if (inWindow && (mSel === 'all' || p.payment_method === mSel)) {
+        if (!best || (p.created_at ?? '') > (best.created_at ?? '')) best = p;
+      }
+    }
+    if (!best) return '';
+    const clock = fmtClock(best.created_at);
+    if (tSel !== 'all') return clock;
+    const dm = best.payment_date.split('-').reverse().slice(0, 2).join('/');
+    return clock ? `${dm} ${clock}` : dm;
+  };
   // Lọc theo phương thức = xem tiền đã thu theo TM/TT/TK → phần "Chưa thu"
   // (không phụ thuộc phương thức) ẩn đi cho khỏi gây nhiễu.
   const showDue = mSel === 'all';
@@ -106,9 +137,14 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
       : tSel === 'today'
         ? 'Hôm nay'
         : `Ngày ${day.split('-').reverse().slice(0, 2).join('/')}`;
-  // Nhãn thời gian rút gọn cho khung hẹp (mobile): "Cả kỳ Th7/2026" → "7/2026".
+  // Nhãn thời gian rút gọn cho ô lọc hẹp (bối cảnh đầy đủ vẫn ở dòng phụ):
+  //  "Cả kỳ Th7/2026" → "7/2026" · "Ngày 05/07" → "05/07" · "Hôm nay" giữ nguyên.
   const timeNameShort =
-    tSel === 'all' ? billingMonth.split('-').reverse().map(Number).join('/') : timeName;
+    tSel === 'all'
+      ? billingMonth.split('-').reverse().map(Number).join('/')
+      : tSel === 'date'
+        ? day.split('-').reverse().slice(0, 2).join('/')
+        : timeName;
 
   const dueByBuilding = buildings
     .map((b) => ({ b, rows: dueRows.filter((r) => bName(r) === b.name) }))
@@ -249,6 +285,10 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
                           {full ? 'Thu đủ' : `Thiếu ${fmtK(remainingOf(r))}`}
                         </span>
                       </div>
+                      {(() => {
+                        const when = scopeStampLabel(r);
+                        return when ? <span className="rp-when">{when}</span> : null;
+                      })()}
                       <span className="rp-amt">{fmtFull(scopeCollected(r))}</span>
                     </div>
                   </div>

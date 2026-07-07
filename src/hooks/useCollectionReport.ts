@@ -10,8 +10,8 @@
 // THU_TIEN_SELECT chỉ chứa đúng cột trang này dùng (xem lib/collect.ts):
 //   - KHÔNG kéo invoice_items (chỉ InvoiceDetailCard cần → useInvoiceItemsLite
 //     lazy khi mở drawer đầy đủ)
-//   - payments giữ (id, amount, payment_date, payment_method) cho lọc theo
-//     ngày + phương thức (TM/TT/TK) + Hoàn tác
+//   - payments giữ (id, amount, payment_date, payment_method, created_at) cho
+//     lọc theo ngày + phương thức (TM/TT/TK) + Hoàn tác + hiển thị giờ thu
 //   - KHÔNG count:'exact'
 // =============================================
 
@@ -34,7 +34,7 @@ const THU_TIEN_SELECT = `
   ),
   building:buildings!invoices_building_id_fkey (id, name, name_sort, default_account_id_tt, default_account_id_tk),
   room:rooms!invoices_room_id_fkey (id, name, name_sort),
-  payments (id, amount, payment_date, payment_method)
+  payments (id, amount, payment_date, payment_method, created_at)
 `;
 
 /** 1 query hoá đơn/kỳ (mọi toà) dùng chung cho cả trang Thu tiền. */
