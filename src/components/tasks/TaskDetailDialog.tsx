@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { FileText, X, ChevronLeft, ChevronRight } from "lucide-react";
@@ -63,6 +63,8 @@ export default function TaskDetailDialog({
 }: TaskDetailDialogProps) {
   const isMobile = useIsMobile();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  const zoomWrapRef = useRef<HTMLDivElement | null>(null);
 
   const attachments = job?.attachments ?? [];
   const isLightboxOpen = lightboxIdx !== null;
@@ -105,6 +107,213 @@ export default function TaskDetailDialog({
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [isLightboxOpen, hasMultiple]);
+
+  // Pinch/kéo để phóng to ảnh trong lightbox (chỉ ảnh, không áp cho PDF).
+  // Dùng listener native passive:false để preventDefault ăn (React gắn passive).
+  useEffect(() => {
+    const el = zoomWrapRef.current;
+    if (!el || !lightboxUrl || isPdf(lightboxUrl)) return;
+
+    const MAX = 6;
+    const cur = { s: 1, tx: 0, ty: 0 };
+    const geo = { cx: 0, cy: 0, vw: 0, vh: 0, ow: 0, oh: 0 };
+    let mode: "none" | "pinch" | "pan" = "none";
+    let startDist = 1;
+    let startScale = 1;
+    let startTx = 0;
+    let startTy = 0;
+    let panStartX = 0;
+    let panStartY = 0;
+    let moved = false;
+    let lastTap = 0;
+    let lastTapX = 0;
+    let lastTapY = 0;
+
+    const readGeom = () => {
+      const b = backdropRef.current?.getBoundingClientRect();
+      if (b) {
+        geo.cx = b.left + b.width / 2;
+        geo.cy = b.top + b.height / 2;
+        geo.vw = b.width;
+        geo.vh = b.height;
+      }
+      geo.ow = el.offsetWidth;
+      geo.oh = el.offsetHeight;
+    };
+
+    const clampT = (s: number, tx: number, ty: number) => {
+      const maxX = Math.max(0, (s * geo.ow - geo.vw) / 2);
+      const maxY = Math.max(0, (s * geo.oh - geo.vh) / 2);
+      return {
+        tx: Math.min(maxX, Math.max(-maxX, tx)),
+        ty: Math.min(maxY, Math.max(-maxY, ty)),
+      };
+    };
+
+    const apply = (smooth = false) => {
+      el.style.transition = smooth ? "transform 140ms ease-out" : "none";
+      el.style.transform = `translate(${cur.tx}px, ${cur.ty}px) scale(${cur.s})`;
+      el.style.cursor = cur.s > 1 ? "grab" : "zoom-in";
+    };
+
+    // Phóng quanh 1 điểm màn hình (mx,my) từ s0→s1, giữ điểm đó cố định.
+    const zoomAround = (mx: number, my: number, s1: number, smooth = false) => {
+      const s0 = cur.s;
+      s1 = Math.min(MAX, Math.max(1, s1));
+      const dx = mx - geo.cx;
+      const dy = my - geo.cy;
+      const tx = dx * (1 - s1 / s0) + (s1 / s0) * cur.tx;
+      const ty = dy * (1 - s1 / s0) + (s1 / s0) * cur.ty;
+      cur.s = s1;
+      const c = clampT(s1, tx, ty);
+      cur.tx = s1 <= 1.001 ? 0 : c.tx;
+      cur.ty = s1 <= 1.001 ? 0 : c.ty;
+      apply(smooth);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      readGeom();
+      moved = false;
+      if (e.touches.length === 2) {
+        const [a, b] = [e.touches[0], e.touches[1]];
+        mode = "pinch";
+        startDist =
+          Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+        startScale = cur.s;
+        startTx = cur.tx;
+        startTy = cur.ty;
+      } else if (e.touches.length === 1) {
+        mode = cur.s > 1 ? "pan" : "none";
+        panStartX = e.touches[0].clientX;
+        panStartY = e.touches[0].clientY;
+        startTx = cur.tx;
+        startTy = cur.ty;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (mode === "pinch" && e.touches.length >= 2) {
+        e.preventDefault();
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const dist =
+          Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+        const mx = (a.clientX + b.clientX) / 2;
+        const my = (a.clientY + b.clientY) / 2;
+        const s1 = Math.min(MAX, Math.max(1, (startScale * dist) / startDist));
+        const dx = mx - geo.cx;
+        const dy = my - geo.cy;
+        const tx = dx * (1 - s1 / startScale) + (s1 / startScale) * startTx;
+        const ty = dy * (1 - s1 / startScale) + (s1 / startScale) * startTy;
+        cur.s = s1;
+        const c = clampT(s1, tx, ty);
+        cur.tx = c.tx;
+        cur.ty = c.ty;
+        apply();
+        moved = true;
+      } else if (mode === "pan" && e.touches.length === 1) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - panStartX;
+        const dy = e.touches[0].clientY - panStartY;
+        const c = clampT(cur.s, startTx + dx, startTy + dy);
+        cur.tx = c.tx;
+        cur.ty = c.ty;
+        apply();
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        // Từ pinch (2 ngón) rớt còn 1 ngón → chuyển sang kéo.
+        readGeom();
+        mode = cur.s > 1 ? "pan" : "none";
+        panStartX = e.touches[0].clientX;
+        panStartY = e.touches[0].clientY;
+        startTx = cur.tx;
+        startTy = cur.ty;
+        return;
+      }
+      if (e.touches.length > 0) return;
+
+      const t = e.changedTouches[0];
+      if (!moved && mode !== "pinch" && t) {
+        const now = Date.now();
+        if (
+          now - lastTap < 300 &&
+          Math.abs(t.clientX - lastTapX) < 30 &&
+          Math.abs(t.clientY - lastTapY) < 30
+        ) {
+          readGeom();
+          zoomAround(t.clientX, t.clientY, cur.s > 1 ? 1 : 2.5, true);
+          lastTap = 0;
+        } else {
+          lastTap = now;
+          lastTapX = t.clientX;
+          lastTapY = t.clientY;
+        }
+      }
+      if (cur.s <= 1.02) {
+        cur.s = 1;
+        cur.tx = 0;
+        cur.ty = 0;
+        apply(true);
+      }
+      mode = "none";
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      readGeom();
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      zoomAround(e.clientX, e.clientY, cur.s * factor);
+    };
+
+    const onDblClick = (e: MouseEvent) => {
+      readGeom();
+      zoomAround(e.clientX, e.clientY, cur.s > 1 ? 1 : 2.5, true);
+    };
+
+    // Kéo ảnh bằng chuột khi đã phóng to (desktop).
+    const onMouseDown = (e: MouseEvent) => {
+      if (cur.s <= 1 || e.button !== 0) return;
+      e.preventDefault();
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const baseTx = cur.tx;
+      const baseTy = cur.ty;
+      readGeom();
+      el.style.cursor = "grabbing";
+      const move = (ev: MouseEvent) => {
+        const c = clampT(cur.s, baseTx + (ev.clientX - sx), baseTy + (ev.clientY - sy));
+        cur.tx = c.tx;
+        cur.ty = c.ty;
+        apply();
+      };
+      const up = () => {
+        el.style.cursor = cur.s > 1 ? "grab" : "zoom-in";
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    };
+
+    apply();
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("dblclick", onDblClick);
+    el.addEventListener("mousedown", onMouseDown);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("dblclick", onDblClick);
+      el.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [lightboxUrl]);
 
   if (!job) return null;
 
@@ -348,7 +557,8 @@ export default function TaskDetailDialog({
       {lightboxUrl &&
         createPortal(
           <div
-            className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
+            ref={backdropRef}
+            className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center overflow-hidden pointer-events-auto"
             onClick={closeLightbox}
           >
           <button
@@ -398,12 +608,23 @@ export default function TaskDetailDialog({
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <StorageImage
-              value={lightboxUrl}
-              alt="Đính kèm phóng lớn"
-              className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
+            <div
+              ref={zoomWrapRef}
+              className="inline-flex"
+              style={{
+                transformOrigin: "center center",
+                touchAction: "none",
+                willChange: "transform",
+              }}
               onClick={(e) => e.stopPropagation()}
-            />
+            >
+              <StorageImage
+                value={lightboxUrl}
+                alt="Đính kèm phóng lớn"
+                draggable={false}
+                className="max-w-[95vw] max-h-[90vh] object-contain rounded-md shadow-2xl select-none pointer-events-none"
+              />
+            </div>
           )}
           </div>,
           document.body,
