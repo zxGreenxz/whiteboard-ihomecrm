@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { FileText, X, ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -344,11 +345,12 @@ export default function TaskDetailDialog({
         </DialogContent>
       </Dialog>
 
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
-          onClick={closeLightbox}
-        >
+      {lightboxUrl &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-6 pointer-events-auto"
+            onClick={closeLightbox}
+          >
           <button
             type="button"
             className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/20 rounded-full p-2"
@@ -403,8 +405,9 @@ export default function TaskDetailDialog({
               onClick={(e) => e.stopPropagation()}
             />
           )}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
