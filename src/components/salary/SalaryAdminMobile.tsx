@@ -5,6 +5,7 @@
 // bằng usePhoneViewport ở ManagerSalaryPage.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   Wallet, User, Zap, Settings, ChevronLeft, ChevronRight, RefreshCw, BarChart3,
   Lock, Unlock, HandCoins, X, Check, Info, AlertTriangle, Plus, Minus, Gift,
@@ -14,6 +15,7 @@ import { salFmt, salShort } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import SalaryConfig from "./SalaryConfig";
 import SalarySelfMobile from "./SalarySelfMobile";
+import { usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } from "@/hooks/useMyDay";
 import type { SalManager, SalAdjustment, SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
 
@@ -177,11 +179,11 @@ function EmptyScreen({ period, onBack, onRecompute, onPrevMonth, onNextMonth, re
 }
 
 // ───────────────────────── HOME (Lương) ─────────────────────────
-function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock, recomputing, onBack, onRecompute, onPrevMonth, onNextMonth, onOpenBreakdown, onOpenBatch, onOpenClose }: {
+function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock, recomputing, pendingLeaveCount, onBack, onRecompute, onPrevMonth, onNextMonth, onOpenBreakdown, onOpenBatch, onOpenClose, onOpenLeave }: {
   managers: SalManager[]; period: { label: string; year: number }; locked: boolean;
-  totals: Totals; metrics: Metrics; canPay: boolean; canLock: boolean; recomputing: boolean;
+  totals: Totals; metrics: Metrics; canPay: boolean; canLock: boolean; recomputing: boolean; pendingLeaveCount: number;
   onBack: () => void; onRecompute: () => void; onPrevMonth: () => void; onNextMonth: () => void;
-  onOpenBreakdown: (m: SalManager) => void; onOpenBatch: () => void; onOpenClose: () => void;
+  onOpenBreakdown: (m: SalManager) => void; onOpenBatch: () => void; onOpenClose: () => void; onOpenLeave: () => void;
 }) {
   const treasury = useCountUp(totals.take, [totals.take]);
   const { N, readyPct, doneSteps, unpaidCount, overCount, withGoalCount } = metrics;
@@ -257,6 +259,22 @@ function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock
           </div>
         </div>
       </div>
+
+      {/* đơn xin nghỉ chờ duyệt */}
+      {pendingLeaveCount > 0 && (
+        <button onClick={onOpenLeave}
+          className="flex items-center gap-3.5 mx-3.5 mt-[9px] px-4 py-[15px] rounded-[20px] text-left"
+          style={{ background: "rgba(255,210,63,.08)", border: "1px solid rgba(255,210,63,.28)" }}>
+          <span className="w-[46px] h-[46px] rounded-full grid place-items-center shrink-0" style={{ background: "rgba(255,210,63,.16)", color: "#FFD23F" }}>
+            <CalendarCheck size={20} />
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-bold text-[#EDEAF7]">Đơn xin nghỉ chờ duyệt</div>
+            <div className="text-[11px] text-[#9A8FC4] mt-0.5">Chạm để duyệt hoặc từ chối</div>
+          </div>
+          <span className="w-6 h-6 rounded-full grid place-items-center font-extrabold text-[12px] shrink-0" style={{ background: "#FFD23F", color: "#17132A" }}>{pendingLeaveCount}</span>
+        </button>
+      )}
 
       {/* team roster */}
       <div className="flex items-center justify-between mx-[18px] mt-[18px] mb-2.5">
@@ -682,6 +700,56 @@ function CloseSheet({ locked, period, unpaidCount, onClose, onConfirm }: {
   );
 }
 
+// ───────────────────────── ĐƠN XIN NGHỈ (Sheet) ─────────────────────────
+function LeaveSheet({ rows, decidingKey, onClose, onDecide }: {
+  rows: PendingLeaveRequest[]; decidingKey: string | null; onClose: () => void;
+  onDecide: (userId: string, workDate: string, approve: boolean) => void;
+}) {
+  const dmy = (iso: string) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
+  return (
+    <Sheet onClose={onClose}>
+      <div className="flex items-center gap-2.5 mb-3.5">
+        <span className="w-10 h-10 rounded-[12px] grid place-items-center" style={{ background: "rgba(255,210,63,.16)", color: "#FFD23F" }}><CalendarCheck size={20} /></span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[15px] font-extrabold text-[#EDEAF7]">Đơn xin nghỉ có lương</div>
+          <div className="text-[11px] text-[#9A8FC4]">{rows.length} đơn đang chờ duyệt</div>
+        </div>
+        <button onClick={onClose} className="w-8 h-8 rounded-[10px] grid place-items-center" style={{ background: "#17132A", border: "1px solid #322A55", color: "#9A8FC4" }}><X size={16} strokeWidth={2.5} /></button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="rounded-[16px] px-5 py-10 text-center text-[13px] text-[#9A8FC4]" style={{ background: "#17132A", border: "1px solid #322A55" }}>
+          Không còn đơn nào chờ duyệt.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[9px]">
+          {rows.map((r) => {
+            const key = `${r.user_id}-${r.work_date}`;
+            const pending = decidingKey === key;
+            return (
+              <div key={key} className="px-[15px] py-[13px] rounded-[16px]" style={{ background: "#17132A", border: "1px solid #322A55" }}>
+                <div className="text-[13.5px] font-bold text-[#EDEAF7] truncate">{r.staff_name}</div>
+                <div className="text-[11px] text-[#9A8FC4] truncate mt-0.5">Ngày {dmy(r.work_date)}{r.reason ? " · " + r.reason : ""}</div>
+                <div className="flex gap-2 mt-2.5">
+                  <button disabled={pending} onClick={() => onDecide(r.user_id, r.work_date, false)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12.5px] font-semibold rounded-[11px] py-2.5"
+                    style={{ color: "#FFB3C6", background: "rgba(255,122,160,.12)", border: "1px solid rgba(255,122,160,.28)", opacity: pending ? .6 : 1 }}>
+                    <X size={14} />Từ chối
+                  </button>
+                  <button disabled={pending} onClick={() => onDecide(r.user_id, r.work_date, true)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12.5px] font-bold rounded-[11px] py-2.5"
+                    style={{ color: "#17132A", background: "#FFD23F", border: "none", opacity: pending ? .6 : 1 }}>
+                    <Check size={14} />Duyệt
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
 // ───────────────────────── root ─────────────────────────
 type Tab = "home" | "member" | "log" | "config";
 type SheetState =
@@ -690,6 +758,7 @@ type SheetState =
   | { kind: "adjust"; m: SalManager; edit?: SalAdjustment | null }
   | { kind: "batch" }
   | { kind: "close" }
+  | { kind: "leave" }
   | null;
 
 interface Totals { base: number; bonus: number; inv: number; com: number; gross: number; adv: number; room: number; take: number; }
@@ -712,6 +781,19 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
   const [selfMember, setSelfMember] = useState<SalManager | null>(null);
   const [recomputing, setRecomputing] = useState(false);
   const recomputeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: pendingLeaves = [] } = usePendingLeaveRequests();
+  const approveLeave = useApproveLeave();
+  const [decidingKey, setDecidingKey] = useState<string | null>(null);
+  const onDecideLeave = (userId: string, workDate: string, approve: boolean) => {
+    const key = `${userId}-${workDate}`;
+    setDecidingKey(key);
+    approveLeave.mutate({ user: userId, date: workDate, approve }, {
+      onSuccess: () => toast.success(approve ? "Đã duyệt phép" : "Đã từ chối phép"),
+      onError: (e: any) => toast.error(e?.message || "Có lỗi xảy ra, thử lại"),
+      onSettled: () => setDecidingKey(null),
+    });
+  };
 
   // Shell chiếm trọn màn (web-app) — khoá cuộn nền site khi mở.
   useEffect(() => {
@@ -761,14 +843,15 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
           style={{ WebkitOverflowScrolling: "touch", paddingTop: "env(safe-area-inset-top)" }}>
           {loading ? (
             <LoadingScreen period={period} {...headerNav} />
-          ) : managers.length === 0 && tab !== "config" ? (
+          ) : managers.length === 0 && tab !== "config" && pendingLeaves.length === 0 ? (
             <EmptyScreen period={period} {...headerNav} canManageSalary={canManageSalary} onGoConfig={() => setTab("config")} />
           ) : tab === "home" ? (
             <HomeScreen managers={managers} period={period} locked={locked} totals={totals} metrics={metrics}
-              canPay={canPay} canLock={canLock} recomputing={recomputing}
+              canPay={canPay} canLock={canLock} recomputing={recomputing} pendingLeaveCount={pendingLeaves.length}
               onBack={headerNav.onBack} onRecompute={handleRecompute} onPrevMonth={onPrevMonth} onNextMonth={onNextMonth}
               onOpenBreakdown={(m) => setSheet({ kind: "breakdown", m })}
-              onOpenBatch={() => setSheet({ kind: "batch" })} onOpenClose={() => setSheet({ kind: "close" })} />
+              onOpenBatch={() => setSheet({ kind: "batch" })} onOpenClose={() => setSheet({ kind: "close" })}
+              onOpenLeave={() => setSheet({ kind: "leave" })} />
           ) : tab === "member" ? (
             <MemberScreen managers={managers} onPick={(m) => setSelfMember(m)} />
           ) : tab === "log" ? (
@@ -818,6 +901,9 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
         {sheet?.kind === "close" && (
           <CloseSheet locked={locked} period={period} unpaidCount={metrics.unpaidCount} onClose={() => setSheet(null)}
             onConfirm={() => (locked ? onUnlock() : onLock())} />
+        )}
+        {sheet?.kind === "leave" && (
+          <LeaveSheet rows={pendingLeaves} decidingKey={decidingKey} onClose={() => setSheet(null)} onDecide={onDecideLeave} />
         )}
       </div>
     </div>
