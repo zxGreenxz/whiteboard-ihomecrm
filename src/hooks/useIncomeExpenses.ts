@@ -1370,6 +1370,10 @@ export const useCancelIncomeExpense = () => {
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
+      // Huỷ phiếu điện/nước từ Thu chi phải làm mới màn "Đóng điện nước" ngay
+      // trên thiết bị thao tác (đối xứng usePayUtilityBill.onSuccess). Hub
+      // realtime lo cross-client; đây lo tức thì cho client hiện tại.
+      queryClient.invalidateQueries({ queryKey: ["utility-payments"] });
       toast.success("Phiếu đã được HUỶ");
     },
     onError: (error) => {
@@ -2055,6 +2059,7 @@ export const useCancelIncomeExpenseBatch = () => {
       queryClient.invalidateQueries({ queryKey: ["invoice"] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["invoice-statistics"] });
+      queryClient.invalidateQueries({ queryKey: ["utility-payments"] });
       toast.success(
         count === 0
           ? "Không còn phiếu nào trong đợt cần huỷ"

@@ -36,10 +36,30 @@ interface SyncEntry {
 
 // dashboard-summary đi kèm invoices/income_expenses/contracts để KPI màn
 // chính cũng nhảy số theo (RPC có staleTime 5ph — realtime rút ngắn độ trễ).
+//
+// LƯU Ý BẢO TRÌ: invalidate khớp theo PREFIX mảng — key cùng phần tử đầu được
+// phủ sẵn (vd ["income-expenses","stats",…], ["income-expenses","accrual-month",…]).
+// Nhưng mọi màn đọc từ 5 bảng này bằng key CÓ PHẦN TỬ ĐẦU KHÁC thì PHẢI liệt kê
+// tường minh ở đây, nếu không nó sẽ kẹt dữ liệu cũ khi thay đổi đến từ client
+// khác. Thêm màn/hook mới đọc các bảng này ⇒ nhớ bổ sung key tương ứng.
+// (Xem docs/he-thong/realtime-sync.md để biết đầy đủ bản đồ bảng → query key.)
 const SYNC_TABLES: SyncEntry[] = [
   {
     table: "invoices",
-    keys: [["invoices"], ["invoice-statistics"], ["dashboard-summary"]],
+    keys: [
+      ["invoices"],
+      ["invoice"], // chi tiết 1 hoá đơn (số ít ≠ "invoices")
+      ["invoices-legacy"],
+      ["invoice-statistics"],
+      ["invoice-totals-by-ids"],
+      ["first-invoice-details"],
+      ["invoice-rent-periods"],
+      ["invoice-collectors"], // quy công thu (đọc invoices + income_expenses)
+      ["unpaid-invoices"],
+      ["dashboard-alerts"],
+      ["recent-activities"],
+      ["dashboard-summary"],
+    ],
     domain: "invoices",
   },
   {
@@ -49,13 +69,40 @@ const SYNC_TABLES: SyncEntry[] = [
       ["deposit-dashboard"],
       ["reservation-deposits"],
       ["dashboard-summary"],
+      // --- màn nghiệp vụ đọc income_expenses bằng key riêng (Nhóm A) ---
+      ["utility-payments"], // "Đóng điện nước" — trạng thái đã đóng
+      ["utility-accounts"],
+      ["accounts-with-balance"], // số dư sổ quỹ
+      ["cash-book"],
+      ["cash-book-summary"],
+      ["cash-flow-by-day"],
+      ["handover-vouchers"], // bàn giao tiền
+      ["invoice-collectors"], // quy công thu
+      ["manager-salary"], // bảng lương quản lý
+      ["voucher-with-batch"], // chi tiết phiếu
+      ["orphan-deposit-vouchers"],
+      ["contract-deposit-vouchers"],
+      ["shareholder-distributions"],
+      ["manager-salary-payouts"],
+      ["change-breakdown"], // sổ thối
+      ["commission-prefill"],
     ],
     domain: "income-expenses",
   },
   {
     // Prefix ["contracts"] phủ luôn "paged"/"stats"/"dashboard-counts".
     table: "contracts",
-    keys: [["contracts"], ["dashboard-summary"]],
+    keys: [
+      ["contracts"],
+      ["contracts-legacy"],
+      // deposit-dashboard đọc contracts + contract_terminations (KHÔNG phải
+      // income_expenses) → phải gắn vào ĐÂY mới live theo thay đổi HĐ.
+      ["deposit-dashboard"],
+      ["unpaid-invoices"],
+      ["dashboard-alerts"],
+      ["recent-activities"],
+      ["dashboard-summary"],
+    ],
     domain: "contracts",
   },
   { table: "jobs", keys: [["jobs"]], domain: "jobs" },
