@@ -10,10 +10,25 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
 
 const rpc = supabase.rpc.bind(supabase) as (fn: string, args?: Record<string, unknown>) => any;
 const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("vi-VN") + "đ";
 const thisMonth = () => new Date().toISOString().slice(0, 8) + "01";
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+const hhmm = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
+const fmtDwell = (sec: number | null) => {
+  const s = Math.max(0, Number(sec) || 0);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  passed: { label: "Đạt", cls: "bg-emerald-100 text-emerald-700" },
+  quick_done: { label: "Nhanh xong", cls: "bg-sky-100 text-sky-700" },
+  expired: { label: "Hết giờ", cls: "bg-red-100 text-red-700" },
+  open: { label: "Đang mở", cls: "bg-amber-100 text-amber-700" },
+  presence: { label: "Có mặt", cls: "bg-amber-100 text-amber-700" },
+};
 
 function useCoverage() {
   return useQuery({
@@ -45,11 +60,194 @@ function useFlagged() {
   });
 }
 
+// ---- Nhật ký kiểm tra nhà: chủ xem chi tiết phiên của MỌI quản lý ----
+// RLS insp_sess_select cho is_admin() đọc hết. FK user_id → auth.users (KHÔNG phải
+// profiles) nên không embed tên quản lý qua PostgREST → fetch profiles riêng rồi map.
+function useInspectionLog(dateFrom: string, dateTo: string) {
+  return useQuery({
+    queryKey: ["v5-inspection-log", dateFrom, dateTo],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("inspection_sessions")
+        .select(
+          "id, user_id, building_id, type, status, session_date, started_at, ended_at, dwell_seconds, condition_note, fail_reasons, photos_count, buildings(name)",
+        )
+        .gte("session_date", dateFrom)
+        .lte("session_date", dateTo)
+        .order("session_date", { ascending: false })
+        .order("started_at", { ascending: false });
+      if (error) throw error;
+      const rows = (data ?? []) as any[];
+      const ids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean)));
+      let nameById: Record<string, string> = {};
+      if (ids.length) {
+        const { data: profs } = await (supabase as any)
+          .from("profiles").select("id, full_name").in("id", ids);
+        nameById = Object.fromEntries((profs ?? []).map((p: any) => [p.id, p.full_name]));
+      }
+      return rows.map((r) => ({
+        ...r,
+        building_name: r.buildings?.name ?? "—",
+        manager_name: nameById[r.user_id] ?? "—",
+      }));
+    },
+  });
+}
+
+function useSessionPhotos(sessionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["v5-insp-photos", sessionId],
+    enabled,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("inspection_photos")
+        .select("id, slot, storage_path, lat, lng, distance_m, geofence_status, exif_time")
+        .eq("session_id", sessionId)
+        .order("slot");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+}
+
+function InspPhoto({ p }: { p: any }) {
+  const url = useSignedUrl(p.storage_path);
+  const geo = p.geofence_status as string | null;
+  const geoColor =
+    geo === "inside" ? "text-emerald-600" : geo === "outside" ? "text-red-600" : "text-muted-foreground";
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block">
+      <div className="aspect-square overflow-hidden rounded-lg border bg-slate-100">
+        {url ? (
+          <img src={url} alt={p.slot} loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">
+            đang tải…
+          </div>
+        )}
+      </div>
+      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+        {p.slot}
+        {p.distance_m != null ? ` · ${p.distance_m}m` : ""} · <span className={geoColor}>{geo ?? "—"}</span>
+      </div>
+    </a>
+  );
+}
+
+function InspSessionCard({ s }: { s: any }) {
+  const [open, setOpen] = useState(false);
+  const photos = useSessionPhotos(s.id, open);
+  const stat = STATUS_META[s.status] ?? { label: s.status, cls: "bg-slate-100 text-slate-600" };
+  const hasFails = Array.isArray(s.fail_reasons) && s.fail_reasons.length > 0;
+  return (
+    <div className="rounded-xl border p-3">
+      <button className="flex w-full items-start justify-between gap-2 text-left" onClick={() => setOpen((o) => !o)}>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+            <span className="font-semibold">{s.building_name}</span>
+            <span className="text-muted-foreground">·</span>
+            <span>{s.manager_name}</span>
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                s.type === "FULL" ? "bg-indigo-100 text-indigo-700" : "bg-sky-100 text-sky-700"
+              }`}
+            >
+              {s.type}
+            </span>
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${stat.cls}`}>{stat.label}</span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {hhmm(s.started_at)}
+            {s.ended_at ? `–${hhmm(s.ended_at)}` : ""} · ở {fmtDwell(s.dwell_seconds)} · {s.photos_count} ảnh
+          </div>
+          {s.condition_note && s.condition_note !== "OK" && (
+            <div className="mt-1 text-xs">
+              <span className="text-muted-foreground">Ghi chú:</span> {s.condition_note}
+            </div>
+          )}
+          {hasFails && <div className="mt-1 text-xs text-red-600">Lỗi: {s.fail_reasons.join(", ")}</div>}
+        </div>
+        <span className="shrink-0 text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 border-t pt-3">
+          {photos.isLoading ? (
+            <div className="text-xs text-muted-foreground">Đang tải ảnh…</div>
+          ) : (photos.data ?? []).length === 0 ? (
+            <div className="text-xs text-muted-foreground">Phiên này không có ảnh.</div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+              {(photos.data ?? []).map((p: any) => (
+                <InspPhoto key={p.id} p={p} />
+              ))}
+            </div>
+          )}
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            Tình trạng ghi nhận: {s.condition_note || "—"}
+            {hasFails ? ` · Lỗi: ${s.fail_reasons.join(", ")}` : ""}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OwnerDashboardV5() {
   const qc = useQueryClient();
   const coverage = useCoverage();
   const flagged = useFlagged();
   const [month] = useState(thisMonth());
+
+  // --- Nhật ký kiểm tra: filter theo ngày/toà/quản lý + nhóm linh hoạt ---
+  const [logFrom, setLogFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 13);
+    return ymd(d);
+  });
+  const [logTo, setLogTo] = useState(() => ymd(new Date()));
+  const [fBuilding, setFBuilding] = useState("");
+  const [fUser, setFUser] = useState("");
+  const [groupBy, setGroupBy] = useState<"day" | "building" | "user">("day");
+  const logQ = useInspectionLog(logFrom, logTo);
+  const logRows: any[] = logQ.data ?? [];
+
+  const buildingOpts = useMemo(() => {
+    const m = new Map<string, string>();
+    logRows.forEach((r) => m.set(r.building_id, r.building_name));
+    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  }, [logRows]);
+  const userOpts = useMemo(() => {
+    const m = new Map<string, string>();
+    logRows.forEach((r) => m.set(r.user_id, r.manager_name));
+    return Array.from(m, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  }, [logRows]);
+  const logFiltered = useMemo(
+    () => logRows.filter((r) => (!fBuilding || r.building_id === fBuilding) && (!fUser || r.user_id === fUser)),
+    [logRows, fBuilding, fUser],
+  );
+  const logGroups = useMemo(() => {
+    const keyOf = (r: any) =>
+      groupBy === "day"
+        ? r.session_date
+        : groupBy === "building"
+          ? r.building_name
+          : r.manager_name;
+    const m = new Map<string, any[]>();
+    logFiltered.forEach((r) => {
+      const k = keyOf(r);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(r);
+    });
+    return Array.from(m, ([label, rows]) => ({ label, rows }));
+  }, [logFiltered, groupBy]);
+  const groupHeading = (label: string) =>
+    groupBy === "day"
+      ? new Date(label + "T00:00:00").toLocaleDateString("vi-VN", {
+          weekday: "short",
+          day: "2-digit",
+          month: "2-digit",
+        })
+      : label;
 
   const assertQ = useQuery({
     queryKey: ["v5-lock-assert", month],
@@ -154,6 +352,7 @@ export default function OwnerDashboardV5() {
       <Tabs defaultValue="coverage" className="w-full">
         <TabsList className="flex-wrap">
           <TabsTrigger value="coverage">Coverage</TabsTrigger>
+          <TabsTrigger value="insplog">Nhật ký KT</TabsTrigger>
           <TabsTrigger value="fraud">Nghi án {flagged.data?.length ? `(${flagged.data.length})` : ""}</TabsTrigger>
           <TabsTrigger value="recon">Đối soát tháng</TabsTrigger>
           <TabsTrigger value="shadow">Shadow / Gates</TabsTrigger>
@@ -177,6 +376,109 @@ export default function OwnerDashboardV5() {
               </div>
             ))}
           </div>
+        </TabsContent>
+
+        {/* TAB 1b — Nhật ký kiểm tra nhà: chi tiết từng phiên của quản lý */}
+        <TabsContent value="insplog">
+          <div className="mb-3 flex flex-wrap items-end gap-3">
+            <label className="text-xs">
+              <span className="mb-1 block text-muted-foreground">Từ ngày</span>
+              <input
+                type="date"
+                value={logFrom}
+                max={logTo}
+                onChange={(e) => setLogFrom(e.target.value)}
+                className="rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block text-muted-foreground">Đến ngày</span>
+              <input
+                type="date"
+                value={logTo}
+                min={logFrom}
+                onChange={(e) => setLogTo(e.target.value)}
+                className="rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block text-muted-foreground">Toà nhà</span>
+              <select
+                value={fBuilding}
+                onChange={(e) => setFBuilding(e.target.value)}
+                className="rounded-md border px-2 py-1 text-sm"
+              >
+                <option value="">Tất cả</option>
+                {buildingOpts.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs">
+              <span className="mb-1 block text-muted-foreground">Quản lý</span>
+              <select
+                value={fUser}
+                onChange={(e) => setFUser(e.target.value)}
+                className="rounded-md border px-2 py-1 text-sm"
+              >
+                <option value="">Tất cả</option>
+                {userOpts.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="text-xs">
+              <span className="mb-1 block text-muted-foreground">Nhóm theo</span>
+              <div className="flex gap-1">
+                {([
+                  { k: "day", label: "Ngày" },
+                  { k: "building", label: "Toà" },
+                  { k: "user", label: "Quản lý" },
+                ] as const).map((o) => (
+                  <Button
+                    key={o.k}
+                    size="sm"
+                    variant={groupBy === o.k ? "default" : "outline"}
+                    onClick={() => setGroupBy(o.k)}
+                  >
+                    {o.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-2 text-xs text-muted-foreground">
+            {logQ.isLoading
+              ? "Đang tải…"
+              : `${logFiltered.length} phiên · ${logFiltered.filter((r) => r.status === "passed").length} đạt · ${logFiltered.filter((r) => r.status === "expired").length} hết giờ`}
+          </div>
+
+          {!logQ.isLoading && logFiltered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Không có phiên kiểm tra nào trong khoảng đã chọn.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {logGroups.map((g) => (
+                <div key={g.label}>
+                  <div className="mb-1.5 flex items-center gap-2 text-sm font-semibold">
+                    {groupHeading(g.label)}
+                    <span className="text-xs font-normal text-muted-foreground">({g.rows.length})</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    {g.rows.map((s: any) => (
+                      <InspSessionCard key={s.id} s={s} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* TAB 2 — Nghi án (máy flag, chủ kết án, due process C2) */}
