@@ -5,7 +5,6 @@ import {
   collectStatus,
   fmtFull,
   fmtK,
-  paymentsInRange,
   remainingOf,
   todayISO,
   fmtBillingMonth,
@@ -21,6 +20,7 @@ interface Props {
 }
 
 type TimeSel = 'all' | 'today' | 'date';
+type MethodSel = 'all' | 'TM' | 'TT' | 'TK';
 
 const bName = (inv: InvoiceWithRelations) => inv.building?.name ?? '—';
 const byBuildingRoom = (a: InvoiceWithRelations, z: InvoiceWithRelations) =>
@@ -30,13 +30,17 @@ const byBuildingRoom = (a: InvoiceWithRelations, z: InvoiceWithRelations) =>
 
 export function CollectionReport({ show, onClose, buildings, defaultBuildingId, billingMonth }: Props) {
   const [bSel, setBSel] = useState(defaultBuildingId);
+  const [mSel, setMSel] = useState<MethodSel>('all');
   const [tSel, setTSel] = useState<TimeSel>('all');
   const [day, setDay] = useState(todayISO());
   const [timeOpen, setTimeOpen] = useState(false);
   const timeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (show) setBSel(defaultBuildingId);
+    if (show) {
+      setBSel(defaultBuildingId);
+      setMSel('all');
+    }
   }, [show, defaultBuildingId]);
 
   // Đóng popover Thời gian khi chạm ra ngoài
@@ -55,18 +59,41 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
   });
 
   const scopeDay = tSel === 'today' ? todayISO() : day;
-  const scopeCollected = (inv: InvoiceWithRelations) =>
-    tSel === 'all' ? inv.paid_amount ?? 0 : paymentsInRange(inv, scopeDay, scopeDay).sum;
-  const inScope = (inv: InvoiceWithRelations) =>
-    tSel === 'all' ? (inv.paid_amount ?? 0) > 0 : paymentsInRange(inv, scopeDay, scopeDay).has;
+  // Đã thu trong phạm vi (thời gian + phương thức). Cả kỳ + mọi phương thức
+  // dùng paid_amount (khớp hành vi cũ); còn lại cộng theo phiếu thu vì
+  // paid_amount không tách được theo TM/TT/TK.
+  const collectedOf = (inv: InvoiceWithRelations): { sum: number; has: boolean } => {
+    if (tSel === 'all' && mSel === 'all') {
+      const paid = inv.paid_amount ?? 0;
+      return { sum: paid, has: paid > 0 };
+    }
+    let sum = 0;
+    let has = false;
+    for (const p of inv.payments ?? []) {
+      const inWindow = tSel === 'all' || (p.payment_date >= scopeDay && p.payment_date <= scopeDay);
+      if (inWindow && (mSel === 'all' || p.payment_method === mSel)) {
+        sum += Number(p.amount) || 0;
+        has = true;
+      }
+    }
+    return { sum, has };
+  };
+  const scopeCollected = (inv: InvoiceWithRelations) => collectedOf(inv).sum;
+  const inScope = (inv: InvoiceWithRelations) => collectedOf(inv).has;
+  // Lọc theo phương thức = xem tiền đã thu theo TM/TT/TK → phần "Chưa thu"
+  // (không phụ thuộc phương thức) ẩn đi cho khỏi gây nhiễu.
+  const showDue = mSel === 'all';
 
   const collectedRows = useMemo(
     () => invoices.filter(inScope).slice().sort(byBuildingRoom),
-    [invoices, tSel, day],
+    [invoices, tSel, day, mSel],
   );
   const dueRows = useMemo(
-    () => invoices.filter((i) => collectStatus(i) !== 'paid').slice().sort(byBuildingRoom),
-    [invoices],
+    () =>
+      showDue
+        ? invoices.filter((i) => collectStatus(i) !== 'paid').slice().sort(byBuildingRoom)
+        : [],
+    [invoices, showDue],
   );
   const totalCollected = collectedRows.reduce((s, r) => s + scopeCollected(r), 0);
   const totalRemaining = dueRows.reduce((s, r) => s + remainingOf(r), 0);
@@ -79,6 +106,9 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
       : tSel === 'today'
         ? 'Hôm nay'
         : `Ngày ${day.split('-').reverse().slice(0, 2).join('/')}`;
+  // Nhãn thời gian rút gọn cho khung hẹp (mobile): "Cả kỳ Th7/2026" → "7/2026".
+  const timeNameShort =
+    tSel === 'all' ? billingMonth.split('-').reverse().map(Number).join('/') : timeName;
 
   const dueByBuilding = buildings
     .map((b) => ({ b, rows: dueRows.filter((r) => bName(r) === b.name) }))
@@ -91,7 +121,10 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
         <div className="rp-topbar">
           <div>
             <div className="rp-title">Báo cáo thu tiền</div>
-            <div className="rp-sub">{scopeName} · {timeName}</div>
+            <div className="rp-sub">
+              {scopeName} · {timeName}
+              {mSel !== 'all' ? ` · ${mSel}` : ''}
+            </div>
           </div>
           <button type="button" className="rp-x" onClick={onClose}>
             <X />
@@ -111,6 +144,18 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
               <ChevronRight />
             </div>
           </label>
+          <label className="rp-dd">
+            <span className="rp-dd-l">Phương thức</span>
+            <div className="rp-dd-sel">
+              <select value={mSel} onChange={(e) => setMSel(e.target.value as MethodSel)}>
+                <option value="all">Tất cả</option>
+                <option value="TM">TM</option>
+                <option value="TT">TT</option>
+                <option value="TK">TK</option>
+              </select>
+              <ChevronRight />
+            </div>
+          </label>
           <div className="rp-dd rp-dd-time" ref={timeRef}>
             <span className="rp-dd-l">Thời gian</span>
             <div className="rp-dd-sel">
@@ -119,7 +164,7 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
                 className={'rp-dd-trigger' + (timeOpen ? ' open' : '')}
                 onClick={() => setTimeOpen((o) => !o)}
               >
-                {timeName}
+                {timeNameShort}
               </button>
               <ChevronRight />
             </div>
