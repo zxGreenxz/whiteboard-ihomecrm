@@ -42,6 +42,10 @@ export function useUtilityPayState(
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [payingKey, setPayingKey] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
+  // Xem ảnh phiếu chi qua AttachmentLightbox (ký signed URL cho bucket private).
+  const [receiptView, setReceiptView] = useState<{ attachments: string[]; index: number | null }>({
+    attachments: [], index: null,
+  });
 
   const [uid, setUid] = useState<string | null>(null);
   useEffect(() => { getSessionUser().then((u) => setUid(u?.id ?? null)); }, []);
@@ -164,5 +168,11 @@ export function useUtilityPayState(
     // cancel
     cancelTarget, requestCancel, confirmCancel, cancelling: cancelMut.isPending,
     closeCancel: () => setCancelTarget(null),
+    // xem ảnh phiếu chi (lightbox)
+    receiptView,
+    viewReceipt: (attachments: string[], index = 0) => {
+      if (attachments && attachments.length) setReceiptView({ attachments, index });
+    },
+    setReceiptIndex: (index: number | null) => setReceiptView((v) => ({ ...v, index })),
   };
 }

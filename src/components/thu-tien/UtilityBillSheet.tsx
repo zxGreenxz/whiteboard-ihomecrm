@@ -11,10 +11,10 @@
 import { useState } from 'react';
 import { X, Zap, Droplet, Check, Camera } from 'lucide-react';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
-import { openReceipt } from '@/lib/openReceipt';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useUtilityChart, type UtilType } from '@/hooks/useUtilityBills';
 import { useUtilityPayState } from '@/hooks/useUtilityPayState';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { UtilityChart } from './UtilityChart';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -45,6 +45,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
   const [tab, setTab] = useState<Tab>('pay');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [onlyDue, setOnlyDue] = useState(false);
+  const [reportBld, setReportBld] = useState<string>('all');
 
   const chart = useUtilityChart(billingMonth, { enabled: show && tab === 'chart' });
 
@@ -80,8 +81,8 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
         {paid ? (
           <div className="ubc-paid">
             <span className="ubc-paid-pill">
-              {paid.hasReceipt && paid.receiptUrl && (
-                <button type="button" className="ubc-paid-rc" title="Xem ảnh phiếu" onClick={() => openReceipt(paid.receiptUrl!)}>
+              {paid.hasReceipt && (
+                <button type="button" className="ubc-paid-rc" title="Xem ảnh phiếu" onClick={() => S.viewReceipt(paid.attachments)}>
                   <Camera />
                 </button>
               )}
@@ -162,6 +163,16 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
   const loading = loadingBld || S.loadingAccts || S.loadingPay;
   const visibleCards = buildings.map(renderCard).filter(Boolean);
 
+  // Báo cáo lọc theo tòa (client): giữ ngày còn phiếu, tính lại tổng.
+  const reportDays = reportBld === 'all'
+    ? S.byDay
+    : S.byDay
+        .map((d) => {
+          const rows = d.rows.filter((r) => r.building_id === reportBld);
+          return rows.length ? { ...d, rows, sum: rows.reduce((s, r) => s + r.amount, 0) } : null;
+        })
+        .filter((d): d is typeof S.byDay[number] => d !== null);
+
   return (
     <>
       <input ref={S.fileRef} type="file" accept="image/*" hidden onChange={S.onFileChange} />
@@ -214,37 +225,45 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
           )}
 
           {tab === 'report' && (
-            S.byDay.length === 0 ? (
-              <div className="c-empty"><div className="e-ic">🧾</div><p>Kỳ {fmtBillingMonth(billingMonth)} chưa có ngày nào đóng điện nước.</p></div>
-            ) : (
-              <div className="ub-report">
-                {S.byDay.map((d) => (
-                  <div className="ub-day" key={d.date}>
-                    <div className="ub-day-head">
-                      <span className="ub-day-d">{fmtDate(d.date)}</span>
-                      <span className="ub-day-c">{d.rows.length} khoản</span>
-                      <span className="ub-day-s">{fmtFull(d.sum)}</span>
-                    </div>
-                    {d.rows.map((r) => (
-                      <div className="ub-day-row" key={r.voucher_id}>
-                        <span className={'ub-day-ic ' + r.type}>{r.type === 'electric' ? <Zap /> : <Droplet />}</span>
-                        <div className="ub-day-main">
-                          <div className="ub-day-l1">
-                            <span className="ub-day-b">{r.buildingName}</span>
-                            <span className="ub-day-t">{r.type === 'electric' ? 'Điện' : 'Nước'}</span>
-                          </div>
-                          <div className="ub-day-l2">{r.by} · {r.time} · {r.book}</div>
-                        </div>
-                        {r.hasReceipt && r.receiptUrl && (
-                          <button type="button" className="ub-day-rc" title="Xem ảnh phiếu" onClick={() => openReceipt(r.receiptUrl!)}><Camera /></button>
-                        )}
-                        <span className="ub-day-amt">{fmtFull(r.amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
+            <>
+              <div className="ub-rfilter">
+                <select value={reportBld} onChange={(e) => setReportBld(e.target.value)}>
+                  <option value="all">Tất cả tòa</option>
+                  {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
               </div>
-            )
+              {reportDays.length === 0 ? (
+                <div className="c-empty"><div className="e-ic">🧾</div><p>{reportBld === 'all' ? `Kỳ ${fmtBillingMonth(billingMonth)} chưa có ngày nào đóng điện nước.` : 'Tòa này chưa có phiếu điện nước trong kỳ.'}</p></div>
+              ) : (
+                <div className="ub-report">
+                  {reportDays.map((d) => (
+                    <div className="ub-day" key={d.date}>
+                      <div className="ub-day-head">
+                        <span className="ub-day-d">{fmtDate(d.date)}</span>
+                        <span className="ub-day-c">{d.rows.length} khoản</span>
+                        <span className="ub-day-s">{fmtFull(d.sum)}</span>
+                      </div>
+                      {d.rows.map((r) => (
+                        <div className="ub-day-row" key={r.voucher_id}>
+                          <span className={'ub-day-ic ' + r.type}>{r.type === 'electric' ? <Zap /> : <Droplet />}</span>
+                          <div className="ub-day-main">
+                            <div className="ub-day-l1">
+                              <span className="ub-day-b">{r.buildingName}</span>
+                              <span className="ub-day-t">{r.type === 'electric' ? 'Điện' : 'Nước'}</span>
+                            </div>
+                            <div className="ub-day-l2">{r.by} · {r.time} · {r.book}</div>
+                          </div>
+                          {r.hasReceipt && (
+                            <button type="button" className="ub-day-rc" title="Xem ảnh phiếu" onClick={() => S.viewReceipt(r.attachments)}><Camera /></button>
+                          )}
+                          <span className="ub-day-amt">{fmtFull(r.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {tab === 'chart' && (
@@ -270,6 +289,11 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
         busy={S.cancelling}
         onClose={S.closeCancel}
         onConfirm={S.confirmCancel}
+      />
+      <AttachmentLightbox
+        attachments={S.receiptView.attachments}
+        index={S.receiptView.index}
+        onIndexChange={S.setReceiptIndex}
       />
     </>
   );

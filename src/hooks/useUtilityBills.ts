@@ -40,7 +40,7 @@ export interface UtilityPaymentRow {
   by: string;           // người đóng (creator_name)
   book: string;         // sổ quỹ ghi chi (tên account)
   hasReceipt: boolean;  // có ảnh phiếu chi
-  receiptUrl: string | null;
+  attachments: string[]; // ảnh phiếu chi (URL/path đã lưu) — xem qua lightbox
 }
 
 /** Trạng thái "đã đóng" của (toà, loại) trong kỳ — dùng cho ô/thẻ. */
@@ -54,7 +54,7 @@ export interface PaidInfo {
   by: string;
   book: string;
   hasReceipt: boolean;
-  receiptUrl: string | null;
+  attachments: string[];
 }
 
 export interface DayReportRow {
@@ -67,7 +67,7 @@ export interface DayReportRow {
   book: string;
   amount: number;
   hasReceipt: boolean;
-  receiptUrl: string | null;
+  attachments: string[];
 }
 
 export interface DayGroup {
@@ -257,7 +257,10 @@ export const useUtilityPayments = (billingMonth: string) => {
       for (const v of (data ?? []) as any[]) {
         const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
         const isElec = items.some((i: any) => elecIds.has(i.income_expense_type_id));
-        const atts: string[] = Array.isArray(v.attachments) ? v.attachments : [];
+        // attachments = jsonb array URL/path (chuẩn hoá string; bỏ phần tử lạ).
+        const atts: string[] = (Array.isArray(v.attachments) ? v.attachments : [])
+          .map((x: any) => (typeof x === 'string' ? x : x?.url))
+          .filter((x: any): x is string => typeof x === 'string' && x.length > 0);
         out.push({
           voucher_id: v.id,
           building_id: v.building_id,
@@ -269,7 +272,7 @@ export const useUtilityPayments = (billingMonth: string) => {
           by: v.creator_name ?? '',
           book: v.book?.name ?? '',
           hasReceipt: atts.length > 0,
-          receiptUrl: atts[0] ?? null,
+          attachments: atts,
         });
       }
       return out;
@@ -288,7 +291,7 @@ export const useUtilityPayments = (billingMonth: string) => {
         m[k] = {
           amount: r.amount, date: r.payment_date, count: 1,
           voucherId: r.voucher_id, time: r.time, by: r.by, book: r.book,
-          hasReceipt: r.hasReceipt, receiptUrl: r.receiptUrl,
+          hasReceipt: r.hasReceipt, attachments: r.attachments,
         };
       } else {
         cur.amount += r.amount;
@@ -298,7 +301,7 @@ export const useUtilityPayments = (billingMonth: string) => {
           cur.date = r.payment_date;
           cur.voucherId = r.voucher_id;
           cur.time = r.time; cur.by = r.by; cur.book = r.book;
-          cur.hasReceipt = r.hasReceipt; cur.receiptUrl = r.receiptUrl;
+          cur.hasReceipt = r.hasReceipt; cur.attachments = r.attachments;
         }
       }
     }
@@ -319,7 +322,7 @@ export const useUtilityPayments = (billingMonth: string) => {
       g.rows.push({
         voucher_id: r.voucher_id, building_id: r.building_id, buildingName: r.building_name,
         type: r.type, time: r.time, by: r.by, book: r.book, amount: r.amount,
-        hasReceipt: r.hasReceipt, receiptUrl: r.receiptUrl,
+        hasReceipt: r.hasReceipt, attachments: r.attachments,
       });
     }
     const groups = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : -1));

@@ -11,10 +11,10 @@ import {
   ArrowLeft, X, Zap, Droplet, Check, Camera, BarChart3, User, Image as ImageIcon,
 } from 'lucide-react';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
-import { openReceipt } from '@/lib/openReceipt';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useUtilityChart, type UtilType } from '@/hooks/useUtilityBills';
 import { useUtilityPayState } from '@/hooks/useUtilityPayState';
+import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { UtilityChart } from './UtilityChart';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -46,6 +46,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
   const [bldFilter, setBldFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [onlyDue, setOnlyDue] = useState(false);
+  const [reportBld, setReportBld] = useState<string>('all');
 
   const chart = useUtilityChart(billingMonth, { enabled: tab === 'chart' });
 
@@ -78,6 +79,16 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
   }
 
   const loading = loadingBld || S.loadingAccts || S.loadingPay;
+
+  // Báo cáo lọc theo tòa (client): giữ ngày còn phiếu, tính lại tổng.
+  const reportDays = reportBld === 'all'
+    ? S.byDay
+    : S.byDay
+        .map((d) => {
+          const rows = d.rows.filter((r) => r.building_id === reportBld);
+          return rows.length ? { ...d, rows, sum: rows.reduce((s, r) => s + r.amount, 0) } : null;
+        })
+        .filter((d): d is typeof S.byDay[number] => d !== null);
 
   const StatCard = ({ t, stat }: { t: UtilType; stat: ReturnType<typeof statOf> }) => {
     const isElec = t === 'electric';
@@ -252,8 +263,8 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                             {paid ? (
                               <span className="ud-acts">
                                 <span className="ud-check"><Check /></span>
-                                {paid.hasReceipt && paid.receiptUrl && (
-                                  <button type="button" className="ud-rc" title="Xem ảnh phiếu" onClick={() => openReceipt(paid.receiptUrl!)}><ImageIcon /></button>
+                                {paid.hasReceipt && (
+                                  <button type="button" className="ud-rc" title="Xem ảnh phiếu" onClick={() => S.viewReceipt(paid.attachments)}><ImageIcon /></button>
                                 )}
                                 <button type="button" className="ud-cancel" title="Hủy phiếu thanh toán" disabled={!canRecordPayment} onClick={() => S.requestCancel(b.id, t)}><X /></button>
                               </span>
@@ -290,12 +301,22 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
       )}
 
       {tab === 'report' && (
-        <div className="ud-body">
-          {S.byDay.length === 0 ? (
-            <div className="ud-empty">🧾 Kỳ {fmtBillingMonth(billingMonth)} chưa có ngày nào đóng điện nước.</div>
+        <>
+          <div className="ud-toolbar">
+            <label className="ud-dd">
+              <span>Tòa nhà</span>
+              <select value={reportBld} onChange={(e) => setReportBld(e.target.value)}>
+                <option value="all">Tất cả tòa</option>
+                {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="ud-body">
+          {reportDays.length === 0 ? (
+            <div className="ud-empty">🧾 {reportBld === 'all' ? `Kỳ ${fmtBillingMonth(billingMonth)} chưa có ngày nào đóng điện nước.` : 'Tòa này chưa có phiếu điện nước trong kỳ.'}</div>
           ) : (
             <div className="ud-report">
-              {S.byDay.map((d) => (
+              {reportDays.map((d) => (
                 <div className="ud-rday" key={d.date}>
                   <div className="ud-rday-head">
                     <span className="ud-rday-d">{fmtDate(d.date)}</span>
@@ -327,8 +348,8 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                           </td>
                           <td><span className="ud-bookchip"><BookIcon size={14} />{r.book}</span></td>
                           <td className="ctr">
-                            {r.hasReceipt && r.receiptUrl ? (
-                              <button type="button" className="ud-rc" title="Xem ảnh phiếu chi" onClick={() => openReceipt(r.receiptUrl!)}><ImageIcon /></button>
+                            {r.hasReceipt ? (
+                              <button type="button" className="ud-rc" title="Xem ảnh phiếu chi" onClick={() => S.viewReceipt(r.attachments)}><ImageIcon /></button>
                             ) : (
                               <span className="ud-nodoc">Chưa có</span>
                             )}
@@ -342,7 +363,8 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
               ))}
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       {tab === 'chart' && (
@@ -364,6 +386,11 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
         busy={S.cancelling}
         onClose={S.closeCancel}
         onConfirm={S.confirmCancel}
+      />
+      <AttachmentLightbox
+        attachments={S.receiptView.attachments}
+        index={S.receiptView.index}
+        onIndexChange={S.setReceiptIndex}
       />
     </div>
   );
