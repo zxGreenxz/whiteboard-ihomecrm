@@ -26,8 +26,8 @@ import { RoomCellGrid } from '@/components/thu-tien/RoomCellGrid';
 import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
-import { UtilityBillSheet } from '@/components/thu-tien/UtilityBillSheet';
-import { UtilityDesktopPanel } from '@/components/thu-tien/UtilityDesktopPanel';
+import { PeriodFeeSheet } from '@/components/thu-tien/PeriodFeeSheet';
+import { PeriodFeePanel } from '@/components/thu-tien/PeriodFeePanel';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
@@ -253,7 +253,7 @@ const ThuTien = () => {
           Mở "Điện nước" → thay panel này bằng UtilityDesktopPanel (mobile vẫn chỉ
           thấy sheet trong khung điện thoại). Dùng chung billingMonth. */}
       {utility.mounted ? (
-        <UtilityDesktopPanel
+        <PeriodFeePanel
           billingMonth={billingMonth}
           onBillingMonthChange={setBillingMonth}
           onClose={closeUtility}
@@ -380,7 +380,7 @@ const ThuTien = () => {
 
         {handover.mounted && <HandoverSheet show={handover.show} onClose={closeHandover} />}
         {utility.mounted && (
-          <UtilityBillSheet
+          <PeriodFeeSheet
             show={utility.show}
             onClose={closeUtility}
             billingMonth={billingMonth}
