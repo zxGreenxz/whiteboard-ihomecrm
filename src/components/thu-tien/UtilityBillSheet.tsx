@@ -18,6 +18,7 @@ import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { UtilityChart } from './UtilityChart';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
+import { UtilityReceiptThumb } from './UtilityReceiptThumb';
 import { BookIcon } from './utilityIcons';
 
 interface Props {
@@ -46,8 +47,12 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [onlyDue, setOnlyDue] = useState(false);
   const [reportBld, setReportBld] = useState<string>('all');
+  const [chartBld, setChartBld] = useState<string>('all');
 
-  const chart = useUtilityChart(billingMonth, { enabled: show && tab === 'chart' });
+  const chart = useUtilityChart(billingMonth, {
+    enabled: show && tab === 'chart',
+    buildingId: chartBld === 'all' ? null : chartBld,
+  });
 
   const typeMatch = (t: UtilType) =>
     typeFilter === 'all' || (typeFilter === 'electric' && t === 'electric') || (typeFilter === 'water' && t === 'water');
@@ -81,11 +86,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
         {paid ? (
           <div className="ubc-paid">
             <span className="ubc-paid-pill">
-              {paid.hasReceipt && (
-                <button type="button" className="ubc-paid-rc" title="Xem ảnh phiếu" onClick={() => S.viewReceipt(paid.attachments)}>
-                  <Camera />
-                </button>
-              )}
+              <UtilityReceiptThumb attachments={paid.attachments} onView={S.viewReceipt} size="sm" />
               <span className="ubc-paid-txt">
                 <span className="ubc-paid-a">Đã đóng {paid.amount.toLocaleString('vi-VN')}</span>
                 <span className="ubc-paid-m">{fmtDate(paid.date)} · {paid.by}</span>
@@ -253,9 +254,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
                             </div>
                             <div className="ub-day-l2">{r.by} · {r.time} · {r.book}</div>
                           </div>
-                          {r.hasReceipt && (
-                            <button type="button" className="ub-day-rc" title="Xem ảnh phiếu" onClick={() => S.viewReceipt(r.attachments)}><Camera /></button>
-                          )}
+                          <UtilityReceiptThumb attachments={r.attachments} onView={S.viewReceipt} size="md" />
                           <span className="ub-day-amt">{fmtFull(r.amount)}</span>
                         </div>
                       ))}
@@ -269,7 +268,15 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
           {tab === 'chart' && (
             <div className="ub-chart">
               <div className="ub-chart-t">Chi điện nước qua các tháng</div>
-              <div className="ub-chart-s">Tổng chi cho EVN / cấp nước · toàn bộ tòa</div>
+              <div className="ub-chart-s">
+                Tổng chi cho EVN / cấp nước · {chartBld === 'all' ? 'toàn bộ tòa' : buildings.find((b) => b.id === chartBld)?.name}
+              </div>
+              <div className="ub-rfilter" style={{ padding: '0 0 14px' }}>
+                <select value={chartBld} onChange={(e) => setChartBld(e.target.value)}>
+                  <option value="all">Tất cả tòa</option>
+                  {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
               {chart.isLoading ? (
                 <div className="c-empty"><div className="e-ic">⏳</div><p>Đang tải biểu đồ…</p></div>
               ) : (

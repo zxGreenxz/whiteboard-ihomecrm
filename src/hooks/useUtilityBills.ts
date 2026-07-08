@@ -336,13 +336,14 @@ export const useUtilityPayments = (billingMonth: string) => {
 /** Dữ liệu Biểu đồ: chi NCC (điện/nước) vs phải thu (hoá đơn khách) theo tháng. */
 export const useUtilityChart = (
   billingMonth: string,
-  opts?: { enabled?: boolean; monthsBack?: number },
+  opts?: { enabled?: boolean; monthsBack?: number; buildingId?: string | null },
 ) => {
   const monthsBack = opts?.monthsBack ?? 7;
+  const buildingId = opts?.buildingId ?? null;
   const months = useMemo(() => lastNMonths(billingMonth, monthsBack), [billingMonth, monthsBack]);
 
   return useQuery({
-    queryKey: ['utility-chart', billingMonth, monthsBack],
+    queryKey: ['utility-chart', billingMonth, monthsBack, buildingId],
     enabled: (opts?.enabled ?? true) && !!billingMonth && months.length > 0,
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<ChartMonth[]> => {
@@ -357,7 +358,7 @@ export const useUtilityChart = (
       for (const ym of months) paidByMonth[ym] = { elec: 0, water: 0 };
 
       if (allIds.length > 0) {
-        const { data, error } = await (supabase as any)
+        let paidQuery = (supabase as any)
           .from('income_expenses')
           .select(`total_amount, it:income_expense_items!inner ( income_expense_type_id, start_date )`)
           .eq('type', 'EXPENSE')
@@ -366,6 +367,8 @@ export const useUtilityChart = (
           .in('it.income_expense_type_id', allIds)
           .gte('it.start_date', rangeStart)
           .lte('it.start_date', rangeEnd);
+        if (buildingId) paidQuery = paidQuery.eq('building_id', buildingId);
+        const { data, error } = await paidQuery;
         if (error) throw error;
         for (const v of (data ?? []) as any[]) {
           const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
@@ -383,7 +386,7 @@ export const useUtilityChart = (
       const stats = await Promise.all(
         months.map(async (ym) => {
           const { data, error } = await (supabase.rpc as any)('get_invoice_statistics_v2', {
-            p_building_id: null, p_room_id: null, p_status: null,
+            p_building_id: buildingId, p_room_id: null, p_status: null,
             p_start_date: null, p_end_date: null,
             p_billing_month: ym, p_payment_status: null, p_building_ids: null,
           });

@@ -7,9 +7,7 @@
 // =============================================
 
 import { useMemo, useState } from 'react';
-import {
-  ArrowLeft, X, Zap, Droplet, Check, Camera, BarChart3, User, Image as ImageIcon,
-} from 'lucide-react';
+import { ArrowLeft, X, Zap, Droplet, Check, Camera, BarChart3, User } from 'lucide-react';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useUtilityChart, type UtilType } from '@/hooks/useUtilityBills';
@@ -18,6 +16,7 @@ import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { UtilityChart } from './UtilityChart';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
+import { UtilityReceiptThumb } from './UtilityReceiptThumb';
 import { BookIcon } from './utilityIcons';
 
 interface Props {
@@ -47,8 +46,12 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [onlyDue, setOnlyDue] = useState(false);
   const [reportBld, setReportBld] = useState<string>('all');
+  const [chartBld, setChartBld] = useState<string>('all');
 
-  const chart = useUtilityChart(billingMonth, { enabled: tab === 'chart' });
+  const chart = useUtilityChart(billingMonth, {
+    enabled: tab === 'chart',
+    buildingId: chartBld === 'all' ? null : chartBld,
+  });
 
   const typeMatch = (t: UtilType) =>
     typeFilter === 'all' || (typeFilter === 'electric' && t === 'electric') || (typeFilter === 'water' && t === 'water');
@@ -263,9 +266,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                             {paid ? (
                               <span className="ud-acts">
                                 <span className="ud-check"><Check /></span>
-                                {paid.hasReceipt && (
-                                  <button type="button" className="ud-rc" title="Xem ảnh phiếu" onClick={() => S.viewReceipt(paid.attachments)}><ImageIcon /></button>
-                                )}
+                                <UtilityReceiptThumb attachments={paid.attachments} onView={S.viewReceipt} size="md" />
                                 <button type="button" className="ud-cancel" title="Hủy phiếu thanh toán" disabled={!canRecordPayment} onClick={() => S.requestCancel(b.id, t)}><X /></button>
                               </span>
                             ) : (
@@ -348,11 +349,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                           </td>
                           <td><span className="ud-bookchip"><BookIcon size={14} />{r.book}</span></td>
                           <td className="ctr">
-                            {r.hasReceipt ? (
-                              <button type="button" className="ud-rc" title="Xem ảnh phiếu chi" onClick={() => S.viewReceipt(r.attachments)}><ImageIcon /></button>
-                            ) : (
-                              <span className="ud-nodoc">Chưa có</span>
-                            )}
+                            <UtilityReceiptThumb attachments={r.attachments} onView={S.viewReceipt} size="md" />
                           </td>
                           <td className="num ud-mono">{fmtFull(r.amount)}</td>
                         </tr>
@@ -368,9 +365,21 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
       )}
 
       {tab === 'chart' && (
-        <div className="ud-body">
+        <>
+          <div className="ud-toolbar">
+            <label className="ud-dd">
+              <span>Tòa nhà</span>
+              <select value={chartBld} onChange={(e) => setChartBld(e.target.value)}>
+                <option value="all">Tất cả tòa</option>
+                {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="ud-body">
           <div className="ud-chart-t">Chi điện nước qua các tháng</div>
-          <div className="ud-chart-s">Tổng tiền đã chi cho EVN / cấp nước theo từng kỳ · toàn bộ tòa trong phạm vi</div>
+          <div className="ud-chart-s">
+            Tổng tiền đã chi cho EVN / cấp nước theo từng kỳ · {chartBld === 'all' ? 'toàn bộ tòa trong phạm vi' : buildings.find((b) => b.id === chartBld)?.name}
+          </div>
           <div className="ud-chart-card">
             {chart.isLoading ? (
               <div className="ud-empty">⏳ Đang tải biểu đồ…</div>
@@ -378,7 +387,8 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
               <UtilityChart months={chart.data ?? []} />
             )}
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       <UtilityCancelModal
