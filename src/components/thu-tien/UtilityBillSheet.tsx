@@ -9,11 +9,11 @@
 // =============================================
 
 import { useState } from 'react';
-import { X, Zap, Droplet, Check, Camera } from 'lucide-react';
+import { X, Zap, Droplet, Check, Camera, Plus, Trash2 } from 'lucide-react';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useUtilityChart, type UtilType } from '@/hooks/useUtilityBills';
-import { useUtilityPayState } from '@/hooks/useUtilityPayState';
+import { useUtilityPayState, type MeterRow } from '@/hooks/useUtilityPayState';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { UtilityChart } from './UtilityChart';
 import { UtilityBookMenu } from './UtilityBookMenu';
@@ -57,30 +57,35 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
   const typeMatch = (t: UtilType) =>
     typeFilter === 'all' || (typeFilter === 'electric' && t === 'electric') || (typeFilter === 'water' && t === 'water');
 
-  const renderRow = (b: { id: string; name: string }, t: UtilType) => {
-    const k = S.key(b.id, t);
-    const paid = S.paidThisKy(b.id, t);
-    const amount = S.amountOf(b.id, t);
+  const renderRow = (row: MeterRow) => {
+    const k = row.key;
+    const paid = S.paidThisKy(row.accountId);
+    const amount = S.amountOf(k);
     const paying = S.payingKey === k;
-    const Icon = t === 'electric' ? Zap : Droplet;
+    const Icon = row.type === 'electric' ? Zap : Droplet;
     return (
-      <div className={'ubc-row ' + t} key={k}>
+      <div className={'ubc-row ' + row.type} key={k}>
         <div className="ubc-rowhead">
-          <span className={'ubc-ic ' + t}><Icon /></span>
+          <span className={'ubc-ic ' + row.type}><Icon /></span>
           <input
             className="ubc-code"
-            placeholder={t === 'electric' ? 'Mã PE' : 'Mã nước'}
-            value={S.codeOf(b.id, t)}
-            onChange={(e) => S.setField(b.id, t, { code: e.target.value })}
-            onBlur={() => S.saveAccount(b.id, t)}
+            placeholder={row.type === 'electric' ? 'Mã PE' : 'Mã nước'}
+            value={S.codeOf(row)}
+            onChange={(e) => S.setField(row, { code: e.target.value })}
+            onBlur={() => S.saveMeter(row)}
           />
           <input
             className="ubc-holder"
             placeholder="Tên chủ hộ"
-            value={S.holderOf(b.id, t)}
-            onChange={(e) => S.setField(b.id, t, { holder: e.target.value })}
-            onBlur={() => S.saveAccount(b.id, t)}
+            value={S.holderOf(row)}
+            onChange={(e) => S.setField(row, { holder: e.target.value })}
+            onBlur={() => S.saveMeter(row)}
           />
+          {row.canDelete && (
+            <button type="button" className="ubc-del" title="Xoá đồng hồ này" onClick={() => S.deleteMeter(row.accountId!)}>
+              <Trash2 />
+            </button>
+          )}
         </div>
 
         {paid ? (
@@ -96,7 +101,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
             <button
               type="button" className="ubc-cancel" title="Hủy phiếu thanh toán"
               disabled={!canRecordPayment}
-              onClick={() => S.requestCancel(b.id, t)}
+              onClick={() => S.requestCancel(row)}
             >
               <X />
             </button>
@@ -106,7 +111,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
             <input
               className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền"
               value={formatVN(amount)}
-              onChange={(e) => S.setAmount(b.id, t, parseVN(e.target.value))}
+              onChange={(e) => S.setAmount(k, parseVN(e.target.value))}
             />
             <UtilityBookMenu
               accounts={S.myBooks}
@@ -128,7 +133,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
             <button
               type="button" className="ub-paybtn" title="Đóng tiền"
               disabled={!canRecordPayment || amount <= 0 || paying}
-              onClick={() => S.submitPay(b.id, t, b.name)}
+              onClick={() => S.submitPay(row, row.buildingName)}
             >
               {paying ? <span className="ub-spin" /> : <Check />}
             </button>
@@ -139,13 +144,10 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
   };
 
   const renderCard = (b: { id: string; name: string }) => {
-    const rows: UtilType[] = (['electric', 'water'] as UtilType[]).filter((t) => {
-      if (!typeMatch(t)) return false;
-      if (onlyDue && S.paidThisKy(b.id, t)) return false;
-      return true;
-    });
+    const all = S.metersOf(b.id);
+    const rows = all.filter((r) => typeMatch(r.type) && !(onlyDue && S.paidThisKy(r.accountId)));
     if (rows.length === 0) return null;
-    const dueN = (S.paidThisKy(b.id, 'electric') ? 0 : 1) + (S.paidThisKy(b.id, 'water') ? 0 : 1);
+    const dueN = all.filter((r) => !S.paidThisKy(r.accountId)).length;
     return (
       <div className="ubc" key={b.id}>
         <div className="ubc-head">
@@ -153,10 +155,20 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
           {dueN === 0 ? (
             <span className="ubc-badge done">Đã xong</span>
           ) : (
-            <span className="ubc-badge pending">{dueN === 2 ? '2 khoản chưa đóng' : 'Còn 1 khoản'}</span>
+            <span className="ubc-badge pending">{dueN} khoản chưa đóng</span>
+          )}
+          {canRecordPayment && (
+            <span className="ubc-add-wrap">
+              <button type="button" className="ubc-add" title="Thêm đồng hồ điện" disabled={S.adding} onClick={() => S.addMeter(b.id, 'electric')}>
+                <Zap /><Plus />
+              </button>
+              <button type="button" className="ubc-add" title="Thêm đồng hồ nước" disabled={S.adding} onClick={() => S.addMeter(b.id, 'water')}>
+                <Droplet /><Plus />
+              </button>
+            </span>
           )}
         </div>
-        {rows.map((t) => renderRow(b, t))}
+        {rows.map((row) => renderRow(row))}
       </div>
     );
   };

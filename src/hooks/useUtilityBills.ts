@@ -22,18 +22,30 @@ const TYPE_DB: Record<UtilType, 'ELECTRIC' | 'WATER'> = { electric: 'ELECTRIC', 
 const TYPE_NAME: Record<UtilType, string> = { electric: 'Đóng tiền điện', water: 'Đóng tiền nước' };
 
 interface UtilityAccountRow {
+  id: string;
   building_id: string;
   utility_type: 'ELECTRIC' | 'WATER';
   provider_code: string | null;
   account_holder: string | null;
 }
 
+/** 1 đồng hồ điện/nước (mã NCC + chủ hộ) của 1 toà. 1 toà có thể nhiều đồng hồ. */
+export interface UtilityMeter {
+  id: string;
+  building_id: string;
+  type: UtilType;
+  code: string;
+  holder: string;
+}
+
 /** 1 phiếu chi điện/nước đã ghi nhận (enriched cho Báo cáo + Hủy phiếu). */
 export interface UtilityPaymentRow {
   voucher_id: string;
+  account_id: string | null; // đồng hồ (utility_account_id)
   building_id: string;
   building_name: string;
   type: UtilType;
+  code: string;         // mã NCC của đồng hồ
   amount: number;
   payment_date: string; // 'YYYY-MM-DD' (voucher_date — ngày đóng thực tế)
   time: string;         // 'HH:MM' (giờ ghi phiếu — từ created_at, giờ VN)
@@ -43,7 +55,7 @@ export interface UtilityPaymentRow {
   attachments: string[]; // ảnh phiếu chi (URL/path đã lưu) — xem qua lightbox
 }
 
-/** Trạng thái "đã đóng" của (toà, loại) trong kỳ — dùng cho ô/thẻ. */
+/** Trạng thái "đã đóng" của 1 đồng hồ trong kỳ — dùng cho ô/thẻ. */
 export interface PaidInfo {
   amount: number;   // tổng đã đóng trong kỳ (có thể > 1 phiếu)
   date: string;     // ngày phiếu gần nhất
@@ -62,6 +74,7 @@ export interface DayReportRow {
   building_id: string;
   buildingName: string;
   type: UtilType;
+  code: string;
   time: string;
   by: string;
   book: string;
@@ -123,43 +136,83 @@ const fetchUtilityTypeIds = async (): Promise<{ elecIds: Set<string>; waterIds: 
   return { elecIds, waterIds };
 };
 
-/** Mã PE/nước + tên chủ hộ theo (toà, loại). */
+/** Danh sách đồng hồ điện/nước theo toà (1 toà có thể nhiều đồng hồ mỗi loại). */
 export const useUtilityAccounts = () => {
   const query = useQuery({
     queryKey: ['utility-accounts'],
-    queryFn: async (): Promise<Record<string, { code: string; holder: string }>> => {
+    queryFn: async (): Promise<UtilityMeter[]> => {
       const { data, error } = await (supabase as any)
         .from('building_utility_accounts')
-        .select('building_id, utility_type, provider_code, account_holder')
-        .is('deleted_at', null);
+        .select('id, building_id, utility_type, provider_code, account_holder')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true });
       if (error) throw error;
-      const out: Record<string, { code: string; holder: string }> = {};
-      for (const r of (data ?? []) as UtilityAccountRow[]) {
-        const t: UtilType = r.utility_type === 'ELECTRIC' ? 'electric' : 'water';
-        out[`${r.building_id}:${t}`] = {
-          code: r.provider_code ?? '',
-          holder: r.account_holder ?? '',
-        };
-      }
-      return out;
+      return ((data ?? []) as UtilityAccountRow[]).map((r) => ({
+        id: r.id,
+        building_id: r.building_id,
+        type: (r.utility_type === 'ELECTRIC' ? 'electric' : 'water') as UtilType,
+        code: r.provider_code ?? '',
+        holder: r.account_holder ?? '',
+      }));
     },
   });
 
-  const byKey = (buildingId: string, type: UtilType) => query.data?.[`${buildingId}:${type}`];
-  return { ...query, byKey };
+  const meters = query.data ?? [];
+  const byBuilding = useMemo(() => {
+    const m: Record<string, UtilityMeter[]> = {};
+    for (const x of meters) (m[x.building_id] ??= []).push(x);
+    return m;
+  }, [meters]);
+  const metersFor = (buildingId: string, type: UtilType) =>
+    (byBuilding[buildingId] ?? []).filter((x) => x.type === type);
+
+  return { ...query, meters, byBuilding, metersFor };
 };
 
-/** Lưu/sửa mã NCC + tên chủ hộ inline. */
-export const useUpsertUtilityAccount = () => {
+/** Lưu/sửa 1 đồng hồ (p_id null = tạo mới). Trả về id đồng hồ. */
+export const useSaveUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { buildingId: string; type: UtilType; code: string; holder: string }) => {
-      const { error } = await (supabase as any).rpc('upsert_building_utility_account', {
+    mutationFn: async (args: { id?: string | null; buildingId: string; type: UtilType; code: string; holder: string }) => {
+      const { data, error } = await (supabase as any).rpc('save_utility_account', {
+        p_id: args.id ?? null,
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
         p_provider_code: args.code || null,
         p_account_holder: args.holder || null,
       });
+      if (error) throw new Error(error.message);
+      return data as string; // id
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
+  });
+};
+
+/** Thêm 1 đồng hồ rỗng (nút "+" điện/nước). */
+export const useAddUtilityMeter = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { buildingId: string; type: UtilType }) => {
+      const { data, error } = await (supabase as any).rpc('save_utility_account', {
+        p_id: null,
+        p_building_id: args.buildingId,
+        p_utility_type: TYPE_DB[args.type],
+        p_provider_code: null,
+        p_account_holder: null,
+      });
+      if (error) throw new Error(error.message);
+      return data as string;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
+  });
+};
+
+/** Xoá 1 đồng hồ (chỉ khi chưa có phiếu chi). */
+export const useDeleteUtilityMeter = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).rpc('delete_utility_account', { p_id: id });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
@@ -178,6 +231,7 @@ export const usePayUtilityBill = () => {
       code: string;
       holder: string;
       accountId?: string | null;
+      utilityAccountId?: string | null;
       attachments?: string[];
       voucherDate?: string;
     }) => {
@@ -191,6 +245,7 @@ export const usePayUtilityBill = () => {
         p_account_holder: args.holder || null,
         p_account_id: args.accountId ?? null,
         p_attachments: args.attachments && args.attachments.length ? args.attachments : null,
+        p_utility_account_id: args.utilityAccountId ?? null,
       });
       if (error) throw new Error(error.message);
       return data as { voucher_id: string; code: string; total_amount: number; account_id: string };
@@ -239,9 +294,10 @@ export const useUtilityPayments = (billingMonth: string) => {
       const { data, error } = await (supabase as any)
         .from('income_expenses')
         .select(`
-          id, building_id, total_amount, voucher_date, created_at, creator_name, attachments,
+          id, building_id, total_amount, voucher_date, created_at, creator_name, attachments, utility_account_id,
           building:buildings(name),
           book:accounts!income_expenses_account_id_fkey(name),
+          meter:building_utility_accounts!income_expenses_utility_account_id_fkey(provider_code),
           it:income_expense_items!inner ( income_expense_type_id, start_date, end_date )
         `)
         .eq('type', 'EXPENSE')
@@ -263,9 +319,11 @@ export const useUtilityPayments = (billingMonth: string) => {
           .filter((x: any): x is string => typeof x === 'string' && x.length > 0);
         out.push({
           voucher_id: v.id,
+          account_id: v.utility_account_id ?? null,
           building_id: v.building_id,
           building_name: v.building?.name ?? '—',
           type: isElec ? 'electric' : 'water',
+          code: v.meter?.provider_code ?? '',
           amount: Number(v.total_amount) || 0,
           payment_date: (v.voucher_date ?? '').slice(0, 10),
           time: fmtTimeVN(v.created_at),
@@ -281,11 +339,12 @@ export const useUtilityPayments = (billingMonth: string) => {
 
   const rows = query.data ?? [];
 
-  // Đã đóng toà/loại trong kỳ → tổng + phiếu gần nhất (mục tiêu Hủy phiếu).
+  // Đã đóng theo TỪNG đồng hồ trong kỳ → tổng + phiếu gần nhất (mục tiêu Hủy phiếu).
   const paidMap = useMemo(() => {
     const m: Record<string, PaidInfo> = {};
     for (const r of rows) {
-      const k = `${r.building_id}:${r.type}`;
+      const k = r.account_id;
+      if (!k) continue; // phiếu chưa gắn đồng hồ (không xảy ra sau backfill)
       const cur = m[k];
       if (!cur) {
         m[k] = {
@@ -307,8 +366,9 @@ export const useUtilityPayments = (billingMonth: string) => {
     }
     return m;
   }, [rows]);
-  const paidThisKy = (buildingId: string, type: UtilType): PaidInfo | undefined =>
-    paidMap[`${buildingId}:${type}`];
+  /** Trạng thái đã đóng của 1 đồng hồ (theo account id). */
+  const paidThisKy = (accountId: string | null | undefined): PaidInfo | undefined =>
+    accountId ? paidMap[accountId] : undefined;
 
   // Báo cáo theo ngày — chỉ ngày có đóng, desc; trong ngày sort theo giờ asc.
   const byDay = useMemo<DayGroup[]>(() => {
@@ -321,7 +381,7 @@ export const useUtilityPayments = (billingMonth: string) => {
       g.sum += r.amount;
       g.rows.push({
         voucher_id: r.voucher_id, building_id: r.building_id, buildingName: r.building_name,
-        type: r.type, time: r.time, by: r.by, book: r.book, amount: r.amount,
+        type: r.type, code: r.code, time: r.time, by: r.by, book: r.book, amount: r.amount,
         hasReceipt: r.hasReceipt, attachments: r.attachments,
       });
     }

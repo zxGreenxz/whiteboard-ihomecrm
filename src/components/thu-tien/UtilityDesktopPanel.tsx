@@ -7,11 +7,11 @@
 // =============================================
 
 import { useMemo, useState } from 'react';
-import { ArrowLeft, X, Zap, Droplet, Check, Camera, BarChart3, User } from 'lucide-react';
+import { ArrowLeft, X, Zap, Droplet, Check, Camera, BarChart3, User, Plus, Trash2 } from 'lucide-react';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useUtilityChart, type UtilType } from '@/hooks/useUtilityBills';
-import { useUtilityPayState } from '@/hooks/useUtilityPayState';
+import { useUtilityPayState, type MeterRow } from '@/hooks/useUtilityPayState';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { UtilityChart } from './UtilityChart';
 import { UtilityBookMenu } from './UtilityBookMenu';
@@ -62,8 +62,16 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
     const paidList: string[] = [];
     const dueList: string[] = [];
     for (const b of buildings) {
-      const p = S.paidThisKy(b.id, t);
-      if (p) { sum += p.amount; paidList.push(b.name); }
+      const ms = S.metersOf(b.id).filter((m) => m.type === t);
+      let bSum = 0;
+      let allPaid = ms.length > 0;
+      for (const m of ms) {
+        const p = S.paidThisKy(m.accountId);
+        if (p) bSum += p.amount;
+        else allPaid = false;
+      }
+      sum += bSum;
+      if (allPaid) paidList.push(b.name);
       else dueList.push(b.name);
     }
     return { sum, paidList, dueList };
@@ -71,14 +79,14 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
   const statElec = statOf('electric');
   const statWater = statOf('water');
 
-  // ── Hàng bảng ──
+  // ── Hàng bảng (theo từng đồng hồ) ──
   const fBuildings = bldFilter === 'all' ? buildings : buildings.filter((b) => b.id === bldFilter);
-  const tblRows: { b: { id: string; name: string }; t: UtilType; first: boolean }[] = [];
+  const tblRows: { row: MeterRow; first: boolean }[] = [];
   for (const b of fBuildings) {
-    const types = (['electric', 'water'] as UtilType[]).filter(
-      (t) => typeMatch(t) && !(onlyDue && S.paidThisKy(b.id, t)),
+    const rows = S.metersOf(b.id).filter(
+      (r) => typeMatch(r.type) && !(onlyDue && S.paidThisKy(r.accountId)),
     );
-    types.forEach((t, i) => tblRows.push({ b, t, first: i === 0 }));
+    rows.forEach((row, i) => tblRows.push({ row, first: i === 0 }));
   }
 
   const loading = loadingBld || S.loadingAccts || S.loadingPay;
@@ -204,15 +212,28 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                     </tr>
                   </thead>
                   <tbody>
-                    {tblRows.map(({ b, t, first }) => {
-                      const k = S.key(b.id, t);
-                      const paid = S.paidThisKy(b.id, t);
-                      const amount = S.amountOf(b.id, t);
+                    {tblRows.map(({ row, first }) => {
+                      const k = row.key;
+                      const t = row.type;
+                      const paid = S.paidThisKy(row.accountId);
+                      const amount = S.amountOf(k);
                       const paying = S.payingKey === k;
                       const Icon = t === 'electric' ? Zap : Droplet;
                       return (
                         <tr key={k} className={first ? 'ud-first' : ''}>
-                          <td className="ud-td-bld">{first ? <span className="ud-bldcode">{b.name}</span> : null}</td>
+                          <td className="ud-td-bld">
+                            {first ? (
+                              <div className="ud-bldcell">
+                                <span className="ud-bldcode">{row.buildingName}</span>
+                                {canRecordPayment && (
+                                  <span className="ud-add-wrap">
+                                    <button type="button" className="ud-add" title="Thêm đồng hồ điện" disabled={S.adding} onClick={() => S.addMeter(row.buildingId, 'electric')}><Zap /><Plus /></button>
+                                    <button type="button" className="ud-add" title="Thêm đồng hồ nước" disabled={S.adding} onClick={() => S.addMeter(row.buildingId, 'water')}><Droplet /><Plus /></button>
+                                  </span>
+                                )}
+                              </div>
+                            ) : null}
+                          </td>
                           <td>
                             <span className="ud-khoan">
                               <span className={'ud-khoan-ic ' + t}><Icon /></span>
@@ -220,19 +241,24 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                             </span>
                           </td>
                           <td>
-                            <input
-                              className="ud-code" placeholder={t === 'electric' ? 'Mã PE' : 'Mã nước'}
-                              value={S.codeOf(b.id, t)}
-                              onChange={(e) => S.setField(b.id, t, { code: e.target.value })}
-                              onBlur={() => S.saveAccount(b.id, t)}
-                            />
+                            <span className="ud-codecell">
+                              <input
+                                className="ud-code" placeholder={t === 'electric' ? 'Mã PE' : 'Mã nước'}
+                                value={S.codeOf(row)}
+                                onChange={(e) => S.setField(row, { code: e.target.value })}
+                                onBlur={() => S.saveMeter(row)}
+                              />
+                              {row.canDelete && (
+                                <button type="button" className="ud-del" title="Xoá đồng hồ này" onClick={() => S.deleteMeter(row.accountId!)}><Trash2 /></button>
+                              )}
+                            </span>
                           </td>
                           <td>
                             <input
                               className="ud-holder" placeholder="Tên chủ hộ"
-                              value={S.holderOf(b.id, t)}
-                              onChange={(e) => S.setField(b.id, t, { holder: e.target.value })}
-                              onBlur={() => S.saveAccount(b.id, t)}
+                              value={S.holderOf(row)}
+                              onChange={(e) => S.setField(row, { holder: e.target.value })}
+                              onBlur={() => S.saveMeter(row)}
                             />
                           </td>
                           <td>
@@ -258,7 +284,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                               <input
                                 className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền"
                                 value={formatVN(amount)}
-                                onChange={(e) => S.setAmount(b.id, t, parseVN(e.target.value))}
+                                onChange={(e) => S.setAmount(k, parseVN(e.target.value))}
                               />
                             )}
                           </td>
@@ -267,7 +293,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                               <span className="ud-acts">
                                 <span className="ud-check"><Check /></span>
                                 <UtilityReceiptThumb attachments={paid.attachments} onView={S.viewReceipt} size="md" />
-                                <button type="button" className="ud-cancel" title="Hủy phiếu thanh toán" disabled={!canRecordPayment} onClick={() => S.requestCancel(b.id, t)}><X /></button>
+                                <button type="button" className="ud-cancel" title="Hủy phiếu thanh toán" disabled={!canRecordPayment} onClick={() => S.requestCancel(row)}><X /></button>
                               </span>
                             ) : (
                               <span className="ud-acts">
@@ -283,7 +309,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                                 <button
                                   type="button" className="ud-pay" title="Đóng tiền"
                                   disabled={!canRecordPayment || amount <= 0 || paying}
-                                  onClick={() => S.submitPay(b.id, t, b.name)}
+                                  onClick={() => S.submitPay(row, row.buildingName)}
                                 >
                                   {paying ? <span className="ub-spin" /> : <Check />}
                                 </button>
@@ -343,7 +369,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                             </span>
                           </td>
                           <td className="ud-mono">{r.buildingName}</td>
-                          <td className="ud-mono2">{S.byKey(r.building_id, r.type)?.code ?? '—'}</td>
+                          <td className="ud-mono2">{r.code || '—'}</td>
                           <td>
                             <span className="ud-by"><span className="ud-by-ic"><User /></span>{r.by || '—'}</span>
                           </td>

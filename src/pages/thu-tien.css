@@ -599,6 +599,13 @@
 .tt-page .ubc-badge { margin-left: auto; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .tt-page .ubc-badge.done { color: var(--c-paid); background: var(--c-paid-bg); border: 1px solid var(--c-paid-line); }
 .tt-page .ubc-badge.pending { color: var(--c-partial); background: var(--c-partial-bg); border: 1px solid var(--c-partial-line); }
+.tt-page .ubc-add-wrap { display: inline-flex; gap: 4px; margin-left: 8px; flex-shrink: 0; }
+.tt-page .ubc-add { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.tt-page .ubc-add svg { width: 12px; height: 12px; }
+.tt-page .ubc-add:active:not(:disabled) { background: var(--surface-2); transform: scale(.96); }
+.tt-page .ubc-add:disabled { opacity: .5; cursor: default; }
+.tt-page .ubc-del { flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--c-unpaid-line); background: var(--c-unpaid-bg); color: var(--c-unpaid); display: grid; place-items: center; cursor: pointer; }
+.tt-page .ubc-del svg { width: 13px; height: 13px; }
 
 .tt-page .ubc-row { padding: 13px 14px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 10px; }
 .tt-page .ubc-row:first-of-type { border-top: 0; }
@@ -806,6 +813,15 @@
 .tt-udesk .ud-table tr.ud-first td { border-top: 1px solid var(--line); }
 .tt-udesk .ud-table tbody tr:first-child td { border-top: 0; }
 .tt-udesk .ud-bldcode { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.2px; }
+.tt-udesk .ud-bldcell { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tt-udesk .ud-add-wrap { display: inline-flex; gap: 5px; }
+.tt-udesk .ud-add { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); cursor: pointer; }
+.tt-udesk .ud-add svg { width: 12px; height: 12px; }
+.tt-udesk .ud-add:hover:not(:disabled) { background: var(--surface); border-color: var(--brand-100); }
+.tt-udesk .ud-add:disabled { opacity: .5; cursor: default; }
+.tt-udesk .ud-codecell { display: inline-flex; align-items: center; gap: 4px; }
+.tt-udesk .ud-del { width: 24px; height: 24px; flex-shrink: 0; border-radius: 6px; border: 1px solid var(--c-unpaid-line); background: var(--c-unpaid-bg); color: var(--c-unpaid); display: grid; place-items: center; cursor: pointer; }
+.tt-udesk .ud-del svg { width: 12px; height: 12px; }
 .tt-udesk .ud-khoan { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .tt-udesk .ud-khoan-ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
 .tt-udesk .ud-khoan-ic svg { width: 13px; height: 13px; }
