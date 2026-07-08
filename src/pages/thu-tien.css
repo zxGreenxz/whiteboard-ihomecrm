@@ -428,10 +428,14 @@
    ============================================================= */
 .tt-manage { display: none; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
 .tt-manage * { box-sizing: border-box; }
+/* Panel Đóng tiền Điện nước desktop — thay chỗ .tt-manage khi mở; ẩn <1024px. */
+.tt-udesk { display: none; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+.tt-udesk * { box-sizing: border-box; }
 
 @media (min-width: 1024px) {
   .tt-stage { display: grid; grid-template-columns: minmax(0, 3fr) minmax(400px, 1fr); padding: 0; overflow: hidden; align-items: stretch; }
   .tt-manage { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow-y: auto; background: var(--bg); border-right: 1px solid var(--line); }
+  .tt-udesk { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow-y: auto; background: var(--bg); border-right: 1px solid var(--line); }
   .tt-phone-col { overflow-y: auto; padding: 26px 20px 40px; align-items: flex-start; }
 }
 
@@ -576,52 +580,271 @@
 .tt-manage .tm-utility:hover { background: var(--surface-2); }
 .tt-manage .tm-utility:active { transform: scale(.98); }
 
-/* ===== Đóng tiền điện nước — sheet "Đóng tiền" ===== */
-.tt-page .ub-list { padding: 14px 18px 0; display: flex; flex-direction: column; gap: 14px; }
-.tt-page .ub-bld { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--sh-1); overflow: hidden; }
-.tt-page .ub-bld-name { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); padding: 11px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line-2); }
+/* ===== Đóng tiền điện nước — bộ lọc (mobile) ===== */
+.tt-page .ub-filter { display: flex; gap: 8px; align-items: center; padding: 13px 16px 0; }
+.tt-page .ub-segs { display: flex; gap: 5px; flex: 1; min-width: 0; }
+.tt-page .ub-seg { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 8px 5px; border-radius: 9px; cursor: pointer; transition: .14s; white-space: nowrap; }
+.tt-page .ub-seg svg { width: 13px; height: 13px; }
+.tt-page .ub-seg.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tt-page .ub-due { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 8px 11px; border-radius: 9px; cursor: pointer; transition: .14s; white-space: nowrap; }
+.tt-page .ub-due svg { width: 13px; height: 13px; }
+.tt-page .ub-due-box { width: 13px; height: 13px; border: 2px solid var(--ink-faint); border-radius: 4px; flex-shrink: 0; }
+.tt-page .ub-due.on { background: var(--c-paid-bg); border-color: var(--c-paid-line); color: var(--c-paid-d); }
 
-.tt-page .ub-row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border-top: 1px solid var(--line-2); }
-.tt-page .ub-row:first-of-type { border-top: 0; }
-.tt-page .ub-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
-.tt-page .ub-ic svg { width: 16px; height: 16px; }
-.tt-page .ub-row.electric .ub-ic { background: var(--c-partial-bg); color: var(--c-partial); }
-.tt-page .ub-row.water .ub-ic { background: #e7f1fb; color: #2563c9; }
+/* ===== Card mỗi toà (mobile) ===== */
+.tt-page .ubc-list { padding: 12px 16px 6px; display: flex; flex-direction: column; gap: 12px; }
+.tt-page .ubc { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); overflow: hidden; }
+.tt-page .ubc-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--line-2); background: var(--surface-2); }
+.tt-page .ubc-bld { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: -.2px; }
+.tt-page .ubc-badge { margin-left: auto; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.tt-page .ubc-badge.done { color: var(--c-paid); background: var(--c-paid-bg); border: 1px solid var(--c-paid-line); }
+.tt-page .ubc-badge.pending { color: var(--c-partial); background: var(--c-partial-bg); border: 1px solid var(--c-partial-line); }
 
-.tt-page .ub-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
-.tt-page .ub-codeline { display: flex; gap: 7px; }
-.tt-page .ub-code, .tt-page .ub-holder { min-width: 0; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 7px 10px; outline: none; }
-.tt-page .ub-code { flex: 0 0 42%; font-family: var(--mono); font-weight: 700; letter-spacing: -.2px; }
-.tt-page .ub-holder { flex: 1; }
-.tt-page .ub-code:focus, .tt-page .ub-holder:focus, .tt-page .ub-amt:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
-.tt-page .ub-paid { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; font-size: 11.5px; font-weight: 700; color: var(--c-paid); background: var(--c-paid-bg); border: 1px solid var(--c-paid-line); border-radius: 999px; padding: 3px 9px; }
-.tt-page .ub-paid svg { width: 13px; height: 13px; }
+.tt-page .ubc-row { padding: 13px 14px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 10px; }
+.tt-page .ubc-row:first-of-type { border-top: 0; }
+.tt-page .ubc-rowhead { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tt-page .ubc-ic { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+.tt-page .ubc-ic svg { width: 15px; height: 15px; }
+.tt-page .ubc-ic.electric { background: var(--c-partial-bg); color: var(--c-partial); }
+.tt-page .ubc-ic.water { background: #e7f1fb; color: #2563c9; }
+.tt-page .ubc-code { flex: 0 0 auto; width: 106px; font-family: var(--mono); font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 4px 6px; outline: none; }
+.tt-page .ubc-holder { flex: 1; min-width: 0; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink-3); background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 4px 6px; outline: none; }
+.tt-page .ubc-code:focus, .tt-page .ubc-holder:focus { background: var(--surface-2); border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); color: var(--ink); }
+.tt-page .ubc-code:hover, .tt-page .ubc-holder:hover { border-color: var(--line); }
 
-.tt-page .ub-pay { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
-.tt-page .ub-amt { width: 104px; font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: -.3px; text-align: right; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; outline: none; }
-.tt-page .ub-paybtn { width: 40px; height: 38px; flex-shrink: 0; border: 0; border-radius: var(--r-sm); background: var(--c-paid); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 1px 2px rgba(31,157,87,.25); transition: .12s; }
-.tt-page .ub-paybtn svg { width: 18px; height: 18px; }
+.tt-page .ubc-pay { display: flex; gap: 7px; align-items: stretch; }
+.tt-page .ub-amt { flex: 1; min-width: 0; font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: -.3px; text-align: right; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; outline: none; }
+.tt-page .ub-amt:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-page .ub-attach { width: 40px; flex-shrink: 0; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
+.tt-page .ub-attach svg { width: 16px; height: 16px; }
+.tt-page .ub-attach.has { border-color: var(--brand-100); background: var(--brand-50); color: var(--brand-600); }
+.tt-page .ub-attach:disabled { opacity: .5; cursor: default; }
+.tt-page .ub-paybtn { width: 46px; flex-shrink: 0; border: 0; border-radius: 9px; background: var(--c-paid); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 1px 2px rgba(31,157,87,.3); transition: .12s; }
+.tt-page .ub-paybtn svg { width: 19px; height: 19px; }
 .tt-page .ub-paybtn:active:not(:disabled) { background: var(--c-paid-d); transform: scale(.96); }
 .tt-page .ub-paybtn:disabled { opacity: .4; cursor: default; box-shadow: none; }
-.tt-page .ub-spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: ub-spin .7s linear infinite; }
-@keyframes ub-spin { to { transform: rotate(360deg); } }
 
-/* ===== Đóng tiền điện nước — báo cáo theo ngày ===== */
-.tt-page .ub-report { padding: 14px 18px 0; display: flex; flex-direction: column; gap: 12px; }
-.tt-page .ub-day { border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
-.tt-page .ub-day-head { display: flex; align-items: center; padding: 9px 13px; background: var(--ink); }
+.tt-page .ubc-paid { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.tt-page .ubc-paid-pill { display: inline-flex; align-items: center; gap: 8px; background: var(--c-paid-bg); border: 1px solid var(--c-paid-line); border-radius: 8px; padding: 4px 11px; }
+.tt-page .ubc-paid-rc { width: 29px; height: 29px; flex-shrink: 0; border: 0; border-radius: 6px; background: var(--brand-100); display: grid; place-items: center; color: var(--brand-600); cursor: pointer; }
+.tt-page .ubc-paid-rc svg { width: 15px; height: 15px; }
+.tt-page .ubc-paid-txt { display: flex; flex-direction: column; }
+.tt-page .ubc-paid-a { font-size: 11px; font-weight: 500; color: var(--c-paid); line-height: 1.3; }
+.tt-page .ubc-paid-m { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--c-paid-d); line-height: 1.2; }
+.tt-page .ubc-bookchip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+.tt-page .ubc-bookchip svg { color: var(--brand-600); flex-shrink: 0; }
+.tt-page .ubc-cancel { margin-left: auto; width: 32px; height: 30px; flex-shrink: 0; border-radius: 8px; border: 1px solid var(--c-unpaid-line); background: var(--c-unpaid-bg); color: var(--c-unpaid); display: grid; place-items: center; cursor: pointer; }
+.tt-page .ubc-cancel svg { width: 15px; height: 15px; }
+.tt-page .ubc-cancel:disabled { opacity: .5; cursor: default; }
+
+/* ===== Biểu đồ (mobile) ===== */
+.tt-page .ub-chart { padding: 16px 16px 6px; }
+.tt-page .ub-chart-t { font-size: 13px; font-weight: 800; letter-spacing: -.1px; margin-bottom: 3px; }
+.tt-page .ub-chart-s { font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 14px; }
+
+/* ===== Đóng tiền điện nước — báo cáo theo ngày (mobile) ===== */
+.tt-page .ub-report { padding: 14px 16px 6px; display: flex; flex-direction: column; gap: 12px; }
+.tt-page .ub-day { border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; background: var(--surface); box-shadow: var(--sh-1); }
+.tt-page .ub-day-head { display: flex; align-items: center; gap: 9px; padding: 10px 13px; background: var(--ink); }
 .tt-page .ub-day-d { font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
+.tt-page .ub-day-c { font-size: 11px; font-weight: 600; color: rgba(255,255,255,.55); }
 .tt-page .ub-day-s { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
-.tt-page .ub-day-row { display: flex; align-items: center; gap: 9px; padding: 10px 13px; border-top: 1px solid var(--line-2); }
-.tt-page .ub-day-ic { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+.tt-page .ub-day-row { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-top: 1px solid var(--line-2); }
+.tt-page .ub-day-ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
 .tt-page .ub-day-ic svg { width: 13px; height: 13px; }
 .tt-page .ub-day-ic.electric { background: var(--c-partial-bg); color: var(--c-partial); }
 .tt-page .ub-day-ic.water { background: #e7f1fb; color: #2563c9; }
-.tt-page .ub-day-b { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.2px; }
+.tt-page .ub-day-main { flex: 1; min-width: 0; }
+.tt-page .ub-day-l1 { display: flex; align-items: baseline; gap: 6px; }
+.tt-page .ub-day-b { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: -.2px; }
 .tt-page .ub-day-t { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
-.tt-page .ub-day-amt { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.3px; }
+.tt-page .ub-day-l2 { font-size: 11px; font-weight: 600; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-page .ub-day-rc { width: 30px; height: 24px; border-radius: 6px; background: #f0efe9; border: 1px solid var(--line); display: grid; place-items: center; flex-shrink: 0; color: var(--ink-3); cursor: pointer; }
+.tt-page .ub-day-rc svg { width: 14px; height: 14px; }
+.tt-page .ub-day-amt { font-family: var(--mono); font-weight: 700; font-size: 13px; color: var(--ink); letter-spacing: -.3px; flex-shrink: 0; }
 
 /* ===== Toast ===== */
 .tt-page .toast { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; padding: 11px 18px; border-radius: 999px; z-index: 90; box-shadow: var(--sh-3); opacity: 0; transition: .24s; pointer-events: none; display: flex; align-items: center; gap: 8px; }
 .tt-page .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .tt-page .toast svg { width: 15px; height: 15px; color: var(--c-paid); }
+
+/* =============================================================
+   Đóng tiền Điện nước — DÙNG CHUNG (mobile .tt-page + desktop .tt-udesk)
+   Scope .tt-stage để token kế thừa & không rò ra ngoài.
+   ============================================================= */
+.tt-stage .ub-spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: ub-spin .7s linear infinite; display: inline-block; }
+.tt-stage .ub-spin.dark { border-color: rgba(141,134,120,.4); border-top-color: var(--ink-3); }
+@keyframes ub-spin { to { transform: rotate(360deg); } }
+
+/* Book menu (chọn sổ quỹ ghi chi) */
+.tt-stage .ub-bookmenu { position: relative; display: inline-flex; }
+.tt-stage .ub-bookbtn { display: inline-flex; align-items: center; gap: 5px; max-width: 150px; font-family: var(--font); font-size: 11.5px; font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; cursor: pointer; white-space: nowrap; }
+.tt-stage .ub-bookmenu.compact .ub-bookbtn { max-width: 106px; padding: 0 8px; align-self: stretch; }
+.tt-stage .ub-bookbtn-ic { color: var(--brand-600); flex-shrink: 0; }
+.tt-stage .ub-bookbtn-nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-stage .ub-bookbtn-cv { width: 12px; height: 12px; flex-shrink: 0; color: var(--ink-faint); }
+.tt-stage .ub-bookbtn:disabled { opacity: .5; cursor: default; }
+.tt-stage .ub-bookpop { position: absolute; top: calc(100% + 5px); left: 0; z-index: 120; min-width: 190px; max-width: 260px; max-height: 260px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-3); padding: 5px; }
+.tt-stage .ub-bookpop-empty { padding: 10px 12px; font-size: 12px; color: var(--ink-3); }
+.tt-stage .ub-bookopt { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink); background: transparent; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.tt-stage .ub-bookopt:hover { background: var(--surface-2); }
+.tt-stage .ub-bookopt.on { color: var(--brand-600); }
+.tt-stage .ub-bookopt > svg:first-child { color: var(--brand-600); flex-shrink: 0; }
+.tt-stage .ub-bookopt-nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-stage .ub-bookopt-def { font-size: 10px; font-weight: 700; color: var(--ink-3); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; flex-shrink: 0; }
+.tt-stage .ub-bookopt-ck { width: 14px; height: 14px; flex-shrink: 0; color: var(--c-paid); }
+
+/* Cancel modal (Hủy phiếu thanh toán) */
+.tt-stage .uc-overlay { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.tt-stage .uc-scrim { position: absolute; inset: 0; background: rgba(27,24,19,.5); backdrop-filter: blur(2px); }
+.tt-stage .uc-modal { position: relative; width: 430px; max-width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--sh-3); padding: 26px 26px 20px; text-align: center; }
+.tt-stage .uc-ic { width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 15px; background: var(--c-unpaid-bg); color: var(--c-unpaid); display: grid; place-items: center; }
+.tt-stage .uc-ic svg { width: 26px; height: 26px; }
+.tt-stage .uc-title { font-size: 18px; font-weight: 800; letter-spacing: -.2px; color: var(--ink); }
+.tt-stage .uc-desc { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 6px; line-height: 1.5; }
+.tt-stage .uc-mono { font-family: var(--mono); }
+.tt-stage .uc-box { margin: 16px 0; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 13px; padding: 14px 16px; text-align: left; }
+.tt-stage .uc-box-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tt-stage .uc-box-l { font-size: 12px; font-weight: 700; color: var(--ink-3); }
+.tt-stage .uc-amt { font-family: var(--mono); font-size: 19px; font-weight: 700; letter-spacing: -.4px; color: var(--c-unpaid); }
+.tt-stage .uc-meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); flex-wrap: wrap; }
+.tt-stage .uc-book { display: inline-flex; align-items: center; gap: 4px; }
+.tt-stage .uc-book svg { width: 13px; height: 13px; }
+.tt-stage .uc-warn { display: flex; align-items: flex-start; gap: 8px; background: var(--c-partial-bg); border: 1px solid var(--st-soon-line); border-radius: 11px; padding: 10px 13px; text-align: left; margin-bottom: 18px; }
+.tt-stage .uc-warn svg { width: 15px; height: 15px; color: var(--c-partial); flex-shrink: 0; margin-top: 1px; }
+.tt-stage .uc-warn span { font-size: 12px; font-weight: 600; color: #8a6111; line-height: 1.45; }
+.tt-stage .uc-acts { display: flex; gap: 10px; }
+.tt-stage .uc-keep { flex: 1; font-family: var(--font); font-weight: 700; font-size: 14px; padding: 12px 0; border-radius: 12px; cursor: pointer; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.tt-stage .uc-del { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--font); font-weight: 700; font-size: 14px; padding: 12px 0; border-radius: 12px; cursor: pointer; background: var(--c-unpaid); color: #fff; border: 1px solid var(--c-unpaid); box-shadow: 0 1px 3px rgba(214,69,63,.3); }
+.tt-stage .uc-del svg { width: 16px; height: 16px; }
+.tt-stage .uc-keep:disabled, .tt-stage .uc-del:disabled { opacity: .6; cursor: default; }
+
+/* =============================================================
+   Panel Đóng tiền Điện nước — DESKTOP (.tt-udesk .ud-*)
+   ============================================================= */
+.tt-udesk .ud-head { display: flex; align-items: center; gap: 13px; padding: 22px 28px 0; }
+.tt-udesk .ud-back, .tt-udesk .ud-x { width: 36px; height: 36px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-udesk .ud-back svg, .tt-udesk .ud-x svg { width: 18px; height: 18px; }
+.tt-udesk .ud-back:hover, .tt-udesk .ud-x:hover { background: var(--surface-2); }
+.tt-udesk .ud-appic { width: 36px; height: 36px; border-radius: 11px; background: var(--brand-50); color: var(--brand-600); display: grid; place-items: center; flex-shrink: 0; }
+.tt-udesk .ud-appic svg { width: 19px; height: 19px; }
+.tt-udesk .ud-title { flex: 1; min-width: 0; }
+.tt-udesk .ud-title h1 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.3px; }
+.tt-udesk .ud-title p { margin: 3px 0 0; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.tt-udesk .ud-ky { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--brand-600); background: var(--brand-50); border: 1px solid var(--brand-100); padding: 7px 13px; border-radius: 999px; outline: none; cursor: pointer; }
+
+.tt-udesk .ud-tabs { display: flex; gap: 8px; padding: 16px 28px 0; }
+.tt-udesk .ud-tab { display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--font); font-size: 13.5px; font-weight: 700; padding: 9px 17px; border-radius: 11px; cursor: pointer; white-space: nowrap; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); transition: .15s; }
+.tt-udesk .ud-tab svg { width: 15px; height: 15px; }
+.tt-udesk .ud-tab.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tt-udesk .ud-tab-n { font-family: var(--mono); font-size: 11px; font-weight: 700; opacity: .6; }
+
+.tt-udesk .ud-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px 28px 0; }
+.tt-udesk .ud-stat { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 15px 16px; box-shadow: var(--sh-1); }
+.tt-udesk .ud-stat.electric { border-left: 4px solid #d98c1f; }
+.tt-udesk .ud-stat.water { border-left: 4px solid #2f74d0; }
+.tt-udesk .ud-stat-top { display: flex; align-items: center; gap: 10px; margin-bottom: 13px; }
+.tt-udesk .ud-stat-ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
+.tt-udesk .ud-stat-ic svg { width: 17px; height: 17px; }
+.tt-udesk .ud-stat-ic.electric { background: var(--c-partial-bg); color: var(--c-partial); }
+.tt-udesk .ud-stat-ic.water { background: #e7f1fb; color: #2563c9; }
+.tt-udesk .ud-stat-h { flex: 1; min-width: 0; }
+.tt-udesk .ud-stat-title { font-size: 13.5px; font-weight: 800; letter-spacing: -.1px; }
+.tt-udesk .ud-stat-sub { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.tt-udesk .ud-stat-amt { font-family: var(--mono); font-size: 20px; font-weight: 700; letter-spacing: -.5px; color: var(--c-paid); white-space: nowrap; }
+.tt-udesk .ud-stat-lines { display: flex; flex-direction: column; gap: 9px; }
+.tt-udesk .ud-stat-line { display: flex; gap: 9px; align-items: flex-start; }
+.tt-udesk .ud-stat-lbl { flex-shrink: 0; font-size: 11px; font-weight: 700; white-space: nowrap; padding-top: 3px; }
+.tt-udesk .ud-stat-lbl.paid { color: var(--c-paid); }
+.tt-udesk .ud-stat-lbl.due { color: var(--c-unpaid); }
+.tt-udesk .ud-stat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.tt-udesk .ud-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+.tt-udesk .ud-chip.paid { color: var(--c-paid-d); background: var(--c-paid-bg); border: 1px solid var(--c-paid-line); }
+.tt-udesk .ud-chip.due { color: var(--c-unpaid); background: var(--c-unpaid-bg); border: 1px solid var(--c-unpaid-line); }
+.tt-udesk .ud-stat-none { font-size: 11.5px; color: var(--ink-faint); font-weight: 600; }
+.tt-udesk .ud-stat-done { font-size: 11.5px; color: var(--c-paid); font-weight: 700; }
+
+.tt-udesk .ud-toolbar { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 18px 28px 0; }
+.tt-udesk .ud-dd { display: flex; flex-direction: column; gap: 5px; }
+.tt-udesk .ud-dd > span { font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; padding-left: 2px; }
+.tt-udesk .ud-dd select { font-family: var(--font); font-size: 13.5px; font-weight: 700; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 9px 13px; cursor: pointer; outline: none; min-width: 170px; }
+.tt-udesk .ud-dd select:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-udesk .ud-seg { display: flex; gap: 6px; }
+.tt-udesk .ud-seg button { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 8px 13px; border-radius: 10px; cursor: pointer; transition: .14s; white-space: nowrap; }
+.tt-udesk .ud-seg button svg { width: 14px; height: 14px; }
+.tt-udesk .ud-seg button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tt-udesk .ud-due { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 9px 14px; border-radius: 10px; cursor: pointer; transition: .14s; white-space: nowrap; }
+.tt-udesk .ud-due svg { width: 14px; height: 14px; }
+.tt-udesk .ud-due-box { width: 14px; height: 14px; border: 2px solid var(--ink-faint); border-radius: 4px; }
+.tt-udesk .ud-due.on { background: var(--c-paid-bg); border-color: var(--c-paid-line); color: var(--c-paid-d); }
+
+.tt-udesk .ud-body { padding: 16px 28px 30px; }
+.tt-udesk .ud-empty { text-align: center; padding: 40px 20px; color: var(--ink-3); font-size: 13.5px; font-weight: 600; }
+.tt-udesk .ud-tablewrap { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-1); }
+.tt-udesk .ud-table { width: 100%; border-collapse: collapse; }
+.tt-udesk .ud-table th { padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; background: var(--surface-2); border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.tt-udesk .ud-table th.num { text-align: right; }
+.tt-udesk .ud-table th.act { text-align: center; }
+.tt-udesk .ud-table td { padding: 9px 14px; border-top: 1px solid var(--line-2); vertical-align: middle; }
+.tt-udesk .ud-table td.num { text-align: right; }
+.tt-udesk .ud-table td.act { text-align: center; }
+.tt-udesk .ud-table tr.ud-first td { border-top: 1px solid var(--line); }
+.tt-udesk .ud-table tbody tr:first-child td { border-top: 0; }
+.tt-udesk .ud-bldcode { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.2px; }
+.tt-udesk .ud-khoan { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.tt-udesk .ud-khoan-ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+.tt-udesk .ud-khoan-ic svg { width: 13px; height: 13px; }
+.tt-udesk .ud-khoan-ic.electric { background: var(--c-partial-bg); color: var(--c-partial); }
+.tt-udesk .ud-khoan-ic.water { background: #e7f1fb; color: #2563c9; }
+.tt-udesk .ud-code { width: 116px; max-width: 100%; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-2); background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 5px 7px; outline: none; }
+.tt-udesk .ud-holder { width: 128px; max-width: 100%; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--ink-2); background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 5px 7px; outline: none; }
+.tt-udesk .ud-code:hover, .tt-udesk .ud-holder:hover { border-color: var(--line); }
+.tt-udesk .ud-code:focus, .tt-udesk .ud-holder:focus { background: var(--surface); border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); color: var(--ink); }
+.tt-udesk .ud-amt { width: 130px; font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.3px; text-align: right; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none; }
+.tt-udesk .ud-amt:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-udesk .ud-paidamt { display: flex; flex-direction: column; align-items: flex-end; }
+.tt-udesk .ud-paidamt-a { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.3px; color: var(--c-paid); }
+.tt-udesk .ud-paidamt-m { font-size: 10.5px; font-weight: 600; color: var(--ink-3); }
+.tt-udesk .ud-bookchip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; white-space: nowrap; }
+.tt-udesk .ud-bookchip svg { color: var(--brand-600); flex-shrink: 0; }
+.tt-udesk .ud-acts { display: inline-flex; gap: 6px; align-items: center; justify-content: center; }
+.tt-udesk .ud-attach { width: 34px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); display: grid; place-items: center; cursor: pointer; }
+.tt-udesk .ud-attach svg { width: 15px; height: 15px; }
+.tt-udesk .ud-attach.has { border-color: var(--brand-100); background: var(--brand-50); color: var(--brand-600); }
+.tt-udesk .ud-attach:disabled { opacity: .5; cursor: default; }
+.tt-udesk .ud-pay { width: 38px; height: 32px; border-radius: 8px; border: 0; background: var(--c-paid); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 1px 2px rgba(31,157,87,.3); }
+.tt-udesk .ud-pay svg { width: 17px; height: 17px; }
+.tt-udesk .ud-pay:active:not(:disabled) { background: var(--c-paid-d); transform: scale(.96); }
+.tt-udesk .ud-pay:disabled { opacity: .4; cursor: default; box-shadow: none; }
+.tt-udesk .ud-check { width: 26px; height: 26px; border-radius: 50%; background: var(--c-paid-bg); color: var(--c-paid); display: grid; place-items: center; flex-shrink: 0; }
+.tt-udesk .ud-check svg { width: 14px; height: 14px; }
+.tt-udesk .ud-rc { width: 30px; height: 26px; border-radius: 7px; background: #f0efe9; border: 1px solid var(--line); color: var(--ink-3); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-udesk .ud-rc svg { width: 14px; height: 14px; }
+.tt-udesk .ud-cancel { width: 30px; height: 26px; border-radius: 7px; border: 1px solid var(--c-unpaid-line); background: var(--c-unpaid-bg); color: var(--c-unpaid); display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-udesk .ud-cancel svg { width: 14px; height: 14px; }
+.tt-udesk .ud-cancel:disabled { opacity: .5; cursor: default; }
+
+.tt-udesk .ud-report { display: flex; flex-direction: column; gap: 16px; }
+.tt-udesk .ud-rday { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-1); overflow: hidden; }
+.tt-udesk .ud-rday-head { display: flex; align-items: center; gap: 11px; padding: 12px 18px; background: var(--ink); }
+.tt-udesk .ud-rday-d { font-family: var(--mono); font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
+.tt-udesk .ud-rday-c { font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,.55); }
+.tt-udesk .ud-rday-lbl { margin-left: auto; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .4px; }
+.tt-udesk .ud-rday-s { font-family: var(--mono); font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -.4px; }
+.tt-udesk .ud-rtable { width: 100%; border-collapse: collapse; }
+.tt-udesk .ud-rtable th { padding: 9px 16px; text-align: left; font-size: 10.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; background: var(--surface-2); border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.tt-udesk .ud-rtable th.num { text-align: right; }
+.tt-udesk .ud-rtable th.ctr { text-align: center; }
+.tt-udesk .ud-rtable td { padding: 11px 16px; border-top: 1px solid var(--line-2); vertical-align: middle; white-space: nowrap; }
+.tt-udesk .ud-rtable td.num { text-align: right; }
+.tt-udesk .ud-rtable td.ctr { text-align: center; }
+.tt-udesk .ud-mono { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: -.2px; }
+.tt-udesk .ud-mono2 { font-family: var(--mono); font-weight: 700; font-size: 12px; color: var(--ink-3); }
+.tt-udesk .ud-by { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.tt-udesk .ud-by-ic { width: 22px; height: 22px; border-radius: 50%; background: var(--brand-50); color: var(--brand-600); display: grid; place-items: center; flex-shrink: 0; }
+.tt-udesk .ud-by-ic svg { width: 12px; height: 12px; }
+.tt-udesk .ud-nodoc { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); }
+
+.tt-udesk .ud-chart-t { font-size: 15px; font-weight: 800; letter-spacing: -.2px; margin-bottom: 3px; }
+.tt-udesk .ud-chart-s { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 20px; }
+.tt-udesk .ud-chart-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-1); padding: 22px 24px; }

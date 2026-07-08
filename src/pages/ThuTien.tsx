@@ -27,6 +27,7 @@ import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
 import { UtilityBillSheet } from '@/components/thu-tien/UtilityBillSheet';
+import { UtilityDesktopPanel } from '@/components/thu-tien/UtilityDesktopPanel';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
@@ -249,17 +250,27 @@ const ThuTien = () => {
   return (
     <div className="tt-stage">
       {/* Desktop ≥1024px: cột trái 75% là panel quản lý/báo cáo; CSS ẩn trên mobile.
-          Dùng chung billingMonth, click toà trong bảng → đổi toà khung demo. */}
-      <ManagePanel
-        buildings={buildingOpts}
-        billingMonth={billingMonth}
-        onBillingMonthChange={setBillingMonth}
-        phoneBuildingId={buildingId}
-        onPickBuilding={setBuildingId}
-        onBack={() => navigate(-1)}
-        onOpenUtility={openUtility}
-        canRecordPayment={canRecordPayment}
-      />
+          Mở "Điện nước" → thay panel này bằng UtilityDesktopPanel (mobile vẫn chỉ
+          thấy sheet trong khung điện thoại). Dùng chung billingMonth. */}
+      {utility.mounted ? (
+        <UtilityDesktopPanel
+          billingMonth={billingMonth}
+          onBillingMonthChange={setBillingMonth}
+          onClose={closeUtility}
+          canRecordPayment={canRecordPayment}
+        />
+      ) : (
+        <ManagePanel
+          buildings={buildingOpts}
+          billingMonth={billingMonth}
+          onBillingMonthChange={setBillingMonth}
+          phoneBuildingId={buildingId}
+          onPickBuilding={setBuildingId}
+          onBack={() => navigate(-1)}
+          onOpenUtility={openUtility}
+          canRecordPayment={canRecordPayment}
+        />
+      )}
       <div className="tt-phone-col">
         <div className="tt-page">
         <div className="hdr">
