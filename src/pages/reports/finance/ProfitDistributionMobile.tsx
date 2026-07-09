@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import {
   ChevronLeft, ChevronRight, CalendarDays, SlidersHorizontal, X, Check,
-  TrendingUp, TrendingDown, CircleDollarSign, BarChart3, Plus,
+  TrendingUp, TrendingDown, CircleDollarSign, BarChart3, Plus, Settings2,
 } from "lucide-react";
 import { useBuildings } from "@/hooks/useBuildings";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -24,6 +24,7 @@ import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
 import IncomeExpenseForm, {
   type IncomeExpensePrefill,
 } from "@/components/income-expenses/IncomeExpenseForm";
+import MissingExpenseSettingsDialog from "@/components/reports/MissingExpenseSettingsDialog";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { toast } from "sonner";
@@ -173,9 +174,12 @@ export default function ProfitDistributionMobile() {
   // reset của form); kỳ item = tháng đang xem.
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
+  // Quyền sửa toà — gate bánh răng cấu hình cảnh báo thiếu phiếu chi theo toà.
+  const canEditBuildings = canUse(perms, "buildings", "edit");
   const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense", { enabled: canCreate });
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
   const [expensePrefill, setExpensePrefill] = useState<IncomeExpensePrefill | undefined>();
+  const [missingCfgOpen, setMissingCfgOpen] = useState(false);
   const openCreateExpense = () => {
     setExpensePrefill({
       building_id: singleBuilding && !singleBuilding.is_virtual ? singleBuilding.id : undefined,
@@ -209,10 +213,15 @@ export default function ProfitDistributionMobile() {
     const present = new Set<number>();
     for (const r of (accrual.rows ?? []) as any[])
       if ((r.expense ?? 0) > 0) present.add(expenseRankOf(r.category, r.typeName, r.voucherName));
+    // Hạng mục toà này TẮT cảnh báo (buildings.hidden_fixed_expenses) → bỏ qua.
+    const hiddenFixed = new Set<string>(
+      (singleBuilding.hidden_fixed_expenses as string[] | null) ?? []
+    );
     const missing: MRow[] = [];
     FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
       if (present.has(i)) return;
       if (cat.requiresElevator && !singleBuilding.has_elevator) return;
+      if (hiddenFixed.has(cat.key)) return;
       missing.push({
         key: `missing-exp-${i}`, desc: cat.label, building: singleBuilding.name ?? "—",
         room: null, type: cat.label, period: "", amount: 0, notKqkd: false,
@@ -386,14 +395,27 @@ export default function ProfitDistributionMobile() {
         })}
       </div>
 
-      {/* Tạo phiếu chi tại chỗ — chỉ tab Khoản chi + có quyền create */}
-      {side === "expense" && canCreate && (
-        <button
-          onClick={openCreateExpense}
-          className="w-full h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#e0a06f] bg-white text-[#c2570f] text-[13px] font-bold active:scale-[0.99]"
-        >
-          <Plus className="h-4 w-4" /> Tạo phiếu chi tháng {monthLabel}
-        </button>
+      {/* Tạo phiếu chi tại chỗ + bánh răng cấu hình cảnh báo thiếu (chỉ tab Khoản chi) */}
+      {side === "expense" && (canCreate || (canEditBuildings && singleBuilding && !singleBuilding.is_virtual)) && (
+        <div className="flex gap-2">
+          {canCreate && (
+            <button
+              onClick={openCreateExpense}
+              className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#e0a06f] bg-white text-[#c2570f] text-[13px] font-bold active:scale-[0.99]"
+            >
+              <Plus className="h-4 w-4" /> Tạo phiếu chi tháng {monthLabel}
+            </button>
+          )}
+          {canEditBuildings && singleBuilding && !singleBuilding.is_virtual && (
+            <button
+              onClick={() => setMissingCfgOpen(true)}
+              aria-label="Cài đặt cảnh báo thiếu phiếu chi"
+              className="h-10 w-10 shrink-0 grid place-items-center rounded-xl border border-[#e7e3da] bg-white text-[#c2570f] active:scale-[0.97]"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       )}
 
       {/* Danh sách khoản */}
@@ -604,6 +626,13 @@ export default function ProfitDistributionMobile() {
         voucher={null}
         defaultType="EXPENSE"
         defaultPrefill={expensePrefill}
+      />
+
+      {/* Bánh răng → tắt/bật cảnh báo "chưa có phiếu" theo toà */}
+      <MissingExpenseSettingsDialog
+        open={missingCfgOpen}
+        onOpenChange={setMissingCfgOpen}
+        building={singleBuilding && !singleBuilding.is_virtual ? singleBuilding : null}
       />
     </div>
   );

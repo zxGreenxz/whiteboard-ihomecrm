@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from "react";
-import { DollarSign, LayoutGrid, Plus } from "lucide-react";
+import { DollarSign, LayoutGrid, Plus, Settings2 } from "lucide-react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import ProfitDistributionMobile from "./ProfitDistributionMobile";
@@ -14,6 +14,7 @@ import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
 import IncomeExpenseForm, {
   type IncomeExpensePrefill,
 } from "@/components/income-expenses/IncomeExpenseForm";
+import MissingExpenseSettingsDialog from "@/components/reports/MissingExpenseSettingsDialog";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { toast } from "sonner";
@@ -227,6 +228,9 @@ function ProfitDistributionDesktop() {
   // "chưa có phiếu") — thiếu quyền thì ẩn nút, dòng vàng không click được.
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
+  // Quyền sửa toà nhà — gate nút bánh răng cấu hình cảnh báo thiếu phiếu chi
+  // theo toà (ghi buildings.hidden_fixed_expenses).
+  const canEditBuildings = canUse(perms, "buildings", "edit");
   // Loại CHI trong DB — resolve dòng "chưa có phiếu" (hạng mục cố định) → đúng
   // income_expense_type_id để prefill form. Chỉ fetch khi có quyền tạo.
   const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense", { enabled: canCreate });
@@ -571,10 +575,16 @@ function ProfitDistributionDesktop() {
     const present = new Set<number>();
     for (const r of expenseRows)
       if (!r.isNote) present.add(expenseRankOf(r.category, r.typeName, r.description));
+    // Hạng mục toà này TẮT cảnh báo (buildings.hidden_fixed_expenses — vd toà
+    // xài nước giếng tắt Nước) → không sinh dòng vàng.
+    const hiddenFixed = new Set<string>(
+      (singleBuilding.hidden_fixed_expenses as string[] | null) ?? []
+    );
     const missing: DisplayRow[] = [];
     FIXED_EXPENSE_CATEGORIES.forEach((cat, i) => {
       if (present.has(i)) return;
       if (cat.requiresElevator && !singleBuilding.has_elevator) return;
+      if (hiddenFixed.has(cat.key)) return;
       missing.push({
         key: `missing-exp-${i}`,
         monthLabel,
@@ -650,6 +660,8 @@ function ProfitDistributionDesktop() {
   // effect reset của form phụ thuộc defaultPrefill). Kỳ item = tháng đang xem.
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
   const [expensePrefill, setExpensePrefill] = useState<IncomeExpensePrefill | undefined>();
+  // Dialog cài đặt cảnh báo thiếu phiếu chi theo toà (nút bánh răng header Chi).
+  const [missingCfgOpen, setMissingCfgOpen] = useState(false);
   // Nút + ở header Khoản chi: prefill toà (khi lọc đúng 1 toà thật) + kỳ.
   const openCreateExpense = () => {
     setExpensePrefill({
@@ -1143,17 +1155,33 @@ function ProfitDistributionDesktop() {
               displayExpenseRows,
               "text-orange-700",
               "bg-orange-50",
-              canCreate ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-orange-700 hover:bg-orange-100"
-                  title={`Tạo phiếu chi tháng ${monthLabel}`}
-                  aria-label="Tạo phiếu chi"
-                  onClick={openCreateExpense}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+              canCreate || (canEditBuildings && singleBuilding && !singleBuilding.is_virtual) ? (
+                <>
+                  {canCreate && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-orange-700 hover:bg-orange-100"
+                      title={`Tạo phiếu chi tháng ${monthLabel}`}
+                      aria-label="Tạo phiếu chi"
+                      onClick={openCreateExpense}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canEditBuildings && singleBuilding && !singleBuilding.is_virtual && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-orange-700 hover:bg-orange-100"
+                      title={`Cài đặt cảnh báo thiếu phiếu chi — ${singleBuilding.name}`}
+                      aria-label="Cài đặt cảnh báo thiếu phiếu chi"
+                      onClick={() => setMissingCfgOpen(true)}
+                    >
+                      <Settings2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </>
               ) : undefined,
             )}
         </div>
@@ -1200,6 +1228,13 @@ function ProfitDistributionDesktop() {
         voucher={null}
         defaultType="EXPENSE"
         defaultPrefill={expensePrefill}
+      />
+
+      {/* Bánh răng header Chi → tắt/bật cảnh báo "chưa có phiếu" theo toà */}
+      <MissingExpenseSettingsDialog
+        open={missingCfgOpen}
+        onOpenChange={setMissingCfgOpen}
+        building={singleBuilding && !singleBuilding.is_virtual ? singleBuilding : null}
       />
     </>
   );
