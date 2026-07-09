@@ -1,10 +1,17 @@
 // =============================================================================
-// usePeriodFeeState — state + hành động dùng chung (desktop panel + mobile sheet)
+// usePeriodFeeState V2 — state + hành động dùng chung (desktop panel + mobile sheet)
 // cho họ GRID của trang "Đóng tiền Tập trung theo Kỳ". 1 dòng / tòa.
 //
-// Gói: nhập tiền, chọn số kỳ (đa kỳ→accrual), chọn sổ quỹ, đính ảnh, mã NCC/chủ
-// hộ (autosave onBlur qua upsert_building_fee_account), đóng tiền, hủy phiếu,
-// mở/sửa phiếu đã có (2 tầng quyền). Điện/Nước KHÔNG qua đây (dùng useUtilityPayState).
+// V2 (10/07):
+//   - FIX leak: reset toàn bộ state khi đổi hạng mục/kỳ (trước đây tiền gõ ở
+//     Internet lây sang Rác, saveConfig ghi nhầm hạng mục).
+//   - Sổ mặc định tòa×hạng mục×user (profiles.ui_preferences key 'feeBooks').
+//   - Đa kỳ = TỔNG cả khoảng (đã chốt): toast/hint không nhân n nữa.
+//   - Chống đóng trùng: pay lần 1 không force → RPC trả warning → expose
+//     dupConfirm để UI hiện hộp xác nhận → confirmPayDup() gọi lại force.
+//   - Sửa/hủy/thanh toán theo TỪNG PHIẾU (vouchers payload) — hết mất ảnh/ghi chú.
+//   - appendReceipt: camera nhanh đính ảnh vào phiếu ngay trên dòng.
+//   - Thanh toán phiếu NHÁP (recurring draft-mode): draftTarget + submitPayDraft.
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,12 +20,16 @@ import { fmtFull } from '@/lib/collect';
 import { getSessionUser } from '@/lib/authSession';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useUiPreferences, useSetUiPreference } from '@/hooks/useUiPreferences';
 import {
   usePayPeriodFee,
+  usePayDraftFeeVoucher,
   useCancelPeriodFee,
   useUpdatePeriodFee,
   useUpsertFeeAccount,
+  useAppendFeeAttachment,
   type PeriodFeeStatus,
+  type PeriodFeeVoucher,
   type FeeAccount,
 } from '@/hooks/usePeriodFees';
 import type { FeeCategory } from '@/lib/feeCategories';
@@ -38,21 +49,41 @@ export const rangeLabel = (start: string, end: string): string => {
   return start === end ? f(start) : `${f(start)} → ${f(end)}`;
 };
 
-/** Mục tiêu mở modal Sửa phiếu. */
+/** Mục tiêu mở modal Sửa phiếu (seed từ 1 phiếu CỤ THỂ). */
 export interface FeeEditTarget {
   voucherId: string;
   title: string;
   categoryLabel: string;
   buildingName: string;
   amount: number;
-  periodStart: string;   // 'YYYY-MM'
+  periodStart: string;
   periodEnd: string;
   multi: boolean;
-  bookName: string;      // '' = chưa gán sổ
+  bookName: string;
   accountIsEmpty: boolean;
-  hasReceipt: boolean;
-  attachments: string[];
+  itemCount: number;
+  existingAttachments: string[];  // ảnh ĐANG có trên phiếu
+  newAttachments: string[];       // ảnh vừa thêm trong modal (chưa lưu)
   notes: string;
+  notesOriginal: string;          // để phát hiện có đổi hay không
+  isAuto: boolean;
+}
+
+/** Xác nhận đóng trùng (RPC trả warning). */
+export interface DupConfirm {
+  buildingId: string;
+  buildingName: string;
+  amount: number;
+  existingAmount: number;
+  existingCount: number;
+}
+
+/** Thanh toán phiếu NHÁP. */
+export interface DraftPayTarget {
+  voucher: PeriodFeeVoucher;
+  buildingId: string;
+  buildingName: string;
+  categoryLabel: string;
 }
 
 export function usePeriodFeeState(
@@ -63,12 +94,16 @@ export function usePeriodFeeState(
   accountOf: (buildingId: string, feeCategory: string) => FeeAccount | undefined,
 ) {
   const { data: accounts = [] } = useAccounts();
+  const { data: uiPrefs } = useUiPreferences();
+  const setPref = useSetUiPreference();
   const payMut = usePayPeriodFee();
+  const payDraftMut = usePayDraftFeeVoucher();
   const cancelMut = useCancelPeriodFee();
   const updateMut = useUpdatePeriodFee();
+  const appendMut = useAppendFeeAttachment();
   const upsertCfg = useUpsertFeeAccount();
 
-  const key = category.serverKey; // GRID key = fee_category
+  const key = category.serverKey;
 
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [bookSel, setBookSel] = useState<Record<string, string>>({});
@@ -79,13 +114,26 @@ export function usePeriodFeeState(
   const [payingKey, setPayingKey] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
   const [editTarget, setEditTarget] = useState<FeeEditTarget | null>(null);
+  const [dupConfirm, setDupConfirm] = useState<DupConfirm | null>(null);
+  const [draftTarget, setDraftTarget] = useState<DraftPayTarget | null>(null);
+
+  // FIX P0 leak: đổi hạng mục / kỳ → reset sạch input + modal đang treo.
+  useEffect(() => {
+    setAmounts({}); setBookSel({}); setAttach({}); setPeriodN({}); setDraft({});
+    setEditTarget(null); setCancelTarget(null); setDupConfirm(null); setDraftTarget(null);
+    attachKeyRef.current = null; attachModeRef.current = 'pay';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category.serverKey, period]);
 
   const [uid, setUid] = useState<string | null>(null);
   useEffect(() => { getSessionUser().then((u) => setUid(u?.id ?? null)); }, []);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const attachKeyRef = useRef<string | null>(null);
-  const editAttachRef = useRef(false);
+  // 'pay' = đính cho ô sắp đóng; 'edit' = thêm vào modal Sửa; 'quick:<voucherId>' =
+  // camera nhanh trên dòng; 'draftpay' = ảnh CK trong modal Thanh toán nháp.
+  const attachModeRef = useRef<string>('pay');
+  const [draftPayAttachments, setDraftPayAttachments] = useState<string[]>([]);
 
   const buildingName = (id: string) => buildings.find((b) => b.id === id)?.name ?? '';
 
@@ -93,12 +141,23 @@ export function usePeriodFeeState(
     () => accounts.filter((a) => !a.is_virtual && (!uid || a.user_id === uid)).map((a) => ({ id: a.id, name: a.name })),
     [accounts, uid],
   );
-  const defaultBookId = useMemo(() => {
+  const thuBookId = useMemo(() => {
     const thu = accounts
       .filter((a) => !a.is_virtual && (!uid || a.user_id === uid) && a.name.trim().endsWith('Thu'))
       .sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
     return thu[0]?.id ?? null;
   }, [accounts, uid]);
+
+  // ── Sổ mặc định tòa×hạng mục×user (ui_preferences.feeBooks) ──
+  const feeBooks = (uiPrefs?.feeBooks ?? {}) as Record<string, string>;
+  const validBook = (id?: string | null) => (id && myBooks.some((b) => b.id === id) ? id : null);
+  /** pref (tòa×hạng mục) → pref (hạng mục, last-used) → sổ "…Thu". */
+  const defaultBookFor = (bId: string): string | null =>
+    validBook(feeBooks[`${bId}:${key}`]) ?? validBook(feeBooks[`cat:${key}`]) ?? thuBookId;
+  const rememberBook = (bId: string, accountId: string) => {
+    const next = { ...feeBooks, [`${bId}:${key}`]: accountId, [`cat:${key}`]: accountId };
+    setPref.mutate({ key: 'feeBooks', value: next });
+  };
 
   // ── Per-row getters ──
   const cfgOf = (bId: string) => accountOf(bId, key);
@@ -108,14 +167,14 @@ export function usePeriodFeeState(
   const defaultAmountOf = (bId: string) => cfgOf(bId)?.defaultAmount ?? null;
   const nOf = (bId: string) => (category.multiPeriod ? (periodN[bId] ?? 1) : 1);
   const paidOf = (bId: string) => statusOf(bId, key);
+  const vouchersOf = (bId: string): PeriodFeeVoucher[] => paidOf(bId)?.vouchers ?? [];
 
   const setField = (bId: string, patch: Partial<{ code: string; holder: string }>) =>
     setDraft((d) => ({ ...d, [bId]: { code: codeOf(bId), holder: holderOf(bId), ...patch } }));
   const setAmount = (bId: string, v: number) => setAmounts((a) => ({ ...a, [bId]: v }));
   const setBook = (bId: string, id: string) => setBookSel((s) => ({ ...s, [bId]: id }));
-  const setN = (bId: string, n: number) => setPeriodN((s) => ({ ...s, [bId]: n }));
+  const setN = (bId: string, n: number) => setPeriodN((s) => ({ ...s, [bId]: Math.max(1, Math.min(36, Math.round(n) || 1)) }));
 
-  // Lưu mã NCC/chủ hộ (autosave onBlur) — chỉ khi đổi so với cấu hình đã lưu.
   const saveConfig = (bId: string) => {
     const code = codeOf(bId).trim();
     const holder = holderOf(bId).trim();
@@ -125,82 +184,156 @@ export function usePeriodFeeState(
     upsertCfg.mutate({ buildingId: bId, feeCategory: key, providerCode: code || null, accountHolder: holder || null });
   };
 
-  // ── Đính ảnh ──
+  /** Sửa số tiền DỰ KIẾN (inline). */
+  const saveExpected = (bId: string, amount: number | null) =>
+    upsertCfg.mutate(
+      { buildingId: bId, feeCategory: key, defaultAmount: amount },
+      { onSuccess: () => toast.success('Đã lưu số tiền dự kiến') },
+    );
+
+  /** Cờ "Không áp dụng" cho tòa×hạng mục. */
+  const setNotApplicable = (bId: string, na: boolean) =>
+    upsertCfg.mutate(
+      { buildingId: bId, feeCategory: key, notApplicable: na },
+      { onSuccess: () => toast.success(na ? `Đã đánh dấu KHÔNG áp dụng — ${buildingName(bId)}` : `Đã bật lại hạng mục — ${buildingName(bId)}`) },
+    );
+
+  // ── Đính ảnh (1 input file dùng chung 4 mode) ──
   const onAttachClick = (bId: string) => {
     if (uploadingKey) return;
-    attachKeyRef.current = bId;
-    editAttachRef.current = false;
+    attachKeyRef.current = bId; attachModeRef.current = 'pay';
     fileRef.current?.click();
   };
   const onEditAttachClick = () => {
     if (uploadingKey) return;
-    editAttachRef.current = true;
+    attachModeRef.current = 'edit';
     fileRef.current?.click();
   };
+  const onQuickAttachClick = (bId: string, voucherId: string) => {
+    if (uploadingKey) return;
+    attachKeyRef.current = bId; attachModeRef.current = `quick:${voucherId}`;
+    fileRef.current?.click();
+  };
+  const onDraftPayAttachClick = () => {
+    if (uploadingKey) return;
+    attachModeRef.current = 'draftpay';
+    fileRef.current?.click();
+  };
+
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     const err = validateReceiptFile(file);
     if (err) { toast.error(err); return; }
-
-    if (editAttachRef.current && editTarget) {
-      setUploadingKey('__edit__');
-      try {
-        const url = await uploadReceiptToStorage(file);
-        setEditTarget((t) => (t ? { ...t, attachments: [...t.attachments, url], hasReceipt: true } : t));
-        toast.success('Đã thêm ảnh phiếu');
-      } catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
-      finally { setUploadingKey(null); }
-      return;
-    }
-
-    const k = attachKeyRef.current;
-    if (!k) return;
-    setUploadingKey(k);
+    const mode = attachModeRef.current;
+    const busyKey = mode === 'edit' ? '__edit__' : mode === 'draftpay' ? '__draftpay__'
+      : mode.startsWith('quick:') ? `__quick__${attachKeyRef.current}` : attachKeyRef.current;
+    if (!busyKey) return;
+    setUploadingKey(busyKey);
     try {
       const url = await uploadReceiptToStorage(file);
-      setAttach((a) => ({ ...a, [k]: url }));
-      toast.success('Đã đính kèm ảnh phiếu');
+      if (mode === 'edit') {
+        setEditTarget((t) => (t ? { ...t, newAttachments: [...t.newAttachments, url] } : t));
+        toast.success('Đã thêm ảnh phiếu');
+      } else if (mode === 'draftpay') {
+        setDraftPayAttachments((a) => [...a, url]);
+        toast.success('Đã thêm ảnh chứng từ');
+      } else if (mode.startsWith('quick:')) {
+        // Append server-side — không đè ảnh người khác vừa đính (RPC riêng).
+        const voucherId = mode.slice('quick:'.length);
+        await appendMut.mutateAsync({ voucherId, url });
+        toast.success('Đã đính ảnh vào phiếu');
+      } else {
+        setAttach((a) => ({ ...a, [attachKeyRef.current!]: url }));
+        toast.success('Đã đính kèm ảnh phiếu');
+      }
     } catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
     finally { setUploadingKey(null); }
   };
 
-  // ── Đóng tiền ──
-  const submitPay = async (bId: string) => {
+  // ── Đóng tiền (TỔNG cả khoảng; chống trùng 2 bước) ──
+  const doPay = async (bId: string, force: boolean) => {
     const amount = amountOf(bId);
-    if (amount <= 0) { toast.error('Nhập số tiền cần đóng'); return; }
     const n = nOf(bId);
     const periodEnd = addMonths(period, n - 1);
+    const accountId = bookSel[bId] ?? defaultBookFor(bId) ?? null;
     setPayingKey(bId);
     try {
-      await payMut.mutateAsync({
+      const res = await payMut.mutateAsync({
         buildingId: bId, categoryKey: key, amount,
         periodStart: period, periodEnd,
         providerCode: codeOf(bId).trim(), accountHolder: holderOf(bId).trim(),
-        accountId: bookSel[bId] ?? defaultBookId ?? null,
+        accountId,
         attachments: attach[bId] ? [attach[bId]] : undefined,
+        force,
       });
+      if ('warning' in res && res.warning === 'duplicate') {
+        setDupConfirm({
+          buildingId: bId, buildingName: buildingName(bId), amount,
+          existingAmount: res.existing_amount ?? 0,
+          existingCount: res.existing_count ?? 1,
+        });
+        return;
+      }
       setAmounts((a) => { const x = { ...a }; delete x[bId]; return x; });
       setAttach((a) => { const x = { ...a }; delete x[bId]; return x; });
-      toast.success(`Đã chi ${fmtFull(amount * (category.multiPeriod ? n : 1))} — ${category.label} · ${buildingName(bId)}`);
+      if (accountId) rememberBook(bId, accountId);
+      toast.success(`Đã chi ${fmtFull(amount)} — ${category.label} · ${buildingName(bId)}`);
     } catch (ex) { toast.error((ex as Error).message); }
     finally { setPayingKey(null); }
   };
+  const submitPay = async (bId: string) => {
+    const amount = amountOf(bId);
+    if (amount <= 0) { toast.error('Nhập số tiền cần đóng'); return; }
+    await doPay(bId, false);
+  };
+  const confirmPayDup = async () => {
+    if (!dupConfirm) return;
+    const bId = dupConfirm.buildingId;
+    setDupConfirm(null);
+    await doPay(bId, true);
+  };
 
-  // ── Hủy phiếu ──
-  const requestCancel = (bId: string) => {
-    const p = paidOf(bId);
-    if (!p || p.voucherIds.length === 0) return;
+  // ── Thanh toán phiếu NHÁP ──
+  const openPayDraft = (bId: string, voucher: PeriodFeeVoucher) => {
+    setDraftPayAttachments(voucher.attachments);
+    setDraftTarget({ voucher, buildingId: bId, buildingName: buildingName(bId), categoryLabel: category.label });
+  };
+  const submitPayDraft = async (accountId: string) => {
+    if (!draftTarget) return;
+    try {
+      const res = await payDraftMut.mutateAsync({
+        voucherId: draftTarget.voucher.id,
+        accountId,
+        attachments: draftPayAttachments.length ? draftPayAttachments : null,
+      });
+      rememberBook(draftTarget.buildingId, accountId);
+      toast.success(`Đã thanh toán & duyệt phiếu ${res.code ?? ''} — ${draftTarget.categoryLabel} · ${draftTarget.buildingName}`);
+      setDraftTarget(null);
+      setDraftPayAttachments([]);
+    } catch (ex) { toast.error((ex as Error).message); }
+  };
+
+  // ── Hủy phiếu (per-voucher) ──
+  const requestCancel = (bId: string, voucher?: PeriodFeeVoucher) => {
+    const vs = vouchersOf(bId);
+    const v = voucher ?? vs.find((x) => x.cancellable);
+    if (!v) return;
+    // Modal hiển thị "phiếu chi tiền {typeText}" → bỏ tiền tố "tiền " của label
+    // (tránh "tiền tiền nhà").
+    const label = category.label.toLowerCase().replace(/^tiền\s+/, '');
     setCancelTarget({
-      voucherId: p.voucherIds[0],
+      voucherId: v.id,
       bld: buildingName(bId),
-      typeText: category.label.toLowerCase(),
-      amount: p.paidAmount,
-      dateText: fmtDate(p.coveredStart),
+      // Generator dedup theo (parent, ngày, deleted_at NULL) → hủy phiếu auto thì
+      // lần sinh sau CÓ THỂ tạo lại đúng phiếu này. Muốn dừng hẳn: sửa phiếu định kỳ gốc.
+      typeText: label + (v.isAuto ? ' (tự động lập — recurring có thể sinh LẠI, kể cả kỳ này; muốn dừng hẳn sửa phiếu định kỳ gốc)' : ''),
+      amount: v.amount,
+      dateText: fmtDate(v.date),
       timeText: '',
-      by: '',
-      book: p.accountName ?? '',
+      by: v.creatorName ?? '',
+      book: v.accountName ?? '',
     });
   };
   const confirmCancel = async () => {
@@ -212,27 +345,30 @@ export function usePeriodFeeState(
     } catch (ex) { toast.error((ex as Error).message); }
   };
 
-  // ── Mở / sửa phiếu đã có ──
-  const openEdit = (bId: string) => {
-    const p = paidOf(bId);
-    if (!p || p.voucherIds.length === 0) return;
+  // ── Sửa phiếu (seed từ voucher CỤ THỂ) ──
+  const openEdit = (bId: string, voucher?: PeriodFeeVoucher) => {
+    const vs = vouchersOf(bId);
+    const v = voucher ?? vs[0];
+    if (!v) return;
     setEditTarget({
-      voucherId: p.voucherIds[0],
+      voucherId: v.id,
       title: `${category.label} · ${buildingName(bId)}`,
       categoryLabel: category.label,
       buildingName: buildingName(bId),
-      amount: p.paidAmount,
-      periodStart: (p.coveredStart ?? period + '-01').slice(0, 7),
-      periodEnd: (p.coveredEnd ?? period + '-01').slice(0, 7),
+      amount: v.amount,
+      periodStart: (v.start ?? period + '-01').slice(0, 7),
+      periodEnd: (v.end ?? v.start ?? period + '-01').slice(0, 7),
       multi: category.multiPeriod,
-      bookName: p.accountName ?? '',
-      accountIsEmpty: p.accountIsEmpty,
-      hasReceipt: p.hasReceipt,
-      attachments: [],
-      notes: '',
+      bookName: v.accountName ?? '',
+      accountIsEmpty: v.accountId == null,
+      itemCount: v.itemCount,
+      existingAttachments: v.attachments,
+      newAttachments: [],
+      notes: v.notes ?? '',
+      notesOriginal: v.notes ?? '',
+      isAuto: v.isAuto,
     });
   };
-  const patchEdit = (patch: Partial<FeeEditTarget>) => setEditTarget((t) => (t ? { ...t, ...patch } : t));
   const submitEdit = async (args: {
     isAdmin: boolean;
     amount?: number;
@@ -242,15 +378,18 @@ export function usePeriodFeeState(
     notes?: string;
   }) => {
     if (!editTarget) return;
+    const t = editTarget;
+    const mergedAtts = t.newAttachments.length ? [...t.existingAttachments, ...t.newAttachments] : null;
+    const notesChanged = args.isAdmin && args.notes != null && args.notes !== t.notesOriginal;
     try {
       await updateMut.mutateAsync({
-        voucherId: editTarget.voucherId,
+        voucherId: t.voucherId,
         accountId: args.accountId ?? null,
-        attachments: editTarget.attachments.length ? editTarget.attachments : null,
-        amount: args.isAdmin ? args.amount ?? null : null,
-        periodStart: args.isAdmin ? args.periodStart ?? null : null,
-        periodEnd: args.isAdmin ? args.periodEnd ?? null : null,
-        notes: args.isAdmin ? args.notes ?? null : null,
+        attachments: mergedAtts,
+        amount: args.isAdmin && t.itemCount <= 1 ? args.amount ?? null : null,
+        periodStart: args.isAdmin && t.itemCount <= 1 ? args.periodStart ?? null : null,
+        periodEnd: args.isAdmin && t.itemCount <= 1 ? args.periodEnd ?? null : null,
+        notes: notesChanged ? args.notes! : null,
       });
       toast.success('Đã lưu thay đổi phiếu');
       setEditTarget(null);
@@ -258,15 +397,19 @@ export function usePeriodFeeState(
   };
 
   return {
-    myBooks, defaultBookId,
-    codeOf, holderOf, amountOf, defaultAmountOf, nOf, paidOf,
-    setField, setAmount, setBook, setN, saveConfig,
+    myBooks, defaultBookFor, defaultBookId: thuBookId,
+    codeOf, holderOf, amountOf, defaultAmountOf, nOf, paidOf, vouchersOf,
+    setField, setAmount, setBook, setN, saveConfig, saveExpected, setNotApplicable,
     bookSel, attach, uploadingKey, payingKey,
-    fileRef, onFileChange, onAttachClick, onEditAttachClick,
+    fileRef, onFileChange, onAttachClick, onEditAttachClick, onQuickAttachClick, onDraftPayAttachClick,
     submitPay,
+    dupConfirm, confirmPayDup, closeDupConfirm: () => setDupConfirm(null),
+    draftTarget, draftPayAttachments, openPayDraft, submitPayDraft,
+    closePayDraft: () => { setDraftTarget(null); setDraftPayAttachments([]); },
+    payingDraft: payDraftMut.isPending,
     cancelTarget, requestCancel, confirmCancel, cancelling: cancelMut.isPending,
     closeCancel: () => setCancelTarget(null),
-    editTarget, openEdit, patchEdit, submitEdit, closeEdit: () => setEditTarget(null),
+    editTarget, openEdit, submitEdit, closeEdit: () => setEditTarget(null),
     saving: updateMut.isPending,
   };
 }

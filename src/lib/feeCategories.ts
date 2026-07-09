@@ -45,9 +45,10 @@ export const FEE_CATEGORIES: FeeCategory[] = [
     serverKey: 'dien_nuoc', canonicalTypeName: 'Đóng tiền điện', canonicalCategory: 'Điện',
   },
   {
+    // providerConfig=false → lưới gọn 1 cột Ghi chú (không có mã NCC riêng).
     key: 'tien_nha', label: 'Tiền nhà', group: 'Phí theo tòa',
     sub: 'chi trả chủ tòa theo kỳ', family: 'GRID', icon: 'home', accent: '#1f7a52',
-    multiPeriod: false, providerConfig: true, restricted: false, elevatorGated: false,
+    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
     serverKey: 'tien_nha', canonicalTypeName: 'Tiền nhà', canonicalCategory: 'Tiền nhà',
   },
   {
@@ -59,13 +60,13 @@ export const FEE_CATEGORIES: FeeCategory[] = [
   {
     key: 'quan_ly', label: 'Quản Lý', group: 'Phí theo tòa',
     sub: 'hạng mục hạn chế', family: 'GRID', icon: 'briefcase', accent: '#7c5cc4',
-    multiPeriod: false, providerConfig: true, restricted: true, elevatorGated: false,
+    multiPeriod: false, providerConfig: false, restricted: true, elevatorGated: false,
     serverKey: 'quan_ly', canonicalTypeName: 'Quản Lý', canonicalCategory: 'Quản Lý',
   },
   {
     key: 've_sinh', label: 'Vệ sinh định kỳ', group: 'Phí theo tòa',
     sub: 'vệ sinh tòa nhà định kỳ', family: 'GRID', icon: 'sparkles', accent: '#1f9d57',
-    multiPeriod: false, providerConfig: true, restricted: false, elevatorGated: false,
+    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
     serverKey: 've_sinh', canonicalTypeName: 'Vệ sinh tòa nhà định kỳ', canonicalCategory: 'Vệ sinh',
   },
   {
@@ -111,6 +112,14 @@ export const feeCategoryOf = (key: string): FeeCategory | undefined =>
 
 /** GRID server keys (dùng cho get_period_fee_status / Tổng quan). */
 export const GRID_SERVER_KEYS = ['tien_nha', 'dien', 'nuoc', 'internet', 'quan_ly', 've_sinh', 'cong_an', 'rac', 'thang_may'];
+
+// Server key của các hạng mục HẠN CHẾ — suy từ registry (đừng hardcode 'quan_ly'
+// ở component: thêm hạng mục restricted mới là tự ăn theo).
+export const RESTRICTED_SERVER_KEYS = FEE_CATEGORIES.filter((c) => c.restricted).map((c) => c.serverKey);
+
+/** GRID keys hiển thị theo quyền xem hạng mục hạn chế. */
+export const gridKeysFor = (canRestricted: boolean): string[] =>
+  canRestricted ? GRID_SERVER_KEYS : GRID_SERVER_KEYS.filter((k) => !RESTRICTED_SERVER_KEYS.includes(k));
 
 // Matcher: khớp 1 income_expense_type (category + name RAW) với 1 registry GRID
 // server key. PORT TỪ SQL fee_type_matches + FIXED_EXPENSE_CATEGORIES (nrm).

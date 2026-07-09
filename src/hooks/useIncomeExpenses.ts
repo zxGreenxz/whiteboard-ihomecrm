@@ -825,6 +825,7 @@ export const useCreateIncomeExpense = () => {
           repeat_cycle: input.repeat_cycle ?? "NONE",
           repeat_infinity: !!input.repeat_infinity,
           repeat_count: input.repeat_count ?? 0,
+          repeat_auto_approve: input.repeat_auto_approve !== false,
           repeat_remaining: input.repeat_infinity
             ? 0
             : Number(input.repeat_count ?? 0),
@@ -1165,6 +1166,7 @@ export const useUpdateIncomeExpense = () => {
           repeat_cycle: data.repeat_cycle ?? "NONE",
           repeat_infinity: !!data.repeat_infinity,
           repeat_count: data.repeat_count ?? 0,
+          repeat_auto_approve: data.repeat_auto_approve !== false,
           repeat_remaining: data.repeat_infinity ? 0 : Number(data.repeat_count ?? 0),
           repeat_next_date:
             data.repeat_cycle && data.repeat_cycle !== "NONE"

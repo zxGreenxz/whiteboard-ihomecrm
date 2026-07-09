@@ -44,6 +44,9 @@ export const incomeExpenseFormSchema = z.object({
     .optional(),
   repeat_infinity: z.boolean().default(false).optional(),
   repeat_count: z.coerce.number().int().min(0).max(240).default(0).optional(),
+  // true (mặc định): phiếu định kỳ con tự APPROVED + kế thừa sổ. false: con sinh
+  // NHÁP (sổ trống) — thanh toán + duyệt tại trang Đóng tiền tập trung.
+  repeat_auto_approve: z.boolean().default(true).optional(),
   items: z.array(itemSchema).min(1, 'Vui lòng thêm ít nhất 1 hạng mục'),
 }).superRefine((val, ctx) => {
   // Chọn chu kỳ nhưng KHÔNG bật "Lặp vô hạn" thì bắt buộc số lần lặp >= 1 —

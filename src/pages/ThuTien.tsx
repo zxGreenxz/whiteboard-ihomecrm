@@ -384,6 +384,7 @@ const ThuTien = () => {
             show={utility.show}
             onClose={closeUtility}
             billingMonth={billingMonth}
+            onBillingMonthChange={setBillingMonth}
             canRecordPayment={canRecordPayment}
           />
         )}

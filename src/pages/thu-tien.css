@@ -1190,3 +1190,104 @@
 .tt-page .ptt-picker-list { overflow-y: auto; padding: 0 12px calc(16px + env(safe-area-inset-bottom)); }
 .tt-page .ptt-picker-list .ptt-menu-item { padding: 10px 11px; }
 .tt-page .ptt-picker-list .ptt-menu-lbl { font-size: 14px; }
+
+/* =============================================================
+   Đóng tiền tập trung V2 (10/07) — NHÁP/per-voucher/N-A/lịch sử/chống trùng
+   ============================================================= */
+/* Badge NHÁP + phiếu tổng + số nháp */
+.tt-stage .ptt-badge-draft { font-size: 9.5px; font-weight: 800; letter-spacing: .3px; color: #8a6111; background: var(--st-soon-bg); border: 1px solid var(--st-soon-line); border-radius: 6px; padding: 3px 7px; flex-shrink: 0; }
+.tt-stage .ptt-badge-batch { font-size: 9.5px; font-weight: 800; letter-spacing: .3px; color: var(--brand-600); background: var(--brand-50); border: 1px solid var(--brand-100); border-radius: 6px; padding: 3px 7px; flex-shrink: 0; }
+.tt-stage .ud-paidamt-a.draft { color: var(--c-partial); }
+.tt-page .ubc-paid-pill.draft { background: var(--st-soon-bg); border-color: var(--st-soon-line); }
+.tt-page .ubc-paid-pill.draft .ubc-paid-a, .tt-page .ubc-paid-pill.draft .ubc-paid-m { color: #8a6111; }
+
+/* Nút Thanh toán phiếu nháp */
+.tt-stage .ptt-paydraft { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font); font-size: 12px; font-weight: 700; color: #fff; background: var(--c-partial); border: 0; border-radius: 8px; padding: 7px 11px; cursor: pointer; box-shadow: 0 1px 2px rgba(201,122,16,.3); flex-shrink: 0; }
+.tt-stage .ptt-paydraft svg { width: 13px; height: 13px; }
+.tt-stage .ptt-paydraft:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Camera nhanh trên dòng đã đóng */
+.tt-stage .ptt-quickcam { width: 30px; height: 26px; border-radius: 7px; border: 1px dashed var(--brand-100); background: var(--brand-50); color: var(--brand-600); display: inline-grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-stage .ptt-quickcam svg { width: 13px; height: 13px; }
+.tt-stage .ptt-quickcam:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Nút + nhóm Không áp dụng */
+.tt-stage .ptt-nabtn { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-faint); display: inline-grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-stage .ptt-nabtn svg { width: 12px; height: 12px; }
+.tt-stage .ptt-nabtn:hover { color: var(--c-unpaid); border-color: var(--c-unpaid-line); background: var(--c-unpaid-bg); }
+.tt-stage .ptt-nagroup { border-top: 1px dashed var(--line); background: var(--surface-2); }
+.tt-stage .ptt-nagroup-head { display: flex; align-items: center; gap: 7px; width: 100%; padding: 10px 16px; border: 0; background: transparent; font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--ink-3); cursor: pointer; }
+.tt-stage .ptt-nagroup-head svg { width: 13px; height: 13px; }
+.tt-stage .ptt-nagroup-head svg.up { transform: rotate(180deg); }
+.tt-stage .ptt-narow { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--line-2); opacity: .75; }
+.tt-stage .ptt-narow-hint { font-size: 11.5px; font-weight: 600; color: var(--ink-3); flex: 1; }
+.tt-stage .ptt-btn.sm { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
+
+/* Ô nhập số kỳ tự do + sửa dự kiến inline */
+.tt-stage .ptt-period-free { width: 34px; font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: center; color: #2b5aa0; background: var(--surface); border: 1px dashed #d6e4f5; border-radius: 6px; padding: 3px 4px; outline: none; }
+.tt-stage .ptt-period-free:focus { border-style: solid; border-color: #2b5aa0; }
+.tt-stage .ptt-amtwrap { display: inline-flex; align-items: center; gap: 5px; justify-content: flex-end; flex-wrap: wrap; }
+.tt-stage .ptt-exppencil { width: 24px; height: 24px; border-radius: 6px; border: 1px dashed var(--line); background: var(--surface-2); color: var(--ink-faint); display: inline-grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.tt-stage .ptt-exppencil svg { width: 11px; height: 11px; }
+.tt-stage .ptt-exppencil:hover { color: var(--c-partial); border-color: var(--st-soon-line); background: var(--st-soon-bg); }
+.tt-stage .ptt-expedit { display: inline-flex; align-items: center; gap: 6px; }
+.tt-stage .ptt-expedit-hint { font-size: 10px; font-weight: 700; color: var(--c-partial); white-space: nowrap; }
+
+/* Tabs GRID (desktop dùng lại .ud-tabs; chỉnh margin) + mobile segment */
+.tt-udesk .ptt-gridtabs { padding: 14px 28px 0; }
+.tt-page .ptt-m-gridtabs { display: flex; gap: 6px; align-items: center; margin-top: 11px; }
+.tt-page .ptt-m-gridtabs .ub-seg { display: inline-flex; align-items: center; gap: 5px; }
+.tt-page .ptt-m-gridtabs .ub-seg svg { width: 13px; height: 13px; }
+.tt-page .ptt-m-gridtabs .ub-due { margin-left: auto; }
+
+/* Lịch sử mobile */
+.tt-page .ptt-m-hist { display: flex; flex-direction: column; gap: 11px; padding: 12px 0 6px; }
+.tt-page .ptt-m-histday { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--sh-1); }
+.tt-page .ptt-m-histhead { display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; background: var(--surface-2); border-bottom: 1px solid var(--line-2); font-family: var(--mono); font-size: 12.5px; font-weight: 700; }
+.tt-page .ptt-m-histsum { color: var(--c-paid); }
+.tt-page .ptt-m-histrow { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-top: 1px solid var(--line-2); }
+.tt-page .ptt-m-histrow:first-of-type { border-top: 0; }
+.tt-page .ptt-m-histamt { margin-left: auto; font-weight: 700; }
+
+/* Danh sách phiếu per-voucher */
+.tt-stage .ptt-vlist .ptt-vlist-body { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; }
+.tt-stage .ptt-vrow { display: flex; align-items: center; gap: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.tt-stage .ptt-vrow-main { flex: 1; min-width: 0; }
+.tt-stage .ptt-vrow-l1 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.tt-stage .ptt-vrow-amt { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: -.3px; }
+.tt-stage .ptt-vrow-l2 { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--ink-3); flex-wrap: wrap; }
+.tt-stage .ptt-vrow-book { display: inline-flex; align-items: center; gap: 4px; }
+.tt-stage .ptt-vrow-acts { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.tt-stage .ptt-vrow-pay { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font); font-size: 11.5px; font-weight: 700; color: #fff; background: var(--c-partial); border: 0; border-radius: 7px; padding: 6px 9px; cursor: pointer; }
+.tt-stage .ptt-vrow-pay svg { width: 12px; height: 12px; }
+
+/* Modal thanh toán nháp + xác nhận trùng */
+.tt-stage .ptt-draftpay-amt { display: flex; align-items: center; gap: 10px; background: var(--st-soon-bg); border: 1px solid var(--st-soon-line); border-radius: 12px; padding: 11px 14px; }
+.tt-stage .ptt-draftpay-num { font-family: var(--mono); font-size: 20px; font-weight: 700; letter-spacing: -.4px; color: #8a6111; margin-left: auto; }
+.tt-stage .ptt-dup { padding: 22px 22px 16px; text-align: center; width: 420px; }
+.tt-stage .ptt-dup-ic { width: 50px; height: 50px; margin: 0 auto 12px; border-radius: 14px; background: var(--st-soon-bg); color: var(--c-partial); display: grid; place-items: center; }
+.tt-stage .ptt-dup-ic svg { width: 25px; height: 25px; }
+.tt-stage .ptt-dup-title { font-size: 17px; font-weight: 800; letter-spacing: -.2px; }
+.tt-stage .ptt-dup-sub { font-size: 13px; font-weight: 600; color: var(--ink-2); margin: 7px 0 12px; line-height: 1.5; }
+.tt-stage .ptt-dup .ptt-note { text-align: left; margin-bottom: 6px; }
+.tt-stage .ptt-dup .ptt-modal-foot { border-top: 0; padding: 12px 0 2px; }
+
+/* Commission 4 thẻ (desktop) + màu amber */
+.tt-udesk .ptt-comm-stats { grid-template-columns: repeat(4, 1fr); }
+.tt-stage .ptt-comm-card.amber { border-left: 4px solid var(--c-partial); }
+.tt-stage .ptt-comm-num.amber { color: var(--c-partial); }
+.tt-page .ptt-m-commcard.amber { border-left: 3px solid var(--c-partial); }
+.tt-page .ptt-m-commnum.amber { color: var(--c-partial); }
+.tt-page .ptt-m-commbtn.draft { background: var(--c-partial); box-shadow: 0 1px 2px rgba(201,122,16,.3); }
+.tt-stage .ptt-note .ptt-btn { margin-left: auto; flex-shrink: 0; }
+
+/* Batch form v2: hàng ảnh + nút wide mobile */
+.tt-stage .ptt-batch-attrow { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+.tt-stage .ptt-batch-attrow .ptt-edit-addimg { flex: 1; }
+.tt-stage .ptt-batch-create.wide { width: 100%; justify-content: center; margin-bottom: 12px; }
+.tt-page .ptt-batch-form.m { background: var(--surface-2); border: 1px dashed #cfc8ba; border-radius: 14px; padding: 13px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.tt-page .ptt-batch-form.m .ptt-batch-lines { margin-bottom: 0; }
+.tt-page .ptt-batch-form.m .ptt-batch-attrow { margin-bottom: 0; }
+.tt-page .ptt-m-batch .ptt-note { margin-bottom: 11px; }
+.tt-page .ptt-m-comm .ptt-note { display: flex; }
+

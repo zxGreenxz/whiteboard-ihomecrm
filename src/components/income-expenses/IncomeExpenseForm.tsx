@@ -206,6 +206,7 @@ const IncomeExpenseForm = ({
       repeat_cycle: 'NONE',
       repeat_infinity: false,
       repeat_count: 0,
+      repeat_auto_approve: true,
       attachments: [],
       items: [],
     },
@@ -260,6 +261,7 @@ const IncomeExpenseForm = ({
         repeat_cycle: (voucher.repeat_cycle as any) ?? 'NONE',
         repeat_infinity: voucher.repeat_infinity ?? false,
         repeat_count: voucher.repeat_count ?? 0,
+        repeat_auto_approve: (voucher as any).repeat_auto_approve ?? true,
         attachments: voucher.attachments ?? [],
         items: voucher.items.map((item) => ({
           income_expense_type_id: item.income_expense_type_id,
@@ -325,6 +327,7 @@ const IncomeExpenseForm = ({
         repeat_cycle: 'NONE',
         repeat_infinity: false,
         repeat_count: 0,
+        repeat_auto_approve: true,
         attachments: [],
         items: prefillItemsForm,
       });
@@ -1134,6 +1137,32 @@ const IncomeExpenseForm = ({
                     }}
                   />
                 </div>
+                <FormField
+                  control={form.control}
+                  name="repeat_auto_approve"
+                  render={({ field }) => {
+                    const cycle = form.watch('repeat_cycle');
+                    const disabled = !canEdit || cycle === 'NONE';
+                    return (
+                      <FormItem className="flex items-center justify-between rounded-md border p-2">
+                        <div className="pr-3">
+                          <FormLabel className="text-xs">Phiếu sinh ra tự động duyệt</FormLabel>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Tắt = phiếu con sinh dạng <b>NHÁP, sổ quỹ trống</b> — thanh toán
+                            (chọn sổ + ảnh CK) và duyệt tại trang Đóng tiền tập trung.
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value !== false}
+                            onCheckedChange={field.onChange}
+                            disabled={disabled}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    );
+                  }}
+                />
                 {(() => {
                   const cycle = form.watch('repeat_cycle');
                   const vDate = form.watch('voucher_date');
