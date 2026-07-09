@@ -16,6 +16,7 @@ import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { FIXED_EXPENSE_CATEGORIES, expenseRankOf } from "@/lib/fixedExpenseCategories";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
+import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 
 // Giao diện MOBILE cho báo cáo Phân bổ lợi nhuận (import từ thiết kế claude.ai/design
@@ -57,6 +58,9 @@ export default function ProfitDistributionMobile() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [monthOpen, setMonthOpen] = useState(false);
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
+  // Tap TÊN hoá đơn → modal chi tiết hoá đơn (như trang /invoices);
+  // tap chỗ khác trên thẻ → dialog "Các lần thanh toán" như cũ.
+  const [invoiceModal, setInvoiceModal] = useState<{ id: string; title: string } | null>(null);
 
   const hideSpecialTypes = useUiPrefBool("pd_hideSpecialTypes", false);
   const hideStatCards = useUiPrefBool("pd_hideStatCards", false);
@@ -377,7 +381,22 @@ export default function ProfitDistributionMobile() {
                   </span>
                 </div>
                 <div className="mt-1.5 text-[13px] font-semibold text-[#514c42] leading-snug">
-                  {r.desc}
+                  {r.invoiceId ? (
+                    <span
+                      className="underline decoration-dotted underline-offset-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInvoiceModal({
+                          id: r.invoiceId!,
+                          title: r.desc + (r.room ? ` — ${r.room}` : ""),
+                        });
+                      }}
+                    >
+                      {r.desc}
+                    </span>
+                  ) : (
+                    r.desc
+                  )}
                   {r.isMissingExpense && (
                     <span className="ml-1 text-[11px] font-bold text-[#b45309]">(chưa có phiếu)</span>
                   )}
@@ -507,6 +526,14 @@ export default function ProfitDistributionMobile() {
         open={!!detailInvoiceId}
         onOpenChange={(v) => { if (!v) setDetailInvoiceId(null); }}
         invoice={detailInvoice ?? null}
+      />
+
+      {/* Tap TÊN hoá đơn → chi tiết hoá đơn full-screen (như trang /invoices) */}
+      <InvoiceDetailModal
+        invoiceId={invoiceModal?.id ?? null}
+        title={invoiceModal?.title}
+        open={!!invoiceModal}
+        onOpenChange={(v) => { if (!v) setInvoiceModal(null); }}
       />
     </div>
   );

@@ -10,6 +10,7 @@ import {
 } from "@/hooks/useIncomeExpenses";
 import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails, useInvoiceRentPeriods } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
+import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
@@ -618,6 +619,15 @@ function ProfitDistributionDesktop() {
     setDetailOpen(true);
   };
 
+  // Bấm TÊN hoá đơn (cột Mô tả) → modal chi tiết hoá đơn full-screen như trang
+  // /invoices (khác với bấm số tiền → dialog "Các lần thanh toán" ở trên).
+  const [invoiceModal, setInvoiceModal] = useState<{ id: string; title: string } | null>(null);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const openInvoiceModal = (id: string, title: string) => {
+    setInvoiceModal({ id, title });
+    setInvoiceModalOpen(true);
+  };
+
   // Note "thiếu/thừa so với hoá đơn": so tổng khoản thu (đã gộp) với total HĐ.
   // Chế độ P&L (pnlOnly): row.amount là PHẦN KQKD (không gồm cọc) → phải so với
   // phần phòng/DV của hoá đơn (total − cọc gộp trong HĐ), kẻo HĐ tháng đầu gộp
@@ -778,11 +788,28 @@ function ProfitDistributionDesktop() {
                     key={r.key}
                     className={rowClass}
                     onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
-                    title={clickable ? "Nhấp đôi để xem các lần thu của hoá đơn này" : undefined}
+                    title={clickable ? "Bấm tên hoá đơn: xem chi tiết hoá đơn · bấm số tiền: xem các lần thu" : undefined}
                   >
                     {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
                     <TableCell>
-                      {displayDescription(r)}
+                      {clickable ? (
+                        // Bấm tên HĐ → chi tiết hoá đơn (như trang /invoices).
+                        <button
+                          type="button"
+                          className="text-left hover:underline underline-offset-2 hover:text-emerald-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openInvoiceModal(
+                              r.invoiceId!,
+                              displayDescription(r) + (r.roomName ? ` — ${r.roomName}` : "")
+                            );
+                          }}
+                        >
+                          {displayDescription(r)}
+                        </button>
+                      ) : (
+                        displayDescription(r)
+                      )}
                       {r.isMissingExpense && (
                         <span className="ml-1 text-xs font-medium text-amber-600">(chưa có phiếu)</span>
                       )}
@@ -845,7 +872,23 @@ function ProfitDistributionDesktop() {
                     )}
                     {visible("phan_loai") && <TableCell>{r.typeName}</TableCell>}
                     <TableCell className={`text-right whitespace-nowrap font-medium ${accentText}`}>
-                      {r.isNote ? "—" : formatCurrency(r.amount)}
+                      {r.isNote ? (
+                        "—"
+                      ) : clickable ? (
+                        // Bấm số tiền → các lần thu (phiếu thu) — như nhấp đôi dòng.
+                        <button
+                          type="button"
+                          className="hover:underline underline-offset-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDetail(r.invoiceId!);
+                          }}
+                        >
+                          {formatCurrency(r.amount)}
+                        </button>
+                      ) : (
+                        formatCurrency(r.amount)
+                      )}
                       {note && <div className={`text-xs font-normal ${note.cls}`}>{note.text}</div>}
                     </TableCell>
                   </TableRow>
@@ -1046,7 +1089,7 @@ function ProfitDistributionDesktop() {
         </div>
       </div>
 
-      {/* Nhấp đôi dòng thu theo HĐ → chi tiết các lần thu (số tiền + ngày giờ) */}
+      {/* Bấm số tiền / nhấp đôi dòng thu theo HĐ → các lần thu (số tiền + ngày giờ) */}
       <PaymentsSummaryDialog
         open={detailOpen}
         onOpenChange={(v) => {
@@ -1054,6 +1097,17 @@ function ProfitDistributionDesktop() {
           if (!v) setDetailInvoiceId(null);
         }}
         invoice={detailInvoice ?? null}
+      />
+
+      {/* Bấm TÊN hoá đơn → chi tiết hoá đơn full-screen (như trang /invoices) */}
+      <InvoiceDetailModal
+        invoiceId={invoiceModal?.id ?? null}
+        title={invoiceModal?.title}
+        open={invoiceModalOpen}
+        onOpenChange={(v) => {
+          setInvoiceModalOpen(v);
+          if (!v) setInvoiceModal(null);
+        }}
       />
     </>
   );
