@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { DollarSign, LayoutGrid } from "lucide-react";
+import { useState, useMemo, type ReactNode } from "react";
+import { DollarSign, LayoutGrid, Plus } from "lucide-react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import ProfitDistributionMobile from "./ProfitDistributionMobile";
@@ -11,15 +11,25 @@ import {
 import { useInvoice, useInvoiceTotalsByIds, useFirstInvoiceDetails, useInvoiceRentPeriods } from "@/hooks/useInvoices";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
+import IncomeExpenseForm, {
+  type IncomeExpensePrefill,
+} from "@/components/income-expenses/IncomeExpenseForm";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { toast } from "sonner";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
-import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
+import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
 import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
-import { FIXED_EXPENSE_CATEGORIES, expenseRankOf } from "@/lib/fixedExpenseCategories";
+import {
+  FIXED_EXPENSE_CATEGORIES,
+  expenseRankOf,
+  findTypeForFixedCategory,
+} from "@/lib/fixedExpenseCategories";
 import { useBuildings } from "@/hooks/useBuildings";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
@@ -212,6 +222,14 @@ function ProfitDistributionDesktop() {
   // DÒNG khỏi danh sách; số tổng (3 thẻ + header) GIỮ NGUYÊN.
   const hideSpecialTypes = useUiPrefBool("pd_hideSpecialTypes", false);
   const setUiPref = useSetUiPreference();
+
+  // Quyền tạo phiếu chi ngay tại trang (nút + header Khoản chi & bấm dòng
+  // "chưa có phiếu") — thiếu quyền thì ẩn nút, dòng vàng không click được.
+  const { data: perms } = useMyPermissions();
+  const canCreate = canUse(perms, "income_expenses", "create");
+  // Loại CHI trong DB — resolve dòng "chưa có phiếu" (hạng mục cố định) → đúng
+  // income_expense_type_id để prefill form. Chỉ fetch khi có quyền tạo.
+  const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense", { enabled: canCreate });
 
   // Hạng mục đánh dấu đặc biệt — khớp dòng theo type_id HOẶC tên (dữ liệu có thể
   // trùng tên "Tiền nhà" giữa nhiều type_id; đánh dấu 1 cái → ẩn mọi dòng cùng tên).
@@ -628,6 +646,34 @@ function ProfitDistributionDesktop() {
     setInvoiceModalOpen(true);
   };
 
+  // Tạo phiếu chi ngay tại trang — prefill giữ trong state (identity ổn định,
+  // effect reset của form phụ thuộc defaultPrefill). Kỳ item = tháng đang xem.
+  const [expenseFormOpen, setExpenseFormOpen] = useState(false);
+  const [expensePrefill, setExpensePrefill] = useState<IncomeExpensePrefill | undefined>();
+  // Nút + ở header Khoản chi: prefill toà (khi lọc đúng 1 toà thật) + kỳ.
+  const openCreateExpense = () => {
+    setExpensePrefill({
+      building_id: singleBuilding && !singleBuilding.is_virtual ? singleBuilding.id : undefined,
+      period: { start_date: startDate, end_date: endDate },
+    });
+    setExpenseFormOpen(true);
+  };
+  // Bấm dòng vàng "chưa có phiếu": prefill thêm đúng hạng mục còn thiếu.
+  const openCreateMissingExpense = (r: DisplayRow) => {
+    const type = findTypeForFixedCategory(expenseTypes, r.fixedRank ?? -1);
+    if (!type)
+      toast.info(`Không tìm thấy loại chi khớp "${r.typeName}" — chọn hạng mục thủ công trong form`);
+    setExpensePrefill({
+      // Dòng missing chỉ sinh khi đang lọc đúng 1 toà thật (không ảo).
+      building_id: singleBuilding?.id,
+      period: { start_date: startDate, end_date: endDate },
+      items: type
+        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: 0 }]
+        : undefined,
+    });
+    setExpenseFormOpen(true);
+  };
+
   // Note "thiếu/thừa so với hoá đơn": so tổng khoản thu (đã gộp) với total HĐ.
   // Chế độ P&L (pnlOnly): row.amount là PHẦN KQKD (không gồm cọc) → phải so với
   // phần phòng/DV của hoá đơn (total − cọc gộp trong HĐ), kẻo HĐ tháng đầu gộp
@@ -709,6 +755,7 @@ function ProfitDistributionDesktop() {
     data: DisplayRow[],
     accentText: string,
     accentHeader: string,
+    headerAction?: ReactNode,
   ) => (
     <div className="rounded-md border flex flex-col min-w-0">
       <div className={`flex items-center justify-between gap-2 px-4 py-2.5 border-b ${accentHeader}`}>
@@ -717,6 +764,7 @@ function ProfitDistributionDesktop() {
           <span className="text-xs text-muted-foreground">
             {data.filter((r) => !r.isNote).length} khoản
           </span>
+          {headerAction}
         </div>
         {!hideTotals && (
           <span className={`font-semibold ${accentText}`}>{formatCurrency(total)}</span>
@@ -767,7 +815,7 @@ function ProfitDistributionDesktop() {
                 // hoá đơn (ĐỎ) → phòng trống (vàng cam) → HĐ không đủ ngày (xanh lá)
                 // → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
                 const rowClass = r.isMissingExpense
-                  ? "bg-amber-50 hover:bg-amber-100"
+                  ? `bg-amber-50 hover:bg-amber-100${canCreate ? " cursor-pointer select-none" : ""}`
                   : r.isMissingInvoice
                   ? "bg-red-100 hover:bg-red-200"
                   : r.isVacant
@@ -787,8 +835,19 @@ function ProfitDistributionDesktop() {
                   <TableRow
                     key={r.key}
                     className={rowClass}
+                    onClick={
+                      r.isMissingExpense && canCreate
+                        ? () => openCreateMissingExpense(r)
+                        : undefined
+                    }
                     onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
-                    title={clickable ? "Bấm tên hoá đơn: xem chi tiết hoá đơn · bấm số tiền: xem các lần thu" : undefined}
+                    title={
+                      r.isMissingExpense && canCreate
+                        ? "Bấm để tạo phiếu chi cho hạng mục này"
+                        : clickable
+                          ? "Bấm tên hoá đơn: xem chi tiết hoá đơn · bấm số tiền: xem các lần thu"
+                          : undefined
+                    }
                   >
                     {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
                     <TableCell>
@@ -1076,7 +1135,27 @@ function ProfitDistributionDesktop() {
         {/* Sổ 2 cột: Thu | Chi */}
         <div className={`grid gap-4 ${showThu && showChi ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
           {showThu && renderPanel("Khoản thu", "Doanh thu", displayIncome, shownIncomeRows, "text-emerald-700", "bg-emerald-50")}
-          {showChi && renderPanel("Khoản chi", "Chi phí", displayExpense, displayExpenseRows, "text-orange-700", "bg-orange-50")}
+          {showChi &&
+            renderPanel(
+              "Khoản chi",
+              "Chi phí",
+              displayExpense,
+              displayExpenseRows,
+              "text-orange-700",
+              "bg-orange-50",
+              canCreate ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-orange-700 hover:bg-orange-100"
+                  title={`Tạo phiếu chi tháng ${monthLabel}`}
+                  aria-label="Tạo phiếu chi"
+                  onClick={openCreateExpense}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              ) : undefined,
+            )}
         </div>
 
         <div className="text-sm text-muted-foreground">
@@ -1108,6 +1187,19 @@ function ProfitDistributionDesktop() {
           setInvoiceModalOpen(v);
           if (!v) setInvoiceModal(null);
         }}
+      />
+
+      {/* Nút + header Khoản chi / bấm dòng "chưa có phiếu" → tạo phiếu chi
+          tại chỗ (kỳ item = tháng đang xem; lưu xong query tự refetch). */}
+      <IncomeExpenseForm
+        open={expenseFormOpen}
+        onOpenChange={(v) => {
+          setExpenseFormOpen(v);
+          if (!v) setExpensePrefill(undefined);
+        }}
+        voucher={null}
+        defaultType="EXPENSE"
+        defaultPrefill={expensePrefill}
       />
     </>
   );

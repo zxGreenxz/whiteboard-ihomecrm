@@ -86,6 +86,13 @@ interface IncomeExpenseFormProps {
       unit_price: number;
       description?: string | null;
     }>;
+    /**
+     * Kỳ áp dụng mặc định cho MỌI item (items prefill + item thêm mới trong
+     * form), 'yyyy-MM-dd' ngày đầu/cuối tháng. Không truyền → tháng hiện tại
+     * (hành vi cũ). Chỉ dùng ở chế độ tạo mới — vd trang báo cáo tháng 06 tạo
+     * phiếu bù thì kỳ item phải là 06 chứ không phải tháng hiện tại.
+     */
+    period?: { start_date: string; end_date: string };
   };
   /**
    * Callback sau khi tạo mới phiếu thành công (không gọi khi edit).
@@ -93,6 +100,9 @@ interface IncomeExpenseFormProps {
    */
   onSaved?: (totalAmount: number) => void;
 }
+
+/** Shape prefill cho caller bên ngoài (trang báo cáo…) khai state đúng kiểu. */
+export type IncomeExpensePrefill = NonNullable<IncomeExpenseFormProps['defaultPrefill']>;
 
 interface FormItemRow {
   income_expense_type_id: string;
@@ -169,6 +179,14 @@ const IncomeExpenseForm = ({
       .filter((t) => t.is_deposit)
       .map((t) => t.id),
   );
+
+  // Kỳ áp dụng mặc định cho item (prefill + thêm mới): ưu tiên kỳ caller truyền
+  // qua defaultPrefill.period (vd tháng đang xem của báo cáo), fallback tháng
+  // hiện tại. Guard !voucher → chế độ SỬA giữ nguyên hành vi cũ (tháng hiện tại).
+  const prefillPeriodStart =
+    (!voucher && defaultPrefill?.period?.start_date) || monthToStartDate(currentMonth());
+  const prefillPeriodEnd =
+    (!voucher && defaultPrefill?.period?.end_date) || monthToEndDate(currentMonth());
 
   const form = useForm<IncomeExpenseFormValues>({
     resolver: zodResolver(incomeExpenseFormSchema),
@@ -271,16 +289,15 @@ const IncomeExpenseForm = ({
       setSelectedRoomId(prefillRoom ?? undefined);
 
       const today = new Date().toISOString().split('T')[0];
-      // Kỳ áp dụng mặc định cho hạng mục = tháng hiện tại → tháng hiện tại.
-      const defPeriodStart = monthToStartDate(currentMonth());
-      const defPeriodEnd = monthToEndDate(currentMonth());
+      // Kỳ áp dụng mặc định cho hạng mục: theo defaultPrefill.period nếu có,
+      // fallback tháng hiện tại (prefillPeriodStart/End khai ở trên).
       const prefillItemsForm = (defaultPrefill?.items ?? []).map((it) => ({
         income_expense_type_id: it.income_expense_type_id,
         description: it.description ?? null,
         quantity: it.quantity,
         unit_price: it.unit_price,
-        start_date: defPeriodStart,
-        end_date: defPeriodEnd,
+        start_date: prefillPeriodStart,
+        end_date: prefillPeriodEnd,
       }));
       const prefillItemsRows = (defaultPrefill?.items ?? []).map((it) => ({
         income_expense_type_id: it.income_expense_type_id,
@@ -288,8 +305,8 @@ const IncomeExpenseForm = ({
         description: it.description ?? null,
         quantity: it.quantity,
         unit_price: it.unit_price,
-        start_date: defPeriodStart,
-        end_date: defPeriodEnd,
+        start_date: prefillPeriodStart,
+        end_date: prefillPeriodEnd,
       }));
 
       form.reset({
@@ -393,9 +410,8 @@ const IncomeExpenseForm = ({
   // Item selector callback
   const handleItemsSelected = (types: IncomeExpenseType[]) => {
     const existingIds = new Set(itemRows.map((r) => r.income_expense_type_id));
-    // Kỳ áp dụng mặc định khi thêm hạng mục = tháng hiện tại → tháng hiện tại.
-    const defPeriodStart = monthToStartDate(currentMonth());
-    const defPeriodEnd = monthToEndDate(currentMonth());
+    // Kỳ áp dụng mặc định khi thêm hạng mục: theo defaultPrefill.period (tạo
+    // mới từ trang báo cáo), fallback tháng hiện tại.
     const newRows: FormItemRow[] = [];
 
     for (const t of types) {
@@ -406,8 +422,8 @@ const IncomeExpenseForm = ({
           description: null,
           quantity: 1,
           unit_price: 0,
-          start_date: defPeriodStart,
-          end_date: defPeriodEnd,
+          start_date: prefillPeriodStart,
+          end_date: prefillPeriodEnd,
         });
       }
     }

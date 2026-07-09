@@ -80,3 +80,16 @@ export const expenseRankOf = (
   if (description) return matchRank(c, nrm(description));
   return NO_RANK;
 };
+
+// Tìm loại thu chi (income_expense_types) khớp hạng mục cố định thứ `fixedRank`
+// — CÙNG luật match với dòng placeholder "chưa có phiếu", để bấm dòng đó tạo
+// phiếu là ra đúng loại. Danh sách types truyền vào đã dedup + sort (hook
+// useIncomeExpenseTypes) nên phần tử đầu khớp là kết quả ổn định.
+// Không khớp / rank ngoài danh sách → undefined (caller cho user chọn tay).
+export function findTypeForFixedCategory<
+  T extends { name: string; category: string | null },
+>(types: T[], fixedRank: number): T | undefined {
+  const cat = FIXED_EXPENSE_CATEGORIES[fixedRank];
+  if (!cat) return undefined;
+  return types.find((t) => cat.match(nrm(t.category), nrm(t.name)));
+}

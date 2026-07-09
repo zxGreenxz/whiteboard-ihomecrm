@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import {
   ChevronLeft, ChevronRight, CalendarDays, SlidersHorizontal, X, Check,
-  TrendingUp, TrendingDown, CircleDollarSign, BarChart3,
+  TrendingUp, TrendingDown, CircleDollarSign, BarChart3, Plus,
 } from "lucide-react";
 import { useBuildings } from "@/hooks/useBuildings";
 import { usePersistedState } from "@/hooks/usePersistedState";
@@ -12,11 +12,21 @@ import {
 import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useInvoice } from "@/hooks/useInvoices";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
-import { useHiddenInReportTypes } from "@/hooks/useIncomeExpenseTypes";
+import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { formatPeriod } from "@/lib/monthPeriod";
-import { FIXED_EXPENSE_CATEGORIES, expenseRankOf } from "@/lib/fixedExpenseCategories";
+import {
+  FIXED_EXPENSE_CATEGORIES,
+  expenseRankOf,
+  findTypeForFixedCategory,
+} from "@/lib/fixedExpenseCategories";
 import PaymentsSummaryDialog from "@/components/invoices/PaymentsSummaryDialog";
 import InvoiceDetailModal from "@/components/invoices/InvoiceDetailModal";
+import IncomeExpenseForm, {
+  type IncomeExpensePrefill,
+} from "@/components/income-expenses/IncomeExpenseForm";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { toast } from "sonner";
 import ProfitVerificationBar from "@/components/reports/ProfitVerificationBar";
 
 // Giao diện MOBILE cho báo cáo Phân bổ lợi nhuận (import từ thiết kế claude.ai/design
@@ -157,6 +167,36 @@ export default function ProfitDistributionMobile() {
     () => (buildingIds.length === 1 ? (buildings as any[]).find((b) => b.id === buildingIds[0]) ?? null : null),
     [buildings, buildingIds],
   );
+
+  // Tạo phiếu chi ngay tại trang (nút + dưới toggle & tap card "chưa có phiếu")
+  // — đồng bộ desktop. Prefill giữ trong state (identity ổn định cho effect
+  // reset của form); kỳ item = tháng đang xem.
+  const { data: perms } = useMyPermissions();
+  const canCreate = canUse(perms, "income_expenses", "create");
+  const { data: expenseTypes = [] } = useIncomeExpenseTypes("expense", { enabled: canCreate });
+  const [expenseFormOpen, setExpenseFormOpen] = useState(false);
+  const [expensePrefill, setExpensePrefill] = useState<IncomeExpensePrefill | undefined>();
+  const openCreateExpense = () => {
+    setExpensePrefill({
+      building_id: singleBuilding && !singleBuilding.is_virtual ? singleBuilding.id : undefined,
+      period: { start_date: startDate, end_date: endDate },
+    });
+    setExpenseFormOpen(true);
+  };
+  const openCreateMissingExpense = (r: MRow) => {
+    const type = findTypeForFixedCategory(expenseTypes, r.fixedRank ?? -1);
+    if (!type)
+      toast.info(`Không tìm thấy loại chi khớp "${r.type}" — chọn hạng mục thủ công trong form`);
+    setExpensePrefill({
+      // Card missing chỉ sinh khi đang lọc đúng 1 toà thật (không ảo).
+      building_id: singleBuilding?.id,
+      period: { start_date: startDate, end_date: endDate },
+      items: type
+        ? [{ income_expense_type_id: type.id, type_name: type.name, quantity: 1, unit_price: 0 }]
+        : undefined,
+    });
+    setExpenseFormOpen(true);
+  };
   // Chèn dòng placeholder "chưa có phiếu" cho hạng mục chi cố định còn thiếu —
   // CHỈ khi lọc đúng 1 toà & đang ở chế độ phân bổ theo kỳ (accrual, category tin
   // cậy). `!accrual` = chưa tải xong → không hiện để tránh nháy 9 dòng thiếu.
@@ -346,6 +386,16 @@ export default function ProfitDistributionMobile() {
         })}
       </div>
 
+      {/* Tạo phiếu chi tại chỗ — chỉ tab Khoản chi + có quyền create */}
+      {side === "expense" && canCreate && (
+        <button
+          onClick={openCreateExpense}
+          className="w-full h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#e0a06f] bg-white text-[#c2570f] text-[13px] font-bold active:scale-[0.99]"
+        >
+          <Plus className="h-4 w-4" /> Tạo phiếu chi tháng {monthLabel}
+        </button>
+      )}
+
       {/* Danh sách khoản */}
       <div className="space-y-2">
         {rows.length === 0 ? (
@@ -361,10 +411,17 @@ export default function ProfitDistributionMobile() {
           rows.map((r) => {
             const amtColor = side === "income" ? "text-[#0e7a47]" : "text-[#c2570f]";
             return (
-              <div key={r.key} onClick={() => r.invoiceId && setDetailInvoiceId(r.invoiceId)}
+              <div key={r.key}
+                onClick={() => {
+                  if (r.isMissingExpense) {
+                    if (canCreate) openCreateMissingExpense(r);
+                    return;
+                  }
+                  if (r.invoiceId) setDetailInvoiceId(r.invoiceId);
+                }}
                 className={`${CARD} p-3 ${
                   r.isMissingExpense
-                    ? "!bg-[#fffbeb] !border-[#fde68a]"
+                    ? `!bg-[#fffbeb] !border-[#fde68a]${canCreate ? " cursor-pointer active:bg-[#fef3c7]" : ""}`
                     : r.invoiceId ? "active:bg-[#faf8f4] cursor-pointer" : ""
                 }`}>
                 <div className="flex items-center gap-2">
@@ -534,6 +591,19 @@ export default function ProfitDistributionMobile() {
         title={invoiceModal?.title}
         open={!!invoiceModal}
         onOpenChange={(v) => { if (!v) setInvoiceModal(null); }}
+      />
+
+      {/* Nút + / tap card "chưa có phiếu" → tạo phiếu chi tại chỗ
+          (kỳ item = tháng đang xem; lưu xong query tự refetch). */}
+      <IncomeExpenseForm
+        open={expenseFormOpen}
+        onOpenChange={(v) => {
+          setExpenseFormOpen(v);
+          if (!v) setExpensePrefill(undefined);
+        }}
+        voucher={null}
+        defaultType="EXPENSE"
+        defaultPrefill={expensePrefill}
       />
     </div>
   );
