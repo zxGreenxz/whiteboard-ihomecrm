@@ -26,6 +26,8 @@ import { toast } from "sonner";
 import {
   useCommissionPrefill,
   useCreateCommissionVoucher,
+  useExistingCommissionVouchers,
+  type ExistingCommissionVoucher,
 } from "@/hooks/useCommissionVoucher";
 import { useAccounts } from "@/hooks/useAccounts";
 import BankSelect from "@/components/income-expenses/BankSelect";
@@ -40,6 +42,25 @@ function formatVND(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ";
 }
 
+/** Banner "đã chi" — thay form nhập khi HĐ đã có phiếu HH loại tương ứng */
+function ExistingVoucherBanner({
+  voucher,
+  label,
+}: {
+  voucher: ExistingCommissionVoucher;
+  label: string;
+}) {
+  return (
+    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+      Đã chi {label} cho HĐ này: phiếu <b>{voucher.code ?? "?"}</b> —{" "}
+      <b>{formatVND(Number(voucher.total_amount) || 0)}</b>
+      {voucher.approval_status === "UNAPPROVED" ? " (nháp — chờ duyệt)" : ""}.
+      Mỗi hợp đồng chỉ chi 1 lần; nếu phiếu sai, hãy hủy phiếu đó ở trang Thu
+      chi rồi tạo lại.
+    </div>
+  );
+}
+
 export function CommissionVoucherModal({
   open,
   contractId,
@@ -50,6 +71,17 @@ export function CommissionVoucherModal({
   );
   const { data: accounts = [] } = useAccounts();
   const createVoucher = useCreateCommissionVoucher();
+
+  // Chống chi lần 2: phiếu HH sống đã có của HĐ này (mỗi HĐ tối đa 1 phiếu/loại)
+  const { data: existingVouchers = [] } = useExistingCommissionVouchers(
+    open ? contractId : null
+  );
+  const existingBroker = existingVouchers.find(
+    (v) => v.commission_kind === "broker"
+  );
+  const existingSale = existingVouchers.find(
+    (v) => v.commission_kind === "sale"
+  );
 
   // ---- Form state (no react-hook-form — lightweight modal) ----
   const [accountId, setAccountId] = useState<string>("");
@@ -114,11 +146,18 @@ export function CommissionVoucherModal({
     if (submitting) return; // chặn double-click trong khi chạy
 
     const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
-    const willCreateBroker = brokerAmount > 0;
-    const willCreateSale = saleAmt > 0;
+    // Loại đã có phiếu sống → skip (RPC + unique index vẫn chặn nếu lách)
+    const willCreateBroker = brokerAmount > 0 && !existingBroker;
+    const willCreateSale = saleAmt > 0 && !existingSale;
 
     if (!willCreateBroker && !willCreateSale) {
-      toast.info("Không có khoản chi nào — bỏ qua tạo phiếu.");
+      if (existingBroker || existingSale) {
+        toast.info(
+          "HĐ này đã có phiếu hoa hồng — mỗi hợp đồng chỉ chi 1 lần, không tạo thêm."
+        );
+      } else {
+        toast.info("Không có khoản chi nào — bỏ qua tạo phiếu.");
+      }
       onOpenChange(false);
       return;
     }
@@ -273,6 +312,12 @@ export function CommissionVoucherModal({
               {/* Mục 2: Đơn vị MG */}
               <div className="space-y-3">
                 <h3 className="font-medium">2. ĐƠN VỊ MÔI GIỚI</h3>
+                {existingBroker ? (
+                  <ExistingVoucherBanner
+                    voucher={existingBroker}
+                    label="hoa hồng môi giới"
+                  />
+                ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền hoa hồng *</Label>
@@ -317,6 +362,7 @@ export function CommissionVoucherModal({
                     />
                   </div>
                 </div>
+                )}
               </div>
 
               <Separator />
@@ -329,6 +375,12 @@ export function CommissionVoucherModal({
                     (tuỳ chọn — chỉ tạo phiếu khi có số tiền)
                   </span>
                 </h3>
+                {existingSale ? (
+                  <ExistingVoucherBanner
+                    voucher={existingSale}
+                    label="thưởng nóng Sale"
+                  />
+                ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Số tiền thưởng</Label>
@@ -373,6 +425,7 @@ export function CommissionVoucherModal({
                     />
                   </div>
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -391,9 +444,15 @@ export function CommissionVoucherModal({
             type="button"
             className="bg-green-600 hover:bg-green-700"
             onClick={handleSubmit}
-            disabled={isPending || !prefill}
+            disabled={
+              isPending || !prefill || (!!existingBroker && !!existingSale)
+            }
           >
-            {isPending ? "Đang tạo..." : "Tạo phiếu chi"}
+            {isPending
+              ? "Đang tạo..."
+              : existingBroker && existingSale
+              ? "Đã chi đủ hoa hồng"
+              : "Tạo phiếu chi"}
           </Button>
         </DialogFooter>
       </DialogContent>

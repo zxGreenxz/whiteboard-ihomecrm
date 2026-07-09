@@ -15,7 +15,6 @@ import { useUtilityPayState, type MeterRow } from '@/hooks/useUtilityPayState';
 import { usePeriodFeeStatus, useFeeAccounts, usePeriodCommissions, usePeriodMaintenance, type PeriodCommissionRow } from '@/hooks/usePeriodFees';
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateCommissionVoucher } from '@/hooks/useCommissionVoucher';
-import { useApproveVoucher } from '@/hooks/useIncomeExpenses';
 import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, GRID_SERVER_KEYS, type FeeCategory } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
@@ -91,19 +90,20 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, canRecordPayment }
   const pick = (k: string) => { setCategory(k); setPickerOpen(false); setOnlyDue(false); };
   const headerCat = cat ?? { label: 'Tổng quan kỳ', sub: 'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận', icon: 'overview', accent: '#514c42' } as any;
 
+  // Phiếu HH luôn tạo NHÁP (bỏ auto-duyệt); chống chi lần 2 trong RPC + unique index.
   const createComm = useCreateCommissionVoucher();
-  const approveMut = useApproveVoucher();
   const payCommission = async (r: PeriodCommissionRow) => {
     try {
-      const res: any = await createComm.mutateAsync({
+      await createComm.mutateAsync({
         contract_id: r.contractId, contract_number: r.contractNumber, building_id: r.buildingId, room_id: r.roomId, tenant_id: null,
         account_id: S.defaultBookId, voucher_date: new Date(period + '-01').toISOString().slice(0, 10),
         kind: 'broker', amount: r.expectedAmount, payer_name: r.tenantName || null, recipient_name: null, recipient_bank: null, recipient_account_number: null,
         item_description: `Hoa hồng môi giới HĐ ${r.contractNumber ?? ''} (${r.tierPercent ?? 0}% × ${r.months} tháng)`,
       });
-      if (res?.id) { try { await approveMut.mutateAsync(res.id); } catch { /* giữ nháp */ } }
-      toast.success(`Đã chi hoa hồng ${fmtFull(r.expectedAmount)}`);
-    } catch (ex) { toast.error((ex as Error).message); }
+      toast.success(`Đã tạo phiếu NHÁP hoa hồng ${fmtFull(r.expectedAmount)} — vào Thu chi duyệt để vào sổ`);
+    } catch { /* toast lỗi đã hiển thị từ mutation */ } finally {
+      commissions.refetch();
+    }
   };
 
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');

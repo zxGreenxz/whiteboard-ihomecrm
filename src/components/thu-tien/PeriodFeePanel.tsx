@@ -20,7 +20,6 @@ import {
 } from '@/hooks/usePeriodFees';
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateCommissionVoucher } from '@/hooks/useCommissionVoucher';
-import { useApproveVoucher } from '@/hooks/useIncomeExpenses';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, GRID_SERVER_KEYS, type FeeCategory } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
@@ -160,11 +159,13 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   }, [isGrid, cat, buildingIds, elevatorIds, feeStatus.byKey, buildings]);
 
   // ── Commission actions ──
+  // Phiếu HH luôn tạo NHÁP (bỏ auto-duyệt — quyết định chủ 09/07): mọi lần
+  // chi hoa hồng đều qua bước duyệt thủ công ở trang Thu chi (có audit).
+  // Chống chi lần 2 nằm trong RPC create_commission_voucher + unique index.
   const createComm = useCreateCommissionVoucher();
-  const approveMut = useApproveVoucher();
   const payCommission = async (r: PeriodCommissionRow) => {
     try {
-      const res: any = await createComm.mutateAsync({
+      await createComm.mutateAsync({
         contract_id: r.contractId, contract_number: r.contractNumber,
         building_id: r.buildingId, room_id: r.roomId, tenant_id: null,
         account_id: S.defaultBookId, voucher_date: new Date(period + '-01').toISOString().slice(0, 10),
@@ -172,9 +173,10 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
         recipient_name: null, recipient_bank: null, recipient_account_number: null,
         item_description: `Hoa hồng môi giới HĐ ${r.contractNumber ?? ''} (${r.tierPercent ?? 0}% × ${r.months} tháng)`,
       });
-      if (res?.id) { try { await approveMut.mutateAsync(res.id); } catch { /* giữ nháp nếu không có quyền duyệt */ } }
-      toast.success(`Đã chi hoa hồng ${fmtFull(r.expectedAmount)} · HĐ ${r.contractNumber ?? ''}`);
-    } catch (ex) { toast.error((ex as Error).message); }
+      toast.success(`Đã tạo phiếu NHÁP hoa hồng ${fmtFull(r.expectedAmount)} · HĐ ${r.contractNumber ?? ''} — vào Thu chi duyệt để vào sổ`);
+    } catch { /* toast lỗi đã hiển thị từ mutation */ } finally {
+      commissions.refetch(); // phiếu đã tồn tại → row nhảy "Đã chi"
+    }
   };
 
   // ── Batch create ──
