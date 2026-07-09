@@ -240,10 +240,12 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
   const isLiquidation =
     (invoice as { kind?: string }).kind === 'SETTLEMENT' || /thanh\s*lý/i.test(notes);
   if (isLiquidation) {
-    // B6 (audit 03/07): billing_month của hoá đơn thanh lý chỉ là "slot" kỹ thuật
-    // (né UNIQUE contract+kỳ nên có thể rơi vào tháng tương lai 08/09...) → hiển
-    // thị NGÀY LẬP thật thay vì kỳ, và tách nhãn "thu thêm" khỏi hoá đơn bù cọc.
-    const isExtra = /thu\s*thêm/i.test(notes);
+    // B6 (audit 03/07): hiển thị NGÀY LẬP thay vì kỳ (kỳ hoá đơn thanh lý cũ có
+    // thể là "slot" mượn tháng khác; bản mới đã đúng tháng nhưng ngày lập vẫn
+    // thông tin hơn). Nhãn "thu thêm" CHỈ theo marker MỞ ĐẦU notes (hoá đơn thu
+    // thêm riêng của forfeit) — đừng match cả breakdown "… + thu thêm 200.000đ"
+    // của hoá đơn thanh lý move-out kẻo gắn nhầm nhãn.
+    const isExtra = /^hoá\s*đơn\s*thu\s*thêm/i.test(notes.trimStart());
     const issueDisplay = (() => {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(invoice.issue_date ?? '');
       return m ? `${m[3]}/${m[2]}/${m[1]}` : monthDisplay;
