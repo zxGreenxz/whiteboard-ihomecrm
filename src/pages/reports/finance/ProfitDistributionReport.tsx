@@ -72,6 +72,10 @@ interface DisplayRow {
   invoiceId?: string | null;
   // Số lần thu được gộp (>1 ⇒ hiện "(N lần)").
   groupCount?: number;
+  // Σ khoản THANH LÝ/BỎ CỌC gắn CÙNG hoá đơn nhưng đã tách sang dòng riêng —
+  // trừ khỏi mệnh giá HĐ khi so thiếu/thừa (mệnh giá HĐ quyết toán đã cộng cả
+  // phần phụ thu thanh lý mà phiếu "Doanh thu thanh lý" thanh toán).
+  liqSiblingAmount?: number;
   // Phòng đang trống trong tháng → tô nền vàng cam + đẩy lên đầu cột Thu.
   isVacant?: boolean;
   // Phòng CÒN HĐ nhưng THIẾU hoá đơn tháng này → cảnh báo nền đỏ.
@@ -388,29 +392,41 @@ function ProfitDistributionDesktop() {
       }
     }
 
-    // Gộp các khoản THU cùng 1 hoá đơn (invoice_id) thành 1 dòng tổng. Khoản
-    // không gắn hoá đơn giữ nguyên từng dòng.
+    // Gộp các khoản THU cùng 1 hoá đơn (invoice_id) thành 1 dòng tổng — nhưng
+    // TÁCH khoản THANH LÝ/BỎ CỌC thành nhóm riêng: RPC thanh lý gắn phiếu
+    // "Doanh thu thanh lý" vào hoá đơn quyết toán (lịch sử: cả hoá đơn THÁNG bị
+    // gộp thu thêm), gộp chung sẽ nhuộm cả tiền phòng thành "thanh lý"
+    // (case MB/158PVC 06/2026). Khoản không gắn hoá đơn giữ nguyên từng dòng.
     const groups = new Map<string, DisplayRow[]>();
+    // Σ tiền thanh lý theo hoá đơn — bù vào note thiếu/thừa của nhóm thu thường.
+    const liqByInvoice = new Map<string, number>();
     const inc: DisplayRow[] = [];
     for (const r of rawInc) {
       if (r.invoiceId) {
-        const g = groups.get(r.invoiceId);
+        const liq = isLiquidationRow(r);
+        const k = liq ? `${r.invoiceId}:tl` : r.invoiceId;
+        const g = groups.get(k);
         if (g) g.push(r);
-        else groups.set(r.invoiceId, [r]);
+        else groups.set(k, [r]);
+        if (liq) liqByInvoice.set(r.invoiceId, (liqByInvoice.get(r.invoiceId) ?? 0) + r.amount);
       } else {
         inc.push(r);
       }
     }
-    for (const [invoiceId, list] of groups) {
+    for (const [k, list] of groups) {
+      // Nhóm thu thường có "anh em" thanh lý cùng HĐ → ghi số bù cho noteFor.
+      const liqSibling = k.endsWith(":tl") ? 0 : liqByInvoice.get(list[0].invoiceId!) ?? 0;
+      const extra = liqSibling > 0 ? { liqSiblingAmount: liqSibling } : undefined;
       if (list.length === 1) {
-        inc.push({ ...list[0], groupCount: 1 });
+        inc.push({ ...list[0], groupCount: 1, ...extra });
       } else {
         inc.push({
           ...list[0],
-          key: `inv-${invoiceId}`,
+          key: `inv-${k}`,
           amount: list.reduce((s, x) => s + x.amount, 0),
           notKqkd: list.some((x) => x.notKqkd),
           groupCount: list.length,
+          ...extra,
         });
       }
     }
@@ -617,7 +633,11 @@ function ProfitDistributionDesktop() {
     const depositInInvoice = pnlOnly
       ? firstInvoiceDetails?.get(row.invoiceId)?.depositInInvoice ?? 0
       : 0;
-    const diff = Math.round(row.amount - (inv.total_amount - depositInInvoice));
+    // Trừ thêm phần đã thanh toán bởi phiếu thanh lý (đã tách dòng riêng) —
+    // kẻo nhóm tiền phòng bị báo "thiếu" oan đúng bằng phần phụ thu thanh lý.
+    const diff = Math.round(
+      row.amount - (inv.total_amount - depositInInvoice - (row.liqSiblingAmount ?? 0))
+    );
     if (diff <= -1) return { text: `thiếu ${formatCurrency(-diff)}`, cls: "text-amber-600" };
     if (diff >= 1) return { text: `thừa ${formatCurrency(diff)}`, cls: "text-rose-600" };
     return null;
@@ -724,13 +744,15 @@ function ProfitDistributionDesktop() {
                 const note = noteFor(r);
                 // HĐ tháng đầu: tô NỀN NHẠT cả dòng theo trạng thái — xanh khi HĐ
                 // & cọc đều đủ, đỏ khi còn thiếu (dung sai 1đ cho làm tròn).
-                const fd = r.invoiceId ? firstInvoiceDetails?.get(r.invoiceId) : null;
+                // Dòng thanh lý (tách riêng) KHÔNG nhận block HĐ tháng đầu/prorate
+                // — tránh render đúp khi hoá đơn có cả nhóm thu thường cùng HĐ.
+                const fd = r.invoiceId && !isLiquidationRow(r) ? firstInvoiceDetails?.get(r.invoiceId) : null;
                 const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
                 const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
                 const firstFull = invFull && depFull;
                 // Hoá đơn KHÔNG đủ ngày (prorate — khách vào/rời giữa tháng, có đoạn
                 // trống) → nền XANH LÁ nhạt + ghi chú kỳ tiền phòng.
-                const rp = r.invoiceId ? rentPeriods?.get(r.invoiceId) : null;
+                const rp = r.invoiceId && !isLiquidationRow(r) ? rentPeriods?.get(r.invoiceId) : null;
                 // Thứ tự ưu tiên nền: hạng mục chi thiếu phiếu (VÀNG NHẠT) → thiếu
                 // hoá đơn (ĐỎ) → phòng trống (vàng cam) → HĐ không đủ ngày (xanh lá)
                 // → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).

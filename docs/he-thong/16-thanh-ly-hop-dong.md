@@ -12,6 +12,26 @@
 > **Cập nhật 2026-07-03** theo [20260627000001 — thu thêm khi thanh lý](../../supabase/migrations/20260627000001_termination_extra_charges.sql)
 > (đã đối chiếu lại định nghĩa hàm LIVE): cả 2 RPC nhận thêm `p_extra_charges`; move-out **đổi
 > bước gạch nợ** — quay về payment `TM`, bỏ sổ ảo "Cấn trừ nội bộ" (xem §2.3, §4.2).
+>
+> **⚠️ Cập nhật lớn 2026-07-09 — [20260709100000 — hoá đơn thanh lý riêng 100%](../../supabase/migrations/20260709100000_settlement_invoice_kind.sql)**
+> (v4, APPLY LIVE; các đoạn dưới chưa viết lại theo bản này thì đọc kèm ghi chú sau):
+>
+> - **`invoices.kind`** mới: `'MONTHLY'` | `'SETTLEMENT'`. Unique `(contract_id, billing_month)`
+>   chỉ còn áp cho `MONTHLY` → hoá đơn thanh lý **mang ĐÚNG kỳ tháng trả phòng/bỏ cọc**, sống
+>   chung tháng với hoá đơn tiền phòng. `_termination_free_billing_month` (mượn slot tháng
+>   trống — nguồn lệch kỳ accrual B6) **không còn được gọi**; 1 hoá đơn lịch sử sai kỳ đã dời về
+>   tháng thật.
+> - **Move-out KHÔNG BAO GIỜ đụng hoá đơn tháng nữa** (trước: gộp thu thêm vào hoá đơn tháng
+>   khi chưa PAID → 1 hoá đơn trộn tiền phòng + thanh lý, báo cáo nhuộm nhầm cả nhóm thành
+>   "Doanh thu thanh lý"). Phạt/thu thêm luôn vào hoá đơn `SETTLEMENT` riêng; phiếu "Doanh thu
+>   thanh lý" gắn hoá đơn `SETTLEMENT` (hoặc `NULL` nếu không có phạt/thu thêm). Công nợ hoá đơn
+>   tháng vẫn gạch bằng payments `CT` (không sửa nội dung hoá đơn).
+> - Forfeit: 2 hoá đơn (bù cọc + thu thêm) cũng `kind='SETTLEMENT'`, đúng tháng bỏ cọc.
+> - `generate_invoices_for_building` chỉ đếm `kind='MONTHLY'` khi check "đã có hoá đơn tháng".
+> - FE: `getInvoiceTitle` nhận diện hoá đơn thanh lý bằng `kind` (regex notes giữ làm fallback);
+>   BC Doanh Thu Chi Phí tách dòng thanh lý khỏi dòng tiền phòng khi cùng hoá đơn (dữ liệu lịch
+>   sử gộp kiểu cũ vẫn hiển thị đúng).
+> - Đã test DB-level 15/15 PASS (move-out HĐ tháng chưa/đã PAID, forfeit + thu thêm, unique).
 
 ---
 

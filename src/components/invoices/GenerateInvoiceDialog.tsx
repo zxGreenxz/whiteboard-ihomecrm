@@ -368,6 +368,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         .eq('billing_month', watchedBillingMonth)
         .is('deleted_at', null)
         .neq('status', 'CANCELLED')
+        // Hoá đơn THANH LÝ (kind SETTLEMENT) được phép chung tháng — không block.
+        .eq('kind', 'MONTHLY')
         .limit(1)
         .maybeSingle();
       return data ?? null;

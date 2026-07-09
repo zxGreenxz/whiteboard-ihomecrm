@@ -104,6 +104,10 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             .select("id, room_id, building_id, contract_id, total_amount, remaining_amount, billing_month, created_at") as any)
             .in("room_id", roomIds)
             .eq("billing_month", billingMonth)
+            // Lương tính trên hoá đơn THÁNG — bỏ hoá đơn thanh lý (kind
+            // SETTLEMENT có thể chung tháng từ 20260709100000, tạo sau → sẽ
+            // chiếm chỗ "mới nhất" và làm sai cơ sở lương nếu không lọc).
+            .eq("kind", "MONTHLY")
             .is("deleted_at", null)
             .order("created_at", { ascending: false }),
         ]);

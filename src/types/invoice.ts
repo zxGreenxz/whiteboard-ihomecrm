@@ -56,6 +56,12 @@ export interface Invoice {
   building_id: string;
   room_id: string;
   invoice_number: string | null;
+  /**
+   * Bản chất hoá đơn: 'MONTHLY' (tiền phòng hằng tháng — unique 1 HĐ/hợp
+   * đồng/tháng) | 'SETTLEMENT' (hoá đơn thanh lý/thu thêm khi thanh lý — được
+   * phép chung billing_month với hoá đơn tháng, kể từ 20260709100000).
+   */
+  kind: 'MONTHLY' | 'SETTLEMENT';
   billing_month: string; // YYYY-MM
   issue_date: string; // DATE
   due_date: string; // DATE

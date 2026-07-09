@@ -833,13 +833,24 @@ function StepMoveOut({
           </div>
         </div>
 
-        {/* Section 3b: Thu thêm — gộp chung vào hoá đơn thanh lý, khấu trừ cọc */}
+        {/* Section 3b: Thu thêm — vào HOÁ ĐƠN THANH LÝ RIÊNG (kind SETTLEMENT,
+            đúng kỳ tháng trả phòng), KHÔNG đụng hoá đơn tiền phòng của tháng. */}
         <div className="border-t pt-4">
           <TerminationExtraCharges
             contract={contract}
             chargeDate={form.watch("move_out_date")}
             onChange={setExtraCharges}
           />
+          {extraTotal > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              <ReceiptText className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>
+                Các khoản này vào <strong>hoá đơn thanh lý riêng</strong> (kỳ tháng
+                trả phòng) và được khấu trừ vào cọc — <strong>không</strong> sửa hoá
+                đơn tiền phòng hằng tháng.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Section 4: Tổng hợp (auto-calculated realtime) */}

@@ -234,7 +234,11 @@ export function getInvoiceTitle(invoice: InvoiceWithRelations): string {
   const suffix = [loc, monthPart].filter(Boolean).join(' - ');
 
   const notes = invoice.notes ?? '';
-  const isLiquidation = /thanh\s*lý/i.test(notes);
+  // Nguồn sự thật là invoices.kind (từ 20260709100000); regex notes giữ làm
+  // fallback cho payload chưa select cột kind. Hoá đơn THÁNG không còn bị RPC
+  // thanh lý append ghi chú nên regex không thể nhuộm nhầm hoá đơn thường.
+  const isLiquidation =
+    (invoice as { kind?: string }).kind === 'SETTLEMENT' || /thanh\s*lý/i.test(notes);
   if (isLiquidation) {
     // B6 (audit 03/07): billing_month của hoá đơn thanh lý chỉ là "slot" kỹ thuật
     // (né UNIQUE contract+kỳ nên có thể rơi vào tháng tương lai 08/09...) → hiển

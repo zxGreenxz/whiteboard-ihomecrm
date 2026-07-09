@@ -304,7 +304,7 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
           .from('invoices')
           .select(
             `id, total_amount, paid_amount, remaining_amount,
-             billing_month, notes, issue_date,
+             kind, billing_month, notes, issue_date,
              contract:contracts!invoices_contract_id_fkey (start_billing_date),
              invoice_items (type, from_date)`,
           )
