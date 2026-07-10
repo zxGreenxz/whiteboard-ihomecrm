@@ -161,15 +161,13 @@ const navigationGroups: NavGroup[] = [
         items: [
           // Mỗi báo cáo gate theo action riêng của module reports_finance —
           // khớp đúng RequirePermission của route tương ứng trong App.tsx.
-          { title: 'Phân tích tài chính', href: '/report/finance/analysis', icon: BarChart3, module: 'reports_finance', action: 'analysis' },
-          { title: 'Tài khoản theo ngày', href: '/report/finance/cashbook', icon: Book, module: 'reports_finance', action: 'daily_cashbook' },
-          { title: 'Dòng tiền', href: '/report/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
+          { title: 'Phân tích tài chính', href: '/reports/finance/analysis', icon: BarChart3, module: 'reports_finance', action: 'analysis' },
+          { title: 'Tài khoản theo ngày', href: '/reports/finance/daily-cashbook', icon: Book, module: 'reports_finance', action: 'daily_cashbook' },
+          { title: 'Dòng tiền', href: '/reports/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
           { title: 'Báo cáo Lợi Nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, module: 'reports_finance', action: 'profit_distribution' },
-          { title: 'Công nợ hợp đồng mới', href: '/reports/finance/new-contract-debt', icon: FileText, module: 'reports_finance', action: 'debt' },
-          { title: 'Khách nợ tiền', href: '/report/finance/debt', icon: Users, module: 'reports_finance', action: 'customer_debt' },
-          { title: 'Lịch thanh toán', href: '/report/finance/billing-calendar', icon: Calendar, module: 'reports_finance', action: 'payment_schedule' },
-          { title: 'Tiền thừa', href: '/report/finance/prepaid', icon: Coins, module: 'reports_finance', action: 'overpayment' },
-          { title: 'Danh sách tiền cọc', href: '/report/finance/deposit', icon: Wallet, module: 'reports_finance', action: 'deposits_report' },
+          { title: 'Lịch thanh toán', href: '/reports/finance/payment-schedule', icon: Calendar, module: 'reports_finance', action: 'payment_schedule' },
+          { title: 'Tiền thừa', href: '/reports/finance/overpayment', icon: Coins, module: 'reports_finance', action: 'overpayment' },
+          { title: 'Danh sách tiền cọc', href: '/reports/finance/deposits', icon: Wallet, module: 'reports_finance', action: 'deposits_report' },
         ],
       },
     ],

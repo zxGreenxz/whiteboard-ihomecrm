@@ -506,8 +506,8 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("reports_finance", "daily_cashbook", "Báo cáo Sổ quỹ ngày", "view", { fallback: { action: "view" } }),
           f("reports_finance", "cash_flow", "Báo cáo Dòng tiền", "view", { fallback: { action: "view" } }),
           f("reports_finance", "profit_distribution", "Báo cáo Phân bổ lợi nhuận (KQKD)", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "debt", "Báo cáo Công nợ HĐ mới", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "customer_debt", "Báo cáo Khách nợ tiền", "view", { fallback: { action: "view" } }),
+          // debt/customer_debt: 2 BC công nợ đã xoá (Phase 7) — không hiển thị
+          // trong UI cấu hình mới; key legacy trong JSON role cũ được bỏ qua.
           f("reports_finance", "payment_schedule", "Báo cáo Lịch thanh toán", "view", { fallback: { action: "view" } }),
           f("reports_finance", "overpayment", "Báo cáo Tiền thừa", "view", { fallback: { action: "view" } }),
           f("reports_finance", "deposits_report", "Báo cáo Danh sách cọc", "view", { fallback: { action: "view" } }),

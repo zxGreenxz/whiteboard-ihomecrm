@@ -19,8 +19,6 @@
   "src/hooks/useIncomeExpenseTypes.ts|TS2352|Conversion of type '…' to type '…' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to '…' first.",
   "src/hooks/useMeterReadings.ts|TS2551|Property '…' does not exist on type '…'. Did you mean '…'?",
   "src/hooks/useQuickCollect.ts|TS2339|Property '…' does not exist on type '…'.",
-  "src/hooks/useReports.ts|TS2339|Property '…' does not exist on type '…'.",
-  "src/hooks/useReports.ts|TS2339|Property '…' does not exist on type '…'amount'…'invoices'…'.",
   "src/hooks/useShareholders.ts|TS2352|Conversion of type '…' to type '…' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to '…' first.",
   "src/lib/__tests__/collectPlan.test.ts|TS2339|Property '…' does not exist on type '…'.",
   "src/lib/__tests__/contractFilters.property.test.ts|TS2322|Type '…' is not assignable to type '…'.",
@@ -35,6 +33,5 @@
   "src/pages/customers/CT01FormPage.tsx|TS2322|Type '…' is not assignable to type '…'.",
   "src/pages/customers/CustomerDetailPage.tsx|TS2339|Property '…' does not exist on type '…'.",
   "src/pages/phong-trong/PhongTrongPage.tsx|TS2339|Property '…' does not exist on type '…'.",
-  "src/pages/rooms/RoomDetailPage.tsx|TS2339|Property '…' does not exist on type '…'.",
-  "src/pages/tenants/TenantsPage.tsx|TS2367|This comparison appears to be unintentional because the types '…' and '…' have no overlap."
+  "src/pages/rooms/RoomDetailPage.tsx|TS2339|Property '…' does not exist on type '…'."
 ]

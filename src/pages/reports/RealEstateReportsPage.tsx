@@ -43,7 +43,7 @@ const reports = [
     title: "Tỉ lệ lấp đầy",
     description: "Thống kê tỉ lệ lấp đầy theo toà nhà với biểu đồ trend",
     icon: BarChart,
-    path: "/reports/real-estate/occupancy-new",
+    path: "/reports/real-estate/occupancy",
     color: "text-emerald-600",
     bgColor: "bg-emerald-50",
   },

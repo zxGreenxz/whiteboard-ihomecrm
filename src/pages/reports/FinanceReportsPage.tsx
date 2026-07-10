@@ -3,8 +3,6 @@ import {
   Book,
   TrendingUp,
   PieChart,
-  FileText,
-  Users,
   Calendar,
   Coins,
   Wallet,
@@ -22,7 +20,7 @@ const reports = [
     title: "Phân tích tài chính",
     description: "Doanh thu, chi phí, lợi nhuận, KPI vận hành — biểu đồ & bảng phân tích toàn diện",
     icon: BarChart3,
-    path: "/report/finance/analysis",
+    path: "/reports/finance/analysis",
     color: "text-violet-600",
     bgColor: "bg-violet-50",
   },
@@ -67,22 +65,6 @@ const reports = [
     bgColor: "bg-indigo-50",
   },
   {
-    title: "Công nợ hợp đồng mới",
-    description: "Công nợ phát sinh từ các hợp đồng mới ký kết",
-    icon: FileText,
-    path: "/reports/finance/new-contract-debt",
-    color: "text-red-600",
-    bgColor: "bg-red-50",
-  },
-  {
-    title: "Khách nợ tiền",
-    description: "Danh sách khách hàng có công nợ, phân loại theo mức độ",
-    icon: Users,
-    path: "/reports/finance/customer-debt",
-    color: "text-orange-600",
-    bgColor: "bg-orange-50",
-  },
-  {
     title: "Lịch thanh toán",
     description: "Hợp đồng cần thu trong tháng, ngày đáo hạn và số tiền",
     icon: Calendar,
@@ -117,7 +99,7 @@ const FinanceReportsPage = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
             <p className="text-muted-foreground">
-              11 loại báo cáo phân tích tài chính và dòng tiền
+              9 loại báo cáo phân tích tài chính và dòng tiền
             </p>
           </div>
         </div>

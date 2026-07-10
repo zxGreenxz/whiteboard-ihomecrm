@@ -232,7 +232,10 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "reports_finance",
         label: "Báo cáo tài chính",
         core: ["view"],
-        extra: ["analysis", "daily_cashbook", "cash_flow", "profit_distribution", "debt", "customer_debt", "payment_schedule", "overpayment", "deposits_report", "handover_report", "reconcile", "collection_cycle", "export"],
+        // "debt"/"customer_debt" đã gỡ khỏi UI cấu hình (2 BC công nợ xoá ở Phase 7,
+        // nghiệp vụ nợ chuyển về /thu-tien). Union ActionKey vẫn giữ 2 key này để
+        // JSON role cũ đã lưu không bị coi là invalid (legacy-tolerant, không migration).
+        extra: ["analysis", "daily_cashbook", "cash_flow", "profit_distribution", "payment_schedule", "overpayment", "deposits_report", "handover_report", "reconcile", "collection_cycle", "export"],
       },
     ],
   },
@@ -323,8 +326,10 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   daily_cashbook: "BC Sổ quỹ ngày",
   cash_flow:      "BC Dòng tiền",
   profit_distribution: "BC Phân bổ LN",
-  debt:           "BC Công nợ HĐ mới",
-  customer_debt:  "BC Khách nợ tiền",
+  // debt/customer_debt: 2 BC công nợ đã xoá (Phase 7) — giữ nhãn để nơi nào còn
+  // hiển thị key legacy trong role cũ không rơi về key thô.
+  debt:           "BC Công nợ HĐ mới (đã bỏ)",
+  customer_debt:  "BC Khách nợ tiền (đã bỏ)",
   payment_schedule: "BC Lịch thanh toán",
   overpayment:    "BC Tiền thừa",
   deposits_report: "BC Danh sách cọc",
@@ -483,8 +488,8 @@ const MANAGE_ACTIONS = new Set<ActionKey>([
   "send", "manage_automation", "manage_templates",
   "vacant_rooms", "expiring", "renewals_transfers", "occupancy", "promotions",
   "new_leases", "terminations", "expense_ratio",
-  "daily_cashbook", "cash_flow", "profit_distribution", "debt",
-  "customer_debt", "payment_schedule", "overpayment", "deposits_report",
+  "daily_cashbook", "cash_flow", "profit_distribution",
+  "payment_schedule", "overpayment", "deposits_report",
   "analysis",
 ]);
 

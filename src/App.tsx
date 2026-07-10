@@ -83,7 +83,6 @@ const FinanceReportsPage = lazy(() => import("./pages/reports/FinanceReportsPage
 const VacantRoomsReport = lazy(() => import("./pages/reports/real-estate/VacantRoomsReport"));
 const ExpiringContractsReport = lazy(() => import("./pages/reports/real-estate/ExpiringContractsReport"));
 const OccupancyReport = lazy(() => import("./pages/reports/real-estate/OccupancyReport"));
-const OccupancyNewReport = lazy(() => import("./pages/reports/real-estate/OccupancyNewReport"));
 const RenewalsTransfersReport = lazy(() => import("./pages/reports/real-estate/RenewalsTransfersReport"));
 const PromotionsReport = lazy(() => import("./pages/reports/real-estate/PromotionsReport"));
 const NewLeasesReport = lazy(() => import("./pages/reports/real-estate/NewLeasesReport"));
@@ -91,8 +90,6 @@ const TerminationsReport = lazy(() => import("./pages/reports/real-estate/Termin
 const ExpenseRatioReport = lazy(() => import("./pages/reports/real-estate/ExpenseRatioReport"));
 const DailyCashbookReport = lazy(() => import("./pages/reports/finance/DailyCashbookReport"));
 const CashFlowReport = lazy(() => import("./pages/reports/finance/CashFlowReport"));
-const DebtReport = lazy(() => import("./pages/reports/finance/DebtReport"));
-const CustomerDebtReport = lazy(() => import("./pages/reports/finance/CustomerDebtReport"));
 const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/PaymentScheduleReport"));
 const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
 const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
@@ -340,32 +337,34 @@ const App = () => (
           <Route path="/reports/real-estate/expiring" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="expiring"><ExpiringContractsReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/real-estate/renewals-transfers" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="renewals_transfers"><RenewalsTransfersReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/real-estate/occupancy" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="occupancy"><OccupancyReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/occupancy-new" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="occupancy"><OccupancyNewReport /></RequirePermission></ProtectedRoute>} />
+          <Route path="/reports/real-estate/occupancy-new" element={<Navigate to="/reports/real-estate/occupancy" replace />} />
           <Route path="/reports/real-estate/promotions" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="promotions"><PromotionsReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/real-estate/new-leases" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="new_leases"><NewLeasesReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="terminations"><TerminationsReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/real-estate/expense-ratio" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="expense_ratio"><ExpenseRatioReport /></RequirePermission></ProtectedRoute>} />
 
           {/* === BÁO CÁO TÀI CHÍNH === */}
-          {/* Resident-style URLs (canonical) */}
-          <Route path="/report/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/report/finance/cashbook" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/report/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
+          {/* Canonical: /reports/finance/*. Nhóm /report/finance/* (số ít, resident-style
+              cũ) chỉ còn là redirect giữ bookmark — không render component riêng. */}
+          <Route path="/report/finance/analysis" element={<Navigate to="/reports/finance/analysis" replace />} />
+          <Route path="/report/finance/cashbook" element={<Navigate to="/reports/finance/daily-cashbook" replace />} />
+          <Route path="/report/finance/cash-flow" element={<Navigate to="/reports/finance/cash-flow" replace />} />
           <Route path="/report/finance-by-month" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
-          <Route path="/report/finance/debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="customer_debt"><CustomerDebtReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/report/finance/billing-calendar" element={<ProtectedRoute><RequirePermission module="reports_finance" action="payment_schedule"><PaymentScheduleReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/report/finance/prepaid" element={<ProtectedRoute><RequirePermission module="reports_finance" action="overpayment"><OverpaymentReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/report/finance/deposit" element={<ProtectedRoute><RequirePermission module="reports_finance" action="deposits_report"><DepositsReport /></RequirePermission></ProtectedRoute>} />
-          {/* Legacy URLs (kept for backward compatibility, also serve as hub) */}
+          {/* 2 BC công nợ đã bỏ (Phase 7) — nghiệp vụ nợ xử lý ở màn Thu tiền */}
+          <Route path="/report/finance/debt" element={<Navigate to="/thu-tien" replace />} />
+          <Route path="/report/finance/billing-calendar" element={<Navigate to="/reports/finance/payment-schedule" replace />} />
+          <Route path="/report/finance/prepaid" element={<Navigate to="/reports/finance/overpayment" replace />} />
+          <Route path="/report/finance/deposit" element={<Navigate to="/reports/finance/deposits" replace />} />
           <Route path="/reports/finance" element={<ProtectedRoute><RequirePermission module="reports_finance"><FinanceReportsPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/daily-cashbook" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/cash-book" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
           {/* Trang gộp: Phân bổ lợi nhuận (báo cáo) + Chia lợi nhuận cổ đông — tab theo quyền, gate bên trong */}
           <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitHubPage /></ProtectedRoute>} />
-          <Route path="/reports/finance/new-contract-debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="debt"><DebtReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="debt"><DebtReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/customer-debt" element={<ProtectedRoute><RequirePermission module="reports_finance" action="customer_debt"><CustomerDebtReport /></RequirePermission></ProtectedRoute>} />
+          {/* 2 BC công nợ đã bỏ (Phase 7) — nghiệp vụ nợ xử lý ở màn Thu tiền */}
+          <Route path="/reports/finance/new-contract-debt" element={<Navigate to="/thu-tien" replace />} />
+          <Route path="/reports/finance/debt" element={<Navigate to="/thu-tien" replace />} />
+          <Route path="/reports/finance/customer-debt" element={<Navigate to="/thu-tien" replace />} />
           <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><RequirePermission module="reports_finance" action="payment_schedule"><PaymentScheduleReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/overpayment" element={<ProtectedRoute><RequirePermission module="reports_finance" action="overpayment"><OverpaymentReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><RequirePermission module="reports_finance" action="deposits_report"><DepositsReport /></RequirePermission></ProtectedRoute>} />
