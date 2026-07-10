@@ -122,8 +122,9 @@ Browser (React SPA — ptcrm)
 | qwen | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | `DASHSCOPE_API_KEY` |
 | deepseek | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` |
 | groq | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
+| openrouter | `https://openrouter.ai/api/v1` (+2 header phụ `HTTP-Referer`, `X-Title`) | `OPENROUTER_API_KEY` |
 
-Ghi chú audit: cả 6 endpoint nhận `Authorization: Bearer <key>` + body OpenAI chuẩn → 1 code path fetch + lớp normalize per-provider (F3). Anthropic là mắt xích yếu nhất — test kỹ nhất.
+Ghi chú audit: cả 7 endpoint nhận `Authorization: Bearer <key>` + body OpenAI chuẩn → 1 code path fetch + lớp normalize per-provider (F3). Anthropic là mắt xích yếu nhất — test kỹ nhất. **OpenRouter có model hậu tố `:free`** → Phase 0 spike chạy được với $0 trước khi user mua key trả phí (giảm điều kiện tiên quyết).
 
 ---
 
@@ -139,7 +140,7 @@ Ghi chú audit: cả 6 endpoint nhận `Authorization: Bearer <key>` + body Open
 
 **0b. Spike (branch/chưa push đến khi pass) — 5 gate:**
 1. `npm i page-agent` (pin exact version; xác nhận tên package & exports thực tế trên npm registry).
-2. Deploy `llm-proxy` tối giản (chỉ OpenAI); `supabase secrets set OPENAI_API_KEY=...`.
+2. Deploy `llm-proxy` tối giản (OpenAI hoặc **OpenRouter model `:free` nếu chưa có key trả phí** — spike $0); `supabase secrets set ...`.
 3. Gate A — hạ tầng: JWT-as-apiKey qua gateway OK. **Bắt DevTools Network xem CHÍNH XÁC page-agent client gửi những header nào** (nếu có header lạ kiểu `x-stainless-*` → phải nằm trong CORS allowlist). Test cả OPTIONS preflight từ localhost + ptcrm.vercel.app. Nếu gateway `verify_jwt` chặn → deploy `--no-verify-jwt`, function TỰ validate JWT (bảo mật tương đương, ghi comment). Subpath `/functions/v1/llm-proxy/chat/completions` route được.
 4. Gate B — chất lượng tiếng Việt: lệnh thật "mở trang hoá đơn rồi lọc phòng 101", "điền form tạo khách hàng tên Nguyễn Văn A" — agent hiểu + phản hồi tiếng Việt.
 5. Gate C — kỹ thuật & an toàn: Panel built-in không vỡ style CRM (desktop + mobile); `import { z } from 'zod/v4'` resolve; đo size lazy chunk; click vào Radix Select/Dialog (portal) trên trang hoá đơn; **xác nhận `onBeforeTask` chặn/hoãn được task start** (cần cho F11); **test "yêu cầu agent xoá 1 hoá đơn" → click interceptor phải bắt xác nhận, không tự bấm**.
@@ -162,7 +163,7 @@ create table ai_providers (
 );
 -- + trigger BEFORE UPDATE set updated_at (pattern sẵn có trong repo)
 -- RLS: SELECT authenticated; INSERT/UPDATE/DELETE chỉ admin (hàm is_admin() sẵn có, migration 20260506000002)
--- Seed 7 dòng enabled=false
+-- Seed 8 dòng enabled=false (7 provider cũ + openrouter)
 
 -- ai_usage_logs: audit + cost guard + telemetry (2 pha: pending → update)
 create table ai_usage_logs (
@@ -327,6 +328,23 @@ Thư mục mới `src/copilot/`:
 5. **(MỚI)** Click interceptor dựa trên text-matching tiếng Việt (`xoá|huỷ|duyệt|thanh lý`) — đủ chưa hay cần whitelist-only (chỉ cho click element "an toàn")? Trade-off: whitelist chặt hơn nhưng agent gần như không làm được gì.
 6. **(MỚI)** Tắt hẳn mode điều khiển trên trang Chat Zalo (chống injection) — hay chỉ cần interceptor là đủ?
 
-## 11. Phụ lục: kết quả vòng review nội bộ v1.1 (tóm tắt cho auditor đối chiếu)
+## 11. Phụ lục: ý tưởng HOÃN có chủ đích (đối chiếu hệ AI n2store, 10/07 — không phải bỏ sót)
+
+Đã bóc tách hệ AI production của n2store (multi-provider chat/ảnh/TTS, Render + CF Worker) và so với plan này. Kết quả: chỉ lấy **OpenRouter** vào v1 (spike $0). Các mục sau HOÃN với lý do:
+
+| Ý tưởng từ n2store | Vì sao hoãn | Khi nào xem lại |
+|---|---|---|
+| Multi-key rotation + cooldown 3 mức (1h/5'/20s) | n2store cần vì stack key free (vi phạm ToS, ta loại) + process Render sống dài; ptcrm 1–2 key trả phí trên Edge ephemeral → không có gì để xoay | Volume lớn / nhiều key trả phí thật |
+| `POST /test` health-check key + admin UI key mask/cooldown | Không có consumer đến Phase 4 | Làm cùng admin UI Phase 4 |
+| Failover cloud↔cloud cho mode chat | Plan đã bác auto-fallback có chủ đích; chưa có số liệu lỗi provider thật | Khi `ai_usage_logs` cho thấy upstream_error đáng kể |
+| SSE abort-propagation đầu-cuối (client đóng → hủy upstream, không đốt quota) | Chi tiết triển khai Phase 4 streaming — lấy làm spec khi làm | Phase 4 mục 4 |
+| Registry máy self-host + heartbeat TTL (1 PC Ollama phục vụ cả đội, probe localhost 1.5s trước) | Chưa rõ nhu cầu model local cho team | Nếu Ollama được dùng thật |
+| SQL read-only tool cho AI (guard: SELECT-only, blocklist, allowlist bảng, READ ONLY txn, timeout 5s, LIMIT wrap) | Chạy SQL service-role = xuyên RLS + lộ hạng mục restricted; muốn làm phải chạy trong ngữ cảnh JWT user — tinh vi, dễ sai | Phase 5, chỉ khi 8 tool cố định thiếu thật |
+| OCR on-device (tesseract.js + ROI + whitelist số + user xác nhận): quét đồng hồ điện nước, quét CCCD điền form khách | Tính năng hay nhưng KHÔNG thuộc copilot — tránh phình scope | Plan riêng nếu user muốn |
+| Cờ `vision` per model | `models` là jsonb — thêm field lúc nào cũng được, không cần quyết sớm | Khi làm tính năng đính ảnh vào chat |
+
+KHÔNG lấy (vĩnh viễn, có lý do): ChatAnywhere (proxy GPT xám — không đưa dữ liệu tài chính/khách thuê qua), "máy Bo" Gemini web cookie (lách ToS, mong manh), soft-auth (ptcrm giữ hard JWT + RLS), quota/rate-limit in-memory (ta DB-backed đúng hơn — chính n2store cũng đã phải chuyển quota ảnh sang Postgres).
+
+## 12. Phụ lục: kết quả vòng review nội bộ v1.1 (tóm tắt cho auditor đối chiếu)
 
 17 finding đã xử lý — 2 P0: (1) CORS allowlist tĩnh của send-push sẽ giết preflight khi thêm header custom, curl không phát hiện được vì curl không preflight → fix phản chiếu `Access-Control-Request-Headers` + test OPTIONS riêng; (2) nhánh `stream:true` pass-through không log usage = bypass cost guard hoàn toàn cho bất kỳ ai có JWT → v1 trả 400, Phase 4 mới stream đúng cách với `stream_options.include_usage` + tee. 7 P1: F11 mâu thuẫn Panel built-in (fix onBeforeTask recreate); "RLS là chốt chặn" sai với hành động user CÓ quyền (fix click interceptor bằng code); prompt injection từ dữ liệu khách thuê (F13 mới); cost guard race (fix pending-insert 2 pha); abuse JWT-as-API (clamp + rate limit + chấp nhận có kiểm soát); thiếu regen types.ts; `ai_usage_logs` thiếu cột trả lời chính câu hỏi Phase 4 (thêm task_id/cost_usd/latency/cached). 8 P2: retry backoff, `mo_trang` silent-redirect gây agent loạn, timezone quota, log ngoài critical path, Anthropic shim, updated_at triggers, z-index 2 UI, factory pattern cho tools. Tính năng thêm v1: page context map, deep-link filters, tool `huong_dan` từ docs/he-thong, telemetry task, rate limit. Phase 4 thêm: phiếu nháp UNAPPROVED (write tool an toàn bởi kiến trúc), chips, voice vi-VN, cap USD. Bác có chủ đích: auto-fallback provider (rò rỉ ollama→cloud).
