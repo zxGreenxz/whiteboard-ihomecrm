@@ -15,6 +15,11 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
   `npm run gen:types > src/integrations/supabase/types.ts` rồi thêm lại dòng
   comment header đầu file. ĐỪNG để types.ts trôi sau migration (gây `as any` lan
   rộng). PAT đọc từ `CLAUDE.local.md`.
+- **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
+  GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
+  chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.
+- **Đối chiếu tiền**: `node scripts/reconcile-money.mjs [YYYY-MM]` so SUM SQL thật
+  vs tổng-1000-dòng-đầu — chạy ở mọi thay đổi đụng số tiền để bắt bug cap-1000.
 
 ## Quy trình mặc định khi làm xong một thay đổi
 
