@@ -115,4 +115,58 @@
 
 ---
 
-*(Phase 9–10 sẽ được ghi tiếp bên dưới sau khi hoàn thành từng subphase.)*
+## PHASE 9 — Tách query khỏi 4 UI (0 thay đổi DB, mỗi subphase 1 commit + verify riêng)
+
+### 9A — OwnerDashboardV5 → `hooks/salary-v5/useSalaryV5Admin.ts`
+**Commit `fee6cda`.** 6 query (building_coverage, salary_attendance_day flagged,
+inspection_sessions+profiles map, inspection_photos, v5_lock_assert,
+v5_shadow_report, get_salary_v5_config, cron_runs) + 4 mutation (set_salary_v5_config,
+v5_verdict, v5_apply_lock_adjustments, run edge-fn job) vào hook. Query key +
+invalidation + toast GIỮ NGUYÊN; bỏ hết `as any` theo bảng (types.ts đã regen);
+DTO khai báo rõ. **Verify production:** /reports/coverage đủ 6 tab, 17 thẻ
+coverage, bảng đối soát 10 NV, console 0 lỗi.
+
+### 9B — ContractDetailView → `hooks/contracts/useContractDetailData.ts`
+**Commit `4db880e`.** 6 query phụ vào hook (4 query cũ GIỮ key; services/history
+trước là useEffect+state thủ công → useQuery, key mới `contract-services`/
+`contract-history`). **Sửa 4 chỗ nuốt lỗi** (console.error → []/null) thành
+throw + Alert đỏ gom lỗi. Sửa 1 fingerprint TS: `invoice.title`/`billing_period_*`
+là CỘT MA không có trong schema (runtime luôn undefined) — bỏ tham chiếu, giữ
+nguyên hiển thị. Baseline 35→34. **Verify production:** mở HĐ thật, 5 tab
+render, không Alert lỗi, console 0 lỗi.
+
+### 9C — ExcelInvoiceDialog → `lib/excelInvoiceRows.ts` + `hooks/invoices/useExcelInvoiceData.ts`
+**Commit `449fee9`.** Characterization test TRƯỚC khi chuyển: **21 test** chốt
+hành vi (dedupe phòng 2 HĐ giữ mới nhất, reading mới nhất, credit bỏ nguồn xoá,
+nợ cũ carry-over 2 pass + ngưỡng, promo slot, prorate, items order/điện theo
+consumption, applied_credit kẹp min, override nợ → clear sources). Transform
+trích NGUYÊN VĂN vào lib; fetch 5 nguồn + submit loop (chốt chỉ số điện + tạo
+HĐ qua useCreateInvoice) vào hook. CHỦ Ý không dùng useQuery cho nguồn lập hoá
+đơn (số tiền phải TƯƠI lúc bấm Tải — cache stale nguy hiểm). KHÔNG đổi sang RPC
+transaction — rủi ro atomicity submit một phần ghi ở Risk register. Dialog
+1110→~640 dòng. Vitest 699→**720**. reconcile-money exit 3 INCONCLUSIVE (kỳ
+hiện tại ≤1000 phiếu — hành vi đúng, không xanh giả; công thức tiền không đổi).
+**Verify production:** mở Mode Excel, tải toà 15KV → đúng 8 phòng, nút "Tạo 8
+hoá đơn" (KHÔNG bấm — tránh tạo hoá đơn thật), console 0 lỗi.
+
+### 9D — ExportExcelDialog → `lib/exportDatasetRegistry.ts` + `hooks/exports/useExportDataset.ts`
+**Commit `274877a`.** Registry 7 entity, select cột TƯỜNG MINH (hết select('*')).
+**FIX bug cap-1000 thật:** bản cũ 1 query không .range → file >1000 dòng bị cắt
+ÂM THẦM; nay fetchAllRows phân trang + tiebreaker id, hard cap 50k → chạm trần/
+lỗi là THROW + Alert đỏ (hết nuốt lỗi console.error). **FIX 3 cột ma** bản cũ
+xuất rỗng/Invalid Date: invoices `billing_period_from/to` (không có trong
+schema) → suy từ billing_month + hoist tenant từ contract; payments
+`reference_number` → alias `receipt_number`; contracts thiếu tenants.phone.
+Sửa 2 fingerprint TS excelHelpers (parseExcelFile thiếu type param phần import).
+Baseline 34→**32** (74 lỗi thô). **Verify production:** /leads → Xuất Excel →
+file tải về + báo "Đã tải xuống 0 dòng" (danh sách rỗng — đếm đúng), console 0 lỗi.
+
+### Acceptance Phase 9 — ĐẠT
+4 UI target 0 `.from(`/0 `.rpc(` (chỉ còn `Array.from` không liên quan); query
+key không đổi trừ 2 key mới có ghi chú (9B); loading/error/empty đầy đủ (9B/9D
+còn TỐT HƠN cũ — lỗi không còn bị nuốt); công thức tiền/salary không đổi (21
+characterization test + suite 720); mỗi subphase 1 commit revert độc lập.
+
+---
+
+*(Phase 10 sẽ được ghi tiếp bên dưới sau khi hoàn thành từng subphase.)*
