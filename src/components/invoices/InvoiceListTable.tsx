@@ -151,7 +151,6 @@ const InvoiceListTable = ({
     selectableInvoices.length > 0 && selectedIds.length === selectableInvoices.length;
 
   const showTodo = (feature: string) => {
-    console.log(`TODO: ${feature}`);
     toast({ title: 'Tính năng đang phát triển', description: feature });
   };
 

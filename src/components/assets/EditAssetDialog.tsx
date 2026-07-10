@@ -57,6 +57,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
       if (error) throw error;
       return data || [];
     },
+    enabled: open,
   });
 
   const { data: suppliers = [] } = useQuery({
@@ -66,6 +67,7 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
       if (error) throw error;
       return data || [];
     },
+    enabled: open,
   });
 
   const form = useForm<AssetFormValues>({

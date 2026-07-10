@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
+import { toast } from 'sonner';
 import { Search, Car, SlidersHorizontal } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
 import { Input } from '@/components/ui/input';
@@ -94,11 +95,11 @@ function VehiclesDesktopPage() {
   }, []);
 
   const handleExport = useCallback(() => {
-    console.log('Export vehicles');
+    toast.info('Xuất danh sách phương tiện — tính năng đang phát triển');
   }, []);
 
   const handleImport = useCallback(() => {
-    console.log('Import vehicles');
+    toast.info('Nhập danh sách phương tiện — tính năng đang phát triển');
   }, []);
 
   const handlePrint = useCallback(() => {

@@ -51,6 +51,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
       if (error) throw error;
       return data || [];
     },
+    enabled: open,
   });
 
   const form = useForm<MaintenanceFormValues>({

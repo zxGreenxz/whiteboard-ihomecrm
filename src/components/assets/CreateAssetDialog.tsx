@@ -51,6 +51,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
       if (error) throw error;
       return data || [];
     },
+    enabled: open,
   });
 
   const { data: suppliers = [] } = useQuery({
@@ -60,6 +61,7 @@ export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps
       if (error) throw error;
       return data || [];
     },
+    enabled: open,
   });
 
   const form = useForm<AssetFormValues>({
