@@ -8509,9 +8509,31 @@ export type Database = {
         }
         Returns: number
       }
+      cashbook_period_totals: {
+        Args: {
+          p_account_id?: string
+          p_building_id?: string
+          p_end?: string
+          p_start?: string
+        }
+        Returns: Json
+      }
       cashbook_settlement_report: {
         Args: { p_from: string; p_to: string }
         Returns: Json
+      }
+      cashflow_by_day: {
+        Args: {
+          p_account_id?: string
+          p_building_id?: string
+          p_end: string
+          p_start: string
+        }
+        Returns: {
+          day: string
+          expense: number
+          income: number
+        }[]
       }
       complete_inspection: {
         Args: { p_condition_note?: string; p_session: string }
@@ -8920,6 +8942,25 @@ export type Database = {
           voucher_id: string
         }[]
       }
+      get_deposits_report_summary: {
+        Args: { p_building_ids?: string[]; p_status?: string }
+        Returns: Json
+      }
+      get_held_deposit_summary: {
+        Args: { p_building_ids?: string[]; p_threshold?: number }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_count: number
+          expected: number
+          first_invoice_count: number
+          full_count: number
+          held: number
+          short_count: number
+          shortfall_all: number
+          shortfall_short: number
+        }[]
+      }
       get_income_expense_history: {
         Args: { p_id: string }
         Returns: {
@@ -9043,6 +9084,10 @@ export type Database = {
         }[]
       }
       get_or_create_deposit_account: { Args: never; Returns: string }
+      get_overpayment_summary: {
+        Args: { p_building_ids?: string[] }
+        Returns: Json
+      }
       get_period_commissions: {
         Args: { p_building_ids?: string[]; p_period_month: string }
         Returns: {
@@ -9110,6 +9155,14 @@ export type Database = {
       }
       get_public_latest_invoice_by_contract: {
         Args: { p_contract_id: string }
+        Returns: Json
+      }
+      get_refund_forfeit_summary: {
+        Args: { p_building_ids?: string[] }
+        Returns: Json
+      }
+      get_reservation_deposit_summary: {
+        Args: { p_building_ids?: string[] }
         Returns: Json
       }
       get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
@@ -9187,6 +9240,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      is_tenant_admin: { Args: { _owner: string }; Returns: boolean }
       is_user_super_admin: { Args: { p_user: string }; Returns: boolean }
       log_income_expense_action: {
         Args: { p_action: string; p_id: string; p_note?: string }
@@ -9212,6 +9266,42 @@ export type Database = {
       }
       natural_sort_key: { Args: { p_name: string }; Returns: string }
       nrm_vn: { Args: { s: string }; Returns: string }
+      occupancy_snapshot_v2: {
+        Args: { p_as_of_date?: string; p_building_ids?: string[] }
+        Returns: {
+          available: number
+          building_id: string
+          building_name: string
+          committed_pct: number
+          generated_at: string
+          maintenance: number
+          missed_revenue: number
+          occupancy_pct: number
+          occupied: number
+          reserved: number
+          total: number
+          unavailable: number
+        }[]
+      }
+      occupancy_upcoming_vacancy_v2: {
+        Args: {
+          p_as_of_date?: string
+          p_building_ids?: string[]
+          p_window_days?: number
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_remaining: number
+          effective_end_date: string
+          extension_applied: boolean
+          rent_price: number
+          room_id: string
+          room_name: string
+        }[]
+      }
       pass_listing_form_rooms: {
         Args: never
         Returns: {
