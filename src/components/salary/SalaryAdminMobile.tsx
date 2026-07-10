@@ -11,7 +11,7 @@ import {
   Lock, Unlock, HandCoins, X, Check, Info, AlertTriangle, Plus, Minus, Gift,
   Wrench, CalendarCheck, FileText, Banknote, TrendingUp, Trophy, Coins, type LucideIcon,
 } from "lucide-react";
-import { salFmt, salShort } from "./salaryFormat";
+import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import SalaryConfig from "./SalaryConfig";
 import SalarySelfMobile from "./SalarySelfMobile";
@@ -19,7 +19,6 @@ import { usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } fr
 import type { SalManager, SalAdjustment, SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
 
-const bigNum = (v: number) => Math.round(v).toLocaleString("vi-VN");
 const today = () => new Date().toISOString().slice(0, 10);
 const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
 

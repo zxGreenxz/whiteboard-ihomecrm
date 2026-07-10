@@ -10,16 +10,7 @@ import { usePhoneViewport } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import SalarySelfDesktop from "@/components/salary/SalarySelfDesktop";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
-
-function shiftMonth(pm: string, delta: number): string {
-  const [y, m] = pm.split("-").map((x) => parseInt(x, 10));
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
-}
-function currentPeriodMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
+import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 
 // Khung trọn-màn nền tối cho trạng thái tải / chưa cấu hình (đồng bộ theme QUEST).
 function Shell({ children }: { children: React.ReactNode }) {

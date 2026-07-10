@@ -20,6 +20,8 @@ import {
   autoStaffYm,
   latestVisibleStaffYm,
 } from "@/lib/managerSalary";
+// YYYY-MM-01 cho tháng lệch n so với mốc — canonical ở lib/salaryPeriod (10E).
+import { shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 
 export interface SalPeriod {
   periodMonth: string; // YYYY-MM-01
@@ -35,13 +37,6 @@ export interface ManagerSalaryData {
 }
 
 const num = (v: any) => Number(v) || 0;
-
-// YYYY-MM-01 cho tháng lệch n so với mốc.
-function shiftMonth(periodMonth: string, delta: number): string {
-  const [y, m] = periodMonth.split("-").map((x) => parseInt(x, 10));
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
-}
 function monthRange(periodMonth: string) {
   const start = periodMonth;
   const next = shiftMonth(periodMonth, 1);

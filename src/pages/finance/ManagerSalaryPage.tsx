@@ -23,16 +23,8 @@ import SalaryAdminMobile from "@/components/salary/SalaryAdminMobile";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import "@/components/salary/salary.css";
+import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 
-function currentPeriodMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
-function shiftMonth(pm: string, delta: number): string {
-  const [y, m] = pm.split("-").map((x) => parseInt(x, 10));
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
-}
 const today = () => new Date().toISOString().slice(0, 10);
 
 // Màn chờ / rỗng MOBILE (shell tối khớp SalaryAdminMobile/SalarySelfMobile).

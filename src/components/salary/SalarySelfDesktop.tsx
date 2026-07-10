@@ -9,11 +9,10 @@ import {
   Check, CheckCircle2, Target, AlertTriangle, Clock,
   type LucideIcon,
 } from "lucide-react";
-import { salFmt, salShort } from "./salaryFormat";
+import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import type { SalManager, SalLedgerRow } from "@/lib/managerSalary";
 
-const bigNum = (v: number) => Math.round(v).toLocaleString("vi-VN");
 const plus = (v: number) => Math.round(Math.abs(v)).toLocaleString("vi-VN");
 
 const RANK_NAMES = ["Tân binh", "Đồng", "Bạc", "Vàng", "Vô địch"];

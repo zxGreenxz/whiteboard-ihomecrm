@@ -9,11 +9,10 @@ import {
   Banknote, Moon, TrendingUp, BarChart3, ChevronRight, ChevronLeft, X, Undo2,
   Wallet, ListChecks, Check, Target, AlertTriangle, type LucideIcon,
 } from "lucide-react";
-import { salFmt, salShort } from "./salaryFormat";
+import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import type { SalManager, SalLedgerRow } from "@/lib/managerSalary";
 
-const bigNum = (v: number) => Math.round(v).toLocaleString("vi-VN");
 
 // Hạng suy từ số mốc "chặng nhiệm vụ tháng" đã đạt (0..4) — bám dữ liệu thật
 // (gross vs incomeGoal) thay vì cấp độ ảo. Khởi động/Lương cứng/Bứt phá/Vô địch.

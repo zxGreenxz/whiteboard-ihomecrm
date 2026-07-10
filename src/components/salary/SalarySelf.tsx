@@ -1,14 +1,13 @@
 // Self-view "Lương của tôi" — bản Năng lượng. Port từ kit SalarySelf.jsx.
 import React, { useState } from "react";
 import { SAL_ICONS } from "./salaryIcons";
-import { salFmt, salShort } from "./salaryFormat";
+import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp, Ring, Popover, tint } from "./salaryCommon";
 import { BonusPop, InvestmentPop, CommissionPop, AdvancePop } from "./salaryPopovers";
 import { SalChartModal } from "./salaryChart";
 import type { SalManager } from "@/lib/managerSalary";
 
 const I = SAL_ICONS;
-const bigNum = (v: number) => Math.round(v).toLocaleString("vi-VN");
 
 function Deltas({ m, periodText, onOpenLedger }: { m: SalManager; periodText: string; onOpenLedger?: () => void }) {
   const [pop, setPop] = useState<{ type: string; rect: DOMRect } | null>(null);

@@ -7,6 +7,11 @@ export function salFmt(n: number | null | undefined): string {
   return (neg ? "−" : "") + s + "₫";
 }
 
+// bigNum: số lớn có dấu chấm ngăn cách, KHÔNG ký hiệu tệ — "8.000.000".
+// (Phase 10E: gom 4 bản copy-paste ở SalaryAdminMobile/SalarySelf/
+//  SalarySelfDesktop/SalarySelfMobile về đây.)
+export const bigNum = (v: number) => Math.round(v).toLocaleString("vi-VN");
+
 // salShort: 5.254.000 → "5,3tr"; 20000 → "20k".
 export function salShort(n: number | null | undefined): string {
   if (n == null) return "—";
