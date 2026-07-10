@@ -1,8 +1,80 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
 
 // Ngưỡng làm tròn: chênh cọc < 10.000đ coi như đủ (khớp PREVIOUS_DEBT_ROUND_THRESHOLD).
 export const DEPOSIT_SHORTFALL_THRESHOLD = 10000;
+
+const nn = (v: unknown) => Number(v) || 0;
+
+// Tổng cọc đang giữ theo toà — RPC SQL aggregate (miễn nhiễm cap-1000). Thay cho
+// client-reduce trên danh sách HĐ (hụt tổng khi ACTIVE > 1000).
+export interface HeldDepositBuildingAgg {
+  building_id: string;
+  building_name: string;
+  contractCount: number;
+  expected: number;
+  held: number;
+  shortfallAll: number; // Σ max(0,remaining) mọi HĐ
+  shortfallShort: number; // Σ max(0,remaining) chỉ HĐ SHORT
+  fullCount: number;
+  shortCount: number; // chỉ state SHORT
+  firstInvoiceCount: number;
+}
+
+export function useHeldDepositSummary(
+  buildingIds?: string[],
+  threshold: number = DEPOSIT_SHORTFALL_THRESHOLD,
+) {
+  return useQuery({
+    queryKey: ['deposit-dashboard', 'held-summary', buildingIds ?? [], threshold],
+    queryFn: async (): Promise<HeldDepositBuildingAgg[]> => {
+      const { data, error } = await (supabase.rpc as any)('get_held_deposit_summary', {
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+        p_threshold: threshold,
+      });
+      if (error) throw error;
+      return ((data ?? []) as any[]).map((r): HeldDepositBuildingAgg => ({
+        building_id: r.building_id,
+        building_name: r.building_name ?? '—',
+        contractCount: nn(r.contract_count),
+        expected: nn(r.expected),
+        held: nn(r.held),
+        shortfallAll: nn(r.shortfall_all),
+        shortfallShort: nn(r.shortfall_short),
+        fullCount: nn(r.full_count),
+        shortCount: nn(r.short_count),
+        firstInvoiceCount: nn(r.first_invoice_count),
+      }));
+    },
+  });
+}
+
+export interface RefundForfeitSummary {
+  refundTotal: number;
+  refundCount: number;
+  forfeitTotal: number;
+  forfeitCount: number;
+}
+
+export function useRefundForfeitSummary(buildingIds?: string[]) {
+  return useQuery({
+    queryKey: ['deposit-dashboard', 'refund-forfeit-summary', buildingIds ?? []],
+    queryFn: async (): Promise<RefundForfeitSummary> => {
+      const { data, error } = await (supabase.rpc as any)('get_refund_forfeit_summary', {
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+      });
+      if (error) throw error;
+      const d = (data ?? {}) as any;
+      return {
+        refundTotal: nn(d.refund_total),
+        refundCount: nn(d.refund_count),
+        forfeitTotal: nn(d.forfeit_total),
+        forfeitCount: nn(d.forfeit_count),
+      };
+    },
+  });
+}
 
 export type HeldDepositState = 'FULL' | 'SHORT' | 'FIRST_INVOICE';
 
@@ -70,26 +142,31 @@ export function useHeldDeposits() {
   return useQuery({
     queryKey: ['deposit-dashboard', 'held'],
     queryFn: async (): Promise<HeldDepositRow[]> => {
-      const { data, error } = await (supabase as any)
-        .from('contracts')
-        .select(`
-          id, contract_number, total_deposit, deposit_paid, deposit_remaining,
-          deposit_debt_mode, deposit_topup_due_date,
-          room:rooms!contracts_room_id_fkey (
-            id, name,
-            building:buildings!rooms_building_id_fkey ( id, name )
-          ),
-          contract_customers!contract_customers_contract_id_fkey (
-            is_representative,
-            customer:customers!contract_customers_customer_id_fkey ( full_name )
-          )
-        `)
-        .in('status', ['ACTIVE'])
-        .is('deleted_at', null);
+      // PAGED: danh sách HĐ ACTIVE có thể > 1000 → phân trang kẻo bảng bị cắt.
+      const data = await fetchAllRows<any>(
+        (from, to) => (supabase as any)
+          .from('contracts')
+          .select(`
+            id, contract_number, total_deposit, deposit_paid, deposit_remaining,
+            deposit_debt_mode, deposit_topup_due_date,
+            room:rooms!contracts_room_id_fkey (
+              id, name,
+              building:buildings!rooms_building_id_fkey ( id, name )
+            ),
+            contract_customers!contract_customers_contract_id_fkey (
+              is_representative,
+              customer:customers!contract_customers_customer_id_fkey ( full_name )
+            )
+          `)
+          .in('status', ['ACTIVE'])
+          .is('deleted_at', null)
+          .order('id', { ascending: true })
+          .range(from, to),
+        { label: 'deposits.held' },
+      );
+      if (data === null) throw new Error('Lỗi tải danh sách cọc đang giữ');
 
-      if (error) throw error;
-
-      return (data ?? []).map((c: any): HeldDepositRow => {
+      return data.map((c: any): HeldDepositRow => {
         const total = Number(c.total_deposit) || 0;
         const paid = Number(c.deposit_paid) || 0;
         const remaining =
@@ -158,28 +235,33 @@ export function useDepositRefundsForfeits() {
   return useQuery({
     queryKey: ['deposit-dashboard', 'refunds-forfeits'],
     queryFn: async (): Promise<RefundForfeitRow[]> => {
-      const { data, error } = await (supabase as any)
-        .from('contract_terminations')
-        .select(`
-          id, contract_id, termination_date, termination_type,
-          total_deposit, total_deductions, refund_amount, status, refund_date,
-          contract:contracts!contract_terminations_contract_id_fkey (
-            contract_number,
-            room:rooms!contracts_room_id_fkey (
-              name,
-              building:buildings!rooms_building_id_fkey ( id, name )
-            ),
-            contract_customers!contract_customers_contract_id_fkey (
-              is_representative,
-              customer:customers!contract_customers_customer_id_fkey ( full_name )
+      // PAGED: thanh lý tích luỹ mãi → phân trang (order + id tiebreaker).
+      const data = await fetchAllRows<any>(
+        (from, to) => (supabase as any)
+          .from('contract_terminations')
+          .select(`
+            id, contract_id, termination_date, termination_type,
+            total_deposit, total_deductions, refund_amount, status, refund_date,
+            contract:contracts!contract_terminations_contract_id_fkey (
+              contract_number,
+              room:rooms!contracts_room_id_fkey (
+                name,
+                building:buildings!rooms_building_id_fkey ( id, name )
+              ),
+              contract_customers!contract_customers_contract_id_fkey (
+                is_representative,
+                customer:customers!contract_customers_customer_id_fkey ( full_name )
+              )
             )
-          )
-        `)
-        .order('termination_date', { ascending: false });
+          `)
+          .order('termination_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to),
+        { label: 'deposits.refundsForfeits' },
+      );
+      if (data === null) throw new Error('Lỗi tải danh sách hoàn/bỏ cọc');
 
-      if (error) throw error;
-
-      return (data ?? []).map((t: any): RefundForfeitRow => {
+      return data.map((t: any): RefundForfeitRow => {
         const kind: RefundForfeitKind =
           t.termination_type === 'FORFEIT' ? 'FORFEIT' : 'REFUND';
         return {

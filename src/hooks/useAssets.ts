@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -93,41 +94,42 @@ export const useAssets = (filters?: {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      let query = supabase
-        .from("assets")
-        .select(`
-          *,
-          category:asset_categories!assets_category_id_fkey (
-            id, name
-          ),
-          supplier:suppliers!assets_supplier_id_fkey (
-            id, name
-          ),
-          building:buildings!assets_building_id_fkey (
-            id, name
-          ),
-          room:rooms!assets_room_id_fkey (
-            id, name
-          )
-        `)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      // PAGED: 1 portfolio ~700 phòng × nhiều tài sản/phòng dễ vượt 1000 dòng →
+      // tổng giá trị tài sản (client-reduce ở AssetsPage) hụt nếu không phân trang.
+      const data = await fetchAllRows<any>(
+        (from, to) => {
+          let query = supabase
+            .from("assets")
+            .select(`
+              *,
+              category:asset_categories!assets_category_id_fkey (
+                id, name
+              ),
+              supplier:suppliers!assets_supplier_id_fkey (
+                id, name
+              ),
+              building:buildings!assets_building_id_fkey (
+                id, name
+              ),
+              room:rooms!assets_room_id_fkey (
+                id, name
+              )
+            `)
+            .is("deleted_at", null);
+          if (filters?.category_id) query = query.eq("category_id", filters.category_id);
+          if (filters?.building_id) query = query.eq("building_id", filters.building_id);
+          if (filters?.condition) query = query.eq("condition", filters.condition as any);
+          return query
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to);
+        },
+        { label: "assets.list" },
+      );
 
-      if (filters?.category_id) {
-        query = query.eq("category_id", filters.category_id);
-      }
-      if (filters?.building_id) {
-        query = query.eq("building_id", filters.building_id);
-      }
-      if (filters?.condition) {
-        query = query.eq("condition", filters.condition as any);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
+      if (data === null) {
         toast.error("Không thể tải danh sách tài sản");
-        throw error;
+        throw new Error("Lỗi tải danh sách tài sản");
       }
 
       return (data as AssetWithRelations[]) || [];

@@ -203,8 +203,13 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
                 .range(from, to),
             { label: "salary.commissionItems" },
           );
+          // FAIL-CLOSED: lỗi tải KHÔNG được biến thành hoa hồng 0 (làm lương sai
+          // âm thầm). null = query lỗi → dừng cả query để hiện lỗi cho user.
+          if (ciRaw === null) {
+            throw new Error("Lỗi tải dữ liệu hoa hồng (income_expense_items) — không thể tính lương chính xác.");
+          }
           const voucherMap = new Map<string, { name: string; status: string; amount: number; staff: string }>();
-          for (const row of (ciRaw || []) as any[]) {
+          for (const row of ciRaw as any[]) {
             const ie = (row as any).income_expenses;
             if (!ie || ie.type !== "EXPENSE" || ie.deleted_at || ie.approval_status === "CANCELLED") continue;
             const staff = aliasToStaff.get((ie.payer_name || "").trim().toLowerCase());

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { Database } from '@/integrations/supabase/types';
 
 type Deposit = Database['public']['Tables']['deposits']['Row'];
@@ -118,28 +119,33 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
   return useQuery({
     queryKey: ['reservation-deposits', buildingIds ?? []],
     queryFn: async (): Promise<ReservationDepositRow[]> => {
-      let query = (supabase as any)
-        .from('income_expenses')
-        .select(
-          `id, code, name, payer_name, total_amount, voucher_date,
-           approval_status, building_id, room_id,
-           building:buildings!income_expenses_building_id_fkey ( id, name ),
-           room:rooms!income_expenses_room_id_fkey ( id, name ),
-           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
-        )
-        .is('contract_id', null)
-        .is('deleted_at', null)
-        .eq('type', 'INCOME')
-        .in('approval_status', ['APPROVED', 'UNAPPROVED', 'CANCELLED'])
-        .eq('income_expense_items.income_expense_types.is_deposit', true)
-        .order('voucher_date', { ascending: false });
-
-      if (buildingIds && buildingIds.length > 0) {
-        query = query.in('building_id', buildingIds);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      // PAGED: phiếu cọc giữ chỗ tích luỹ mãi → phân trang (order voucher_date + id).
+      const data = await fetchAllRows<any>(
+        (from, to) => {
+          let query = (supabase as any)
+            .from('income_expenses')
+            .select(
+              `id, code, name, payer_name, total_amount, voucher_date,
+               approval_status, building_id, room_id,
+               building:buildings!income_expenses_building_id_fkey ( id, name ),
+               room:rooms!income_expenses_room_id_fkey ( id, name ),
+               income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
+            )
+            .is('contract_id', null)
+            .is('deleted_at', null)
+            .eq('type', 'INCOME')
+            .in('approval_status', ['APPROVED', 'UNAPPROVED', 'CANCELLED'])
+            .eq('income_expense_items.income_expense_types.is_deposit', true)
+            .order('voucher_date', { ascending: false })
+            .order('id', { ascending: true });
+          if (buildingIds && buildingIds.length > 0) {
+            query = query.in('building_id', buildingIds);
+          }
+          return query.range(from, to);
+        },
+        { label: 'deposits.reservation' },
+      );
+      if (data === null) throw new Error('Lỗi tải cọc giữ chỗ');
 
       // !inner có thể nhân dòng nếu phiếu có >1 item cọc → dedupe theo id.
       const seen = new Set<string>();
@@ -168,6 +174,33 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
         });
       }
       return rows;
+    },
+  });
+};
+
+export interface ReservationDepositSummary {
+  holdingAmount: number;
+  approvedCount: number;
+  unapprovedCount: number;
+  cancelledCount: number;
+}
+
+/** Tổng cọc giữ chỗ — RPC SQL aggregate (miễn nhiễm cap-1000). */
+export const useReservationDepositSummary = (buildingIds?: string[]) => {
+  return useQuery({
+    queryKey: ['reservation-deposits', 'summary', buildingIds ?? []],
+    queryFn: async (): Promise<ReservationDepositSummary> => {
+      const { data, error } = await (supabase.rpc as any)('get_reservation_deposit_summary', {
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+      });
+      if (error) throw error;
+      const d = (data ?? {}) as any;
+      return {
+        holdingAmount: Number(d.holding_amount) || 0,
+        approvedCount: Number(d.approved_count) || 0,
+        unapprovedCount: Number(d.unapproved_count) || 0,
+        cancelledCount: Number(d.cancelled_count) || 0,
+      };
     },
   });
 };

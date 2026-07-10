@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
-import { useDepositsReport } from "@/hooks/useReports";
+import { useDepositsReport, useDepositsReportSummary } from "@/hooks/useReports";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
@@ -36,6 +36,8 @@ export default function DepositsReport() {
   const [pageSize, setPageSize] = useState<number>(10);
 
   const { data: deposits = [], isLoading } = useDepositsReport();
+  // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc.
+  const { data: summary } = useDepositsReportSummary(statusFilter, buildingIds);
 
   const filtered = useMemo(() => {
     let arr = [...(deposits as any[])];
@@ -46,7 +48,7 @@ export default function DepositsReport() {
     return arr;
   }, [deposits, statusFilter, buildingIds]);
 
-  const total = filtered.reduce((s, d: any) => s + (d.amount || 0), 0);
+  const total = summary?.total ?? 0;
   const totalCount = filtered.length;
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 

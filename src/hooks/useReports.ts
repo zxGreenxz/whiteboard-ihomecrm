@@ -1110,26 +1110,32 @@ export function useOverpaymentReport() {
   return useQuery({
     queryKey: ["reports", "overpayment"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("invoices")
-        .select(`
-          id,
-          invoice_number,
-          total_amount,
-          paid_amount,
-          building:buildings!invoices_building_id_fkey (id, name),
-          room:rooms!invoices_room_id_fkey (id, name),
-          contract:contracts!invoices_contract_id_fkey (
+      // PAGED: mọi hoá đơn từng thu đều paid_amount>0 → dễ vượt 1000 → phân trang.
+      const data = await fetchAllRows<any>(
+        (from, to) => supabase
+          .from("invoices")
+          .select(`
             id,
-            contract_customers!contract_customers_contract_id_fkey (
-              is_representative,
-              customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+            invoice_number,
+            total_amount,
+            paid_amount,
+            building:buildings!invoices_building_id_fkey (id, name),
+            room:rooms!invoices_room_id_fkey (id, name),
+            contract:contracts!invoices_contract_id_fkey (
+              id,
+              contract_customers!contract_customers_contract_id_fkey (
+                is_representative,
+                customer:customers!contract_customers_customer_id_fkey (id, full_name, phone)
+              )
             )
-          )
-        `)
-        .gt("paid_amount", 0);
-
-      if (error) throw error;
+          `)
+          .gt("paid_amount", 0)
+          .is("deleted_at", null)
+          .order("id", { ascending: true })
+          .range(from, to),
+        { label: "reports.overpayment" },
+      );
+      if (data === null) throw new Error("Lỗi tải hoá đơn (tiền thừa)");
 
       // Filter for overpayments
       return data
@@ -1152,6 +1158,21 @@ export function useOverpaymentReport() {
   });
 }
 
+/** Tổng tiền thừa — RPC SQL aggregate (miễn nhiễm cap-1000). buildingIds=[] → tất cả. */
+export function useOverpaymentSummary(buildingIds?: string[]) {
+  return useQuery({
+    queryKey: ["reports", "overpayment", "summary", buildingIds ?? []],
+    queryFn: async (): Promise<{ total: number; count: number }> => {
+      const { data, error } = await (supabase.rpc as any)("get_overpayment_summary", {
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+      });
+      if (error) throw error;
+      const d = (data ?? {}) as any;
+      return { total: Number(d.total) || 0, count: Number(d.count) || 0 };
+    },
+  });
+}
+
 /**
  * Get deposits report
  * Returns list of customer deposits
@@ -1160,25 +1181,31 @@ export function useDepositsReport() {
   return useQuery({
     queryKey: ["reports", "deposits"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("deposits")
-        .select(`
-          *,
-          tenant:tenants!deposits_tenant_id_fkey (
-            id,
-            full_name,
-            phone,
-            email
-          ),
-          room:rooms!deposits_room_id_fkey (
-            id,
-            name,
-            building:buildings!rooms_building_id_fkey (id, name)
-          )
-        `)
-        .order("deposit_date", { ascending: false });
-
-      if (error) throw error;
+      // PAGED: bảng deposits tích luỹ → phân trang (deposit_date + id tiebreaker).
+      const data = await fetchAllRows<any>(
+        (from, to) => supabase
+          .from("deposits")
+          .select(`
+            *,
+            tenant:tenants!deposits_tenant_id_fkey (
+              id,
+              full_name,
+              phone,
+              email
+            ),
+            room:rooms!deposits_room_id_fkey (
+              id,
+              name,
+              building:buildings!rooms_building_id_fkey (id, name)
+            )
+          `)
+          .is("deleted_at", null)
+          .order("deposit_date", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to),
+        { label: "reports.deposits" },
+      );
+      if (data === null) throw new Error("Lỗi tải danh sách tiền cọc");
 
       return data.map((deposit: any) => ({
         ...deposit,
@@ -1187,6 +1214,27 @@ export function useDepositsReport() {
         leads: deposit.tenant,
         days_held: differenceInDays(new Date(), new Date(deposit.deposit_date)),
       }));
+    },
+  });
+}
+
+/** Tổng BC tiền cọc — RPC SQL aggregate (miễn nhiễm cap-1000). */
+export function useDepositsReportSummary(status?: string, buildingIds?: string[]) {
+  return useQuery({
+    queryKey: ["reports", "deposits", "summary", status ?? null, buildingIds ?? []],
+    queryFn: async (): Promise<{ total: number; count: number; holdingTotal: number; inInvoiceTotal: number }> => {
+      const { data, error } = await (supabase.rpc as any)("get_deposits_report_summary", {
+        p_status: status && status !== "all" ? status : null,
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+      });
+      if (error) throw error;
+      const d = (data ?? {}) as any;
+      return {
+        total: Number(d.total) || 0,
+        count: Number(d.count) || 0,
+        holdingTotal: Number(d.holding_total) || 0,
+        inInvoiceTotal: Number(d.in_invoice_total) || 0,
+      };
     },
   });
 }

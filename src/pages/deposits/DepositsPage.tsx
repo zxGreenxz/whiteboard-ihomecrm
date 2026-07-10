@@ -30,13 +30,16 @@ import { Card } from "@/components/ui/card";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useReservationDeposits,
+  useReservationDepositSummary,
   type ReservationDepositRow,
 } from "@/hooks/useDeposits";
 import {
   useHeldDeposits,
+  useHeldDepositSummary,
   useDepositRefundsForfeits,
-  summarizeByBuilding,
+  useRefundForfeitSummary,
   type HeldDepositRow,
+  type BuildingDepositSummary,
 } from "@/hooks/useDepositDashboard";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
@@ -115,6 +118,13 @@ const DepositsPage = () => {
   const { data: reservations = [], isLoading: resvLoading } =
     useReservationDeposits(buildingIds);
 
+  // Tổng/KPI: RPC SQL aggregate (miễn nhiễm cap-1000) — thay client-reduce trên
+  // danh sách (hụt tổng khi HĐ/phiếu > 1000). Danh sách chi tiết vẫn dùng row
+  // hooks (đã phân trang) cho bảng.
+  const { data: heldAgg = [] } = useHeldDepositSummary(buildingIds);
+  const { data: rfSummary } = useRefundForfeitSummary(buildingIds);
+  const { data: resvSummary } = useReservationDepositSummary(buildingIds);
+
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
     () =>
@@ -131,50 +141,41 @@ const DepositsPage = () => {
     [refunds, buildingIds],
   );
 
-  const byBuilding = useMemo(
-    () => summarizeByBuilding(heldFiltered),
-    [heldFiltered],
+  const byBuilding = useMemo<BuildingDepositSummary[]>(
+    () =>
+      heldAgg.map((r) => ({
+        building_id: r.building_id,
+        building_name: r.building_name,
+        contractCount: r.contractCount,
+        expected: r.expected,
+        held: r.held,
+        shortfall: r.shortfallAll,
+        fullCount: r.fullCount,
+        shortCount: r.shortCount + r.firstInvoiceCount, // state !== FULL
+      })),
+    [heldAgg],
   );
 
-  // KPI tổng.
+  // KPI tổng — từ RPC aggregate (không client-reduce trên danh sách bị cap-1000).
   const kpi = useMemo(() => {
-    const held_ = heldFiltered.reduce((s, r) => s + r.deposit_paid, 0);
-    const expected = heldFiltered.reduce((s, r) => s + r.total_deposit, 0);
-    const shortRows = heldFiltered.filter((r) => r.state === "SHORT");
-    const shortfall = shortRows.reduce(
-      (s, r) => s + Math.max(0, r.deposit_remaining),
-      0,
-    );
-    const refundTotal = refundsFiltered
-      .filter((r) => r.kind === "REFUND")
-      .reduce((s, r) => s + Math.max(0, r.refund_amount), 0);
-    const refundCount = refundsFiltered.filter((r) => r.kind === "REFUND").length;
-    const forfeitTotal = refundsFiltered
-      .filter((r) => r.kind === "FORFEIT")
-      .reduce((s, r) => s + r.total_deposit, 0);
-    const forfeitCount = refundsFiltered.filter(
-      (r) => r.kind === "FORFEIT",
-    ).length;
+    const held_ = heldAgg.reduce((s, r) => s + r.held, 0);
+    const expected = heldAgg.reduce((s, r) => s + r.expected, 0);
+    const shortfall = heldAgg.reduce((s, r) => s + r.shortfallShort, 0);
+    const shortCount = heldAgg.reduce((s, r) => s + r.shortCount, 0); // chỉ state SHORT
     return {
       held_,
       expected,
       shortfall,
-      shortCount: shortRows.length,
-      refundTotal,
-      refundCount,
-      forfeitTotal,
-      forfeitCount,
+      shortCount,
+      refundTotal: rfSummary?.refundTotal ?? 0,
+      refundCount: rfSummary?.refundCount ?? 0,
+      forfeitTotal: rfSummary?.forfeitTotal ?? 0,
+      forfeitCount: rfSummary?.forfeitCount ?? 0,
     };
-  }, [heldFiltered, refundsFiltered]);
+  }, [heldAgg, rfSummary]);
 
-  // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — đã lọc toà trong hook.
-  const holdingAmount = useMemo(
-    () =>
-      reservations
-        .filter((r) => r.approval_status === "APPROVED")
-        .reduce((s, r) => s + r.total_amount, 0),
-    [reservations],
-  );
+  // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — RPC aggregate.
+  const holdingAmount = resvSummary?.holdingAmount ?? 0;
 
   const shortfallRows = useMemo(() => {
     const rows = heldFiltered.filter((r) => r.state !== "FULL");

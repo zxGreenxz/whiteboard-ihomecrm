@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 
 export interface CashBookEntry {
@@ -24,33 +25,37 @@ export const useCashBook = (start_date?: string, end_date?: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      let ieQuery = supabase
-        .from("income_expenses")
-        .select(`
-          id,
-          type,
-          name,
-          voucher_date,
-          total_amount,
-          invoice_id,
-          payment_id,
-          building:buildings!income_expenses_building_id_fkey (
-            name
-          )
-        `)
-        .eq('approval_status', 'APPROVED')
-        .is('deleted_at', null);
-
-      if (start_date) ieQuery = ieQuery.gte("voucher_date", start_date);
-      if (end_date) ieQuery = ieQuery.lte("voucher_date", end_date);
-
-      const { data: incomeExpenses, error: ieError } = await ieQuery;
-      if (ieError) {
+      // PAGED: sổ quỹ 1 kỳ có thể > 1000 dòng → phân trang (order + id tiebreaker).
+      const incomeExpenses = await fetchAllRows<any>(
+        (from, to) => {
+          let ieQuery = supabase
+            .from("income_expenses")
+            .select(`
+              id,
+              type,
+              name,
+              voucher_date,
+              total_amount,
+              invoice_id,
+              payment_id,
+              building:buildings!income_expenses_building_id_fkey (
+                name
+              )
+            `)
+            .eq('approval_status', 'APPROVED')
+            .is('deleted_at', null);
+          if (start_date) ieQuery = ieQuery.gte("voucher_date", start_date);
+          if (end_date) ieQuery = ieQuery.lte("voucher_date", end_date);
+          return ieQuery.order("voucher_date", { ascending: false }).order("id", { ascending: true }).range(from, to);
+        },
+        { label: "cashbook.entries" },
+      );
+      if (incomeExpenses === null) {
         toast.error("Không thể tải sổ quỹ");
-        throw ieError;
+        throw new Error("Lỗi tải sổ quỹ (income_expenses)");
       }
 
-      const entries: CashBookEntry[] = (incomeExpenses || []).map((ie: any) => {
+      const entries: CashBookEntry[] = incomeExpenses.map((ie: any) => {
         const buildingName = ie.building?.name || "";
         const description = buildingName ? `${ie.name} (${buildingName})` : ie.name;
         return {
@@ -87,31 +92,20 @@ export const useCashBookSummary = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      const sumByType = (rows: Array<{ type: string; total_amount: number | string | null }> | null) => {
-        let income = 0;
-        let expense = 0;
-        for (const r of rows ?? []) {
-          const amt = Number(r.total_amount) || 0;
-          if (r.type === 'INCOME') income += amt;
-          else if (r.type === 'EXPENSE') expense += amt;
-        }
-        return { income, expense };
-      };
-
-      // Trong kỳ
-      let ieQuery = supabase
-        .from("income_expenses")
-        .select("type, total_amount")
-        .eq('approval_status', 'APPROVED')
-        .is('deleted_at', null);
-      if (start_date) ieQuery = ieQuery.gte("voucher_date", start_date);
-      if (end_date) ieQuery = ieQuery.lte("voucher_date", end_date);
-      if (buildingId) ieQuery = ieQuery.eq("building_id", buildingId);
-      if (accountId) ieQuery = ieQuery.eq("account_id", accountId);
-
-      const { data: ieData, error: ieError } = await ieQuery;
-      if (ieError) throw ieError;
-      const { income: totalIncome, expense: totalExpense } = sumByType(ieData as any);
+      // Trong kỳ: RPC SQL aggregate (miễn nhiễm cap-1000) — thay client-reduce
+      // trên select không phân trang (hụt tổng khi vượt 1000 phiếu/kỳ).
+      const { data: periodTotals, error: ptErr } = await (supabase.rpc as any)(
+        "cashbook_period_totals",
+        {
+          p_start: start_date ?? null,
+          p_end: end_date ?? null,
+          p_building_id: buildingId ?? null,
+          p_account_id: accountId ?? null,
+        },
+      );
+      if (ptErr) throw ptErr;
+      const totalIncome = Number((periodTotals as any)?.income) || 0;
+      const totalExpense = Number((periodTotals as any)?.expense) || 0;
 
       // Số dư đầu kỳ — RPC aggregate (migration 20260610110000): trả 1 số
       // thay vì kéo TOÀN BỘ lịch sử phiếu trước start_date về client cộng
@@ -158,30 +152,21 @@ export const useCashFlowByDay = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      let ieQuery = supabase
-        .from("income_expenses")
-        .select("voucher_date, type, total_amount")
-        .eq('approval_status', 'APPROVED')
-        .is('deleted_at', null)
-        .gte("voucher_date", start_date)
-        .lte("voucher_date", end_date);
-      if (buildingId) ieQuery = ieQuery.eq("building_id", buildingId);
-      if (accountId) ieQuery = ieQuery.eq("account_id", accountId);
-      const { data: incomeExpenses, error } = await ieQuery;
+      // RPC SQL aggregate theo ngày (miễn nhiễm cap-1000): 1 dòng/ngày, đã group
+      // + sort trong SQL → không kéo cả năm phiếu về client cộng tay.
+      const { data, error } = await (supabase.rpc as any)("cashflow_by_day", {
+        p_start: start_date,
+        p_end: end_date,
+        p_building_id: buildingId ?? null,
+        p_account_id: accountId ?? null,
+      });
       if (error) throw error;
 
-      const dateMap: Record<string, { date: string; income: number; expense: number }> = {};
-      for (const ie of incomeExpenses ?? []) {
-        const date = ie.voucher_date as string;
-        if (!dateMap[date]) dateMap[date] = { date, income: 0, expense: 0 };
-        const amt = Number(ie.total_amount) || 0;
-        if (ie.type === 'INCOME') dateMap[date].income += amt;
-        else if (ie.type === 'EXPENSE') dateMap[date].expense += amt;
-      }
-
-      return Object.values(dateMap).sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
+      return ((data ?? []) as any[]).map((r) => ({
+        date: r.day as string,
+        income: Number(r.income) || 0,
+        expense: Number(r.expense) || 0,
+      }));
     },
     enabled: !!start_date && !!end_date,
   });

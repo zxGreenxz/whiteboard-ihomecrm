@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { ChevronRight } from "lucide-react";
-import { useOverpaymentReport } from "@/hooks/useReports";
+import { useOverpaymentReport, useOverpaymentSummary } from "@/hooks/useReports";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import {
@@ -25,6 +25,8 @@ export default function OverpaymentReport() {
   const [pageSize, setPageSize] = useState<number>(10);
 
   const { data: overpayments = [], isLoading } = useOverpaymentReport();
+  // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc toà.
+  const { data: summary } = useOverpaymentSummary(buildingIds);
 
   const filtered = useMemo(() => {
     let arr = [...(overpayments as any[])];
@@ -34,7 +36,7 @@ export default function OverpaymentReport() {
     return arr;
   }, [overpayments, buildingIds]);
 
-  const total = filtered.reduce((s, o: any) => s + (o.overpaid_amount || 0), 0);
+  const total = summary?.total ?? 0;
   const totalCount = filtered.length;
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
