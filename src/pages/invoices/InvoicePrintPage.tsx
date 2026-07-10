@@ -3,8 +3,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-
-const formatVND = (n: number) => `${Number(n || 0).toLocaleString("vi-VN")} đ`;
+import { formatVND } from "@/lib/utils";
 
 const useInvoiceForPrint = (id: string | undefined) =>
   useQuery({

@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Minus, FileText } from "lucide-react";
+import { formatVND } from "@/lib/utils";
 
 interface IncomeExpenseStatsProps {
   stats: {
@@ -22,9 +23,6 @@ interface IncomeExpenseStatsProps {
   onShowPending?: () => void;
 }
 
-export function formatVND(amount: number): string {
-  return amount.toLocaleString("vi-VN") + " đ";
-}
 
 export function IncomeExpenseStats({
   stats,

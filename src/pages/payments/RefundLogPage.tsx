@@ -30,6 +30,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { formatVND } from "@/lib/utils";
 
 interface RefundRow {
   id: string;
@@ -45,7 +46,6 @@ interface RefundRow {
   notes: string | null;
 }
 
-const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 
 type LedgerMode = "refund" | "rounding";
 

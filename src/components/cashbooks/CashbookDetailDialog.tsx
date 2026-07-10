@@ -9,6 +9,7 @@ import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { useAccountSharedUsers } from "@/hooks/useAccountSharedUsers";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { formatVND } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -18,7 +19,6 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
-const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 
 const Row = ({
   label,

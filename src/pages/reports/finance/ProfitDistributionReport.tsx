@@ -46,9 +46,8 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { formatCurrency } from "@/lib/utils";
 
-const formatCurrency = (n: number) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
 
 // Số tiền gọn cho dòng phụ "hoá đơn tháng đầu" (không ký hiệu ₫ rườm rà).
 const fmtCompact = (n: number) =>

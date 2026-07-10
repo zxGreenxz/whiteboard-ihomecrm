@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
+import { formatVND } from "@/lib/utils";
 import {
   VIETQR_BANK_APPS,
   RECIPIENT_BANKS,
@@ -25,7 +26,6 @@ interface Props {
   voucher: IncomeExpenseWithRelations;
 }
 
-const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 
 /**
  * Bottom sheet "Chi tiền qua app ngân hàng" (mobile).

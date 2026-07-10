@@ -6,11 +6,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Tiền VND kiểu ký hiệu ₫ chuẩn Intl: "1.500.000 ₫". Dùng cho báo cáo tài chính.
+ * (Trước đây ~30 file tự định nghĩa lại y hệt — gom về đây.)
+ */
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
     currency: "VND",
   }).format(amount);
+}
+
+/**
+ * Tiền VND kiểu chữ "đ" thường có dấu cách: "1.500.000 đ". Dùng cho phiếu thu/chi,
+ * hoá đơn in, sổ quỹ — nơi UI dùng "đ" thay vì ký hiệu ₫. null/NaN → "0 đ".
+ * (Trước đây nhiều file tự định nghĩa `${n.toLocaleString("vi-VN")} đ` — gom về đây.)
+ */
+export function formatVND(amount: number | null | undefined): string {
+  return `${Number(amount ?? 0).toLocaleString("vi-VN")} đ`;
 }
 
 export function formatDate(date: string | Date, formatStr: string = "dd/MM/yyyy"): string {

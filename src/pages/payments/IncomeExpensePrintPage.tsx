@@ -3,8 +3,8 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { formatVND } from "@/lib/utils";
 
-const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 
 interface VoucherRow {
   id: string;

@@ -32,6 +32,7 @@ import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { formatVND } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -49,7 +50,6 @@ interface Props {
   onRestore?: (id: string) => void;
 }
 
-const formatVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
 // "2026-05" → "05/2026" (nhãn kỳ hoá đơn)
 const fmtBillingMonth = (m: string | null | undefined) => {
   const match = /^(\d{4})-(\d{2})$/.exec(m ?? "");

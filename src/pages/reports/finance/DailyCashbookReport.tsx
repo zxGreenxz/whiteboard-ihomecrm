@@ -14,9 +14,8 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { addDays, format, startOfMonth } from "date-fns";
 import { vi } from "date-fns/locale";
+import { formatCurrency } from "@/lib/utils";
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 
 const toLocalDateStr = (d: Date) => format(d, "yyyy-MM-dd");
 

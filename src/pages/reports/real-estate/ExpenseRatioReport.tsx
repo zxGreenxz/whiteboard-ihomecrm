@@ -30,6 +30,7 @@ import {
   Cell,
 } from "recharts";
 import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
+import { formatCurrency } from "@/lib/utils";
 
 const CATEGORY_COLORS = [
   "#3B82F6",
@@ -43,8 +44,6 @@ const CATEGORY_COLORS = [
 ];
 const RATIO_LINE_COLOR = "#DC2626";
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 
 const formatCurrencyShort = (amount: number) => {
   const abs = Math.abs(amount);
