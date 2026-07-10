@@ -87,6 +87,18 @@ export const PAGE_GROUPS: PageGroup[] = [
         ],
       },
       {
+        key: "ai-copilot",
+        label: "AI Copilot",
+        route: "/",
+        desc: "Trợ lý AI: chat hỏi đáp dữ liệu + điều khiển UI (experimental). Kill switch thật nằm server-side (entitlements + settings).",
+        features: [
+          f("ai_copilot", "view", "Dùng chat Trợ lý AI", "view"),
+          f("ai_copilot", "ui_control", "Cho phép AI điều khiển trang (experimental)", "elevated", {
+            desc: "Agent thao tác trực tiếp trên UI thay người dùng — chỉ bật cho pilot.",
+          }),
+        ],
+      },
+      {
         key: "notifications",
         label: "Thông báo",
         route: "/notifications",

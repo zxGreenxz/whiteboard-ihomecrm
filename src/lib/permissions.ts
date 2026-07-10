@@ -103,7 +103,9 @@ export type ActionKey =
   // Đối soát/chốt số sổ quỹ (báo cáo bàn giao)
   | "reconcile"
   // Báo cáo chu kỳ Thu → Bàn giao (theo tòa quản lý)
-  | "collection_cycle";
+  | "collection_cycle"
+  // AI Copilot: cho phép agent điều khiển UI (experimental — pilot)
+  | "ui_control";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -133,6 +135,9 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     modules: [
       { key: "dashboard",     label: "Bảng tin", core: ["view"], extra: ["view_finance"] },
       { key: "notifications", label: "Thông báo", core: ["view", "delete"] },
+      // LƯU Ý (PLAN.md F14): quyền này để phân quyền STAFF; kill switch/pilot
+      // thật nằm ở ai_copilot_entitlements + ai_copilot_settings (server).
+      { key: "ai_copilot",    label: "AI Copilot", core: ["view"], extra: ["ui_control"] },
     ],
   },
   {
@@ -337,6 +342,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   handover_report: "BC Bàn giao tiền & Đối soát",
   reconcile:      "Chốt số / đối soát sổ",
   collection_cycle: "BC Chu kỳ Thu — Bàn giao",
+  ui_control:     "AI điều khiển trang (experimental)",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */

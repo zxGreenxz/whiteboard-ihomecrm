@@ -43,6 +43,8 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
 // AI Copilot — Phase 0 spike (branch spike only, xoá khi ship)
 const CopilotSpikePage = lazy(() => import("./copilot/SpikePage"));
+// AI Copilot — nút nổi + panel chat (gate session/entitlement/quyền bên trong)
+const CopilotLauncher = lazy(() => import("./copilot/CopilotLauncher"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const ChatZaloPage = lazy(() => import("./pages/chat-zalo/ChatZaloPage"));
 
@@ -444,6 +446,11 @@ const App = () => (
           {/* 404 Not Found - Catch all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
+        {/* AI Copilot: nút nổi toàn app — tự ẩn trên route public / khi không
+            có session / không entitlement / không quyền ai_copilot.view */}
+        <Suspense fallback={null}>
+          <CopilotLauncher />
         </Suspense>
       </BrowserRouter>
       </ErrorBoundary>
