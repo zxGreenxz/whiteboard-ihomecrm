@@ -13,15 +13,22 @@ import {
   Eye,
   Layers,
   Pencil,
+  ImagePlus,
+  X,
 } from 'lucide-react';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useAuth } from '@/hooks/useAuth';
 import { StorageImage } from '@/components/ui/storage-image';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
+import AttachmentUpload from './AttachmentUpload';
 import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
 } from '@/hooks/useIncomeExpenses';
-import { useUpdateBatchAccount } from '@/hooks/useIncomeExpenses';
+import {
+  useUpdateBatchAccount,
+  useUpdateBatchAttachments,
+} from '@/hooks/useIncomeExpenses';
 import { useAccounts } from '@/hooks/useAccounts';
 import { format } from 'date-fns';
 import { formatPeriod } from '@/lib/monthPeriod';
@@ -85,10 +92,14 @@ export function IncomeExpenseBatchDetailDialog({
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [childVoucher, setChildVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  // Chế độ bổ sung/xoá ảnh đính kèm dùng chung — auto-save từng thay đổi.
+  const [editAtts, setEditAtts] = useState<string[] | null>(null);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: authUser } = useAuth();
   const { data: accounts = [] } = useAccounts();
   const updateBatchAccount = useUpdateBatchAccount();
+  const updateBatchAttachments = useUpdateBatchAttachments();
 
   // Tất cả phiếu con cùng sổ quỹ? Nếu có, admin được đổi sổ quỹ cả đợt.
   const allSameAccount =
@@ -100,9 +111,17 @@ export function IncomeExpenseBatchDetailDialog({
 
   const attachments = batch?.attachments ?? [];
   const isLightboxOpen = lightboxIdx !== null;
+  // Người tạo đợt hoặc admin được bổ sung/xoá ảnh giao dịch sau khi đã tạo.
+  const canEditAttachments =
+    !!batch &&
+    (isAdmin || authUser?.id === batch.user_id) &&
+    !batch.all_cancelled;
 
   useEffect(() => {
-    if (!open) setLightboxIdx(null);
+    if (!open) {
+      setLightboxIdx(null);
+      setEditAtts(null);
+    }
   }, [open]);
 
   if (!batch) return null;
@@ -263,32 +282,73 @@ export function IncomeExpenseBatchDetailDialog({
             {batch.notes && <Row label="Ghi chú" value={batch.notes} />}
           </div>
 
-          {/* Đính kèm chung */}
-          {batch.attachments && batch.attachments.length > 0 && (
+          {/* Đính kèm chung — người tạo/admin được bổ sung ảnh sau khi tạo */}
+          {((batch.attachments && batch.attachments.length > 0) ||
+            canEditAttachments) && (
             <>
-              <SectionTitle>Đính kèm (dùng chung)</SectionTitle>
-              <div className="flex flex-wrap gap-3">
-                {batch.attachments.map((url, idx) => (
-                  <button
-                    type="button"
-                    key={url}
-                    onClick={() => setLightboxIdx(idx)}
-                    className="group relative w-24 h-24 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 hover:border-primary hover:shadow-md transition-all cursor-zoom-in"
+              <div className="flex items-center justify-between">
+                <SectionTitle>Đính kèm (dùng chung)</SectionTitle>
+                {canEditAttachments && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() =>
+                      setEditAtts(
+                        editAtts !== null ? null : batch.attachments ?? []
+                      )
+                    }
                   >
-                    {isPdf(url) ? (
-                      <div className="flex items-center justify-center w-full h-full">
-                        <FileText className="h-10 w-10 text-muted-foreground" />
-                      </div>
+                    {editAtts !== null ? (
+                      <>
+                        <X className="h-4 w-4 mr-1" />
+                        Xong
+                      </>
                     ) : (
-                      <StorageImage
-                        value={url}
-                        alt="Đính kèm"
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
-                      />
+                      <>
+                        <ImagePlus className="h-4 w-4 mr-1" />
+                        Bổ sung ảnh
+                      </>
                     )}
-                  </button>
-                ))}
+                  </Button>
+                )}
               </div>
+              {editAtts !== null ? (
+                <AttachmentUpload
+                  attachments={editAtts}
+                  onChange={(urls) => {
+                    setEditAtts(urls);
+                    updateBatchAttachments.mutate({
+                      batchId: batch.id,
+                      attachments: urls,
+                    });
+                  }}
+                  userId={authUser?.id ?? batch.user_id}
+                />
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {(batch.attachments ?? []).map((url, idx) => (
+                    <button
+                      type="button"
+                      key={url}
+                      onClick={() => setLightboxIdx(idx)}
+                      className="group relative w-24 h-24 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 hover:border-primary hover:shadow-md transition-all cursor-zoom-in"
+                    >
+                      {isPdf(url) ? (
+                        <div className="flex items-center justify-center w-full h-full">
+                          <FileText className="h-10 w-10 text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <StorageImage
+                          value={url}
+                          alt="Đính kèm"
+                          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           )}
 

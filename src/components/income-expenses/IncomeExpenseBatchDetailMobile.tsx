@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { X, Ban, Layers, ChevronRight, Pencil, FileText } from "lucide-react";
+import { X, Ban, Layers, ChevronRight, Pencil, FileText, ImagePlus } from "lucide-react";
 import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useAuth } from "@/hooks/useAuth";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useUpdateBatchAccount } from "@/hooks/useIncomeExpenses";
+import { useUpdateBatchAccount, useUpdateBatchAttachments } from "@/hooks/useIncomeExpenses";
+import AttachmentUpload from "./AttachmentUpload";
 import type {
   IncomeExpenseBatchSummary,
   IncomeExpenseWithRelations,
@@ -42,9 +44,14 @@ export function IncomeExpenseBatchDetailMobile({
   const [child, setChild] = useState<IncomeExpenseWithRelations | null>(null);
   // Xem ảnh đính kèm dùng chung ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  // Chế độ bổ sung/xoá ảnh đính kèm dùng chung. Giữ danh sách đang sửa ở
+  // state cục bộ để dropzone phản hồi ngay, mutation auto-save từng thay đổi.
+  const [editAtts, setEditAtts] = useState<string[] | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: authUser } = useAuth();
   const { data: accounts = [] } = useAccounts();
   const updateBatchAccount = useUpdateBatchAccount();
+  const updateBatchAttachments = useUpdateBatchAttachments();
 
   const isExpense = batch.type === "EXPENSE";
   const accent = isExpense ? "#d6453f" : "#1f9d57";
@@ -54,6 +61,14 @@ export function IncomeExpenseBatchDetailMobile({
     batch.vouchers.every((v) => v.account_id === batch.vouchers[0].account_id);
   const sharedAccountId = allSameAccount ? batch.vouchers[0]?.account_id ?? null : null;
   const canEditAccount = isAdmin && allSameAccount && !batch.all_cancelled;
+  // Người tạo đợt hoặc admin được bổ sung/xoá ảnh giao dịch sau khi đã tạo.
+  const canEditAttachments =
+    (isAdmin || authUser?.id === batch.user_id) && !batch.all_cancelled;
+
+  const handleAttachmentsChange = (urls: string[]) => {
+    setEditAtts(urls);
+    updateBatchAttachments.mutate({ batchId: batch.id, attachments: urls });
+  };
 
   const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="vd-row">
@@ -181,28 +196,51 @@ export function IncomeExpenseBatchDetailMobile({
           {batch.notes && <Row label="Ghi chú" value={batch.notes} />}
         </div>
 
-        {batch.attachments && batch.attachments.length > 0 && (
+        {((batch.attachments && batch.attachments.length > 0) || canEditAttachments) && (
           <>
             <div className="vd-sec">
               <span className="vd-sec-t">Đính kèm (dùng chung)</span>
+              {canEditAttachments && (
+                <div className="vd-acts">
+                  <button
+                    className="vd-act"
+                    style={{ background: editAtts !== null ? "#64748b" : accent }}
+                    aria-label={editAtts !== null ? "Xong" : "Bổ sung ảnh"}
+                    title={editAtts !== null ? "Xong" : "Bổ sung ảnh giao dịch"}
+                    onClick={() =>
+                      setEditAtts(editAtts !== null ? null : batch.attachments ?? [])
+                    }
+                  >
+                    {editAtts !== null ? <X size={15} /> : <ImagePlus size={15} />}
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="vd-atts">
-              {batch.attachments.map((url, idx) => (
-                <button
-                  type="button"
-                  key={url}
-                  className="vd-att"
-                  onClick={() => setLightboxIdx(idx)}
-                  title="Xem ảnh / tệp"
-                >
-                  {isPdf(url) ? (
-                    <FileText size={26} />
-                  ) : (
-                    <StorageImage value={url} alt="Đính kèm" loading="lazy" />
-                  )}
-                </button>
-              ))}
-            </div>
+            {editAtts !== null ? (
+              <AttachmentUpload
+                attachments={editAtts}
+                onChange={handleAttachmentsChange}
+                userId={authUser?.id ?? batch.user_id}
+              />
+            ) : (
+              <div className="vd-atts">
+                {(batch.attachments ?? []).map((url, idx) => (
+                  <button
+                    type="button"
+                    key={url}
+                    className="vd-att"
+                    onClick={() => setLightboxIdx(idx)}
+                    title="Xem ảnh / tệp"
+                  >
+                    {isPdf(url) ? (
+                      <FileText size={26} />
+                    ) : (
+                      <StorageImage value={url} alt="Đính kèm" loading="lazy" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
 

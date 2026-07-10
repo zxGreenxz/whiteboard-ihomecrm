@@ -2119,6 +2119,98 @@ export const useUpdateBatchAccount = () => {
   });
 };
 
+// Cập nhật ảnh đính kèm (dùng chung) của phiếu tổng SAU khi đã tạo — để bổ
+// sung chứng từ (bill chuyển khoản, hoá đơn...) mà không phải tạo lại đợt.
+// Đồng bộ theo DELTA xuống mọi phiếu con: ảnh thêm mới được nối vào, ảnh bị
+// xoá được gỡ ra — KHÔNG ghi đè, để giữ nguyên ảnh riêng từng phiếu (nếu có,
+// vd đã bổ sung qua "Sửa nhanh phiếu").
+export const useUpdateBatchAttachments = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { batchId: string; attachments: string[] }) => {
+      const { batchId, attachments } = input;
+
+      // Đọc attachments hiện tại của batch từ DB để tính delta (tránh tin
+      // vào snapshot phía client có thể đã cũ).
+      const { data: batchRow, error: batchReadError } = await supabase
+        .from("income_expense_batches")
+        .select("attachments")
+        .eq("id", batchId)
+        .single();
+      if (batchReadError) {
+        toast.error(batchReadError.message || "Không đọc được phiếu tổng");
+        throw batchReadError;
+      }
+      const prev = ((batchRow as any)?.attachments ?? []) as string[];
+      const added = attachments.filter((u) => !prev.includes(u));
+      const removed = prev.filter((u) => !attachments.includes(u));
+
+      const { error: batchError } = await supabase
+        .from("income_expense_batches")
+        .update({ attachments } as any)
+        .eq("id", batchId);
+      if (batchError) {
+        toast.error(batchError.message || "Không cập nhật được ảnh đính kèm");
+        throw batchError;
+      }
+
+      // Đồng bộ xuống phiếu con (ảnh "dùng chung" được copy vào từng phiếu
+      // lúc tạo đợt, nên phải cập nhật theo cùng delta).
+      if (added.length === 0 && removed.length === 0) return { count: 0 };
+
+      const { data: links, error: linkError } = await supabase
+        .from("income_expense_batch_items")
+        .select("income_expense_id")
+        .eq("batch_id", batchId);
+      if (linkError) {
+        toast.error(linkError.message || "Không đọc được danh sách phiếu");
+        throw linkError;
+      }
+      const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
+      if (ids.length === 0) return { count: 0 };
+
+      const { data: vouchers, error: readError } = await supabase
+        .from("income_expenses")
+        .select("id, attachments")
+        .in("id", ids);
+      if (readError) {
+        toast.error(readError.message || "Không đọc được phiếu trong đợt");
+        throw readError;
+      }
+
+      const results = await Promise.all(
+        ((vouchers ?? []) as any[]).map((v) => {
+          const cur = (v.attachments ?? []) as string[];
+          const next = [
+            ...cur.filter((u) => !removed.includes(u)),
+            ...added.filter((u) => !cur.includes(u)),
+          ];
+          return supabase
+            .from("income_expenses")
+            .update({ attachments: next } as any)
+            .eq("id", v.id);
+        })
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        toast.error(failed.error.message || "Không đồng bộ được ảnh xuống phiếu con");
+        throw failed.error;
+      }
+
+      return { count: (vouchers ?? []).length };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expense-batches"] });
+      toast.success("Đã cập nhật ảnh đính kèm của đợt");
+    },
+    onError: (error) => {
+      console.error("Error updating batch attachments:", error);
+    },
+  });
+};
+
 // (Workflow Duyệt/Bỏ duyệt đã bị loại bỏ — phiếu mặc định APPROVED khi tạo,
 //  Huỷ thì set CANCELLED qua useCancelIncomeExpense.)
 
