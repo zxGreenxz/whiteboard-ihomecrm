@@ -41,6 +41,8 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 // bọc chung quanh <Routes> (riêng /r/:token và /thu-tien giữ Suspense cục bộ
 // vì có CSS toàn cục cần cô lập).
 const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
+// AI Copilot — Phase 0 spike (branch spike only, xoá khi ship)
+const CopilotSpikePage = lazy(() => import("./copilot/SpikePage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const ChatZaloPage = lazy(() => import("./pages/chat-zalo/ChatZaloPage"));
 
@@ -268,6 +270,8 @@ const App = () => (
           />
           {/* /dashboard: Bảng tin — mobile mở màn web-app riêng, desktop về "/". */}
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
+          {/* AI Copilot Phase 0 spike — branch spike only */}
+          <Route path="/copilot-spike" element={<ProtectedRoute><CopilotSpikePage /></ProtectedRoute>} />
           <Route path="/building-map" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingMapPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
 
