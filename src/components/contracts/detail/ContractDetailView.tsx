@@ -52,9 +52,16 @@ import { isContractInEffect } from '@/types/contract';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
+// Data layer tách riêng (Phase 9B) — UI không gọi supabase trực tiếp nữa.
+import {
+  useContractDepositVouchers,
+  useContractPendingTermination,
+  useContractTerminationInfo,
+  useContractVehicles,
+  useContractServices,
+  useContractHistory,
+} from '@/hooks/contracts/useContractDetailData';
 
 // Import contract action dialogs
 import { RenewDialog } from '@/components/contracts/RenewDialog';
@@ -114,91 +121,18 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     contract_id: id
   });
 
-  // Fetch phiếu thu cọc (IE) đã link contract này — để chứng minh
-  // contracts.deposit_paid khớp với phiếu thực tế.
-  const { data: depositVouchers = [] } = useQuery({
-    queryKey: ['contract-deposit-vouchers', id],
-    enabled: !!id,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('income_expenses')
-        .select(`
-          id, code, name, total_amount, voucher_date, approval_status,
-          account:accounts!income_expenses_account_id_fkey ( id, name ),
-          income_expense_items (
-            id, income_expense_type_id,
-            type:income_expense_types!income_expense_items_income_expense_type_id_fkey (
-              id, name, is_deposit
-            )
-          )
-        `)
-        .eq('contract_id', id)
-        .eq('type', 'INCOME')
-        .is('deleted_at', null)
-        .order('voucher_date', { ascending: false });
-      if (error) {
-        console.error('Fetch deposit vouchers error:', error);
-        return [];
-      }
-      // Chỉ giữ phiếu có ít nhất 1 item is_deposit
-      return (data ?? []).filter((v: any) =>
-        (v.income_expense_items ?? []).some((it: any) => it.type?.is_deposit),
-      );
-    },
-  });
+  // Phiếu thu cọc (IE) đã link contract này — chứng minh deposit_paid khớp phiếu.
+  const depositVouchersQ = useContractDepositVouchers(id);
+  const depositVouchers = depositVouchersQ.data ?? [];
 
-  // B1 (audit 03/07): phiếu thanh lý đang CHỜ XỬ LÝ của HĐ này:
-  //  - forfeit: cặp "cấn cọc bỏ cọc" chờ Duyệt (quên → cọc không vào doanh thu)
-  //  - refund: phiếu chi "Trả khách thanh lý" nháp, CHƯA CÓ SỔ QUỸ — phải chọn
-  //    sổ (Sửa phiếu) rồi duyệt thì tiền hoàn mới được ghi nhận chi.
-  const { data: pendingTermination = { forfeit: 0, refund: 0 } } = useQuery({
-    queryKey: ['contract-pending-forfeit', id],
-    enabled: !!id,
-    queryFn: async () => {
-      const base = () =>
-        (supabase as any)
-          .from('income_expenses')
-          .select('id', { count: 'exact', head: true })
-          .eq('contract_id', id)
-          .eq('approval_status', 'UNAPPROVED')
-          .is('deleted_at', null);
-      const [f, r] = await Promise.all([
-        base().like('notes', '[CẤN CỌC BỎ CỌC%'),
-        base().like('notes', '[HOÀN KHÁCH THANH LÝ]%'),
-      ]);
-      return { forfeit: f.count ?? 0, refund: r.count ?? 0 };
-    },
-  });
-  const pendingForfeitCount = pendingTermination.forfeit;
-  const pendingRefundCount = pendingTermination.refund;
+  // Phiếu thanh lý đang CHỜ XỬ LÝ (forfeit chờ duyệt / refund nháp chưa có sổ).
+  const pendingTerminationQ = useContractPendingTermination(id);
+  const pendingForfeitCount = pendingTerminationQ.data?.forfeit ?? 0;
+  const pendingRefundCount = pendingTerminationQ.data?.refund ?? 0;
 
-  // Quyết toán thanh lý (audit contract_terminations) — trả lời "khách này
-  // thanh lý gồm những gì": cọc, khấu trừ, hoàn khách. Chi tiết từng khoản nằm
-  // trong Ghi chú hợp đồng + ghi chú phiếu "Trả khách thanh lý"/hoá đơn thanh lý.
-  const { data: terminationInfo } = useQuery({
-    queryKey: ['contract-termination-info', id, contract?.status],
-    enabled: !!id && contract?.status === 'TERMINATED',
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('contract_terminations')
-        .select(
-          'termination_type, actual_move_out_date, outstanding_debt, early_termination_fee, total_deposit, total_deductions, refund_amount',
-        )
-        .eq('contract_id', id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) {
-        console.error('Fetch termination info error:', error);
-        return null;
-      }
-      return data;
-    },
-  });
-
-  // Fetch contract services
-  const [contractServices, setContractServices] = useState<ContractService[]>([]);
-  const [servicesLoading, setServicesLoading] = useState(true);
+  // Quyết toán thanh lý (audit contract_terminations).
+  const terminationInfoQ = useContractTerminationInfo(id, contract?.status);
+  const terminationInfo = terminationInfoQ.data;
 
   // Customers attached to this contract — read from contract.contract_customers
   // (đại diện đứng đầu, sau đó tới các khách còn lại)
@@ -208,29 +142,8 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
   // Phương tiện gắn với các khách trong hợp đồng (gom theo customer_id)
   const customerIds = contractCustomers.map((cc) => cc.customer_id);
-  const { data: contractVehicles = [] } = useQuery({
-    queryKey: ['contract-vehicles', id, customerIds.join(',')],
-    enabled: customerIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('vehicles')
-        .select('id, customer_id, vehicle_type, vehicle_name, brand, model, license_plate, color, parking_fee')
-        .in('customer_id', customerIds)
-        .is('deleted_at', null);
-      if (error) throw error;
-      return (data ?? []) as Array<{
-        id: string;
-        customer_id: string;
-        vehicle_type: string | null;
-        vehicle_name: string | null;
-        brand: string | null;
-        model: string | null;
-        license_plate: string | null;
-        color: string | null;
-        parking_fee: number | null;
-      }>;
-    },
-  });
+  const contractVehiclesQ = useContractVehicles(id, customerIds);
+  const contractVehicles = contractVehiclesQ.data ?? [];
 
   const vehiclesByCustomer = new Map<string, typeof contractVehicles>();
   for (const v of contractVehicles) {
@@ -239,117 +152,24 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
     vehiclesByCustomer.set(v.customer_id, arr);
   }
 
-  // Fetch contract history (extensions, transfers, terminations)
-  const [contractHistory, setContractHistory] = useState<ContractHistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  // Dịch vụ + lịch sử HĐ — trước là useEffect + state thủ công nuốt lỗi thành
+  // rỗng; nay là useQuery, lỗi hiển thị ra UI thay vì im lặng.
+  const servicesQ = useContractServices(id);
+  const contractServices: ContractService[] = servicesQ.data ?? [];
+  const servicesLoading = servicesQ.isLoading;
+  const historyQ = useContractHistory(id);
+  const contractHistory: ContractHistoryItem[] = historyQ.data ?? [];
+  const historyLoading = historyQ.isLoading;
 
-  // Fetch contract services when contract ID changes
-  useEffect(() => {
-    const fetchContractServices = async () => {
-      if (!id) return;
-      setServicesLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('contract_services')
-          .select(`
-            id, service_id, unit_price, initial_reading,
-            service:services(id, name, type, unit)
-          `)
-          .eq('contract_id', id);
-
-        if (!error && data) {
-          setContractServices(data as ContractService[]);
-        }
-      } catch (e) {
-        console.error('Error fetching contract services:', e);
-      } finally {
-        setServicesLoading(false);
-      }
-    };
-
-    fetchContractServices();
-  }, [id]);
-
-  // Fetch contract history when contract ID changes
-  useEffect(() => {
-    const fetchContractHistory = async () => {
-      if (!id) return;
-      setHistoryLoading(true);
-      try {
-        const history: ContractHistoryItem[] = [];
-
-        // Fetch extensions
-        const { data: extensions } = await supabase
-          .from('contract_extensions')
-          .select('*')
-          .eq('contract_id', id)
-          .order('created_at', { ascending: false });
-
-        if (extensions) {
-          extensions.forEach(ext => {
-            history.push({
-              id: ext.id,
-              type: 'extension',
-              created_at: ext.created_at,
-              status: ext.status,
-              details: ext
-            });
-          });
-        }
-
-        // Fetch transfers
-        const { data: transfers } = await supabase
-          .from('contract_transfers')
-          .select('*')
-          .eq('contract_id', id)
-          .order('created_at', { ascending: false });
-
-        if (transfers) {
-          transfers.forEach(tr => {
-            history.push({
-              id: tr.id,
-              type: 'transfer',
-              created_at: tr.created_at,
-              status: tr.status,
-              details: tr
-            });
-          });
-        }
-
-        // Fetch terminations
-        const { data: terminations } = await supabase
-          .from('contract_terminations')
-          .select('*')
-          .eq('contract_id', id)
-          .order('created_at', { ascending: false });
-
-        if (terminations) {
-          terminations.forEach(term => {
-            history.push({
-              id: term.id,
-              type: 'termination',
-              created_at: term.created_at,
-              status: term.status,
-              details: term
-            });
-          });
-        }
-
-        // Sort by date
-        history.sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-
-        setContractHistory(history);
-      } catch (e) {
-        console.error('Error fetching contract history:', e);
-      } finally {
-        setHistoryLoading(false);
-      }
-    };
-
-    fetchContractHistory();
-  }, [id]);
+  // Gom lỗi các query phụ để báo 1 chỗ (data chính contract lỗi đã có nhánh riêng).
+  const sideLoadErrors = [
+    depositVouchersQ.isError && 'phiếu cọc',
+    pendingTerminationQ.isError && 'phiếu thanh lý chờ xử lý',
+    terminationInfoQ.isError && 'quyết toán thanh lý',
+    contractVehiclesQ.isError && 'phương tiện',
+    servicesQ.isError && 'dịch vụ',
+    historyQ.isError && 'lịch sử hợp đồng',
+  ].filter(Boolean) as string[];
 
   // Helper functions
   const formatCurrency = (amount: number) => {
@@ -659,6 +479,16 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
       </div>
 
       {/* Alerts */}
+      {sideLoadErrors.length > 0 && (
+        <Alert className="mb-6 bg-red-50 border-red-200">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800">
+            Không tải được: {sideLoadErrors.join(', ')}. Số liệu các mục này có thể
+            thiếu — tải lại trang hoặc kiểm tra kết nối.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {isExpiringSoon && isActive && (
         <Alert className="mb-6 bg-orange-50 border-orange-200">
           <AlertCircle className="h-4 w-4 text-orange-600" />
@@ -1346,17 +1176,11 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
                       return (
                         <TableRow key={invoice.id}>
                           <TableCell className="font-medium">
-                            {invoice.title || invoice.invoice_number || invoice.id.slice(0, 8)}
+                            {invoice.invoice_number || invoice.id.slice(0, 8)}
                           </TableCell>
-                          <TableCell>
-                            {invoice.billing_period_start && invoice.billing_period_end && (
-                              <>
-                                {format(new Date(invoice.billing_period_start), 'dd/MM', { locale: vi })}
-                                {' - '}
-                                {format(new Date(invoice.billing_period_end), 'dd/MM/yyyy', { locale: vi })}
-                              </>
-                            )}
-                          </TableCell>
+                          {/* Cột kỳ thanh toán: schema không có billing_period_start/end
+                              (code cũ tham chiếu cột ma → luôn rỗng); giữ ô trống như trước. */}
+                          <TableCell></TableCell>
                           <TableCell>
                             {invoice.due_date && format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: vi })}
                           </TableCell>
@@ -1444,7 +1268,7 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
                                 {format(new Date(payment.payment_date), 'dd/MM/yyyy HH:mm', { locale: vi })}
                               </TableCell>
                               <TableCell className="font-medium">
-                                {payment.invoice.title || payment.invoice.invoice_number}
+                                {payment.invoice.invoice_number}
                               </TableCell>
                               <TableCell className="text-right font-medium text-green-600">
                                 {formatCurrency(payment.amount)}

@@ -2,7 +2,6 @@
   "src/components/building-map/RoomDetailDialog.tsx|TS2339|Property '…' does not exist on type '…'.",
   "src/components/building-map/RoomDetailDialog.tsx|TS2339|Property '…' does not exist on type '…'rent_amount'…'contracts'…'.",
   "src/components/building-map/RoomDetailDialog.tsx|TS2339|Property '…' does not exist on type '…'title'…'invoices'…'.",
-  "src/components/contracts/detail/ContractDetailView.tsx|TS2339|Property '…' does not exist on type '…'.",
   "src/components/customers/CreateCustomerDialog.tsx|TS2353|Object literal may only specify known properties, and '…' does not exist in type '…'.",
   "src/components/deposits/EditDepositDialog.tsx|TS2551|Property '…' does not exist on type '…'. Did you mean '…'?",
   "src/components/import-export/ImportExcelDialog.tsx|TS2314|Generic type '…' requires 1 type argument(s).",
