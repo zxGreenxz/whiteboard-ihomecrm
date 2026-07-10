@@ -24,8 +24,6 @@
   "src/lib/__tests__/contractOperations.property.test.ts|TS2322|Type '…' is not assignable to type '…'.",
   "src/lib/__tests__/contractOperations.property.test.ts|TS2739|Type '…' is missing the following properties from type '…': public_code, end_billing_date",
   "src/lib/__tests__/contractStatus.property.test.ts|TS2322|Type '…' is not assignable to type '…'.",
-  "src/lib/excelHelpers.ts|TS2339|Property '…' does not exist on type '…'.",
-  "src/lib/excelHelpers.ts|TS2698|Spread types may only be created from object types.",
   "src/lib/invoiceHelpers.ts|TS2339|Property '…' does not exist on type '…'.",
   "src/lib/invoiceHelpers.ts|TS2769|No overload matches this call.",
   "src/pages/buildings/BuildingDetailPage.tsx|TS2339|Property '…' does not exist on type '…'.",

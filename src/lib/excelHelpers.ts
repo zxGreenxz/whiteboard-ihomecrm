@@ -417,7 +417,11 @@ export async function importBuildings(
     'Số căn hộ': 'total_rooms',
   } as const;
 
-  const data = await parseExcelFile(file, headerMapping as any);
+  const data = await parseExcelFile<{
+    name?: string; code?: string; type?: string; province?: string;
+    district?: string; ward?: string; street_address?: string;
+    total_floors?: number; total_rooms?: number;
+  }>(file, headerMapping as any);
 
   const success: any[] = [];
   const errors: Array<{ row: number; message: string }> = [];
@@ -486,7 +490,11 @@ export async function importRooms(
     'Số người tối đa': 'max_occupants',
   } as const;
 
-  const data = await parseExcelFile(file, headerMapping as any);
+  const data = await parseExcelFile<{
+    name?: string; code?: string; building_name?: string; floor?: number | string;
+    area?: number | string; rent_price?: number | string;
+    deposit_amount?: number | string; max_occupants?: number | string;
+  }>(file, headerMapping as any);
 
   const success: any[] = [];
   const errors: Array<{ row: number; message: string }> = [];

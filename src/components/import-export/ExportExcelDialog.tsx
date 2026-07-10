@@ -1,3 +1,7 @@
+// Dialog xuất Excel (Phase 9D) — UI chỉ chọn entity/format/relations và gọi
+// runExportDataset. Query + phân trang + registry cột nằm ở
+// hooks/exports/useExportDataset + lib/exportDatasetRegistry (0 supabase call
+// trực tiếp ở đây). Lỗi export hiển thị Alert đỏ thay vì chỉ console.error.
 import { useState } from 'react';
 import {
   Dialog,
@@ -12,24 +16,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Download, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react';
-import {
-  exportBuildings,
-  exportRooms,
-  exportTenants,
-  exportContracts,
-  exportInvoices,
-  exportLeads,
-  exportPayments,
-} from '@/lib/excelHelpers';
-import { supabase } from '@/integrations/supabase/client';
-import { getSessionUser } from "@/lib/authSession";
+import { Download, FileSpreadsheet, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { runExportDataset, type ExportFilters } from '@/hooks/exports/useExportDataset';
+import { EXPORT_DATASETS, type ExportEntity } from '@/lib/exportDatasetRegistry';
 
 interface ExportExcelDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  exportType: 'buildings' | 'rooms' | 'tenants' | 'contracts' | 'invoices' | 'leads' | 'payments';
-  filters?: Record<string, any>;
+  exportType: ExportEntity;
+  filters?: ExportFilters;
 }
 
 const ExportExcelDialog = ({
@@ -41,168 +36,36 @@ const ExportExcelDialog = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
   const [includeRelations, setIncludeRelations] = useState(true);
-  const [success, setSuccess] = useState(false);
+  const [exportedCount, setExportedCount] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const config = {
-    buildings: {
-      title: 'Xuất danh sách Tòa nhà',
-      description: 'Xuất toàn bộ hoặc một phần danh sách tòa nhà ra file Excel',
-    },
-    rooms: {
-      title: 'Xuất danh sách Căn hộ',
-      description: 'Xuất toàn bộ hoặc một phần danh sách căn hộ ra file Excel',
-    },
-    tenants: {
-      title: 'Xuất danh sách Khách hàng',
-      description: 'Xuất toàn bộ hoặc một phần danh sách khách hàng ra file Excel',
-    },
-    contracts: {
-      title: 'Xuất danh sách Hợp đồng',
-      description: 'Xuất toàn bộ hoặc một phần danh sách hợp đồng ra file Excel',
-    },
-    invoices: {
-      title: 'Xuất danh sách Hóa đơn',
-      description: 'Xuất toàn bộ hoặc một phần danh sách hóa đơn ra file Excel',
-    },
-    leads: {
-      title: 'Xuất danh sách Khách hẹn',
-      description: 'Xuất toàn bộ hoặc một phần danh sách khách hẹn ra file Excel',
-    },
-    payments: {
-      title: 'Xuất danh sách Thanh toán',
-      description: 'Xuất toàn bộ hoặc một phần danh sách thanh toán ra file Excel',
-    },
-  };
-
-  const currentConfig = config[exportType];
-
-  const fetchData = async () => {
-    const user = await getSessionUser();
-    if (!user) throw new Error('Not authenticated');
-
-    let query;
-
-    switch (exportType) {
-      case 'buildings':
-        query = supabase
-          .from('buildings')
-          .select('*')
-          .is('deleted_at', null);
-        break;
-
-      case 'rooms':
-        query = supabase
-          .from('rooms')
-          .select(includeRelations ? '*, building:buildings(name)' : '*')
-          .is('deleted_at', null);
-        break;
-
-      case 'tenants':
-        query = supabase
-          .from('tenants')
-          .select('*')
-          .is('deleted_at', null);
-        break;
-
-      case 'contracts':
-        query = supabase
-          .from('contracts')
-          .select(includeRelations
-            ? '*, tenant:tenants(full_name), room:rooms(name, building:buildings(name))'
-            : '*')
-          .is('deleted_at', null);
-        break;
-
-      case 'invoices':
-        query = supabase
-          .from('invoices')
-          .select(includeRelations
-            ? '*, contract:contracts(contract_number, tenant:tenants(full_name))'
-            : '*')
-          .is('deleted_at', null);
-        break;
-
-      case 'leads':
-        query = supabase
-          .from('leads')
-          .select(includeRelations
-            ? '*, room:rooms(name, building:buildings(name))'
-            : '*')
-          .is('deleted_at', null);
-        break;
-
-      case 'payments':
-        query = supabase
-          .from('payments')
-          .select(includeRelations
-            ? '*, invoice:invoices(invoice_number, contract:contracts(contract_number, tenant:tenants(full_name, phone)))'
-            : '*');
-        break;
-
-      default:
-        throw new Error('Invalid export type');
-    }
-
-    // Apply filters
-    if (filters.status) {
-      query = query.eq('status', filters.status);
-    }
-    if (filters.building_id) {
-      query = query.eq('building_id', filters.building_id);
-    }
-    if (filters.from_date) {
-      query = query.gte('created_at', filters.from_date);
-    }
-    if (filters.to_date) {
-      query = query.lte('created_at', filters.to_date);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  };
+  const currentConfig = EXPORT_DATASETS[exportType];
 
   const handleExport = async () => {
     setIsExporting(true);
-    setSuccess(false);
-
+    setExportedCount(null);
+    setErrorMsg(null);
     try {
-      const data = await fetchData();
-
-      switch (exportType) {
-        case 'buildings':
-          await exportBuildings(data);
-          break;
-        case 'rooms':
-          await exportRooms(data);
-          break;
-        case 'tenants':
-          await exportTenants(data);
-          break;
-        case 'contracts':
-          await exportContracts(data);
-          break;
-        case 'invoices':
-          await exportInvoices(data);
-          break;
-        case 'leads':
-          await exportLeads(data);
-          break;
-        case 'payments':
-          await exportPayments(data);
-          break;
-      }
-
-      setSuccess(true);
+      const count = await runExportDataset({
+        entity: exportType,
+        includeRelations,
+        filters,
+      });
+      setExportedCount(count);
     } catch (error) {
       console.error('Export error:', error);
+      setErrorMsg(
+        (error as Error)?.message ||
+          'Xuất file thất bại — vui lòng thử lại hoặc thu hẹp bộ lọc.',
+      );
     } finally {
       setIsExporting(false);
     }
   };
 
   const handleClose = () => {
-    setSuccess(false);
+    setExportedCount(null);
+    setErrorMsg(null);
     onOpenChange(false);
   };
 
@@ -242,7 +105,7 @@ const ExportExcelDialog = ({
           </div>
 
           {/* Include Relations */}
-          {['buildings', 'rooms', 'contracts', 'invoices', 'leads', 'payments'].includes(exportType) && (
+          {EXPORT_DATASETS[exportType].relationsSelect && (
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="includeRelations"
@@ -264,12 +127,20 @@ const ExportExcelDialog = ({
             </Alert>
           )}
 
+          {/* Error Message — không im lặng tạo file thiếu */}
+          {errorMsg && (
+            <Alert className="bg-red-50 border-red-200">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">{errorMsg}</AlertDescription>
+            </Alert>
+          )}
+
           {/* Success Message */}
-          {success && (
+          {exportedCount !== null && (
             <Alert className="bg-green-50 border-green-200">
               <CheckCircle className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
-                Xuất file thành công! File đã được tải xuống.
+                Xuất file thành công! Đã tải xuống {exportedCount.toLocaleString('vi-VN')} dòng.
               </AlertDescription>
             </Alert>
           )}
@@ -277,7 +148,7 @@ const ExportExcelDialog = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            {success ? 'Đóng' : 'Hủy'}
+            {exportedCount !== null ? 'Đóng' : 'Hủy'}
           </Button>
           <Button onClick={handleExport} disabled={isExporting}>
             {isExporting ? (
