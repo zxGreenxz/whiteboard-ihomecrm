@@ -1,8 +1,11 @@
-// Panel chat AI Copilot — UI tiếng Việt (F9), chat read-only Phase 2.
+// Panel chat AI Copilot — UI tiếng Việt (F9), chat read-only Phase 2
+// + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader2, Plus, Send, Square, X } from 'lucide-react';
 import type { Message } from '@page-agent/llms';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import {
   createThread,
   loadLatestThread,
@@ -11,7 +14,7 @@ import {
   saveMessages,
   type ChatToolEvent,
 } from './chatEngine';
-import { useAiProviders, useCopilotModel } from './useAiProviders';
+import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiProviders';
 
 interface Props {
   onClose: () => void;
@@ -64,8 +67,14 @@ const toDisplay = (msgs: Message[]): DisplayItem[] =>
 export default function ChatPanel({ onClose }: Props) {
   const { data: perms } = useMyPermissions();
   const { data: providers } = useAiProviders();
+  const { data: entitlement } = useCopilotEntitlement();
   const { model, setModel } = useCopilotModel();
+  const navigate = useNavigate();
 
+  const canUiControl =
+    !!entitlement?.ui_control_enabled && !!perms && canUse(perms, 'ai_copilot', 'ui_control');
+
+  const [uiMode, setUiMode] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [history, setHistory] = useState<Message[]>([]);
   const [liveTool, setLiveTool] = useState<string | null>(null);
@@ -73,6 +82,7 @@ export default function ChatPanel({ onClose }: Props) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const uiAgentRef = useRef<{ stop: () => Promise<void>; dispose: () => void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Chặn race: nếu user đã tương tác (gửi tin / mở thread mới) trước khi
   // loadLatestThread resolve, KHÔNG đè state đang chạy.
@@ -104,6 +114,54 @@ export default function ChatPanel({ onClose }: Props) {
     setError('');
   };
 
+  const handleError = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    setError(
+      /not_entitled|not_permitted|403/.test(msg)
+        ? 'Tài khoản chưa được cấp quyền dùng AI Copilot hoặc đã hết hạn mức hôm nay.'
+        : `Lỗi: ${msg}`,
+    );
+  };
+
+  // UI-control: mỗi lệnh ĐỘC LẬP (execute reset history) — không lưu thread.
+  const runUiControl = async (text: string) => {
+    setHistory((h) => [...h, { role: 'user', content: text }]);
+    setLiveTool('điều khiển trang');
+    const { createUiControlAgent } = await import('./createAgent');
+    const agent = createUiControlAgent({ providerModel: model, ctx: { perms, navigate } });
+    uiAgentRef.current = agent;
+    try {
+      const result = await agent.run(text);
+      setHistory((h) => [...h, { role: 'assistant', content: result.data }]);
+    } finally {
+      agent.dispose();
+      uiAgentRef.current = null;
+    }
+  };
+
+  const runChat = async (text: string) => {
+    setHistory((h) => [...h, { role: 'user', content: text }]);
+    const abort = new AbortController();
+    abortRef.current = abort;
+    let tid = threadId;
+    if (!tid) {
+      tid = (await createThread(text)).id;
+      setThreadId(tid);
+    }
+    const result = await runChatTurn({
+      providerModel: model,
+      history,
+      userText: text,
+      ctx: { perms },
+      signal: abort.signal,
+      onToolEvent: (ev: ChatToolEvent) => setLiveTool(ev.tool),
+    });
+    setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
+    void saveMessages(tid, result.newMessages, model).catch(() => {
+      /* lưu lịch sử lỗi không chặn chat */
+    });
+  };
+
   const send = async () => {
     const text = input.trim();
     if (!text || running) return;
@@ -111,40 +169,21 @@ export default function ChatPanel({ onClose }: Props) {
     setInput('');
     setError('');
     setRunning(true);
-    const abort = new AbortController();
-    abortRef.current = abort;
-    // hiện user message ngay
-    setHistory((h) => [...h, { role: 'user', content: text }]);
     try {
-      let tid = threadId;
-      if (!tid) {
-        tid = (await createThread(text)).id;
-        setThreadId(tid);
-      }
-      const result = await runChatTurn({
-        providerModel: model,
-        history,
-        userText: text,
-        ctx: { perms },
-        signal: abort.signal,
-        onToolEvent: (ev: ChatToolEvent) => setLiveTool(ev.tool),
-      });
-      setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
-      void saveMessages(tid, result.newMessages, model).catch(() => {
-        /* lưu lịch sử lỗi không chặn chat */
-      });
+      if (uiMode && canUiControl) await runUiControl(text);
+      else await runChat(text);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(
-        /not_entitled|403/.test(msg)
-          ? 'Tài khoản chưa được cấp quyền dùng AI Copilot hoặc đã hết hạn mức hôm nay.'
-          : `Lỗi: ${msg}`,
-      );
+      handleError(e);
     } finally {
       setLiveTool(null);
       setRunning(false);
       abortRef.current = null;
     }
+  };
+
+  const stopRun = () => {
+    abortRef.current?.abort();
+    void uiAgentRef.current?.stop();
   };
 
   const items = toDisplay(history);
@@ -177,6 +216,20 @@ export default function ChatPanel({ onClose }: Props) {
           <X className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Toggle UI-control (experimental) — chỉ hiện khi có entitlement + quyền */}
+      {canUiControl && (
+        <label className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+          <input
+            type="checkbox"
+            checked={uiMode}
+            onChange={(e) => setUiMode(e.target.checked)}
+            disabled={running}
+            data-testid="copilot-uimode"
+          />
+          Điều khiển trang (thử nghiệm) — chỉ điều hướng & lọc, mỗi lệnh độc lập
+        </label>
+      )}
 
       {/* Messages */}
       <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
@@ -215,7 +268,7 @@ export default function ChatPanel({ onClose }: Props) {
         <textarea
           className="max-h-28 min-h-[38px] flex-1 resize-none rounded border bg-background px-2 py-1.5 text-sm"
           rows={1}
-          placeholder="Nhập câu hỏi…"
+          placeholder={uiMode ? 'Lệnh điều khiển, vd "mở trang phòng"…' : 'Nhập câu hỏi…'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -230,7 +283,7 @@ export default function ChatPanel({ onClose }: Props) {
           <button
             className="rounded bg-red-600 p-2 text-white"
             title="Dừng"
-            onClick={() => abortRef.current?.abort()}
+            onClick={stopRun}
           >
             <Square className="h-4 w-4" />
           </button>

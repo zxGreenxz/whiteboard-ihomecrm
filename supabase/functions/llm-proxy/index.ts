@@ -97,6 +97,13 @@ function mockResponse(req: Request, body: Record<string, unknown>, script: strin
     action = { click_element_by_index: { index: parseInt(clickMatch[1], 10) } };
   } else if (actionName === 'input') {
     action = { input_text: { index: 1, text: 'spike đã nhập 0912345678' } };
+  } else if (actionName === 'navphong') {
+    // dev/test UI-control: gọi mo_trang → /apartments. page-agent không gửi
+    // x-mock-step, nên suy step từ URL nhúng trong prompt: đã ở /apartments → done.
+    const promptText = JSON.stringify(body.messages ?? []);
+    action = promptText.includes('/apartments')
+      ? { done: { text: 'Đã mở trang danh sách phòng.', success: true } }
+      : { mo_trang: { trang: 'phong' } };
   } else if (actionName === 'echo') {
     const messages = body.messages as { role: string; content?: string }[];
     const userMsg = messages.find((m) => m.role === 'user')?.content ?? '';
