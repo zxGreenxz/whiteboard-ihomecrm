@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 import {
   type SalManager,
@@ -189,12 +190,19 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
           .filter((t) => String(t.category || "").toUpperCase() === "HOA HỒNG" || /hoa h[ồô]ng|hhmg/i.test(String(t.name || "")))
           .map((t) => t.id);
         if (commTypeIds.length) {
-          const { data: ciRaw } = await (supabase
-            .from("income_expense_items")
-            .select("amount, start_date, income_expenses(id, name, payer_name, approval_status, type, deleted_at)") as any)
-            .in("income_expense_type_id", commTypeIds)
-            .gte("start_date", start)
-            .lte("start_date", end);
+          // PAGED: cộng hoa hồng qua cả tháng, không chặn per-entity → phân trang kẻo cap 1000.
+          const ciRaw = await fetchAllRows<any>(
+            (from, to) =>
+              (supabase
+                .from("income_expense_items")
+                .select("id, amount, start_date, income_expenses(id, name, payer_name, approval_status, type, deleted_at)") as any)
+                .in("income_expense_type_id", commTypeIds)
+                .gte("start_date", start)
+                .lte("start_date", end)
+                .order("id", { ascending: true })
+                .range(from, to),
+            { label: "salary.commissionItems" },
+          );
           const voucherMap = new Map<string, { name: string; status: string; amount: number; staff: string }>();
           for (const row of (ciRaw || []) as any[]) {
             const ie = (row as any).income_expenses;

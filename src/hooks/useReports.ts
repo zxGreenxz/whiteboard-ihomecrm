@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { resolveVacancyReason, type VacancyEvent } from "@/lib/vacancyReason";
 import {
   addDays,
@@ -677,18 +678,23 @@ export function useExpenseRatioReport(
       const endDateStr = format(rangeEnd, "yyyy-MM-dd");
 
       // --- Revenue = SUM(income_expenses.total_amount) WHERE type='INCOME' approved by voucher_date month
-      let incomeQuery = supabase
-        .from("income_expenses" as any)
-        .select("voucher_date, building_id, total_amount")
-        .eq("type", "INCOME")
-        .eq("approval_status", "APPROVED")
-        .is("deleted_at", null)
-        .gte("voucher_date", startDateStr)
-        .lte("voucher_date", endDateStr);
-      if (buildingId) incomeQuery = incomeQuery.eq("building_id", buildingId);
-
-      const { data: incomeVouchers, error: incErr } = await incomeQuery;
-      if (incErr) throw incErr;
+      // PAGED: cộng tiền qua nhiều tháng/nhiều toà — phải phân trang kẻo cap 1000 làm hụt tổng.
+      const incomeVouchers = await fetchAllRows<any>(
+        (from, to) => {
+          let q = supabase
+            .from("income_expenses" as any)
+            .select("id, voucher_date, building_id, total_amount")
+            .eq("type", "INCOME")
+            .eq("approval_status", "APPROVED")
+            .is("deleted_at", null)
+            .gte("voucher_date", startDateStr)
+            .lte("voucher_date", endDateStr);
+          if (buildingId) q = q.eq("building_id", buildingId);
+          return q.order("voucher_date", { ascending: false }).order("id", { ascending: true }).range(from, to);
+        },
+        { label: "expenseRatio.income" },
+      );
+      if (incomeVouchers === null) throw new Error("Lỗi tải doanh thu (income_expenses)");
 
       for (const v of (incomeVouchers ?? []) as any[]) {
         const m = (v.voucher_date as string | null)?.slice(0, 7);
@@ -696,24 +702,29 @@ export function useExpenseRatioReport(
         revenueByMonth[m] += Number(v.total_amount ?? 0);
       }
 
-      let voucherQuery = supabase
-        .from("income_expenses" as any)
-        .select(
-          `id, voucher_date, building_id, type, approval_status,
-           income_expense_items (
-             amount,
-             income_expense_type:income_expense_type_id (id, name, category, type)
-           )`
-        )
-        .eq("type", "EXPENSE")
-        .eq("approval_status", "APPROVED")
-        .is("deleted_at", null)
-        .gte("voucher_date", startDateStr)
-        .lte("voucher_date", endDateStr);
-      if (buildingId) voucherQuery = voucherQuery.eq("building_id", buildingId);
-
-      const { data: vouchers, error: vErr } = await voucherQuery;
-      if (vErr) throw vErr;
+      // PAGED: cộng chi theo hạng mục qua nhiều tháng/toà — phân trang kẻo cap 1000.
+      const vouchers = await fetchAllRows<any>(
+        (from, to) => {
+          let q = supabase
+            .from("income_expenses" as any)
+            .select(
+              `id, voucher_date, building_id, type, approval_status,
+               income_expense_items (
+                 amount,
+                 income_expense_type:income_expense_type_id (id, name, category, type)
+               )`
+            )
+            .eq("type", "EXPENSE")
+            .eq("approval_status", "APPROVED")
+            .is("deleted_at", null)
+            .gte("voucher_date", startDateStr)
+            .lte("voucher_date", endDateStr);
+          if (buildingId) q = q.eq("building_id", buildingId);
+          return q.order("voucher_date", { ascending: false }).order("id", { ascending: true }).range(from, to);
+        },
+        { label: "expenseRatio.expense" },
+      );
+      if (vouchers === null) throw new Error("Lỗi tải chi phí (income_expenses)");
 
       const UNCATEGORIZED = "(Chưa phân nhóm)";
       const expensesByMonthCategory: Record<string, Record<string, number>> = {};
