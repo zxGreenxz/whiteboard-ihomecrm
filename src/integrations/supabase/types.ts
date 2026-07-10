@@ -132,6 +132,224 @@ export type Database = {
           },
         ]
       }
+      ai_chat_messages: {
+        Row: {
+          content: string | null
+          created_at: string
+          id: string
+          metadata: Json
+          model: string | null
+          role: string
+          seq: number
+          thread_id: string
+          tool_call_id: string | null
+          tool_calls: Json | null
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          model?: string | null
+          role: string
+          seq?: never
+          thread_id: string
+          tool_call_id?: string | null
+          tool_calls?: Json | null
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          model?: string | null
+          role?: string
+          seq?: never
+          thread_id?: string
+          tool_call_id?: string | null
+          tool_calls?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_chat_threads: {
+        Row: {
+          created_at: string
+          id: string
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_copilot_entitlements: {
+        Row: {
+          chat_enabled: boolean
+          created_at: string
+          ui_control_enabled: boolean
+          user_id: string
+        }
+        Insert: {
+          chat_enabled?: boolean
+          created_at?: string
+          ui_control_enabled?: boolean
+          user_id: string
+        }
+        Update: {
+          chat_enabled?: boolean
+          created_at?: string
+          ui_control_enabled?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_copilot_settings: {
+        Row: {
+          chat_enabled: boolean
+          daily_usd_cap_global: number
+          daily_usd_cap_tenant: number
+          daily_usd_cap_user: number
+          id: boolean
+          rate_per_min: number
+          ui_control_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          chat_enabled?: boolean
+          daily_usd_cap_global?: number
+          daily_usd_cap_tenant?: number
+          daily_usd_cap_user?: number
+          id?: boolean
+          rate_per_min?: number
+          ui_control_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          chat_enabled?: boolean
+          daily_usd_cap_global?: number
+          daily_usd_cap_tenant?: number
+          daily_usd_cap_user?: number
+          id?: boolean
+          rate_per_min?: number
+          ui_control_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_providers: {
+        Row: {
+          data_class: string
+          default_model: string | null
+          enabled: boolean
+          label: string
+          models: Json
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          data_class?: string
+          default_model?: string | null
+          enabled?: boolean
+          label: string
+          models?: Json
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          data_class?: string
+          default_model?: string | null
+          enabled?: boolean
+          label?: string
+          models?: Json
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_usage_logs: {
+        Row: {
+          cached_tokens: number
+          completion_tokens: number
+          cost_usd: number | null
+          created_at: string
+          error_detail: string | null
+          feature: string
+          id: string
+          latency_ms: number | null
+          model: string
+          owner_id: string | null
+          prompt_tokens: number
+          provider: string
+          reserved_cost_usd: number
+          status: string
+          task_id: string | null
+          total_tokens: number
+          user_id: string
+        }
+        Insert: {
+          cached_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_detail?: string | null
+          feature?: string
+          id?: string
+          latency_ms?: number | null
+          model: string
+          owner_id?: string | null
+          prompt_tokens?: number
+          provider: string
+          reserved_cost_usd?: number
+          status?: string
+          task_id?: string | null
+          total_tokens?: number
+          user_id: string
+        }
+        Update: {
+          cached_tokens?: number
+          completion_tokens?: number
+          cost_usd?: number | null
+          created_at?: string
+          error_detail?: string | null
+          feature?: string
+          id?: string
+          latency_ms?: number | null
+          model?: string
+          owner_id?: string | null
+          prompt_tokens?: number
+          provider?: string
+          reserved_cost_usd?: number
+          status?: string
+          task_id?: string | null
+          total_tokens?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       area_buildings: {
         Row: {
           area_id: string
@@ -8236,6 +8454,7 @@ export type Database = {
         Args: { anchor: string; cycle: string; k: number }
         Returns: string
       }
+      ai_copilot_perms_for: { Args: { p_user: string }; Returns: Json }
       append_fee_attachment: {
         Args: { p_url: string; p_voucher_id: string }
         Returns: Json
@@ -8613,6 +8832,20 @@ export type Database = {
       fee_type_matches: {
         Args: { p_cat: string; p_category_key: string; p_name: string }
         Returns: boolean
+      }
+      finalize_ai_usage: {
+        Args: {
+          p_cached_tokens: number
+          p_completion_tokens: number
+          p_cost_usd: number
+          p_error: string
+          p_id: string
+          p_latency_ms: number
+          p_prompt_tokens: number
+          p_status: string
+          p_total_tokens: number
+        }
+        Returns: undefined
       }
       fmt_bonus_k: { Args: { amt: number }; Returns: string }
       gen_contract_public_code: { Args: { len?: number }; Returns: string }
@@ -9349,6 +9582,17 @@ export type Database = {
       request_paid_leave: {
         Args: { p_date: string; p_reason?: string }
         Returns: Json
+      }
+      reserve_ai_usage: {
+        Args: {
+          p_est_cost_usd: number
+          p_feature: string
+          p_model: string
+          p_provider: string
+          p_task_id: string
+          p_user_id: string
+        }
+        Returns: string
       }
       resolve_fixed_expense_type: {
         Args: { p_category_key: string; p_owner: string }
