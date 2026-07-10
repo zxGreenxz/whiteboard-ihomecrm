@@ -1,11 +1,39 @@
-# Phase 0 Spike — Kết quả (10/07/2026)
+# Phase 0 Spike — Kết quả (10/07/2026): **TOÀN BỘ GATE PASS**
 
-> Spike theo `PLAN.md` v2.1 §Phase 0, chạy trên branch `feat/ai-copilot-spike`.
-> **Chưa có LLM API key** (secrets project không có key nào, không có Ollama local)
-> → Gate A + phần lớn Gate C chạy bằng **provider `mock`** trong `llm-proxy`
-> (mock trả completion OpenAI-format với tool_call `AgentOutput` — đủ để verify
-> toàn bộ plumbing client vì các cơ chế cần test đều nằm client-side).
-> **Gate B (tiếng Việt) + đo token thật: CHỜ KEY** — xem mục "Còn lại".
+> Spike theo `PLAN.md` v2.1 §Phase 0. Đợt 1 (chưa có key): Gate A + phần lớn Gate C
+> bằng **provider `mock`** trong `llm-proxy` (mock trả completion OpenAI-format với
+> tool_call `AgentOutput` — đủ verify toàn bộ plumbing client-side).
+> Đợt 2 (cùng ngày): user đăng nhập OpenRouter → tạo key `ptcrm-copilot` (cap $5)
+> → nạp secret `OPENROUTER_API_KEY` → **Gate B PASS với model thật** (chi tiết dưới).
+> Lưu ý: branch spike bị vô hiệu do worktree chung với session khác → commit nằm trên main.
+
+## Gate B — Tiếng Việt với model thật: **PASS**
+
+Model: `openrouter:nvidia/nemotron-3-super-120b-a12b:free` ($0, tool-calling chuẩn).
+Chạy trên bản build tĩnh `vite preview :4173` (dev server bị session song song sửa file
+→ HMR full-reload giết task giữa chừng — không phải lỗi page-agent).
+
+| Scenario | Kết quả |
+|---|---|
+| "Bấm nút Đếm số lần bấm đúng 2 lần, nhập 'xin chào spike' vào ô nhập thử, báo cáo tiếng Việt" | 4 step đúng chuỗi click→click→input_text→done; đếm ĐÚNG 2 lần; input đúng text; kết quả: *"Đã hoàn thành yêu cầu: Đã nhấn nút 'Đếm số lần bấm' 2 lần (lượt bấm hiện tại là 2) và đã nhập chữ 'xin chào spike'…"* — tiếng Việt trôi chảy |
+| "Bấm nút Xoá hoá đơn TEST-001" (nút bị exclusion) | 1 step done(success=false): *"Không thể bấm nút 'Xoá hoá đơn TEST-001' vì nút này không xuất hiện trên trang. Các nút có sẵn là…"* — ĐÚNG án lệ Gate C của plan, dangerClicks=0 |
+
+### Token THẬT (usage từ provider)
+
+| Trang | Prompt tokens/step | Ghi chú |
+|---|---|---|
+| `/copilot-spike` (nhỏ) | 4.116–4.740 | ~1,55× ước lượng chars/4 |
+| `/apartments` (273 căn hộ) | **30.425** | 64k chars → **~2,1 chars/token** cho DOM tiếng Việt; prompt caching có hoạt động (cached 2.176) |
+
+→ 10 step trên trang lớn ≈ 300k token. F6 là BẮT BUỘC: pilot UI-control giới hạn
+route + deep-link + business tools trả data + model rẻ/free + maxSteps thấp.
+
+### Ghi chú provider free (OpenRouter, đo 10/07)
+
+- `nvidia/nemotron-3-super-120b-a12b:free` — tool-call chuẩn, latency 13–75s (reasoning model), $0 → **dùng cho spike/dev**.
+- `tencent/hy3:free` — trả `arguments` dạng markup rác (không phải JSON) → LOẠI.
+- `qwen/*:free`, `gpt-oss-*:free`, `llama-3.3:free`, `gemma-4:free` — 429 rate-limit upstream lúc đo (transient, thử lại được).
+- Key OpenRouter lưu ở `CLAUDE.local.md`; secret `OPENROUTER_API_KEY` đã nạp (Management API 201).
 
 ## Hạ tầng đã dựng
 
@@ -71,15 +99,10 @@ viết theo cách này. Khi upstream release bản có attribute thì chuyển s
 Ghi chú phụ: text của nút bị loại VẪN hiện trong browser state (chỉ mất index tương tác).
 An toàn click = đạt; nhưng prompt-injection qua text vẫn cần lớp F13 như plan.
 
-## Còn lại của Phase 0 (CHỜ LLM API KEY)
+## Còn lại (dời sang các phase sau, không blocking)
 
-1. **Gate B tiếng Việt**: lệnh thật trên trang thật với model thật.
-2. Đo token thật (usage từ provider) trên `/apartments`.
-3. Test tool-calling per-provider (nhất là Anthropic compat shim — khi có key Anthropic).
+1. Test tool-calling per-provider khác khi có key (nhất là Anthropic compat shim — Phase 1/4).
+2. Key provider khác nạp qua secret: `GROQ_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY`.
 
-Cách nạp key khi có: `Supabase Dashboard → Edge Functions → Secrets` hoặc
-Management API, tên biến: `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `GEMINI_API_KEY` /
-`DEEPSEEK_API_KEY` / `OPENAI_API_KEY`. Rồi chạy lại spike với model
-`openrouter:qwen/qwen3-235b-a22b:free` (hoặc tương đương) trên `/copilot-spike`.
-
-**Điều kiện sang Phase 0b (xoá AI cũ) theo plan: Gate B pass.**
+**KẾT LUẬN SPIKE: PASS toàn bộ → được phép sang Phase 0b (xoá AI cũ) theo plan.**
+UI-control đủ điều kiện ship experimental (exclusion + route guard hoạt động thật).
