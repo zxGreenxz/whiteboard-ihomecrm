@@ -60,27 +60,21 @@
 
 ---
 
-## Backlog (Phase 7–10 CHƯA làm) + việc hoãn trong phase 1–6
+## ✅ Phase 7–10 ĐÃ XONG (2026-07-10) — xem `phase-7-10.md`
 
-### Phase 7 — Dọn route + xoá page chết (user đã yêu cầu xoá)
-- Xoá `DebtReport` + `CustomerDebtReport` (2 BC công nợ — user nói "bỏ, đã làm bên
-  /thu-tien") + hook `useDebtReport`/`useCustomerDebtReport`.
-- Xoá code chết đã phát hiện: `useCashBookReport`, `useCashFlowReport`,
-  `useProfitDistributionReport` (0 usage, join bảng cũ), `pages/tenants/TenantsPage.tsx`
-  (0 importer), `OccupancyReport` cũ.
-- Dồn 2 scheme URL `/report/finance/*` + `/reports/finance/*` về 1 canonical.
+Toàn bộ backlog Phase 7–10 đã hoàn thành + verify production (11 commit
+`a9c59e6`…`d1ab038`): dọn route/BC chết, BC Lấp đầy v2 (2 RPC + test 14
+assertion), 4 UI hết query trực tiếp, god-hook/monolith đã tách (export parity
++ verbatim check), salary dedup period/format. TS baseline 38→32; vitest
+699→726.
 
-### Phase 8 — Làm lại BC Lấp đầy (user yêu cầu tính năng mới)
-Trang mới thay `OccupancyNewReport` gồm: snapshot+trend dễ hiểu, **cột ĐÃ CỌC/giữ
-chỗ** (tách `rooms.RESERVED`), **dự báo SẮP TRỐNG** (HĐ hết hạn 30/60 ngày chưa gia
-hạn — suy từ `contract_extensions` KHÔNG từ status EXTENDED), **doanh thu tiềm năng
-bỏ lỡ** (phòng trống × giá).
-
-### Phase 9–10 — Rút query khỏi component + mổ god-hook/monolith
-- Rút `.from()` trực tiếp khỏi OwnerDashboardV5 (10), ExcelInvoiceDialog (9),
-  ContractDetailView (8), ExportExcelDialog (7).
-- Mổ god-hook: useIncomeExpenses (2178), useReports (1476)... thành shell re-export.
-- Mổ monolith: ContractFormDialog (2196), ContractDetailView (1573); dedup salary ×4.
+### Rủi ro/follow-up MỞ sau đợt này
+| # | Việc | Ghi chú |
+|---|------|---------|
+| F1 | **Fresh rebuild / DR baseline** (Gate 6.5 mục hoãn — user chốt hoãn 10/07) | Chuỗi migration chưa replay sạch từ DB rỗng (bundle hand-apply + archive). Khi làm: `pg_dump` → `supabase/schema/baseline.sql` + CI DR test; cần connection string DB trực tiếp (PAT không đủ). KHÔNG ảnh hưởng production |
+| F2 | **Atomicity submit ExcelInvoiceDialog** (ghi ở Phase 9C) | Tạo N hoá đơn = N mutation tuần tự; lỗi giữa chừng → một phần thành công (hành vi cũ giữ nguyên). Nếu cần: RPC transaction — làm phase riêng, ĐỪNG trộn vào refactor |
+| F3 | `staff_assignments` same-owner guard khi INSERT (P0-4 cũ) | Nhánh gán-cụ-thể không owner-join là CHỦ Ý (uỷ quyền chéo live) — chỉ cần guard lúc tạo assignment mới |
+| F4 | Salary UI Sheet/DRow ×2 biến thể | KHÔNG gộp được (khác hành vi dấu trừ + props). Nếu muốn hợp nhất phải là quyết định UI có chủ ý, không phải refactor |
 
 ### Hoãn trong phase 1–6
 - **queryKeys registry + rework realtime hub** (Phase 5): rủi ro cache-stale trên

@@ -67,9 +67,11 @@ Xem chi tiết 1 commit: `git show <hash>`. Diff 1 file trong commit: `git show 
   nguồn, fetchAllRows fail-closed) + gate/rebuild (TS fingerprint, forfeit trigger
   replay) + P2/P3. Chi tiết: **`phase-1b-audit-followup.md`**; rủi ro + verify:
   `RISK-REGISTER.md` (mục P0/H1–H4).
-- **Chưa làm: Phase 7–10** (dọn route + xoá page chết + xoá 2 BC công nợ; làm lại
-  BC Lấp đầy; rút query khỏi component + mổ god-hook; mổ component monolith + dedup
-  salary). Xem `../../` plan gốc + RISK-REGISTER §"Còn lại".
+- **Phase 7–10 (2026-07-10): ĐÃ XONG + shipped** — dọn route/BC chết, BC Lấp đầy
+  v2 (2 RPC chỉ-đọc + `scripts/test-occupancy-v2.mjs` 14 assertion), 4 UI hết
+  query trực tiếp, god-hook/monolith tách shell re-export, salary dedup.
+  Chi tiết + commit chain: **`phase-7-10.md`**. TS baseline 38→32 fingerprint;
+  vitest 699→726. Follow-up mở: RISK-REGISTER §F1–F4.
 
 ## Công cụ mới tạo đợt này (tái dùng về sau)
 

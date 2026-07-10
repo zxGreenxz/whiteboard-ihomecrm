@@ -169,4 +169,72 @@ characterization test + suite 720); mỗi subphase 1 commit revert độc lập.
 
 ---
 
-*(Phase 10 sẽ được ghi tiếp bên dưới sau khi hoàn thành từng subphase.)*
+## PHASE 10 — Chia monolith + dedup (0 thay đổi DB, behavior-preserving)
+
+### 10A — useIncomeExpenses (`959803c`)
+2178 dòng → shell 5 dòng + `src/hooks/income-expenses/{types,queries,mutations,
+statusMutations,batch,recurring,specialized,index}.ts`. Code di chuyển NGUYÊN VĂN
+(so khớp từng ký tự với HEAD, phủ 100% dòng 15–2178). Export parity 36/36; query
+key/status transition/audit không đổi; property test 26/26.
+
+### 10B — useReports (`1f989db`)
+1096 dòng → shell 6 dòng + `src/hooks/reports/{types,realEstateReports,
+financeReports,index}.ts` (cạnh useOccupancyDashboard của Phase 8). Diff
+sorted-lines vs HEAD: 0 dòng đổi. Shell chỉ re-export 15 export cũ; không
+khôi phục hook chết. `contractReports.ts` KHÔNG tạo (không còn hook thuần HĐ).
+
+### 10C — ContractFormDialog (`d1ab038`)
+2196 → **138 dòng** root + `contract-form/{types,useContractFormState (717),
+useContractSubmit (379),GeneralSection,CustomersSection,RentDepositSection,
+ServicesSection,FirstInvoicePreview,ContractFormFooter}`. onSubmit nguyên văn,
+THỨ TỰ mutation không đổi (validate kỳ đầu → deposit shortfall DEBT/FIRST_INVOICE
+→ createContract → phiếu thu cọc → flip deposit CONVERTED → modal HH).
+useContractFormState giữ 1 hook 717 dòng CÓ CHỦ Ý — invoice preview effect đọc
+12 nguồn đan xen, cắt nhỏ hơn = đổi luồng data. Characterization: 38/38 test lib
+trước khi tách. **Verify production:** mở dialog Cập nhật từ HĐ thật — 3 section
+render, prefill đúng (ngày + giá 5tr), đóng không lưu.
+
+### 10D — ContractDetailView UI (`1dc3064`)
+1397 → **341 dòng** root + 7 component (ContractActionBar — mọi canUse giữ
+nguyên, ContractGeneralTab, ContractSummary, ContractServicesTab,
+Contract{Invoices,Payments,History}TabDesktop — hậu tố Desktop vì tên không hậu
+tố đã là component MOBILE). formatCurrency giữ bản Intl gốc. **Verify
+production:** trang HĐ đủ 5 tab + action bar + summary, console 0 lỗi.
+
+### 10E — Salary dedup (`55c3300`)
+- `src/lib/salaryPeriod.ts` (canonical, xây trên ymOf/shiftYm managerSalary):
+  thay 3 bản copy-paste currentPeriodMonth/shiftMonth ở MySalaryPage/
+  ManagerSalaryPage/useManagerSalary — test oracle so TỪNG KÝ TỰ với bản cũ,
+  phủ rollover 12→1 qua năm.
+- `bigNum` gom về salaryFormat.ts (xoá 4 bản local); +9 test âm/0/lớn/decimal.
+- **CHỦ Ý KHÔNG ép chung** (kết luận sau khi so code, khớp guardrail plan):
+  Sheet/DRow của AdminMobile vs SelfMobile KHÁC HÀNH VI THẬT (logic dấu trừ
+  `neg && amount>0` vs `neg`, prop title/maxH) — ép superset = đổi UI lương;
+  finance-analysis shiftMonth thuần số học "tránh timezone" + ymOf semantics
+  khác + test riêng — giữ nguyên domain; ProfitDistributionMobile shiftMonth
+  là state setter {y,m}. → KHÔNG tạo `salary/shared/` gượng ép.
+- Giữ nguyên: query keys, quyền admin/self, V5 kill switches, lock, payout,
+  công thức gross/net/deduction. **Verify production:** /finance/salary render
+  "Bảng lương Tháng 7" + bảng 2 NV + tổng quỹ, console 0 lỗi.
+
+---
+
+## TỔNG KẾT ĐỢT PHASE 7–10 (Definition of Done)
+
+| Tiêu chí | Kết quả |
+|---|---|
+| Gate 6.5 (điều chỉnh: TS ratchet + hoãn DR) | ✅ PASS |
+| TS baseline | **38 → 32 fingerprint** (106 → 74 lỗi thô) — chỉ GIẢM |
+| Vitest | **699 → 726 pass** (+21 excelInvoiceRows, +6 salaryPeriod) |
+| Build | ✅ xanh mọi subphase |
+| Cross-tenant | ✅ PASS (chạy lại sau migration Phase 8) |
+| Browser verify | ✅ từng phase trên production, console 0 lỗi |
+| Route/card/import chết | ✅ 0 (grep sạch) |
+| 4 UI Phase 9 | ✅ 0 `.from(`/`.rpc(` trực tiếp |
+| Monolith Phase 10 | ✅ tách xong, API + behavior giữ nguyên (export parity + verbatim check) |
+| DB | Phase 7/9/10: 0 thay đổi; Phase 8: +2 RPC chỉ-đọc (không đụng dữ liệu) |
+
+**Commit chain:** `a9c59e6` (P7) → `7d9082f` (P8) → `fee6cda` (9A) → `4db880e`
+(9B) → `449fee9` (9C) → `274877a` (9D) → `959803c` (10A) → `1f989db` (10B) →
+`55c3300` (10E) → `1dc3064` (10D) → `d1ab038` (10C). Rollback: revert commit
+tương ứng (DB chỉ Phase 8 — DROP 2 FUNCTION theo comment migration).
