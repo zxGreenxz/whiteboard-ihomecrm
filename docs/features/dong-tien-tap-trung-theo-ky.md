@@ -3,6 +3,92 @@
 > **Bản chất tài liệu**: Đây là **tài liệu đặc tả (spec)** để bàn giao cho agent AI chuyên làm UI/UX. Tài liệu KHÔNG thiết kế UI — chỉ mô tả **chức năng, mục đích, ý nghĩa, codebase liên quan, logic, database, flow**. Người thực hiện UI/UX nhận file này + toàn bộ code dự án hiện tại, rồi dựng UI và ghép vào các hook/RPC mô tả bên dưới.
 >
 > **Phạm vi**: spec-only. Việc code (migrations + RPC + hook data + UI) do agent tiếp theo thực hiện. Xem §13.
+>
+> ⚠️ **TRẠNG THÁI: ĐÃ TRIỂN KHAI XONG** — V1 08/07 (`3bf25d8`) + V2 10/07 (`89293c0`, `784d78c`).
+> Spec bên dưới giữ nguyên làm tư liệu gốc; **§0 ngay sau đây mô tả HIỆN TRẠNG production**,
+> nơi V2 đã **ĐÈ một số quyết định của spec**. Khi mâu thuẫn, §0 thắng.
+
+---
+
+## §0. UPDATE 10/07/2026 — Hiện trạng V2 (đè spec khi mâu thuẫn)
+
+V2 làm sau vòng rà **dữ liệu chi thật T2–T7/2026** + duyệt UI từng page trên browser +
+**16 quyết định chốt với chủ dự án** (4 vòng hỏi) + vòng audit /code-review. Bối cảnh đầy đủ:
+memory `project_period_fee_centralized_page.md`.
+
+### 0.1 Những chỗ V2 ĐÈ spec gốc
+
+| Spec gốc | Thực tế V2 (đã chốt) | Lý do |
+|---|---|---|
+| §5.3/§5.4: resolve + match type theo **OWNER tòa** | Khi **PHÁT HIỆN** phiếu (`get_period_fee_status`): match **MỌI type** qua `fee_type_matches`, KHÔNG lọc owner. Chỉ khi **TẠO** phiếu mới resolve theo owner | Phiếu thật dùng type của **người tạo** (T7: tiền nhà 0/14 type thuộc owner, internet 0/13, rác 0/17) → match theo owner báo "thiếu ảo" 109 khoản, nguy cơ đóng trùng ~615tr tiền nhà. Cross-tenant vẫn an toàn vì lọc `building_id ∈ tòa được phép` |
+| §7.1: đa kỳ nhập **giá MỖI kỳ** ("×n = tổng") | Ô Số tiền = **TỔNG cả khoảng**; hint "≈ X/kỳ"; `default_amount` học per-kỳ = tổng/n | Quyết định chủ (vòng 2) |
+| Chips 1/3/6/12 cố định | Chips + **ô nhập số kỳ tùy ý** (1–36) | Quyết định chủ |
+| §5.7/§8: hủy chỉ phiếu `system_source IN ('utility.bill','fixed_fee')` | **Hủy được CẢ phiếu auto/nhập tay** khớp hạng mục; chặn phiếu thuộc batch | Quyết định chủ. ⚠️ Generator dedup theo `(parent, ngày, deleted_at NULL)` → hủy phiếu auto thì lần sinh sau **CÓ THỂ tạo lại đúng phiếu đó**; muốn dừng hẳn phải sửa template định kỳ gốc (dialog đã cảnh báo) |
+| §5.5 HH: "khuyến nghị mặc định tạo APPROVED khi bấm Chi" | RPC `create_commission_voucher` (09/07) **LUÔN tạo NHÁP** + khoá 1 HĐ = 1 phiếu/loại; modal 2 nút **"Lưu nháp" / "Chi & duyệt"** (tạo nháp → gán sổ → `approve_voucher`) | Quyết định chủ 09/07 (audit trail) |
+| — | Cờ "Không áp dụng" tòa×hạng mục: nguồn DUY NHẤT = **`buildings.hidden_fixed_expenses`** (chung với nút bánh răng BC Lợi nhuận 09/07); `bfa.not_applicable` DEPRECATED | Tránh 2 nguồn lệch (403PVB tắt nước ở BC LN mà trang này vẫn đếm thiếu) |
+| — | Ngày phiếu GRID luôn = hôm nay (KHÔNG date-picker); riêng modal HH + form Bảo trì có chọn ngày | Quyết định chủ (vòng 1 + 4) |
+
+### 0.2 Nghiệp vụ MỚI ngoài spec: recurring sinh NHÁP + "Thanh toán phiếu nháp"
+
+- Cột `income_expenses.repeat_auto_approve` (default `true` = hành vi cũ). Tắt →
+  `generate_recurring_vouchers` sinh phiếu con **UNAPPROVED + sổ TRỐNG** (`account_id NULL`).
+- **13 template Tiền nhà đã flip sang chế độ Nháp** (chủ chốt: tiền nhà phải điền sổ +
+  ảnh CK + duyệt tại trang này).
+- RPC `pay_draft_fee_voucher(p_voucher_id, p_account_id, p_attachments)`: gán sổ + lưu ảnh +
+  **DUYỆT nguyên tử** (gọi `approve_voucher` bên trong — giữ gate quyền + audit; lỗi → rollback hết).
+- Ô GRID **3 trạng thái**: chưa có phiếu / **NHÁP** (badge + nút "Thanh toán") / đã đóng.
+  Tổng quan đếm nháp là "chưa chi" + chú thích "N nháp chờ TT".
+- Form Thu chi (khu định kỳ): toggle "Phiếu sinh ra: **Tự động duyệt / Nháp chờ thanh toán**"
+  (field `repeat_auto_approve` trong `incomeExpenseSchema`).
+
+### 0.3 Inventory RPC/schema SAU V2 (thay bảng §5/§10 khi tra cứu)
+
+Migrations: `20260708130000..130600` (V1) + `20260710120000..120600` (V2) — đã apply live.
+
+| Đối tượng | Hiện trạng | Ghi chú |
+|---|---|---|
+| `get_period_fee_status(text,text,uuid[],text[])` | v3: trả `paid_amount, draft_amount, covered_*, voucher_ids, vouchers jsonb, has_receipt, account_name, account_is_empty, expected_amount, not_applicable` | `vouchers` = chi tiết TỪNG phiếu `{id, amount, status, date, source, is_auto (theo repeat_parent_id), in_batch, cancellable, account_*, attachments, notes, item_count, start, end, creator_name}` — nuôi popover/edit/thumbnail/Lịch sử. `expected` của quan_ly gate theo `can_view_restricted_ie()`. `not_applicable` đọc từ `buildings.hidden_fixed_expenses` |
+| `pay_period_fee(…, p_force boolean)` | 11 tham số; `p_amount` = **TỔNG** | Chống trùng: kỳ giao đã có phiếu APPROVED + không force → trả `{warning:'duplicate', existing_count, existing_amount}` (KHÔNG ghi) → FE confirm rồi force. Học `default_amount` per-kỳ + `default_account_id` first-write |
+| `update_period_fee(7 args)` | + guard **phiếu nhiều dòng** (sửa tiền/kỳ chỉ khi 1 item) | FE seed từ voucher CỤ THỂ → hết bug xoá trắng notes / đè mất ảnh |
+| `cancel_period_fee(uuid)` | v2: nhận cả phiếu auto/nhập tay khớp hạng mục; chặn phiếu batch | |
+| `pay_draft_fee_voucher(uuid,uuid,jsonb)` | MỚI | §0.2 |
+| `append_fee_attachment(uuid,text)` | MỚI | Camera đính nhanh trên dòng — append server-side (2 người cùng đính không đè nhau) |
+| `upsert_building_fee_account(**7 args**)` | v3: `p_not_applicable` ghi vào `buildings.hidden_fixed_expenses` | **ĐÃ ĐỔI CHỮ KÝ** so spec/V1 (6 args) |
+| `get_period_commissions(text,uuid[])` | v2: + `voucher_amount`, `voucher_account_name`; `status: 'unpaid'\|'draft'\|'paid'` | Match `commission_kind='broker'` (fallback name-match phiếu cũ). Fix bug NHÁP hiển thị như "Đã chi" |
+| `generate_recurring_vouchers` | v2: tôn trọng `repeat_auto_approve` | |
+| `get_period_maintenance` | không đổi | |
+| Backfill 1 lần | `default_amount` per-kỳ từ phiếu gần nhất (**BỎ quan_ly** — bfa SELECT-visible với staff theo tòa); `has_elevator=true` cho tòa đang có phiếu thang máy (4 tòa) | |
+
+### 0.4 FE hiện trạng (bổ sung/đè §6)
+
+- `usePeriodFees.ts`: + `PeriodFeeVoucher`, `usePayDraftFeeVoucher`, `useAppendFeeAttachment`;
+  `PayPeriodFeeResult` là union có nhánh `{warning}`.
+- `usePeriodFeeState.ts`: **reset toàn bộ state theo `[serverKey, period]`** (fix leak gõ tiền
+  Internet dính sang Rác); `defaultBookFor(bId)` = `ui_preferences.feeBooks["{bId}:{key}"]`
+  → last-used theo hạng mục → sổ "…Thu" (thực tế sổ chi là **ATam 227/281 phiếu**);
+  sửa/hủy/thanh toán **per-voucher**; camera nhanh; `dupConfirm`; `draftTarget`.
+- Components mới: `PeriodFeeVoucherList.tsx` (popover nhiều phiếu + `PeriodFeePayDraftModal`
+  + `PeriodFeeDupConfirmModal`), `PeriodCommissionModal.tsx` (Lưu nháp | Chi & duyệt, BankSelect).
+- `feeCategories.ts`: `providerConfig=false` cho `tien_nha/quan_ly/ve_sinh` → lưới gọn 1 cột
+  Ghi chú; + `RESTRICTED_SERVER_KEYS`, `gridKeysFor(canRestricted)` — **đừng hardcode 'quan_ly'
+  ở component**.
+- **Ẩn hẳn Quản Lý** (dropdown/Tổng quan/status keys) khi thiếu `income_expenses.restricted_view`.
+- Thang máy: lưới = cờ `has_elevator` **∪ tòa có phiếu (paid/draft) trong kỳ** — không ẩn nhầm tiền đã chi.
+- Tab **"Lịch sử"** theo ngày cho MỌI hạng mục GRID (cả mobile) — build từ `vouchers` payload,
+  không cần RPC mới.
+- Bảo trì: form phiếu tổng đủ **sổ + ngày + ảnh NCC** trên cả desktop lẫn **mobile**.
+  (Gộp phiếu lẻ vào batch: KHÔNG làm — chủ không chọn.)
+- HH: banner "Kỳ trước còn N HĐ chưa chi → Xem" (1 kỳ liền trước); thẻ "Đã chi" cộng
+  **số phiếu thật** (voucher_amount), không phải số dự kiến.
+
+### 0.5 Follow-up đã ghi nhận (audit finding chưa làm)
+
+1. Panel ↔ Sheet còn trùng derivations (`visibleIdsFor/dueCountFor/overview/historyDays` +
+   khối form bảo trì) → nên rút `usePeriodFeeDerived` + `useMaintenanceBatchForm`.
+2. `cancel_period_fee`/`cancel_utility_bill` + 3 chỗ validate sổ nên chung helper SQL
+   (drift nhỏ: update chấp nhận owner như admin, pay/draft thì không).
+3. Dup-check chỉ cảnh báo theo phiếu APPROVED (bỏ qua NHÁP đang chờ).
+4. `formatVN/parseVN/fmtDate` trùng ~20 file toàn repo (pattern cũ — refactor riêng).
 
 ---
 
