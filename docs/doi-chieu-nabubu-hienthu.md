@@ -24,6 +24,7 @@ File Excel: `dataexcel/NABUBU T7-N.xlsx` — bảng chốt **tiền mặt** củ
 - `NGÀY/GIỜ CHỐT` là serial Excel bị **US-locale**: Hiển gõ `10/7` (10 tháng 7) → Excel hiểu `Oct 7`. Đừng tin cell này, hỏi ngày chốt thật.
 - Khu `ỨNG TIỀN`: số tiền nằm ở **cột PHÒNG**, diễn giải ở cột GHI CHÚ. 1 khoản ứng có thể = nhiều phiếu chi trên web (vd 6tr công an = 6 phiếu 1tr).
 - Dòng `TỔNG` (cột trái) = tổng phòng − tổng ứng = tổng bảng mệnh giá. Script tự kiểm cả 3 số này với nhau.
+- ⚠ **Chèn/xoá dòng làm NHÃN TOÀ cột A trôi 1 dòng** (chèn kiểu "insert cells" chỉ đẩy cột B/C): mọi nhãn phía dưới đè lên phòng CUỐI của toà trước → bảng lệch theo phòng sinh ra các cặp ảo +/− cùng tiền (net 0), và dòng phòng cuối cùng có thể bị nhãn ỨNG TIỀN nuốt. Script tự cứu dòng bị nuốt + cảnh báo; sửa file: nhãn toà phải nằm cùng dòng với **phòng ĐẦU TIÊN** của toà.
 - Hiển ghi số **khách đưa**, thường KHÔNG trừ thối và hay làm tròn nghìn → lệch lẻ ≤ vài nghìn/phòng là bình thường (xem mục 5).
 - File hay bị Excel lock → luôn copy ra temp rồi mới đọc (script đã làm).
 
@@ -48,7 +49,7 @@ File Excel: `dataexcel/NABUBU T7-N.xlsx` — bảng chốt **tiền mặt** củ
 |---|---|---|
 | Web có phiếu TM tiền to, két không có | Phiếu **tháng đầu (cọc + tiền nhà)** tạo lúc chốt HĐ, tiền thật có thể là CK hoặc Hiển giữ ngoài két | Check sao kê + hỏi người thu; nếu CK → đổi phiếu sang đúng sổ bank |
 | Excel có 1 phòng ghi 2 dòng cùng tiền | HĐ phòng đó đã PAID đủ trên web → dòng 2 là **phòng khác gõ nhầm số phòng** (tiền có thật trong két) | Dò các phòng cùng cụm **chưa có phiếu thu nào** + còn nợ HĐ, hỏi người thu rồi tạo phiếu cho đúng phòng |
-| Phiếu web > Excel đúng cỡ trăm nghìn, hoá đơn hiện **dư âm** (paid > total) | Người tạo phiếu gõ số **làm tròn từ tổng hoá đơn** (6.273.000 → gõ 6.300.000) trong khi khách đưa số khác (6.000.000) | Sửa phiếu về số thực nhận; hoá đơn tự về PARTIAL/nợ |
+| Phiếu web > Excel đúng cỡ trăm nghìn, hoá đơn hiện **dư âm** (paid > total) | ĐỌC NOTES PHIẾU trước khi kết luận: nếu có ghi chú kiểu `"Thu 6.300.000 – Nợ khách 27.000 (trừ kỳ sau)"` thì khách ĐƯA THẬT số đó (khách quen đưa tròn trăm nghìn, chênh với HĐ bù/trừ kỳ sau) → **phiếu đúng, sổ tay/két thiếu tiền**. Chỉ khi notes trống mới nghi gõ nhầm số | Notes rõ ràng → truy tiền mặt thiếu (hỏi người thu); notes trống → hỏi rồi sửa phiếu về số thực nhận |
 | Excel > web vài nghìn ở phòng có `thối=` | Web đã net tiền thối, Hiển chưa thối cho khách (tiền còn trong két) | Thối khách là khớp; không sửa web |
 | Lệch ±500đ | Khách đưa chẵn, phần-còn-lại-sau-CK của hoá đơn lẻ 500đ (1.999.500 / 2.000.500 / 4.152.500) | Chấp nhận, đã định danh; hoặc dùng cơ chế "Làm tròn tiền thiếu" |
 
@@ -56,11 +57,12 @@ File Excel: `dataexcel/NABUBU T7-N.xlsx` — bảng chốt **tiền mặt** củ
 
 | Ngày chốt | Kỳ | Tiền đếm (Excel) | Số dư web Hiển Thu | Chênh | Phân rã |
 |---|---|---:|---:|---:|---|
-| 10/07/2026 | sau BG 01/07 (283.191.333) | 105.133.000 | 107.968.823 | **2.835.823** | −4.540.323 (101/80DS3 PT2607100 tháng đầu, két không có) +2.000.000 (dòng "202/111PVC" thứ 2 — nghi 203/111PVC nợ 4.003.500 chưa có phiếu) −300.000 (301/65NTG phiếu 6,3tr vs HĐ 6.273.000 vs khách đưa 6tr — HĐ đang dư ảo −27.000) +5.000 (thối 162NVK 301/402 chưa thối) −500 (lẻ 500đ ×3) |
+| 10/07/2026 | sau BG 01/07 (283.191.333) | 105.133.000 | 107.968.823 | **2.835.823** | −4.540.323 (101/80DS3 PT2607100 tháng đầu, két không có) +2.000.000 (dòng "202/111PVC" thứ 2 — nghi 203/111PVC nợ 4.003.500 chưa có phiếu) −300.000 (301/65NTG) +5.000 (thối 162NVK 301/402 chưa thối) −500 (lẻ 500đ ×3) |
+| 10/07/2026 (lần 2, sau khi sửa Excel) | nt | danh sách 107.673.323 / mệnh giá 107.133.000 (**tự lệch 540.323 — chưa đếm lại két**) | 107.968.823 | **295.500** | −300.000 (301/65NTG — xem mục dưới) +5.000 (thối 162NVK) −500 (lẻ ×3). Excel thêm 101/80DS3 4.540.323 + bỏ dòng 202 trùng nhưng nhãn toà cột A trôi 1 dòng (script cảnh báo, cặp ảo net 0) |
 
 ### Việc cần chốt với Hiển sau đợt 10/07/2026
 
-1. **PT2607100 — 4.540.323 (101/80DS3 tháng đầu, 09/07)**: tiền đâu? Khách cọc giữ chỗ trước đó CK 1,5tr vào TK939 (29/06) → khả năng tháng đầu cũng CK. Nếu CK: đổi phiếu sang sổ bank nhận tiền. Nếu TM Hiển giữ riêng: nộp két + bổ sung dòng Excel.
-2. **Dòng "202/111PVC" 2.000.000 thứ 2**: phòng nào đưa? Ứng viên chưa có phiếu + còn nợ: **203/111PVC (nợ 4.003.500)**, 202/65NTG (4.269.500), 203/158PVC (4.241.500). Xác định xong tạo phiếu thu TM cho đúng phòng.
-3. **PT2607074 — 301/65NTG**: khách đưa 6.000.000 hay 6.300.000? HĐ chỉ 6.273.000 (đang dư ảo −27.000). Nếu 6tr: sửa phiếu = 6.000.000, khách nợ 273.000 (khách này T6 cũng từng đóng thiếu rồi bù 63.000 sau).
+1. **PT2607100 — 4.540.323 (101/80DS3 tháng đầu, 09/07)**: đã thêm vào danh sách Excel (10/07) nhưng **bảng mệnh giá mới chỉ cộng chay +4 tờ 500k = 2.000.000** → tự lệch 540.323. Phải ĐẾM KÉT THẬT: tiền 4.540.323 này có nằm trong két không (khách cọc giữ chỗ từng CK 1,5tr vào TK939 ngày 29/06 → vẫn nghi tháng đầu là CK, nếu CK thì đổi phiếu sang sổ bank và GỠ dòng này khỏi Excel).
+2. **Dòng "202/111PVC" 2.000.000 thứ 2**: đã bỏ khỏi danh sách (10/07), số 2.000.000 còn treo ở cột GHI CHÚ. Tiền này CÓ THẬT trong két đợt đếm 105.133.000 → vẫn phải tìm phòng nào đưa. Ứng viên chưa có phiếu + còn nợ: **203/111PVC (nợ 4.003.500)**, 202/65NTG (4.269.500), 203/158PVC (4.241.500). Xác định xong tạo phiếu thu TM cho đúng phòng.
+3. **PT2607074 — 301/65NTG — chốt −300.000**: notes phiếu ghi rõ `"Thu 6.300.000 – Nợ khách 27.000 (trừ kỳ sau)"` (Joey tạo 11:48 07/07) → khách ĐƯA THẬT 6.300.000 TM (HĐ 6.273.000, nhà nợ lại khách 27.000). Sổ tay Hiển chỉ ghi 6.000.000 và két đếm khớp 6.000.000 → **thiếu 300.000 tiền mặt thật**, truy hỏi Hiển (tiền để lạc/ghi sổ nhầm), KHÔNG sửa phiếu web. Nhớ kỳ sau trừ khách 27.000.
 4. Thối khách 162NVK: 301 thối 4.000, 402 thối 1.000.

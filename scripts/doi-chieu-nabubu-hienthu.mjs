@@ -56,20 +56,37 @@ let denomTotal = null; // TỔNG của bảng đếm mệnh giá (cột phải)
 let listTotal = null;  // dòng TỔNG cột trái
 let toa = '';
 let mode = 'rooms';
+let pendingTotal = false;
 for (let i = headIdx + 1; i < d.length; i++) {
   const r = d[i];
   const c0 = String(r[0] ?? '').trim();
   // Bảng mệnh giá bên phải: mệnh giá (số) | số tờ | thành tiền — hoặc dòng "TỔNG" | | thành tiền
   if (String(r[7] ?? '').toUpperCase() === 'TỔNG' && num(r[9]) > 0) denomTotal = num(r[9]);
   if (!r.slice(0, 5).some((c) => c !== '')) continue; // trái trống (chỉ có khối bên phải)
-  if (c0.toUpperCase() === 'TỔNG') { listTotal = num(r[1]); continue; }
-  if (c0.toUpperCase().includes('ỨNG')) { mode = 'ung'; }
+  // dòng TỔNG có khi bị tách 2 dòng sau khi chèn/xoá dòng: chữ ở trên, số rơi xuống dưới
+  if (pendingTotal) {
+    pendingTotal = false;
+    if (!c0 && num(r[1]) > 0 && num(r[2]) === 0) { listTotal = num(r[1]); continue; }
+  }
+  if (c0.toUpperCase() === 'TỔNG') { listTotal = num(r[1]); pendingTotal = listTotal === 0; continue; }
+  if (c0.toUpperCase().includes('ỨNG')) {
+    mode = 'ung';
+    // Chèn/xoá dòng hay làm nhãn cột A trôi 1 dòng: nếu dòng "ỨNG TIỀN" vẫn còn
+    // PHÒNG|TIỀN MẶT thì đó thực chất là dòng phòng cuối của toà trước đó.
+    const room0 = String(r[1] ?? '').trim().toUpperCase();
+    if (room0 && num(r[2]) > 0) {
+      console.log(`  ⚠ dòng ${i + 1}: nhãn ỨNG TIỀN đè lên dòng phòng ${room0} = ${fmt(num(r[2]))} → vẫn tính là phòng của ${toa}; nhãn toà cột A có thể đang trôi 1 dòng, sửa lại file!`);
+      exRooms.push({ bld: toa, room: room0, amt: num(r[2]), thoi: num(r[3]), note: '' });
+      continue;
+    }
+  }
   if (mode === 'ung') {
     const amt = num(r[1]);
     if (amt > 0) exUng.push({ amt, note: String(r[4] ?? '').trim() });
     continue;
   }
   if (c0 !== '') toa = c0.split(/\s+/)[0].toUpperCase();
+  if (num(r[4]) >= 100000) console.log(`  ⚠ dòng ${i + 1}: có ${fmt(num(r[4]))} nằm ở cột GHI CHÚ — KHÔNG được cộng vào thu, kiểm tra lại file!`);
   const room = String(r[1] ?? '').trim().toUpperCase();
   const amt = num(r[2]);
   if (!room || amt <= 0) continue;
