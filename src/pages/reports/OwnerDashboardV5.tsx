@@ -3,16 +3,19 @@
 // LƯU Ý VỊ TRÍ (lệch nhỏ so US-5.1, ghi log): settings v5 đặt TẠI ĐÂY thay vì GeneralSettingsPage
 // để chủ có đúng 1 nơi vận hành v5; chức năng đầy đủ theo catalog.
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import MainLayout from "@/components/layout/MainLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
+// Data layer tách riêng (Phase 9A) — UI chỉ nhận data/loading và gọi mutation.
+import {
+  useV5Coverage, useV5Flagged, useV5InspectionLog, useV5SessionPhotos,
+  useV5LockAssert, useV5ShadowReport, useV5AdminConfig, useV5CronRuns,
+  useV5SetConfig, useV5Verdict, useV5ApplyLock, useV5RunJob,
+  type InspectionSessionRow, type InspectionPhotoRow,
+} from "@/hooks/salary-v5/useSalaryV5Admin";
 
-const rpc = supabase.rpc.bind(supabase) as (fn: string, args?: Record<string, unknown>) => any;
 const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("vi-VN") + "đ";
 const thisMonth = () => new Date().toISOString().slice(0, 8) + "01";
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -30,87 +33,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   presence: { label: "Có mặt", cls: "bg-amber-100 text-amber-700" },
 };
 
-function useCoverage() {
-  return useQuery({
-    queryKey: ["v5-coverage-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("building_coverage" as any)
-        .select("*")
-        .gt("rooms_total", 0)
-        .order("days_since_touch", { ascending: false, nullsFirst: true });
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
-}
-
-function useFlagged() {
-  return useQuery({
-    queryKey: ["v5-flagged"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("salary_attendance_day" as any)
-        .select("id, user_id, work_date, status, evidence, audit, tick_source")
-        .eq("status", "flagged")
-        .order("work_date", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
-}
-
-// ---- Nhật ký kiểm tra nhà: chủ xem chi tiết phiên của MỌI quản lý ----
-// RLS insp_sess_select cho is_admin() đọc hết. FK user_id → auth.users (KHÔNG phải
-// profiles) nên không embed tên quản lý qua PostgREST → fetch profiles riêng rồi map.
-function useInspectionLog(dateFrom: string, dateTo: string) {
-  return useQuery({
-    queryKey: ["v5-inspection-log", dateFrom, dateTo],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("inspection_sessions")
-        .select(
-          "id, user_id, building_id, type, status, session_date, started_at, ended_at, dwell_seconds, condition_note, fail_reasons, photos_count, buildings(name)",
-        )
-        .gte("session_date", dateFrom)
-        .lte("session_date", dateTo)
-        .order("session_date", { ascending: false })
-        .order("started_at", { ascending: false });
-      if (error) throw error;
-      const rows = (data ?? []) as any[];
-      const ids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean)));
-      let nameById: Record<string, string> = {};
-      if (ids.length) {
-        const { data: profs } = await (supabase as any)
-          .from("profiles").select("id, full_name").in("id", ids);
-        nameById = Object.fromEntries((profs ?? []).map((p: any) => [p.id, p.full_name]));
-      }
-      return rows.map((r) => ({
-        ...r,
-        building_name: r.buildings?.name ?? "—",
-        manager_name: nameById[r.user_id] ?? "—",
-      }));
-    },
-  });
-}
-
-function useSessionPhotos(sessionId: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["v5-insp-photos", sessionId],
-    enabled,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("inspection_photos")
-        .select("id, slot, storage_path, lat, lng, distance_m, geofence_status, exif_time")
-        .eq("session_id", sessionId)
-        .order("slot");
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
-}
-
-function InspPhoto({ p }: { p: any }) {
+function InspPhoto({ p }: { p: InspectionPhotoRow }) {
   const url = useSignedUrl(p.storage_path);
   const geo = p.geofence_status as string | null;
   const geoColor =
@@ -134,9 +57,9 @@ function InspPhoto({ p }: { p: any }) {
   );
 }
 
-function InspSessionCard({ s }: { s: any }) {
+function InspSessionCard({ s }: { s: InspectionSessionRow }) {
   const [open, setOpen] = useState(false);
-  const photos = useSessionPhotos(s.id, open);
+  const photos = useV5SessionPhotos(s.id, open);
   const stat = STATUS_META[s.status] ?? { label: s.status, cls: "bg-slate-100 text-slate-600" };
   const hasFails = Array.isArray(s.fail_reasons) && s.fail_reasons.length > 0;
   return (
@@ -177,7 +100,7 @@ function InspSessionCard({ s }: { s: any }) {
             <div className="text-xs text-muted-foreground">Phiên này không có ảnh.</div>
           ) : (
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-              {(photos.data ?? []).map((p: any) => (
+              {(photos.data ?? []).map((p) => (
                 <InspPhoto key={p.id} p={p} />
               ))}
             </div>
@@ -193,9 +116,8 @@ function InspSessionCard({ s }: { s: any }) {
 }
 
 export default function OwnerDashboardV5() {
-  const qc = useQueryClient();
-  const coverage = useCoverage();
-  const flagged = useFlagged();
+  const coverage = useV5Coverage();
+  const flagged = useV5Flagged();
   const [month] = useState(thisMonth());
 
   // --- Nhật ký kiểm tra: filter theo ngày/toà/quản lý + nhóm linh hoạt ---
@@ -208,8 +130,8 @@ export default function OwnerDashboardV5() {
   const [fBuilding, setFBuilding] = useState("");
   const [fUser, setFUser] = useState("");
   const [groupBy, setGroupBy] = useState<"day" | "building" | "user">("day");
-  const logQ = useInspectionLog(logFrom, logTo);
-  const logRows: any[] = logQ.data ?? [];
+  const logQ = useV5InspectionLog(logFrom, logTo);
+  const logRows: InspectionSessionRow[] = logQ.data ?? [];
 
   const buildingOpts = useMemo(() => {
     const m = new Map<string, string>();
@@ -226,13 +148,13 @@ export default function OwnerDashboardV5() {
     [logRows, fBuilding, fUser],
   );
   const logGroups = useMemo(() => {
-    const keyOf = (r: any) =>
+    const keyOf = (r: InspectionSessionRow) =>
       groupBy === "day"
         ? r.session_date
         : groupBy === "building"
           ? r.building_name
           : r.manager_name;
-    const m = new Map<string, any[]>();
+    const m = new Map<string, InspectionSessionRow[]>();
     logFiltered.forEach((r) => {
       const k = keyOf(r);
       if (!m.has(k)) m.set(k, []);
@@ -249,99 +171,15 @@ export default function OwnerDashboardV5() {
         })
       : label;
 
-  const assertQ = useQuery({
-    queryKey: ["v5-lock-assert", month],
-    queryFn: async () => {
-      const { data, error } = await rpc("v5_lock_assert", { p_month: month });
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
-  const shadowQ = useQuery({
-    queryKey: ["v5-shadow", month],
-    queryFn: async () => {
-      const { data, error } = await rpc("v5_shadow_report", { p_month: month });
-      if (error) throw error;
-      return data as any;
-    },
-  });
-  const cfgQ = useQuery({
-    queryKey: ["v5-config-admin"],
-    queryFn: async () => {
-      const { data, error } = await rpc("get_salary_v5_config");
-      if (error) throw error;
-      return data as any;
-    },
-  });
-  const cronQ = useQuery({
-    queryKey: ["v5-cron-runs"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("cron_runs" as any)
-        .select("*")
-        .order("started_at", { ascending: false })
-        .limit(20);
-      return (data ?? []) as any[];
-    },
-  });
+  const assertQ = useV5LockAssert(month);
+  const shadowQ = useV5ShadowReport(month);
+  const cfgQ = useV5AdminConfig();
+  const cronQ = useV5CronRuns();
 
-  const setCfg = useMutation({
-    mutationFn: async (patch: Record<string, unknown>) => {
-      const { data, error } = await rpc("set_salary_v5_config", { p_patch: patch });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["v5-config-admin"] });
-      qc.invalidateQueries({ queryKey: ["v5-config-salary-engine"] });
-      qc.invalidateQueries({ queryKey: ["manager-salary"] });
-      toast.success("Đã lưu cấu hình");
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Lỗi lưu cấu hình"),
-  });
-
-  const verdict = useMutation({
-    mutationFn: async (args: { user: string; date: string; confirm: boolean }) => {
-      const { data, error } = await rpc("v5_verdict", {
-        p_user: args.user, p_date: args.date, p_confirm: args.confirm, p_note: null,
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["v5-flagged"] });
-      qc.invalidateQueries({ queryKey: ["v5-lock-assert"] });
-      toast.success("Đã kết luận");
-    },
-  });
-
-  const applyLock = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await rpc("v5_apply_lock_adjustments", { p_month: month });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (d: any) => toast.success(`Đã ghi tiền v5 cho ${d?.staff_applied ?? 0} nhân viên vào bảng lương`),
-    onError: (e: any) => toast.error(e?.message ?? "Không chốt được"),
-  });
-
-  const runJob = useMutation({
-    mutationFn: async (job: string) => {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
-      const res = await fetch(
-        `https://tryymsxyyckgbrmmvozx.supabase.co/functions/v1/salary-v5-jobs?job=${job}`,
-        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["v5-cron-runs"] });
-      toast.success("Job đã chạy");
-    },
-    onError: () => toast.error("Job lỗi — xem cron_runs"),
-  });
+  const setCfg = useV5SetConfig();
+  const verdict = useV5Verdict();
+  const applyLock = useV5ApplyLock(month);
+  const runJob = useV5RunJob();
 
   const flags = cfgQ.data?.system_v5?.feature_flags ?? {};
   const dColor = (d: number | null) =>
@@ -362,7 +200,7 @@ export default function OwnerDashboardV5() {
         {/* TAB 1 — Coverage map (grid màu theo D) */}
         <TabsContent value="coverage">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {(coverage.data ?? []).map((b: any) => (
+            {(coverage.data ?? []).map((b) => (
               <div key={b.building_id} className="rounded-xl border p-3">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{b.building_name}</span>
@@ -471,7 +309,7 @@ export default function OwnerDashboardV5() {
                     <span className="text-xs font-normal text-muted-foreground">({g.rows.length})</span>
                   </div>
                   <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                    {g.rows.map((s: any) => (
+                    {g.rows.map((s) => (
                       <InspSessionCard key={s.id} s={s} />
                     ))}
                   </div>
@@ -486,7 +324,7 @@ export default function OwnerDashboardV5() {
           {(flagged.data ?? []).length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Không có nghi án nào đang mở.</p>
           ) : (
-            (flagged.data ?? []).map((f: any) => (
+            (flagged.data ?? []).map((f) => (
               <div key={f.id} className="mb-2 rounded-xl border p-3">
                 <div className="text-sm font-medium">Ngày {f.work_date} · nguồn {f.tick_source ?? "—"}</div>
                 <pre className="mt-1 max-h-32 overflow-auto rounded bg-slate-50 p-2 text-[11px]">
@@ -515,7 +353,7 @@ export default function OwnerDashboardV5() {
                 <th className="py-2">Nhân viên</th><th>Ngày công</th><th>Chuyên cần</th><th>Chuỗi</th><th>Tổng v5</th><th>ASSERT</th>
               </tr></thead>
               <tbody>
-                {(assertQ.data ?? []).map((r: any) => (
+                {(assertQ.data ?? []).map((r) => (
                   <tr key={r.staff_id} className="border-b">
                     <td className="py-2 font-medium">{r.staff_name}</td>
                     <td>{r.ticked_days}/{r.n_chuan}</td>
@@ -530,7 +368,7 @@ export default function OwnerDashboardV5() {
           </div>
           <div className="mt-3 flex items-center gap-3">
             <Button
-              disabled={applyLock.isPending || (assertQ.data ?? []).some((r: any) => !r.all_ok) || !flags.v5_money}
+              disabled={applyLock.isPending || (assertQ.data ?? []).some((r) => !r.all_ok) || !flags.v5_money}
               onClick={() => applyLock.mutate()}
             >
               Ghi tiền v5 vào bảng lương tháng này
@@ -554,7 +392,7 @@ export default function OwnerDashboardV5() {
                 <th className="py-2">Nhân viên</th><th>Ngày công</th><th>Best streak</th><th>Đứt-không-phép</th><th>Nếu áp v5 (TẠM TÍNH)</th>
               </tr></thead>
               <tbody>
-                {((shadowQ.data?.rows ?? []) as any[]).map((r: any) => (
+                {(shadowQ.data?.rows ?? []).map((r) => (
                   <tr key={r.staff_id} className="border-b">
                     <td className="py-2 font-medium">{r.staff_name}</td>
                     <td>{r.ticked_days}/{r.n_chuan}</td>
@@ -633,7 +471,7 @@ export default function OwnerDashboardV5() {
                 ))}
               </div>
               <div className="mt-3 max-h-56 overflow-auto rounded bg-slate-50 p-2 text-[11px]">
-                {(cronQ.data ?? []).map((c: any) => (
+                {(cronQ.data ?? []).map((c) => (
                   <div key={c.id} className="border-b py-1">
                     <b>{c.job}</b> · {c.idem_key} · {c.finished_at ? "✅" : "…"} {c.error ? `⛔ ${c.error}` : ""}
                   </div>
