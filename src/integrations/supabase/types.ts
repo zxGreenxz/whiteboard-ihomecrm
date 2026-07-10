@@ -67,8 +67,8 @@ export type Database = {
           id: string
           initial_amount: number
           initial_date: string
-          is_virtual: boolean
           is_default: boolean
+          is_virtual: boolean
           lock_date: string | null
           name: string
           quick_default_building_id: string | null
@@ -87,8 +87,8 @@ export type Database = {
           id?: string
           initial_amount?: number
           initial_date?: string
-          is_virtual?: boolean
           is_default?: boolean
+          is_virtual?: boolean
           lock_date?: string | null
           name: string
           quick_default_building_id?: string | null
@@ -107,8 +107,8 @@ export type Database = {
           id?: string
           initial_amount?: number
           initial_date?: string
-          is_virtual?: boolean
           is_default?: boolean
+          is_virtual?: boolean
           lock_date?: string | null
           name?: string
           quick_default_building_id?: string | null
@@ -116,6 +116,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "accounts_quick_default_building_id_fkey"
+            columns: ["quick_default_building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "accounts_quick_default_building_id_fkey"
             columns: ["quick_default_building_id"]
@@ -354,6 +361,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "areas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "area_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
           },
           {
             foreignKeyName: "area_buildings_building_id_fkey"
@@ -625,6 +639,13 @@ export type Database = {
             foreignKeyName: "asset_warehouses_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "asset_warehouses_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -693,6 +714,13 @@ export type Database = {
             foreignKeyName: "assets_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "assets_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -755,7 +783,88 @@ export type Database = {
             foreignKeyName: "auto_debt_config_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "auto_debt_config_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      building_fee_accounts: {
+        Row: {
+          account_holder: string | null
+          building_id: string
+          created_at: string
+          default_account_id: string | null
+          default_amount: number | null
+          deleted_at: string | null
+          fee_category: string
+          id: string
+          not_applicable: boolean
+          provider_code: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_holder?: string | null
+          building_id: string
+          created_at?: string
+          default_account_id?: string | null
+          default_amount?: number | null
+          deleted_at?: string | null
+          fee_category: string
+          id?: string
+          not_applicable?: boolean
+          provider_code?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_holder?: string | null
+          building_id?: string
+          created_at?: string
+          default_account_id?: string | null
+          default_amount?: number | null
+          deleted_at?: string | null
+          fee_category?: string
+          id?: string
+          not_applicable?: boolean
+          provider_code?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "building_fee_accounts_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "building_fee_accounts_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "building_fee_accounts_default_account_id_fkey"
+            columns: ["default_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "building_fee_accounts_default_account_id_fkey"
+            columns: ["default_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
             referencedColumns: ["id"]
           },
         ]
@@ -789,6 +898,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "building_services_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "building_services_building_id_fkey"
             columns: ["building_id"]
@@ -834,6 +950,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "building_shareholders_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "building_shareholders_building_id_fkey"
             columns: ["building_id"]
@@ -889,6 +1012,13 @@ export type Database = {
             foreignKeyName: "building_utility_accounts_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "building_utility_accounts_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -897,6 +1027,7 @@ export type Database = {
       buildings: {
         Row: {
           amenities: Json | null
+          cluster_id: string | null
           code: string | null
           commission_tiers: Json
           contract_template_id: string | null
@@ -908,6 +1039,7 @@ export type Database = {
           district: string
           floor_layouts: Json | null
           has_elevator: boolean
+          hidden_fixed_expenses: string[]
           id: string
           images: Json | null
           invoice_template_id: string | null
@@ -915,6 +1047,7 @@ export type Database = {
           latitude: number | null
           longitude: number | null
           name: string
+          name_sort: string | null
           province: string
           public_contact_name: string | null
           public_contact_phone: string | null
@@ -931,6 +1064,7 @@ export type Database = {
         }
         Insert: {
           amenities?: Json | null
+          cluster_id?: string | null
           code?: string | null
           commission_tiers?: Json
           contract_template_id?: string | null
@@ -942,6 +1076,7 @@ export type Database = {
           district: string
           floor_layouts?: Json | null
           has_elevator?: boolean
+          hidden_fixed_expenses?: string[]
           id?: string
           images?: Json | null
           invoice_template_id?: string | null
@@ -949,6 +1084,7 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           name: string
+          name_sort?: string | null
           province: string
           public_contact_name?: string | null
           public_contact_phone?: string | null
@@ -965,6 +1101,7 @@ export type Database = {
         }
         Update: {
           amenities?: Json | null
+          cluster_id?: string | null
           code?: string | null
           commission_tiers?: Json
           contract_template_id?: string | null
@@ -976,6 +1113,7 @@ export type Database = {
           district?: string
           floor_layouts?: Json | null
           has_elevator?: boolean
+          hidden_fixed_expenses?: string[]
           id?: string
           images?: Json | null
           invoice_template_id?: string | null
@@ -983,6 +1121,7 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           name?: string
+          name_sort?: string | null
           province?: string
           public_contact_name?: string | null
           public_contact_phone?: string | null
@@ -1052,6 +1191,7 @@ export type Database = {
           voucher_code: string | null
           voucher_date: string | null
           voucher_id: string
+          voucher_type: string
         }
         Insert: {
           amount: number
@@ -1062,6 +1202,7 @@ export type Database = {
           voucher_code?: string | null
           voucher_date?: string | null
           voucher_id: string
+          voucher_type?: string
         }
         Update: {
           amount?: number
@@ -1072,6 +1213,7 @@ export type Database = {
           voucher_code?: string | null
           voucher_date?: string | null
           voucher_id?: string
+          voucher_type?: string
         }
         Relationships: [
           {
@@ -1100,9 +1242,11 @@ export type Database = {
           code: string | null
           confirmed_at: string | null
           created_at: string
+          expense_amount: number
           from_account_id: string
           giver_id: string
           giver_name: string | null
+          gross_amount: number
           id: string
           note: string | null
           receiver_id: string
@@ -1126,9 +1270,11 @@ export type Database = {
           code?: string | null
           confirmed_at?: string | null
           created_at?: string
+          expense_amount?: number
           from_account_id: string
           giver_id: string
           giver_name?: string | null
+          gross_amount?: number
           id?: string
           note?: string | null
           receiver_id: string
@@ -1152,9 +1298,11 @@ export type Database = {
           code?: string | null
           confirmed_at?: string | null
           created_at?: string
+          expense_amount?: number
           from_account_id?: string
           giver_id?: string
           giver_name?: string | null
+          gross_amount?: number
           id?: string
           note?: string | null
           receiver_id?: string
@@ -1224,6 +1372,72 @@ export type Database = {
             columns: ["transfer_income_id"]
             isOneToOne: false
             referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cashbook_reconciliations: {
+        Row: {
+          account_id: string
+          as_of_date: string
+          cancelled_at: string | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          counted_balance: number
+          counterparty_id: string | null
+          created_at: string
+          diff: number
+          id: string
+          note: string | null
+          proposed_by: string
+          status: string
+          system_balance: number
+        }
+        Insert: {
+          account_id: string
+          as_of_date: string
+          cancelled_at?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          counted_balance: number
+          counterparty_id?: string | null
+          created_at?: string
+          diff: number
+          id?: string
+          note?: string | null
+          proposed_by: string
+          status?: string
+          system_balance: number
+        }
+        Update: {
+          account_id?: string
+          as_of_date?: string
+          cancelled_at?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          counted_balance?: number
+          counterparty_id?: string | null
+          created_at?: string
+          diff?: number
+          id?: string
+          note?: string | null
+          proposed_by?: string
+          status?: string
+          system_balance?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cashbook_reconciliations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashbook_reconciliations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
             referencedColumns: ["id"]
           },
         ]
@@ -1896,6 +2110,36 @@ export type Database = {
           },
         ]
       }
+      cron_runs: {
+        Row: {
+          error: string | null
+          finished_at: string | null
+          id: number
+          idem_key: string
+          job: string
+          rows_affected: number | null
+          started_at: string
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          idem_key: string
+          job: string
+          rows_affected?: number | null
+          started_at?: string
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          idem_key?: string
+          job?: string
+          rows_affected?: number | null
+          started_at?: string
+        }
+        Relationships: []
+      }
       ct01_declarations: {
         Row: {
           created_at: string
@@ -2117,6 +2361,54 @@ export type Database = {
           vehicles?: Json | null
           ward?: string | null
           workplace?: string | null
+        }
+        Relationships: []
+      }
+      demo_reset_log: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: number
+          ok: boolean
+          row_counts: Json | null
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: never
+          ok: boolean
+          row_counts?: Json | null
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: never
+          ok?: boolean
+          row_counts?: Json | null
+          source?: string
+        }
+        Relationships: []
+      }
+      demo_reset_tables: {
+        Row: {
+          predicate: string
+          restore: boolean
+          seq: number
+          tbl: string
+        }
+        Insert: {
+          predicate: string
+          restore?: boolean
+          seq: number
+          tbl: string
+        }
+        Update: {
+          predicate?: string
+          restore?: boolean
+          seq?: number
+          tbl?: string
         }
         Relationships: []
       }
@@ -2418,6 +2710,13 @@ export type Database = {
             foreignKeyName: "expenses_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "expenses_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -2469,6 +2768,13 @@ export type Database = {
             foreignKeyName: "floors_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "floors_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -2506,6 +2812,50 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      income_expense_audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_name: string | null
+          created_at: string
+          id: string
+          income_expense_id: string
+          new_status: string | null
+          note: string | null
+          old_status: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_name?: string | null
+          created_at?: string
+          id?: string
+          income_expense_id: string
+          new_status?: string | null
+          note?: string | null
+          old_status?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_name?: string | null
+          created_at?: string
+          id?: string
+          income_expense_id?: string
+          new_status?: string | null
+          note?: string | null
+          old_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_audit_log_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       income_expense_batch_items: {
         Row: {
@@ -2686,6 +3036,7 @@ export type Database = {
           category: string | null
           created_at: string
           description: string | null
+          hide_in_report: boolean
           id: string
           is_default: boolean | null
           is_deposit: boolean
@@ -2699,6 +3050,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          hide_in_report?: boolean
           id?: string
           is_default?: boolean | null
           is_deposit?: boolean
@@ -2712,6 +3064,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          hide_in_report?: boolean
           id?: string
           is_default?: boolean | null
           is_deposit?: boolean
@@ -2735,6 +3088,12 @@ export type Database = {
           change_account_id: string | null
           change_amount: number
           code: string | null
+          collect_distance_m: number | null
+          collect_geofence_status: string | null
+          collect_lat: number | null
+          collect_lng: number | null
+          commission_kind: string | null
+          commission_legacy_dup: boolean
           contract_id: string | null
           counts_in_business_result: boolean
           created_at: string
@@ -2745,12 +3104,15 @@ export type Database = {
           has_restricted_item: boolean
           id: string
           invoice_id: string | null
+          kqkd_amount: number
           name: string
           notes: string | null
           payer_name: string | null
           payment_id: string | null
+          profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
+          repeat_auto_approve: boolean
           repeat_count: number
           repeat_cycle: string | null
           repeat_infinity: boolean
@@ -2760,6 +3122,8 @@ export type Database = {
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
+          salary_role: string | null
+          salary_staff_id: string | null
           shareholder_id: string | null
           system_source: string | null
           tenant_id: string | null
@@ -2767,6 +3131,7 @@ export type Database = {
           type: string
           updated_at: string
           user_id: string
+          utility_account_id: string | null
           verified_at: string | null
           verified_by: string | null
           verified_by_name: string | null
@@ -2784,6 +3149,12 @@ export type Database = {
           change_account_id?: string | null
           change_amount?: number
           code?: string | null
+          collect_distance_m?: number | null
+          collect_geofence_status?: string | null
+          collect_lat?: number | null
+          collect_lng?: number | null
+          commission_kind?: string | null
+          commission_legacy_dup?: boolean
           contract_id?: string | null
           counts_in_business_result?: boolean
           created_at?: string
@@ -2794,12 +3165,15 @@ export type Database = {
           has_restricted_item?: boolean
           id?: string
           invoice_id?: string | null
+          kqkd_amount?: number
           name: string
           notes?: string | null
           payer_name?: string | null
           payment_id?: string | null
+          profit_manager_id?: string | null
           receive_bank_account?: string | null
           receive_bank_name?: string | null
+          repeat_auto_approve?: boolean
           repeat_count?: number
           repeat_cycle?: string | null
           repeat_infinity?: boolean
@@ -2809,6 +3183,8 @@ export type Database = {
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
+          salary_role?: string | null
+          salary_staff_id?: string | null
           shareholder_id?: string | null
           system_source?: string | null
           tenant_id?: string | null
@@ -2816,6 +3192,7 @@ export type Database = {
           type: string
           updated_at?: string
           user_id: string
+          utility_account_id?: string | null
           verified_at?: string | null
           verified_by?: string | null
           verified_by_name?: string | null
@@ -2833,6 +3210,12 @@ export type Database = {
           change_account_id?: string | null
           change_amount?: number
           code?: string | null
+          collect_distance_m?: number | null
+          collect_geofence_status?: string | null
+          collect_lat?: number | null
+          collect_lng?: number | null
+          commission_kind?: string | null
+          commission_legacy_dup?: boolean
           contract_id?: string | null
           counts_in_business_result?: boolean
           created_at?: string
@@ -2843,12 +3226,15 @@ export type Database = {
           has_restricted_item?: boolean
           id?: string
           invoice_id?: string | null
+          kqkd_amount?: number
           name?: string
           notes?: string | null
           payer_name?: string | null
           payment_id?: string | null
+          profit_manager_id?: string | null
           receive_bank_account?: string | null
           receive_bank_name?: string | null
+          repeat_auto_approve?: boolean
           repeat_count?: number
           repeat_cycle?: string | null
           repeat_infinity?: boolean
@@ -2858,6 +3244,8 @@ export type Database = {
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
+          salary_role?: string | null
+          salary_staff_id?: string | null
           shareholder_id?: string | null
           system_source?: string | null
           tenant_id?: string | null
@@ -2865,6 +3253,7 @@ export type Database = {
           type?: string
           updated_at?: string
           user_id?: string
+          utility_account_id?: string | null
           verified_at?: string | null
           verified_by?: string | null
           verified_by_name?: string | null
@@ -2885,6 +3274,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
           },
           {
             foreignKeyName: "income_expenses_building_id_fkey"
@@ -2943,6 +3339,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "income_expenses_profit_manager_id_fkey"
+            columns: ["profit_manager_id"]
+            isOneToOne: false
+            referencedRelation: "profit_managers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "income_expenses_repeat_parent_id_fkey"
             columns: ["repeat_parent_id"]
             isOneToOne: false
@@ -2982,6 +3385,171 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_utility_account_id_fkey"
+            columns: ["utility_account_id"]
+            isOneToOne: false
+            referencedRelation: "building_utility_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_photos: {
+        Row: {
+          created_at: string
+          distance_m: number | null
+          exif_time: string | null
+          geofence_status: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          session_id: string
+          sha256_hash: string
+          slot: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          distance_m?: number | null
+          exif_time?: string | null
+          geofence_status?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          session_id: string
+          sha256_hash: string
+          slot: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          distance_m?: number | null
+          exif_time?: string | null
+          geofence_status?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          session_id?: string
+          sha256_hash?: string
+          slot?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_photos_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_sessions: {
+        Row: {
+          building_id: string
+          checklist: Json
+          condition_note: string | null
+          created_at: string
+          device_id: string | null
+          device_issue: Json | null
+          dwell_seconds: number
+          ended_at: string | null
+          fail_reasons: string[] | null
+          id: string
+          job_id: string | null
+          paired_income_expense_id: string | null
+          photos_count: number
+          random_item_key: string | null
+          session_date: string
+          spawned_job_id: string | null
+          started_at: string
+          status: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          building_id: string
+          checklist?: Json
+          condition_note?: string | null
+          created_at?: string
+          device_id?: string | null
+          device_issue?: Json | null
+          dwell_seconds?: number
+          ended_at?: string | null
+          fail_reasons?: string[] | null
+          id?: string
+          job_id?: string | null
+          paired_income_expense_id?: string | null
+          photos_count?: number
+          random_item_key?: string | null
+          session_date: string
+          spawned_job_id?: string | null
+          started_at?: string
+          status?: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          building_id?: string
+          checklist?: Json
+          condition_note?: string | null
+          created_at?: string
+          device_id?: string | null
+          device_issue?: Json | null
+          dwell_seconds?: number
+          ended_at?: string | null
+          fail_reasons?: string[] | null
+          id?: string
+          job_id?: string | null
+          paired_income_expense_id?: string | null
+          photos_count?: number
+          random_item_key?: string | null
+          session_date?: string
+          spawned_job_id?: string | null
+          started_at?: string
+          status?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_sessions_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_paired_income_expense_id_fkey"
+            columns: ["paired_income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_spawned_job_id_fkey"
+            columns: ["spawned_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -3026,15 +3594,7 @@ export type Database = {
           id?: string
           invoice_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "invoice_audit_log_invoice_id_fkey"
-            columns: ["invoice_id"]
-            isOneToOne: false
-            referencedRelation: "invoices"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       invoice_generation_settings: {
         Row: {
@@ -3158,6 +3718,7 @@ export type Database = {
           id: string
           invoice_number: string | null
           issue_date: string
+          kind: string
           notes: string | null
           paid_amount: number
           paid_date: string | null
@@ -3189,6 +3750,7 @@ export type Database = {
           id?: string
           invoice_number?: string | null
           issue_date?: string
+          kind?: string
           notes?: string | null
           paid_amount?: number
           paid_date?: string | null
@@ -3220,6 +3782,7 @@ export type Database = {
           id?: string
           invoice_number?: string | null
           issue_date?: string
+          kind?: string
           notes?: string | null
           paid_amount?: number
           paid_date?: string | null
@@ -3236,6 +3799,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "invoices_building_id_fkey"
             columns: ["building_id"]
@@ -3573,6 +4143,13 @@ export type Database = {
             foreignKeyName: "issues_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "issues_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -3678,8 +4255,10 @@ export type Database = {
         Row: {
           acceptance_deadline: number | null
           auto_assign: boolean | null
+          bonus_amount: number
           business_hours_only: boolean | null
           completion_deadline: number | null
+          counts_for_salary: boolean
           created_at: string
           customer_contact_deadline: number | null
           default_department_id: string | null
@@ -3687,6 +4266,8 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean | null
+          is_contract: boolean
+          is_repair: boolean
           job_group_id: string | null
           name: string
           updated_at: string
@@ -3695,8 +4276,10 @@ export type Database = {
         Insert: {
           acceptance_deadline?: number | null
           auto_assign?: boolean | null
+          bonus_amount?: number
           business_hours_only?: boolean | null
           completion_deadline?: number | null
+          counts_for_salary?: boolean
           created_at?: string
           customer_contact_deadline?: number | null
           default_department_id?: string | null
@@ -3706,6 +4289,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          is_contract?: boolean
+          is_repair?: boolean
           job_group_id?: string | null
           name: string
           updated_at?: string
@@ -3714,8 +4299,10 @@ export type Database = {
         Update: {
           acceptance_deadline?: number | null
           auto_assign?: boolean | null
+          bonus_amount?: number
           business_hours_only?: boolean | null
           completion_deadline?: number | null
+          counts_for_salary?: boolean
           created_at?: string
           customer_contact_deadline?: number | null
           default_department_id?: string | null
@@ -3725,6 +4312,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          is_contract?: boolean
+          is_repair?: boolean
           job_group_id?: string | null
           name?: string
           updated_at?: string
@@ -3851,6 +4440,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
           },
           {
             foreignKeyName: "jobs_building_id_fkey"
@@ -4037,6 +4633,13 @@ export type Database = {
             foreignKeyName: "leads_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "leads_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -4056,6 +4659,68 @@ export type Database = {
           },
           {
             foreignKeyName: "leads_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manager_salary_config: {
+        Row: {
+          alias: string | null
+          base_salary: number
+          created_at: string
+          default_room_rent: number
+          effective_from: string
+          effective_to: string | null
+          id: string
+          income_goal: number
+          is_active: boolean
+          note: string | null
+          role_title: string
+          room_id: string | null
+          staff_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alias?: string | null
+          base_salary?: number
+          created_at?: string
+          default_room_rent?: number
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          income_goal?: number
+          is_active?: boolean
+          note?: string | null
+          role_title?: string
+          room_id?: string | null
+          staff_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alias?: string | null
+          base_salary?: number
+          created_at?: string
+          default_room_rent?: number
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          income_goal?: number
+          is_active?: boolean
+          note?: string | null
+          role_title?: string
+          room_id?: string | null
+          staff_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_salary_config_room_id_fkey"
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
@@ -4462,6 +5127,13 @@ export type Database = {
             foreignKeyName: "meter_readings_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "meter_readings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -4567,6 +5239,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "meters_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "meters_building_id_fkey"
             columns: ["building_id"]
@@ -4695,6 +5374,8 @@ export type Database = {
           id: string
           invoice_id: string | null
           issue_id: string | null
+          job_id: string | null
+          metadata: Json
           recipient_emails: string[] | null
           recipient_phones: string[] | null
           recipient_tenant_ids: string[] | null
@@ -4714,6 +5395,8 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           issue_id?: string | null
+          job_id?: string | null
+          metadata?: Json
           recipient_emails?: string[] | null
           recipient_phones?: string[] | null
           recipient_tenant_ids?: string[] | null
@@ -4733,6 +5416,8 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           issue_id?: string | null
+          job_id?: string | null
+          metadata?: Json
           recipient_emails?: string[] | null
           recipient_phones?: string[] | null
           recipient_tenant_ids?: string[] | null
@@ -4756,6 +5441,13 @@ export type Database = {
             columns: ["issue_id"]
             isOneToOne: false
             referencedRelation: "issues"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -4925,6 +5617,7 @@ export type Database = {
           subscription_expires_at: string | null
           subscription_plan: string | null
           timezone: string | null
+          ui_preferences: Json
           updated_at: string
         }
         Insert: {
@@ -4945,6 +5638,7 @@ export type Database = {
           subscription_expires_at?: string | null
           subscription_plan?: string | null
           timezone?: string | null
+          ui_preferences?: Json
           updated_at?: string
         }
         Update: {
@@ -4965,6 +5659,7 @@ export type Database = {
           subscription_expires_at?: string | null
           subscription_plan?: string | null
           timezone?: string | null
+          ui_preferences?: Json
           updated_at?: string
         }
         Relationships: []
@@ -5014,6 +5709,180 @@ export type Database = {
           },
         ]
       }
+      profit_manager_allocations: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          manager_id: string
+          profit_monthly_id: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          manager_id: string
+          profit_monthly_id: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          manager_id?: string
+          profit_monthly_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_manager_allocations_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profit_managers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_manager_allocations_profit_monthly_id_fkey"
+            columns: ["profit_monthly_id"]
+            isOneToOne: false
+            referencedRelation: "profit_monthly"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_manager_salaries: {
+        Row: {
+          amount: number
+          basis: string
+          created_at: string
+          form: string
+          id: string
+          is_active: boolean
+          label: string | null
+          manager_id: string
+          percent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          basis?: string
+          created_at?: string
+          form?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          manager_id: string
+          percent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          basis?: string
+          created_at?: string
+          form?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          manager_id?: string
+          percent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_manager_salaries_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profit_managers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_manager_salary_buildings: {
+        Row: {
+          building_id: string
+          created_at: string
+          id: string
+          salary_id: string
+          user_id: string
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          id?: string
+          salary_id: string
+          user_id: string
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          id?: string
+          salary_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_manager_salary_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "profit_manager_salary_buildings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_manager_salary_buildings_salary_id_fkey"
+            columns: ["salary_id"]
+            isOneToOne: false
+            referencedRelation: "profit_manager_salaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_managers: {
+        Row: {
+          auth_user_id: string | null
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          note: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auth_user_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          note?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auth_user_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          note?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profit_monthly: {
         Row: {
           adjusted_profit: number
@@ -5023,6 +5892,7 @@ export type Database = {
           id: string
           locked_at: string | null
           locked_by: string | null
+          management_salary: number
           note: string | null
           period_month: string
           status: string
@@ -5037,6 +5907,7 @@ export type Database = {
           id?: string
           locked_at?: string | null
           locked_by?: string | null
+          management_salary?: number
           note?: string | null
           period_month: string
           status?: string
@@ -5051,6 +5922,7 @@ export type Database = {
           id?: string
           locked_at?: string | null
           locked_by?: string | null
+          management_salary?: number
           note?: string | null
           period_month?: string
           status?: string
@@ -5058,6 +5930,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "profit_monthly_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "profit_monthly_building_id_fkey"
             columns: ["building_id"]
@@ -5166,6 +6045,42 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          is_active: boolean
+          p256dh: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          is_active?: boolean
+          p256dh: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          is_active?: boolean
+          p256dh?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       roles: {
         Row: {
           created_at: string | null
@@ -5253,6 +6168,13 @@ export type Database = {
             foreignKeyName: "room_pass_listings_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "room_pass_listings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -5282,6 +6204,7 @@ export type Database = {
           lease_template_id: string | null
           max_occupants: number | null
           name: string
+          name_sort: string | null
           rent_price: number
           room_type: string | null
           sale_bonus_note: string | null
@@ -5305,6 +6228,7 @@ export type Database = {
           lease_template_id?: string | null
           max_occupants?: number | null
           name: string
+          name_sort?: string | null
           rent_price: number
           room_type?: string | null
           sale_bonus_note?: string | null
@@ -5328,6 +6252,7 @@ export type Database = {
           lease_template_id?: string | null
           max_occupants?: number | null
           name?: string
+          name_sort?: string | null
           rent_price?: number
           room_type?: string | null
           sale_bonus_note?: string | null
@@ -5336,6 +6261,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "rooms_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "rooms_building_id_fkey"
             columns: ["building_id"]
@@ -5355,6 +6287,394 @@ export type Database = {
             columns: ["lease_template_id"]
             isOneToOne: false
             referencedRelation: "document_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_adjustments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          income_expense_id: string | null
+          kind: string
+          label: string
+          note: string | null
+          salary_monthly_id: string
+          source: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          income_expense_id?: string | null
+          kind: string
+          label: string
+          note?: string | null
+          salary_monthly_id: string
+          source?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          income_expense_id?: string | null
+          kind?: string
+          label?: string
+          note?: string | null
+          salary_monthly_id?: string
+          source?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_adjustments_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_adjustments_salary_monthly_id_fkey"
+            columns: ["salary_monthly_id"]
+            isOneToOne: false
+            referencedRelation: "salary_monthly"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_attendance_day: {
+        Row: {
+          audit: Json
+          created_at: string
+          evidence: Json
+          id: string
+          status: string
+          tick_source: string | null
+          updated_at: string
+          user_id: string
+          voided_reason: string | null
+          work_date: string
+        }
+        Insert: {
+          audit?: Json
+          created_at?: string
+          evidence?: Json
+          id?: string
+          status?: string
+          tick_source?: string | null
+          updated_at?: string
+          user_id: string
+          voided_reason?: string | null
+          work_date: string
+        }
+        Update: {
+          audit?: Json
+          created_at?: string
+          evidence?: Json
+          id?: string
+          status?: string
+          tick_source?: string | null
+          updated_at?: string
+          user_id?: string
+          voided_reason?: string | null
+          work_date?: string
+        }
+        Relationships: []
+      }
+      salary_award_errors: {
+        Row: {
+          created_at: string
+          error_text: string | null
+          fn_name: string
+          id: string
+          payload: Json | null
+          source_id: string | null
+          staff_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_text?: string | null
+          fn_name: string
+          id?: string
+          payload?: Json | null
+          source_id?: string | null
+          staff_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_text?: string | null
+          fn_name?: string
+          id?: string
+          payload?: Json | null
+          source_id?: string | null
+          staff_id?: string | null
+        }
+        Relationships: []
+      }
+      salary_bonus_rules: {
+        Row: {
+          created_at: string
+          id: string
+          rules: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rules?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rules?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      salary_holidays: {
+        Row: {
+          created_at: string
+          holiday_date: string
+          id: string
+          name: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          holiday_date: string
+          id?: string
+          name?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          holiday_date?: string
+          id?: string
+          name?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      salary_monthly: {
+        Row: {
+          adjustments_total: number
+          advances_total: number
+          base_salary: number
+          commission_total: number
+          contract_bonus: number
+          created_at: string
+          gross_total: number
+          id: string
+          investment_profit: number
+          locked_at: string | null
+          locked_by: string | null
+          note: string | null
+          paid: number
+          payout_voucher_id: string | null
+          period_month: string
+          room_rent: number
+          staff_id: string
+          status: string
+          take_home: number
+          updated_at: string
+          user_id: string
+          work_bonus: number
+        }
+        Insert: {
+          adjustments_total?: number
+          advances_total?: number
+          base_salary?: number
+          commission_total?: number
+          contract_bonus?: number
+          created_at?: string
+          gross_total?: number
+          id?: string
+          investment_profit?: number
+          locked_at?: string | null
+          locked_by?: string | null
+          note?: string | null
+          paid?: number
+          payout_voucher_id?: string | null
+          period_month: string
+          room_rent?: number
+          staff_id: string
+          status?: string
+          take_home?: number
+          updated_at?: string
+          user_id: string
+          work_bonus?: number
+        }
+        Update: {
+          adjustments_total?: number
+          advances_total?: number
+          base_salary?: number
+          commission_total?: number
+          contract_bonus?: number
+          created_at?: string
+          gross_total?: number
+          id?: string
+          investment_profit?: number
+          locked_at?: string | null
+          locked_by?: string | null
+          note?: string | null
+          paid?: number
+          payout_voucher_id?: string | null
+          period_month?: string
+          room_rent?: number
+          staff_id?: string
+          status?: string
+          take_home?: number
+          updated_at?: string
+          user_id?: string
+          work_bonus?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_monthly_payout_voucher_id_fkey"
+            columns: ["payout_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_streak_state: {
+        Row: {
+          best_streak: number
+          breaks_no_leave: number
+          current_streak: number
+          id: string
+          last_active_date: string | null
+          milestones_banked: Json
+          period_month: string
+          reset_from_date: string | null
+          shields_free_left: number
+          shields_reserve: number
+          shields_reserve_used: number
+          sim_cap2: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          best_streak?: number
+          breaks_no_leave?: number
+          current_streak?: number
+          id?: string
+          last_active_date?: string | null
+          milestones_banked?: Json
+          period_month: string
+          reset_from_date?: string | null
+          shields_free_left?: number
+          shields_reserve?: number
+          shields_reserve_used?: number
+          sim_cap2?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          best_streak?: number
+          breaks_no_leave?: number
+          current_streak?: number
+          id?: string
+          last_active_date?: string | null
+          milestones_banked?: Json
+          period_month?: string
+          reset_from_date?: string | null
+          shields_free_left?: number
+          shields_reserve?: number
+          shields_reserve_used?: number
+          sim_cap2?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      salary_work_ledger_snapshot: {
+        Row: {
+          after_amount: number | null
+          base_amount: number | null
+          bonus_amount: number | null
+          cash_amount: number | null
+          content: string | null
+          created_at: string
+          day_label: string | null
+          has_photo: boolean | null
+          id: string
+          is_contract: boolean | null
+          is_repair: boolean | null
+          item_type: string
+          job_type_name: string | null
+          occurred_date: string | null
+          place: string | null
+          reason: string | null
+          salary_monthly_id: string
+          source_id: string | null
+          staff_id: string
+          user_id: string
+          weekend_amount: number | null
+        }
+        Insert: {
+          after_amount?: number | null
+          base_amount?: number | null
+          bonus_amount?: number | null
+          cash_amount?: number | null
+          content?: string | null
+          created_at?: string
+          day_label?: string | null
+          has_photo?: boolean | null
+          id?: string
+          is_contract?: boolean | null
+          is_repair?: boolean | null
+          item_type: string
+          job_type_name?: string | null
+          occurred_date?: string | null
+          place?: string | null
+          reason?: string | null
+          salary_monthly_id: string
+          source_id?: string | null
+          staff_id: string
+          user_id: string
+          weekend_amount?: number | null
+        }
+        Update: {
+          after_amount?: number | null
+          base_amount?: number | null
+          bonus_amount?: number | null
+          cash_amount?: number | null
+          content?: string | null
+          created_at?: string
+          day_label?: string | null
+          has_photo?: boolean | null
+          id?: string
+          is_contract?: boolean | null
+          is_repair?: boolean | null
+          item_type?: string
+          job_type_name?: string | null
+          occurred_date?: string | null
+          place?: string | null
+          reason?: string | null
+          salary_monthly_id?: string
+          source_id?: string | null
+          staff_id?: string
+          user_id?: string
+          weekend_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_work_ledger_snapshot_salary_monthly_id_fkey"
+            columns: ["salary_monthly_id"]
+            isOneToOne: false
+            referencedRelation: "salary_monthly"
             referencedColumns: ["id"]
           },
         ]
@@ -5713,6 +7033,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "areas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_assignments_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
           },
           {
             foreignKeyName: "staff_assignments_building_id_fkey"
@@ -6256,6 +7583,13 @@ export type Database = {
             foreignKeyName: "vehicles_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "vehicles_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -6391,6 +7725,7 @@ export type Database = {
           is_online: boolean
           is_pinned: boolean
           kind: string
+          label_ids: Json
           last_message_at: string | null
           last_message_dir: string | null
           last_message_text: string | null
@@ -6425,6 +7760,7 @@ export type Database = {
           is_online?: boolean
           is_pinned?: boolean
           kind?: string
+          label_ids?: Json
           last_message_at?: string | null
           last_message_dir?: string | null
           last_message_text?: string | null
@@ -6459,6 +7795,7 @@ export type Database = {
           is_online?: boolean
           is_pinned?: boolean
           kind?: string
+          label_ids?: Json
           last_message_at?: string | null
           last_message_dir?: string | null
           last_message_text?: string | null
@@ -6513,6 +7850,53 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zalo_labels: {
+        Row: {
+          account_id: string | null
+          color: string | null
+          created_at: string
+          emoji: string | null
+          id: string
+          label_id: number
+          name: string
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          color?: string | null
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          label_id: number
+          name: string
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          color?: string | null
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          label_id?: number
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zalo_labels_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "zalo_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -6729,8 +8113,8 @@ export type Database = {
           id: string | null
           initial_amount: number | null
           initial_date: string | null
-          is_virtual: boolean | null
           is_default: boolean | null
+          is_virtual: boolean | null
           lock_date: string | null
           name: string | null
           updated_at: string | null
@@ -6749,8 +8133,8 @@ export type Database = {
           id?: string | null
           initial_amount?: number | null
           initial_date?: string | null
-          is_virtual?: boolean | null
           is_default?: boolean | null
+          is_virtual?: boolean | null
           lock_date?: string | null
           name?: string | null
           updated_at?: string | null
@@ -6769,12 +8153,27 @@ export type Database = {
           id?: string | null
           initial_amount?: number | null
           initial_date?: string | null
-          is_virtual?: boolean | null
           is_default?: boolean | null
+          is_virtual?: boolean | null
           lock_date?: string | null
           name?: string | null
           updated_at?: string | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      building_coverage: {
+        Row: {
+          building_id: string | null
+          building_name: string | null
+          cluster_id: string | null
+          days_since_full: number | null
+          days_since_touch: number | null
+          jobs_30d: number | null
+          last_full_date: string | null
+          last_touch_date: string | null
+          rooms_total: number | null
+          vacant_rooms: number | null
         }
         Relationships: []
       }
@@ -6846,6 +8245,13 @@ export type Database = {
           user_id: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "meter_readings_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
           {
             foreignKeyName: "meter_readings_building_id_fkey"
             columns: ["building_id"]
@@ -6922,6 +8328,13 @@ export type Database = {
             foreignKeyName: "meters_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "meters_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
             referencedRelation: "buildings"
             referencedColumns: ["id"]
           },
@@ -6977,6 +8390,7 @@ export type Database = {
     }
     Functions: {
       _chung_building: { Args: { p_user_id: string }; Returns: string }
+      _collector_thu_account: { Args: { p_collector: string }; Returns: string }
       _deposit_account: { Args: { p_user_id: string }; Returns: string }
       _diff_changed_fields: {
         Args: { p_after: Json; p_before: Json; p_ignore?: string[] }
@@ -6986,8 +8400,26 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: string
       }
+      _internal_settlement_account: {
+        Args: { p_user_id: string }
+        Returns: string
+      }
+      _termination_apply_extra_charges: {
+        Args: {
+          p_contract_id: string
+          p_date: string
+          p_extra_charges: Json
+          p_invoice_id: string
+          p_user_id: string
+        }
+        Returns: number
+      }
       _termination_ensure_type: {
         Args: { p_name: string; p_type: string; p_user_id: string }
+        Returns: string
+      }
+      _termination_free_billing_month: {
+        Args: { p_contract_id: string; p_start: string }
         Returns: string
       }
       _termination_offset_account: {
@@ -6998,15 +8430,46 @@ export type Database = {
         Args: { p_building_id: string; p_user_id: string }
         Returns: string
       }
+      accessible_account_ids: { Args: never; Returns: string[] }
+      accessible_building_ids: { Args: never; Returns: string[] }
+      accessible_contract_ids: { Args: never; Returns: string[] }
+      accessible_invoice_ids: { Args: never; Returns: string[] }
+      accessible_room_ids: { Args: never; Returns: string[] }
       add_cycle: {
         Args: { anchor: string; cycle: string; k: number }
         Returns: string
+      }
+      append_fee_attachment: {
+        Args: { p_url: string; p_voucher_id: string }
+        Returns: Json
+      }
+      approve_device_issue: {
+        Args: { p_approve: boolean; p_session: string }
+        Returns: Json
+      }
+      approve_leave: {
+        Args: { p_approve: boolean; p_date: string; p_user: string }
+        Returns: Json
       }
       approve_meter_reading: {
         Args: { p_reading_id: string }
         Returns: undefined
       }
       approve_voucher: { Args: { voucher_id: string }; Returns: undefined }
+      award_job_bonus: {
+        Args: { p_job_id: string }
+        Returns: {
+          amount: number
+          bonus_kind: string
+          content: string
+          icon: string
+          label: string
+          note: string
+          notif_id: string
+          place: string
+          time_context: string
+        }[]
+      }
       building_of_contract: { Args: { _id: string }; Returns: string }
       building_of_invoice: { Args: { _id: string }; Returns: string }
       building_of_payment: { Args: { _id: string }; Returns: string }
@@ -7035,6 +8498,9 @@ export type Database = {
         Returns: boolean
       }
       can_view_restricted_ie: { Args: never; Returns: boolean }
+      cancel_period_fee: { Args: { p_voucher_id: string }; Returns: Json }
+      cancel_reconciliation: { Args: { p_id: string }; Returns: Json }
+      cancel_utility_bill: { Args: { p_voucher_id: string }; Returns: Json }
       cashbook_opening_balance: {
         Args: {
           p_account_id?: string
@@ -7042,6 +8508,14 @@ export type Database = {
           p_building_id?: string
         }
         Returns: number
+      }
+      cashbook_settlement_report: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
+      complete_inspection: {
+        Args: { p_condition_note?: string; p_session: string }
+        Returns: Json
       }
       confirm_cancel_handover: {
         Args: { p_handover_id: string }
@@ -7051,11 +8525,27 @@ export type Database = {
         Args: { p_handover_id: string; p_to_account_id?: string }
         Returns: Json
       }
+      confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
       create_cash_handover: {
         Args: {
           p_note?: string
           p_receiver_id: string
           p_voucher_ids: string[]
+        }
+        Returns: Json
+      }
+      create_commission_voucher: {
+        Args: {
+          p_account_id?: string
+          p_amount: number
+          p_contract_id: string
+          p_item_description?: string
+          p_kind: string
+          p_payer_name?: string
+          p_recipient_account?: string
+          p_recipient_bank?: string
+          p_recipient_name?: string
+          p_voucher_date: string
         }
         Returns: Json
       }
@@ -7068,6 +8558,14 @@ export type Database = {
           p_notes?: string
         }
         Returns: string
+      }
+      create_opening_adjustment: {
+        Args: {
+          p_account_id: string
+          p_as_of?: string
+          p_counted_balance: number
+        }
+        Returns: Json
       }
       create_public_room_token: {
         Args: { p_label?: string }
@@ -7104,6 +8602,7 @@ export type Database = {
         }
         Returns: string
       }
+      current_profit_manager_id: { Args: never; Returns: string }
       current_shareholder_id: { Args: never; Returns: string }
       current_visible_owner_ids: { Args: never; Returns: string[] }
       customer_in_my_scope: {
@@ -7112,6 +8611,10 @@ export type Database = {
       }
       delete_room_pass_listing: { Args: { p_id: string }; Returns: undefined }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
+      delete_utility_account: { Args: { p_id: string }; Returns: Json }
+      demo_building_ids: { Args: never; Returns: string[] }
+      demo_reset: { Args: never; Returns: Json }
+      demo_user_ids: { Args: never; Returns: string[] }
       ensure_room_deposit_type: { Args: never; Returns: string }
       estimate_termination_costs: {
         Args: {
@@ -7128,6 +8631,25 @@ export type Database = {
           refund_amount: number
           total_deposit: number
           total_fees: number
+        }[]
+      }
+      fa_accrual_allocations: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          amount: number
+          building_id: string
+          building_name: string
+          category: string
+          is_virtual: boolean
+          month: string
+          side: string
+          type_id: string
+          type_name: string
+          voucher_id: string
         }[]
       }
       fa_invoice_collection: {
@@ -7168,6 +8690,22 @@ export type Database = {
         }[]
       }
       fa_monthly_pnl: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          expense: number
+          is_virtual: boolean
+          month: string
+          net: number
+          revenue: number
+        }[]
+      }
+      fa_monthly_pnl_accrual: {
         Args: {
           p_building_ids?: string[]
           p_end_date: string
@@ -7237,6 +8775,27 @@ export type Database = {
           voucher_count: number
         }[]
       }
+      fa_type_breakdown_accrual: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_start_date: string
+        }
+        Returns: {
+          category: string
+          month: string
+          side: string
+          total_amount: number
+          type_id: string
+          type_name: string
+          voucher_count: number
+        }[]
+      }
+      fee_type_matches: {
+        Args: { p_cat: string; p_category_key: string; p_name: string }
+        Returns: boolean
+      }
+      fmt_bonus_k: { Args: { amt: number }; Returns: string }
       gen_contract_public_code: { Args: { len?: number }; Returns: string }
       generate_code: {
         Args: { p_object_type: string; p_user_id: string }
@@ -7279,6 +8838,7 @@ export type Database = {
           voucher_date: string
         }[]
       }
+      get_acceptance_geofence_config: { Args: never; Returns: Json }
       get_change_breakdown_v2: {
         Args: {
           p_billing_month?: string
@@ -7306,6 +8866,10 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      get_contract_stats: {
+        Args: { p_building_ids?: string[]; p_in30?: string; p_today?: string }
+        Returns: Json
+      }
       get_conversation_context: {
         Args: { p_conversation_id: string; p_recent_messages_limit?: number }
         Returns: {
@@ -7315,6 +8879,16 @@ export type Database = {
           role: string
         }[]
       }
+      get_customer_stats: {
+        Args: {
+          p_building_id?: string
+          p_room_id?: string
+          p_search?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
+      get_dashboard_summary: { Args: { p_building_id?: string }; Returns: Json }
       get_deposit_breakdown_v2: {
         Args: {
           p_billing_month?: string
@@ -7344,6 +8918,51 @@ export type Database = {
           total_deposit: number
           voucher_date: string
           voucher_id: string
+        }[]
+      }
+      get_income_expense_history: {
+        Args: { p_id: string }
+        Returns: {
+          action: string
+          actor_id: string
+          actor_name: string
+          created_at: string
+          id: string
+          new_status: string
+          note: string
+          old_status: string
+        }[]
+      }
+      get_income_expense_layer_stats: {
+        Args: {
+          p_account_id?: string
+          p_amount?: number
+          p_amount_tol?: number
+          p_approval?: string
+          p_building_ids?: string[]
+          p_creator_id?: string
+          p_end_date?: string
+          p_internal_sources?: string[]
+          p_item_type_ids?: string[]
+          p_kqkd_only?: boolean
+          p_room_ids?: string[]
+          p_source_manual?: boolean
+          p_sources?: string[]
+          p_start_date?: string
+          p_type?: string
+          p_verified?: string
+          p_voucher_ids?: string[]
+        }
+        Returns: {
+          cash_expense: number
+          cash_income: number
+          internal_count: number
+          internal_expense: number
+          internal_income: number
+          pending_count: number
+          pending_expense: number
+          pending_income: number
+          pending_total: number
         }[]
       }
       get_invoice_statistics_v2: {
@@ -7414,8 +9033,76 @@ export type Database = {
       }
       get_my_available_rooms: { Args: never; Returns: Json }
       get_my_context: { Args: never; Returns: Json }
+      get_my_day_summary: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
+      get_my_share_buildings: {
+        Args: never
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
       get_or_create_deposit_account: { Args: never; Returns: string }
+      get_period_commissions: {
+        Args: { p_building_ids?: string[]; p_period_month: string }
+        Returns: {
+          account_is_empty: boolean
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          expected_amount: number
+          months: number
+          room_id: string
+          room_name: string
+          signed_date: string
+          status: string
+          tenant_name: string
+          tier_percent: number
+          voucher_account_name: string
+          voucher_amount: number
+          voucher_id: string
+        }[]
+      }
+      get_period_fee_status: {
+        Args: {
+          p_building_ids: string[]
+          p_category_keys: string[]
+          p_period_end: string
+          p_period_start: string
+        }
+        Returns: {
+          account_is_empty: boolean
+          account_name: string
+          building_id: string
+          category_key: string
+          covered_end: string
+          covered_start: string
+          draft_amount: number
+          expected_amount: number
+          has_receipt: boolean
+          not_applicable: boolean
+          paid_amount: number
+          voucher_ids: string[]
+          vouchers: Json
+        }[]
+      }
+      get_period_maintenance: {
+        Args: { p_building_ids?: string[]; p_period_month: string }
+        Returns: {
+          account_name: string
+          amount: number
+          batch_id: string
+          building_id: string
+          building_name: string
+          has_receipt: boolean
+          is_standalone: boolean
+          payer_name: string
+          subtype: string
+          voucher_date: string
+          voucher_id: string
+        }[]
+      }
       get_public_available_rooms: { Args: { p_token: string }; Returns: Json }
       get_public_latest_invoice_by_code: {
         Args: { p_code: string }
@@ -7425,6 +9112,18 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: Json
       }
+      get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
+      get_salary_v5_config: { Args: never; Returns: Json }
+      has_full_building_scope: { Args: never; Returns: boolean }
+      has_perm_full_scope: {
+        Args: { _action: string; _table: string }
+        Returns: boolean
+      }
+      ie_all_buildings_action_ids: {
+        Args: { _action: string }
+        Returns: string[]
+      }
+      ie_all_buildings_ids: { Args: never; Returns: string[] }
       ie_all_buildings_scope: {
         Args: { _building_id: string }
         Returns: boolean
@@ -7458,6 +9157,7 @@ export type Database = {
           lease_template_id: string | null
           max_occupants: number | null
           name: string
+          name_sort: string | null
           rent_price: number
           room_type: string | null
           sale_bonus_note: string | null
@@ -7474,6 +9174,10 @@ export type Database = {
       }
       ie_has_deposit_item: { Args: { p_ie_id: string }; Returns: boolean }
       ie_item_restricted_visible: { Args: { _ie_id: string }; Returns: boolean }
+      ie_recompute_commission_kind: {
+        Args: { p_ie_id: string }
+        Returns: undefined
+      }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_account_shared_with_me: {
@@ -7483,9 +9187,18 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      is_user_super_admin: { Args: { p_user: string }; Returns: boolean }
+      log_income_expense_action: {
+        Args: { p_action: string; p_id: string; p_note?: string }
+        Returns: undefined
+      }
       log_public_room_events: {
         Args: { p_events: Json; p_token: string }
         Returns: number
+      }
+      manager_collection_cycle_report: {
+        Args: { p_from?: string; p_manager_id?: string; p_to?: string }
+        Returns: Json
       }
       monthly_building_profit: {
         Args: { p_building_id?: string; p_end: string; p_start: string }
@@ -7497,6 +9210,8 @@ export type Database = {
           total_income: number
         }[]
       }
+      natural_sort_key: { Args: { p_name: string }; Returns: string }
+      nrm_vn: { Args: { s: string }; Returns: string }
       pass_listing_form_rooms: {
         Args: never
         Returns: {
@@ -7519,17 +9234,48 @@ export type Database = {
           phone: string
         }[]
       }
+      pay_draft_fee_voucher: {
+        Args: {
+          p_account_id: string
+          p_attachments?: Json
+          p_voucher_id: string
+        }
+        Returns: Json
+      }
+      pay_period_fee: {
+        Args: {
+          p_account_holder?: string
+          p_account_id?: string
+          p_amount: number
+          p_attachments?: Json
+          p_building_id: string
+          p_category_key: string
+          p_force?: boolean
+          p_period_end: string
+          p_period_start: string
+          p_provider_code?: string
+          p_voucher_date?: string
+        }
+        Returns: Json
+      }
       pay_utility_bill: {
         Args: {
           p_account_holder?: string
+          p_account_id?: string
           p_amount: number
+          p_attachments?: Json
           p_building_id: string
           p_period_month: string
           p_provider_code?: string
+          p_utility_account_id?: string
           p_utility_type: string
           p_voucher_date?: string
         }
         Returns: Json
+      }
+      permitted_building_ids: {
+        Args: { _action: string; _table: string }
+        Returns: string[]
       }
       pra_by_token: {
         Args: {
@@ -7644,6 +9390,20 @@ export type Database = {
           total_dwell_ms: number
         }[]
       }
+      propose_reconciliation: {
+        Args: {
+          p_account_id: string
+          p_as_of: string
+          p_counted_balance: number
+          p_counterparty_id?: string
+          p_note?: string
+        }
+        Returns: Json
+      }
+      public_v5_effective_milestones: {
+        Args: { p_deltas: Json; p_miles: Json; p_n: number }
+        Returns: Json
+      }
       recompute_contract_deposit_paid: {
         Args: { p_contract_id: string }
         Returns: undefined
@@ -7675,6 +9435,10 @@ export type Database = {
         }
         Returns: Json
       }
+      record_payment_gps: {
+        Args: { p_income_expense_id: string; p_lat: number; p_lng: number }
+        Returns: Json
+      }
       reject_cancel_handover: { Args: { p_handover_id: string }; Returns: Json }
       renew_contract: {
         Args: {
@@ -7696,12 +9460,59 @@ export type Database = {
         }
         Returns: string
       }
+      report_device_issue: {
+        Args: { p_reason: string; p_session: string }
+        Returns: Json
+      }
       request_cancel_handover: {
         Args: { p_handover_id: string; p_reason: string }
         Returns: Json
       }
+      request_paid_leave: {
+        Args: { p_date: string; p_reason?: string }
+        Returns: Json
+      }
+      resolve_fixed_expense_type: {
+        Args: { p_category_key: string; p_owner: string }
+        Returns: string
+      }
+      restore_income_expense: { Args: { p_id: string }; Returns: Json }
+      room_sort_key: { Args: { p_name: string }; Returns: string }
       run_recurring_vouchers_job: { Args: never; Returns: undefined }
+      salary_staff_months: { Args: never; Returns: Json }
+      salary_work_ledger: {
+        Args: { p_period_month: string; p_staff_id?: string }
+        Returns: {
+          after_amount: number
+          base_amount: number
+          bonus_amount: number
+          cash_amount: number
+          content: string
+          day_label: string
+          has_photo: boolean
+          is_contract: boolean
+          is_repair: boolean
+          item_type: string
+          job_type_name: string
+          occurred_date: string
+          place: string
+          reason: string
+          source_id: string
+          staff_id: string
+          weekend_amount: number
+        }[]
+      }
       same_team: { Args: { _target: string }; Returns: boolean }
+      save_utility_account: {
+        Args: {
+          p_account_holder?: string
+          p_building_id: string
+          p_id: string
+          p_provider_code?: string
+          p_utility_type: string
+        }
+        Returns: string
+      }
       search_similar_memories: {
         Args: {
           p_limit?: number
@@ -7750,6 +9561,8 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_salary_v5_config: { Args: { p_patch: Json }; Returns: Json }
+      shared_account_ids: { Args: never; Returns: string[] }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       soft_delete_customer: {
@@ -7765,16 +9578,48 @@ export type Database = {
         Args: { _building_id: string; _owner: string }
         Returns: boolean
       }
+      start_inspection: {
+        Args: {
+          p_building: string
+          p_paired_income_expense_id?: string
+          p_type?: string
+        }
+        Returns: Json
+      }
+      start_quick_check: {
+        Args: { p_building: string; p_paired_income_expense_id?: string }
+        Returns: Json
+      }
+      submit_inspection_photo: {
+        Args: {
+          p_exif_time?: string
+          p_lat?: number
+          p_lng?: number
+          p_session: string
+          p_sha256: string
+          p_slot: string
+          p_storage_path: string
+        }
+        Returns: Json
+      }
       super_admin_force_cancel_invoice: {
         Args: { p_invoice_id: string }
         Returns: undefined
       }
       terminate_contract_forfeit: {
-        Args: { p_contract_id: string; p_forfeit_date: string }
+        Args: {
+          p_contract_id: string
+          p_extra_charges?: Json
+          p_forfeit_date: string
+        }
         Returns: Json
       }
       terminate_contract_forfeit_impl: {
-        Args: { p_contract_id: string; p_forfeit_date: string }
+        Args: {
+          p_contract_id: string
+          p_extra_charges?: Json
+          p_forfeit_date: string
+        }
         Returns: Json
       }
       terminate_contract_move_out: {
@@ -7782,10 +9627,13 @@ export type Database = {
           p_contract_id: string
           p_deposit_refund?: number
           p_excess_rent?: number
+          p_extra_charges?: Json
           p_move_out_date: string
           p_notes?: string
           p_outstanding_debt?: number
           p_penalty_fee?: number
+          p_receipt_account_id?: string
+          p_shortfall_mode?: string
         }
         Returns: Json
       }
@@ -7794,10 +9642,13 @@ export type Database = {
           p_contract_id: string
           p_deposit_refund?: number
           p_excess_rent?: number
+          p_extra_charges?: Json
           p_move_out_date: string
           p_notes?: string
           p_outstanding_debt?: number
           p_penalty_fee?: number
+          p_receipt_account_id?: string
+          p_shortfall_mode?: string
         }
         Returns: Json
       }
@@ -7852,6 +9703,12 @@ export type Database = {
           change_account_id: string | null
           change_amount: number
           code: string | null
+          collect_distance_m: number | null
+          collect_geofence_status: string | null
+          collect_lat: number | null
+          collect_lng: number | null
+          commission_kind: string | null
+          commission_legacy_dup: boolean
           contract_id: string | null
           counts_in_business_result: boolean
           created_at: string
@@ -7862,12 +9719,15 @@ export type Database = {
           has_restricted_item: boolean
           id: string
           invoice_id: string | null
+          kqkd_amount: number
           name: string
           notes: string | null
           payer_name: string | null
           payment_id: string | null
+          profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
+          repeat_auto_approve: boolean
           repeat_count: number
           repeat_cycle: string | null
           repeat_infinity: boolean
@@ -7877,12 +9737,16 @@ export type Database = {
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
+          salary_role: string | null
+          salary_staff_id: string | null
           shareholder_id: string | null
+          system_source: string | null
           tenant_id: string | null
           total_amount: number
           type: string
           updated_at: string
           user_id: string
+          utility_account_id: string | null
           verified_at: string | null
           verified_by: string | null
           verified_by_name: string | null
@@ -7895,6 +9759,30 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_period_fee: {
+        Args: {
+          p_account_id?: string
+          p_amount?: number
+          p_attachments?: Json
+          p_notes?: string
+          p_period_end?: string
+          p_period_start?: string
+          p_voucher_id: string
+        }
+        Returns: Json
+      }
+      upsert_building_fee_account: {
+        Args: {
+          p_account_holder?: string
+          p_building_id: string
+          p_default_account_id?: string
+          p_default_amount?: number
+          p_fee_category: string
+          p_not_applicable?: boolean
+          p_provider_code?: string
+        }
+        Returns: string
       }
       upsert_building_utility_account: {
         Args: {
@@ -7940,17 +9828,153 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      v5_appeal: { Args: { p_date: string; p_text: string }; Returns: Json }
+      v5_apply_lock_adjustments: { Args: { p_month: string }; Returns: Json }
+      v5_building_reqs: { Args: { p_building: string }; Returns: Json }
+      v5_checklist_for_building: {
+        Args: { p_building: string; p_date: string; p_type: string }
+        Returns: Json
+      }
+      v5_close_period: { Args: { p_new_month: string }; Returns: Json }
+      v5_cron_finish: {
+        Args: {
+          p_error?: string
+          p_idem: string
+          p_job: string
+          p_rows: number
+        }
+        Returns: undefined
+      }
+      v5_cron_start: {
+        Args: { p_idem: string; p_job: string }
+        Returns: boolean
+      }
+      v5_daily_missions: {
+        Args: { p_user: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          cluster_id: string
+          color: string
+          days_since_full: number
+          days_since_touch: number
+          reason: string
+          score: number
+          vacant_rooms: number
+        }[]
+      }
+      v5_daily_missions_self: {
+        Args: never
+        Returns: {
+          building_id: string
+          building_name: string
+          cluster_id: string
+          color: string
+          days_since_full: number
+          days_since_touch: number
+          reason: string
+          score: number
+          vacant_rooms: number
+        }[]
+      }
+      v5_distance_m: {
+        Args: { lat1: number; lat2: number; lng1: number; lng2: number }
+        Returns: number
+      }
+      v5_expire_stale: { Args: { p_before: string }; Returns: number }
+      v5_flag_day: {
+        Args: { p_date: string; p_reason: string; p_user: string }
+        Returns: Json
+      }
+      v5_lock_assert: {
+        Args: { p_month: string }
+        Returns: {
+          a1_caps_ok: boolean
+          a2_no_open_flags: boolean
+          a3_payment_join_ok: boolean
+          all_ok: boolean
+          attend_amount: number
+          n_chuan: number
+          staff_id: string
+          staff_name: string
+          streak_amount: number
+          ticked_days: number
+          total: number
+        }[]
+      }
+      v5_month_money: {
+        Args: { p_month: string; p_user: string }
+        Returns: Json
+      }
+      v5_n_chuan: { Args: { p_month: string; p_user: string }; Returns: number }
+      v5_recompute_streak: {
+        Args: { p_month: string; p_user: string }
+        Returns: Json
+      }
+      v5_run_digest: {
+        Args: never
+        Returns: {
+          body: string
+          title: string
+          url: string
+          user_id: string
+        }[]
+      }
+      v5_run_job: { Args: { p_job: string }; Returns: Json }
+      v5_run_score: { Args: never; Returns: Json }
+      v5_run_tier: { Args: never; Returns: Json }
+      v5_shadow_report: { Args: { p_month: string }; Returns: Json }
+      v5_tick_attendance: {
+        Args: {
+          p_date: string
+          p_note?: string
+          p_ref: string
+          p_source: string
+          p_user: string
+        }
+        Returns: Json
+      }
+      v5_tick_from_job: { Args: { p_job_id: string }; Returns: Json }
+      v5_verdict: {
+        Args: {
+          p_confirm: boolean
+          p_date: string
+          p_note?: string
+          p_user: string
+        }
+        Returns: Json
+      }
       verify_income_expense: {
         Args: { p_id: string; p_note?: string }
         Returns: undefined
+      }
+      vn_local_date: { Args: { ts: string }; Returns: string }
+      vn_local_dow: { Args: { ts: string }; Returns: number }
+      vn_local_time: { Args: { ts: string }; Returns: string }
+      vn_workdays: { Args: { p_month: string }; Returns: string[] }
+      zalo_broadcast: {
+        Args: { p_body: string; p_conversation_ids: string[] }
+        Returns: number
       }
       zalo_can: { Args: { _action: string }; Returns: boolean }
       zalo_disconnect_account: {
         Args: { p_account_id: string }
         Returns: undefined
       }
+      zalo_load_history: {
+        Args: { p_conversation_id: string; p_count?: number }
+        Returns: undefined
+      }
       zalo_mark_read: {
         Args: { p_conversation_id: string }
+        Returns: undefined
+      }
+      zalo_react_message: {
+        Args: { p_emoji: string; p_message_id: string }
+        Returns: undefined
+      }
+      zalo_recall_message: {
+        Args: { p_message_id: string }
         Returns: undefined
       }
       zalo_request_connect: {
@@ -8121,6 +10145,7 @@ export type Database = {
         | "GENERAL_ANNOUNCEMENT"
         | "CUSTOM"
         | "DEPOSIT_SHORTFALL"
+        | "SALARY_BONUS"
       payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
       payment_method: "TM" | "TK" | "TT" | "CT"
       pricing_type:
@@ -8370,6 +10395,7 @@ export const Constants = {
         "GENERAL_ANNOUNCEMENT",
         "CUSTOM",
         "DEPOSIT_SHORTFALL",
+        "SALARY_BONUS",
       ],
       payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
       payment_method: ["TM", "TK", "TT", "CT"],

@@ -64,7 +64,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
 
       // 1) Cấu hình quản lý hưởng lương (hiệu lực trong tháng)
       const { data: cfgRaw } = await (supabase
-        .from("manager_salary_config" as any)
+        .from("manager_salary_config")
         .select("*") as any)
         .eq("is_active", true)
         .lte("effective_from", start)
@@ -98,9 +98,9 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       const roomNameById = new Map<string, string>();
       if (roomIds.length) {
         const [rmRes, invRes] = await Promise.all([
-          (supabase.from("rooms" as any).select("id, name") as any).in("id", roomIds),
+          (supabase.from("rooms").select("id, name") as any).in("id", roomIds),
           (supabase
-            .from("invoices" as any)
+            .from("invoices")
             .select("id, room_id, building_id, contract_id, total_amount, remaining_amount, billing_month, created_at") as any)
             .in("room_id", roomIds)
             .eq("billing_month", billingMonth)
@@ -137,22 +137,22 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         buildingsRes,
         trendRes,
       ] = await Promise.all([
-        (supabase.from("profiles" as any).select("id, full_name") as any).in("id", staffIds),
+        (supabase.from("profiles").select("id, full_name") as any).in("id", staffIds),
         (supabase.rpc as any)("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: null }),
-        (supabase.from("salary_monthly" as any).select("*") as any).eq("period_month", periodMonth).in("staff_id", staffIds),
-        (supabase.from("shareholders" as any).select("id, auth_user_id") as any).in("auth_user_id", staffIds),
-        (supabase.from("profit_monthly" as any).select("status, period_month") as any).eq("period_month", periodMonth),
+        (supabase.from("salary_monthly").select("*") as any).eq("period_month", periodMonth).in("staff_id", staffIds),
+        (supabase.from("shareholders").select("id, auth_user_id") as any).in("auth_user_id", staffIds),
+        (supabase.from("profit_monthly").select("status, period_month") as any).eq("period_month", periodMonth),
         (supabase
-          .from("income_expenses" as any)
+          .from("income_expenses")
           .select("id, salary_staff_id, salary_role, name, total_amount, approval_status, voucher_date") as any)
           .in("salary_staff_id", staffIds)
           .eq("salary_role", "ADVANCE")
           .is("deleted_at", null)
           .gte("voucher_date", start)
           .lte("voucher_date", end),
-        (supabase.from("buildings" as any).select("id, name, code") as any),
+        (supabase.from("buildings").select("id, name, code") as any),
         (supabase
-          .from("salary_monthly" as any)
+          .from("salary_monthly")
           .select("staff_id, period_month, gross_total, take_home, status, locked_at") as any)
           .in("staff_id", staffIds)
           .gte("period_month", shiftMonth(periodMonth, -5))
@@ -184,13 +184,13 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       }
       const commByStaff = new Map<string, { items: SalCommissionItem[]; flagged: SalCommissionItem[] }>();
       {
-        const { data: ctRaw } = await (supabase.from("income_expense_types" as any).select("id, name, category") as any);
+        const { data: ctRaw } = await (supabase.from("income_expense_types").select("id, name, category") as any);
         const commTypeIds = ((ctRaw || []) as any[])
           .filter((t) => String(t.category || "").toUpperCase() === "HOA HỒNG" || /hoa h[ồô]ng|hhmg/i.test(String(t.name || "")))
           .map((t) => t.id);
         if (commTypeIds.length) {
           const { data: ciRaw } = await (supabase
-            .from("income_expense_items" as any)
+            .from("income_expense_items")
             .select("amount, start_date, income_expenses(id, name, payer_name, approval_status, type, deleted_at)") as any)
             .in("income_expense_type_id", commTypeIds)
             .gte("start_date", start)
@@ -218,7 +218,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       let allocs: any[] = [];
       if (shIds.length) {
         const { data: aRaw } = await (supabase
-          .from("profit_allocations" as any)
+          .from("profit_allocations")
           .select("shareholder_id, amount, pm:profit_monthly_id(period_month, building_id, status)") as any)
           .in("shareholder_id", shIds);
         allocs = ((aRaw || []) as any[]).filter(
@@ -257,7 +257,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       let snapByStaff = new Map<string, SalLedgerRow[]>();
       if (lockedMonthlyIds.length) {
         const { data: snapRaw } = await (supabase
-          .from("salary_work_ledger_snapshot" as any)
+          .from("salary_work_ledger_snapshot")
           .select("*") as any)
           .in("salary_monthly_id", lockedMonthlyIds);
         for (const s of (snapRaw || []) as any[]) {
@@ -281,7 +281,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       let adjByMonthly = new Map<string, SalAdjustment[]>();
       if (monthlyIds.length) {
         const { data: adjRaw } = await (supabase
-          .from("salary_adjustments" as any)
+          .from("salary_adjustments")
           .select("*") as any)
           .in("salary_monthly_id", monthlyIds);
         for (const a of (adjRaw || []) as any[]) {
@@ -320,7 +320,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             const { data } = await (supabase.rpc as any)("v5_month_money", { p_user: sid, p_month: periodMonth });
             return { sid, data };
           })),
-          (supabase.from("salary_streak_state" as any).select("user_id, current_streak") as any)
+          (supabase.from("salary_streak_state").select("user_id, current_streak") as any)
             .in("user_id", staffIds).eq("period_month", periodMonth),
         ]);
         const curByStaff = new Map<string, number>(
@@ -501,7 +501,7 @@ export const useMyManagerConfig = () => {
       const user = await getSessionUser();
       if (!user) return null;
       const { data } = await (supabase
-        .from("manager_salary_config" as any)
+        .from("manager_salary_config")
         .select("staff_id") as any)
         .eq("staff_id", user.id)
         .eq("is_active", true)
@@ -530,7 +530,7 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
         /* RPC chưa có / lỗi → dùng mặc định lùi-tháng */
       }
       const { data: rows } = await (supabase
-        .from("salary_monthly" as any)
+        .from("salary_monthly")
         .select("period_month, status") as any)
         .eq("staff_id", staffId)
         .eq("status", "LOCKED");
@@ -548,7 +548,7 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
 
 async function ensureMonthly(ownerId: string, staffId: string, periodMonth: string): Promise<string> {
   const { data: existing } = await (supabase
-    .from("salary_monthly" as any)
+    .from("salary_monthly")
     .select("id") as any)
     .eq("staff_id", staffId)
     .eq("period_month", periodMonth)
@@ -556,7 +556,7 @@ async function ensureMonthly(ownerId: string, staffId: string, periodMonth: stri
     .maybeSingle();
   if (existing?.id) return (existing as any).id;
   const { data: created, error } = await supabase
-    .from("salary_monthly" as any)
+    .from("salary_monthly")
     .insert({ user_id: ownerId, staff_id: staffId, period_month: periodMonth, status: "DRAFT" })
     .select("id")
     .single();
@@ -583,14 +583,14 @@ export const useSaveSalaryAdjustment = () => {
       if (!user) throw new Error("Chưa đăng nhập");
       if (input.id) {
         const { error } = await supabase
-          .from("salary_adjustments" as any)
+          .from("salary_adjustments")
           .update({ kind: input.kind, label: input.label, amount: Math.abs(input.amount), note: input.note ?? null })
           .eq("id", input.id);
         if (error) throw error;
         return;
       }
       const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth);
-      const { error } = await supabase.from("salary_adjustments" as any).insert({
+      const { error } = await supabase.from("salary_adjustments").insert({
         user_id: input.ownerId,
         salary_monthly_id: monthlyId,
         kind: input.kind,
@@ -613,7 +613,7 @@ export const useDeleteSalaryAdjustment = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from("salary_adjustments" as any).delete() as any).eq("id", id);
+      const { error } = await (supabase.from("salary_adjustments").delete() as any).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -639,7 +639,7 @@ export const useLockSalaryMonth = () => {
       ));
       if (commVoucherIds.length) {
         const { error: cErr } = await (supabase
-          .from("income_expenses" as any)
+          .from("income_expenses")
           .update({ approval_status: "APPROVED", approved_at: nowIso, approved_by: user.id }) as any)
           .in("id", commVoucherIds)
           .neq("approval_status", "APPROVED");
@@ -651,7 +651,7 @@ export const useLockSalaryMonth = () => {
         const contractBonus = m.bonusAuto.filter((b) => b.icon === "FileClock").reduce((s, b) => s + b.amount, 0);
         const workBonus = c.autoSum - contractBonus;
         const { data: row, error } = await supabase
-          .from("salary_monthly" as any)
+          .from("salary_monthly")
           .upsert(
             {
               user_id: ownerId,
@@ -678,9 +678,9 @@ export const useLockSalaryMonth = () => {
           .single();
         if (error) throw error;
         const monthlyId = (row as any).id;
-        await (supabase.from("salary_work_ledger_snapshot" as any).delete() as any).eq("salary_monthly_id", monthlyId);
+        await (supabase.from("salary_work_ledger_snapshot").delete() as any).eq("salary_monthly_id", monthlyId);
         if (m.ledger.length) {
-          await supabase.from("salary_work_ledger_snapshot" as any).insert(
+          await supabase.from("salary_work_ledger_snapshot").insert(
             m.ledger.map((r) => ({
               user_id: ownerId,
               salary_monthly_id: monthlyId,
@@ -719,14 +719,14 @@ export const useUnlockSalaryMonth = () => {
   return useMutation({
     mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => {
       const { data: rows } = await (supabase
-        .from("salary_monthly" as any)
+        .from("salary_monthly")
         .select("id") as any)
         .eq("period_month", periodMonth)
         .in("staff_id", staffIds);
       const ids = ((rows || []) as any[]).map((r) => r.id);
       if (ids.length) {
-        await (supabase.from("salary_work_ledger_snapshot" as any).delete() as any).in("salary_monthly_id", ids);
-        await (supabase.from("salary_monthly" as any).update({ status: "DRAFT", locked_at: null, locked_by: null }) as any).in("id", ids);
+        await (supabase.from("salary_work_ledger_snapshot").delete() as any).in("salary_monthly_id", ids);
+        await (supabase.from("salary_monthly").update({ status: "DRAFT", locked_at: null, locked_by: null }) as any).in("id", ids);
       }
     },
     onSuccess: () => {
@@ -791,19 +791,19 @@ export const useSalaryPayout = () => {
 
       // toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung")
       const { data: chung } = await (supabase
-        .from("buildings" as any).select("id") as any)
+        .from("buildings").select("id") as any)
         .eq("is_virtual", true).is("deleted_at", null)
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
 
       // hạng mục "Lương quản lý"
       let typeId: string;
       const { data: t } = await (supabase
-        .from("income_expense_types" as any).select("id") as any)
+        .from("income_expense_types").select("id") as any)
         .eq("user_id", input.ownerId).eq("type", "expense").eq("name", "Lương quản lý").limit(1).maybeSingle();
       if (t?.id) typeId = (t as any).id;
       else {
         const { data: created, error } = await supabase
-          .from("income_expense_types" as any)
+          .from("income_expense_types")
           .insert({ user_id: input.ownerId, name: "Lương quản lý", type: "expense", category: "Lương", is_default: false, is_deposit: false })
           .select("id").single();
         if (error) throw error;
@@ -812,7 +812,7 @@ export const useSalaryPayout = () => {
 
       const name = input.note?.trim() || `Lương: ${input.staffName}`;
       const { data: voucher, error: vErr } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .insert({
           user_id: user.id,
           creator_name: creatorName,
@@ -856,7 +856,7 @@ export const useSalaryPayout = () => {
           end_date: input.voucher_date,
         });
       }
-      const { error: itErr } = await supabase.from("income_expense_items" as any).insert(salItems);
+      const { error: itErr } = await supabase.from("income_expense_items").insert(salItems);
       if (itErr) throw itErr;
 
       // --- Phiếu THU gạch nợ tiền phòng (cấn trừ vào lương) vào CÙNG sổ quỹ ---
@@ -868,7 +868,7 @@ export const useSalaryPayout = () => {
 
         // loại thu doanh thu (không phải cọc)
         const { data: incTypes } = await (supabase
-          .from("income_expense_types" as any)
+          .from("income_expense_types")
           .select("id, is_default, name, is_deposit") as any)
           .eq("type", "income").limit(100);
         const revenueTypes = ((incTypes || []) as any[]).filter((x) => !x.is_deposit);
@@ -883,7 +883,7 @@ export const useSalaryPayout = () => {
         const bldNm = (rentInv as any).building?.name ?? "";
 
         const { data: payRow, error: payErr } = await supabase
-          .from("payments" as any)
+          .from("payments")
           .insert({
             user_id: invOwner,
             invoice_id: (rentInv as any).id,
@@ -896,7 +896,7 @@ export const useSalaryPayout = () => {
         if (payErr) throw payErr;
 
         const { data: rentVoucher, error: rvErr } = await supabase
-          .from("income_expenses" as any)
+          .from("income_expenses")
           .insert({
             user_id: invOwner,
             type: "INCOME",
@@ -916,7 +916,7 @@ export const useSalaryPayout = () => {
           .select("id").single();
         if (rvErr) throw rvErr;
 
-        const { error: rItErr } = await supabase.from("income_expense_items" as any).insert({
+        const { error: rItErr } = await supabase.from("income_expense_items").insert({
           income_expense_id: (rentVoucher as any).id,
           income_expense_type_id: incomeTypeId,
           description: `Thu tiền phòng HĐ ${roomNm}`.trim(),
@@ -930,9 +930,9 @@ export const useSalaryPayout = () => {
 
       // ghi nhận đã trả vào salary_monthly (paid = tiền thực nhận, KHÔNG gồm tiền phòng)
       const monthlyId = await ensureMonthly(input.ownerId, input.staffId, input.periodMonth);
-      const { data: cur } = await (supabase.from("salary_monthly" as any).select("paid").eq("id", monthlyId) as any).single();
+      const { data: cur } = await (supabase.from("salary_monthly").select("paid").eq("id", monthlyId) as any).single();
       const newPaid = (Number((cur as any)?.paid) || 0) + input.amount;
-      await (supabase.from("salary_monthly" as any).update({ paid: newPaid, payout_voucher_id: (voucher as any).id }) as any).eq("id", monthlyId);
+      await (supabase.from("salary_monthly").update({ paid: newPaid, payout_voucher_id: (voucher as any).id }) as any).eq("id", monthlyId);
       return voucher;
     },
     onSuccess: () => {

@@ -169,7 +169,7 @@ export const useProfitMonthly = () => {
     queryKey: ["profit-monthly"],
     queryFn: async () => {
       const { data, error } = await (supabase
-        .from("profit_monthly" as any)
+        .from("profit_monthly")
         .select("*") as any)
         .order("period_month", { ascending: false });
       if (error) {
@@ -192,7 +192,7 @@ export const useProfitAllocations = () => {
     queryKey: ["profit-allocations"],
     queryFn: async () => {
       const { data, error } = await (supabase
-        .from("profit_allocations" as any)
+        .from("profit_allocations")
         .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any);
       if (error) {
         toast.error("Không thể tải phân bổ lợi nhuận");
@@ -218,7 +218,7 @@ export const useShareholderDistributions = () => {
     queryKey: ["shareholder-distributions"],
     queryFn: async () => {
       const { data, error } = await (supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .select("id, shareholder_id, total_amount, voucher_date, name, account_id, building_id") as any)
         .eq("type", "EXPENSE")
         .eq("approval_status", "APPROVED")
@@ -248,7 +248,7 @@ export const useProfitManagerAllocations = () => {
     queryKey: ["profit-manager-allocations"],
     queryFn: async () => {
       const { data, error } = await (supabase
-        .from("profit_manager_allocations" as any)
+        .from("profit_manager_allocations")
         .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any);
       if (error) {
         toast.error("Không thể tải phân bổ lương điều hành");
@@ -273,7 +273,7 @@ export const useManagerSalaryPayouts = () => {
     queryKey: ["manager-salary-payouts"],
     queryFn: async () => {
       const { data, error } = await (supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .select("id, profit_manager_id, total_amount, voucher_date, name, account_id, building_id") as any)
         .eq("type", "EXPENSE")
         .eq("approval_status", "APPROVED")
@@ -307,14 +307,14 @@ export interface LockProfitInput {
 // base = adjusted_profit từng nhà (rows). Chỉ tính quản lý chưa xoá + quy tắc is_active.
 async function computeMonthManagementSalaries(rows: LockProfitInput["rows"]) {
   const { data: activeMgrs, error: mErr } = await (supabase
-    .from("profit_managers" as any)
+    .from("profit_managers")
     .select("id") as any)
     .is("deleted_at", null);
   if (mErr) throw mErr;
   const activeMgrIds = new Set(((activeMgrs || []) as any[]).map((m) => m.id));
 
   const { data: salaryRows, error: sErr } = await (supabase
-    .from("profit_manager_salaries" as any)
+    .from("profit_manager_salaries")
     .select("manager_id, form, basis, amount, percent, profit_manager_salary_buildings(building_id)") as any)
     .eq("is_active", true);
   if (sErr) throw sErr;
@@ -361,7 +361,7 @@ async function writeLockedMonth(
     locked_by: uid,
   }));
   const { data: pmRows, error: pmErr } = await supabase
-    .from("profit_monthly" as any)
+    .from("profit_monthly")
     .upsert(pmPayload, { onConflict: "building_id,period_month" })
     .select("id, building_id, adjusted_profit, management_salary");
   if (pmErr) {
@@ -378,12 +378,12 @@ async function writeLockedMonth(
   // shareholders.deleted_at, nếu không sẽ tạo phân bổ "ma" cho cổ đông đã xoá
   // (vd "Green") làm tổng được chia phồng so với danh sách cổ đông hiển thị.
   const { data: shares, error: shErr } = await (supabase
-    .from("building_shareholders" as any)
+    .from("building_shareholders")
     .select("building_id, shareholder_id, percent") as any)
     .in("building_id", buildingIds);
   if (shErr) throw shErr;
   const { data: activeSh, error: aShErr } = await (supabase
-    .from("shareholders" as any)
+    .from("shareholders")
     .select("id") as any)
     .is("deleted_at", null);
   if (aShErr) throw aShErr;
@@ -392,12 +392,12 @@ async function writeLockedMonth(
   // 3) Xoá allocations cũ (cổ đông + lương điều hành) rồi insert lại (snapshot)
   if (pmIds.length > 0) {
     const { error: delErr } = await (supabase
-      .from("profit_allocations" as any)
+      .from("profit_allocations")
       .delete() as any)
       .in("profit_monthly_id", pmIds);
     if (delErr) throw delErr;
     const { error: delMgrErr } = await (supabase
-      .from("profit_manager_allocations" as any)
+      .from("profit_manager_allocations")
       .delete() as any)
       .in("profit_monthly_id", pmIds);
     if (delMgrErr) throw delMgrErr;
@@ -432,7 +432,7 @@ async function writeLockedMonth(
 
   if (allocPayload.length > 0) {
     const { error: insErr } = await supabase
-      .from("profit_allocations" as any)
+      .from("profit_allocations")
       .insert(allocPayload);
     if (insErr) throw insErr;
   }
@@ -451,7 +451,7 @@ async function writeLockedMonth(
   }
   if (mgrAllocPayload.length > 0) {
     const { error: insMgrErr } = await supabase
-      .from("profit_manager_allocations" as any)
+      .from("profit_manager_allocations")
       .insert(mgrAllocPayload);
     if (insMgrErr) throw insMgrErr;
   }
@@ -488,7 +488,7 @@ export const useResyncLockedMonths = () => {
       if (!uid) throw new Error("User not authenticated");
 
       const { data: lockedRows, error } = await (supabase
-        .from("profit_monthly" as any)
+        .from("profit_monthly")
         .select("building_id, period_month, computed_profit, adjusted_profit") as any)
         .eq("status", "LOCKED");
       if (error) throw error;
@@ -556,17 +556,17 @@ export const useUnlockProfitMonth = () => {
   return useMutation({
     mutationFn: async (profitMonthlyId: string) => {
       const { error: delErr } = await (supabase
-        .from("profit_allocations" as any)
+        .from("profit_allocations")
         .delete() as any)
         .eq("profit_monthly_id", profitMonthlyId);
       if (delErr) throw delErr;
       const { error: delMgrErr } = await (supabase
-        .from("profit_manager_allocations" as any)
+        .from("profit_manager_allocations")
         .delete() as any)
         .eq("profit_monthly_id", profitMonthlyId);
       if (delMgrErr) throw delMgrErr;
       const { error } = await supabase
-        .from("profit_monthly" as any)
+        .from("profit_monthly")
         .update({ status: "DRAFT", management_salary: 0, locked_at: null, locked_by: null })
         .eq("id", profitMonthlyId);
       if (error) throw error;

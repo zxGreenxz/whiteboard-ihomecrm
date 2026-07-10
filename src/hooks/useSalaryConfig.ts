@@ -37,20 +37,20 @@ export const useSalaryConfigList = () => {
     queryKey: ["salary-config-list"],
     queryFn: async () => {
       const { data: cfg } = await (supabase
-        .from("manager_salary_config" as any)
+        .from("manager_salary_config")
         .select("*") as any)
         .order("created_at", { ascending: true });
       const rows = (cfg || []) as any[];
       const ids = rows.map((r) => r.staff_id);
       const nameById = new Map<string, string>();
       if (ids.length) {
-        const { data: profs } = await (supabase.from("profiles" as any).select("id, full_name") as any).in("id", ids);
+        const { data: profs } = await (supabase.from("profiles").select("id, full_name") as any).in("id", ids);
         for (const p of (profs || []) as any[]) nameById.set(p.id, p.full_name);
       }
       const roomIds = rows.map((r) => r.room_id).filter(Boolean);
       const roomNameById = new Map<string, string>();
       if (roomIds.length) {
-        const { data: rms } = await (supabase.from("rooms" as any).select("id, name") as any).in("id", roomIds);
+        const { data: rms } = await (supabase.from("rooms").select("id, name") as any).in("id", roomIds);
         for (const rm of (rms || []) as any[]) roomNameById.set(rm.id, rm.name);
       }
       return rows.map((r) => ({
@@ -89,7 +89,7 @@ export const useSaveManagerConfig = () => {
       if (!user) throw new Error("Chưa đăng nhập");
       if (input.id) {
         const { error } = await supabase
-          .from("manager_salary_config" as any)
+          .from("manager_salary_config")
           .update({
             base_salary: input.base_salary,
             default_room_rent: input.default_room_rent,
@@ -102,7 +102,7 @@ export const useSaveManagerConfig = () => {
         if (error) throw error;
       } else {
         if (!input.staff_id) throw new Error("Chưa chọn nhân viên");
-        const { error } = await supabase.from("manager_salary_config" as any).insert({
+        const { error } = await supabase.from("manager_salary_config").insert({
           user_id: user.id,
           staff_id: input.staff_id,
           base_salary: input.base_salary,
@@ -129,7 +129,7 @@ export const useBonusRules = () => {
   return useQuery({
     queryKey: ["salary-bonus-rules"],
     queryFn: async () => {
-      const { data } = await (supabase.from("salary_bonus_rules" as any).select("id, user_id, rules") as any).limit(1).maybeSingle();
+      const { data } = await (supabase.from("salary_bonus_rules").select("id, user_id, rules") as any).limit(1).maybeSingle();
       if (!data) return { id: null as string | null, rules: { ...DEFAULT_RULES } };
       // staffMonths sống chung trong jsonb `rules` nhưng KHÔNG thuộc SalaryRules —
       // tách ra để form quy tắc không lưu nhầm (xem useStaffMonthOverrides).
@@ -145,15 +145,15 @@ export const useSaveBonusRules = () => {
     mutationFn: async (rules: SalaryRules) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { data: existing } = await (supabase.from("salary_bonus_rules" as any).select("id, rules") as any).limit(1).maybeSingle();
+      const { data: existing } = await (supabase.from("salary_bonus_rules").select("id, rules") as any).limit(1).maybeSingle();
       // GIỮ staffMonths (cài đặt tháng hiển thị) khi lưu lại quy tắc thưởng.
       const staffMonths = ((existing as any)?.rules?.staffMonths) || {};
       const merged = { ...rules, staffMonths };
       if (existing?.id) {
-        const { error } = await supabase.from("salary_bonus_rules" as any).update({ rules: merged }).eq("id", (existing as any).id);
+        const { error } = await supabase.from("salary_bonus_rules").update({ rules: merged }).eq("id", (existing as any).id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("salary_bonus_rules" as any).insert({ user_id: user.id, rules: merged });
+        const { error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, rules: merged });
         if (error) throw error;
       }
     },
@@ -172,7 +172,7 @@ export const useSalaryHolidays = () => {
     queryKey: ["salary-holidays"],
     queryFn: async () => {
       const { data } = await (supabase
-        .from("salary_holidays" as any)
+        .from("salary_holidays")
         .select("id, holiday_date, name") as any)
         .order("holiday_date", { ascending: true });
       return ((data || []) as any[]).map((h) => ({ id: h.id, holiday_date: h.holiday_date, name: h.name as string | null }));
@@ -186,7 +186,7 @@ export const useAddHoliday = () => {
     mutationFn: async ({ holiday_date, name }: { holiday_date: string; name?: string }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { error } = await supabase.from("salary_holidays" as any).insert({ user_id: user.id, holiday_date, name: name ?? null });
+      const { error } = await supabase.from("salary_holidays").insert({ user_id: user.id, holiday_date, name: name ?? null });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -202,7 +202,7 @@ export const useDeleteHoliday = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from("salary_holidays" as any).delete() as any).eq("id", id);
+      const { error } = await (supabase.from("salary_holidays").delete() as any).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -221,7 +221,7 @@ export const useStaffMonthOverrides = () => {
   return useQuery({
     queryKey: ["salary-staff-months"],
     queryFn: async () => {
-      const { data } = await (supabase.from("salary_bonus_rules" as any).select("rules") as any).limit(1).maybeSingle();
+      const { data } = await (supabase.from("salary_bonus_rules").select("rules") as any).limit(1).maybeSingle();
       return (((data as any)?.rules?.staffMonths) || {}) as Record<string, boolean>;
     },
   });
@@ -234,16 +234,16 @@ export const useSaveStaffMonthOverride = () => {
     mutationFn: async ({ ym, value }: { ym: string; value: boolean | null }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { data: row } = await (supabase.from("salary_bonus_rules" as any).select("id, rules") as any).limit(1).maybeSingle();
+      const { data: row } = await (supabase.from("salary_bonus_rules").select("id, rules") as any).limit(1).maybeSingle();
       const rules: any = { ...((row as any)?.rules || {}) };
       const sm: Record<string, boolean> = { ...(rules.staffMonths || {}) };
       if (value === null) delete sm[ym]; else sm[ym] = value;
       rules.staffMonths = sm;
       if ((row as any)?.id) {
-        const { error } = await supabase.from("salary_bonus_rules" as any).update({ rules }).eq("id", (row as any).id);
+        const { error } = await supabase.from("salary_bonus_rules").update({ rules }).eq("id", (row as any).id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("salary_bonus_rules" as any).insert({ user_id: user.id, rules });
+        const { error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, rules });
         if (error) throw error;
       }
     },
@@ -260,7 +260,7 @@ export const useSalaryLockedMonths = () => {
   return useQuery({
     queryKey: ["salary-locked-months"],
     queryFn: async () => {
-      const { data } = await (supabase.from("salary_monthly" as any).select("period_month, status") as any).eq("status", "LOCKED");
+      const { data } = await (supabase.from("salary_monthly").select("period_month, status") as any).eq("status", "LOCKED");
       return new Set<string>(((data || []) as any[]).map((r) => String(r.period_month).slice(0, 7)));
     },
   });

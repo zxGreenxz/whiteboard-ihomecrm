@@ -8,7 +8,13 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 - shadcn/ui + Tailwind, react-hook-form + zod
 - Supabase (Postgres + Auth + Storage), migrations dưới `supabase/migrations/`
 - Test: Vitest + fast-check (property-based) — chạy `npx vitest run <path>`
-- Type check: `npx tsc --noEmit`
+- Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
+  Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
+  `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
+- **Regen Supabase types**: sau khi apply migration đổi schema, chạy
+  `npm run gen:types > src/integrations/supabase/types.ts` rồi thêm lại dòng
+  comment header đầu file. ĐỪNG để types.ts trôi sau migration (gây `as any` lan
+  rộng). PAT đọc từ `CLAUDE.local.md`.
 
 ## Quy trình mặc định khi làm xong một thay đổi
 

@@ -264,7 +264,7 @@ async function getVoucherIdsByItemPeriod(
   const rangeEnd = monthToEndDate(endM); // ngày cuối tháng
 
   const { data, error } = await supabase
-    .from("income_expense_items" as any)
+    .from("income_expense_items")
     .select("income_expense_id")
     .not("start_date", "is", null)
     .not("end_date", "is", null)
@@ -417,7 +417,7 @@ export const incomeExpensesListQuery = (
 
       // Build the main query with joins (kèm inner-join lọc hạng mục nếu có)
       let query = supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .select(
           `
           *,
@@ -532,7 +532,7 @@ export const incomeExpensesListQuery = (
       // Fetch items for all vouchers in one query
       const voucherIds = (vouchers as any[]).map((v: any) => v.id);
       const { data: allItems, error: itemsError } = await supabase
-        .from("income_expense_items" as any)
+        .from("income_expense_items")
         .select(
           `
           *,
@@ -805,7 +805,7 @@ export const useCreateIncomeExpense = () => {
 
       // 1. Insert the voucher
       const { data: voucher, error: voucherError } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .insert({
           user_id: user.id,
           creator_name: creatorName,
@@ -856,7 +856,7 @@ export const useCreateIncomeExpense = () => {
       }));
 
       const { error: itemsError } = await supabase
-        .from("income_expense_items" as any)
+        .from("income_expense_items")
         .insert(itemsToInsert);
 
       if (itemsError) {
@@ -905,7 +905,7 @@ export const useCreateProfitDistribution = () => {
       // 1) Toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung").
       //    RLS tự cắt theo tenant; chỉ còn 1 toà ảo non-deleted nên không mơ hồ.
       const { data: chung, error: bErr } = await (supabase
-        .from("buildings" as any)
+        .from("buildings")
         .select("id") as any)
         .eq("is_virtual", true)
         .is("deleted_at", null)
@@ -919,7 +919,7 @@ export const useCreateProfitDistribution = () => {
       // 2) Hạng mục "Chia lợi nhuận cổ đông" (tạo nếu thiếu)
       let typeId: string;
       const { data: t } = await (supabase
-        .from("income_expense_types" as any)
+        .from("income_expense_types")
         .select("id") as any)
         .eq("user_id", user.id)
         .eq("type", "expense")
@@ -930,7 +930,7 @@ export const useCreateProfitDistribution = () => {
         typeId = t.id;
       } else {
         const { data: created, error: ctErr } = await supabase
-          .from("income_expense_types" as any)
+          .from("income_expense_types")
           .insert({
             user_id: user.id,
             name: "Chia lợi nhuận cổ đông",
@@ -951,7 +951,7 @@ export const useCreateProfitDistribution = () => {
         `Chia lợi nhuận: ${input.shareholder_name ?? ""}`.trim() ||
         "Chia lợi nhuận cổ đông";
       const { data: voucher, error: vErr } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .insert({
           user_id: user.id,
           creator_name: creatorName,
@@ -977,7 +977,7 @@ export const useCreateProfitDistribution = () => {
 
       // 4) 1 item → trigger tính total_amount = amount
       const { error: itErr } = await supabase
-        .from("income_expense_items" as any)
+        .from("income_expense_items")
         .insert({
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
@@ -1034,7 +1034,7 @@ export const useCreateManagerSalaryPayout = () => {
       // 1) Toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung").
       //    RLS tự cắt theo tenant; chỉ còn 1 toà ảo non-deleted nên không mơ hồ.
       const { data: chung, error: bErr } = await (supabase
-        .from("buildings" as any)
+        .from("buildings")
         .select("id") as any)
         .eq("is_virtual", true)
         .is("deleted_at", null)
@@ -1048,7 +1048,7 @@ export const useCreateManagerSalaryPayout = () => {
       // 2) Hạng mục "Lương điều hành" (tạo nếu thiếu)
       let typeId: string;
       const { data: t } = await (supabase
-        .from("income_expense_types" as any)
+        .from("income_expense_types")
         .select("id") as any)
         .eq("user_id", user.id)
         .eq("type", "expense")
@@ -1059,7 +1059,7 @@ export const useCreateManagerSalaryPayout = () => {
         typeId = t.id;
       } else {
         const { data: created, error: ctErr } = await supabase
-          .from("income_expense_types" as any)
+          .from("income_expense_types")
           .insert({
             user_id: user.id,
             name: "Lương điều hành",
@@ -1080,7 +1080,7 @@ export const useCreateManagerSalaryPayout = () => {
         `Lương điều hành: ${input.manager_name ?? ""}`.trim() ||
         "Lương điều hành";
       const { data: voucher, error: vErr } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .insert({
           user_id: user.id,
           creator_name: creatorName,
@@ -1106,7 +1106,7 @@ export const useCreateManagerSalaryPayout = () => {
 
       // 4) 1 item → trigger tính total_amount = amount
       const { error: itErr } = await supabase
-        .from("income_expense_items" as any)
+        .from("income_expense_items")
         .insert({
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
@@ -1145,7 +1145,7 @@ export const useUpdateIncomeExpense = () => {
 
       // 1. Update the voucher (only if UNAPPROVED)
       const { data: voucher, error: voucherError } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .update({
           type: data.type,
           name: data.name,
@@ -1184,7 +1184,7 @@ export const useUpdateIncomeExpense = () => {
 
       // 2. Delete existing items
       const { error: deleteError } = await supabase
-        .from("income_expense_items" as any)
+        .from("income_expense_items")
         .delete()
         .eq("income_expense_id", id);
 
@@ -1205,7 +1205,7 @@ export const useUpdateIncomeExpense = () => {
       }));
 
       const { error: itemsError } = await supabase
-        .from("income_expense_items" as any)
+        .from("income_expense_items")
         .insert(itemsToInsert);
 
       if (itemsError) {
@@ -1329,7 +1329,7 @@ export const useCancelIncomeExpense = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const { data: voucher, error: fetchErr } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .select("id, type, payment_id, approval_status")
         .eq("id", id)
         .maybeSingle() as any;
@@ -1339,7 +1339,7 @@ export const useCancelIncomeExpense = () => {
       }
 
       const { error } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .update({ approval_status: "CANCELLED" })
         .eq("id", id);
       if (error) {
@@ -1497,7 +1497,7 @@ export const useImportIncomeExpenses = () => {
         try {
           // 1. Create the voucher
           const { data: voucher, error: voucherError } = await supabase
-            .from("income_expenses" as any)
+            .from("income_expenses")
             .insert({
               user_id: user.id,
               type: row.type,
@@ -1516,7 +1516,7 @@ export const useImportIncomeExpenses = () => {
 
           // 2. Create the item
           const { error: itemError } = await supabase
-            .from("income_expense_items" as any)
+            .from("income_expense_items")
             .insert({
               income_expense_id: (voucher as any).id,
               income_expense_type_id: row.income_expense_type_id,
@@ -1599,7 +1599,7 @@ export const useCreateIncomeExpenseBatch = () => {
 
       // 1. INSERT batch metadata
       const { data: batch, error: batchError } = await supabase
-        .from("income_expense_batches" as any)
+        .from("income_expense_batches")
         .insert({
           user_id: user.id,
           name: input.shared_name,
@@ -1623,7 +1623,7 @@ export const useCreateIncomeExpenseBatch = () => {
       try {
         for (const item of input.items) {
           const { data: voucher, error: voucherError } = await supabase
-            .from("income_expenses" as any)
+            .from("income_expenses")
             .insert({
               user_id: user.id,
               creator_name: creatorName,
@@ -1661,7 +1661,7 @@ export const useCreateIncomeExpenseBatch = () => {
           end_date: item.end_date ?? null,
         }));
         const { error: itemsError } = await supabase
-          .from("income_expense_items" as any)
+          .from("income_expense_items")
           .insert(itemRows);
         if (itemsError) throw itemsError;
 
@@ -1671,7 +1671,7 @@ export const useCreateIncomeExpenseBatch = () => {
           income_expense_id: v.id,
         }));
         const { error: linkError } = await supabase
-          .from("income_expense_batch_items" as any)
+          .from("income_expense_batch_items")
           .insert(linkRows);
         if (linkError) throw linkError;
       } catch (err: any) {
@@ -1680,12 +1680,12 @@ export const useCreateIncomeExpenseBatch = () => {
         if (childVouchers.length > 0) {
           const ids = childVouchers.map((v) => v.id);
           await supabase
-            .from("income_expenses" as any)
+            .from("income_expenses")
             .update({ deleted_at: new Date().toISOString() })
             .in("id", ids);
         }
         await supabase
-          .from("income_expense_batches" as any)
+          .from("income_expense_batches")
           .delete()
           .eq("id", (batch as any).id);
         toast.error(err?.message || "Không thể tạo phiếu tổng");
@@ -1753,7 +1753,7 @@ export const useIncomeExpenseBatches = (
 
       // 1. Lấy batches (kèm filter type nếu có)
       let batchQuery = supabase
-        .from("income_expense_batches" as any)
+        .from("income_expense_batches")
         .select("*")
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
@@ -1772,7 +1772,7 @@ export const useIncomeExpenseBatches = (
 
       // 2. Lấy junction rows
       const { data: links, error: linkError } = await supabase
-        .from("income_expense_batch_items" as any)
+        .from("income_expense_batch_items")
         .select("batch_id, income_expense_id")
         .in("batch_id", batchIds);
       if (linkError) {
@@ -1788,7 +1788,7 @@ export const useIncomeExpenseBatches = (
 
       // 3. Lấy phiếu con (kèm joins) + filter
       let voucherQuery = supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .select(
           `
           *,
@@ -1841,7 +1841,7 @@ export const useIncomeExpenseBatches = (
           ? []
           : (
               await supabase
-                .from("income_expense_items" as any)
+                .from("income_expense_items")
                 .select(
                   `
           *,
@@ -2014,7 +2014,7 @@ export const useCancelIncomeExpenseBatch = () => {
     mutationFn: async (batchId: string) => {
       // 1. Lấy danh sách voucher_id thuộc batch
       const { data: links, error: linkError } = await supabase
-        .from("income_expense_batch_items" as any)
+        .from("income_expense_batch_items")
         .select("income_expense_id")
         .eq("batch_id", batchId);
       if (linkError) {
@@ -2027,7 +2027,7 @@ export const useCancelIncomeExpenseBatch = () => {
       // 2. UPDATE chuyển CANCELLED (chỉ với phiếu đang APPROVED), trả về cả payment_id
       //    để cascade xoá payment hoá đơn tương ứng (nếu có).
       const { data, error } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .update({ approval_status: "CANCELLED" })
         .in("id", ids)
         .eq("approval_status", "APPROVED")
@@ -2085,7 +2085,7 @@ export const useUpdateBatchAccount = () => {
       const { batchId, accountId } = input;
 
       const { data: links, error: linkError } = await supabase
-        .from("income_expense_batch_items" as any)
+        .from("income_expense_batch_items")
         .select("income_expense_id")
         .eq("batch_id", batchId);
       if (linkError) {
@@ -2096,7 +2096,7 @@ export const useUpdateBatchAccount = () => {
       if (ids.length === 0) return { count: 0 };
 
       const { data, error } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .update({ account_id: accountId })
         .in("id", ids)
         .select("id");
@@ -2129,7 +2129,7 @@ export const useStopRecurring = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from("income_expenses" as any)
+        .from("income_expenses")
         .update({
           repeat_cycle: "NONE",
           repeat_infinity: false,
