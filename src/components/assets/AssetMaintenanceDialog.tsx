@@ -36,9 +36,12 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
   const createMaintenance = useCreateAssetMaintenance();
   const { data: assets = [] } = useAssets();
 
-  // Fetch staff/profiles for assignment
+  // Fetch staff/profiles for assignment.
+  // Scope self-only (.eq id, user.id) → key phải scope-qualify ["profiles","self"]
+  // để KHÔNG đụng cache với hook danh sách assignable ["profiles","assignable"].
+  // Trước đây dùng chung ["profiles"] gây nhiễm chéo (self-only ↔ full list).
   const { data: profiles = [] } = useQuery({
-    queryKey: ["profiles"],
+    queryKey: ["profiles", "self"],
     queryFn: async () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');

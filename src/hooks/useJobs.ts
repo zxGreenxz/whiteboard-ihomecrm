@@ -239,21 +239,8 @@ export const useDeleteJob = () => {
   });
 };
 
-export const useProfiles = () => {
-  return useQuery({
-    queryKey: ["profiles"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .order("full_name");
-
-      if (error) {
-        console.error("useProfiles error:", error);
-        return [];
-      }
-
-      return data || [];
-    },
-  });
-};
+// useProfiles đã chuyển thành hook canonical useAssignablePeople
+// (src/hooks/useAssignablePeople.ts) — key scope-qualify ["profiles","assignable"]
+// để không nhiễm chéo cache với các query profiles khác scope. Re-export giữ
+// tương thích ngược cho các call site cũ.
+export { useAssignablePeople as useProfiles } from "./useAssignablePeople";

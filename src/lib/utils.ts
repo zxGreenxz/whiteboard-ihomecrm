@@ -6,15 +6,33 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Formatter singleton hoist ở module-scope: KHÔNG tạo mới Intl.NumberFormat mỗi
+// lần gọi (đắt + rác GC khi render bảng tiền hàng nghìn dòng). Dùng lại 2 instance.
+const VND_FMT = new Intl.NumberFormat("vi-VN", {
+  style: "currency",
+  currency: "VND",
+  maximumFractionDigits: 0,
+});
+const VND_FMT_PLAIN = new Intl.NumberFormat("vi-VN", {
+  maximumFractionDigits: 0,
+});
+
+/**
+ * Chuẩn hoá số tiền: bắt NaN, Infinity, -Infinity, null, undefined và chuỗi
+ * không-phải-số → 0. Dùng chung cho formatCurrency/formatVND để tránh "NaN ₫".
+ */
+function toFiniteVND(amount: number | null | undefined): number {
+  const n = Number(amount);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /**
  * Tiền VND kiểu ký hiệu ₫ chuẩn Intl: "1.500.000 ₫". Dùng cho báo cáo tài chính.
  * (Trước đây ~30 file tự định nghĩa lại y hệt — gom về đây.)
+ * NaN/undefined/Infinity → "0 ₫". Số lẻ làm tròn về nguyên (1234.56 → "1.235 ₫").
  */
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-  }).format(amount);
+export function formatCurrency(amount: number | null | undefined): string {
+  return VND_FMT.format(toFiniteVND(amount));
 }
 
 /**
@@ -23,7 +41,7 @@ export function formatCurrency(amount: number): string {
  * (Trước đây nhiều file tự định nghĩa `${n.toLocaleString("vi-VN")} đ` — gom về đây.)
  */
 export function formatVND(amount: number | null | undefined): string {
-  return `${Number(amount ?? 0).toLocaleString("vi-VN")} đ`;
+  return `${VND_FMT_PLAIN.format(toFiniteVND(amount))} đ`;
 }
 
 export function formatDate(date: string | Date, formatStr: string = "dd/MM/yyyy"): string {

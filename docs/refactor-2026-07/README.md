@@ -62,6 +62,11 @@ Xem chi tiết 1 commit: `git show <hash>`. Diff 1 file trong commit: `git show 
 ## Trạng thái
 
 - **Đã xong + shipped: Phase 1–6.**
+- **Phase 1b (audit vòng 2, 2026-07-10):** vá toàn bộ checkpoint audit — P0 cách ly
+  tenant (is_admin/full-scope/org-entity) + P1 tiền (RPC aggregate, reconcile 3
+  nguồn, fetchAllRows fail-closed) + gate/rebuild (TS fingerprint, forfeit trigger
+  replay) + P2/P3. Chi tiết: **`phase-1b-audit-followup.md`**; rủi ro + verify:
+  `RISK-REGISTER.md` (mục P0/H1–H4).
 - **Chưa làm: Phase 7–10** (dọn route + xoá page chết + xoá 2 BC công nợ; làm lại
   BC Lấp đầy; rút query khỏi component + mổ god-hook; mổ component monolith + dedup
   salary). Xem `../../` plan gốc + RISK-REGISTER §"Còn lại".
