@@ -77,7 +77,7 @@ export default function ProfitHubMobile({
   const managerOnly = tabs.length === 0 && !!myManager;
 
   const yearPill = (
-    <span className="font-mono text-[12px] font-bold text-[#514c42] bg-[#faf8f4] border border-[#e7e3da] px-3 py-[7px] rounded-full">
+    <span className="font-mono text-[11px] font-bold text-[#514c42] bg-[#faf8f4] border border-[#e7e3da] px-2.5 py-1 rounded-full">
       Năm {tab === "overview" ? oYear : sYear}
     </span>
   );

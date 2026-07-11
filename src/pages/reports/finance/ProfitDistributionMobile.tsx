@@ -110,6 +110,10 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const [accrualMode, setAccrualMode] = usePersistedState("flt:rpt-profit-dist-mb:accrualMode", true);
   const [pnlOnly, setPnlOnly] = usePersistedState("flt:rpt-profit-dist-mb:pnlOnly", true); // false ⇒ gồm khoản cọc/không KQKD
   const [sheet, setSheet] = useState<null | "month" | "bld" | "filter">(null);
+  // Thanh kiểm chứng ẨN mặc định — chỉ khi CÓ LỆCH mới hiện chấm đỏ chớp ở ô
+  // LỢI NHUẬN; bấm chấm mới xổ thanh ra (yêu cầu chủ 11/07).
+  const [hasVerifyIssue, setHasVerifyIssue] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
   // Tap TÊN dòng → modal chi tiết hoá đơn; tap chỗ khác trên thẻ → "Các lần thanh toán".
   const [invoiceModal, setInvoiceModal] = useState<{ id: string; title: string } | null>(null);
@@ -447,7 +451,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const profitPos = displayDiff >= 0;
 
   const badge = (n: number) => (
-    <span className="absolute -top-[5px] -right-[5px] min-w-[15px] h-[15px] px-[3px] grid place-items-center rounded-full bg-[#1f7a52] text-white font-mono text-[9.5px] font-bold">
+    <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-[3px] grid place-items-center rounded-full bg-[#1f7a52] text-white font-mono text-[9px] font-bold">
       {n}
     </span>
   );
@@ -560,45 +564,59 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     <>
       <button
         onClick={() => setSheet("month")}
-        className="h-8 inline-flex items-center gap-1.5 font-mono text-[12px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] px-2.5 rounded-[9px]"
+        className="h-7 inline-flex items-center gap-1 font-mono text-[11px] font-bold text-[#1a6645] bg-[#e8f3ec] border border-[#d2e8da] px-1.5 rounded-lg"
       >
-        <CalendarDays className="h-[13px] w-[13px]" />
+        <CalendarDays className="h-3 w-3" />
         {monthLabel}
       </button>
       <button
         onClick={() => setSheet("bld")}
         aria-label="Chọn toà nhà"
-        className={`relative h-8 w-[34px] grid place-items-center rounded-[9px] border ${
+        className={`relative h-7 w-[30px] grid place-items-center rounded-lg border ${
           buildingIds.length
             ? "border-[#d2e8da] bg-[#e8f3ec] text-[#1a6645]"
             : "border-[#e7e3da] bg-[#faf8f4] text-[#514c42]"
         }`}
       >
-        <Building2 className="h-[15px] w-[15px]" />
+        <Building2 className="h-3.5 w-3.5" />
         {buildingIds.length > 0 && badge(buildingIds.length)}
       </button>
       <button
         onClick={() => setSheet("filter")}
         aria-label="Lọc"
-        className="relative h-8 w-[34px] grid place-items-center rounded-[9px] border border-[#e7e3da] bg-[#faf8f4] text-[#514c42]"
+        className="relative h-7 w-[30px] grid place-items-center rounded-lg border border-[#e7e3da] bg-[#faf8f4] text-[#514c42]"
       >
-        <SlidersHorizontal className="h-[15px] w-[15px]" />
+        <SlidersHorizontal className="h-3.5 w-3.5" />
         {modeCount > 0 && badge(modeCount)}
       </button>
     </>
   );
 
-  const stripCol = (label: string, dot: string, value: string, color: string, grow = "flex-1") => (
-    <div className={`${grow} min-w-0 flex flex-col gap-0.5`}>
+  const stripCol = (
+    label: string, dot: string, value: string, color: string, grow = "flex-1",
+    issue?: { on: boolean; toggle: () => void },
+  ) => (
+    <div
+      className={`${grow} min-w-0 flex flex-col gap-0.5 ${issue?.on ? "cursor-pointer" : ""}`}
+      onClick={issue?.on ? issue.toggle : undefined}
+    >
       <span className="flex items-center gap-[5px] text-[10px] font-bold tracking-wide text-[#8d8678]">
         <span className="w-[7px] h-[7px] rounded-full" style={{ background: dot }} />
         {label}
+        {issue?.on && (
+          // Chấm đỏ chớp nhẹ = kiểm chứng CÓ LỆCH — bấm để xổ/thu thanh kiểm chứng.
+          <span className="w-[7px] h-[7px] rounded-full bg-[#d6453f] animate-pulse" />
+        )}
       </span>
       <span className="font-mono font-bold text-[16.5px] tracking-[-0.5px] whitespace-nowrap" style={{ color }}>
         {value}
       </span>
     </div>
   );
+
+  // Thanh kiểm chứng: luôn MOUNT (để tính trạng thái lệch server-side) nhưng chỉ
+  // HIỆN khi có lệch VÀ user bấm chấm đỏ (hoặc đang ẩn dải thống kê → hiện thẳng).
+  const showVerify = hasVerifyIssue && (verifyOpen || hideStatCards);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -613,12 +631,17 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
               <div className="w-px self-stretch bg-[#efece4] shrink-0" />
               {stripCol("CHI PHÍ", "#e0691f", fmtShort(displayExpense), "#c2570f")}
               <div className="w-px self-stretch bg-[#efece4] shrink-0" />
-              {stripCol("LỢI NHUẬN", "#1b1813", fmtShort(displayDiff), profitPos ? "#0e7a47" : "#c2570f", "flex-[1.1]")}
+              {stripCol("LỢI NHUẬN", "#1b1813", fmtShort(displayDiff), profitPos ? "#0e7a47" : "#c2570f", "flex-[1.1]", {
+                on: hasVerifyIssue,
+                toggle: () => setVerifyOpen((v) => !v),
+              })}
             </div>
           )}
 
-          {/* B5: thanh kiểm chứng — cùng component với desktop */}
-          <ProfitVerificationBar
+          {/* B5: thanh kiểm chứng — ẩn mặc định, chỉ hiện khi có lệch + bấm chấm đỏ.
+              Luôn mount (display:none) để tự tính trạng thái lệch. */}
+          <div className={showVerify ? "" : "hidden"}>
+            <ProfitVerificationBar
             ym={ymStr}
             startDate={startDate}
             endDate={endDate}
@@ -633,7 +656,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             hiddenCount={hiddenCount}
             hiddenSum={hiddenSum}
             capWarning={capWarning}
+            onIssueChange={setHasVerifyIssue}
           />
+          </div>
 
           {/* Phân đoạn Khoản thu | Khoản chi (+ tạo phiếu chi, bánh răng cấu hình) */}
           <div className="flex gap-[7px]">

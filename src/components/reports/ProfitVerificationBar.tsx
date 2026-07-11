@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck, AlertTriangle, ChevronDown, Info } from "lucide-react";
 import { useProfitVerification } from "@/hooks/useProfitVerification";
 
@@ -36,6 +36,9 @@ export interface ProfitVerificationBarProps {
   hiddenSum: number;
   /** Chế độ tiền mặt chạm trần danh sách: {shown, total} → không so Σ dòng được. */
   capWarning?: { shown: number; total: number } | null;
+  /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
+   *  chấm đỏ ở ô Lợi nhuận khi lệch. Truyền setState (identity ổn định). */
+  onIssueChange?: (hasIssue: boolean) => void;
 }
 
 export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
@@ -66,6 +69,13 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     (v?.draftCount ?? 0) > 0 ||
     (v?.nonKqkdIncome ?? 0) + (v?.nonKqkdExpense ?? 0) > 0 ||
     (v?.noBookCount ?? 0) > 0;
+
+  // Cờ đỏ tổng hợp (cùng điều kiện icon AlertTriangle ở header) — báo lên parent.
+  const hasIssue = faOk === false || (!rowsMatch && !capWarning);
+  const { onIssueChange } = props;
+  useEffect(() => {
+    onIssueChange?.(hasIssue);
+  }, [hasIssue, onIssueChange]);
 
   return (
     <div className="rounded-lg border bg-white text-[13px] leading-relaxed">

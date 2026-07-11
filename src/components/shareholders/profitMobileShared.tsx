@@ -34,23 +34,24 @@ export function MobileHeader({
   right?: ReactNode;
   onBack: () => void;
 }) {
+  // Gọn theo chuẩn app mobile: cao ~44px nội dung (chưa kể safe-area), không thừa đệm.
   return (
     <div
-      className="shrink-0 bg-white border-b border-[#e7e3da] px-4 pb-3 flex items-center gap-2.5"
-      style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}
+      className="shrink-0 bg-white border-b border-[#e7e3da] px-3 pb-1.5 flex items-center gap-2"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 6px)" }}
     >
       <button
         onClick={onBack}
         aria-label="Quay lại"
-        className="h-8 w-8 shrink-0 grid place-items-center rounded-[9px] border border-[#e7e3da] bg-[#faf8f4] text-[#514c42] active:scale-95"
+        className="h-7 w-7 shrink-0 grid place-items-center rounded-lg border border-[#e7e3da] bg-[#faf8f4] text-[#514c42] active:scale-95"
       >
-        <ChevronLeft className="h-[18px] w-[18px]" />
+        <ChevronLeft className="h-4 w-4" />
       </button>
-      <div className="min-w-0 flex flex-col leading-tight">
-        <span className="text-[16px] font-extrabold tracking-[-0.2px] text-[#1b1813] whitespace-nowrap">{title}</span>
-        <span className="text-[11px] font-semibold text-[#8d8678] truncate">{sub}</span>
+      <div className="min-w-0 flex flex-col leading-[1.2]">
+        <span className="text-[14px] font-extrabold tracking-[-0.2px] text-[#1b1813] whitespace-nowrap">{title}</span>
+        <span className="text-[10px] font-semibold text-[#8d8678] truncate">{sub}</span>
       </div>
-      {right && <div className="ml-auto shrink-0 flex items-center gap-1.5">{right}</div>}
+      {right && <div className="ml-auto shrink-0 flex items-center gap-1">{right}</div>}
     </div>
   );
 }
