@@ -43,6 +43,8 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
 // AI Copilot — nút nổi + panel chat (gate session/entitlement/quyền bên trong)
 const CopilotLauncher = lazy(() => import("./copilot/CopilotLauncher"));
+// AI Copilot — trang quản trị (super admin: full; user thường: tab Sử dụng)
+const AiCopilotAdminPage = lazy(() => import("./copilot/admin/AiCopilotAdminPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const ChatZaloPage = lazy(() => import("./pages/chat-zalo/ChatZaloPage"));
 
@@ -392,6 +394,8 @@ const App = () => (
 
           {/* === CÀI ĐẶT HỆ THỐNG === */}
           <Route path="/settings/general" element={<ProtectedRoute><RequirePermission module="settings"><GeneralSettingsPage /></RequirePermission></ProtectedRoute>} />
+          {/* AI Copilot admin — gate super-admin/entitlement BÊN TRONG page (RLS là gate thật) */}
+          <Route path="/settings/ai-copilot" element={<ProtectedRoute><AiCopilotAdminPage /></ProtectedRoute>} />
           <Route path="/general-setting" element={<Navigate to="/settings/general" replace />} />
           <Route path="/settings/categories" element={<ProtectedRoute><RequirePermission module="categories"><CategoriesPage /></RequirePermission></ProtectedRoute>} />
           {/* Categories Sub-Pages - Tài chính */}

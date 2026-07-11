@@ -1,11 +1,13 @@
-// llm-proxy — Phase 1 (docs/ai-copilot/PLAN.md v2.1 §Phase 1)
-// Flow: CORS → JWT → chặn stream → parse provider:model → ai_providers check
+// llm-proxy — Phase 1 + streaming Phase 4 (docs/ai-copilot/PLAN.md v2.1)
+// Flow: CORS → JWT → parse provider:model → ai_providers check
 //   → reserve_ai_usage (RPC atomic: kill switch/entitlement/permission/rate/quota 3 cấp,
 //     KHÔNG cache — thu hồi hiệu lực ngay)
 //   → clamp/normalize → fetch upstream (KHÔNG retry — LLM class client đã retry 2)
-//   → normalize response → finalize_ai_usage qua waitUntil.
+//   → non-stream: normalize response → finalize qua waitUntil
+//   → stream (Phase 4): pipe SSE về client, TEE parse usage (stream_options
+//     include_usage) → finalize khi flush; client abort → propagate lên upstream.
 // Lỗi map: copilot_disabled/not_entitled/not_permitted/daily_quota → 403 (non-retryable);
-//          rate_limited → 429; stream/local_only/bad model → 400.
+//          rate_limited → 429; local_only/bad model → 400.
 // Provider "mock" CHỈ dev/test (vẫn qua đủ gate) — tắt bằng ai_providers.enabled.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 
@@ -141,6 +143,36 @@ function mockResponse(req: Request, body: Record<string, unknown>, script: strin
   };
 }
 
+// Mock streaming (dev/test Phase 4): 3 chunk content + chunk usage + [DONE]
+function mockStreamResponse(
+  body: Record<string, unknown>,
+  estCost: number,
+  finalize: (f: { prompt?: number; completion?: number; total?: number; cached?: number; cost: number | null; latency: number; status: string; error?: string }) => void,
+  t0: number,
+) {
+  const promptTokens = Math.ceil(JSON.stringify(body.messages ?? []).length / 4);
+  const enc = new TextEncoder();
+  const chunk = (obj: unknown) => enc.encode(`data: ${JSON.stringify(obj)}\n\n`);
+  const base = { id: 'mock-stream', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: String(body.model ?? 'mock') };
+  const stream = new ReadableStream<Uint8Array>({
+    async start(ctrl) {
+      for (const piece of ['Xin ', 'chào từ ', 'mock stream.']) {
+        ctrl.enqueue(chunk({ ...base, choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] }));
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      ctrl.enqueue(chunk({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }));
+      ctrl.enqueue(chunk({ ...base, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: 8, total_tokens: promptTokens + 8 } }));
+      ctrl.enqueue(enc.encode('data: [DONE]\n\n'));
+      ctrl.close();
+      finalize({ prompt: promptTokens, completion: 8, total: promptTokens + 8, cost: estCost, latency: Date.now() - t0, status: 'ok' });
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -171,9 +203,7 @@ Deno.serve(async (req) => {
     return openaiError(400, 'Invalid JSON body', 'invalid_json');
   }
 
-  if (body.stream === true) {
-    return openaiError(400, 'Streaming is not supported', 'stream_not_supported');
-  }
+  const wantStream = body.stream === true;
 
   const rawModel = String(body.model ?? '');
   const sep = rawModel.indexOf(':');
@@ -258,6 +288,7 @@ Deno.serve(async (req) => {
 
   // Mock: trả scripted response, vẫn finalize đủ vòng đời
   if (provider === 'mock') {
+    if (wantStream) return mockStreamResponse(body, estCost, finalize, t0);
     const resBody = mockResponse(req, body, modelId);
     finalize({
       prompt: resBody.usage.prompt_tokens,
@@ -285,8 +316,19 @@ Deno.serve(async (req) => {
   const outBody: Record<string, unknown> = { ...body, model: modelId };
   delete outBody.n;
   outBody.max_tokens = maxOut;   // Anthropic shim ĐÒI max_tokens — luôn set
+  if (wantStream) {
+    // include_usage để chunk cuối mang usage (chỉ set cho provider chắc chắn hỗ trợ)
+    if (['openrouter', 'openai', 'groq', 'deepseek'].includes(provider)) {
+      outBody.stream_options = { include_usage: true };
+    }
+  }
 
   const controller = new AbortController();
+  // Client abort (Dừng trong UI) → propagate lên upstream (Phase 4)
+  try {
+    req.signal.addEventListener('abort', () => controller.abort());
+  } catch { /* signal không khả dụng — bỏ qua */ }
+  // Timeout: non-stream 60s trọn request; stream chỉ áp cho lúc chờ headers
   const timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const res = await fetch(`${upstream.baseURL}/chat/completions`, {
@@ -299,6 +341,75 @@ Deno.serve(async (req) => {
       body: JSON.stringify(outBody),
       signal: controller.signal,
     });
+
+    if (wantStream) {
+      clearTimeout(timer); // stream sống lâu hơn 60s là bình thường
+      if (!res.ok || !res.body) {
+        const errText = await res.text();
+        finalize({
+          cost: 0, latency: Date.now() - t0, status: 'upstream_error',
+          error: `HTTP ${res.status}: ${errText.slice(0, 500)}`,
+        });
+        return new Response(errText, {
+          status: res.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      // TEE: pass-through bytes, đồng thời parse SSE tìm chunk usage cuối
+      const decoder = new TextDecoder();
+      let sseBuf = '';
+      let lastUsage: any = null;
+      let finalized = false;
+      const doFinalize = (aborted: boolean) => {
+        if (finalized) return;
+        finalized = true;
+        const realCost =
+          ((lastUsage?.prompt_tokens ?? 0) / 1e6) * pricing.input_price +
+          ((lastUsage?.completion_tokens ?? 0) / 1e6) * pricing.output_price;
+        finalize({
+          prompt: lastUsage?.prompt_tokens ?? 0,
+          completion: lastUsage?.completion_tokens ?? 0,
+          total: lastUsage?.total_tokens ?? 0,
+          cached: lastUsage?.prompt_tokens_details?.cached_tokens ?? 0,
+          cost: realCost,
+          latency: Date.now() - t0,
+          status: 'ok',
+          error: aborted ? 'client_abort' : undefined,
+        });
+      };
+      const tee = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, ctrl) {
+          ctrl.enqueue(chunk);
+          sseBuf += decoder.decode(chunk, { stream: true });
+          let nl: number;
+          while ((nl = sseBuf.indexOf('\n')) >= 0) {
+            const line = sseBuf.slice(0, nl).trim();
+            sseBuf = sseBuf.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed?.usage) lastUsage = parsed.usage;
+            } catch { /* chunk dở — bỏ qua */ }
+          }
+        },
+        flush() { doFinalize(false); },
+      });
+      // Client ngắt giữa chừng → vẫn finalize với usage đã gom được
+      try {
+        req.signal.addEventListener('abort', () => doFinalize(true));
+      } catch { /* bỏ qua */ }
+      return new Response(res.body.pipeThrough(tee), {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': res.headers.get('Content-Type') ?? 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+
     const text = await res.text();
 
     if (!res.ok) {

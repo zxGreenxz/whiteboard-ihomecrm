@@ -2,7 +2,7 @@
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Plus, Send, Square, X } from 'lucide-react';
+import { Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
 import type { Message } from '@page-agent/llms';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
@@ -18,6 +18,47 @@ import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiP
 
 interface Props {
   onClose: () => void;
+}
+
+// Gợi ý nhanh khi thread trống
+const SUGGESTION_CHIPS = [
+  'Phòng nào đang trống?',
+  'Doanh thu tháng này?',
+  'Hợp đồng nào sắp hết hạn?',
+  'Cách tạo hoá đơn?',
+];
+
+// Web Speech API (Chrome/Edge) — nhận giọng nói tiếng Việt, đổ vào ô nhập.
+function useVoiceInput(onText: (text: string) => void) {
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<any>(null);
+  const supported =
+    typeof window !== 'undefined' &&
+    !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
+  const toggle = () => {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.lang = 'vi-VN';
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onresult = (e: any) => {
+      const text = Array.from(e.results).map((r: any) => r[0].transcript).join(' ');
+      if (text) onText(text);
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
+
+  return { supported, listening, toggle };
 }
 
 /** Render markdown TỐI GIẢN: xuống dòng + link [text](/route) → <a>. */
@@ -186,6 +227,8 @@ export default function ChatPanel({ onClose }: Props) {
     void uiAgentRef.current?.stop();
   };
 
+  const voice = useVoiceInput((text) => setInput((cur) => (cur ? `${cur} ${text}` : text)));
+
   const items = toDisplay(history);
 
   return (
@@ -234,8 +277,20 @@ export default function ChatPanel({ onClose }: Props) {
       {/* Messages */}
       <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
         {items.length === 0 && (
-          <div className="mt-8 text-center text-muted-foreground">
-            Hỏi tôi về phòng trống, hoá đơn, hợp đồng sắp hết hạn, doanh thu tháng, cách dùng hệ thống…
+          <div className="mt-8 space-y-3 text-center text-muted-foreground">
+            <div>Hỏi tôi về phòng trống, hoá đơn, hợp đồng sắp hết hạn, doanh thu tháng, cách dùng hệ thống…</div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SUGGESTION_CHIPS.map((chip) => (
+                <button
+                  key={chip}
+                  className="rounded-full border px-3 py-1 text-xs hover:bg-muted"
+                  onClick={() => setInput(chip)}
+                  data-testid="copilot-chip"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {items.map((it, i) =>
@@ -279,6 +334,15 @@ export default function ChatPanel({ onClose }: Props) {
           }}
           data-testid="copilot-input"
         />
+        {voice.supported && !running && (
+          <button
+            className={`rounded p-2 ${voice.listening ? 'bg-red-100 text-red-600' : 'hover:bg-muted'}`}
+            title={voice.listening ? 'Đang nghe… (bấm để dừng)' : 'Nói tiếng Việt'}
+            onClick={voice.toggle}
+          >
+            {voice.listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </button>
+        )}
         {running ? (
           <button
             className="rounded bg-red-600 p-2 text-white"
