@@ -1,10 +1,11 @@
 import { useState, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, BarChart3, PieChart, CircleUserRound } from "lucide-react";
+import { BarChart3, PieChart, CircleUserRound } from "lucide-react";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import type { Shareholder } from "@/hooks/useShareholders";
 import type { ProfitManager } from "@/hooks/useProfitManagers";
 import { currentYear } from "@/components/shareholders/shareholderUtils";
+import { MobileHeader } from "@/components/shareholders/profitMobileShared";
 import ProfitDistributionMobile from "@/pages/reports/finance/ProfitDistributionMobile";
 import ProfitOverviewMobile from "@/components/shareholders/ProfitOverviewMobile";
 import ShareholderSelfMobile from "@/components/shareholders/ShareholderSelfMobile";
@@ -14,10 +15,12 @@ import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfVi
 // header + bottom tab bar 3 tab (BC Thu Chi · Tổng quan · Của tôi) theo thiết kế
 // ProfitMobileC. Tab hiện theo QUYỀN — cùng logic với ProfitHubPage desktop; các
 // tab "bí mật" desktop (Chốt LN, Cổ đông & tỷ lệ…) không đưa lên mobile.
+// Tab BC Thu Chi tự render header riêng (pill tháng + nút toà + nút lọc — kiểu 1b).
 
 type TabKey = "report" | "overview" | "my";
 
 // Shell nền kem dùng cho cả màn chờ (tránh nháy MainLayout desktop lúc chưa biết quyền).
+// z-40 CHỦ Ý: dialog Radix (z-50, portal cuối body) phải nổi LÊN TRÊN shell.
 function MobileShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-[#f5f3ee] text-[#1b1813]">
@@ -52,6 +55,7 @@ export default function ProfitHubMobile({
   myManager: ProfitManager | null;
 }) {
   const navigate = useNavigate();
+  const goBack = () => navigate(-1);
   // Cổ đông-partner có quyền báo cáo (không phải quản lý) → tab tự-xem "Của tôi"
   // (RLS tự lọc về phần của mình) — cùng điều kiện với desktop [[canSeeOwnShare]].
   const canSeeOwnShare = !!me && canReport && !isManager;
@@ -69,58 +73,50 @@ export default function ProfitHubMobile({
   const [oYear, setOYear] = useState(currentYear());
   const [sYear, setSYear] = useState(currentYear());
 
-  const subOf: Record<TabKey, string> = {
-    report: "BC Doanh Thu — Chi Phí",
-    overview: "Tổng quan chia lợi nhuận",
-    my: `Lợi nhuận của tôi — ${me?.name ?? ""}`,
-  };
   // Quản lý điều hành thuần (không quyền nào khác) → tự xem lương của mình.
   const managerOnly = tabs.length === 0 && !!myManager;
-  const sub = managerOnly ? `Lương điều hành — ${myManager?.name ?? ""}` : subOf[tab];
+
+  const yearPill = (
+    <span className="font-mono text-[12px] font-bold text-[#514c42] bg-[#faf8f4] border border-[#e7e3da] px-3 py-[7px] rounded-full">
+      Năm {tab === "overview" ? oYear : sYear}
+    </span>
+  );
 
   return (
     <MobileShell>
-      {/* Header */}
-      <div
-        className="shrink-0 bg-white border-b border-[#e7e3da] px-4 pb-3 flex items-center gap-2.5"
-        style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)" }}
-      >
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Quay lại"
-          className="h-8 w-8 shrink-0 grid place-items-center rounded-[9px] border border-[#e7e3da] bg-[#faf8f4] text-[#514c42] active:scale-95"
-        >
-          <ChevronLeft className="h-[18px] w-[18px]" />
-        </button>
-        <div className="min-w-0 flex flex-col leading-tight">
-          <span className="text-[16px] font-extrabold tracking-[-0.2px] text-[#1b1813]">Báo cáo Lợi Nhuận</span>
-          <span className="text-[11px] font-semibold text-[#8d8678] truncate">{sub}</span>
-        </div>
-        {(tab === "overview" || tab === "my") && tabs.length > 0 && (
-          <span className="ml-auto shrink-0 font-mono text-[12px] font-bold text-[#514c42] bg-[#faf8f4] border border-[#e7e3da] px-3 py-[7px] rounded-full">
-            Năm {tab === "overview" ? oYear : sYear}
-          </span>
-        )}
-      </div>
-
-      {/* Body cuộn */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-7">
-          {managerOnly && myManager ? (
-            <ProfitManagerSelfView me={myManager} />
-          ) : tabs.length === 0 ? (
-            <p className="text-[13px] font-semibold text-[#8d8678] text-center pt-16 px-6">
-              Bạn không có quyền xem báo cáo này. Liên hệ quản trị.
-            </p>
-          ) : tab === "report" ? (
-            <ProfitDistributionMobile />
-          ) : tab === "overview" ? (
-            <ProfitOverviewMobile year={oYear} onYearChange={setOYear} />
-          ) : (
-            me && <ShareholderSelfMobile me={me} year={sYear} onYearChange={setSYear} />
-          )}
-        </div>
-      </div>
+      {tab === "report" && tabs.length > 0 && !managerOnly ? (
+        // Tab BC Thu Chi: component tự render header (pill tháng/toà/lọc) + body cuộn.
+        <ProfitDistributionMobile onBack={goBack} />
+      ) : (
+        <>
+          <MobileHeader
+            sub={
+              managerOnly
+                ? `Lương điều hành — ${myManager?.name ?? ""}`
+                : tab === "overview"
+                  ? "Tổng quan chia lợi nhuận"
+                  : `Lợi nhuận của tôi — ${me?.name ?? ""}`
+            }
+            onBack={goBack}
+            right={!managerOnly && tabs.length > 0 ? yearPill : undefined}
+          />
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
+            <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-7">
+              {managerOnly && myManager ? (
+                <ProfitManagerSelfView me={myManager} />
+              ) : tabs.length === 0 ? (
+                <p className="text-[13px] font-semibold text-[#8d8678] text-center pt-16 px-6">
+                  Bạn không có quyền xem báo cáo này. Liên hệ quản trị.
+                </p>
+              ) : tab === "overview" ? (
+                <ProfitOverviewMobile year={oYear} onYearChange={setOYear} />
+              ) : (
+                me && <ShareholderSelfMobile me={me} year={sYear} onYearChange={setSYear} />
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Bottom tab bar */}
       {tabs.length > 1 && (

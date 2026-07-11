@@ -23,6 +23,7 @@ import {
   Gauge,
   CreditCard,
   BarChart3,
+  PieChart,
   Settings,
   UserCircle,
   ClipboardList,
@@ -88,6 +89,8 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'funds', title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, accent: '#ca8a04', module: 'cashbooks' },
       { id: 'salary', title: 'Bảng lương', href: '/finance/salary', icon: Coins, accent: '#eab308', module: 'salary' },
       { id: 'reports', title: 'Báo cáo', href: '/reports/real-estate', icon: BarChart3, accent: '#475569', module: 'reports_real_estate' },
+      // Gating khớp Sidebar.tsx "Báo cáo Lợi Nhuận" (reports_finance.profit_distribution).
+      { id: 'profit-report', title: 'BC Lợi Nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, accent: '#4f46e5', module: 'reports_finance', action: 'profit_distribution' },
     ],
   },
   {
