@@ -6,7 +6,7 @@ import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
 import {
   LLM_PROXY_BASE,
-  OLLAMA_BASE,
+  LOCAL_PROVIDER_BASES,
   makeCopilotFetch,
   newTaskId,
   parseProviderModel,
@@ -76,11 +76,12 @@ export async function runChatTurn(params: {
 }): Promise<ChatTurnResult> {
   const parsed = parseProviderModel(params.providerModel);
   if (!parsed) throw new Error(`Model không hợp lệ: "${params.providerModel}"`);
-  const isLocal = parsed.provider === 'ollama';
+  const localBase = LOCAL_PROVIDER_BASES[parsed.provider];
+  const isLocal = !!localBase;
   const taskId = newTaskId('chat');
 
   const llm = new LLM({
-    baseURL: isLocal ? OLLAMA_BASE : LLM_PROXY_BASE,
+    baseURL: isLocal ? localBase : LLM_PROXY_BASE,
     // local_only: browser → localhost, KHÔNG qua proxy; cloud: model giữ nguyên
     // "provider:model" để proxy route.
     model: isLocal ? parsed.modelId : params.providerModel,

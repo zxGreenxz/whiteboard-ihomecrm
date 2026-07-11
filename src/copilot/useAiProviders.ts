@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useSetUiPreference, useUiPreferences } from '@/hooks/useUiPreferences';
 import { DEFAULT_MODEL, MODEL_PREF_KEY } from './copilotConfig';
-import { listOllamaModels } from './ollama';
+import { listLocalModels } from './ollama';
 
 export interface ModelOption {
   value: string; // "provider:model-id"
@@ -29,10 +29,10 @@ export function useAiProviders() {
         if (p.provider === 'mock') continue; // dev-only, không cho user chọn
         const localOnly = p.data_class === 'local_only';
         let models = Array.isArray(p.models) ? (p.models as any[]) : [];
-        // local_only (Ollama): model nằm trên MÁY user — không khai báo trong DB
-        // thì tự phát hiện từ instance đang chạy; không chạy → rỗng (ẩn).
+        // local_only (Ollama/9Router): model nằm trên MÁY user — không khai báo
+        // trong DB thì tự phát hiện từ instance đang chạy; không chạy → rỗng (ẩn).
         if (localOnly && !models.length) {
-          models = await listOllamaModels();
+          models = await listLocalModels(p.provider);
         }
         for (const m of models) {
           if (!m?.id) continue;

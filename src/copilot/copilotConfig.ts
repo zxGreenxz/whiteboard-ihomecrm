@@ -4,8 +4,16 @@ import { supabase } from '@/integrations/supabase/client';
 /** baseURL proxy — client OpenAI-compat sẽ gọi {base}/chat/completions. */
 export const LLM_PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/llm-proxy`;
 
-/** Ollama local — data_class 'local_only' KHÔNG đi qua proxy (browser → localhost). */
-export const OLLAMA_BASE = 'http://localhost:11434/v1';
+/**
+ * Provider LOCAL (data_class 'local_only') — KHÔNG đi qua proxy, browser gọi
+ * thẳng localhost trên máy người dùng. Muốn thêm provider local mới: thêm 1
+ * dòng ở đây + seed ai_providers (data_class 'local_only') + nhánh detect
+ * model trong localProvider listLocalModels.
+ */
+export const LOCAL_PROVIDER_BASES: Record<string, string> = {
+  ollama: 'http://localhost:11434/v1',
+  '9router': 'http://localhost:20128/v1',
+};
 
 /** Model mặc định khi user chưa chọn (đã verify tool-calling, $0 — SPIKE-RESULTS.md). */
 export const DEFAULT_MODEL = 'openrouter:nvidia/nemotron-3-super-120b-a12b:free';

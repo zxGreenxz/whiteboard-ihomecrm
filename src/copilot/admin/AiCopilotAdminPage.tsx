@@ -379,7 +379,7 @@ function ProvidersTab() {
             {r.data_class === 'local_only' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">local-only</span>}
             <span className="text-xs text-muted-foreground">
               {r.data_class === 'local_only'
-                ? 'model TỰ PHÁT HIỆN từ Ollama chạy trên máy người dùng (localhost:11434)'
+                ? `model TỰ PHÁT HIỆN từ instance chạy trên máy người dùng (${r.provider === '9router' ? 'localhost:20128' : 'localhost:11434'})`
                 : `${Array.isArray(r.models) ? (r.models as any[]).length : 0} model — mặc định: ${r.default_model ?? '—'}`}
             </span>
             <div className="ml-auto flex gap-2">
@@ -403,9 +403,13 @@ function ProvidersTab() {
           </div>
           {r.data_class === 'local_only' && r.enabled && (
             <p className="mt-2 text-xs text-amber-700">
-              Người dùng cần chạy Ollama với biến môi trường <code className="rounded bg-muted px-1">OLLAMA_ORIGINS=*</code> để
-              web gọi được (Windows: <code className="rounded bg-muted px-1">setx OLLAMA_ORIGINS *</code> rồi khởi động lại Ollama).
-              Dữ liệu đi thẳng máy user, KHÔNG qua server.
+              {r.provider === 'ollama' ? (
+                <>Người dùng cần chạy Ollama với biến môi trường <code className="rounded bg-muted px-1">OLLAMA_ORIGINS=*</code> để
+                web gọi được (Windows: <code className="rounded bg-muted px-1">setx OLLAMA_ORIGINS *</code> rồi khởi động lại Ollama). </>
+              ) : (
+                <>Người dùng cần chạy 9Router trên máy (localhost:20128 — CORS mở sẵn). </>
+              )}
+              Request đi thẳng máy user, KHÔNG qua server — quota/usage log của hệ thống không áp cho provider local.
             </p>
           )}
           {editing === r.provider && (

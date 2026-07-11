@@ -7,7 +7,7 @@
 // - onBeforeStep route allowlist guard
 // LƯU Ý: execute() reset history mỗi task → mỗi lệnh ĐỘC LẬP.
 import { PageAgent } from 'page-agent';
-import { LLM_PROXY_BASE, makeCopilotFetch, newTaskId, parseProviderModel } from './copilotConfig';
+import { LLM_PROXY_BASE, LOCAL_PROVIDER_BASES, makeCopilotFetch, newTaskId, parseProviderModel } from './copilotConfig';
 import { maskPii } from './maskPii';
 import { UI_CONTROL_SYSTEM_PROMPT } from './systemPromptVi';
 import { pageContext } from './pageContext';
@@ -31,8 +31,8 @@ export function createUiControlAgent(params: {
 }): UiControlAgent {
   const parsed = parseProviderModel(params.providerModel);
   if (!parsed) throw new Error(`Model không hợp lệ: "${params.providerModel}"`);
-  if (parsed.provider === 'ollama') {
-    throw new Error('UI-control chưa hỗ trợ Ollama (local) — dùng provider cloud.');
+  if (LOCAL_PROVIDER_BASES[parsed.provider]) {
+    throw new Error('UI-control chưa hỗ trợ provider local (Ollama/9Router) — dùng provider cloud.');
   }
 
   const allowlist = params.allowlist ?? PILOT_ROUTE_ALLOWLIST;
