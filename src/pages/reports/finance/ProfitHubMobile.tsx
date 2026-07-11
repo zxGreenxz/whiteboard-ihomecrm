@@ -115,7 +115,10 @@ export default function ProfitHubMobile({
       {tabs.length > 1 && (
         <div
           className="shrink-0 bg-white border-t border-[#e7e3da]"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          // Cấn bớt safe-area đáy (iPhone ~34px) — để nguyên sẽ thành băng trắng
+          // dày dưới nhãn tab khi chạy PWA thêm-vào-màn-hình-chính (chủ chê thừa).
+          // Giữ ~20px là vừa né home indicator.
+          style={{ paddingBottom: "max(calc(env(safe-area-inset-bottom, 0px) - 14px), 0px)" }}
         >
           <div
             className="mx-auto w-full max-w-[480px] grid gap-1 px-2.5 pt-1 pb-1"
