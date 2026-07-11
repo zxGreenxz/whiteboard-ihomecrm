@@ -7,6 +7,8 @@ import { canUse } from "@/lib/permissionPages";
 import { useMyShareholder } from "@/hooks/useShareholders";
 import { useMyProfitManager } from "@/hooks/useProfitManagers";
 import ProfitDistributionContent from "@/pages/reports/finance/ProfitDistributionReport";
+import ProfitHubMobile, { ProfitMobileBoot } from "@/pages/reports/finance/ProfitHubMobile";
+import { usePhoneViewport } from "@/hooks/use-mobile";
 import ProfitOverviewTab from "@/components/shareholders/ProfitOverviewTab";
 import ProfitLockTab from "@/components/shareholders/ProfitLockTab";
 import ShareConfigTab from "@/components/shareholders/ShareConfigTab";
@@ -26,6 +28,7 @@ export default function ProfitHubPage() {
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const { data: me, isLoading: meLoading } = useMyShareholder();
   const { data: myManager, isLoading: mgrLoading } = useMyProfitManager();
+  const phone = usePhoneViewport();
 
   const canReport = canUse(perms, "reports_finance", "profit_distribution");
   const canLock = canUse(perms, "shareholder_profit", "lock");
@@ -78,6 +81,20 @@ export default function ProfitHubPage() {
   // Chờ cả perms + me + manager trước khi dựng tab để thứ tự tab (và tab mặc định)
   // ổn định — tránh "Tổng quan" nhảy vào sau khiến trang mở nhầm tab.
   const loading = permsLoading || meLoading || mgrLoading;
+
+  // PHONE: shell riêng (header + bottom tab bar, thiết kế ProfitMobileC) — KHÔNG
+  // dùng MainLayout desktop, kể cả lúc quyền đang tải (chờ bằng shell kem).
+  if (phone) {
+    if (loading) return <ProfitMobileBoot />;
+    return (
+      <ProfitHubMobile
+        canReport={canReport}
+        isManager={isManager}
+        me={me ?? null}
+        myManager={myManager ?? null}
+      />
+    );
+  }
 
   return (
     <MainLayout
