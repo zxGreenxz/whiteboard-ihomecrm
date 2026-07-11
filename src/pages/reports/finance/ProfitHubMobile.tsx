@@ -90,18 +90,11 @@ export default function ProfitHubMobile({
       ) : (
         <>
           <MobileHeader
-            sub={
-              managerOnly
-                ? `Lương điều hành — ${myManager?.name ?? ""}`
-                : tab === "overview"
-                  ? "Tổng quan chia lợi nhuận"
-                  : `Lợi nhuận của tôi — ${me?.name ?? ""}`
-            }
             onBack={goBack}
             right={!managerOnly && tabs.length > 0 ? yearPill : undefined}
           />
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
-            <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-7">
+            <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-2">
               {managerOnly && myManager ? (
                 <ProfitManagerSelfView me={myManager} />
               ) : tabs.length === 0 ? (
@@ -125,7 +118,7 @@ export default function ProfitHubMobile({
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div
-            className="mx-auto w-full max-w-[480px] grid gap-1 px-2.5 pt-2 pb-3"
+            className="mx-auto w-full max-w-[480px] grid gap-1 px-2.5 pt-1 pb-1"
             style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}
           >
             {tabs.map((t) => {
@@ -135,14 +128,14 @@ export default function ProfitHubMobile({
                 <button
                   key={t.key}
                   onClick={() => setTab(t.key)}
-                  className={`flex flex-col items-center gap-[3px] pt-1 pb-0.5 ${active ? "text-[#1a6645]" : "text-[#8d8678]"}`}
+                  className={`flex flex-col items-center gap-0.5 py-0.5 ${active ? "text-[#1a6645]" : "text-[#8d8678]"}`}
                 >
                   <span
-                    className={`w-[52px] h-[30px] rounded-full grid place-items-center ${active ? "bg-[#e8f3ec]" : ""}`}
+                    className={`w-[46px] h-[26px] rounded-full grid place-items-center ${active ? "bg-[#e8f3ec]" : ""}`}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-[18px] w-[18px]" />
                   </span>
-                  <span className="text-[10.5px] font-bold tracking-[-0.1px]">{t.label}</span>
+                  <span className="text-[10px] font-bold tracking-[-0.1px]">{t.label}</span>
                 </button>
               );
             })}

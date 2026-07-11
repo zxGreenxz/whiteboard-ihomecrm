@@ -21,24 +21,21 @@ export const fmtM = (n: number) =>
 
 export const CARD = "rounded-[13px] border border-[#e7e3da] bg-white shadow-[0_1px_2px_rgba(27,24,19,.05)]";
 
-// Header trang mobile (thiết kế ProfitMobileC): nút back + tiêu đề 2 dòng + slot
-// bên phải (pill năm / cụm nút tháng-toà-lọc của tab BC Thu Chi).
+// Header trang mobile: 1 DÒNG duy nhất (back + tiêu đề + slot phải) — chuẩn app
+// bar gọn ~36px nội dung, không dòng phụ (phụ đề trùng nhãn tab dưới, chủ chê cao).
 export function MobileHeader({
   title = "Báo cáo Lợi Nhuận",
-  sub,
   right,
   onBack,
 }: {
   title?: string;
-  sub: string;
   right?: ReactNode;
   onBack: () => void;
 }) {
-  // Gọn theo chuẩn app mobile: cao ~44px nội dung (chưa kể safe-area), không thừa đệm.
   return (
     <div
-      className="shrink-0 bg-white border-b border-[#e7e3da] px-3 pb-1.5 flex items-center gap-2"
-      style={{ paddingTop: "calc(env(safe-area-inset-top) + 6px)" }}
+      className="shrink-0 bg-white border-b border-[#e7e3da] px-3 pb-1 flex items-center gap-2"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 4px)" }}
     >
       <button
         onClick={onBack}
@@ -47,10 +44,9 @@ export function MobileHeader({
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
-      <div className="min-w-0 flex flex-col leading-[1.2]">
-        <span className="text-[14px] font-extrabold tracking-[-0.2px] text-[#1b1813] whitespace-nowrap">{title}</span>
-        <span className="text-[10px] font-semibold text-[#8d8678] truncate">{sub}</span>
-      </div>
+      <span className="min-w-0 truncate text-[14.5px] font-extrabold tracking-[-0.2px] text-[#1b1813]">
+        {title}
+      </span>
       {right && <div className="ml-auto shrink-0 flex items-center gap-1">{right}</div>}
     </div>
   );

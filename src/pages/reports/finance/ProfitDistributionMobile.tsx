@@ -620,10 +620,10 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <MobileHeader sub="BC Doanh Thu — Chi Phí" onBack={onBack ?? (() => navigate(-1))} right={headerRight} />
+      <MobileHeader onBack={onBack ?? (() => navigate(-1))} right={headerRight} />
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden">
-        <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-7 flex flex-col gap-2.5">
+        <div className="mx-auto w-full max-w-[480px] px-3.5 pt-3 pb-2 flex flex-col gap-2.5">
           {/* Dải tổng DOANH THU | CHI PHÍ | LỢI NHUẬN */}
           {!hideStatCards && (
             <div className="flex items-center gap-2.5 rounded-[13px] border border-[#e7e3da] bg-white px-[13px] py-[11px] shadow-[0_1px_2px_rgba(27,24,19,.05)]">
