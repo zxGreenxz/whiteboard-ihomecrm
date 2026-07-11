@@ -12,6 +12,8 @@ import {
   toPageAgentTools,
   MO_TRANG_ROUTES,
 } from '../tools/registry';
+import { makeIdempotencyKey } from '../tools/writeTools';
+import { DANGER_RE, SUBMIT_RE } from '../safetyGuard';
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
@@ -158,5 +160,44 @@ describe('registry + adapters', () => {
     await expect(
       moTrang.execute({ trang: 'hoa_don' }, { perms: STAFF_ROOMS_ONLY, navigate: () => {} }),
     ).rejects.toThrow(/quyền/);
+  });
+});
+
+describe('Phase 5 — write tool + form-fill guard', () => {
+  it('tao_phieu_thu_chi_nhap: yêu cầu income_expenses.create, mặc định xac_nhan=false', () => {
+    const reg = buildRegistry();
+    const tool = reg.find((t) => t.name === 'tao_phieu_thu_chi_nhap')!;
+    expect(tool.requiredPermission).toEqual({ module: 'income_expenses', action: 'create' });
+    // schema default: thiếu xac_nhan → false (bước xem trước bắt buộc)
+    const parsed = tool.inputSchema.parse({
+      loai: 'chi', so_tien: 100000, ten_phieu: 'Chi thử', toa_nha: 'X', hang_muc: 'Vệ sinh',
+    }) as { xac_nhan: boolean };
+    expect(parsed.xac_nhan).toBe(false);
+    // bị LOẠI khỏi danh sách khi user không có quyền create
+    expect(toLlmTools(reg, { perms: STAFF_ROOMS_ONLY }).tao_phieu_thu_chi_nhap).toBeUndefined();
+    expect(toLlmTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeDefined();
+  });
+
+  it('makeIdempotencyKey: ổn định + phân biệt nội dung khác', () => {
+    const a = makeIdempotencyKey(['u1', 'EXPENSE', 100000, 'b1', 't1', '2026-07-11', 'Chi thử']);
+    const b = makeIdempotencyKey(['u1', 'EXPENSE', 100000, 'b1', 't1', '2026-07-11', 'Chi thử']);
+    const c = makeIdempotencyKey(['u1', 'EXPENSE', 200000, 'b1', 't1', '2026-07-11', 'Chi thử']);
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+
+  it('SUBMIT_RE chặn nút submit, không chặn nút lọc/điều hướng', () => {
+    for (const label of ['Lưu', 'Cập nhật', 'Xác nhận', 'Hoàn tất', 'Tạo mới', 'Gửi', 'Save', 'Submit']) {
+      expect(SUBMIT_RE.test(label)).toBe(true);
+    }
+    for (const label of ['Lọc', 'Tìm kiếm', 'Xem chi tiết', 'Trang sau', 'Đóng']) {
+      expect(SUBMIT_RE.test(label) || DANGER_RE.test(label)).toBe(false);
+    }
+  });
+
+  it('DANGER_RE vẫn chặn hành động phá huỷ', () => {
+    for (const label of ['Xoá hoá đơn', 'Huỷ phiếu', 'Duyệt', 'Thanh lý HĐ', 'Delete']) {
+      expect(DANGER_RE.test(label)).toBe(true);
+    }
   });
 });

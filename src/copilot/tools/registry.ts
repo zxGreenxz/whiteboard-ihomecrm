@@ -13,6 +13,7 @@ import { formatVND } from '@/lib/utils';
 import { invoicesListQuery } from '@/hooks/useInvoices';
 import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
 import { maskPhonePartial } from '../maskPii';
+import { taoPhieuThuChiNhap } from './writeTools';
 
 export interface ToolCtx {
   /** get_my_permissions() — undefined khi chưa load (mọi tool bị chặn). */
@@ -239,6 +240,9 @@ export function buildRegistry(): DomainTool[] {
         return `Tài liệu "${hit.key}":\n${content.slice(0, 8000)}${content.length > 8000 ? '\n…(cắt bớt)' : ''}`;
       },
     }),
+
+    // Write tool draft-first (Phase 5): NHÁP + 2 bước xác nhận + idempotency
+    taoPhieuThuChiNhap,
 
     dt({
       name: 'mo_trang',

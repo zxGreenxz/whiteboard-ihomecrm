@@ -6,17 +6,24 @@ import type { PageAgent } from 'page-agent';
 
 // Nút/hành động NGUY HIỂM: agent không được click. Regex text/aria + container
 // cảnh báo + attribute chủ động [data-ai-risk] (gắn dần vào component dùng chung).
-const DANGER_RE = /xo[áa]|delete|hu[ỷy]\b|remove|thanh l[ýy]|b[ỏo] c[ọo]c|x[óo]a|duy[ệe]t|approve|chuy[ểe]n nh[ưượ]/i;
+// LƯU Ý: \b của JS regex không hoạt động sau ký tự có dấu (ỷ không phải \w) —
+// "huỷ/hủy" match theo cả 2 cách bỏ dấu, KHÔNG dùng 'huy' trần (tên người Huy).
+export const DANGER_RE = /xo[áa]|delete|huỷ|hủy|remove|thanh l[ýy]|b[ỏo] c[ọo]c|x[óo]a|duy[ệe]t|approve|chuy[ểe]n nh[ưượ]/i;
+
+// Form-fill 3b: agent ĐƯỢC điền form nhưng KHÔNG BAO GIỜ tự submit — nút
+// Lưu/Xác nhận/type=submit bị loại khỏi index, agent dừng ở "bạn kiểm tra và bấm Lưu".
+export const SUBMIT_RE = /^\s*(l[ưu]u\b|c[ậa]p nh[ậa]t|x[áa]c nh[ậa]n|ho[àa]n t[ấa]t|t[ạa]o(\s|$)|th[êe]m m[ớơ]i|g[ửư]i\b|submit|save)/i;
 
 function findDangerousElements(): Element[] {
   const out: Element[] = [];
   document
-    .querySelectorAll<HTMLElement>('button, a, [role="button"], [role="menuitem"], [data-ai-risk]')
+    .querySelectorAll<HTMLElement>('button, a, [role="button"], [role="menuitem"], [data-ai-risk], [type="submit"]')
     .forEach((el) => {
       if (el.hasAttribute('data-ai-risk')) { out.push(el); return; }
       if (el.closest('[role="alertdialog"], [data-ai-risk]')) { out.push(el); return; }
+      if (el.getAttribute('type') === 'submit') { out.push(el); return; }
       const label = `${el.textContent ?? ''} ${el.getAttribute('aria-label') ?? ''}`;
-      if (DANGER_RE.test(label)) out.push(el);
+      if (DANGER_RE.test(label) || SUBMIT_RE.test(label.trim())) out.push(el);
     });
   return out;
 }

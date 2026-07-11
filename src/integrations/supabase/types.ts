@@ -350,6 +350,39 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_write_audit: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          entity_table: string
+          id: string
+          idempotency_key: string
+          payload: Json
+          tool: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          entity_table: string
+          id?: string
+          idempotency_key: string
+          payload?: Json
+          tool: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string
+          id?: string
+          idempotency_key?: string
+          payload?: Json
+          tool?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       area_buildings: {
         Row: {
           area_id: string
