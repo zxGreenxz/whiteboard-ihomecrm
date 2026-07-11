@@ -50,6 +50,7 @@ import {
   Coins,
   Share2,
   MessageSquare,
+  Sparkles,
 } from 'lucide-react';
 
 interface NavItem {
@@ -183,6 +184,9 @@ const navigationGroups: NavGroup[] = [
           { title: 'Danh mục khác', href: '/settings/categories', icon: List, module: 'categories' },
           { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText, module: 'templates' },
           { title: 'Nhân viên', href: '/settings/staff', icon: UserCog, module: 'users' },
+          // Quản trị AI Copilot: super admin = full (kill switch/entitlements/
+          // providers/chi phí); owner/user thường = tab Sử dụng (gate trong page)
+          { title: 'Trợ lý AI', href: '/settings/ai-copilot', icon: Sparkles, module: 'ai_copilot' },
         ],
       },
     ],

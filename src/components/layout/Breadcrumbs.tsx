@@ -90,6 +90,7 @@ const routeLabels: Record<string, string> = {
   '/settings/templates': 'Mẫu biểu',
   '/settings/signatures': 'Mẫu chữ ký',
   '/settings/staff': 'Nhân viên',
+  '/settings/ai-copilot': 'Trợ lý AI',
 
   // Tài khoản
   '/account': 'Tài khoản',
