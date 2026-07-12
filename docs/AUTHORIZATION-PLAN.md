@@ -5,6 +5,7 @@
 > **Code được đối chiếu**: working tree tại commit `85503ae`  
 > **Phạm vi**: React/Vite, Supabase Auth, Postgres/RLS/RPC, Storage, Edge Functions, các luồng ghi tài chính  
 > **Mục tiêu tài liệu**: đủ bằng chứng, thiết kế, thứ tự migration, rollback, test và tiêu chí nghiệm thu để một agent khác audit độc lập trước khi thi công.
+> **Rà soát bổ sung**: 2026-07-12, đối chiếu lại live catalog bằng Management API và code tại `HEAD 112849f`; bổ sung finding về R2 Worker, Vercel cron, write path hoá đơn và các lỗi ràng buộc trong pseudo-DDL.
 
 ---
 
@@ -35,6 +36,7 @@ Ba nhóm rủi ro cần xử lý trước khi gọi hệ thống là multi-tenan
 1. **Identity/privilege fail-open**: `get_my_permissions()` trả `{"__superadmin":true}` cho caller không phải staff/cổ đông/quản lý; live có 2 auth user thuộc nhánh này. Đây là suy luận “không có assignment = owner”, không phải bằng chứng owner.
 2. **Backend attack surface quá rộng**: live có 246 `SECURITY DEFINER`; 110 hàm trong số đó caller `anon` có quyền execute hiệu lực. Ít nhất các helper ghi `_internal_settlement_account(...)`, `_termination_ensure_type(...)` và nhiều recompute helper đang callable trực tiếp mà không có guard đối tượng phát hiện được.
 3. **Financial approval có thể bị bypass**: `income_expenses.approval_status` mặc định lịch sử là `APPROVED`; nhiều frontend path insert/update trực tiếp trạng thái `APPROVED`; payment, voucher và item thường ghi qua nhiều request không cùng transaction. “UNAPPROVED” đang đồng thời mang nghĩa nháp và chờ duyệt.
+4. **Kênh ngoài Supabase chưa cùng authorization boundary**: Cloudflare R2 Worker hiện chỉ kiểm JWT hợp lệ rồi cho upload vào key bất kỳ và trả URL dưới public base; `api/salary-v5-cron.js` chưa xác thực request đi vào Vercel route trước khi chuyển tiếp cron secret. Hai kênh này phải vào Sprint 0, không chờ Sprint Storage/Edge cuối.
 
 ### Kiến trúc đích
 
@@ -170,6 +172,22 @@ Chỉ đếm row `deleted_at IS NULL`:
 `customer-id-cards`, `customer-images`, `document-templates`, `income-expense-attachments`, `job-attachments`, `meter-images`, `payment-receipts`, `ui-references`.
 
 Tuy nhiên private bucket **không đồng nghĩa tenant-private**. Migration `20260601000200_sec_private_buckets.sql` tạo nhiều SELECT policy chỉ kiểm `bucket_id` và `TO authenticated`; do đó một user đăng nhập bất kỳ có thể đọc object ở tenant khác nếu biết/list được path. Nhiều INSERT/UPDATE/DELETE policy lịch sử cũng chỉ kiểm authenticated hoặc object owner, không kiểm organization/resource scope.
+
+Catalog còn policy `room-sale-images` dù bucket này không nằm trong 8 bucket Supabase live (ảnh sale đang có hướng chuyển sang R2). Policy mồ côi không trực tiếp làm lộ object khi bucket không tồn tại, nhưng phải được inventory/cleanup để tránh bucket được tạo lại sau này và thừa hưởng policy rộng ngoài ý muốn.
+
+### 4.4 Kết quả tái kiểm tra độc lập [LIVE/CODE]
+
+Các số chính ở mục 4.1 đã được chạy lại và khớp: 136 bảng public/136 bật RLS, 551 policy, 459 function, 246 `SECURITY DEFINER`, 308 function anon-executable và 110 `SECURITY DEFINER` anon-executable. Live có 11 auth users; phép phân loại theo đúng body hiện tại của `get_my_permissions()` vẫn cho ra 2 user ở nhánh orphan. Definition/ACL live của `get_my_permissions`, `_internal_settlement_account`, `_termination_ensure_type`, `approve_voucher` và `unapprove_voucher` cũng khớp finding P0/P1 trong tài liệu.
+
+Bằng chứng mới cần nhập vào scope triển khai:
+
+- `src/hooks/usePayments.ts::useCreatePayment` vẫn insert payment rồi đọc/update invoice bằng request riêng, không lock/CAS và không kiểm lỗi update invoice.
+- `src/hooks/useInvoices.ts::useCreateInvoice/useUpdateInvoice` tạo trực tiếp invoice `APPROVED`, ghi header/credit/items qua nhiều request; update xoá toàn bộ item rồi insert lại ngoài transaction.
+- `src/hooks/useUpdatePaymentMethod.ts` đổi `income_expenses.account_id` trước rồi mới đổi `payments.payment_method`; lỗi request thứ hai tạo split-brain giữa payment và cashbook.
+- `infra/cloudflare-worker/src/index.ts` chỉ gọi `/auth/v1/user` để xác minh “có đăng nhập”, sau đó cho `PUT /upload?key=...` với key tùy ý và trả `${R2_PUBLIC_BASE}/${key}`. Không có bucket allowlist, organization/resource authorization, size/MIME quota hay ownership metadata.
+- `api/salary-v5-cron.js` kiểm job allowlist nhưng không kiểm request đi vào Vercel route; bất kỳ caller nào biết URL có thể kích hoạt job và server sẽ tự gắn `x-cron-secret` khi forward.
+
+Kết luận audit hiện tại: **NO-GO cho production multi-tenant/approval cutover** và **GO WITH CHANGES cho Sprint 0** sau khi thêm containment R2/cron cùng các P0 đã biết.
 
 ---
 
@@ -388,6 +406,11 @@ Ký hiệu:
 | `useRestoreIncomeExpense` | RPC restore | CANCELLED -> APPROVED, có thể recreate payment | Super-admin only nhưng khôi phục tiền trực tiếp | Chỉ migration/support repair có audit; user dùng reversal mới. |
 | `useBulkRecordPayment` | Loop direct payment + voucher APPROVED + item + excess | Tác động invoice/cashbook ngay | Mỗi line nhiều transaction; replay/partial/race; direct APPROVED | `record_invoice_payments_bulk_atomic` per invoice, idempotency key. |
 | `useInvoicePayments::useRecordPaymentRPC` | RPC tạo payment, sau đó client mirror voucher APPROVED/items | Payment và ledger mirror tách transaction | RPC thành công/mirror lỗi; retry/duplicate; approval bypass | RPC duy nhất tạo payment+voucher+items+credit. |
+| `usePayments::useCreatePayment` | Direct payment rồi read-modify-write `invoices.paid_amount/status` | Payment và invoice là hai request; update invoice không check error | Lost update khi hai collector chạy song song; payment có thể tồn tại nhưng invoice chưa cập nhật | Xoá/khóa hook legacy; mọi caller dùng `record_invoice_payment_atomic`. |
+| `useInvoices::useCreateInvoice` | Direct invoice `APPROVED`, optional credit, rồi items | Header/credit/items là 2–3 transaction | Invoice rỗng/credit đã tiêu nhưng item lỗi; creator tự đặt approver metadata | `create_invoice_draft`/`submit_invoice` RPC atomic; approval policy invoice tách rõ. |
+| `useInvoices::useUpdateInvoice` và `invoiceHelpers`/`useContracts` | Update header, delete items, insert lại; một số helper tự tạo invoice/items | Cho sửa cả `APPROVED` chưa thu; không CAS/transaction | Partial item loss, total/header lệch lines, duplicate invoice/event | RPC invoice state machine với expected version và server recompute total. |
+| `useUpdatePaymentMethod` | Đổi account của voucher rồi đổi payment method | Hai update tách rời | Split-brain payment/cashbook; resolver match tên có thể chọn nhầm account | `change_payment_method_atomic`, derive account từ invoice org/building và authorize cashbook. |
+| `useUploadPaymentReceipt` / `useUpdateInvoiceNote` | Direct update payment/voucher/invoice metadata | Nhiều request khi mirror attachment | Metadata có thể lệch; Storage URL có thể ngoài scope | RPC metadata hẹp, state/version guard; attachment org/resource-bound. |
 | `useRecordRefundRPC` | Direct EXPENSE APPROVED + item; tự tạo category | Chi hoàn thanh lý ngay | Refund phải luôn approval; non-atomic | `request_settlement_refund`. |
 | `useDeletePayment` | Soft-delete voucher + hard-delete payment | Rollback collection | Mất provenance/partial | `reverse_invoice_payment`, không hard delete. |
 | `useManagerSalary::useLockSalaryMonth` | Direct approve commission vouchers, lock/snapshot | Commission được auto-approve bởi người lock | Maker/rule bypass; nhiều write non-atomic | `lock_salary_period` chỉ snapshot; commission/payout request riêng. |
@@ -395,6 +418,7 @@ Ký hiệu:
 | `income-expenses/specialized.ts` | Direct profit/salary EXPENSE voucher/items | DB default có thể APPROVED | Luôn cần approval nhưng bypass | `request_profit_distribution` / `request_manager_payout`. |
 | `income-expenses/batch.ts` | Batch create/cancel trực tiếp | Nhiều voucher | Partial/cancel bypass | Batch RPC với item-level result + idempotency. |
 | `copilot/tools/writeTools.ts` | Tạo UNAPPROVED draft | Chưa post tiền | Pattern tốt hơn nhưng AI vẫn không được tự submit/approve | AI chỉ tạo DRAFT, actor/source/audit rõ. |
+| `useMeterReadings` | Có đường insert trực tiếp `status='APPROVED'`, approved_by=caller; hỗ trợ unapprove | Chỉ số là đầu vào sinh hoá đơn | Có thể sửa/duyệt input tính tiền mà không qua exact action/state machine | RPC bulk/approve immutable theo kỳ; invoice snapshot reading version. |
 
 ### 8.2 Các đường SQL/RPC đặc biệt
 
@@ -422,6 +446,8 @@ Ký hiệu:
 8. Invoice `paid_amount/status` được recompute trong cùng transaction hoặc từ immutable payment ledger, không dựa vào chuỗi client.
 9. Internal transfer phải net zero và hai chân cùng correlation; trigger deferred kiểm cân bằng trước commit.
 10. Audit event ghi actor, effective membership, source, request id, rule version, old/new state, reason và trace id.
+11. Invoice total phải được server derive/reconcile từ versioned lines; client không được tự ghi `total_amount`, `paid_amount`, `remaining_amount` như nguồn sự thật.
+12. Đổi payment method/account, thêm receipt và correction metadata phải là RPC hẹp có state/version guard; không coi “chỉ sửa metadata” là an toàn để direct update.
 
 ---
 
@@ -539,7 +565,7 @@ organization_memberships (
   member_type text check (member_type in
     ('OWNER','STAFF','SHAREHOLDER','PARTNER','SERVICE')),
   status text check (status in ('INVITED','ACTIVE','SUSPENDED','REVOKED')),
-  valid_from timestamptz,
+  valid_from timestamptz not null default now(),
   valid_to timestamptz,
   invited_by uuid,
   activated_at timestamptz,
@@ -553,11 +579,14 @@ organization_memberships (
 Ràng buộc thêm:
 
 - Membership là một **episode lịch sử**, không update/reuse row REVOKED khi user quay lại. Dùng exclusion constraint theo `tstzrange(valid_from, valid_to, '[)')` để cấm hai episode overlap cho cùng `(organization_id,user_id)`, cộng partial unique cho tối đa một episode `ACTIVE/INVITED` hiện tại. Nếu chọn mô hình một row mutable đơn giản hơn, phải có `organization_membership_events` append-only lưu toàn bộ transition; không được vừa `UNIQUE(org,user)` vừa tuyên bố giữ lịch sử bằng chính row đó.
+- `valid_from` không được nullable khi dùng episode range. Range dùng `tstzrange(valid_from, COALESCE(valid_to,'infinity'), '[)')`; predicate exclusion/partial unique phải xử lý episode terminal rõ ràng. Không dùng `tstzrange(NULL,NULL)` vì nó là range vô biên và có thể làm mọi episode xung đột.
 - Deferred constraint trigger đảm bảo mỗi org ACTIVE có ít nhất một OWNER; invariant “không xóa owner cuối” enforce trong cùng RPC/transaction.
+- Trigger owner-cuối phải là deferred **constraint trigger** trên cả thay đổi `organizations.status` và membership `member_type/status/valid_to/organization_id`, đồng thời lock organization row để hai transaction không cùng loại owner cuối.
 - Không dùng `ON DELETE CASCADE` từ auth user tới audit/financial records.
 - `platform_administrators` là bảng riêng, không phải role trong organization.
 - Mọi bảng nghiệp vụ có `organization_id NOT NULL` và FK; child row phải cùng org với parent qua composite FK hoặc constraint trigger.
 - Mọi bảng được tham chiếu cross-org phải có candidate key `UNIQUE (organization_id, id)` để tạo composite FK. FK chỉ vào `id` là chưa đủ tenant integrity.
+- Mọi pseudo-table có `organization_id` ở các mục sau đều phải có FK trực tiếp tới `organizations(id)`; block rút gọn không được copy thành migration khi thiếu FK này.
 - Index bắt buộc: membership `(user_id,status,organization_id)`, `(organization_id,status,member_type)`, và range GiST nếu dùng episode.
 
 ### 11.3 Schema — normalized permission/RBAC
@@ -702,6 +731,8 @@ Resolution precedence:
 Owner không tự động bypass platform rules, cross-org checks, audit, financial state machine hoặc maker-checker. Owner có broad tenant permissions được seed như normalized role + member type capability.
 
 “Matching scope” được tính trên **effective resource dimensions** do resolver canonical trả về, không phải chỉ so một UUID. Một deny match bất kỳ dimension bắt buộc sẽ thắng toàn bộ allow cho action đó. Override không scope chỉ hợp lệ nếu permission cho phép organization scope; không dùng empty scope để ngầm hiểu global.
+
+Evaluator phải xác định tập dimension relevant/required cho permission từ registry server-side; ALLOW chỉ hợp lệ khi thỏa `scope_match_mode`. DENY thắng ALLOW khi deny match theo chính mode/dimension relevant đó, không phải khi tình cờ trùng dimension không tham gia action. Ví dụ `cashbooks.post` luôn yêu cầu cashbook match; building match đơn lẻ không đủ để allow hoặc deny nhầm account khác.
 
 ### 11.6 Canonical authorization API
 
@@ -849,17 +880,27 @@ approval_step_approvers (
   scope_id uuid,
   foreign key (organization_id, step_id)
     references approval_rule_steps(organization_id, id),
+  foreign key (organization_id, membership_id)
+    references organization_memberships(organization_id, id),
+  foreign key (organization_id, role_id)
+    references organization_roles(organization_id, id),
+  foreign key (organization_id, scope_id)
+    references authorization_scopes(organization_id, id),
+  foreign key (permission_key)
+    references permission_definitions(key),
   check (
-    (approver_type='MEMBER' and membership_id is not null and role_id is null and permission_key is null)
-    or (approver_type='ROLE' and role_id is not null and membership_id is null and permission_key is null)
-    or (approver_type='PERMISSION' and permission_key is not null and membership_id is null and role_id is null)
+    (approver_type='MEMBER' and membership_id is not null and role_id is null and permission_key is null and scope_id is null)
+    or (approver_type='ROLE' and role_id is not null and membership_id is null and permission_key is null and scope_id is null)
+    or (approver_type='PERMISSION' and permission_key is not null and membership_id is null and role_id is null and scope_id is null)
     or (approver_type in ('CASHBOOK_APPROVER','AREA_APPROVER','BUILDING_APPROVER')
-        and scope_id is not null)
+        and scope_id is not null and membership_id is null and role_id is null and permission_key is null)
   )
 )
 ```
 
 Không lưu approver bằng email/name. Khi submit, engine materialize candidate rows vào `approval_request_step_candidates(request_step_id,membership_id,source_kind,source_id,eligible_at_submit)` với unique `(request_step_id,membership_id)`. Khi decide vẫn re-check membership ACTIVE, maker-checker và permission/scope hiện tại. `mode='ANY'` bắt buộc `min_approvals=1`; `ALL` snapshot candidate count và yêu cầu toàn bộ; `QUORUM` yêu cầu `min_approvals <= candidate_count`. Submit fail closed nếu một step không có candidate hoặc quorum bất khả thi.
+
+Candidate table phải có `organization_id`, composite FK cùng org tới request step/membership và unique `(organization_id,request_step_id,membership_id)`. Decision chỉ hợp lệ nếu actor có candidate row đúng step, trừ endpoint emergency riêng.
 
 ### 12.4 Request/decision/audit schema
 
@@ -901,6 +942,7 @@ approval_request_steps (
   rule_step_snapshot jsonb not null,
   candidate_count integer not null,
   unique(organization_id, id),
+  unique(organization_id, request_id, id),
   unique(request_id, step_no),
   foreign key (organization_id, request_id)
     references approval_requests(organization_id, id),
@@ -921,8 +963,8 @@ approval_decisions (
   unique(request_step_id, actor_membership_id),
   foreign key (organization_id, request_id)
     references approval_requests(organization_id, id),
-  foreign key (organization_id, request_step_id)
-    references approval_request_steps(organization_id, id),
+  foreign key (organization_id, request_id, request_step_id)
+    references approval_request_steps(organization_id, request_id, id),
   check(decision <> 'EMERGENCY_APPROVE' or length(btrim(reason)) >= 20)
 )
 
@@ -946,12 +988,15 @@ authorization_audit_events (
 
 `approval_requests` không unique vĩnh viễn chỉ theo subject vì subject có thể bị reject/cancel rồi sửa và resubmit. `submission_no` tăng dưới lock; partial unique đảm bảo tối đa một request OPEN (`PENDING_APPROVAL`) cho mỗi subject. Request cũ giữ nguyên terminal history. `approval_decisions` là append-only; không “đổi quyết định” bằng UPDATE.
 
+Composite FK ba cột ở decision là bắt buộc: hai FK độc lập tới `request_id` và `request_step_id` vẫn cho phép ghép request A với step của request B trong cùng organization. Mọi posting event cũng phải FK cùng org/request/subject thay vì chỉ giữ UUID rời.
+
 Audit tables:
 
 - INSERT chỉ qua definer function/internal role.
 - Application roles không UPDATE/DELETE.
 - FK tới user/membership dùng `ON DELETE RESTRICT` hoặc lưu immutable scalar identity snapshot; không cascade.
 - Hash chain theo organization/day hoặc export định kỳ sang object store append-only để phát hiện tampering.
+- Nếu dùng hash chain, serialize event bằng canonical JSON và lock một chain-head `(organization_id, chain_partition)` khi append; nếu không hai transaction đồng thời có thể cùng `prev_hash` tạo fork. Partition theo ngày phải liên kết hash đóng/mở giữa hai ngày hoặc ghi rõ chỉ bảo vệ từng partition độc lập.
 
 ### 12.5 Rule matching algorithm
 
@@ -993,6 +1038,8 @@ Emergency owner override chỉ khi:
 - metric/alert theo dõi tần suất; không dùng trong bulk action.
 
 Emergency là endpoint riêng, không được insert vào normal decision path bằng client-supplied enum. Endpoint lock request, kiểm owner/permission/re-auth server-side, ghi event và post trong cùng transaction. Nếu request đã terminal, endpoint không tạo thêm decision.
+
+Phải chốt ngoại lệ maker-checker: khuyến nghị **owner là maker cũng không được emergency-approve request do chính mình tạo**. Nếu business thật sự cần break-glass tự duyệt, đó phải là policy riêng có second factor + external alert và acceptance criterion riêng, không để suy diễn từ chữ “emergency”.
 
 ### 12.7 Posting/ledger
 
@@ -1036,6 +1083,8 @@ Reversal là posting mới với `reverses_posting_id UNIQUE` và số tiền/li
 
 Client roles không được direct mutate các cột/tables thuộc state machine. RLS direct INSERT có thể chỉ cho DRAFT với trigger ép actor/org; an toàn hơn là revoke direct DML và chỉ RPC.
 
+Tên/contract bulk phải rõ: “per-invoice savepoint/result” là **partial-success batch**, không atomic toàn batch. Nên đổi tên thành `record_invoice_payments_bulk` và trả item result ổn định, hoặc chọn all-or-nothing thật sự; không dùng hậu tố `_atomic` khi API cho phép một phần commit.
+
 ---
 
 ## 14. Storage authorization mục tiêu
@@ -1074,6 +1123,20 @@ storage_object_links(bucket_id, object_name, organization_id,
 6. Negative test user A với exact object name của B.
 7. Sau retention window mới xóa path cũ.
 
+### 14.4 Cloudflare R2 Worker — P0 bổ sung
+
+R2 là authorization/storage boundary độc lập và hiện chưa đạt mô hình trên. `infra/cloudflare-worker/src/index.ts` xác minh JWT nhưng không lấy user id/org, không authorize resource và cho upload mọi `safeKey`; object lại nằm dưới `R2_PUBLIC_BASE`. `safeKey` chỉ chống path traversal, không chống cross-tenant overwrite/data publication.
+
+Containment bắt buộc:
+
+1. Chỉ allowlist bucket public thực sự (`room-sale-images`) và ép server dựng prefix/key ngẫu nhiên; cấm client chọn full key hoặc overwrite key đã tồn tại.
+2. Upload nhận resource id, resolve organization/building và exact permission qua backend; không chỉ kiểm JWT tồn tại.
+3. Giới hạn `Content-Length`, MIME/magic bytes, quota/rate; không tin `Content-Type`/`X-Cache-Control` client.
+4. Không trả public URL cho customer ID, receipt, attachment, contract hoặc PII. Private class dùng signed capability ngắn hạn và re-authorize trước khi ký.
+5. Tạo upload intent/link metadata DB trước upload (nonce, org, resource, expected key, expiry, max bytes, MIME). Không dựa vào link được tạo sau object.
+6. Audit actor/org/resource/hash/size; cleanup orphan; negative test user A upload/overwrite/read key của B.
+7. Rà custom domain/bucket setting: nếu R2 origin public thì endpoint `/file` allowlist không bảo vệ truy cập trực tiếp `${R2_PUBLIC_BASE}/<key>`.
+
 ---
 
 ## 15. Edge Functions
@@ -1085,8 +1148,13 @@ storage_object_links(bucket_id, object_name, organization_id,
 | `salary-v5-jobs` | Cron secret/service JWT/admin path, idempotent cron runs | Tách platform admin khỏi tenant owner; internal RPC grants service-only; audit organization batch. |
 | `send-push` | Service role gửi target bất kỳ; user JWT chỉ self | Hợp lý; service callers allowlist, validate URL/payload; không để service key ở caller ngoài trusted infra. |
 | `demo-reset` | Shared secret, service role, DB cooldown | Blast radius demo-only phải được DB chứng minh; rotate secret, constant-time compare nếu cần, không thêm generic params. |
+| `api/salary-v5-cron.js` | Vercel route forward secret nhưng chưa xác thực request vào route | P0/P1: verify `Authorization: Bearer CRON_SECRET` constant-time, POST-only; không biến public request thành trusted cron request. Manual rerun dùng admin endpoint riêng. |
+| Cloudflare R2 Worker | JWT-valid là đủ để upload arbitrary key; public base URL | P0: áp mô hình mục 14.4; tách public sale asset khỏi private PII. |
+| `worker/index.js` Zalo VPS | Giữ service-role key + session cookies, đọc/ghi queue/data bypass RLS | Đưa vào service inventory; harden host/file permissions/encryption/rotation. Claim queue qua service-only RPC có account/source constraints và audit. |
 
 Mọi Edge Function dùng service role phải tự xác thực/authorize trước query. CORS không phải authorization.
+
+`send-push` không nên tin claim `role='service_role'` chỉ bằng decode payload JWT. Dù gateway hiện được kỳ vọng `verify_jwt`, code boundary an toàn phải chỉ chấp nhận service secret/token đã xác minh chắc chắn; token còn lại gọi `auth.getUser()`. Thêm deployment-config test chứng minh `verify_jwt` không bị tắt ngoài ý muốn.
 
 ---
 
@@ -1203,6 +1271,8 @@ Deliverables:
 6. Chặn direct sensitive approval columns; tạm thời đổi create expense default fail-closed.
 7. Baseline data/count/sum/catalog ACL/policy/function hashes.
 8. Test harness cross-tenant, direct REST/RPC/Storage.
+9. Contain R2 Worker: disable upload ngoài public-sale allowlist hoặc triển khai upload intent + resource authorization; xác minh public origin không lộ private class.
+10. Khóa `api/salary-v5-cron.js`: POST + constant-time inbound cron auth; test unauthenticated không kích hoạt Edge job.
 
 Gate: P0 exploit paths đóng; production smoke test; rollback catalog snapshot sẵn.
 
@@ -1228,7 +1298,7 @@ Gate: decision mismatch = 0 không giải thích; performance p95 đạt ngân s
 
 ### Sprint 3 — Organization backfill toàn domain và RLS v2
 
-1. Backfill org id theo dependency graph cho 136 tables liên quan.
+1. Backfill org id theo dependency graph cho toàn bộ bảng nghiệp vụ trong 136 public tables; lập allowlist cho bảng platform/public thay vì mặc định cả 136 đều tenant-owned.
 2. Composite FK/check cùng org.
 3. Viết RLS v2 deny-default; không OR với legacy policy rộng.
 4. Shadow/staging negative tests từng table.
@@ -1262,7 +1332,8 @@ Gate: grep/runtime audit không còn client direct `APPROVED`; end-to-end sums v
 2. Storage path/org metadata migration và scoped policies.
 3. Function ACL allowlist, private impl schema, pinned search path.
 4. Edge Function platform/tenant auth separation.
-5. Permission cache version/invalidation.
+5. Zalo VPS worker/service-role và R2 private delivery hardening; secret/session rotation runbook.
+6. Permission cache version/invalidation.
 
 Gate: anon/cross-org/PII/Storage suite xanh; SECURITY DEFINER CI checks xanh.
 
@@ -1350,8 +1421,11 @@ Các case bắt buộc:
 - Call helper/recompute/trigger function trực tiếp => permission denied.
 - Storage A dùng exact object name B: SELECT/signed URL/update/delete denied.
 - Upload path giả org B denied.
+- R2 A chọn key/prefix B hoặc private bucket class denied; overwrite existing object denied; direct public-base URL không đọc được private class.
 - Edge function JWT invalid/expired, wrong org, wrong permission, service request thiếu source => denied.
 - CORS origin hợp lệ nhưng no auth => vẫn denied.
+- Gọi Vercel salary cron không có/sai Bearer secret => không forward và không tạo `cron_runs`.
+- JWT forged claim `role=service_role` gọi `send-push` => denied.
 
 ### 18.6 Performance
 
@@ -1420,6 +1494,7 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 10. **Audit provenance**: không giả mạo approver lịch sử; decision/state/security event không UPDATE/DELETE bởi app roles.
 11. **Definer/ACL hardening**: zero internal/helper/trigger function executable bởi anon/PUBLIC; public RPC đúng allowlist, search_path và guard.
 12. **Storage/Edge isolation**: object và service action cùng organization/resource scope; authenticated-wide PII read không còn.
+    Bao gồm Supabase Storage, Cloudflare R2/custom domain, Vercel API routes và long-running VPS workers; không chỉ `supabase/functions`.
 13. **Staff lifecycle**: invite/suspend/revoke thay browser signUp/hard delete; owner cuối được bảo vệ.
 14. **Data parity**: account/invoice/payment/KQKD/salary/profit reconciliation khớp baseline trước cutover.
 15. **Operational readiness**: metrics, alerts, freeze/reversal/runbook, catalog snapshot và rollback gate đã diễn tập.
@@ -1436,6 +1511,8 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 - Direct creation/update `APPROVED` trên financial paths.
 - Payment/voucher/item non-atomic cho single/bulk/refund/salary.
 - Browser staff provisioning bằng `auth.signUp` nếu flow còn reachable.
+- R2 Worker cho mọi authenticated user upload arbitrary key và trả public-base URL, chưa tenant/resource scope.
+- Vercel salary cron route không auth inbound nhưng tự forward trusted cron secret.
 
 ### P1 — trước tenant/approval cutover
 
@@ -1444,6 +1521,8 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 - `unapprove`/hard-delete payment phá finality.
 - `pay_draft_fee_voucher` account scope không phản ánh shared/scoped permission đúng.
 - Storage SELECT `TO authenticated` chỉ theo bucket.
+- `send-push` nhận diện service role bằng decode JWT claim; phải harden/verify deployment gateway.
+- Write path invoice/payment legacy (`usePayments`, `useInvoices`, `invoiceHelpers`, `useContracts`) chưa nằm sau RPC atomic.
 - Action chi tiết chỉ FE + legacy fallback rộng.
 - Hard-delete auth user qua `delete_staff_member`.
 
@@ -1498,6 +1577,9 @@ Agent audit không được chỉ review tài liệu; phải kiểm tra live cat
 13. Edge Function nào dùng service role nhưng chưa tự authz?
 14. Backfill approved history có vô tình tạo approver giả không?
 15. Rollback có thực tế sau khi new posting phát sinh hay phải freeze/forward-fix?
+16. R2 custom domain có cho đọc trực tiếp object ngoài `/file` Worker không, và bucket class nào đang public thật sự?
+17. Vercel cron route có chứng minh caller là Vercel Cron trước khi gắn internal secret không?
+18. Có FK/composite FK nào trong schema approval cho phép ghép request-step-decision khác subject/org không?
 
 ---
 
@@ -1615,6 +1697,9 @@ Các query này là template; agent phải điều chỉnh theo schema live và 
 | `20260704120000_termination_internal_ledger.sql` | Internal settlement helper/ledger. |
 | `20260601000200_sec_private_buckets.sql` | Private buckets nhưng authenticated-wide read. |
 | `supabase/functions/*` | Service-role/JWT/secret trust boundaries. |
+| `infra/cloudflare-worker/src/index.ts` | R2 upload/public delivery boundary; hiện auth-only, chưa resource authorization. |
+| `api/salary-v5-cron.js` | Vercel cron ingress; hiện chưa verify inbound caller. |
+| `worker/index.js` | Zalo worker giữ service-role/session credentials và bypass RLS. |
 
 ---
 
