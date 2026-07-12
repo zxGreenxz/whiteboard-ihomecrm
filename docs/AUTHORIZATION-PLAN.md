@@ -159,6 +159,8 @@ Chỉ đếm row `deleted_at IS NULL`:
 | EXPENSE | CANCELLED | 59 | 0 |
 | INCOME | CANCELLED | 90 | 0 |
 
+Đây là **snapshot tại timestamp ở đầu tài liệu**, không phải backlog tĩnh. Hệ thống production vẫn phát sinh giao dịch; lần tái kiểm sau đó trong cùng ngày đã thấy `INCOME/APPROVED` tăng từ 1,010 lên 1,011 và số thiếu `approved_by` tăng từ 1,009 lên 1,010. Mỗi lần migration/cutover phải chụp lại count/hash/sum trong maintenance window, không dùng các số trên làm assertion cố định.
+
 Ý nghĩa:
 
 - Không được backfill `approved_by` bằng owner hoặc creator nếu không có bằng chứng; làm vậy sẽ giả mạo audit.
@@ -531,6 +533,17 @@ Owner cuối cùng không được tự remove/suspend. Chuyển owner cần two
 
 ## 11. Kiến trúc authorization mục tiêu
 
+### 11.0 Prerequisite PostgreSQL extensions
+
+Pseudo-DDL bên dưới dùng `citext` và exclusion constraint GiST với equality trên UUID. Live DB/repository hiện chưa có `citext` hoặc `btree_gist`, nên migration foundation phải tạo extension idempotent trước khi tạo bảng/index:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+```
+
+Khi extension nằm trong schema `extensions`, migration/function phải schema-qualify type/object khi cần hoặc pin `search_path` có `extensions`; không dựa vào search path ngầm. Nếu không muốn phụ thuộc `citext`, dùng `text` + unique index trên `lower(value)` với normalize server-side. Catalog precheck phải xác nhận extension/schema thực tế, không chỉ tin migration ledger.
+
 ### 11.1 Nguyên tắc
 
 1. Deny by default.
@@ -549,9 +562,9 @@ Owner cuối cùng không được tự remove/suspend. Chuyển owner cần two
 ```sql
 organizations (
   id uuid primary key,
-  slug citext unique not null,
+  slug extensions.citext unique not null,
   name text not null,
-  status text check (status in ('ACTIVE','SUSPENDED','CLOSED')),
+  status text not null check (status in ('ACTIVE','SUSPENDED','CLOSED')),
   authorization_version bigint not null default 1,
   created_by uuid not null references auth.users(id),
   created_at timestamptz not null,
@@ -562,9 +575,9 @@ organization_memberships (
   id uuid primary key,
   organization_id uuid not null references organizations(id),
   user_id uuid not null references auth.users(id),
-  member_type text check (member_type in
+  member_type text not null check (member_type in
     ('OWNER','STAFF','SHAREHOLDER','PARTNER','SERVICE')),
-  status text check (status in ('INVITED','ACTIVE','SUSPENDED','REVOKED')),
+  status text not null check (status in ('INVITED','ACTIVE','SUSPENDED','REVOKED')),
   valid_from timestamptz not null default now(),
   valid_to timestamptz,
   invited_by uuid,
@@ -580,9 +593,11 @@ Ràng buộc thêm:
 
 - Membership là một **episode lịch sử**, không update/reuse row REVOKED khi user quay lại. Dùng exclusion constraint theo `tstzrange(valid_from, valid_to, '[)')` để cấm hai episode overlap cho cùng `(organization_id,user_id)`, cộng partial unique cho tối đa một episode `ACTIVE/INVITED` hiện tại. Nếu chọn mô hình một row mutable đơn giản hơn, phải có `organization_membership_events` append-only lưu toàn bộ transition; không được vừa `UNIQUE(org,user)` vừa tuyên bố giữ lịch sử bằng chính row đó.
 - `valid_from` không được nullable khi dùng episode range. Range dùng `tstzrange(valid_from, COALESCE(valid_to,'infinity'), '[)')`; predicate exclusion/partial unique phải xử lý episode terminal rõ ràng. Không dùng `tstzrange(NULL,NULL)` vì nó là range vô biên và có thể làm mọi episode xung đột.
+- Exclusion constraint UUID equality + range overlap cần `btree_gist`; migration phải fail precheck nếu extension chưa sẵn sàng. Constraint mẫu phải dùng range vô hạn trên `valid_to IS NULL` và predicate episode tham gia rõ ràng, sau đó test hai transaction tạo episode đồng thời.
 - Deferred constraint trigger đảm bảo mỗi org ACTIVE có ít nhất một OWNER; invariant “không xóa owner cuối” enforce trong cùng RPC/transaction.
 - Trigger owner-cuối phải là deferred **constraint trigger** trên cả thay đổi `organizations.status` và membership `member_type/status/valid_to/organization_id`, đồng thời lock organization row để hai transaction không cùng loại owner cuối.
 - Không dùng `ON DELETE CASCADE` từ auth user tới audit/financial records.
+- Invitation cho email chưa có `auth.users` phải nằm trong bảng `organization_invitations` riêng (`email_normalized`, token hash, expiry, invited_by, intended role/scope). Chỉ sau khi user xác thực và accept mới tạo membership; status `INVITED` trong membership chỉ áp dụng cho principal đã tồn tại.
 - `platform_administrators` là bảng riêng, không phải role trong organization.
 - Mọi bảng nghiệp vụ có `organization_id NOT NULL` và FK; child row phải cùng org với parent qua composite FK hoặc constraint trigger.
 - Mọi bảng được tham chiếu cross-org phải có candidate key `UNIQUE (organization_id, id)` để tạo composite FK. FK chỉ vào `id` là chưa đủ tenant integrity.
@@ -606,7 +621,7 @@ permission_definitions (
 organization_roles (
   id uuid primary key,
   organization_id uuid not null,
-  name citext not null,
+  name extensions.citext not null,
   is_system boolean not null default false,
   version bigint not null default 1,
   unique(organization_id, name),
@@ -650,7 +665,7 @@ Không dùng một `scope_id` polymorphic không FK. Dùng bảng có cột type
 authorization_scopes (
   id uuid primary key,
   organization_id uuid not null,
-  scope_type text check (scope_type in
+  scope_type text not null check (scope_type in
     ('ORGANIZATION','AREA','BUILDING','CASHBOOK')),
   area_id uuid,
   building_id uuid,
@@ -688,6 +703,8 @@ role_binding_scopes (
 - Scope indexes: `(organization_id, scope_type, building_id)`, area, cashbook tương ứng.
 - Cần unique partial indexes để canonicalize scope, ví dụ một `ORGANIZATION` scope/org và một `(organization_id,building_id)` scope; tránh nhiều UUID biểu diễn cùng scope.
 - Mỗi permission có `scope_match_mode` được định nghĩa server-side. Resource nhiều trục (ví dụ voucher có building **và** cashbook) phải khai báo rõ `ALL_REQUIRED` hoặc action-specific resolver; không được để evaluator tự chọn “building OR cashbook”. Với `cashbooks.post`, cashbook match luôn bắt buộc dù caller có building scope.
+- Tên `cashbook_id` hiện FK tới bảng legacy `accounts`; trước migration phải chốt tên canonical `account_id` hoặc tạo table/domain `cashbooks` thật. Không trộn hai tên trong API/FK/audit.
+- Composite FK scope chỉ tạo được sau khi parent có `organization_id` và `UNIQUE(organization_id,id)`. Các candidate key root cho areas/buildings/accounts phải hoàn thành ở Sprint 1 trước scope tables/FK Sprint 2.
 
 ### 11.5 Per-user allow/deny
 
@@ -760,6 +777,7 @@ RLS SELECT có thể dùng set-returning helpers tối ưu như `authorized_buil
 - Đặt authorization tables/implementation trong schema private không expose PostgREST; application roles không DML trực tiếp.
 - Helper `SECURITY DEFINER` do non-login owner riêng sở hữu, `search_path` cố định, schema-qualified, và chỉ grant wrapper allowlist.
 - Function đọc membership/binding không được bị policy gọi ngược lại chính table đó; dùng owner-bypass có kiểm soát hoặc security-barrier API, kèm unit test recursion.
+- Phải chốt rõ `FORCE ROW LEVEL SECURITY` cho authorization tables. Nếu bật FORCE RLS, table owner của definer function cũng chịu policy trừ role có `BYPASSRLS`, nên helper có thể recurse hoặc tự deny. Test cả cấu hình FORCE RLS; không giả định `SECURITY DEFINER` luôn vượt FORCE RLS.
 - Không ghi audit đồng bộ từ `authorize()` dùng trong mọi SELECT row; chỉ trace elevated mutations hoặc sample deny ở boundary để tránh side effect trong policy.
 
 ### 11.7 Frontend permission context
@@ -782,6 +800,8 @@ Thay `get_my_permissions()` bằng DTO:
 Không dùng `__superadmin` cho tenant owner. Platform UI dùng context endpoint riêng và audit riêng.
 
 `authorizationVersion` tăng trong **cùng transaction** với mọi thay đổi membership/role/permission/binding/scope/override/area membership. Cache key gồm `(user_id,organization_id,authorization_version)`; backend không tin version client gửi. Khi area-building đổi, tăng version cho org hoặc dùng separate `scope_version` được include trong DTO.
+
+Mọi mutation authorization phải đi qua routine/trigger tập trung dùng atomic `authorization_version = authorization_version + 1` và phát invalidation sau commit. Counter trên row organization có thể thành write-hot-row; đo contention và tách membership/scope version nếu cần.
 
 ---
 
@@ -812,13 +832,14 @@ Không có transition `POSTED -> DRAFT`. `APPROVED` là outcome của approval, 
 approval_rule_sets (
   id uuid primary key,
   organization_id uuid not null,
+  transaction_domain text not null,
   version integer not null,
-  status text check (status in ('DRAFT','ACTIVE','RETIRED')),
+  status text not null check (status in ('DRAFT','ACTIVE','RETIRED')),
   effective_from timestamptz not null,
   effective_to timestamptz,
   published_by uuid,
   published_at timestamptz,
-  unique(organization_id, version),
+  unique(organization_id, transaction_domain, version),
   unique(organization_id, id),
   check(effective_to is null or effective_to > effective_from)
 )
@@ -829,8 +850,8 @@ approval_rules (
   rule_set_id uuid not null,
   name text not null,
   priority integer not null,
-  effect text check (effect in ('AUTO_POST','REQUIRE_APPROVAL','DENY')),
-  transaction_type text,               -- INCOME/EXPENSE/TRANSFER/ADJUSTMENT
+  effect text not null check (effect in ('AUTO_POST','REQUIRE_APPROVAL','DENY')),
+  transaction_type text not null,      -- INCOME/EXPENSE/TRANSFER/ADJUSTMENT
   category_id uuid,
   cashbook_id uuid,
   building_id uuid,
@@ -845,11 +866,12 @@ approval_rules (
   foreign key (organization_id, rule_set_id)
     references approval_rule_sets(organization_id, id),
   check(amount_min is null or amount_min >= 0),
+  check(amount_max is null or amount_max >= 0),
   check(amount_max is null or amount_min is null or amount_max >= amount_min)
 )
 ```
 
-`priority` phải unique trong rule set. Chỉ một rule set ACTIVE được áp tại một thời điểm cho mỗi organization/transaction domain; dùng exclusion constraint trên effective range hoặc publish RPC có advisory/row lock để ngăn overlap. Rule `DENY`/force approval có precedence cao. Category/source đặc biệt (commission, bonus, refund, contract payout, salary, profit) được seed `REQUIRE_APPROVAL` ở priority cao hơn generic amount rule. Category/cashbook/building/area phải có composite same-org FK; source/transaction type dùng lookup/enum, không text tự do do client quyết định.
+`priority` phải unique trong rule set. `transaction_domain` phải có trên rule set để enforce invariant. Chỉ một rule set ACTIVE được áp tại một thời điểm cho mỗi organization/transaction domain; dùng exclusion constraint trên effective range hoặc publish RPC có advisory/row lock để ngăn overlap. Rule `DENY`/force approval có precedence cao. Category/source đặc biệt (commission, bonus, refund, contract payout, salary, profit) được seed `REQUIRE_APPROVAL` ở priority cao hơn generic amount rule. Category/cashbook/building/area phải có composite same-org FK; source/transaction type dùng lookup/enum, không text tự do do client quyết định.
 
 ### 12.3 Approver/step schema
 
@@ -860,7 +882,7 @@ approval_rule_steps (
   rule_id uuid not null,
   step_no integer not null,
   min_approvals integer not null default 1,
-  mode text check (mode in ('ANY','ALL','QUORUM')),
+  mode text not null check (mode in ('ANY','ALL','QUORUM')),
   unique(organization_id, id),
   unique(rule_id, step_no),
   foreign key (organization_id, rule_id)
@@ -872,7 +894,7 @@ approval_step_approvers (
   id uuid primary key,
   organization_id uuid not null,
   step_id uuid not null,
-  approver_type text check (approver_type in
+  approver_type text not null check (approver_type in
     ('MEMBER','ROLE','PERMISSION','CASHBOOK_APPROVER','AREA_APPROVER','BUILDING_APPROVER')),
   membership_id uuid,
   role_id uuid,
@@ -902,6 +924,8 @@ Không lưu approver bằng email/name. Khi submit, engine materialize candidate
 
 Candidate table phải có `organization_id`, composite FK cùng org tới request step/membership và unique `(organization_id,request_step_id,membership_id)`. Decision chỉ hợp lệ nếu actor có candidate row đúng step, trừ endpoint emergency riêng.
 
+Nếu suspend/revoke approver làm `eligible_count < min_approvals`, request không được âm thầm hạ quorum hoặc kẹt vô hạn. Recovery policy versioned phải reassign/rematerialize bằng elevated RPC có audit, timeout/escalate, hoặc reject/cancel để resubmit; luôn lock request, tăng version và giữ candidate history.
+
 ### 12.4 Request/decision/audit schema
 
 ```sql
@@ -911,12 +935,12 @@ approval_requests (
   submission_no integer not null,
   subject_type text not null,            -- FINANCIAL_VOUCHER/PAYMENT/...
   subject_id uuid not null,
-  state text not null,
+  state text not null check (state in ('PENDING_APPROVAL','POSTED','REJECTED','CANCELLED')),
   maker_membership_id uuid not null,
   maker_user_id uuid not null,
   rule_set_version integer not null,
   matched_rule_id uuid,
-  rule_effect text not null,
+  rule_effect text not null check (rule_effect in ('AUTO_POST','REQUIRE_APPROVAL','DENY','DEFAULT_REQUIRE_APPROVAL')),
   payload_snapshot jsonb not null,
   payload_hash text not null,
   amount numeric(18,2) not null,
@@ -937,7 +961,7 @@ approval_request_steps (
   organization_id uuid not null,
   request_id uuid not null,
   step_no integer not null,
-  status text not null,
+  status text not null check (status in ('PENDING','APPROVED','REJECTED','CANCELLED','ESCALATED')),
   min_approvals integer not null,
   rule_step_snapshot jsonb not null,
   candidate_count integer not null,
@@ -956,7 +980,7 @@ approval_decisions (
   request_step_id uuid not null,
   actor_membership_id uuid not null,
   actor_user_id uuid not null,
-  decision text check (decision in ('APPROVE','REJECT','EMERGENCY_APPROVE')),
+  decision text not null check (decision in ('APPROVE','REJECT','EMERGENCY_APPROVE')),
   reason text,
   decided_at timestamptz not null,
   request_version bigint not null,
@@ -984,7 +1008,13 @@ authorization_audit_events (
   prev_hash text,
   event_hash text not null
 )
+
+CREATE UNIQUE INDEX approval_requests_one_open_subject
+  ON approval_requests (organization_id, subject_type, subject_id)
+  WHERE state = 'PENDING_APPROVAL';
 ```
+
+`subject_type + subject_id` là polymorphic nên subject resolver server-side phải allowlist type, lock row thật, derive organization từ subject và từ chối subject không tồn tại/khác org.
 
 `approval_requests` không unique vĩnh viễn chỉ theo subject vì subject có thể bị reject/cancel rồi sửa và resubmit. `submission_no` tăng dưới lock; partial unique đảm bảo tối đa một request OPEN (`PENDING_APPROVAL`) cho mỗi subject. Request cũ giữ nguyên terminal history. `approval_decisions` là append-only; không “đổi quyết định” bằng UPDATE.
 
@@ -1039,6 +1069,8 @@ Emergency owner override chỉ khi:
 
 Emergency là endpoint riêng, không được insert vào normal decision path bằng client-supplied enum. Endpoint lock request, kiểm owner/permission/re-auth server-side, ghi event và post trong cùng transaction. Nếu request đã terminal, endpoint không tạo thêm decision.
 
+Emergency không thay thế quorum recovery. Dashboard phải cảnh báo request sắp/quá SLA hoặc quorum bất khả thi; reassign/escalate chỉ qua endpoint audited.
+
 Phải chốt ngoại lệ maker-checker: khuyến nghị **owner là maker cũng không được emergency-approve request do chính mình tạo**. Nếu business thật sự cần break-glass tự duyệt, đó phải là policy riêng có second factor + external alert và acceptance criterion riêng, không để suy diễn từ chữ “emergency”.
 
 ### 12.7 Posting/ledger
@@ -1054,6 +1086,8 @@ Khuyến nghị giai đoạn đầu chọn (1) để giảm rủi ro báo cáo, 
 posting_id, posted_at, posted_by, approval_request_id,
 correlation_id, idempotency_key, reversed_by_posting_id, source_payload_hash
 ```
+
+Double-post phải được chặn tại posting source of truth, ưu tiên `financial_posting_events.approval_request_id UNIQUE NOT NULL` hoặc posting batch/header tương đương. Không unique trực tiếp `income_expenses.approval_request_id` nếu một request hợp lệ sinh nhiều legs; `approval_requests.posted_event_id UNIQUE` chỉ là guard bổ sung.
 
 Trigger/RLS cấm sửa amount/items/account/category của row POSTED. Giai đoạn sau có thể chuyển balance view sang posting lines.
 
@@ -1184,7 +1218,7 @@ Live có 2 distinct legacy `staff_assignments.user_id`, nhưng không được m
 
 ### 16.3 Thứ tự thêm `organization_id`
 
-1. Root: organizations, memberships, buildings, areas, accounts, roles.
+1. Root: extensions prerequisite; organizations, invitations, memberships, buildings, areas, accounts, roles. Thêm `UNIQUE(organization_id,id)` cho areas/buildings/accounts ngay phase này để scope FK Sprint 2 tạo được.
 2. Structure: floors, rooms, services, meters, warehouses.
 3. Customer/contract roots.
 4. Invoices/payments/deposits/excess.
@@ -1400,6 +1434,10 @@ Các case bắt buộc:
 11. Hai approver click đồng thời => đúng quorum, một posting.
 12. Reject và approve cạnh tranh => một terminal outcome.
 13. Rule set publish trong khi request pending => request giữ snapshot version.
+14. Suspend/revoke làm candidate thấp hơn quorum => escalate theo policy, không tự hạ quorum hoặc nằm PENDING không cảnh báo.
+15. Reassign candidate => payload/rule snapshot không đổi, version tăng, candidate cũ giữ history và audit actor/reason.
+16. Hai request đồng thời cùng subject => partial unique chỉ cho một PENDING_APPROVAL.
+17. Hai posting path cạnh tranh => unique posting-side guard chỉ cho một posting event/batch; multi-leg hợp lệ cùng batch.
 
 ### 18.4 Financial atomicity/idempotency
 
