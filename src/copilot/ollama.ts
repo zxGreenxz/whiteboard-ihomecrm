@@ -35,18 +35,9 @@ export async function listOllamaModels(timeoutMs = 1500): Promise<LocalModelOpti
     .map((m) => ({ id: m.name, label: m.name }));
 }
 
-export async function list9RouterModels(timeoutMs = 1500): Promise<LocalModelOption[]> {
-  const data = (await fetchJson('http://localhost:20128/v1/models', timeoutMs)) as
-    | { data?: { id: string }[] }
-    | null;
-  return (data?.data ?? [])
-    .filter((m) => !!m?.id)
-    .map((m) => ({ id: m.id, label: m.id }));
-}
-
-/** Phát hiện model theo provider local. Provider lạ → rỗng. */
+/** Phát hiện model theo provider local. Provider lạ → rỗng.
+ *  (9Router đã chuyển sang cloud/VPS — không còn auto-detect localhost.) */
 export async function listLocalModels(provider: string): Promise<LocalModelOption[]> {
   if (provider === 'ollama') return listOllamaModels();
-  if (provider === '9router') return list9RouterModels();
   return [];
 }

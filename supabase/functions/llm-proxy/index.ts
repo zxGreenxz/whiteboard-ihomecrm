@@ -61,6 +61,14 @@ const UPSTREAMS: Record<string, UpstreamDef> = {
   },
 };
 
+// 9Router self-host trên VPS (OpenAI-compatible). Chỉ kích hoạt khi secret
+// NINEROUTER_BASE_URL được nạp (vd https://ai.chillhome.io.vn/v1) — và provider
+// '9router' trong DB phải đổi data_class 'local_only' → 'cloud' để đi qua proxy.
+const NINEROUTER_BASE = Deno.env.get('NINEROUTER_BASE_URL');
+if (NINEROUTER_BASE) {
+  UPSTREAMS['9router'] = { baseURL: NINEROUTER_BASE, envKey: 'NINEROUTER_API_KEY' };
+}
+
 interface ModelPricing { input_price: number; output_price: number }
 
 function findPricing(models: unknown, modelId: string): ModelPricing {

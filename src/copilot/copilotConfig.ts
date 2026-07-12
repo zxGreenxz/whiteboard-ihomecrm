@@ -9,10 +9,13 @@ export const LLM_PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1
  * thẳng localhost trên máy người dùng. Muốn thêm provider local mới: thêm 1
  * dòng ở đây + seed ai_providers (data_class 'local_only') + nhánh detect
  * model trong localProvider listLocalModels.
+ *
+ * LƯU Ý: 9Router giờ chạy trên VPS (ai.chillhome.io.vn) như provider CLOUD
+ * (data_class 'cloud') → đi qua llm-proxy để mọi user dùng được ở bất cứ đâu +
+ * có quota/usage log. KHÔNG còn trong danh sách local. Chỉ Ollama là local.
  */
 export const LOCAL_PROVIDER_BASES: Record<string, string> = {
   ollama: 'http://localhost:11434/v1',
-  '9router': 'http://localhost:20128/v1',
 };
 
 /** Model mặc định khi user chưa chọn (đã verify tool-calling, $0 — SPIKE-RESULTS.md). */
