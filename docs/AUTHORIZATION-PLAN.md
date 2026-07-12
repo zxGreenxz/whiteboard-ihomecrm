@@ -153,13 +153,13 @@ Chỉ đếm row `deleted_at IS NULL`:
 | Type | Status | Count | Thiếu `approved_by` |
 |---|---|---:|---:|
 | EXPENSE | APPROVED | 649 | **476** |
-| INCOME | APPROVED | 1,010 | **1,009** |
+| INCOME | APPROVED | 1,016 | **1,015** |
 | EXPENSE | UNAPPROVED | 17 | 0 |
 | INCOME | UNAPPROVED | 3 | 0 |
 | EXPENSE | CANCELLED | 59 | 0 |
 | INCOME | CANCELLED | 90 | 0 |
 
-Đây là **snapshot tại timestamp ở đầu tài liệu**, không phải backlog tĩnh. Hệ thống production vẫn phát sinh giao dịch; lần tái kiểm sau đó trong cùng ngày đã thấy `INCOME/APPROVED` tăng từ 1,010 lên 1,011 và số thiếu `approved_by` tăng từ 1,009 lên 1,010. Mỗi lần migration/cutover phải chụp lại count/hash/sum trong maintenance window, không dùng các số trên làm assertion cố định.
+Đây là **snapshot tại timestamp ở đầu tài liệu**, không phải backlog tĩnh. Hệ thống production vẫn phát sinh giao dịch; các lần tái kiểm trong cùng ngày cho thấy `INCOME/APPROVED` đã tăng dần từ 1,010 → 1,011 → **1,016** và số thiếu `approved_by` từ 1,009 → **1,015** (bảng trên đã cập nhật theo lần re-run mới nhất). Mỗi lần migration/cutover phải chụp lại count/hash/sum trong maintenance window, không dùng các số trên làm assertion cố định.
 
 Ý nghĩa:
 
@@ -175,11 +175,16 @@ Chỉ đếm row `deleted_at IS NULL`:
 
 Tuy nhiên private bucket **không đồng nghĩa tenant-private**. Migration `20260601000200_sec_private_buckets.sql` tạo nhiều SELECT policy chỉ kiểm `bucket_id` và `TO authenticated`; do đó một user đăng nhập bất kỳ có thể đọc object ở tenant khác nếu biết/list được path. Nhiều INSERT/UPDATE/DELETE policy lịch sử cũng chỉ kiểm authenticated hoặc object owner, không kiểm organization/resource scope.
 
-Catalog còn policy `room-sale-images` dù bucket này không nằm trong 8 bucket Supabase live (ảnh sale đang có hướng chuyển sang R2). Policy mồ côi không trực tiếp làm lộ object khi bucket không tồn tại, nhưng phải được inventory/cleanup để tránh bucket được tạo lại sau này và thừa hưởng policy rộng ngoài ý muốn.
+Catalog còn **4 policy** `room-sale-images` (`Authenticated upload/update/delete room sale images` + `Public view room sale images`) dù bucket này không nằm trong 8 bucket Supabase live (ảnh sale đang có hướng chuyển sang R2). Đáng lưu ý policy `Public view room sale images` cho **SELECT public**; nếu bucket được tạo lại nó sẽ mở đọc ảnh cho anon. Policy mồ côi không trực tiếp làm lộ object khi bucket không tồn tại, nhưng phải được inventory/cleanup để tránh bucket được tạo lại sau này và thừa hưởng policy rộng ngoài ý muốn.
 
 ### 4.4 Kết quả tái kiểm tra độc lập [LIVE/CODE]
 
 Các số chính ở mục 4.1 đã được chạy lại và khớp: 136 bảng public/136 bật RLS, 551 policy, 459 function, 246 `SECURITY DEFINER`, 308 function anon-executable và 110 `SECURITY DEFINER` anon-executable. Live có 11 auth users; phép phân loại theo đúng body hiện tại của `get_my_permissions()` vẫn cho ra 2 user ở nhánh orphan. Definition/ACL live của `get_my_permissions`, `_internal_settlement_account`, `_termination_ensure_type`, `approve_voucher` và `unapprove_voucher` cũng khớp finding P0/P1 trong tài liệu.
+
+Xác nhận thêm hai điểm quan trọng ở lần rà này (chạy lại `has_function_privilege` trên live):
+
+- `_internal_settlement_account(uuid)` và `_termination_ensure_type(uuid,text,text)` **VẪN** `EXECUTE` được bởi cả `anon` và `authenticated`. Migration `20260710130500_revoke_internal_definer_grants.sql` đã thu hồi quyền `anon` cho một loạt helper definer khác nhưng **bỏ sót đúng 2 hàm P0 này** — xem mục 9.2.
+- Logic fail-open orphan của `get_my_permissions()` bị **nhân bản** trong `ai_copilot_perms_for(uuid)` (`20260710200000_ai_copilot_backend.sql`), dùng ở đường `reserve_ai_usage`. Body cũng trả `{"__superadmin": true}` khi `v_perms IS NULL`. Sửa một hàm mà bỏ hàm kia thì bypass vẫn còn ở nhánh AI-copilot — xem mục 5.2.
 
 Bằng chứng mới cần nhập vào scope triển khai:
 
@@ -241,6 +246,8 @@ no active organization membership => {}
 platform super-admin               => explicit platform sentinel
 tenant owner                       => owner permissions scoped to selected org
 ```
+
+**Bản sao fail-open phải sửa cùng lúc**: `ai_copilot_perms_for(uuid)` trong `20260710200000_ai_copilot_backend.sql` nhân bản y nguyên logic của `get_my_permissions()`, kể cả nhánh `v_perms IS NULL => '{"__superadmin": true}'`. Nó chạy trong `reserve_ai_usage` (đường AI-copilot), `GRANT` cho `service_role`. Nếu chỉ sửa `get_my_permissions` mà bỏ hàm này, orphan user vẫn được coi super-admin ở gate AI-copilot. Sprint 0 phải fix đồng thời hai hàm, **hoặc** refactor cả hai gọi chung một hàm nguồn (single source of truth) để không drift lần nữa — comment trong chính migration đã cảnh báo "phải giữ đồng bộ cả 2 nơi".
 
 ### 5.3 Frontend guards
 
@@ -409,6 +416,7 @@ Ký hiệu:
 | `useBulkRecordPayment` | Loop direct payment + voucher APPROVED + item + excess | Tác động invoice/cashbook ngay | Mỗi line nhiều transaction; replay/partial/race; direct APPROVED | `record_invoice_payments_bulk_atomic` per invoice, idempotency key. |
 | `useInvoicePayments::useRecordPaymentRPC` | RPC tạo payment, sau đó client mirror voucher APPROVED/items | Payment và ledger mirror tách transaction | RPC thành công/mirror lỗi; retry/duplicate; approval bypass | RPC duy nhất tạo payment+voucher+items+credit. |
 | `usePayments::useCreatePayment` | Direct payment rồi read-modify-write `invoices.paid_amount/status` | Payment và invoice là hai request; update invoice không check error | Lost update khi hai collector chạy song song; payment có thể tồn tại nhưng invoice chưa cập nhật | Xoá/khóa hook legacy; mọi caller dùng `record_invoice_payment_atomic`. |
+| `useInvoices::useRecordPayment` (legacy, ~dòng 1272) | **Bản sao thứ hai** của anti-pattern trên: insert payment → SELECT invoice riêng → UPDATE `paid_amount/status/paid_date` riêng | Ba request rời | Update cuối **không check lỗi**, không CAS; lost update như `useCreatePayment` | Cùng target `record_invoice_payment_atomic`; xoá/khóa hook legacy này luôn. |
 | `useInvoices::useCreateInvoice` | Direct invoice `APPROVED`, optional credit, rồi items | Header/credit/items là 2–3 transaction | Invoice rỗng/credit đã tiêu nhưng item lỗi; creator tự đặt approver metadata | `create_invoice_draft`/`submit_invoice` RPC atomic; approval policy invoice tách rõ. |
 | `useInvoices::useUpdateInvoice` và `invoiceHelpers`/`useContracts` | Update header, delete items, insert lại; một số helper tự tạo invoice/items | Cho sửa cả `APPROVED` chưa thu; không CAS/transaction | Partial item loss, total/header lệch lines, duplicate invoice/event | RPC invoice state machine với expected version và server recompute total. |
 | `useUpdatePaymentMethod` | Đổi account của voucher rồi đổi payment method | Hai update tách rời | Split-brain payment/cashbook; resolver match tên có thể chọn nhầm account | `change_payment_method_atomic`, derive account từ invoice org/building và authorize cashbook. |
@@ -421,6 +429,26 @@ Ký hiệu:
 | `income-expenses/batch.ts` | Batch create/cancel trực tiếp | Nhiều voucher | Partial/cancel bypass | Batch RPC với item-level result + idempotency. |
 | `copilot/tools/writeTools.ts` | Tạo UNAPPROVED draft | Chưa post tiền | Pattern tốt hơn nhưng AI vẫn không được tự submit/approve | AI chỉ tạo DRAFT, actor/source/audit rõ. |
 | `useMeterReadings` | Có đường insert trực tiếp `status='APPROVED'`, approved_by=caller; hỗ trợ unapprove | Chỉ số là đầu vào sinh hoá đơn | Có thể sửa/duyệt input tính tiền mà không qua exact action/state machine | RPC bulk/approve immutable theo kỳ; invoice snapshot reading version. |
+
+#### 8.1.1 Vòng đời status ở cấp INVOICE (bổ sung — song song approval cấp voucher)
+
+Bảng trên tập trung vào `income_expenses` (voucher). Nhưng `invoices` có **state machine riêng** với `status` và `approved_by/approved_at`, và client đang ghi trực tiếp qua một loạt hook trong `src/hooks/useInvoices.ts` chưa được liệt kê. Approval cấp invoice phải được xử lý **tách bạch** khỏi approval cấp voucher (hoá đơn được duyệt ≠ tiền đã thu):
+
+| Hook (dòng) | Thao tác | Vấn đề | Target |
+|---|---|---|---|
+| `useApproveInvoice` (~928) / `useBulkApproveInvoices` (~1028) | Direct UPDATE `invoices.status='APPROVED'` + approver metadata | Client tự đặt approver; không rule/maker-checker | RPC `approve_invoice` / state machine, permission `invoices.approve`. |
+| `useUnapproveInvoice` (~978) | APPROVED → chưa duyệt | Phá finality nếu đã sinh payment/AR | Reversal-based, không unapprove tự do. |
+| `useCancelInvoice` (~1602) / `useForceCancelInvoice` (~1568, RPC `super_admin_force_cancel_invoice`) | Đổi status CANCELLED | Cancel bypass state/side-effect (payment, AR, cọc) | RPC cancel atomic; force-cancel chỉ support-repair có audit. |
+| `useRestoreInvoice` (~1513) | CANCELLED → APPROVED | Khôi phục trực tiếp, có thể tái tạo hiệu ứng | Reversal/repair có audit như voucher. |
+| `useCheckOverdueInvoices` (~1172) | Bulk UPDATE `status` (quá hạn) | Bulk status write không qua action riêng | RPC/job idempotent, không client bulk-write. |
+
+#### 8.1.2 Đường ghi money-ledger phụ chưa liệt kê (gom vào Sprint 5 khi revoke direct DML)
+
+- `src/lib/invoiceHelpers.ts:747` — sinh HĐ tháng tự động, `status = settings.auto_approve ? 'APPROVED' : 'DRAFT'` + `invoice_items` insert riêng → **non-atomic, direct-APPROVED**.
+- `src/hooks/useContracts.ts:651` — HĐ tháng đầu khi tạo hợp đồng, insert trực tiếp `invoices` với `status:'APPROVED'` + items → direct-approved, non-atomic. (Đây là **insert `invoices` duy nhất** trong file; các chỗ ~1032/1261/1717 là SELECT `invoices`, còn ~1391 là UPDATE `contract_terminations` — không phải insert hoá đơn.)
+- `src/hooks/useContractOperations.ts:270` — INSERT trực tiếp `excess_amounts` (row âm) để consume credit/cọc → ghi thẳng ledger cọc/thừa, không qua RPC.
+
+Ba đường này phải nằm trong allowlist revoke direct DML ở Sprint 5 cùng nhóm invoice/payment, nếu không sẽ là lỗ hở còn lại sau khi khoá các hook chính.
 
 ### 8.2 Các đường SQL/RPC đặc biệt
 
@@ -480,13 +508,23 @@ Heuristic không phải chứng minh khai thác; callee có thể dựa vào d�
 | `_internal_settlement_account(p_user_id)` | Nhận UUID tùy ý, tìm/update hoặc insert `accounts` cho UUID đó; không auth/object guard. `SECURITY DEFINER` + anon execute. |
 | `_termination_ensure_type(p_user_id,p_type,p_name)` | Nhận legacy owner UUID tùy ý, insert `income_expense_types`; không auth/object guard. `SECURITY DEFINER` + anon execute. |
 
+**Đã có sẵn pattern revoke — chỉ thiếu đúng 2 hàm này.** Migration `20260710130500_revoke_internal_definer_grants.sql` đã thu hồi quyền `anon` cho 6 hàm definer khác, theo **hai kiểu**:
+
+- Internal-only (revoke cả `authenticated`): `generate_recurring_vouchers`, `seed_commission_expense_types` — `REVOKE ALL ... FROM PUBLIC, anon, authenticated`.
+- Chặn `anon` nhưng giữ `authenticated`: `is_user_super_admin`, `v5_building_reqs`, `v5_checklist_for_building`, `get_income_expense_history` — `REVOKE ... FROM PUBLIC, anon` rồi `GRANT EXECUTE ... TO authenticated`.
+
+Nhưng migration **bỏ sót** `_internal_settlement_account` và `_termination_ensure_type`. Live re-check xác nhận cả hai **vẫn** `EXECUTE` được bởi `anon` **và** `authenticated`. Vì đây là helper internal-only (chỉ gọi trong RPC cha), chúng phải theo **kiểu thứ nhất** (revoke cả `authenticated`). Đây là *thêm 2 dòng vào cùng pattern có sẵn*, không phải xây mới.
+
 Hai helper này phải trở thành internal-only:
 
 ```sql
-REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public._internal_settlement_account(uuid)             FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public._termination_ensure_type(uuid,text,text)       FROM PUBLIC, anon, authenticated;
 -- Chỉ wrapper đã authorize gọi nội bộ; nếu Postgres ownership cho phép, đặt
 -- trong schema private không exposed bởi PostgREST và grant cho service role hẹp.
 ```
+
+Lưu ý: hai hàm này chỉ được gọi bên trong RPC cha `SECURITY DEFINER` (chạy dưới owner) nên REVOKE không phá luồng hợp lệ — đúng lý do migration `20260710130500` đã dùng cho các hàm kia. **Cảnh báo `CREATE OR REPLACE`**: nếu sau này hai hàm bị recreate, ACL sẽ reset về default (PUBLIC execute); phải re-REVOKE và thêm CI gate (mục 9.3 điểm 9) để bắt regress.
 
 ### 9.3 Chương trình hardening bắt buộc
 
@@ -1251,7 +1289,7 @@ Ban đầu nullable + index. Sau backfill và assertion zero-null/cross-org, th�
 | UNAPPROVED khác | Review queue | Không tự đoán; owner classify DRAFT/PENDING/CANCELLED. |
 | CANCELLED | CANCELLED | Giữ history; không xóa payment/voucher evidence. |
 
-Không tạo `APPROVE` decision cho 476 expense và 1,009 income thiếu approver. Có thể tạo `MIGRATION_IMPORTED` audit event với count/hash batch.
+Không tạo `APPROVE` decision cho các row APPROVED thiếu approver (tại lần re-run mới nhất: 476 expense và 1,015 income — con số động, chốt lại trong maintenance window trước cutover). Có thể tạo `MIGRATION_IMPORTED` audit event với count/hash batch.
 
 ### 16.6 Dual-read/dual-write
 
@@ -1297,10 +1335,10 @@ Cutover chỉ khi mismatch đã được phân loại và P0/P1 = 0.
 
 Deliverables:
 
-1. Sửa `get_my_permissions`: orphan => `{}`; tenant owner phải có explicit membership/legacy owner proof tạm thời.
+1. Sửa `get_my_permissions` **và bản sao `ai_copilot_perms_for`**: orphan => `{}`; tenant owner phải có explicit membership/legacy owner proof tạm thời. (Lý tưởng: gộp hai hàm về một nguồn để hết drift.)
 2. Đóng signup tự do/invite-only; loại `useProvisionStaff` browser signUp khỏi flow production.
 3. Revoke anon/PUBLIC execute cho internal helpers; xây function ACL allowlist.
-4. Fix `_internal_settlement_account`, `_termination_ensure_type`, recompute helper grants.
+4. Fix `_internal_settlement_account`, `_termination_ensure_type` (thêm vào pattern `20260710130500`), recompute helper grants.
 5. Fix `pay_draft_fee_voucher` account scope.
 6. Chặn direct sensitive approval columns; tạm thời đổi create expense default fail-closed.
 7. Baseline data/count/sum/catalog ACL/policy/function hashes.
@@ -1543,9 +1581,9 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 
 ### P0 — xử lý ngay
 
-- `get_my_permissions()` orphan => `__superadmin`.
+- `get_my_permissions()` orphan => `__superadmin`. **Phải fix cùng lúc bản sao `ai_copilot_perms_for()`** (`20260710200000_ai_copilot_backend.sql`) — cùng nhánh fail-open, dùng ở `reserve_ai_usage`. Xem mục 5.2.
 - Hai auth user live thuộc nhánh orphan; xác minh identity và revoke/assign đúng.
-- `SECURITY DEFINER` internal helpers callable anon, đặc biệt `_internal_settlement_account`, `_termination_ensure_type`.
+- `SECURITY DEFINER` internal helpers callable anon, đặc biệt `_internal_settlement_account`, `_termination_ensure_type` — live vẫn `anon`+`authenticated` execute; migration revoke `20260710130500` đã có pattern nhưng **bỏ sót đúng 2 hàm này**, chỉ cần thêm 2 dòng (mục 9.2).
 - Direct creation/update `APPROVED` trên financial paths.
 - Payment/voucher/item non-atomic cho single/bulk/refund/salary.
 - Browser staff provisioning bằng `auth.signUp` nếu flow còn reachable.
@@ -1560,7 +1598,8 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 - `pay_draft_fee_voucher` account scope không phản ánh shared/scoped permission đúng.
 - Storage SELECT `TO authenticated` chỉ theo bucket.
 - `send-push` nhận diện service role bằng decode JWT claim; phải harden/verify deployment gateway.
-- Write path invoice/payment legacy (`usePayments`, `useInvoices`, `invoiceHelpers`, `useContracts`) chưa nằm sau RPC atomic.
+- Write path invoice/payment legacy (`usePayments`, `useInvoices::useRecordPayment`, `invoiceHelpers`, `useContracts`, `useContractOperations`) chưa nằm sau RPC atomic — xem mục 8.1.2.
+- Vòng đời status cấp invoice (`useApproveInvoice`/`useUnapproveInvoice`/`useCancelInvoice`/`useRestoreInvoice`/`useForceCancelInvoice`/`useBulkApproveInvoices`/`useCheckOverdueInvoices`) ghi trực tiếp `invoices.status`, chưa có state machine — xem mục 8.1.1.
 - Action chi tiết chỉ FE + legacy fallback rộng.
 - Hard-delete auth user qua `delete_staff_member`.
 
