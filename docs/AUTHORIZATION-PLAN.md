@@ -1,11 +1,11 @@
 # Kế hoạch tổng thể: Multi-tenant Authorization & Financial Approval
 
 > **Trạng thái**: Thiết kế để audit trước khi triển khai — **chưa phải migration có thể chạy**  
-> **Ngày chụp live DB**: 2026-07-12 03:50 UTC  
-> **Code được đối chiếu**: working tree tại commit `85503ae`  
+> **Live DB được kiểm tra gần nhất**: 2026-07-12 16:27:57–16:28:41 UTC (chỉ đọc, qua Management API)
+> **Code được đối chiếu gần nhất**: application/database source tại commit `f78693e`; working tree có thay đổi ngoài phạm vi do người dùng tạo, không được tính vào bằng chứng
 > **Phạm vi**: React/Vite, Supabase Auth, Postgres/RLS/RPC, Storage, Edge Functions, các luồng ghi tài chính  
 > **Mục tiêu tài liệu**: đủ bằng chứng, thiết kế, thứ tự migration, rollback, test và tiêu chí nghiệm thu để một agent khác audit độc lập trước khi thi công.
-> **Rà soát bổ sung**: 2026-07-12, đối chiếu lại live catalog bằng Management API và code tại `HEAD 112849f`; bổ sung finding về R2 Worker, Vercel cron, write path hoá đơn và các lỗi ràng buộc trong pseudo-DDL.
+> **Lịch sử tài liệu**: audit gốc ở `85503ae`, các vòng bổ sung tại `112849f`–`f78693e`. Từ `85503ae` đến snapshot code nêu trên chỉ có file kế hoạch này thay đổi; không có migration/application fix mới đóng các finding P0/P1.
 
 ---
 
@@ -25,13 +25,24 @@ Tài liệu dùng ba nhãn bằng chứng:
 4. `service_role`, database owner và operator hạ tầng vẫn có thể vượt RLS/trigger. “Audit bất biến” trong Postgres chỉ bất biến đối với application roles. Nếu cần chống sửa bởi operator, phải xuất hash/event sang kho append-only bên ngoài.
 5. Tài liệu này không thay đổi code/database. Mọi DDL bên dưới là **pseudo-DDL định hướng**, chưa được chạy.
 
+### 0.1 Manifest bằng chứng và quy tắc làm mới
+
+| ID | Loại | As-of | Nội dung |
+|---|---|---|---|
+| `CODE-20260712-A` | Git/code | `f78693e` | Route, hook, migration, Edge/API/Worker và write path. Các thay đổi working tree ngoài file này bị loại khỏi scope. |
+| `LIVE-20260712-A` | Live/catalog | 2026-07-12 16:27:57–16:28:41 UTC | Aggregate catalog/RLS/function ACL, body các helper trọng yếu, orphan classification, Storage policy/bucket và aggregate trạng thái thu chi. |
+
+- Các số `[LIVE]` ở mục 4 và finding “vẫn còn” trong mục 5/9 dùng `LIVE-20260712-A`, trừ nơi ghi timestamp khác.
+- Bằng chứng live là snapshot, không phải invariant. Trước mỗi sprint/cutover phải lưu query đã review, hash query/result, UTC, project ref và code SHA trong artifact audit; không ghi identity, path object, token hoặc secret.
+- `scripts/query-sql.mjs` chỉ là transport và **không cưỡng chế chế độ chỉ đọc ở cấp kỹ thuật**. Reviewer phải xác nhận file SQL chỉ chứa `SELECT/WITH` an toàn trước khi chạy.
+
 ---
 
 ## 1. Executive summary
 
 Hệ thống hiện có nền RBAC đáng kể: `staff_assignments`, role JSONB, building/area scope, `can_access_building`, `can_do_on_building`, 136/136 bảng public bật RLS và migration hardening ngày 2026-07-10 đã đóng nhiều đường xuyên chủ dữ liệu. Tuy nhiên, mô hình hiện tại vẫn suy tenant qua `user_id`, building và quan hệ nhân viên; chưa có khóa ngoại `organization_id` làm biên tenant bắt buộc.
 
-Ba nhóm rủi ro cần xử lý trước khi gọi hệ thống là multi-tenant an toàn:
+Bốn nhóm rủi ro cần xử lý trước khi gọi hệ thống là multi-tenant an toàn:
 
 1. **Identity/privilege fail-open**: `get_my_permissions()` trả `{"__superadmin":true}` cho caller không phải staff/cổ đông/quản lý; live có 2 auth user thuộc nhánh này. Đây là suy luận “không có assignment = owner”, không phải bằng chứng owner.
 2. **Backend attack surface quá rộng**: live có 246 `SECURITY DEFINER`; 110 hàm trong số đó caller `anon` có quyền execute hiệu lực. Ít nhất các helper ghi `_internal_settlement_account(...)`, `_termination_ensure_type(...)` và nhiều recompute helper đang callable trực tiếp mà không có guard đối tượng phát hiện được.
@@ -140,11 +151,12 @@ Không dùng một boolean client gửi lên. Chỉ auto-post khi backend xác m
 | Functions anon có execute hiệu lực | 308 |
 | `SECURITY DEFINER` + anon execute hiệu lực | **110** |
 | Roles nghiệp vụ | 7 |
-| Staff users qua assignment | 10 |
+| Distinct `staff_id` qua assignment | 10 |
+| Permission-relevant staff (`staff_id <> user_id`) | 8 |
 | Distinct legacy assignment owners | 2 |
 | Auth users rơi vào nhánh “orphan => owner sentinel” | **2** |
 
-`FORCE RLS = 0` không tự là lỗ hổng với PostgREST role, nhưng nhấn mạnh rằng table owner/definer có thể bypass; vì vậy ACL và function body phải được audit riêng.
+`FORCE RLS = 0` không tự là lỗ hổng với PostgREST role, nhưng nhấn mạnh rằng table owner/definer có thể bypass; vì vậy ACL và function body phải được audit riêng. Con số 10 staff ở bảng gồm self-assignment; body permission hiện hành loại `staff_id = user_id`, nên chỉ 8 principal là staff có ý nghĩa đối với nhánh này.
 
 ### 4.2 Trạng thái thu chi [LIVE]
 
@@ -159,7 +171,7 @@ Chỉ đếm row `deleted_at IS NULL`:
 | EXPENSE | CANCELLED | 59 | 0 |
 | INCOME | CANCELLED | 90 | 0 |
 
-Đây là **snapshot tại timestamp ở đầu tài liệu**, không phải backlog tĩnh. Hệ thống production vẫn phát sinh giao dịch; các lần tái kiểm trong cùng ngày cho thấy `INCOME/APPROVED` đã tăng dần từ 1,010 → 1,011 → **1,016** và số thiếu `approved_by` từ 1,009 → **1,015** (bảng trên đã cập nhật theo lần re-run mới nhất). Mỗi lần migration/cutover phải chụp lại count/hash/sum trong maintenance window, không dùng các số trên làm assertion cố định.
+Đây là snapshot `LIVE-20260712-A` tại timestamp ở đầu tài liệu, không phải backlog tĩnh. Hệ thống production vẫn phát sinh giao dịch; các lần tái kiểm trong cùng ngày cho thấy `INCOME/APPROVED` đã tăng dần từ 1,010 → 1,011 → **1,016** và số thiếu `approved_by` từ 1,009 → **1,015** (bảng trên đã cập nhật theo lần re-run mới nhất). Mỗi lần migration/cutover phải chụp lại count/hash/sum trong maintenance window, không dùng các số trên làm assertion cố định.
 
 Ý nghĩa:
 
@@ -173,13 +185,18 @@ Chỉ đếm row `deleted_at IS NULL`:
 
 `customer-id-cards`, `customer-images`, `document-templates`, `income-expense-attachments`, `job-attachments`, `meter-images`, `payment-receipts`, `ui-references`.
 
-Tuy nhiên private bucket **không đồng nghĩa tenant-private**. Migration `20260601000200_sec_private_buckets.sql` tạo nhiều SELECT policy chỉ kiểm `bucket_id` và `TO authenticated`; do đó một user đăng nhập bất kỳ có thể đọc object ở tenant khác nếu biết/list được path. Nhiều INSERT/UPDATE/DELETE policy lịch sử cũng chỉ kiểm authenticated hoặc object owner, không kiểm organization/resource scope.
+Tuy nhiên private bucket **không đồng nghĩa tenant-private**. Cần tách hai nhóm policy thay vì suy rộng cho cả 8 bucket:
+
+- Migration `20260601000200_sec_private_buckets.sql` đóng và tạo SELECT policy `TO authenticated` chỉ kiểm `bucket_id` cho đúng **7 bucket**: `customer-id-cards`, `customer-images`, `payment-receipts`, `income-expense-attachments`, `meter-images`, `job-attachments`, `ui-references`. Vì vậy một user đăng nhập bất kỳ có thể đọc object thuộc 7 bucket này ở organization khác nếu biết/list được path.
+- `document-templates` không thuộc migration trên. Bucket này được tạo trong `016_document_templates.sql`; policy ban đầu giới hạn folder đầu tiên bằng `auth.uid()`. Policy SELECT hiện hành từ `20260510000012_contract_action_rpcs.sql` mở rộng sang owner hiện tại hoặc `current_visible_owner_ids()`, nên có **principal/folder scope theo owner và legacy tenant visibility**, không phải authenticated-wide chỉ theo bucket. Đây chưa phải resource scope theo template/contract cụ thể và vẫn dựa trên mô hình owner legacy, nên cũng chưa đạt organization/resource authorization mục tiêu.
+
+Nhiều INSERT/UPDATE/DELETE policy lịch sử của các bucket khác cũng chỉ kiểm authenticated hoặc object owner, không kiểm organization/resource scope.
 
 Catalog còn **4 policy** `room-sale-images` (`Authenticated upload/update/delete room sale images` + `Public view room sale images`) dù bucket này không nằm trong 8 bucket Supabase live (ảnh sale đang có hướng chuyển sang R2). Đáng lưu ý policy `Public view room sale images` cho **SELECT public**; nếu bucket được tạo lại nó sẽ mở đọc ảnh cho anon. Policy mồ côi không trực tiếp làm lộ object khi bucket không tồn tại, nhưng phải được inventory/cleanup để tránh bucket được tạo lại sau này và thừa hưởng policy rộng ngoài ý muốn.
 
 ### 4.4 Kết quả tái kiểm tra độc lập [LIVE/CODE]
 
-Các số chính ở mục 4.1 đã được chạy lại và khớp: 136 bảng public/136 bật RLS, 551 policy, 459 function, 246 `SECURITY DEFINER`, 308 function anon-executable và 110 `SECURITY DEFINER` anon-executable. Live có 11 auth users; phép phân loại theo đúng body hiện tại của `get_my_permissions()` vẫn cho ra 2 user ở nhánh orphan. Definition/ACL live của `get_my_permissions`, `_internal_settlement_account`, `_termination_ensure_type`, `approve_voucher` và `unapprove_voucher` cũng khớp finding P0/P1 trong tài liệu.
+Các số chính ở mục 4.1 đã được chạy lại trong `LIVE-20260712-A` và khớp: 136 bảng public/136 bật RLS, 551 policy, 459 function, 246 `SECURITY DEFINER`, 308 function anon-executable và 110 `SECURITY DEFINER` anon-executable. Live có 11 auth users; phép phân loại theo đúng body hiện tại của `get_my_permissions()` vẫn cho ra 2 user ở nhánh orphan. Definition/ACL live của `get_my_permissions`, `ai_copilot_perms_for`, `_internal_settlement_account`, `_termination_ensure_type`, `approve_voucher` và `unapprove_voucher` cũng khớp finding P0/P1 trong tài liệu. Storage được tái kiểm: 8 bucket đều private; 7 bucket có policy đọc authenticated-wide chỉ theo bucket, riêng `document-templates` có owner/legacy-visibility folder scope; 4 policy mồ côi `room-sale-images` vẫn còn.
 
 Xác nhận thêm hai điểm quan trọng ở lần rà này (chạy lại `has_function_privilege` trên live):
 
@@ -406,14 +423,14 @@ Ký hiệu:
 
 | Source | Thao tác hiện tại | State/tác động | Vấn đề | Target |
 |---|---|---|---|---|
-| `income-expenses/mutations.ts::useCreateIncomeExpense` | Direct insert voucher rồi items | Voucher dùng DB default lịch sử `APPROVED` | Không atomic; item lỗi để voucher rỗng; approval bypass | `create_financial_request` atomic, mặc định DRAFT/PENDING theo engine. |
+| `income-expenses/mutations.ts::useCreateIncomeExpense` | Direct insert voucher rồi items | Voucher dùng DB default lịch sử `APPROVED` | Không atomic; item lỗi để voucher rỗng; approval bypass | `create_financial_draft` atomic, DRAFT only; `submit_financial_request` mới chuyển sang PENDING_APPROVAL/POSTED/DENIED. |
 | `useUpdateIncomeExpense` | Header update, delete items, reinsert | Comment nói chỉ UNAPPROVED nhưng query không có CAS status | Có thể mất items/partial; không DB state guard | `update_financial_draft(expected_version)` atomic. |
 | `useQuickUpdateIncomeExpense` | RPC quick update | Sửa account/attachment/note | Phải cấm đổi posted payload/account | Giữ RPC nhưng state+permission+version guard. |
 | `statusMutations::useApproveVoucher` | `approve_voucher` | UNAPPROVED -> APPROVED | Creator hiện được tự duyệt qua `ie.user_id=auth.uid()`; không rule request | Thay `decide_financial_approval`; maker-checker. |
 | `useUnapproveVoucher` | APPROVED -> UNAPPROVED | Gỡ cash effect | Phá audit/ledger finality | Bỏ; dùng `reverse_financial_posting`. |
 | `useCancelIncomeExpense` | Direct status update, rồi delete payment | Voucher/payment hai request | Partial failure; bypass state/action; mất payment | `cancel_or_reverse_voucher` atomic, giữ tombstone/event. |
 | `useRestoreIncomeExpense` | RPC restore | CANCELLED -> APPROVED, có thể recreate payment | Super-admin only nhưng khôi phục tiền trực tiếp | Chỉ migration/support repair có audit; user dùng reversal mới. |
-| `useBulkRecordPayment` | Loop direct payment + voucher APPROVED + item + excess | Tác động invoice/cashbook ngay | Mỗi line nhiều transaction; replay/partial/race; direct APPROVED | `record_invoice_payments_bulk_atomic` per invoice, idempotency key. |
+| `useBulkRecordPayment` | Loop direct payment + voucher APPROVED + item + excess | Tác động invoice/cashbook ngay | Mỗi line nhiều transaction; replay/partial/race; direct APPROVED | `record_invoice_payments_bulk` với mỗi invoice atomic, idempotency key và item result rõ. |
 | `useInvoicePayments::useRecordPaymentRPC` | RPC tạo payment, sau đó client mirror voucher APPROVED/items | Payment và ledger mirror tách transaction | RPC thành công/mirror lỗi; retry/duplicate; approval bypass | RPC duy nhất tạo payment+voucher+items+credit. |
 | `usePayments::useCreatePayment` | Direct payment rồi read-modify-write `invoices.paid_amount/status` | Payment và invoice là hai request; update invoice không check error | Lost update khi hai collector chạy song song; payment có thể tồn tại nhưng invoice chưa cập nhật | Xoá/khóa hook legacy; mọi caller dùng `record_invoice_payment_atomic`. |
 | `useInvoices::useRecordPayment` (legacy, ~dòng 1272) | **Bản sao thứ hai** của anti-pattern trên: insert payment → SELECT invoice riêng → UPDATE `paid_amount/status/paid_date` riêng | Ba request rời | Update cuối **không check lỗi**, không CAS; lost update như `useCreatePayment` | Cùng target `record_invoice_payment_atomic`; xoá/khóa hook legacy này luôn. |
@@ -429,6 +446,12 @@ Ký hiệu:
 | `income-expenses/batch.ts` | Batch create/cancel trực tiếp | Nhiều voucher | Partial/cancel bypass | Batch RPC với item-level result + idempotency. |
 | `copilot/tools/writeTools.ts` | Tạo UNAPPROVED draft | Chưa post tiền | Pattern tốt hơn nhưng AI vẫn không được tự submit/approve | AI chỉ tạo DRAFT, actor/source/audit rõ. |
 | `useMeterReadings` | Có đường insert trực tiếp `status='APPROVED'`, approved_by=caller; hỗ trợ unapprove | Chỉ số là đầu vào sinh hoá đơn | Có thể sửa/duyệt input tính tiền mà không qua exact action/state machine | RPC bulk/approve immutable theo kỳ; invoice snapshot reading version. |
+| `useAccounts::useCreateAccount/useUpdateAccount` | Direct INSERT/UPDATE `accounts`, gồm `initial_amount`, `initial_date`, `user_id` | Tạo hoặc hồi tố số dư đầu kỳ ngoài ledger | Thay đổi tồn quỹ không posting/approval/version/audit; đổi owner làm scope mơ hồ | `create_cashbook` với số dư 0 + `request_opening_balance_adjustment`; metadata RPC cấm sửa balance/owner. |
+| `useAccounts::useLockAccount/useUnlockAccount/useDeleteAccount` | Direct đổi `lock_date` hoặc soft-delete sổ | Mở/đóng kỳ và ẩn cashbook | Không exact action/reason/CAS; có thể mở lại kỳ hoặc ẩn sổ còn số dư/posting | `lock_cashbook_period`, `unlock_cashbook_period`, `archive_cashbook`; reason, expected version, reconcile và dependency guard. |
+| `GenerateInvoiceDialog::onSubmit` | Insert meter reading `APPROVED`, nuốt lỗi, sau đó gọi create invoice riêng | Chỉ số và phải thu tách transaction | Reading orphan hoặc invoice dùng chỉ số không lưu; client tự duyệt cả reading/invoice | `generate_meter_reading_and_invoice` atomic, idempotent; server pricing + reading version snapshot. |
+| `invoices/useExcelInvoiceData::useSubmitExcelInvoices` | Loop từng phòng: direct reading `APPROVED` rồi create invoice | Batch lập hóa đơn theo tòa có thể thành công một phần | Retry có thể tạo kết quả trùng hoặc chỉ xử lý được một phần tòa nhà; có invoice không reading hoặc ngược lại | Chuẩn hóa giao kèo kết quả cho từng phòng + idempotency; mỗi room atomic, có batch run/reconciliation. |
+| `contract-form/useContractSubmit::onSubmit` | Contract/customer/service/first invoice, nhiều phiếu cọc, flip deposit và mở commission qua chuỗi request | Kích hoạt HĐ và nhiều ledger/state effect | HĐ ACTIVE nhưng thiếu cọc/invoice; deposit chưa CONVERTED; partial rows | `submit_contract` transaction cho core graph + transactional outbox cho commission/notification/document; mọi handler idempotent. |
+| `QuickDepositModal::submit` / `CreateDepositDialog::onSubmit` | Ensure type/account RPC, direct voucher rồi item; dialog đầy đủ còn có thể insert `tenants` trước | Phiếu giữ chỗ được DB default APPROVED, trigger reserve room | Tenant/voucher/item/room state có thể split; UI gate không thay backend; default approval bypass | `create_reservation_deposit` atomic, exact permission, server-resolved type/account, rule evaluation và idempotency. |
 
 #### 8.1.1 Vòng đời status ở cấp INVOICE (bổ sung — song song approval cấp voucher)
 
@@ -449,6 +472,14 @@ Bảng trên tập trung vào `income_expenses` (voucher). Nhưng `invoices` có
 - `src/hooks/useContractOperations.ts:270` — INSERT trực tiếp `excess_amounts` (row âm) để consume credit/cọc → ghi thẳng ledger cọc/thừa, không qua RPC.
 
 Ba đường này phải nằm trong allowlist revoke direct DML ở Sprint 5 cùng nhóm invoice/payment, nếu không sẽ là lỗ hở còn lại sau khi khoá các hook chính.
+
+#### 8.1.3 Phạm vi revoke DML phải sinh từ catalog write path, không từ danh sách tay
+
+Các hàng mục 8.1–8.1.2 là bằng chứng tối thiểu, chưa được coi là danh sách đóng. Trước Sprint 5 phải inventory bằng AST/grep + runtime audit mọi `.insert/.update/.upsert/.delete`, REST/fetch, RPC, trigger, Edge/cron/worker chạm `accounts`, invoice/payment/credit/deposit, meter reading, voucher/items, salary/profit và room/contract state. Đặc biệt:
+
+- Không khóa chỉ `income_expenses.approval_status`; phải khóa cả opening balance, lock/archive cashbook, invoice/meter approver metadata, totals, credit/excess và parent/child items.
+- Trigger tạo side effect không biến chuỗi request client thành atomic; transaction chỉ bao phủ một statement/request.
+- Gate Sprint 5 phải có generated allowlist “table/column → canonical writer”, test direct REST deny và log mọi legacy writer còn gọi; grep không thấy chuỗi `APPROVED` là cần nhưng chưa đủ.
 
 ### 8.2 Các đường SQL/RPC đặc biệt
 
@@ -478,6 +509,7 @@ Ba đường này phải nằm trong allowlist revoke direct DML ở Sprint 5 c�
 10. Audit event ghi actor, effective membership, source, request id, rule version, old/new state, reason và trace id.
 11. Invoice total phải được server derive/reconcile từ versioned lines; client không được tự ghi `total_amount`, `paid_amount`, `remaining_amount` như nguồn sự thật.
 12. Đổi payment method/account, thêm receipt và correction metadata phải là RPC hẹp có state/version guard; không coi “chỉ sửa metadata” là an toàn để direct update.
+13. Mọi posting/reversal/payment/transfer/adjustment/repair phải gọi cùng một `assert_cashbook_period_open` cho **tất cả account legs** và effective date server-derived; không chỉ kiểm `income_expenses.account_id`. Archive cấm posting mới, yêu cầu zero/reconciled balance, không pending request và đã gỡ mọi default/reference hoạt động.
 
 ---
 
@@ -576,11 +608,12 @@ Owner cuối cùng không được tự remove/suspend. Chuyển owner cần two
 Pseudo-DDL bên dưới dùng `citext` và exclusion constraint GiST với equality trên UUID. Live DB/repository hiện chưa có `citext` hoặc `btree_gist`, nên migration foundation phải tạo extension idempotent trước khi tạo bảng/index:
 
 ```sql
+CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
 ```
 
-Khi extension nằm trong schema `extensions`, migration/function phải schema-qualify type/object khi cần hoặc pin `search_path` có `extensions`; không dựa vào search path ngầm. Nếu không muốn phụ thuộc `citext`, dùng `text` + unique index trên `lower(value)` với normalize server-side. Catalog precheck phải xác nhận extension/schema thực tế, không chỉ tin migration ledger.
+`IF NOT EXISTS` không chuyển extension đã tồn tại sang schema mới. Catalog precheck phải xác nhận `pg_extension.extnamespace`; nếu object đang ở schema khác, dùng schema thực tế hoặc relocation được kiểm thử. Khi tạo exclusion GiST phải bảo đảm operator class UUID/range được resolve deterministically (`SET LOCAL search_path = pg_catalog,public,extensions` trong migration đã review hoặc explicit opclass). Function runtime vẫn dùng search path tối thiểu và object schema-qualified. Nếu không muốn phụ thuộc `citext`, dùng `text` + unique index trên `lower(value)` với normalize server-side.
 
 ### 11.1 Nguyên tắc
 
@@ -623,7 +656,8 @@ organization_memberships (
   revoked_at timestamptz,
   version bigint not null default 1,
   unique (organization_id, id),
-  check (valid_to is null or valid_from is null or valid_to > valid_from)
+  unique (organization_id, id, user_id),
+  check (valid_to is null or valid_to > valid_from)
 )
 ```
 
@@ -671,7 +705,7 @@ role_permissions (
   role_id uuid not null,
   permission_key text not null references permission_definitions(key),
   effect text not null default 'ALLOW' check (effect in ('ALLOW','DENY')),
-  primary key(role_id, permission_key),
+  primary key(organization_id, role_id, permission_key),
   foreign key (organization_id, role_id)
     references organization_roles(organization_id, id)
 )
@@ -751,7 +785,7 @@ member_permission_overrides (
   id uuid primary key,
   organization_id uuid not null,
   membership_id uuid not null,
-  permission_key text not null,
+  permission_key text not null references permission_definitions(key),
   effect text not null check (effect in ('ALLOW','DENY')),
   reason text not null,
   expires_at timestamptz,
@@ -774,7 +808,7 @@ member_override_scopes (
 )
 ```
 
-Resolution precedence:
+Resolution precedence (mọi statement bên dưới phải match **toàn bộ scope mode áp dụng** của permission; trùng một dimension ngẫu nhiên không được tính là match):
 
 1. Platform emergency deny / organization suspended.
 2. Active per-user `DENY` matching permission+scope.
@@ -785,7 +819,7 @@ Resolution precedence:
 
 Owner không tự động bypass platform rules, cross-org checks, audit, financial state machine hoặc maker-checker. Owner có broad tenant permissions được seed như normalized role + member type capability.
 
-“Matching scope” được tính trên **effective resource dimensions** do resolver canonical trả về, không phải chỉ so một UUID. Một deny match bất kỳ dimension bắt buộc sẽ thắng toàn bộ allow cho action đó. Override không scope chỉ hợp lệ nếu permission cho phép organization scope; không dùng empty scope để ngầm hiểu global.
+“Matching scope” được tính trên **effective resource dimensions** do resolver canonical trả về, không phải chỉ so một UUID. Sau khi materialize mọi statement active/unexpired và đánh giá scope đúng mode, nếu có **bất kỳ DENY statement áp dụng** thì deny; nếu không, có ít nhất một ALLOW statement áp dụng thì allow; còn lại deny. Override không scope chỉ hợp lệ nếu permission cho phép organization scope; không dùng empty scope để ngầm hiểu global.
 
 Evaluator phải xác định tập dimension relevant/required cho permission từ registry server-side; ALLOW chỉ hợp lệ khi thỏa `scope_match_mode`. DENY thắng ALLOW khi deny match theo chính mode/dimension relevant đó, không phải khi tình cờ trùng dimension không tham gia action. Ví dụ `cashbooks.post` luôn yêu cầu cashbook match; building match đơn lẻ không đủ để allow hoặc deny nhầm account khác.
 
@@ -837,7 +871,7 @@ Thay `get_my_permissions()` bằng DTO:
 
 Không dùng `__superadmin` cho tenant owner. Platform UI dùng context endpoint riêng và audit riêng.
 
-`authorizationVersion` tăng trong **cùng transaction** với mọi thay đổi membership/role/permission/binding/scope/override/area membership. Cache key gồm `(user_id,organization_id,authorization_version)`; backend không tin version client gửi. Khi area-building đổi, tăng version cho org hoặc dùng separate `scope_version` được include trong DTO.
+`authorizationVersion` tăng trong **cùng transaction** với mọi thay đổi membership/role/permission/binding/scope/override/area membership. Cache key gồm `(user_id,organization_id,authorization_version)`; backend không tin version client gửi. Khi area-building đổi, tăng version cho org hoặc dùng `scope_version` riêng được đưa vào DTO.
 
 Mọi mutation authorization phải đi qua routine/trigger tập trung dùng atomic `authorization_version = authorization_version + 1` và phát invalidation sau commit. Counter trên row organization có thể thành write-hot-row; đo contention và tách membership/scope version nếu cần.
 
@@ -853,6 +887,7 @@ Không tiếp tục dùng `UNAPPROVED` cho hai nghĩa. State tài chính:
 DRAFT
   -> PENDING_APPROVAL
   -> POSTED                  (trực tiếp từ DRAFT khi rule AUTO_POST)
+  -> DENIED                  (rule DENY; không posting)
   -> CANCELLED
 PENDING_APPROVAL
   -> POSTED                  (đủ decision/quorum)
@@ -862,7 +897,7 @@ POSTED
   -> REVERSED                (qua chứng từ reversal mới; row gốc bất biến)
 ```
 
-Không có transition `POSTED -> DRAFT`. `APPROVED` là outcome của approval, còn `POSTED` là trạng thái ledger; theo quyết định nghiệp vụ hiện tại, final approval và posting xảy ra cùng transaction nên UI có thể hiển thị “Đã duyệt/đã chi”.
+Không có transition `POSTED -> DRAFT`. `DENIED` là kết quả rule engine, khác `REJECTED` là quyết định của người duyệt. `APPROVED` là outcome của approval, còn `POSTED` là trạng thái ledger; theo quyết định nghiệp vụ hiện tại, final approval và posting xảy ra cùng transaction nên UI có thể hiển thị “Đã duyệt/đã chi”.
 
 ### 12.2 Rule schema
 
@@ -879,6 +914,7 @@ approval_rule_sets (
   published_at timestamptz,
   unique(organization_id, transaction_domain, version),
   unique(organization_id, id),
+  unique(organization_id, id, version),
   check(effective_to is null or effective_to > effective_from)
 )
 
@@ -889,7 +925,7 @@ approval_rules (
   name text not null,
   priority integer not null,
   effect text not null check (effect in ('AUTO_POST','REQUIRE_APPROVAL','DENY')),
-  transaction_type text not null,      -- INCOME/EXPENSE/TRANSFER/ADJUSTMENT
+  transaction_type text,               -- INCOME/EXPENSE/TRANSFER/ADJUSTMENT; null chỉ cho fallback
   category_id uuid,
   cashbook_id uuid,
   building_id uuid,
@@ -897,6 +933,7 @@ approval_rules (
   system_source text,
   amount_min numeric(18,2),
   amount_max numeric(18,2),
+  is_fallback boolean not null default false,
   force_match boolean not null default false,
   active boolean not null default true,
   unique(organization_id, id),
@@ -905,11 +942,19 @@ approval_rules (
     references approval_rule_sets(organization_id, id),
   check(amount_min is null or amount_min >= 0),
   check(amount_max is null or amount_max >= 0),
-  check(amount_max is null or amount_min is null or amount_max >= amount_min)
+  check(amount_max is null or amount_min is null or amount_max >= amount_min),
+  check(is_fallback or transaction_type is not null),
+  check(
+    not is_fallback
+    or (effect='REQUIRE_APPROVAL' and transaction_type is null
+        and category_id is null and cashbook_id is null and building_id is null
+        and area_id is null and system_source is null
+        and amount_min is null and amount_max is null and not force_match)
+  )
 )
 ```
 
-`priority` phải unique trong rule set. `transaction_domain` phải có trên rule set để enforce invariant. Chỉ một rule set ACTIVE được áp tại một thời điểm cho mỗi organization/transaction domain; dùng exclusion constraint trên effective range hoặc publish RPC có advisory/row lock để ngăn overlap. Rule `DENY`/force approval có precedence cao. Category/source đặc biệt (commission, bonus, refund, contract payout, salary, profit) được seed `REQUIRE_APPROVAL` ở priority cao hơn generic amount rule. Category/cashbook/building/area phải có composite same-org FK; source/transaction type dùng lookup/enum, không text tự do do client quyết định.
+`priority` phải unique trong rule set. `transaction_domain` phải có trên rule set để enforce invariant. Mỗi rule-set row là một version bất biến sau publish; published version không UPDATE/DELETE và request FK đúng version đã đánh giá. Mỗi version bắt buộc có đúng một `is_fallback=true`, effect `REQUIRE_APPROVAL`, không có condition và có approval steps hợp lệ. Engine đánh giá `DENY`, force-approval và conditional rules trước, rồi dùng fallback khi không rule nào khác match. Publish RPC từ chối version thiếu/nhiều fallback hoặc tạo effective-range overlap; chỉ một version hiệu lực tại một thời điểm cho mỗi org/domain. Nếu không có đúng một ACTIVE version, fallback/candidate/quorum không hợp lệ thì submission rollback, fail closed và phát alert; tuyệt đối không auto-post. Category/source đặc biệt (commission, bonus, refund, contract payout, salary, profit) được seed `REQUIRE_APPROVAL` ưu tiên cao hơn generic amount rule. Category/cashbook/building/area phải có composite same-org FK; source/transaction type dùng lookup/enum, không text tự do do client quyết định.
 
 ### 12.3 Approver/step schema
 
@@ -958,9 +1003,9 @@ approval_step_approvers (
 )
 ```
 
-Không lưu approver bằng email/name. Khi submit, engine materialize candidate rows vào `approval_request_step_candidates(request_step_id,membership_id,source_kind,source_id,eligible_at_submit)` với unique `(request_step_id,membership_id)`. Khi decide vẫn re-check membership ACTIVE, maker-checker và permission/scope hiện tại. `mode='ANY'` bắt buộc `min_approvals=1`; `ALL` snapshot candidate count và yêu cầu toàn bộ; `QUORUM` yêu cầu `min_approvals <= candidate_count`. Submit fail closed nếu một step không có candidate hoặc quorum bất khả thi.
+Không lưu approver bằng email/name. Khi submit, engine materialize candidate rows vào `approval_request_step_candidates(organization_id,request_step_id,membership_id,generation,source_kind,source_id,eligible_at_submit,valid_to)`. Unique hiệu lực là `(organization_id,request_step_id,membership_id,generation)`; rematerialize tạo generation mới, đóng validity row cũ và không overwrite history. Khi decide vẫn re-check membership ACTIVE, maker-checker và permission/scope hiện tại. `mode='ANY'` bắt buộc `min_approvals=1`; `ALL` snapshot candidate count và yêu cầu toàn bộ; `QUORUM` yêu cầu `min_approvals <= candidate_count`. Submit fail closed nếu một step không có candidate hoặc quorum bất khả thi.
 
-Candidate table phải có `organization_id`, composite FK cùng org tới request step/membership và unique `(organization_id,request_step_id,membership_id)`. Decision chỉ hợp lệ nếu actor có candidate row đúng step, trừ endpoint emergency riêng.
+Candidate table phải có composite FK cùng org tới request step/membership. Decision thường phải FK/reference đúng candidate generation đã dùng và chỉ hợp lệ nếu actor có candidate row active ở step hiện tại; endpoint emergency là nhánh server riêng được miễn candidate nhưng vẫn gắn active step.
 
 Nếu suspend/revoke approver làm `eligible_count < min_approvals`, request không được âm thầm hạ quorum hoặc kẹt vô hạn. Recovery policy versioned phải reassign/rematerialize bằng elevated RPC có audit, timeout/escalate, hoặc reject/cancel để resubmit; luôn lock request, tăng version và giữ candidate history.
 
@@ -973,12 +1018,13 @@ approval_requests (
   submission_no integer not null,
   subject_type text not null,            -- FINANCIAL_VOUCHER/PAYMENT/...
   subject_id uuid not null,
-  state text not null check (state in ('PENDING_APPROVAL','POSTED','REJECTED','CANCELLED')),
+  state text not null check (state in ('PENDING_APPROVAL','POSTED','DENIED','REJECTED','CANCELLED')),
   maker_membership_id uuid not null,
   maker_user_id uuid not null,
+  rule_set_id uuid not null,
   rule_set_version integer not null,
-  matched_rule_id uuid,
-  rule_effect text not null check (rule_effect in ('AUTO_POST','REQUIRE_APPROVAL','DENY','DEFAULT_REQUIRE_APPROVAL')),
+  matched_rule_id uuid not null,
+  rule_effect text not null check (rule_effect in ('AUTO_POST','REQUIRE_APPROVAL','DENY')),
   payload_snapshot jsonb not null,
   payload_hash text not null,
   amount numeric(18,2) not null,
@@ -999,8 +1045,10 @@ approval_request_steps (
   organization_id uuid not null,
   request_id uuid not null,
   step_no integer not null,
-  status text not null check (status in ('PENDING','APPROVED','REJECTED','CANCELLED','ESCALATED')),
+  status text not null check (status in ('WAITING','PENDING','APPROVED','REJECTED','CANCELLED','BYPASSED')),
+  mode text not null check (mode in ('ANY','ALL','QUORUM')),
   min_approvals integer not null,
+  current_generation integer not null default 1,
   rule_step_snapshot jsonb not null,
   candidate_count integer not null,
   unique(organization_id, id),
@@ -1008,7 +1056,29 @@ approval_request_steps (
   unique(request_id, step_no),
   foreign key (organization_id, request_id)
     references approval_requests(organization_id, id),
-  check(step_no > 0 and min_approvals > 0 and candidate_count >= min_approvals)
+  check(step_no > 0 and min_approvals > 0 and current_generation > 0
+        and candidate_count >= min_approvals)
+)
+
+approval_request_step_candidates (
+  id uuid primary key,
+  organization_id uuid not null,
+  request_step_id uuid not null,
+  membership_id uuid not null,
+  generation integer not null check (generation > 0),
+  source_kind text not null,
+  source_id uuid,
+  eligible_at_submit boolean not null,
+  valid_from timestamptz not null,
+  valid_to timestamptz,
+  unique(organization_id, id),
+  unique(organization_id, id, generation, request_step_id, membership_id),
+  unique(organization_id, request_step_id, membership_id, generation),
+  foreign key (organization_id, request_step_id)
+    references approval_request_steps(organization_id, id),
+  foreign key (organization_id, membership_id)
+    references organization_memberships(organization_id, id),
+  check(valid_to is null or valid_to > valid_from)
 )
 
 approval_decisions (
@@ -1016,19 +1086,36 @@ approval_decisions (
   organization_id uuid not null,
   request_id uuid not null,
   request_step_id uuid not null,
+  candidate_id uuid,
+  candidate_generation integer,
   actor_membership_id uuid not null,
   actor_user_id uuid not null,
   decision text not null check (decision in ('APPROVE','REJECT','EMERGENCY_APPROVE')),
   reason text,
   decided_at timestamptz not null,
   request_version bigint not null,
-  unique(request_step_id, actor_membership_id),
   foreign key (organization_id, request_id)
     references approval_requests(organization_id, id),
   foreign key (organization_id, request_id, request_step_id)
     references approval_request_steps(organization_id, request_id, id),
-  check(decision <> 'EMERGENCY_APPROVE' or length(btrim(reason)) >= 20)
+  foreign key (organization_id, candidate_id, candidate_generation,
+               request_step_id, actor_membership_id)
+    references approval_request_step_candidates
+      (organization_id, id, generation, request_step_id, membership_id),
+  check (
+    (decision in ('APPROVE','REJECT') and candidate_id is not null and candidate_generation is not null)
+    or (decision='EMERGENCY_APPROVE' and candidate_id is null and candidate_generation is null)
+  ),
+  check (
+    decision <> 'EMERGENCY_APPROVE'
+    or (reason is not null and length(btrim(reason)) >= 20)
+  )
 )
+
+CREATE UNIQUE INDEX approval_decisions_one_normal_per_generation
+  ON approval_decisions
+    (organization_id, request_step_id, actor_user_id, candidate_generation)
+  WHERE decision IN ('APPROVE','REJECT');
 
 authorization_audit_events (
   id uuid primary key,
@@ -1056,6 +1143,15 @@ CREATE UNIQUE INDEX approval_requests_one_open_subject
 
 `approval_requests` không unique vĩnh viễn chỉ theo subject vì subject có thể bị reject/cancel rồi sửa và resubmit. `submission_no` tăng dưới lock; partial unique đảm bảo tối đa một request OPEN (`PENDING_APPROVAL`) cho mỗi subject. Request cũ giữ nguyên terminal history. `approval_decisions` là append-only; không “đổi quyết định” bằng UPDATE.
 
+Ràng buộc còn bắt buộc khi chuyển pseudo-DDL thành migration:
+
+- Bind identity bằng composite FK `(organization_id,maker_membership_id,maker_user_id)` và `(organization_id,actor_membership_id,actor_user_id)` tới `organization_memberships(organization_id,id,user_id)`; không cho ghép membership của A với user id của B để né maker-checker.
+- `approval_requests` phải FK tới đúng `(organization_id,rule_set_id,rule_set_version)` và matched rule cùng rule set/effect. `matched_rule_id` luôn non-null, kể cả khi match fallback `is_fallback=true`; `DENY`/fallback/auto outcome có check chéo với state và posting metadata.
+- Mọi table tenant-owned trong pseudo-DDL phải có FK trực tiếp `organization_id -> organizations(id) ON DELETE RESTRICT`, kể cả role/scope/override/rule/request/step/candidate/decision/posting/audit. Các đoạn rút gọn không được dùng để miễn constraint.
+- Candidate generation phải có composite FK/trigger bảo đảm `candidate_id`, `candidate_generation`, actor membership và request step đều cùng row/generation. Rematerialize chỉ một step `PENDING`: lock request+step, đóng candidate cũ, insert trọn bộ generation mới, recompute count/quorum, tăng `current_generation` và request version atomically. Decision generation cũ giữ append-only để audit nhưng **mất hiệu lực**, không carry forward. Decide lock cùng rows và chỉ nhận candidate thuộc current generation còn hiệu lực.
+- Normal decision chỉ nhắm step `PENDING` và candidate eligible hiện tại. Emergency endpoint vẫn gắn active step để audit nhưng được miễn candidate bằng server branch; không cho client chọn enum emergency.
+- State/metadata checks tối thiểu: `POSTED` iff có `posted_at/posted_event_id`; các terminal không-post không có posting metadata; `AUTO_POST -> POSTED`; `DENY -> DENIED`; `REQUIRE_APPROVAL` (kể cả fallback) bắt đầu `PENDING_APPROVAL`.
+
 Composite FK ba cột ở decision là bắt buộc: hai FK độc lập tới `request_id` và `request_step_id` vẫn cho phép ghép request A với step của request B trong cùng organization. Mọi posting event cũng phải FK cùng org/request/subject thay vì chỉ giữ UUID rời.
 
 Audit tables:
@@ -1074,11 +1170,13 @@ Trong một transaction:
 2. Validate amount/items/account/category/source và cùng organization.
 3. Load ACTIVE rule set tại timestamp server.
 4. Tìm mọi rule match typed conditions.
-5. Áp precedence `DENY` > force `REQUIRE_APPROVAL` > priority thấp nhất/specificity deterministic.
-6. Nếu không match => synthetic `DEFAULT_REQUIRE_APPROVAL`.
-7. Snapshot payload, matched rule, steps, candidates, rule set version và hash.
-8. Với eligible `AUTO_POST`, gọi posting routine trong cùng transaction.
-9. Với approval, tạo request/steps rồi commit.
+5. Áp precedence `DENY` > force `REQUIRE_APPROVAL` > priority nhỏ nhất; nếu bằng nhau, phân xử theo độ đặc hiệu bằng quy tắc xác định.
+6. Nếu không conditional rule nào match => chọn rule `is_fallback=true` của chính version.
+7. Tạo request và snapshot payload, matched rule, rule set version, hash trước khi tạo effect; mọi evaluation có một provenance row.
+8. `DENY`: terminal `DENIED`, không tạo step/posting; `AUTO_POST`: gọi posting routine cùng transaction rồi terminal `POSTED`, không tạo step.
+9. `REQUIRE_APPROVAL` (kể cả fallback): tạo steps/candidates; step thấp nhất `PENDING`, các step sau `WAITING`, request `PENDING_APPROVAL` rồi commit.
+
+Step xử lý tuần tự. Chỉ step `PENDING` nhận normal decision. Đủ quorum thì step thành `APPROVED` và promote step `WAITING` kế tiếp; chỉ post khi không còn step `PENDING/WAITING`. Một `REJECT` hợp lệ làm active step `REJECTED`, các step sau `CANCELLED`, request `REJECTED` trong cùng transaction. `ANY` bắt buộc min=1; `ALL` snapshot min bằng candidate count; `QUORUM` kiểm bound. Escalation/reassign là event/generation có audit, không dùng một status `ESCALATED` làm mất trạng thái workflow. Emergency approve đánh active step và mọi step sau thành `BYPASSED` trước khi post trong cùng transaction; reason/audit phải ghi rõ các step/quorum bị bypass.
 
 Không evaluate lại rule giữa chừng trừ khi request bị maker sửa; sửa payload làm invalid request cũ và submit request/version mới.
 
@@ -1086,7 +1184,7 @@ Concurrency contract:
 
 - `submit`, `decide`, `reject`, `withdraw`, `post` đều `SELECT ... FOR UPDATE` subject và request theo cùng thứ tự khóa.
 - RPC nhận `expected_request_version`; update dùng CAS và tăng version.
-- Final decision tính quorum từ decision rows sau lock; insert decision và transition/post cùng transaction.
+- Final decision tính quorum sau lock chỉ từ normal `APPROVE` rows của active step có `candidate_generation = current_generation` và candidate còn hiệu lực; decision generation cũ không approve/reject request. Insert decision và transition/post cùng transaction.
 - Một unique idempotency record lưu `(organization_id, operation, key, request_hash, response_json)`. Cùng key khác payload => conflict; cùng key cùng payload => trả response cũ.
 - `posted_event_id` chỉ được set bởi posting routine; posting event có unique `approval_request_id` để chống double post từ cả hai phía.
 - Rejection thắng/approval thắng theo transaction lock đầu tiên; transaction sau thấy terminal state và trả kết quả idempotent/invalid transition, không ghi decision trái trạng thái.
@@ -1142,20 +1240,28 @@ Reversal là posting mới với `reverses_posting_id UNIQUE` và số tiền/li
 | `submit_financial_request` | create/submit | Rule snapshot + request hoặc auto-post atomically. |
 | `decide_financial_approval` | `income_expenses.approve` + approver eligibility | Maker-checker; row lock; one decision; final post once. |
 | `emergency_approve_financial` | `approvals.emergency_override` + OWNER | Reason/re-auth; alert; post once. |
-| `cancel_financial_draft` | cancel | Chỉ DRAFT/PENDING; invalidate pending request. |
+| `cancel_financial_draft` / `withdraw_financial_request` | cancel/withdraw | Draft chỉ DRAFT; withdraw chỉ PENDING_APPROVAL và đóng request có audit. |
 | `reverse_financial_posting` | `income_expenses.reverse` | Reversal pair; original immutable. |
 | `record_invoice_payment_atomic` | `invoices.record_payment` + cashbook post | Payment+voucher+items+credit+invoice recompute một transaction. |
-| `record_invoice_payments_bulk_atomic` | same per target | Per-invoice savepoint/result; idempotency per invoice. |
+| `record_invoice_payments_bulk` | `invoices.record_payment` + quyền post cashbook cho từng invoice | Cho phép thành công một phần theo contract đã công bố; trả kết quả ổn định cho từng invoice. |
 | `reverse_invoice_payment` | `thu_tien.undo` | Reversal, không hard delete. |
 | `request_settlement_refund` | `deposits.refund` | Luôn PENDING_APPROVAL. |
 | `request_salary_payout` | `salary.distribute` | Luôn PENDING_APPROVAL; post cập nhật paid atomically. |
 | `request_profit_distribution` | `shareholder_profit.distribute` | Luôn PENDING_APPROVAL. |
 | `post_internal_settlement` | internal service only | Allowlisted source; balanced/net-zero; no client grant. |
+| `create_cashbook` / `update_cashbook_metadata` | `cashbooks.create/edit` | Opening balance = 0; metadata CAS; không đổi owner/balance ngầm. |
+| `request_opening_balance_adjustment` | `cashbooks.adjust_balance` | Reason/evidence; rule/approval; immutable posting. |
+| `lock_cashbook_period` / `unlock_cashbook_period` / `archive_cashbook` | exact elevated cashbook action | CAS + reason + dependency/reconciliation guard; mọi writer gọi shared period-open assertion. |
+| `generate_meter_reading_and_invoice` | `meter_readings.approve` + `invoices.create` | Reading+invoice+items/credit atomic; server pricing; idempotent. |
+| `submit_contract` | `contracts.create` + dependent exact actions | Core graph/room/deposit/first invoice atomic; durable outbox intent cho commission và side effects. |
+| `create_reservation_deposit` | `deposits.create` + cashbook post | Tenant/deposit voucher/item/room reservation cùng transaction; rule-enforced. |
 | `invite/update/suspend/remove_member` | exact `users.*` | Identity+membership+binding+audit atomic. |
 
 Client roles không được direct mutate các cột/tables thuộc state machine. RLS direct INSERT có thể chỉ cho DRAFT với trigger ép actor/org; an toàn hơn là revoke direct DML và chỉ RPC.
 
 Tên/contract bulk phải rõ: “per-invoice savepoint/result” là **partial-success batch**, không atomic toàn batch. Nên đổi tên thành `record_invoice_payments_bulk` và trả item result ổn định, hoặc chọn all-or-nothing thật sự; không dùng hậu tố `_atomic` khi API cho phép một phần commit.
+
+`submit_contract` là authoritative create path: lock room/reservation/deposit theo thứ tự cố định, revalidate version/availability, rồi commit contract graph, customer/service links, room state, reservation conversion, deposit vouchers/items và first invoice cùng nhau. Commission request, notification, document generation và integration được ghi thành transactional outbox trong chính transaction đó, unique `(organization_id,event_type,aggregate_id,aggregate_version)`. Worker claim bằng `FOR UPDATE SKIP LOCKED`, at-least-once; handler idempotent, retry/backoff/dead-letter có alert. “Submit thành công” bảo đảm core state + durable intent, không tuyên bố side effect ngoài transaction đã hoàn tất.
 
 ---
 
@@ -1286,7 +1392,7 @@ Ban đầu nullable + index. Sau backfill và assertion zero-null/cross-org, th�
 | APPROVED thiếu approved_by | POSTED | `LEGACY_APPROVED_UNKNOWN`; audit import actor = migration service, original approver null. |
 | UNAPPROVED recurring child, account null | DRAFT | `LEGACY_RECURRING_DRAFT`. |
 | UNAPPROVED refund/commission/contract payout marker | PENDING_APPROVAL | Synthetic request `LEGACY_PENDING`; maker từ creator nếu có. |
-| UNAPPROVED khác | Review queue | Không tự đoán; owner classify DRAFT/PENDING/CANCELLED. |
+| UNAPPROVED khác | Review queue | Không tự đoán; owner classify DRAFT/PENDING_APPROVAL/CANCELLED. |
 | CANCELLED | CANCELLED | Giữ history; không xóa payment/voucher evidence. |
 
 Không tạo `APPROVE` decision cho các row APPROVED thiếu approver (tại lần re-run mới nhất: 476 expense và 1,015 income — con số động, chốt lại trong maintenance window trước cutover). Có thể tạo `MIGRATION_IMPORTED` audit event với count/hash batch.
@@ -1345,6 +1451,8 @@ Deliverables:
 8. Test harness cross-tenant, direct REST/RPC/Storage.
 9. Contain R2 Worker: disable upload ngoài public-sale allowlist hoặc triển khai upload intent + resource authorization; xác minh public origin không lộ private class.
 10. Khóa `api/salary-v5-cron.js`: POST + constant-time inbound cron auth; test unauthenticated không kích hoạt Edge job.
+11. Contain cashbook opening/lock/archive: cấm client sửa hồi tố `initial_amount/initial_date/user_id`; tách exact action cho lock/archive và tạm require reason/audit cho đến RPC Sprint 5.
+12. Contain meter/invoice/deposit/contract orchestration: không cho client tự ghi approver metadata/default APPROVED; nếu chưa có RPC atomic thì feature-flag flow rủi ro hoặc ép DRAFT + reconciliation queue, không tiếp tục fail-open.
 
 Gate: P0 exploit paths đóng; production smoke test; rollback catalog snapshot sẵn.
 
@@ -1395,8 +1503,9 @@ Gate: deterministic rule simulation; no-rule=require approval; concurrency tests
 3. Salary/profit/refund/commission/utility/handover/termination/recurring đi canonical RPC.
 4. Internal auto-post allowlist và balanced constraint.
 5. Revoke direct DML/state columns từ client roles.
+6. Hợp nhất opening balance/lock/archive cashbook, meter+invoice generation, reservation deposit và contract-create orchestration; không chỉ voucher/payment hooks.
 
-Gate: grep/runtime audit không còn client direct `APPROVED`; end-to-end sums và retries xanh.
+Gate: generated writer allowlist + runtime/direct-REST audit không còn mutation state/ledger ngoài canonical writer; grep không còn client direct `APPROVED`; end-to-end sums và retries xanh.
 
 ### Sprint 6 — Staff lifecycle, Storage, Edge và function hardening
 
@@ -1472,10 +1581,14 @@ Các case bắt buộc:
 11. Hai approver click đồng thời => đúng quorum, một posting.
 12. Reject và approve cạnh tranh => một terminal outcome.
 13. Rule set publish trong khi request pending => request giữ snapshot version.
-14. Suspend/revoke làm candidate thấp hơn quorum => escalate theo policy, không tự hạ quorum hoặc nằm PENDING không cảnh báo.
+14. Suspend/revoke làm candidate thấp hơn quorum => escalate theo policy, không tự hạ quorum hoặc để request ở PENDING_APPROVAL mà không cảnh báo.
 15. Reassign candidate => payload/rule snapshot không đổi, version tăng, candidate cũ giữ history và audit actor/reason.
 16. Hai request đồng thời cùng subject => partial unique chỉ cho một PENDING_APPROVAL.
 17. Hai posting path cạnh tranh => unique posting-side guard chỉ cho một posting event/batch; multi-leg hợp lệ cùng batch.
+18. Rule `DENY` => request terminal DENIED, không step/decision/posting; retry cùng key trả cùng outcome.
+19. `AUTO_POST` => request terminal POSTED, không step; posting failure rollback cả request/subject effect.
+20. Multi-step: chỉ step thấp nhất PENDING; quorum promote đúng một next step; reject hủy các step sau.
+21. Rematerialize candidate tạo generation mới, decision cũ vẫn trỏ generation cũ; emergency không cần candidate nhưng phải gắn active step.
 
 ### 18.4 Financial atomicity/idempotency
 
@@ -1489,6 +1602,9 @@ Các case bắt buộc:
 - Salary payout post => voucher, salary paid, optional rent payment cùng commit.
 - Profit/refund approve => cashbook effect và subject status cùng commit.
 - Posted voucher direct update/delete qua REST => denied.
+- Direct sửa `accounts.initial_amount/initial_date/user_id`, lock/unlock/archive không exact action/reason/version => denied.
+- Generate reading+invoice lỗi ở bất kỳ leg nào => không còn APPROVED reading/invoice/credit orphan; retry không duplicate.
+- Reservation deposit/contract submit lỗi giữa tenant/contract/voucher/item/room/invoice => rollback business event hoặc tạo item result/reconciliation theo contract đã công bố, không trạng thái im lặng.
 
 ### 18.5 RLS/RPC/Storage/Edge
 
@@ -1562,8 +1678,8 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 2. **Orphan fail closed**: auth user không active membership nhận zero tenant permission; không sentinel owner/super-admin.
 3. **Cross-tenant zero access**: ma trận direct REST/RPC/Storage/Edge giữa A và B đều deny, kể cả biết UUID/path.
 4. **Backend exact action**: 100% mutation và elevated action trong catalog có server-side permission check tương ứng; frontend-only không được tính đạt.
-5. **No direct posting**: client không thể insert/update `APPROVED/POSTED`, approver metadata, payment ledger hoặc posted items trực tiếp.
-6. **State machine**: DRAFT/PENDING/POSTED/REJECTED/CANCELLED/REVERSED tách nghĩa; posted immutable, sửa bằng reversal.
+5. **No direct posting/balance mutation**: client không thể insert/update `APPROVED/POSTED`, approver metadata, payment ledger/posted items hoặc sửa opening balance/period lock/archive ngoài canonical RPC.
+6. **State machine**: DRAFT/PENDING_APPROVAL/POSTED/DENIED/REJECTED/CANCELLED/REVERSED tách nghĩa; rule-deny khác human-reject; posted immutable, sửa bằng reversal.
 7. **Rule correctness**: force categories luôn approval; no match=require; internal auto-post chỉ allowlist cân bằng.
 8. **Maker-checker**: maker không normal approve dưới mọi tổ hợp role; owner emergency cần reason/re-auth/audit/alert.
 9. **Atomic/idempotent money**: payment/voucher/items/account/invoice/subject commit một lần; retry không duplicate.
@@ -1586,6 +1702,9 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 - `SECURITY DEFINER` internal helpers callable anon, đặc biệt `_internal_settlement_account`, `_termination_ensure_type` — live vẫn `anon`+`authenticated` execute; migration revoke `20260710130500` đã có pattern nhưng **bỏ sót đúng 2 hàm này**, chỉ cần thêm 2 dòng (mục 9.2).
 - Direct creation/update `APPROVED` trên financial paths.
 - Payment/voucher/item non-atomic cho single/bulk/refund/salary.
+- Direct `accounts.initial_amount/initial_date` và cashbook lock/archive mutation ngoài state machine.
+- Meter reading `APPROVED` + invoice generation tách transaction ở dialog đơn và Excel batch.
+- Contract/deposit/reservation orchestration nhiều request có thể để room, contract, tenant, invoice và ledger split-brain.
 - Browser staff provisioning bằng `auth.signUp` nếu flow còn reachable.
 - R2 Worker cho mọi authenticated user upload arbitrary key và trả public-base URL, chưa tenant/resource scope.
 - Vercel salary cron route không auth inbound nhưng tự forward trusted cron secret.
@@ -1596,7 +1715,7 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 - `approve_voucher` cho creator tự duyệt.
 - `unapprove`/hard-delete payment phá finality.
 - `pay_draft_fee_voucher` account scope không phản ánh shared/scoped permission đúng.
-- Storage SELECT `TO authenticated` chỉ theo bucket.
+- Storage SELECT của 7 bucket trong `20260601000200_sec_private_buckets.sql` là `TO authenticated` chỉ theo bucket; `document-templates` là owner/legacy-visibility folder-scoped.
 - `send-push` nhận diện service role bằng decode JWT claim; phải harden/verify deployment gateway.
 - Write path invoice/payment legacy (`usePayments`, `useInvoices::useRecordPayment`, `invoiceHelpers`, `useContracts`, `useContractOperations`) chưa nằm sau RPC atomic — xem mục 8.1.2.
 - Vòng đời status cấp invoice (`useApproveInvoice`/`useUnapproveInvoice`/`useCancelInvoice`/`useRestoreInvoice`/`useForceCancelInvoice`/`useBulkApproveInvoices`/`useCheckOverdueInvoices`) ghi trực tiếp `invoices.status`, chưa có state machine — xem mục 8.1.1.
@@ -1766,13 +1885,18 @@ Các query này là template; agent phải điều chỉnh theo schema live và 
 | `src/hooks/useInvoicePayments.ts` | Payment RPC + client mirror voucher/refund. |
 | `src/hooks/useManagerSalary.ts` | Salary lock/commission approval/payout. |
 | `src/hooks/income-expenses/specialized.ts` | Profit/manager payout voucher. |
+| `src/hooks/useAccounts.ts` | Opening balance, lock/unlock và archive cashbook direct writes. |
+| `src/components/invoices/GenerateInvoiceDialog.tsx` | Reading APPROVED và invoice generation tách request. |
+| `src/hooks/invoices/useExcelInvoiceData.ts` | Batch reading/invoice partial-success phía client. |
+| `src/components/contracts/contract-form/useContractSubmit.ts` | Contract/deposit/invoice/reservation orchestration nhiều request. |
+| `src/pages/phong-trong/QuickDepositModal.tsx` và `src/components/deposits/CreateDepositDialog.tsx` | Reservation deposit/voucher/item/room side effects. |
 | `20260701170000_shareholder_scope_split.sql` | Effective repository definition của `get_my_permissions`. |
 | `20260710150000_tenant_isolation_hardening.sql` | Cross-tenant hardening hiện có. |
 | `20260703160000_approve_voucher_permission_guard.sql` | Approval guard history. |
 | `20260704090000_termination_refund_single_draft_voucher.sql` | Account-required approval/refund draft. |
 | `20260710120300_recurring_draft_mode.sql` | Recurring draft + atomic pay draft. |
 | `20260704120000_termination_internal_ledger.sql` | Internal settlement helper/ledger. |
-| `20260601000200_sec_private_buckets.sql` | Private buckets nhưng authenticated-wide read. |
+| `20260601000200_sec_private_buckets.sql` | Đóng 7 bucket và tạo authenticated-wide read chỉ theo bucket; không gồm `document-templates`. |
 | `supabase/functions/*` | Service-role/JWT/secret trust boundaries. |
 | `infra/cloudflare-worker/src/index.ts` | R2 upload/public delivery boundary; hiện auth-only, chưa resource authorization. |
 | `api/salary-v5-cron.js` | Vercel cron ingress; hiện chưa verify inbound caller. |
