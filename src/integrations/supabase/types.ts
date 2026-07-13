@@ -479,6 +479,448 @@ export type Database = {
           },
         ]
       }
+      approval_decisions: {
+        Row: {
+          actor_membership_id: string
+          actor_user_id: string
+          candidate_generation: number | null
+          candidate_id: string | null
+          decided_at: string
+          decision: string
+          id: string
+          organization_id: string
+          reason: string | null
+          request_id: string
+          request_step_id: string
+          request_version: number
+        }
+        Insert: {
+          actor_membership_id: string
+          actor_user_id: string
+          candidate_generation?: number | null
+          candidate_id?: string | null
+          decided_at?: string
+          decision: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+          request_id: string
+          request_step_id: string
+          request_version: number
+        }
+        Update: {
+          actor_membership_id?: string
+          actor_user_id?: string
+          candidate_generation?: number | null
+          candidate_id?: string | null
+          decided_at?: string
+          decision?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          request_id?: string
+          request_step_id?: string
+          request_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_decisions_organization_id_request_id_fkey"
+            columns: ["organization_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "approval_decisions_organization_id_request_id_request_step_fkey"
+            columns: ["organization_id", "request_id", "request_step_id"]
+            isOneToOne: false
+            referencedRelation: "approval_request_steps"
+            referencedColumns: ["organization_id", "request_id", "id"]
+          },
+        ]
+      }
+      approval_request_step_candidates: {
+        Row: {
+          eligible_at_submit: boolean
+          generation: number
+          id: string
+          membership_id: string
+          organization_id: string
+          request_step_id: string
+          source_id: string | null
+          source_kind: string
+          valid_from: string
+          valid_to: string | null
+        }
+        Insert: {
+          eligible_at_submit?: boolean
+          generation: number
+          id?: string
+          membership_id: string
+          organization_id: string
+          request_step_id: string
+          source_id?: string | null
+          source_kind: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Update: {
+          eligible_at_submit?: boolean
+          generation?: number
+          id?: string
+          membership_id?: string
+          organization_id?: string
+          request_step_id?: string
+          source_id?: string | null
+          source_kind?: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_request_step_candida_organization_id_membership_i_fkey"
+            columns: ["organization_id", "membership_id"]
+            isOneToOne: false
+            referencedRelation: "organization_memberships"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "approval_request_step_candida_organization_id_request_step_fkey"
+            columns: ["organization_id", "request_step_id"]
+            isOneToOne: false
+            referencedRelation: "approval_request_steps"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      approval_request_steps: {
+        Row: {
+          candidate_count: number
+          current_generation: number
+          id: string
+          min_approvals: number
+          mode: string
+          organization_id: string
+          request_id: string
+          rule_step_snapshot: Json
+          status: string
+          step_no: number
+        }
+        Insert: {
+          candidate_count?: number
+          current_generation?: number
+          id?: string
+          min_approvals: number
+          mode: string
+          organization_id: string
+          request_id: string
+          rule_step_snapshot?: Json
+          status: string
+          step_no: number
+        }
+        Update: {
+          candidate_count?: number
+          current_generation?: number
+          id?: string
+          min_approvals?: number
+          mode?: string
+          organization_id?: string
+          request_id?: string
+          rule_step_snapshot?: Json
+          status?: string
+          step_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_request_steps_organization_id_request_id_fkey"
+            columns: ["organization_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      approval_requests: {
+        Row: {
+          amount: number
+          building_id: string | null
+          cashbook_id: string | null
+          category_id: string | null
+          id: string
+          maker_membership_id: string
+          maker_user_id: string
+          matched_rule_id: string
+          organization_id: string
+          payload_hash: string
+          payload_snapshot: Json
+          posted_at: string | null
+          posted_event_id: string | null
+          rule_effect: string
+          rule_set_id: string
+          rule_set_version: number
+          state: string
+          subject_id: string
+          subject_type: string
+          submission_no: number
+          submitted_at: string | null
+          system_source: string | null
+          version: number
+        }
+        Insert: {
+          amount: number
+          building_id?: string | null
+          cashbook_id?: string | null
+          category_id?: string | null
+          id?: string
+          maker_membership_id: string
+          maker_user_id: string
+          matched_rule_id: string
+          organization_id: string
+          payload_hash: string
+          payload_snapshot: Json
+          posted_at?: string | null
+          posted_event_id?: string | null
+          rule_effect: string
+          rule_set_id: string
+          rule_set_version: number
+          state: string
+          subject_id: string
+          subject_type: string
+          submission_no?: number
+          submitted_at?: string | null
+          system_source?: string | null
+          version?: number
+        }
+        Update: {
+          amount?: number
+          building_id?: string | null
+          cashbook_id?: string | null
+          category_id?: string | null
+          id?: string
+          maker_membership_id?: string
+          maker_user_id?: string
+          matched_rule_id?: string
+          organization_id?: string
+          payload_hash?: string
+          payload_snapshot?: Json
+          posted_at?: string | null
+          posted_event_id?: string | null
+          rule_effect?: string
+          rule_set_id?: string
+          rule_set_version?: number
+          state?: string
+          subject_id?: string
+          subject_type?: string
+          submission_no?: number
+          submitted_at?: string | null
+          system_source?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_requests_organization_id_maker_membership_id_make_fkey"
+            columns: ["organization_id", "maker_membership_id", "maker_user_id"]
+            isOneToOne: false
+            referencedRelation: "organization_memberships"
+            referencedColumns: ["organization_id", "id", "user_id"]
+          },
+        ]
+      }
+      approval_rule_sets: {
+        Row: {
+          effective_from: string
+          effective_to: string | null
+          id: string
+          organization_id: string
+          published_at: string | null
+          published_by: string | null
+          status: string
+          transaction_domain: string
+          version: number
+        }
+        Insert: {
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          organization_id: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          transaction_domain: string
+          version: number
+        }
+        Update: {
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          organization_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          transaction_domain?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rule_sets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_rule_steps: {
+        Row: {
+          id: string
+          min_approvals: number
+          mode: string
+          organization_id: string
+          rule_id: string
+          step_no: number
+        }
+        Insert: {
+          id?: string
+          min_approvals?: number
+          mode?: string
+          organization_id: string
+          rule_id: string
+          step_no: number
+        }
+        Update: {
+          id?: string
+          min_approvals?: number
+          mode?: string
+          organization_id?: string
+          rule_id?: string
+          step_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rule_steps_organization_id_rule_id_fkey"
+            columns: ["organization_id", "rule_id"]
+            isOneToOne: false
+            referencedRelation: "approval_rules"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      approval_rules: {
+        Row: {
+          active: boolean
+          amount_max: number | null
+          amount_min: number | null
+          area_id: string | null
+          building_id: string | null
+          cashbook_id: string | null
+          category_id: string | null
+          effect: string
+          force_match: boolean
+          id: string
+          is_fallback: boolean
+          name: string
+          organization_id: string
+          priority: number
+          rule_set_id: string
+          system_source: string | null
+          transaction_type: string | null
+        }
+        Insert: {
+          active?: boolean
+          amount_max?: number | null
+          amount_min?: number | null
+          area_id?: string | null
+          building_id?: string | null
+          cashbook_id?: string | null
+          category_id?: string | null
+          effect: string
+          force_match?: boolean
+          id?: string
+          is_fallback?: boolean
+          name: string
+          organization_id: string
+          priority: number
+          rule_set_id: string
+          system_source?: string | null
+          transaction_type?: string | null
+        }
+        Update: {
+          active?: boolean
+          amount_max?: number | null
+          amount_min?: number | null
+          area_id?: string | null
+          building_id?: string | null
+          cashbook_id?: string | null
+          category_id?: string | null
+          effect?: string
+          force_match?: boolean
+          id?: string
+          is_fallback?: boolean
+          name?: string
+          organization_id?: string
+          priority?: number
+          rule_set_id?: string
+          system_source?: string | null
+          transaction_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rules_organization_id_rule_set_id_fkey"
+            columns: ["organization_id", "rule_set_id"]
+            isOneToOne: false
+            referencedRelation: "approval_rule_sets"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      approval_step_approvers: {
+        Row: {
+          approver_type: string
+          id: string
+          membership_id: string | null
+          organization_id: string
+          permission_key: string | null
+          role_id: string | null
+          scope_id: string | null
+          step_id: string
+        }
+        Insert: {
+          approver_type: string
+          id?: string
+          membership_id?: string | null
+          organization_id: string
+          permission_key?: string | null
+          role_id?: string | null
+          scope_id?: string | null
+          step_id: string
+        }
+        Update: {
+          approver_type?: string
+          id?: string
+          membership_id?: string | null
+          organization_id?: string
+          permission_key?: string | null
+          role_id?: string | null
+          scope_id?: string | null
+          step_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_step_approvers_organization_id_step_id_fkey"
+            columns: ["organization_id", "step_id"]
+            isOneToOne: false
+            referencedRelation: "approval_rule_steps"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       area_buildings: {
         Row: {
           area_id: string
@@ -972,6 +1414,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      authorization_audit_events: {
+        Row: {
+          actor_membership_id: string | null
+          actor_user_id: string | null
+          event_hash: string
+          event_type: string
+          id: string
+          new_state: Json | null
+          occurred_at: string
+          old_state: Json | null
+          organization_id: string | null
+          prev_hash: string | null
+          reason: string | null
+          resource_id: string | null
+          resource_type: string | null
+          trace_id: string | null
+        }
+        Insert: {
+          actor_membership_id?: string | null
+          actor_user_id?: string | null
+          event_hash: string
+          event_type: string
+          id?: string
+          new_state?: Json | null
+          occurred_at?: string
+          old_state?: Json | null
+          organization_id?: string | null
+          prev_hash?: string | null
+          reason?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          trace_id?: string | null
+        }
+        Update: {
+          actor_membership_id?: string | null
+          actor_user_id?: string | null
+          event_hash?: string
+          event_type?: string
+          id?: string
+          new_state?: Json | null
+          occurred_at?: string
+          old_state?: Json | null
+          organization_id?: string | null
+          prev_hash?: string | null
+          reason?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          trace_id?: string | null
+        }
+        Relationships: []
       }
       authorization_migration_exceptions: {
         Row: {
@@ -3744,6 +4237,7 @@ export type Database = {
       income_expenses: {
         Row: {
           account_id: string | null
+          approval_request_id: string | null
           approval_status: string
           approved_at: string | null
           approved_by: string | null
@@ -3760,6 +4254,7 @@ export type Database = {
           commission_kind: string | null
           commission_legacy_dup: boolean
           contract_id: string | null
+          correlation_id: string | null
           counts_in_business_result: boolean
           created_at: string
           creator_name: string | null
@@ -3768,6 +4263,7 @@ export type Database = {
           handover_transfer_id: string | null
           has_restricted_item: boolean
           id: string
+          idempotency_key: string | null
           invoice_id: string | null
           kqkd_amount: number
           name: string
@@ -3775,6 +4271,8 @@ export type Database = {
           organization_id: string | null
           payer_name: string | null
           payment_id: string | null
+          posted_at_v2: string | null
+          posting_id: string | null
           profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
@@ -3785,12 +4283,14 @@ export type Database = {
           repeat_next_date: string | null
           repeat_parent_id: string | null
           repeat_remaining: number
+          reversed_by_posting_id: string | null
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
           salary_role: string | null
           salary_staff_id: string | null
           shareholder_id: string | null
+          source_payload_hash: string | null
           system_source: string | null
           tenant_id: string | null
           total_amount: number
@@ -3806,6 +4306,7 @@ export type Database = {
         }
         Insert: {
           account_id?: string | null
+          approval_request_id?: string | null
           approval_status?: string
           approved_at?: string | null
           approved_by?: string | null
@@ -3822,6 +4323,7 @@ export type Database = {
           commission_kind?: string | null
           commission_legacy_dup?: boolean
           contract_id?: string | null
+          correlation_id?: string | null
           counts_in_business_result?: boolean
           created_at?: string
           creator_name?: string | null
@@ -3830,6 +4332,7 @@ export type Database = {
           handover_transfer_id?: string | null
           has_restricted_item?: boolean
           id?: string
+          idempotency_key?: string | null
           invoice_id?: string | null
           kqkd_amount?: number
           name: string
@@ -3837,6 +4340,8 @@ export type Database = {
           organization_id?: string | null
           payer_name?: string | null
           payment_id?: string | null
+          posted_at_v2?: string | null
+          posting_id?: string | null
           profit_manager_id?: string | null
           receive_bank_account?: string | null
           receive_bank_name?: string | null
@@ -3847,12 +4352,14 @@ export type Database = {
           repeat_next_date?: string | null
           repeat_parent_id?: string | null
           repeat_remaining?: number
+          reversed_by_posting_id?: string | null
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
           salary_role?: string | null
           salary_staff_id?: string | null
           shareholder_id?: string | null
+          source_payload_hash?: string | null
           system_source?: string | null
           tenant_id?: string | null
           total_amount?: number
@@ -3868,6 +4375,7 @@ export type Database = {
         }
         Update: {
           account_id?: string | null
+          approval_request_id?: string | null
           approval_status?: string
           approved_at?: string | null
           approved_by?: string | null
@@ -3884,6 +4392,7 @@ export type Database = {
           commission_kind?: string | null
           commission_legacy_dup?: boolean
           contract_id?: string | null
+          correlation_id?: string | null
           counts_in_business_result?: boolean
           created_at?: string
           creator_name?: string | null
@@ -3892,6 +4401,7 @@ export type Database = {
           handover_transfer_id?: string | null
           has_restricted_item?: boolean
           id?: string
+          idempotency_key?: string | null
           invoice_id?: string | null
           kqkd_amount?: number
           name?: string
@@ -3899,6 +4409,8 @@ export type Database = {
           organization_id?: string | null
           payer_name?: string | null
           payment_id?: string | null
+          posted_at_v2?: string | null
+          posting_id?: string | null
           profit_manager_id?: string | null
           receive_bank_account?: string | null
           receive_bank_name?: string | null
@@ -3909,12 +4421,14 @@ export type Database = {
           repeat_next_date?: string | null
           repeat_parent_id?: string | null
           repeat_remaining?: number
+          reversed_by_posting_id?: string | null
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
           salary_role?: string | null
           salary_staff_id?: string | null
           shareholder_id?: string | null
+          source_payload_hash?: string | null
           system_source?: string | null
           tenant_id?: string | null
           total_amount?: number
@@ -10389,8 +10903,29 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: string
       }
+      _eval_approval_rule: {
+        Args: {
+          p_amount: number
+          p_building: string
+          p_cashbook: string
+          p_category: string
+          p_org: string
+          p_system_source: string
+          p_txn_type: string
+        }
+        Returns: {
+          effect: string
+          rule_id: string
+          rule_set_id: string
+          version: number
+        }[]
+      }
       _internal_settlement_account: {
         Args: { p_user_id: string }
+        Returns: string
+      }
+      _post_financial_voucher: {
+        Args: { p_actor: string; p_request: string; p_voucher: string }
         Returns: string
       }
       _termination_apply_extra_charges: {
@@ -10630,6 +11165,15 @@ export type Database = {
       customer_in_my_scope: {
         Args: { _customer_id: string; _owner: string }
         Returns: boolean
+      }
+      decide_financial_voucher: {
+        Args: {
+          p_decision: string
+          p_expected_version?: number
+          p_reason?: string
+          p_request: string
+        }
+        Returns: Json
       }
       delete_room_pass_listing: { Args: { p_id: string }; Returns: undefined }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
@@ -11685,6 +12229,15 @@ export type Database = {
         Args: { p_building: string; p_paired_income_expense_id?: string }
         Returns: Json
       }
+      submit_financial_voucher: {
+        Args: {
+          p_idempotency_key?: string
+          p_system_source?: string
+          p_txn_type?: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       submit_inspection_photo: {
         Args: {
           p_exif_time?: string
@@ -11789,6 +12342,7 @@ export type Database = {
         }
         Returns: {
           account_id: string | null
+          approval_request_id: string | null
           approval_status: string
           approved_at: string | null
           approved_by: string | null
@@ -11805,6 +12359,7 @@ export type Database = {
           commission_kind: string | null
           commission_legacy_dup: boolean
           contract_id: string | null
+          correlation_id: string | null
           counts_in_business_result: boolean
           created_at: string
           creator_name: string | null
@@ -11813,6 +12368,7 @@ export type Database = {
           handover_transfer_id: string | null
           has_restricted_item: boolean
           id: string
+          idempotency_key: string | null
           invoice_id: string | null
           kqkd_amount: number
           name: string
@@ -11820,6 +12376,8 @@ export type Database = {
           organization_id: string | null
           payer_name: string | null
           payment_id: string | null
+          posted_at_v2: string | null
+          posting_id: string | null
           profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
@@ -11830,12 +12388,14 @@ export type Database = {
           repeat_next_date: string | null
           repeat_parent_id: string | null
           repeat_remaining: number
+          reversed_by_posting_id: string | null
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
           salary_role: string | null
           salary_staff_id: string | null
           shareholder_id: string | null
+          source_payload_hash: string | null
           system_source: string | null
           tenant_id: string | null
           total_amount: number
