@@ -54,8 +54,8 @@ Reconciliation (bảng trên) = 0 mất dữ liệu. Observability/alert dashboa
 Các phần này đổi HÀNH VI write path của app ⇒ phải migrate hook→RPC rồi mới revoke, test từng flow trên browser (rủi ro availability nếu big-bang):
 
 1. **Hợp nhất 20+ hook financial write** vào canonical RPC rồi **revoke direct DML** (§8.1, Sprint 5 core).
-   - ✅ **ĐÃ LÀM (mẫu)**: `record_invoice_payment_v3` (payment+invoice+voucher+items ATOMIC + idempotency_key) + wire `useInvoicePayments::useRecordPaymentRPC`. Test DB (atomic+idempotent, ROLLBACK) + **browser production**: thu 10.000₫ qua UI → 1 payment + 1 voucher APPROVED(approved_by=self, org autofill) + item, 0 console error, đã reverse sạch. Vá double-payment (mirror-fail + retry).
-   - CÒN: các hook còn lại (bulk payment, salary/profit/refund/commission/utility/handover/termination/recurring, useCreatePayment/useInvoices legacy) theo cùng mẫu; sau đó revoke direct DML. Engine Sprint 4 sẵn để wire approval.
+   - ✅ **CỤM THU TIỀN HOÀN TẤT** (highest-volume path): `record_invoice_payment_v3` (payment+invoice+voucher+items ATOMIC + idempotency_key + p_receipt_number + p_voucher_owner_id validate). Wire `useRecordPaymentRPC` (dialog đơn), `useBulkRecordPayment` (thu hàng loạt, mỗi sub-line 1 v3, giữ owner-attribution), `useCreatePayment`. Gỡ dead `useInvoices::useRecordPayment`. Test DB (atomic+idempotent+owner-attribution+forge-blocked) + **browser production** (thu 10K qua UI → atomic voucher, 0 error, reverse sạch).
+   - CÒN (mỗi flow có domain nuance, cần phân tích+test riêng): salary/profit/refund/commission/utility/handover/termination/recurring; `useDeletePayment`→reversal; invoice-status hooks. Sau đó revoke direct DML. Engine Sprint 4 sẵn wire "luôn cần duyệt".
 2. **RLS v2 thay thế** 552 policy owner-graph bằng org-boundary thuần (hiện dùng RESTRICTIVE bổ sung — an toàn hơn, giữ policy cũ). §17 Sprint 3.
 3. **Storage**: re-path object theo `<org>/<resource>/…` + `storage_object_links` + scoped policy (7 bucket authenticated-wide). §14.
 4. **Function ACL allowlist toàn schema** + private impl schema + pinned search_path (§9.3). Hiện đã revoke các helper trọng yếu + CI gate.
