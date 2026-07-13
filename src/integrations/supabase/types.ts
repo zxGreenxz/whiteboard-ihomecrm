@@ -12093,6 +12093,7 @@ export type Database = {
           p_receipt_image_url?: string
           p_receipt_number?: string
           p_voucher?: Json
+          p_voucher_owner_id?: string
         }
         Returns: Json
       }

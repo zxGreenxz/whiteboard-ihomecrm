@@ -265,68 +265,50 @@ export const useBulkRecordPayment = () => {
             const composedNotes =
               [item.notes?.trim() || null, refundNote].filter(Boolean).join(' — ') || null;
 
-            const { data: paymentRow, error: payErr } = await supabase
-              .from('payments' as any)
-              .insert({
-                user_id: ownerId,
-                invoice_id: item.invoice_id,
-                amount: effectiveAmount,
-                payment_method: line.method,
-                payment_date: params.payment_date,
-                notes: item.notes ?? null,
-                receipt_image_url:
-                  isFirst ? (item.receipt_image_url ?? null) : null,
-              } as any)
-              .select('id')
-              .single();
-            if (payErr) throw payErr;
-            const newPaymentId = (paymentRow as any)?.id ?? null;
-            if (isCreditLine) creditSourcePaymentId = newPaymentId;
-
-            const { data: voucher, error: vErr } = await supabase
-              .from('income_expenses' as any)
-              .insert({
-                user_id: ownerId,
-                type: 'INCOME',
-                name: `Thu tiền theo HĐ ${getInvoiceShortTitle(inv as any)}`,
-                building_id: (inv as any).building_id,
-                room_id: (inv as any).room_id,
-                contract_id: (inv as any).contract_id,
-                account_id:
+            // Sprint 5b3: mỗi sub-line = 1 RPC atomic (payment + invoice recompute
+            // + voucher + item + idempotency) thay vì 3 insert rời. p_voucher_owner_id
+            // = ownerId (GIỮ attribution user_id=owner cho báo cáo LN, không lệch).
+            const shortTitle = getInvoiceShortTitle(inv as any);
+            const { data: res, error: rpcErr } = await (supabase.rpc as any)(
+              'record_invoice_payment_v3',
+              {
+                p_invoice_id: item.invoice_id,
+                p_amount: effectiveAmount,
+                p_payment_method: line.method,
+                p_payment_date: params.payment_date,
+                p_idempotency_key: crypto.randomUUID(),
+                p_account_id:
                   item.accounts?.[line.method as 'TM' | 'TK' | 'TT'] ?? item.account_id,
-                invoice_id: (inv as any).id,
-                payment_id: newPaymentId,
-                voucher_date: params.payment_date,
-                payer_name: item.notes ?? null,
-                notes: composedNotes,
-                attachments:
-                  isFirst && item.receipt_image_url
-                    ? [item.receipt_image_url]
-                    : [],
-                approval_status: 'APPROVED',
-                creator_name: creatorName,
-                change_amount: deducted,
-                change_account_id: isDeductLine ? (item.change_account_id ?? null) : null,
-                rounding_amount: isRoundingLine ? rounding : 0,
-                rounding_account_id: isRoundingLine ? roundingAccountId : null,
-              } as any)
-              .select()
-              .single();
-            if (vErr) throw vErr;
-            voucherIds.push((voucher as any).id); // v5: để bắn GPS thu-tại-chỗ sau khi phiếu lưu
-
-            const { error: itemErr } = await supabase
-              .from('income_expense_items' as any)
-              .insert({
-                income_expense_id: (voucher as any).id,
-                income_expense_type_id: incomeTypeId,
-                description: `Thanh toán HĐ ${getInvoiceShortTitle(inv as any)}`,
-                quantity: 1,
-                unit_price: effectiveAmount,
-                start_date: params.payment_date,
-                end_date: params.payment_date,
-              });
-            if (itemErr) throw itemErr;
+                p_notes: item.notes ?? null,
+                p_receipt_image_url: isFirst ? (item.receipt_image_url ?? null) : null,
+                p_voucher: {
+                  name: `Thu tiền theo HĐ ${shortTitle}`,
+                  room_id: (inv as any).room_id ?? null,
+                  payer_name: item.notes ?? null,
+                  notes: composedNotes,
+                  attachments: isFirst && item.receipt_image_url ? [item.receipt_image_url] : [],
+                  creator_name: creatorName,
+                  business_result_accounting: null,
+                  change_amount: deducted,
+                  change_account_id: isDeductLine ? (item.change_account_id ?? null) : null,
+                  rounding_amount: isRoundingLine ? rounding : 0,
+                  rounding_account_id: isRoundingLine ? roundingAccountId : null,
+                },
+                p_items: [{
+                  income_expense_type_id: incomeTypeId,
+                  description: `Thanh toán HĐ ${shortTitle}`,
+                  quantity: 1,
+                  unit_price: effectiveAmount,
+                  start_date: params.payment_date,
+                  end_date: params.payment_date,
+                }],
+                p_voucher_owner_id: ownerId,
+              },
+            );
+            if (rpcErr) throw rpcErr;
+            const newVoucherId = (res as any)?.voucher_id ?? null;
+            if (newVoucherId) voucherIds.push(newVoucherId); // v5: GPS thu-tại-chỗ
+            if (isCreditLine) creditSourcePaymentId = (res as any)?.payment_id ?? null;
           }
 
           // Khi keep_as_credit: INSERT excess_amounts row cho contract
