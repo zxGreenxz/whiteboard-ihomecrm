@@ -4,7 +4,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm run build)",
       "Bash(npx vite:*)",
-      "Bash(./node_modules/.bin/vite build:*)"
+      "Bash(./node_modules/.bin/vite build:*)",
+      "Bash(node --input-type=module)"
     ]
   }
 }
