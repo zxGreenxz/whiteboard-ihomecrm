@@ -38,6 +38,19 @@
 3. **Bật `disable_signup=true`** (Management API `PATCH /config/auth`) — CHỈ sau khi frontend deploy xong (provisioning không còn phụ thuộc signup công khai). `auth.admin.createUser` không bị ảnh hưởng bởi cờ này.
 4. (Tuỳ chọn) xác minh `phanboichauthcs@gmail.com` là ai; nếu cần quyền, cấp role tường minh thay vì để fail-open như trước.
 
-## Còn lại — Sprint 1→7 (chương trình nhiều tháng, KHÔNG "big-bang" lên production)
+## Sprint 1 — Organization foundation (ADDITIVE / INERT) — ĐÃ LÀM
+
+Migration `20260713100000_sprint1_organization_foundation.sql`. Hoàn toàn additive + inert (không đọc/enforce; rollback = DROP cột/bảng):
+
+- Tạo `organizations`, `organization_memberships` (partial-unique 1 active/user), `organization_invitations`, `legacy_owner_organization_map`, `authorization_migration_exceptions`. RLS: chỉ super_admin đọc, không client DML.
+- Mô hình org (hệ thống là "một tổ chức cố định"; demo tách qua `demo_user_ids()`): **PROD** (`ihome-prod`) = mọi dữ liệu non-demo; **DEMO** (`ihome-demo`) = dữ liệu demo.
+- Memberships seed: PROD — nguyentamca(OWNER), bosshuy(PARTNER), joey/nathan(STAFF); DEMO — demo.chunha(OWNER)+5 demo(STAFF). **phanboichauthcs (orphan): KHÔNG membership** (khớp fail-closed 0.1).
+- Thêm cột `organization_id` **NULLABLE** + `UNIQUE(organization_id,id)` cho root tables `buildings/areas/accounts/roles`, backfill theo owner. GIỮ NULLABLE vì code INSERT hiện tại chưa set (ép NOT NULL sẽ phá tạo toà/sổ quỹ).
+
+**Verify**: buildings 26/26, areas 7/7, accounts 50/50, roles 7/7 backfilled (0 null); 0 org-mismatch vs owner; 0 demo-building lọt org prod; cross-tenant harness PASS; tsc baseline 32 fp không đổi. Chưa deploy frontend (cột mới nullable, `SELECT *` cũ bỏ qua).
+
+**Kế tiếp Sprint 3 (additive)**: rollout `organization_id` cho các bảng nghiệp vụ còn lại — org DERIVE từ parent (building), KHÔNG từ audit `user_id` (§16.2). Cột giữ nullable tới khi app set + trigger auto-fill; **RLS v2 cutover là ENFORCEMENT → NO-GO tự động** (cần staging + negative-test matrix + reconciliation).
+
+## Còn lại — Sprint 2→7 (chương trình nhiều tháng, KHÔNG "big-bang" lên production)
 
 Plan yêu cầu thứ tự **không đảo**: `explicit organization boundary → normalized authz + shadow compare → RLS v2 → approval engine → consolidate financial writes → Storage/Edge/ACL hardening → cutover + reconciliation`. Mỗi sprint cần precheck/postcheck/hash/count, dual-write shadow, negative-test matrix, và audit độc lập trước cutover (mục 16–20, 23–24 của plan). Đây là lý do plan tự kết luận **NO-GO** cho cutover multi-tenant/approval trong một lần. Sprint 0 (tài liệu này) là điều kiện tiên quyết đã hoàn tất; các sprint sau nên triển khai theo PR có artifact bắt buộc (mục 22) và maintenance window.
