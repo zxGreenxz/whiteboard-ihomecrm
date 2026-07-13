@@ -12091,6 +12091,7 @@ export type Database = {
           p_payment_date: string
           p_payment_method: Database["public"]["Enums"]["payment_method"]
           p_receipt_image_url?: string
+          p_receipt_number?: string
           p_voucher?: Json
         }
         Returns: Json

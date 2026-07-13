@@ -1269,81 +1269,9 @@ export interface RecordPaymentData {
   receipt_image_url?: string;
 }
 
-export const useRecordPayment = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (data: RecordPaymentData) => {
-      const user = await getSessionUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data: payment, error: paymentError } = await supabase
-        .from('payments')
-        .insert([{
-          user_id: user.id,
-          invoice_id: data.invoice_id,
-          amount: data.amount,
-          payment_method: data.payment_method as any,
-          payment_date: data.payment_date,
-          notes: data.notes,
-          receipt_image_url: data.receipt_image_url,
-        }])
-        .select()
-        .single();
-
-      if (paymentError) throw paymentError;
-
-      // Update invoice paid_amount
-      const { data: invoice } = await supabase
-        .from('invoices')
-        .select('paid_amount, total_amount')
-        .eq('id', data.invoice_id)
-        .single();
-
-      if (invoice) {
-        const newPaidAmount = (invoice.paid_amount || 0) + data.amount;
-        const newStatus =
-          newPaidAmount >= invoice.total_amount
-            ? 'PAID'
-            : newPaidAmount > 0
-            ? 'PARTIAL_PAID'
-            : 'APPROVED';
-
-        await supabase
-          .from('invoices')
-          .update({
-            paid_amount: newPaidAmount,
-            status: newStatus as any,
-            paid_date: newPaidAmount >= invoice.total_amount ? new Date().toISOString().split('T')[0] : null,
-          } as any)
-          .eq('id', data.invoice_id);
-      }
-
-      return payment;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice'] });
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
-      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
-
-      toast({
-        title: 'Thanh toán đã được ghi nhận thành công',
-        description: 'Thanh toán đã được ghi nhận vào hệ thống.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi ghi nhận thanh toán',
-        description: error.message,
-      });
-    },
-  });
-};
+// useRecordPayment (legacy, non-atomic insert-rồi-read-modify-write) ĐÃ GỠ ở
+// Sprint 5b: dead code (không nơi nào gọi), anti-pattern §8.1. Dùng
+// useInvoicePayments::useRecordPaymentRPC (RPC record_invoice_payment_v3 atomic).
 
 // =============================================
 // Legacy: Meter reading hooks (kept for backward compatibility)

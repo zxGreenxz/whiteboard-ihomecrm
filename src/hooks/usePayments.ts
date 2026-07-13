@@ -121,42 +121,35 @@ export const useCreatePayment = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Create payment
-      const { data: payment, error: paymentError } = await supabase
-        .from("payments")
-        .insert({
-          ...data,
-          user_id: user.id,
-        })
-        .select()
-        .single();
-
-      if (paymentError) throw paymentError;
-
-      // Update invoice paid_amount
+      // Sprint 5b: khi có invoice_id → dùng RPC atomic (payment + recompute invoice
+      // trong 1 transaction + idempotency) thay vì insert-rồi-read-modify-write
+      // (lost update giữa 2 collector, không check lỗi update — §8.1).
       if (data.invoice_id) {
-        const { data: invoice, error: invoiceError } = await supabase
-          .from("invoices")
-          .select("paid_amount, total_amount")
-          .eq("id", data.invoice_id)
-          .single();
-
-        if (invoiceError) throw invoiceError;
-
-        const newPaidAmount = (invoice.paid_amount || 0) + (data.amount || 0);
-        const status =
-          newPaidAmount >= invoice.total_amount ? "PAID" :
-          newPaidAmount > 0 ? "PARTIAL_PAID" : "APPROVED";
-
-        await supabase
-          .from("invoices")
-          .update({
-            paid_amount: newPaidAmount,
-            status,
-          })
-          .eq("id", data.invoice_id);
+        const { data: result, error } = await (supabase.rpc as any)(
+          "record_invoice_payment_v3",
+          {
+            p_invoice_id: data.invoice_id,
+            p_amount: data.amount,
+            p_payment_method: data.payment_method,
+            p_payment_date: data.payment_date,
+            p_idempotency_key: crypto.randomUUID(),
+            p_receipt_number: (data as any).receipt_number ?? null,
+            p_notes: data.notes ?? null,
+            p_receipt_image_url: (data as any).receipt_image_url ?? null,
+          },
+        );
+        if (error) throw error;
+        return result;
       }
 
+      // Không có invoice → payment độc lập, không update invoice ⇒ không có
+      // atomicity issue. Giữ insert trực tiếp.
+      const { data: payment, error: paymentError } = await supabase
+        .from("payments")
+        .insert({ ...data, user_id: user.id })
+        .select()
+        .single();
+      if (paymentError) throw paymentError;
       return payment;
     },
     onSuccess: () => {
