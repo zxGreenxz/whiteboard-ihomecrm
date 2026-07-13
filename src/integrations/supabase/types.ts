@@ -12080,6 +12080,21 @@ export type Database = {
         }
         Returns: Json
       }
+      record_invoice_payment_v3: {
+        Args: {
+          p_account_id?: string
+          p_amount: number
+          p_idempotency_key: string
+          p_invoice_id: string
+          p_items?: Json
+          p_notes?: string
+          p_payment_date: string
+          p_payment_method: Database["public"]["Enums"]["payment_method"]
+          p_receipt_image_url?: string
+          p_voucher?: Json
+        }
+        Returns: Json
+      }
       record_payment_gps: {
         Args: { p_income_expense_id: string; p_lat: number; p_lng: number }
         Returns: Json

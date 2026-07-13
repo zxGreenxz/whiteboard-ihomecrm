@@ -53,7 +53,9 @@ Reconciliation (bảng trên) = 0 mất dữ liệu. Observability/alert dashboa
 ## Phần enforcement lớn CÒN LẠI (integration, cần staged + browser test từng flow)
 Các phần này đổi HÀNH VI write path của app ⇒ phải migrate hook→RPC rồi mới revoke, test từng flow trên browser (rủi ro availability nếu big-bang):
 
-1. **Hợp nhất 20+ hook financial write** (usePayments/useInvoices/useBulkRecordPayment/useManagerSalary/…) vào canonical RPC (`record_invoice_payment_atomic`, `request_salary_payout`, …) rồi **revoke direct DML** cột state (§8.1, Sprint 5 core). Engine (Sprint 4) đã sẵn để wire.
+1. **Hợp nhất 20+ hook financial write** vào canonical RPC rồi **revoke direct DML** (§8.1, Sprint 5 core).
+   - ✅ **ĐÃ LÀM (mẫu)**: `record_invoice_payment_v3` (payment+invoice+voucher+items ATOMIC + idempotency_key) + wire `useInvoicePayments::useRecordPaymentRPC`. Test DB (atomic+idempotent, ROLLBACK) + **browser production**: thu 10.000₫ qua UI → 1 payment + 1 voucher APPROVED(approved_by=self, org autofill) + item, 0 console error, đã reverse sạch. Vá double-payment (mirror-fail + retry).
+   - CÒN: các hook còn lại (bulk payment, salary/profit/refund/commission/utility/handover/termination/recurring, useCreatePayment/useInvoices legacy) theo cùng mẫu; sau đó revoke direct DML. Engine Sprint 4 sẵn để wire approval.
 2. **RLS v2 thay thế** 552 policy owner-graph bằng org-boundary thuần (hiện dùng RESTRICTIVE bổ sung — an toàn hơn, giữ policy cũ). §17 Sprint 3.
 3. **Storage**: re-path object theo `<org>/<resource>/…` + `storage_object_links` + scoped policy (7 bucket authenticated-wide). §14.
 4. **Function ACL allowlist toàn schema** + private impl schema + pinned search_path (§9.3). Hiện đã revoke các helper trọng yếu + CI gate.

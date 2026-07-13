@@ -39,6 +39,9 @@ export interface RecordPaymentRPCData {
   rounding_amount?: number;
   /** Sổ quỹ "Làm tròn tiền thiếu" — bắt buộc nếu rounding_amount > 0. */
   rounding_account_id?: string | null;
+  /** Idempotency key (chống payment đôi khi retry sau timeout). Nếu không truyền,
+   *  hook tự sinh crypto.randomUUID() mỗi lần submit. */
+  idempotency_key?: string;
 }
 
 // =============================================
@@ -177,26 +180,18 @@ export const useRecordPaymentRPC = () => {
         }
       }
 
-      // RBAC v2: bỏ p_user_id; quyền xác định qua can_do_on_building.
-      const { data: result, error } = await (supabase.rpc as any)(
-        'record_invoice_payment_v2',
-        {
-          p_invoice_id: data.invoice_id,
-          p_amount: data.amount,
-          p_payment_method: data.payment_method,
-          p_payment_date: data.payment_date,
-          p_notes: data.notes ?? null,
-          p_receipt_image_url: data.receipt_image_url ?? null,
-        },
-      );
-
-      if (error) throw error;
-
-      const newPaymentId = (result as any)?.payment_id ?? null;
-
       // ─────────────────────────────────────────────────────
-      // Mirror Resident: mỗi payment ⇒ 1 phiếu thu (đã CHUẨN BỊ + split ở trên).
+      // ATOMIC (Sprint 5b): payment + invoice + phiếu thu + items trong 1 RPC
+      // (record_invoice_payment_v3) + idempotency_key. Trước đây payment (RPC) và
+      // phiếu thu (insert FE) tách transaction ⇒ RPC ok + mirror lỗi + retry =
+      // payment ĐÔI. Giờ all-or-nothing; retry cùng key trả kết quả cũ.
+      // Split revenue/deposit vẫn tính ở FE (logic đã kiểm), truyền qua payload.
       // ─────────────────────────────────────────────────────
+      const idempotencyKey = data.idempotency_key ?? crypto.randomUUID();
+
+      let voucherPayload: Record<string, unknown> | null = null;
+      let itemsPayload: Array<Record<string, unknown>> | null = null;
+
       if (willMirror) {
         const meta = (user.user_metadata ?? {}) as Record<string, any>;
         const creatorName: string =
@@ -216,93 +211,45 @@ export const useRecordPaymentRPC = () => {
 
         const shortTitle = getInvoiceShortTitle(inv as any);
 
-        // Idempotency: nếu đã có phiếu thu gắn payment_id này (retry) → bỏ qua.
-        let alreadyMirrored = false;
-        if (newPaymentId) {
-          const { data: existingV } = await supabase
-            .from('income_expenses' as any)
-            .select('id')
-            .eq('payment_id', newPaymentId)
-            .limit(1) as any;
-          alreadyMirrored = !!(existingV && existingV.length > 0);
-        }
-
-        if (!alreadyMirrored) {
-          // 1 lần thu = ĐÚNG 1 phiếu thu (chứng từ khớp giao dịch thực — KHÔNG
-          // tách phiếu). Phần cọc là HẠNG MỤC is_deposit trên CÙNG phiếu; báo
-          // cáo KQKD tự loại phần cọc qua cột kqkd_amount (item-level, trigger
-          // DB — migration 20260702120000_kqkd_item_level).
-          const { data: voucher, error: vErr } = await supabase
-            .from('income_expenses' as any)
-            .insert({
-              user_id: user.id,
-              type: 'INCOME',
-              name: revenuePortion > 0
-                ? `Thu tiền theo HĐ ${shortTitle}`
-                : `Thu cọc theo HĐ ${shortTitle}`,
-              building_id: inv.building_id,
-              room_id: inv.room_id,
-              contract_id: inv.contract_id,
-              account_id: data.account_id,
-              invoice_id: inv.id,
-              payment_id: newPaymentId,
-              voucher_date: data.payment_date,
-              payer_name: data.notes ?? null,
-              notes: composedNotes,
-              attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
-              approval_status: 'APPROVED',
-              creator_name: creatorName,
-              // null = tự động: kqkd_amount = total − Σ item cọc (trigger DB).
-              business_result_accounting: null,
-              change_amount: change,
-              change_account_id: data.change_account_id ?? null,
-              rounding_amount: rounding,
-              rounding_account_id: rounding > 0 ? (data.rounding_account_id ?? null) : null,
-            } as any)
-            .select()
-            .single();
-          if (vErr) throw vErr;
-
-          const items = [
-            ...(revenuePortion > 0
-              ? [{
-                  income_expense_id: (voucher as any).id,
-                  income_expense_type_id: incomeTypeId!,
-                  description: `Thanh toán HĐ ${shortTitle}`,
-                  quantity: 1,
-                  unit_price: revenuePortion,
-                  start_date: data.payment_date,
-                  end_date: data.payment_date,
-                }]
-              : []),
-            ...(depositPortion > 0
-              ? [{
-                  income_expense_id: (voucher as any).id,
-                  income_expense_type_id: depositTypeId!,
-                  description: `Tiền cọc theo HĐ ${shortTitle}`,
-                  quantity: 1,
-                  unit_price: depositPortion,
-                  start_date: data.payment_date,
-                  end_date: data.payment_date,
-                }]
-              : []),
-          ];
-          if (items.length > 0) {
-            const { error: itemErr } = await supabase
-              .from('income_expense_items' as any)
-              .insert(items);
-            if (itemErr) throw itemErr;
-          }
-        }
+        voucherPayload = {
+          name: revenuePortion > 0 ? `Thu tiền theo HĐ ${shortTitle}` : `Thu cọc theo HĐ ${shortTitle}`,
+          room_id: inv.room_id ?? null,
+          payer_name: data.notes ?? null,
+          notes: composedNotes,
+          attachments: data.receipt_image_url ? [data.receipt_image_url] : [],
+          creator_name: creatorName,
+          business_result_accounting: null, // null ⇒ kqkd tự tính (trigger DB)
+          change_amount: change,
+          change_account_id: data.change_account_id ?? null,
+          rounding_amount: rounding,
+          rounding_account_id: rounding > 0 ? (data.rounding_account_id ?? null) : null,
+        };
+        itemsPayload = [
+          ...(revenuePortion > 0
+            ? [{ income_expense_type_id: incomeTypeId!, description: `Thanh toán HĐ ${shortTitle}`, quantity: 1, unit_price: revenuePortion, start_date: data.payment_date, end_date: data.payment_date }]
+            : []),
+          ...(depositPortion > 0
+            ? [{ income_expense_type_id: depositTypeId!, description: `Tiền cọc theo HĐ ${shortTitle}`, quantity: 1, unit_price: depositPortion, start_date: data.payment_date, end_date: data.payment_date }]
+            : []),
+        ];
       }
-      // ─────────────────────────────────────────────────────
 
-      // Tiền thối không còn tạo phiếu chi riêng — chỉ là metadata
-      // change_amount + change_account_id trên phiếu thu INCOME (đã ghi ở trên).
-      //
-      // Khi keep_as_credit: pass amount = full TM (không khấu trừ change), RPC
-      // record_invoice_payment tự INSERT excess_amounts row khi paid > total.
-      // Frontend không cần insert thủ công.
+      const { data: result, error } = await (supabase.rpc as any)(
+        'record_invoice_payment_v3',
+        {
+          p_invoice_id: data.invoice_id,
+          p_amount: data.amount,
+          p_payment_method: data.payment_method,
+          p_payment_date: data.payment_date,
+          p_idempotency_key: idempotencyKey,
+          p_account_id: data.account_id ?? null,
+          p_notes: data.notes ?? null,
+          p_receipt_image_url: data.receipt_image_url ?? null,
+          p_voucher: voucherPayload,
+          p_items: itemsPayload,
+        },
+      );
+      if (error) throw error;
 
       return result;
     },
