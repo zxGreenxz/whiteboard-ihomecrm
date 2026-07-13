@@ -846,6 +846,55 @@ export type Database = {
         }
         Relationships: []
       }
+      authorization_scopes: {
+        Row: {
+          area_id: string | null
+          building_id: string | null
+          cashbook_id: string | null
+          id: string
+          organization_id: string
+          scope_type: string
+        }
+        Insert: {
+          area_id?: string | null
+          building_id?: string | null
+          cashbook_id?: string | null
+          id?: string
+          organization_id: string
+          scope_type: string
+        }
+        Update: {
+          area_id?: string | null
+          building_id?: string | null
+          cashbook_id?: string | null
+          id?: string
+          organization_id?: string
+          scope_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "authorization_scopes_organization_id_area_id_fkey"
+            columns: ["organization_id", "area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "authorization_scopes_organization_id_building_id_fkey"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "authorization_scopes_organization_id_cashbook_id_fkey"
+            columns: ["organization_id", "cashbook_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       auto_debt_config: {
         Row: {
           bank_account: string | null
@@ -5205,6 +5254,90 @@ export type Database = {
           },
         ]
       }
+      member_override_scopes: {
+        Row: {
+          organization_id: string
+          override_id: string
+          scope_id: string
+        }
+        Insert: {
+          organization_id: string
+          override_id: string
+          scope_id: string
+        }
+        Update: {
+          organization_id?: string
+          override_id?: string
+          scope_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_override_scopes_organization_id_override_id_fkey"
+            columns: ["organization_id", "override_id"]
+            isOneToOne: false
+            referencedRelation: "member_permission_overrides"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "member_override_scopes_organization_id_scope_id_fkey"
+            columns: ["organization_id", "scope_id"]
+            isOneToOne: false
+            referencedRelation: "authorization_scopes"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      member_permission_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effect: string
+          expires_at: string | null
+          id: string
+          membership_id: string
+          organization_id: string
+          permission_key: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effect: string
+          expires_at?: string | null
+          id?: string
+          membership_id: string
+          organization_id: string
+          permission_key: string
+          reason?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effect?: string
+          expires_at?: string | null
+          id?: string
+          membership_id?: string
+          organization_id?: string
+          permission_key?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_permission_overrides_organization_id_membership_id_fkey"
+            columns: ["organization_id", "membership_id"]
+            isOneToOne: false
+            referencedRelation: "organization_memberships"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "member_permission_overrides_permission_key_fkey"
+            columns: ["permission_key"]
+            isOneToOne: false
+            referencedRelation: "permission_definitions"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       meter_readings: {
         Row: {
           approved_at: string | null
@@ -5705,6 +5838,44 @@ export type Database = {
           },
         ]
       }
+      organization_roles: {
+        Row: {
+          created_at: string
+          id: string
+          is_system: boolean
+          legacy_role_id: string | null
+          name: string
+          organization_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_system?: boolean
+          legacy_role_id?: string | null
+          name: string
+          organization_id: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_system?: boolean
+          legacy_role_id?: string | null
+          name?: string
+          organization_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_roles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           authorization_version: number
@@ -5790,6 +5961,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      permission_definitions: {
+        Row: {
+          action: string
+          is_active: boolean
+          key: string
+          permission_domain: string
+          resource: string
+          scope_kinds: string[]
+          sensitivity: string
+        }
+        Insert: {
+          action: string
+          is_active?: boolean
+          key: string
+          permission_domain?: string
+          resource: string
+          scope_kinds?: string[]
+          sensitivity: string
+        }
+        Update: {
+          action?: string
+          is_active?: boolean
+          key?: string
+          permission_domain?: string
+          resource?: string
+          scope_kinds?: string[]
+          sensitivity?: string
+        }
+        Relationships: []
       }
       personal_transactions: {
         Row: {
@@ -6369,6 +6570,123 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      role_binding_scopes: {
+        Row: {
+          organization_id: string
+          role_binding_id: string
+          scope_id: string
+        }
+        Insert: {
+          organization_id: string
+          role_binding_id: string
+          scope_id: string
+        }
+        Update: {
+          organization_id?: string
+          role_binding_id?: string
+          scope_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_binding_scopes_organization_id_role_binding_id_fkey"
+            columns: ["organization_id", "role_binding_id"]
+            isOneToOne: false
+            referencedRelation: "role_bindings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "role_binding_scopes_organization_id_scope_id_fkey"
+            columns: ["organization_id", "scope_id"]
+            isOneToOne: false
+            referencedRelation: "authorization_scopes"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      role_bindings: {
+        Row: {
+          id: string
+          legacy_assignment_id: string | null
+          membership_id: string
+          organization_id: string
+          role_id: string
+          valid_from: string | null
+          valid_to: string | null
+          version: number
+        }
+        Insert: {
+          id?: string
+          legacy_assignment_id?: string | null
+          membership_id: string
+          organization_id: string
+          role_id: string
+          valid_from?: string | null
+          valid_to?: string | null
+          version?: number
+        }
+        Update: {
+          id?: string
+          legacy_assignment_id?: string | null
+          membership_id?: string
+          organization_id?: string
+          role_id?: string
+          valid_from?: string | null
+          valid_to?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_bindings_organization_id_membership_id_fkey"
+            columns: ["organization_id", "membership_id"]
+            isOneToOne: false
+            referencedRelation: "organization_memberships"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "role_bindings_organization_id_role_id_fkey"
+            columns: ["organization_id", "role_id"]
+            isOneToOne: false
+            referencedRelation: "organization_roles"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      role_permissions: {
+        Row: {
+          effect: string
+          organization_id: string
+          permission_key: string
+          role_id: string
+        }
+        Insert: {
+          effect?: string
+          organization_id: string
+          permission_key: string
+          role_id: string
+        }
+        Update: {
+          effect?: string
+          organization_id?: string
+          permission_key?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_organization_id_role_id_fkey"
+            columns: ["organization_id", "role_id"]
+            isOneToOne: false
+            referencedRelation: "organization_roles"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "role_permissions_permission_key_fkey"
+            columns: ["permission_key"]
+            isOneToOne: false
+            referencedRelation: "permission_definitions"
+            referencedColumns: ["key"]
+          },
+        ]
       }
       roles: {
         Row: {
@@ -8757,6 +9075,15 @@ export type Database = {
         Returns: undefined
       }
       approve_voucher: { Args: { voucher_id: string }; Returns: undefined }
+      authorize_v2: {
+        Args: {
+          p_org: string
+          p_permission_key: string
+          p_resource_id: string
+          p_resource_type: string
+        }
+        Returns: boolean
+      }
       award_job_bonus: {
         Args: { p_job_id: string }
         Returns: {
@@ -8938,6 +9265,10 @@ export type Database = {
       demo_building_ids: { Args: never; Returns: string[] }
       demo_reset: { Args: never; Returns: Json }
       demo_user_ids: { Args: never; Returns: string[] }
+      effective_perms_v2: {
+        Args: { p_org: string; p_user: string }
+        Returns: Json
+      }
       ensure_room_deposit_type: { Args: never; Returns: string }
       estimate_termination_costs: {
         Args: {
