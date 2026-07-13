@@ -21,6 +21,13 @@ interface CreateUserRequest {
   password: string;
   full_name?: string;
   phone?: string;
+  // Metadata bổ sung để handle_new_user() dựng profiles đầy đủ (thay browser signUp).
+  username?: string;
+  contact_email?: string;
+  employee_code?: string;
+  department?: string;
+  job_title?: string;
+  is_active?: boolean;
 }
 
 serve(async (req) => {
@@ -88,8 +95,15 @@ serve(async (req) => {
       password: body.password,
       email_confirm: true,
       user_metadata: {
-        full_name: body.full_name ?? '',
-        phone: body.phone ?? '',
+        // handle_new_user() đọc các field này từ raw_user_meta_data → profiles.
+        username: body.username ?? null,
+        full_name: body.full_name ?? body.username ?? '',
+        phone: body.phone ?? null,
+        email: body.contact_email ?? null,
+        employee_code: body.employee_code ?? null,
+        department: body.department ?? null,
+        job_title: body.job_title ?? null,
+        is_active: body.is_active ?? true,
       },
     });
 

@@ -4714,6 +4714,24 @@ export type Database = {
           },
         ]
       }
+      legacy_owner_allowlist: {
+        Row: {
+          created_at: string
+          note: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          note?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          note?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       manager_salary_config: {
         Row: {
           alias: string | null

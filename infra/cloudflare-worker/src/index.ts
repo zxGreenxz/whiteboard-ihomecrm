@@ -38,17 +38,20 @@ function json(obj: unknown, status: number, headers: Record<string, string>): Re
   });
 }
 
-// Xác thực: token Supabase hợp lệ (người dùng đã đăng nhập). apikey = anon (công khai).
-async function verifyUser(env: Env, req: Request): Promise<boolean> {
+// Xác thực: trả về user id nếu token Supabase hợp lệ (đã đăng nhập), ngược lại null.
+// (Trước đây chỉ trả boolean → không biết ai upload nên không chặn được cross-user.)
+async function verifyUserId(env: Env, req: Request): Promise<string | null> {
   const auth = req.headers.get('Authorization') || '';
-  if (!auth.startsWith('Bearer ')) return false;
+  if (!auth.startsWith('Bearer ')) return null;
   try {
     const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: auth, apikey: env.SUPABASE_ANON_KEY },
     });
-    return res.ok;
+    if (!res.ok) return null;
+    const user = (await res.json().catch(() => null)) as { id?: string } | null;
+    return user && typeof user.id === 'string' && user.id ? user.id : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -60,6 +63,15 @@ function safeKey(key: string | null): string | null {
   if (key.length > 1024) return null;
   return key;
 }
+
+// Sprint 0 containment (AUTHORIZATION-PLAN.md §14.4): upload CHỈ được ghi vào
+// bucket public thực sự (room-sale-images) và CHỈ dưới thư mục của chính caller
+// (<uid>/...). Chặn ghi đè bucket riêng tư, cross-user overwrite và tuỳ ý chọn key.
+const R2_UPLOAD_ALLOWED_BUCKET = 'room-sale-images';
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB (client giới hạn 5MB, chừa biên)
+const ALLOWED_UPLOAD_MIME = new Set([
+  'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
+]);
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -75,16 +87,51 @@ export default {
 
     try {
       if (url.pathname === '/upload' && req.method === 'PUT') {
-        if (!(await verifyUser(env, req))) return json({ error: 'unauthorized' }, 401, headers);
+        const userId = await verifyUserId(env, req);
+        if (!userId) return json({ error: 'unauthorized' }, 401, headers);
         const key = safeKey(url.searchParams.get('key'));
         if (!key) return json({ error: 'invalid key' }, 400, headers);
         if (!req.body) return json({ error: 'empty body' }, 400, headers);
 
-        const contentType = req.headers.get('Content-Type') || 'application/octet-stream';
+        // Containment: chỉ bucket public + thư mục của chính caller.
+        const requiredPrefix = `${R2_UPLOAD_ALLOWED_BUCKET}/${userId}/`;
+        if (!key.startsWith(requiredPrefix)) {
+          return json(
+            { error: 'forbidden: upload chỉ được ghi vào room-sale-images/<your-uid>/' },
+            403,
+            headers,
+          );
+        }
+
+        // Giới hạn kích thước (chặn Content-Length gian lận + đọc thân quá lớn).
+        const declaredLen = Number(req.headers.get('Content-Length') || '0');
+        if (declaredLen > MAX_UPLOAD_BYTES) {
+          return json({ error: 'file too large' }, 413, headers);
+        }
+
+        // MIME allowlist (ảnh sale). Không phục vụ như trusted nhưng chặn upload lạ.
+        const contentType = (req.headers.get('Content-Type') || 'application/octet-stream')
+          .split(';')[0]
+          .trim()
+          .toLowerCase();
+        if (!ALLOWED_UPLOAD_MIME.has(contentType)) {
+          return json({ error: 'unsupported media type' }, 415, headers);
+        }
+
+        // Không cho ghi đè object đã tồn tại (chống cố tình overwrite key người khác/của mình).
+        const existing = await env.FILES.head(key);
+        if (existing) return json({ error: 'object already exists' }, 409, headers);
+
         const cacheControl =
           req.headers.get('X-Cache-Control') || 'public, max-age=31536000, immutable';
 
-        await env.FILES.put(key, req.body, {
+        // Đọc thân có chốt kích thước cứng (phòng khi Content-Length nói dối).
+        const buf = await req.arrayBuffer();
+        if (buf.byteLength > MAX_UPLOAD_BYTES) {
+          return json({ error: 'file too large' }, 413, headers);
+        }
+
+        await env.FILES.put(key, buf, {
           httpMetadata: { contentType, cacheControl },
         });
         return json({ ok: true, url: `${env.R2_PUBLIC_BASE}/${key}` }, 200, headers);
@@ -110,7 +157,7 @@ export default {
       }
 
       if (url.pathname === '/sign' && req.method === 'GET') {
-        if (!(await verifyUser(env, req))) return json({ error: 'unauthorized' }, 401, headers);
+        if (!(await verifyUserId(env, req))) return json({ error: 'unauthorized' }, 401, headers);
         // Phase 2: cấp presigned GET (HMAC ký URL /file?key&exp&sig do Worker tự stream R2).
         return json({ error: 'sign not enabled yet (phase 2)' }, 501, headers);
       }

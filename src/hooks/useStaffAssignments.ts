@@ -207,53 +207,59 @@ export const useProvisionStaff = () => {
 
   return useMutation({
     mutationFn: async (input: ProvisionStaffInput) => {
-      // Save admin session BEFORE signUp. supabase.auth.signUp() auto-switches
-      // the client session to the newly-created user, which would make every
-      // subsequent profile-upsert / staff_assignment-insert run as the new
-      // (un-privileged) user → RLS 403, then on retry "User already registered"
-      // 422, and an orphan auth row stuck in the database.
+      // Tạo tài khoản qua Edge Function admin-create-user (Supabase Admin API,
+      // super_admin-gated) THAY VÌ browser signUp. signUp cũ tự chuyển session
+      // sang user mới (phải lưu/khôi phục session admin — dễ race, để lại orphan
+      // auth row) và đòi project-level signup phải mở. Admin API không đổi session
+      // và không cần mở signup công khai. (AUTHORIZATION-PLAN.md §10, Sprint 0.2)
       const { data: { session: adminSession } } = await supabase.auth.getSession();
       if (!adminSession) throw new Error("Bạn chưa đăng nhập");
       const owner = adminSession.user;
 
       const authEmail = buildAuthEmail(input);
 
-      // The auth trigger (handle_new_user) reads ALL these fields from
-      // raw_user_meta_data and populates profiles in a single transaction.
-      // No client-side upsert is needed — and trying to do one would fail
-      // RLS anyway because at this point staff_assignments doesn't exist
-      // yet (admin can only update profiles of staff they already manage).
-      const { data: signUp, error: signUpErr } = await supabase.auth.signUp({
-        email: authEmail,
-        password: input.password,
-        options: {
-          data: {
+      // handle_new_user() đọc user_metadata → dựng profiles trong 1 transaction.
+      const { data: created, error: fnErr } = await supabase.functions.invoke(
+        "admin-create-user",
+        {
+          body: {
+            email: authEmail,
+            password: input.password,
             username: input.username,
             full_name: input.full_name || input.username,
             phone: input.phone || null,
-            email: input.email || null,
+            contact_email: input.email || null,
             employee_code: input.employee_code || null,
             department: input.department || null,
             job_title: input.job_title || null,
             is_active: input.is_active ?? true,
           },
         },
-      });
+      );
 
-      // Restore admin session IMMEDIATELY — even on signUp error, because the
-      // client may already have partially switched.
-      await supabase.auth.setSession({
-        access_token: adminSession.access_token,
-        refresh_token: adminSession.refresh_token,
-      });
-
-      if (signUpErr) {
-        if (/already registered|duplicate/i.test(signUpErr.message)) {
+      // Lỗi HTTP từ edge fn: đọc message trong response body nếu có.
+      if (fnErr) {
+        let msg = fnErr.message;
+        try {
+          const ctx = (fnErr as unknown as { context?: Response }).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) msg = body.error as string;
+          }
+        } catch { /* giữ msg gốc */ }
+        if (/already been registered|already registered|duplicate/i.test(msg)) {
           throw new Error(`Tên đăng nhập "${input.username}" đã được sử dụng. Vui lòng chọn tên khác.`);
         }
-        throw signUpErr;
+        throw new Error(msg);
       }
-      const newUserId = signUp.user?.id;
+      if (created?.error) {
+        const msg = created.error as string;
+        if (/already been registered|already registered|duplicate/i.test(msg)) {
+          throw new Error(`Tên đăng nhập "${input.username}" đã được sử dụng. Vui lòng chọn tên khác.`);
+        }
+        throw new Error(msg);
+      }
+      const newUserId = created?.user?.id as string | undefined;
       if (!newUserId) throw new Error("Không tạo được tài khoản — kiểm tra lại tên đăng nhập");
 
       // Seed permissions snapshot từ role.permissions để staff có quyền ngay
