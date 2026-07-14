@@ -50,12 +50,18 @@ export function labelForVacancyEvent(ev: VacancyEvent): string {
   return "Hết hạn HĐ";
 }
 
+export interface VacancyInfo {
+  reason: string;
+  /** Ngày khách rời phòng 'YYYY-MM-DD' — bắt đầu trống (null nếu không suy được). */
+  since: string | null;
+}
+
 /**
  * Chọn sự kiện MỚI NHẤT (ngày lớn nhất; tie-break theo `kindPriority`) rồi suy
- * nhãn. Mảng rỗng → "Trống phòng". Ngày dạng 'YYYY-MM-DD' so sánh từ vựng = theo
- * thời gian.
+ * nhãn + ngày bắt đầu trống. Mảng rỗng → "Trống phòng"/null. Ngày dạng
+ * 'YYYY-MM-DD' so sánh từ vựng = theo thời gian.
  */
-export function resolveVacancyReason(events: VacancyEvent[]): string {
+export function resolveVacancyInfo(events: VacancyEvent[]): VacancyInfo {
   let best: VacancyEvent | null = null;
   for (const ev of events) {
     if (!best) {
@@ -68,5 +74,34 @@ export function resolveVacancyReason(events: VacancyEvent[]): string {
       best = ev;
     }
   }
-  return best ? labelForVacancyEvent(best) : VACANCY_FALLBACK_REASON;
+  return best
+    ? { reason: labelForVacancyEvent(best), since: best.date ?? null }
+    : { reason: VACANCY_FALLBACK_REASON, since: null };
+}
+
+/** Như `resolveVacancyInfo` nhưng chỉ trả nhãn lý do. */
+export function resolveVacancyReason(events: VacancyEvent[]): string {
+  return resolveVacancyInfo(events).reason;
+}
+
+/**
+ * Chuỗi ghi chú phòng trống: "Trống 12 ngày từ 02/07 — Bỏ cọc".
+ * `refDate` = mốc đếm 'YYYY-MM-DD' (min(hôm nay, cuối tháng báo cáo) — tháng cũ
+ * chốt theo cuối tháng, tháng hiện tại đếm tới hôm nay). Không có ngày rời →
+ * giữ dạng cũ "Trống phòng — <lý do>".
+ */
+export function vacancyNoteText(
+  reason: string | null | undefined,
+  since: string | null | undefined,
+  refDate: string,
+): string {
+  const suffix = reason && reason !== VACANCY_FALLBACK_REASON ? ` — ${reason}` : "";
+  if (!since || since > refDate) return `Trống phòng${suffix}`;
+  // 'YYYY-MM-DD' parse thành mốc UTC-midnight cả 2 vế → hiệu chia hết cho ngày.
+  const days = Math.round((Date.parse(refDate) - Date.parse(since)) / 86_400_000);
+  const [y, m, d] = since.split("-");
+  const dm = refDate.slice(0, 4) === y ? `${d}/${m}` : `${d}/${m}/${y}`;
+  return days > 0
+    ? `Trống ${days} ngày từ ${dm}${suffix}`
+    : `Trống từ ${dm}${suffix}`;
 }

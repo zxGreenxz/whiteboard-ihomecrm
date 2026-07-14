@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
-import { resolveVacancyReason, type VacancyEvent } from "@/lib/vacancyReason";
+import { resolveVacancyInfo, type VacancyEvent } from "@/lib/vacancyReason";
 import {
   addDays,
   differenceInDays,
@@ -123,7 +123,10 @@ const embeddedName = (b: any): string =>
  * không ở + status không thuộc {RESERVED, MAINTENANCE, UNAVAILABLE}. Lý do suy từ
  * contract_terminations (FORFEIT→Bỏ cọc, còn lại→Thanh lý HĐ), contract_transfers
  * theo `old_room_id` (ROOM_CHANGE→Chuyển phòng, TENANT/BOTH→Sang nhượng) và HĐ
- * EXPIRED (→Hết hạn HĐ). Chỉ chạy khi đã chọn ≥1 toà.
+ * EXPIRED (→Hết hạn HĐ). HĐ đã kết thúc mà KHÔNG có bản ghi thanh lý/chuyển
+ * (đóng tay chỉ đổi status) → fallback suy từ chính HĐ: kết thúc sớm hơn hạn →
+ * Thanh lý HĐ, đủ hạn → Hết hạn HĐ. Kèm `vacantSince` = ngày sự kiện mới nhất
+ * (ngày khách rời) để UI ghi "Trống N ngày từ dd/mm". Chỉ chạy khi đã chọn ≥1 toà.
  *
  * @param monthEndDate ngày cuối tháng 'YYYY-MM-DD'.
  */
@@ -227,13 +230,18 @@ export function useVacantRoomNotes(
         // HĐ đã kết thúc (≤ cuối tháng) của các phòng gắn cờ → tra termination & EXPIRED.
         const endedByContract = new Map<
           string,
-          { roomId: string; date: string | null; status: string }
+          { roomId: string; date: string | null; plannedEnd: string | null; status: string }
         >();
         for (const c of contractList) {
           if (!flaggedIds.has(c.room_id) || c.status === "ACTIVE") continue;
           const end: string | null = c.actual_end_date || c.end_date || null;
           if (end && end > monthEndDate) continue; // kết thúc sau tháng → bỏ
-          endedByContract.set(c.id, { roomId: c.room_id, date: end, status: c.status });
+          endedByContract.set(c.id, {
+            roomId: c.room_id,
+            date: end,
+            plannedEnd: c.end_date ?? null,
+            status: c.status,
+          });
         }
         const endedContractIds = [...endedByContract.keys()];
 
@@ -263,17 +271,32 @@ export function useVacantRoomNotes(
           if (arr) arr.push(ev);
           else eventsByRoom.set(roomId, [ev]);
         };
+        const hasTerminationRow = new Set<string>();
         for (const t of terminations) {
           const ended = endedByContract.get(t.contract_id);
           if (!ended) continue;
+          hasTerminationRow.add(t.contract_id);
           pushEv(ended.roomId, {
             kind: "termination",
             type: t.termination_type ?? null,
             date: t.actual_move_out_date || t.termination_date || ended.date,
           });
         }
-        for (const c of endedByContract.values()) {
-          if (c.status === "EXPIRED") pushEv(c.roomId, { kind: "expired", date: c.date });
+        for (const [cid, c] of endedByContract) {
+          if (hasTerminationRow.has(cid)) continue;
+          if (c.status === "EXPIRED") {
+            pushEv(c.roomId, { kind: "expired", date: c.date });
+            continue;
+          }
+          // HĐ đóng tay không có bản ghi thanh lý (cleanup/đổi status tay):
+          // kết thúc SỚM hơn hạn → Thanh lý HĐ, đủ/quá hạn → Hết hạn HĐ.
+          const early = !!c.date && !!c.plannedEnd && c.date < c.plannedEnd;
+          pushEv(
+            c.roomId,
+            early
+              ? { kind: "termination", type: null, date: c.date }
+              : { kind: "expired", date: c.date },
+          );
         }
         for (const t of transfers) {
           pushEv(t.old_room_id, {
@@ -284,13 +307,15 @@ export function useVacantRoomNotes(
         }
 
         for (const r of flagged) {
+          const info = resolveVacancyInfo(eventsByRoom.get(r.id) ?? []);
           out.set(r.id, {
             roomId: r.id,
             roomName: r.name ?? "",
             buildingId: r.building_id,
             buildingName: embeddedName(r.buildings),
             kind: "vacant",
-            reason: resolveVacancyReason(eventsByRoom.get(r.id) ?? []),
+            reason: info.reason,
+            vacantSince: info.since,
           });
         }
       }

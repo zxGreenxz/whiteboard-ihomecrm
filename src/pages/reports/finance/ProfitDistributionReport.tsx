@@ -23,7 +23,7 @@ import { useAccrualMonthReport } from "@/hooks/useAccrualReport";
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
-import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
+import { vacancyNoteText } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
 import {
@@ -322,6 +322,9 @@ function ProfitDistributionDesktop() {
   // B5: bật mặc định cả khi chưa chọn toà (hook tự quét mọi toà theo RLS).
   const vacancyEnabled = voucherType !== "EXPENSE" && roomId === "all";
   const { data: vacantNotes } = useVacantRoomNotes(buildingIds, endDate, vacancyEnabled);
+  // Mốc đếm số ngày trống: tháng cũ chốt theo cuối tháng, tháng hiện tại tới hôm nay.
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
 
   // Chuẩn hoá dữ liệu thành 2 danh sách thu/chi + sắp theo thứ tự phòng.
   const { incomeRows, expenseRows } = useMemo(() => {
@@ -509,10 +512,7 @@ function ProfitDistributionDesktop() {
         all.push({
           key: `vacant-${note.roomId}`,
           monthLabel,
-          description:
-            !note.reason || note.reason === VACANCY_FALLBACK_REASON
-              ? "Trống phòng"
-              : `Trống phòng — ${note.reason}`,
+          description: vacancyNoteText(note.reason, note.vacantSince, vacancyRefDate),
           buildingName: note.buildingName,
           roomName: note.roomName,
           roomId: note.roomId,
@@ -529,7 +529,7 @@ function ProfitDistributionDesktop() {
     }
     all.sort(sorter);
     return { incomeRows: all, expenseRows: exp };
-  }, [accrualMode, accrual, result, monthLabel, vacantNotes, pnlOnly]);
+  }, [accrualMode, accrual, result, monthLabel, vacantNotes, pnlOnly, vacancyRefDate]);
 
   // Lọc bỏ dòng thuộc hạng mục đặc biệt khi bật toggle (chỉ ẩn dòng — số tổng
   // 3 thẻ + header lấy từ stats/accrual nên KHÔNG đổi).
@@ -718,6 +718,9 @@ function ProfitDistributionDesktop() {
   //    HĐ tháng đầu là "TIỀN PHÒNG THÁNG ĐẦU TIÊN - 05/2026".
   //  - Chưa tải xong invoiceTotals → tạm rơi về nhãn rút gọn cũ.
   const displayDescription = (r: DisplayRow): string => {
+    // Dòng ghi chú thuần (phòng trống/thiếu hoá đơn) giữ nguyên mô tả — ghi chú
+    // "Trống N ngày … — Thanh lý HĐ" chứa "thanh ly" nhưng KHÔNG phải khoản thanh lý.
+    if (r.isNote) return r.description;
     if (nrm(`${r.typeName} ${r.description}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
     const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
     if (invTitle) return invTitle;

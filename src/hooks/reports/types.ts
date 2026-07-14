@@ -14,6 +14,8 @@ export interface VacantRoomNote {
   kind: "vacant" | "active";
   /** Nhãn lý do trống: "Bỏ cọc" / "Thanh lý HĐ" / "Chuyển phòng" / … (chỉ 'vacant'). */
   reason?: string;
+  /** Ngày bắt đầu trống 'YYYY-MM-DD' — ngày khách rời (chỉ 'vacant'; null nếu không rõ). */
+  vacantSince?: string | null;
 }
 
 export interface RenewalTransferRow {

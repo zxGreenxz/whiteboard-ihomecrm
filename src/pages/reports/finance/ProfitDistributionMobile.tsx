@@ -16,7 +16,7 @@ import {
 import { useUiPrefBool, useSetUiPreference } from "@/hooks/useUiPreferences";
 import { useHiddenInReportTypes, useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useVacantRoomNotes } from "@/hooks/useReports";
-import { VACANCY_FALLBACK_REASON } from "@/lib/vacancyReason";
+import { vacancyNoteText } from "@/lib/vacancyReason";
 import { compareRoomNames } from "@/lib/roomSort";
 import { formatPeriod } from "@/lib/monthPeriod";
 import {
@@ -155,6 +155,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const { data: detailInvoice } = useInvoice(detailInvoiceId ?? undefined);
   // Phòng trống / thiếu hoá đơn trong tháng (cột Thu) — cùng hook desktop.
   const { data: vacantNotes } = useVacantRoomNotes(buildingIds, endDate, true);
+  // Mốc đếm số ngày trống: tháng cũ chốt theo cuối tháng, tháng hiện tại tới hôm nay.
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
 
   const loading = accrualMode ? accrualLoading : cashLoading;
 
@@ -270,8 +273,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           ...extra,
         });
     }
-    // Khoản thanh lý KHÔNG gắn hoá đơn cũng tô vàng cam.
-    for (const r of inc) if (!r.isLiq && isLiquidation(r.type, r.desc)) r.isLiq = true;
+    // Khoản thanh lý KHÔNG gắn hoá đơn cũng tô vàng cam. Bỏ qua dòng ghi chú —
+    // "Trống N ngày … — Thanh lý HĐ" chứa "thanh ly" nhưng không phải khoản thật.
+    for (const r of inc) if (!r.isNote && !r.isLiq && isLiquidation(r.type, r.desc)) r.isLiq = true;
 
     const sorter = (a: MRow, b: MRow) =>
       compareRoom(a.room, b.room) || a.desc.localeCompare(b.desc, "vi");
@@ -302,10 +306,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
       } else {
         inc.push({
           key: `vacant-${note.roomId}`,
-          desc:
-            !note.reason || note.reason === VACANCY_FALLBACK_REASON
-              ? "Trống phòng"
-              : `Trống phòng — ${note.reason}`,
+          desc: vacancyNoteText(note.reason, note.vacantSince, vacancyRefDate),
           building: note.buildingName, room: note.roomName, roomId: note.roomId,
           type: "—", period: "", amount: 0, notKqkd: false, invoiceId: null,
           isNote: true, isVacantNote: true,
@@ -315,7 +316,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     inc.sort(sorter);
     return { incomeRows: inc, expenseRows: exp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accrualMode, accrual, cash, vacantNotes, pnlOnly]);
+  }, [accrualMode, accrual, cash, vacantNotes, pnlOnly, vacancyRefDate]);
 
   // Ẩn hạng mục đặc biệt: chỉ ẩn DÒNG — tổng 3 ô giữ nguyên (kiểm chứng giải thích lệch).
   const isSpecialRow = (r: MRow) =>
@@ -434,6 +435,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
 
   // Tên dòng THU — như desktop: thanh lý → nhãn gộp; gắn HĐ → tên bên trang /invoices.
   const displayDescription = (r: MRow): string => {
+    // Dòng ghi chú thuần giữ nguyên mô tả (ghi chú trống phòng có thể chứa "Thanh lý HĐ").
+    if (r.isNote) return r.desc;
     if (nrm(`${r.type} ${r.desc}`).includes("thanh ly")) return "HĐ Thanh Lý Hợp Đồng";
     const invTitle = r.invoiceId ? invoiceTotals?.get(r.invoiceId)?.displayTitle : undefined;
     if (invTitle) return invTitle;
