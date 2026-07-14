@@ -50,10 +50,20 @@ export const FIXED_EXPENSE_CATEGORIES: FixedExpenseCategory[] = [
 
 const NO_RANK = FIXED_EXPENSE_CATEGORIES.length;
 
+/** Rank nhóm HOA HỒNG — NGAY SAU 9 hạng mục cố định, trước mọi khoản chi khác. */
+export const COMMISSION_RANK = NO_RANK; // 9
+/** Rank các khoản chi còn lại (không cố định, không hoa hồng) — xuống cuối. */
+export const OTHER_EXPENSE_RANK = NO_RANK + 1; // 10
+
 const matchRank = (c: string, n: string): number => {
   const i = FIXED_EXPENSE_CATEGORIES.findIndex((x) => x.match(c, n));
   return i === -1 ? NO_RANK : i;
 };
+
+// Nhận diện dòng chi HOA HỒNG (môi giới/thưởng sale) — cùng luật với bảng lương
+// (useManagerSalary): category "Hoa Hồng" hoặc tên chứa "hoa hồng"/"HHMG".
+const isCommission = (c: string, n: string): boolean =>
+  c.includes("hoa hong") || n.includes("hoa hong") || n.includes("hhmg");
 
 // Thứ hạng ưu tiên của một dòng chi (0 = lên đầu). Không khớp hạng mục cố định
 // nào → xuống cuối (rank = số lượng hạng mục).
@@ -66,6 +76,9 @@ const matchRank = (c: string, n: string): number => {
 //     tên). "điện lạnh" ≠ "tiền điện", "vệ sinh máy lạnh" (category Bảo Trì) không
 //     lọt nhóm Vệ Sinh.
 //   - `fixedRank` != null: dùng thẳng (cho dòng placeholder đã biết vị trí).
+//   - Không khớp cố định nhưng là HOA HỒNG → COMMISSION_RANK (9): nhóm hoa hồng
+//     đứng NGAY DƯỚI các hạng mục cố định, trong nhóm vẫn xếp theo phòng
+//     (G → L → 0 → 1 …) nhờ sorter phụ ở caller. Còn lại → OTHER_EXPENSE_RANK.
 export const expenseRankOf = (
   category: string | null | undefined,
   typeName: string | null | undefined,
@@ -74,11 +87,18 @@ export const expenseRankOf = (
 ): number => {
   if (fixedRank != null) return fixedRank;
   const c = nrm(category);
-  const byStructured = matchRank(c, nrm(typeName));
+  const tn = nrm(typeName);
+  const byStructured = matchRank(c, tn);
   if (byStructured < NO_RANK) return byStructured;
+  if (isCommission(c, tn)) return COMMISSION_RANK;
   // Fallback: chỉ khi category + tên loại KHÔNG khớp hạng mục cố định nào.
-  if (description) return matchRank(c, nrm(description));
-  return NO_RANK;
+  if (description) {
+    const d = nrm(description);
+    const byDesc = matchRank(c, d);
+    if (byDesc < NO_RANK) return byDesc;
+    if (isCommission(c, d)) return COMMISSION_RANK;
+  }
+  return OTHER_EXPENSE_RANK;
 };
 
 // Tìm loại thu chi (income_expense_types) khớp hạng mục cố định thứ `fixedRank`

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { FIXED_EXPENSE_CATEGORIES, expenseRankOf, nrm } from "./fixedExpenseCategories";
+import {
+  FIXED_EXPENSE_CATEGORIES,
+  COMMISSION_RANK,
+  OTHER_EXPENSE_RANK,
+  expenseRankOf,
+  nrm,
+} from "./fixedExpenseCategories";
 
 describe("nrm", () => {
   it("bỏ dấu + thường hoá + đ→d", () => {
@@ -52,14 +58,15 @@ describe("expenseRankOf — 9 hạng mục cố định về đúng vị trí", 
 });
 
 describe("expenseRankOf — biên", () => {
-  it("không khớp hạng mục cố định nào → xuống cuối (9)", () => {
-    expect(expenseRankOf("Sửa chữa", "Thay bóng đèn")).toBe(9);
-    expect(expenseRankOf(null, "—")).toBe(9);
+  it("không khớp hạng mục cố định/hoa hồng nào → xuống cuối (10)", () => {
+    expect(OTHER_EXPENSE_RANK).toBe(10);
+    expect(expenseRankOf("Sửa chữa", "Thay bóng đèn")).toBe(OTHER_EXPENSE_RANK);
+    expect(expenseRankOf(null, "—")).toBe(OTHER_EXPENSE_RANK);
   });
 
   it("Vệ sinh máy lạnh (category Bảo Trì) KHÔNG lọt nhóm Vệ Sinh #5", () => {
     expect(expenseRankOf("Bảo Trì", "Vệ sinh máy lạnh")).not.toBe(5);
-    expect(expenseRankOf("Bảo Trì", "Vệ sinh máy lạnh")).toBe(9);
+    expect(expenseRankOf("Bảo Trì", "Vệ sinh máy lạnh")).toBe(OTHER_EXPENSE_RANK);
   });
 
   it("Rác không bị nuốt vào nhóm Vệ Sinh dù cùng category 'Vệ sinh'", () => {
@@ -69,6 +76,27 @@ describe("expenseRankOf — biên", () => {
   it("fixedRank được ưu tiên tuyệt đối", () => {
     expect(expenseRankOf("không-khớp-gì", "không-khớp-gì", undefined, 3)).toBe(3);
     expect(expenseRankOf("Tiền nhà", "Tiền nhà", undefined, 8)).toBe(8);
+  });
+});
+
+describe("expenseRankOf — HOA HỒNG ngay dưới hạng mục cố định (rank 9)", () => {
+  it("khớp qua category/tên loại (cùng luật bảng lương: 'Hoa Hồng'/'HHMG')", () => {
+    expect(COMMISSION_RANK).toBe(9);
+    expect(expenseRankOf("Hoa Hồng", "Hoa hồng môi giới")).toBe(COMMISSION_RANK);
+    expect(expenseRankOf("HOA HỒNG", "Thưởng nóng Sale")).toBe(COMMISSION_RANK);
+    expect(expenseRankOf(null, "HHMG")).toBe(COMMISSION_RANK);
+  });
+
+  it("fallback theo MÔ TẢ phiếu khi loại chung/category null (vai cổ đông)", () => {
+    expect(
+      expenseRankOf(null, "Không có hạng mục", "Hoa hồng môi giới HĐ HD-2026-00003"),
+    ).toBe(COMMISSION_RANK);
+    expect(expenseRankOf(null, "—", "chi HHMG phòng 104")).toBe(COMMISSION_RANK);
+  });
+
+  it("hạng mục CỐ ĐỊNH vẫn thắng hoa hồng khi cả hai cùng khớp", () => {
+    // Phiếu loại 'Đóng tiền điện' nhưng mô tả lỡ chứa 'hoa hồng' → vẫn nhóm Điện.
+    expect(expenseRankOf("Điện", "Đóng tiền điện", "trừ hoa hồng tiền điện")).toBe(1);
   });
 });
 
@@ -88,15 +116,15 @@ describe("expenseRankOf — ánh xạ theo MÔ TẢ phiếu (loại/không có i
     // typeName '—', chỉ còn tên phiếu. 'Vệ sinh tòa nhà định kỳ' vẫn phải về rank 5.
     expect(expenseRankOf(null, "—", "Vệ sinh tòa nhà định kỳ")).toBe(5);
     // Nhưng 'vệ sinh máy lạnh' (Bảo Trì) KHÔNG được lọt nhóm dù cùng thiếu category.
-    expect(expenseRankOf(null, "—", "vệ sinh máy lạnh tháng 5")).toBe(9);
+    expect(expenseRankOf(null, "—", "vệ sinh máy lạnh tháng 5")).toBe(OTHER_EXPENSE_RANK);
   });
 
   it("KHÔNG khớp nhầm: điện lạnh / vệ sinh máy lạnh không phải hạng mục cố định", () => {
     // 'điện lạnh' ≠ 'tiền điện' → không lọt nhóm Điện.
-    expect(expenseRankOf("Bảo Trì", "vệ sinh máy lạnh", "thu chi điện lạnh - vệ sinh máy lạnh")).toBe(9);
-    expect(expenseRankOf("Bảo Trì", "vệ sinh máy giặt", "Thanh toán Điện Lạnh tháng 5")).toBe(9);
-    expect(expenseRankOf(null, "Mua đồ điện nước", "mua bóng đèn led")).toBe(9);
-    expect(expenseRankOf(null, "Thu chi khác", "In decal thông tây hội")).toBe(9);
+    expect(expenseRankOf("Bảo Trì", "vệ sinh máy lạnh", "thu chi điện lạnh - vệ sinh máy lạnh")).toBe(OTHER_EXPENSE_RANK);
+    expect(expenseRankOf("Bảo Trì", "vệ sinh máy giặt", "Thanh toán Điện Lạnh tháng 5")).toBe(OTHER_EXPENSE_RANK);
+    expect(expenseRankOf(null, "Mua đồ điện nước", "mua bóng đèn led")).toBe(OTHER_EXPENSE_RANK);
+    expect(expenseRankOf(null, "Thu chi khác", "In decal thông tây hội")).toBe(OTHER_EXPENSE_RANK);
   });
 
   it("khớp qua category vẫn ưu tiên (mô tả chỉ là bổ trợ)", () => {
