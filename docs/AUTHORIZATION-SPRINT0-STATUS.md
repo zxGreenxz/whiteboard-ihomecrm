@@ -1,5 +1,7 @@
 # Sprint 0 (Containment) — Trạng thái triển khai AUTHORIZATION-PLAN.md
 
+> **HISTORICAL / AS-OF 2026-07-13.** Đây là hồ sơ lịch sử Sprint 0, không phải tracker canonical của toàn chương trình và không được dùng để suy ra tranche hiện tại đã `VERIFIED`. Nguồn runtime hiện tại: [AUTHORIZATION-IMPLEMENTATION-STATUS.md](./AUTHORIZATION-IMPLEMENTATION-STATUS.md); nguồn nghiệp vụ/kiến trúc: mục 27 của [AUTHORIZATION-PLAN.md](./AUTHORIZATION-PLAN.md).
+>
 > Cập nhật: 2026-07-13. Đối chiếu live DB `tryymsxyyckgbrmmvozx` (chỉ đọc + apply migration qua Management API).
 > Tài liệu nguồn: [AUTHORIZATION-PLAN.md](./AUTHORIZATION-PLAN.md). Đây là **Sprint 0** — containment các P0 mà plan gắn nhãn **GO WITH CHANGES**. Sprint 1–7 (organizations, RBAC chuẩn hoá, RLS v2, approval engine, hợp nhất write path, storage/edge hardening, cutover) là chương trình nhiều tháng, plan tự kết luận **NO-GO** nếu chưa có audit độc lập + maintenance window + dual-write + reconciliation. Xem mục "Còn lại" bên dưới.
 

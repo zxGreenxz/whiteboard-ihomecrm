@@ -1,11 +1,11 @@
 # Kế hoạch tổng thể: Multi-tenant Authorization & Financial Approval
 
-> **Trạng thái**: Thiết kế để audit trước khi triển khai — **chưa phải migration có thể chạy**  
-> **Live DB được kiểm tra gần nhất**: 2026-07-12 16:27:57–16:28:41 UTC (chỉ đọc, qua Management API)
-> **Code được đối chiếu gần nhất**: application/database source tại commit `f78693e`; working tree có thay đổi ngoài phạm vi do người dùng tạo, không được tính vào bằng chứng
-> **Phạm vi**: React/Vite, Supabase Auth, Postgres/RLS/RPC, Storage, Edge Functions, các luồng ghi tài chính  
-> **Mục tiêu tài liệu**: đủ bằng chứng, thiết kế, thứ tự migration, rollback, test và tiêu chí nghiệm thu để một agent khác audit độc lập trước khi thi công.
-> **Lịch sử tài liệu**: audit gốc ở `85503ae`, các vòng bổ sung tại `112849f`–`f78693e`. Từ `85503ae` đến snapshot code nêu trên chỉ có file kế hoạch này thay đổi; không có migration/application fix mới đóng các finding P0/P1.
+> **Trạng thái**: **NO-GO cho thi công/cutover**; đã cập nhật theo rà soát độc lập ngày 2026-07-14 và quyết định nghiệp vụ của owner ngày 2026-07-15 — **chưa phải migration có thể chạy**
+> **Live DB được kiểm tra gần nhất**: 2026-07-14 (chỉ đọc, qua Management API); snapshot chi tiết ban đầu 2026-07-12 16:27:57–16:28:41 UTC vẫn được giữ làm manifest đối chiếu
+> **Code được đối chiếu**: application/database source và các migration hiện có; mọi live fact phải chụp lại trước từng tranche vì production vẫn phát sinh giao dịch
+> **Phạm vi**: React/Vite, Supabase Auth, Postgres/RLS/RPC, Storage, Edge Functions, các luồng ghi tài chính
+> **Mục tiêu tài liệu**: đủ bằng chứng, quyết định nghiệp vụ, thiết kế, thứ tự migration, rollback, test và tiêu chí nghiệm thu để audit độc lập trước khi thi công.
+> **Lịch sử tài liệu**: audit gốc ở `85503ae`, các vòng bổ sung tại `112849f`–`f78693e`; rà soát độc lập được tổng hợp ở `docs/Kết luận kiểm tra.md`; mục 27 là kết luận/tracker có thẩm quyền mới nhất và thay thế mọi thứ tự hoặc claim mâu thuẫn trước đó trong tài liệu.
 
 ---
 
@@ -57,10 +57,10 @@ Bốn nhóm rủi ro cần xử lý trước khi gọi hệ thống là multi-te
 - Binding/scope xác định **được làm ở đâu**: organization, area, building, cashbook.
 - Override per-user có cả `ALLOW` và `DENY`, trong đó `DENY` thắng.
 - Backend authorization function/RPC/RLS là nguồn quyết định cuối cùng; frontend chỉ phản chiếu UX.
-- Mọi luồng tiền đi qua RPC transaction hẹp; client không được tạo `POSTED/APPROVED` hay sửa số dư trực tiếp.
+- Mọi luồng tiền đi qua RPC transaction hẹp; client không được tự ghi `POSTED/APPROVED` hay sửa số dư trực tiếp. Invoice có thể được server tạo `APPROVED` theo setting đã duyệt vì đó là khoản phải thu, không phải client posting tiền.
 - Approval request lưu snapshot rule và payload; quyết định duyệt + post cashbook là một transaction.
 - Không khớp rule => **bắt buộc duyệt**.
-- Maker không tự duyệt; tenant owner chỉ được emergency approve với reason bắt buộc, event cảnh báo và audit bất biến.
+- Maker-checker là mặc định. Ngoại lệ maker tự duyệt chỉ áp dụng cho phiếu chi thông thường dưới hạn mức, trên sổ quỹ maker nắm giữ và phải hậu kiểm; mọi force-approval vẫn cần người khác duyệt. Tenant owner emergency approve cần reason, event cảnh báo và audit bất biến.
 
 ### Quyết định triển khai
 
@@ -76,14 +76,17 @@ Chương trình triển khai đồng bộ qua 8 sprint. Tuy vậy, các P0 phả
 | Người dùng | Owner, quản trị, kế toán, sales, kỹ thuật, cổ đông, quản lý lợi nhuận, đối tác ngoài. |
 | Công thức quyền | Role = **what**; organization/area/building/cashbook = **where**; override per-user = ngoại lệ. |
 | Thu nhập | Khoản thu nội bộ đủ điều kiện có thể post ngay theo allowlist/rule. Khoản thu từ khách phải đi qua RPC payment atomic; không được hiểu “mọi INCOME đều tin cậy”. |
-| Chi phí | Rule theo cashbook + category + amount + building/area + source. |
-| Luôn cần duyệt | Hoa hồng, thưởng, hoàn tiền, lương, chia lợi nhuận, chi phát sinh từ hợp đồng/thanh lý và các category/source được cấu hình force approval. |
+| Chi phí | Rule theo cashbook + category + amount + building/area + source. Phiếu chi thông thường có thể được maker tự duyệt trong hạn mức được cấu hình, nhưng chỉ khi dùng sổ quỹ do chính membership đó nắm giữ; mọi trường hợp force-approval bỏ qua hạn mức và luôn chờ người khác duyệt. |
+| Luôn cần duyệt | Hoa hồng, thưởng, hoàn tiền/hoàn cọc, lương, chia lợi nhuận, chi phát sinh từ hợp đồng/thanh lý và các category/source được cấu hình force approval. |
 | Không khớp rule | `REQUIRE_APPROVAL`, fail closed. |
-| Duyệt | Duyệt hợp lệ đồng thời là xác nhận đã chi/thu; cashbook chịu tác động ngay trong cùng transaction. |
+| Duyệt | Duyệt hợp lệ đồng thời là xác nhận đã chi/thu; cashbook chịu tác động ngay trong cùng transaction. Khi phiếu chờ duyệt chưa chọn sổ quỹ, kế toán/owner chọn sổ được phép và bổ sung ảnh chứng từ tại bước duyệt trước khi post. |
 | Approver | Kết hợp approver toàn tổ chức và approver theo cashbook/area/building. |
-| Maker-checker | Creator không tự duyệt request cần approval. |
-| Emergency | Chỉ membership loại `OWNER`; reason bắt buộc; không được âm thầm dùng như luồng thường; tạo security event. |
-| Rollback tài chính | Không “unapprove” chứng từ đã post; dùng reversal liên kết chứng từ gốc. |
+| Maker-checker | Mặc định creator không tự duyệt. Ngoại lệ có kiểm soát chỉ dành cho **phiếu chi thông thường** trong hạn mức tự duyệt, trên sổ quỹ maker nắm giữ và bắt buộc vào hàng hậu kiểm; không áp dụng cho force-approval. |
+| Emergency | Chỉ membership loại `OWNER`; reason bắt buộc; không được âm thầm dùng như luồng thường; tạo security event. Emergency không thay thế ngoại lệ tự duyệt theo hạn mức. |
+| Hóa đơn mới | Mặc định tạo ở `APPROVED`; cài đặt `auto_approve_invoice` cho phép bật/tắt. Khi tắt, hóa đơn mới ở `DRAFT` và cần duyệt. Dù bật, client không được tự gắn metadata duyệt; RPC server ghi provenance theo cấu hình. |
+| Sửa hóa đơn đã duyệt | Nhân viên có quyền quản lý được sửa khi hóa đơn chưa có payment hiệu lực; sửa qua RPC versioned, bắt buộc lý do và lưu revision/audit để kế toán/owner xem trước–sau. |
+| Rollback tài chính | Không “unapprove” hoặc xóa payment đã ghi sổ. “Hoàn tác payment” nghĩa là tạo một giao dịch đối ứng triệt tiêu tác động của payment gốc, giữ cả bản gốc lẫn bản hoàn tác để truy vết. |
+| Cọc giữ chỗ | Khi cọc vào `PENDING_APPROVAL`, phòng được hold độc quyền 24 giờ; duyệt/post chuyển thành reservation chính thức, reject/cancel/hết hạn tự giải phóng hold. |
 
 ### Định nghĩa “nội bộ đủ điều kiện auto-post”
 
@@ -119,7 +122,7 @@ Không dùng một boolean client gửi lên. Chỉ auto-post khi backend xác m
 | Auth user mồ côi | Có JWT hợp lệ nhưng chưa membership | Không có tenant context, không quyền, không sentinel owner. |
 | Staff tenant A | Biết UUID tenant B | SELECT/INSERT/UPDATE/DELETE/RPC/Storage của B. |
 | Staff bị giới hạn scope | Có quyền module nhưng chỉ một building/cashbook | Không truy cập object ngoài scope. |
-| Maker | Tạo expense | Không tự duyệt request của mình. |
+| Maker | Tạo expense | Mặc định không tự duyệt; chỉ ngoại lệ với phiếu chi thông thường trong hạn mức, sổ quỹ maker nắm giữ và có hậu kiểm. |
 | Approver | Có approve nhưng không create/edit | Không sửa payload hoặc thay account trước khi duyệt. |
 | Tenant owner | Full tenant control | Không thành platform super-admin; emergency phải có reason/audit. |
 | Cổ đông/đối tác | Chỉ xem dữ liệu đã cấp | Không vào vận hành hoặc xem PII/financial ngoài share. |
@@ -434,8 +437,8 @@ Ký hiệu:
 | `useInvoicePayments::useRecordPaymentRPC` | RPC tạo payment, sau đó client mirror voucher APPROVED/items | Payment và ledger mirror tách transaction | RPC thành công/mirror lỗi; retry/duplicate; approval bypass | RPC duy nhất tạo payment+voucher+items+credit. |
 | `usePayments::useCreatePayment` | Direct payment rồi read-modify-write `invoices.paid_amount/status` | Payment và invoice là hai request; update invoice không check error | Lost update khi hai collector chạy song song; payment có thể tồn tại nhưng invoice chưa cập nhật | Xoá/khóa hook legacy; mọi caller dùng `record_invoice_payment_atomic`. |
 | `useInvoices::useRecordPayment` (legacy, ~dòng 1272) | **Bản sao thứ hai** của anti-pattern trên: insert payment → SELECT invoice riêng → UPDATE `paid_amount/status/paid_date` riêng | Ba request rời | Update cuối **không check lỗi**, không CAS; lost update như `useCreatePayment` | Cùng target `record_invoice_payment_atomic`; xoá/khóa hook legacy này luôn. |
-| `useInvoices::useCreateInvoice` | Direct invoice `APPROVED`, optional credit, rồi items | Header/credit/items là 2–3 transaction | Invoice rỗng/credit đã tiêu nhưng item lỗi; creator tự đặt approver metadata | `create_invoice_draft`/`submit_invoice` RPC atomic; approval policy invoice tách rõ. |
-| `useInvoices::useUpdateInvoice` và `invoiceHelpers`/`useContracts` | Update header, delete items, insert lại; một số helper tự tạo invoice/items | Cho sửa cả `APPROVED` chưa thu; không CAS/transaction | Partial item loss, total/header lệch lines, duplicate invoice/event | RPC invoice state machine với expected version và server recompute total. |
+| `useInvoices::useCreateInvoice` | Direct invoice `APPROVED`, optional credit, rồi items | Header/credit/items là 2–3 transaction | Invoice rỗng/credit đã tiêu nhưng item lỗi; creator tự đặt approver metadata | `create_invoice_atomic`: invoice+credit+items cùng transaction. Mặc định server tạo `APPROVED`; cài đặt `auto_approve_invoice` cho phép tắt để tạo `DRAFT`. Server tự ghi actor/config provenance, client không tự đặt approver metadata. |
+| `useInvoices::useUpdateInvoice` và `invoiceHelpers`/`useContracts` | Update header, delete items, insert lại; một số helper tự tạo invoice/items | Cho sửa cả `APPROVED` chưa thu nhưng không CAS/transaction/audit revision | Partial item loss, total/header lệch lines, duplicate invoice/event; kế toán/owner không thấy rõ nội dung trước–sau | `revise_invoice(expected_version, reason)` atomic; server recompute total. Nhân viên có `invoices.edit_approved_unpaid` được sửa invoice `APPROVED` khi `paid_amount=0` và không có payment hiệu lực; invoice giữ `APPROVED`, tăng revision, lưu snapshot/diff/actor/reason/time và vào hàng hậu kiểm cho kế toán/owner. Invoice đã từng thu rồi hoàn tác dùng correction flow riêng, không quay lại đường sửa thông thường. |
 | `useUpdatePaymentMethod` | Đổi account của voucher rồi đổi payment method | Hai update tách rời | Split-brain payment/cashbook; resolver match tên có thể chọn nhầm account | `change_payment_method_atomic`, derive account từ invoice org/building và authorize cashbook. |
 | `useUploadPaymentReceipt` / `useUpdateInvoiceNote` | Direct update payment/voucher/invoice metadata | Nhiều request khi mirror attachment | Metadata có thể lệch; Storage URL có thể ngoài scope | RPC metadata hẹp, state/version guard; attachment org/resource-bound. |
 | `useRecordRefundRPC` | Direct EXPENSE APPROVED + item; tự tạo category | Chi hoàn thanh lý ngay | Refund phải luôn approval; non-atomic | `request_settlement_refund`. |
@@ -455,20 +458,24 @@ Ký hiệu:
 
 #### 8.1.1 Vòng đời status ở cấp INVOICE (bổ sung — song song approval cấp voucher)
 
-Bảng trên tập trung vào `income_expenses` (voucher). Nhưng `invoices` có **state machine riêng** với `status` và `approved_by/approved_at`, và client đang ghi trực tiếp qua một loạt hook trong `src/hooks/useInvoices.ts` chưa được liệt kê. Approval cấp invoice phải được xử lý **tách bạch** khỏi approval cấp voucher (hoá đơn được duyệt ≠ tiền đã thu):
+Bảng trên tập trung vào `income_expenses` (voucher). Nhưng `invoices` có **state machine riêng** với `status` và `approved_by/approved_at`, và client đang ghi trực tiếp qua một loạt hook trong `src/hooks/useInvoices.ts` chưa được liệt kê. Approval cấp invoice phải được xử lý **tách bạch** khỏi approval cấp voucher (hóa đơn được duyệt ≠ tiền đã thu).
+
+**Quyết định nghiệp vụ 2026-07-15:** hóa đơn mới mặc định là `APPROVED` để giữ tốc độ vận hành hiện tại. Setting tổ chức `auto_approve_invoice` cho phép bật/tắt; khi tắt, hóa đơn mới là `DRAFT` và cần `invoices.approve`. Setting chỉ quyết định outcome phía server: client không được tự đặt `approved_by/approved_at`. Mọi cách tạo hóa đơn — form đơn, batch tháng, hợp đồng, công tơ — phải đi cùng contract này thay vì tự hard-code status.
+
+**Sửa hóa đơn `APPROVED` chưa thu:** nhân viên quản lý có permission `invoices.edit_approved_unpaid` được sửa khi và chỉ khi `paid_amount = 0`, không có payment hiệu lực và invoice chưa bị cancel/reverse. RPC phải lock invoice, kiểm lại payment ledger trong transaction, nhận `expected_version` và `reason`, ghi revision append-only gồm snapshot/diff trước–sau, actor, thời gian, source và tổng cũ/mới; sau đó tăng version và server recompute total. Invoice vẫn mang trạng thái `APPROVED` nhưng có cờ/revision hiển thị cho kế toán/owner và xuất hiện trong hàng hậu kiểm. Invoice đã từng có payment rồi được hoàn tác không được coi như “chưa từng thu”; correction phải đi flow riêng để tránh viết lại lịch sử đã đối soát.
 
 | Hook (dòng) | Thao tác | Vấn đề | Target |
 |---|---|---|---|
-| `useApproveInvoice` (~928) / `useBulkApproveInvoices` (~1028) | Direct UPDATE `invoices.status='APPROVED'` + approver metadata | Client tự đặt approver; không rule/maker-checker | RPC `approve_invoice` / state machine, permission `invoices.approve`. |
-| `useUnapproveInvoice` (~978) | APPROVED → chưa duyệt | Phá finality nếu đã sinh payment/AR | Reversal-based, không unapprove tự do. |
+| `useApproveInvoice` (~928) / `useBulkApproveInvoices` (~1028) | Direct UPDATE `invoices.status='APPROVED'` + approver metadata | Client tự đặt approver; không cùng contract setting | RPC `approve_invoice`, permission `invoices.approve`; no-op/idempotent nếu đã auto-approved. |
+| `useUnapproveInvoice` (~978) | APPROVED → chưa duyệt | Có thể làm mất finality, đặc biệt khi đã có payment/AR | Chỉ cho đưa về `DRAFT` qua RPC nếu **chưa từng có payment hiệu lực**, có reason/audit/revision và permission riêng; nếu đã có payment thì dùng correction/cancel/reversal phù hợp, không unapprove tự do. |
 | `useCancelInvoice` (~1602) / `useForceCancelInvoice` (~1568, RPC `super_admin_force_cancel_invoice`) | Đổi status CANCELLED | Cancel bypass state/side-effect (payment, AR, cọc) | RPC cancel atomic; force-cancel chỉ support-repair có audit. |
-| `useRestoreInvoice` (~1513) | CANCELLED → APPROVED | Khôi phục trực tiếp, có thể tái tạo hiệu ứng | Reversal/repair có audit như voucher. |
+| `useRestoreInvoice` (~1513) | CANCELLED → APPROVED | Khôi phục trực tiếp, có thể tái tạo hiệu ứng | Chỉ restore khi invariant cho phép và lưu revision/audit; trường hợp đã có tác động tiền dùng repair/reversal có kiểm soát. |
 | `useCheckOverdueInvoices` (~1172) | Bulk UPDATE `status` (quá hạn) | Bulk status write không qua action riêng | RPC/job idempotent, không client bulk-write. |
 
 #### 8.1.2 Đường ghi money-ledger phụ chưa liệt kê (gom vào Sprint 5 khi revoke direct DML)
 
-- `src/lib/invoiceHelpers.ts:747` — sinh HĐ tháng tự động, `status = settings.auto_approve ? 'APPROVED' : 'DRAFT'` + `invoice_items` insert riêng → **non-atomic, direct-APPROVED**.
-- `src/hooks/useContracts.ts:651` — HĐ tháng đầu khi tạo hợp đồng, insert trực tiếp `invoices` với `status:'APPROVED'` + items → direct-approved, non-atomic. (Đây là **insert `invoices` duy nhất** trong file; các chỗ ~1032/1261/1717 là SELECT `invoices`, còn ~1391 là UPDATE `contract_terminations` — không phải insert hoá đơn.)
+- `src/lib/invoiceHelpers.ts:747` — sinh HĐ tháng tự động, `status = settings.auto_approve ? 'APPROVED' : 'DRAFT'` + `invoice_items` insert riêng → **non-atomic và client/helper tự quyết định status**. Target giữ setting auto-approve nhưng chuyển việc đọc setting, tạo status/provenance và insert header+items vào RPC server atomic.
+- `src/hooks/useContracts.ts:651` — HĐ tháng đầu khi tạo hợp đồng, insert trực tiếp `invoices` với `status:'APPROVED'` + items → direct-approved, non-atomic và bỏ qua setting. Target dùng cùng invoice-create contract server-side; mặc định approved chỉ khi setting bật. (Đây là **insert `invoices` duy nhất** trong file; các chỗ ~1032/1261/1717 là SELECT `invoices`, còn ~1391 là UPDATE `contract_terminations` — không phải insert hoá đơn.)
 - `src/hooks/useContractOperations.ts:270` — INSERT trực tiếp `excess_amounts` (row âm) để consume credit/cọc → ghi thẳng ledger cọc/thừa, không qua RPC.
 
 Ba đường này phải nằm trong allowlist revoke direct DML ở Sprint 5 cùng nhóm invoice/payment, nếu không sẽ là lỗ hở còn lại sau khi khoá các hook chính.
@@ -501,15 +508,16 @@ Các hàng mục 8.1–8.1.2 là bằng chứng tối thiểu, chưa được co
 2. Một business event có một `correlation_id`; mọi payment/voucher/item/posting liên quan commit hoặc rollback cùng nhau.
 3. Mỗi endpoint có unique `(organization_id, operation, idempotency_key)`.
 4. Mỗi approval request được post tối đa một lần (`posted_event_id UNIQUE`).
-5. Posted payload không sửa; correction bằng reversal liên kết original.
-6. Account phải cùng organization và caller có `cashbooks.post` trên account ở thời điểm post.
-7. Amount/category/account/rule snapshot được lock trước decision (`FOR UPDATE`, version compare).
-8. Invoice `paid_amount/status` được recompute trong cùng transaction hoặc từ immutable payment ledger, không dựa vào chuỗi client.
-9. Internal transfer phải net zero và hai chân cùng correlation; trigger deferred kiểm cân bằng trước commit.
-10. Audit event ghi actor, effective membership, source, request id, rule version, old/new state, reason và trace id.
-11. Invoice total phải được server derive/reconcile từ versioned lines; client không được tự ghi `total_amount`, `paid_amount`, `remaining_amount` như nguồn sự thật.
-12. Đổi payment method/account, thêm receipt và correction metadata phải là RPC hẹp có state/version guard; không coi “chỉ sửa metadata” là an toàn để direct update.
-13. Mọi posting/reversal/payment/transfer/adjustment/repair phải gọi cùng một `assert_cashbook_period_open` cho **tất cả account legs** và effective date server-derived; không chỉ kiểm `income_expenses.account_id`. Archive cấm posting mới, yêu cầu zero/reconciled balance, không pending request và đã gỡ mọi default/reference hoạt động.
+5. Posted financial payload không sửa; correction bằng giao dịch đối ứng liên kết original. Riêng invoice `APPROVED` chưa từng có payment được phép revision theo contract mục 8.1.1 vì invoice là khoản phải thu, chưa phải payment/ledger đã post.
+6. Account phải cùng organization và caller có `cashbooks.post` trên account ở thời điểm post. Ngoại lệ phiếu `PENDING_APPROVAL` được phép chưa chọn account; approver/kế toán phải chọn account được phép và bổ sung ảnh chứng từ trước final post.
+7. Khi maker chọn sổ quỹ lúc tạo **bất kỳ phiếu chi nào**, account đó phải thuộc tập sổ quỹ membership maker nắm giữ; maker không được chọn sổ của người khác rồi gửi chờ duyệt. Thay vào đó maker có thể để trống account cho phiếu sẽ chờ duyệt, để kế toán/owner chọn account họ được phép post ở bước final decision. Ngoại lệ maker tự duyệt chỉ áp dụng cho phiếu chi thông thường dưới hạn mức, không force-approval và bắt buộc hậu kiểm; phiếu không có account hoặc account do approver chọn không đủ điều kiện self-approve.
+8. Amount/category/account/rule snapshot được lock trước decision (`FOR UPDATE`, version compare); việc approver bổ sung account/ảnh phải tạo submission version/snapshot cuối có audit trước khi quyết định.
+9. Invoice `paid_amount/status` được recompute trong cùng transaction hoặc từ immutable payment ledger, không dựa vào chuỗi client.
+10. Internal transfer phải net zero và hai chân cùng correlation; trigger deferred kiểm cân bằng trước commit.
+11. Audit event ghi actor, effective membership, source, request id, rule version, old/new state, reason và trace id.
+12. Invoice total phải được server derive/reconcile từ versioned lines; client không được tự ghi `total_amount`, `paid_amount`, `remaining_amount` như nguồn sự thật. Revision invoice approved-unpaid lưu diff/snapshot trước–sau và hàng hậu kiểm.
+13. Đổi payment method/account, thêm receipt và correction metadata phải là RPC hẹp có state/version guard; không coi “chỉ sửa metadata” là an toàn để direct update.
+14. Mọi posting/giao dịch đối ứng/payment/transfer/adjustment/repair phải gọi cùng một `assert_cashbook_period_open` cho **tất cả account legs** và effective date server-derived; không chỉ kiểm `income_expenses.account_id`. Archive cấm posting mới, yêu cầu zero/reconciled balance, không pending request và đã gỡ mọi default/reference hoạt động.
 
 ---
 
@@ -1189,9 +1197,24 @@ Concurrency contract:
 - `posted_event_id` chỉ được set bởi posting routine; posting event có unique `approval_request_id` để chống double post từ cả hai phía.
 - Rejection thắng/approval thắng theo transaction lock đầu tiên; transaction sau thấy terminal state và trả kết quả idempotent/invalid transition, không ghi decision trái trạng thái.
 
-### 12.6 Maker-checker và emergency
+### 12.6 Maker-checker, tự duyệt theo hạn mức và emergency
 
-Decision RPC phải reject khi `actor_membership_id = maker_membership_id` hoặc `actor_user_id = maker_user_id`, kể cả maker có nhiều role.
+Maker-checker vẫn là mặc định: normal decision RPC reject khi `actor_membership_id = maker_membership_id` hoặc `actor_user_id = maker_user_id`, kể cả maker có nhiều role. Ngoại lệ duy nhất đã được owner chốt là **phiếu chi thông thường tự duyệt theo hạn mức**, không phải emergency.
+
+#### Ngoại lệ tự duyệt theo hạn mức
+
+Maker được tự duyệt/post phiếu do chính mình tạo chỉ khi backend xác minh đồng thời:
+
+1. Rule/category/source xác định đây là phiếu chi thông thường và **không** thuộc force-approval. Hoa hồng, thưởng, hoàn tiền/hoàn cọc, lương, chia lợi nhuận, hợp đồng/thanh lý và mọi rule `REQUIRE_APPROVAL` bắt buộc bỏ qua hạn mức, luôn chờ người khác duyệt.
+2. Tổng tiền không vượt hạn mức tự duyệt hiệu lực của membership/role tại thời điểm post. Hạn mức là cấu hình versioned phía server; không nhận từ client, không được chia nhỏ một business event để lách hạn mức và phải tính tổng theo correlation/batch phù hợp.
+3. Nếu maker chọn account khi tạo phiếu, account đó phải thuộc tập sổ quỹ membership maker đang **nắm giữ** theo binding/scope canonical; chỉ có building scope hoặc quyền xem/sửa sổ không đủ. Quy tắc này áp dụng cho mọi phiếu chi, kể cả phiếu sẽ chờ duyệt. Maker không nắm sổ phù hợp phải để trống account để kế toán/owner chọn khi duyệt; phiếu để trống account không đủ điều kiện tự duyệt.
+4. Maker có exact permissions `income_expenses.create`, `income_expenses.self_approve_within_limit` và `cashbooks.post` trên account đó; organization, kỳ sổ và mọi foreign resource đều hợp lệ.
+5. Payload/version/idempotency hợp lệ và ảnh/evidence đáp ứng rule của loại phiếu. Post, quyết định self-approval và audit cùng một transaction.
+6. Request được gắn `SELF_APPROVED_WITHIN_LIMIT`, hạn mức/rule version đã dùng và đưa vào hàng **hậu kiểm** cho kế toán/owner. Hậu kiểm không sửa/xóa posting gốc; nếu phát hiện sai thì tạo correction/reversal hoặc mở sự kiện điều tra.
+
+Phiếu chờ duyệt thông thường được phép chưa chọn sổ quỹ. Ở final decision, kế toán/owner phải chọn một sổ họ có quyền post, thêm ảnh chứng từ theo UI duyệt hiện tại, rồi hệ thống tạo snapshot/version cuối và mới cho post. Việc approver chọn account không được biến request thành maker self-approval và phải được audit như thay đổi có tác động tiền.
+
+#### Emergency owner override
 
 Emergency owner override chỉ khi:
 
@@ -1205,9 +1228,7 @@ Emergency owner override chỉ khi:
 
 Emergency là endpoint riêng, không được insert vào normal decision path bằng client-supplied enum. Endpoint lock request, kiểm owner/permission/re-auth server-side, ghi event và post trong cùng transaction. Nếu request đã terminal, endpoint không tạo thêm decision.
 
-Emergency không thay thế quorum recovery. Dashboard phải cảnh báo request sắp/quá SLA hoặc quorum bất khả thi; reassign/escalate chỉ qua endpoint audited.
-
-Phải chốt ngoại lệ maker-checker: khuyến nghị **owner là maker cũng không được emergency-approve request do chính mình tạo**. Nếu business thật sự cần break-glass tự duyệt, đó phải là policy riêng có second factor + external alert và acceptance criterion riêng, không để suy diễn từ chữ “emergency”.
+Emergency không thay thế quorum recovery hoặc hạn mức tự duyệt. Dashboard phải cảnh báo request sắp/quá SLA hoặc quorum bất khả thi; reassign/escalate chỉ qua endpoint audited. Owner là maker không được dùng emergency để tự duyệt; nếu phiếu thỏa ngoại lệ hạn mức thì đi đúng self-approval flow, còn force-approval phải chờ approver khác.
 
 ### 12.7 Posting/ledger
 
@@ -1235,16 +1256,19 @@ Reversal là posting mới với `reverses_posting_id UNIQUE` và số tiền/li
 
 | RPC/endpoint | Permission | Transaction invariant |
 |---|---|---|
-| `create_financial_draft` | `income_expenses.create` | Voucher+items cùng org; DRAFT only. |
+| `create_financial_draft` | `income_expenses.create` | Voucher+items cùng org; DRAFT only; account có thể null nếu sẽ chờ duyệt. |
 | `update_financial_draft` | `income_expenses.edit` | Maker/scope; expected version; DRAFT only. |
-| `submit_financial_request` | create/submit | Rule snapshot + request hoặc auto-post atomically. |
-| `decide_financial_approval` | `income_expenses.approve` + approver eligibility | Maker-checker; row lock; one decision; final post once. |
-| `emergency_approve_financial` | `approvals.emergency_override` + OWNER | Reason/re-auth; alert; post once. |
+| `submit_financial_request` | create/submit | Rule snapshot + request hoặc auto-post atomically; force categories luôn chờ duyệt. |
+| `self_approve_financial_within_limit` | `income_expenses.self_approve_within_limit` + `cashbooks.post` | Chỉ phiếu chi thông thường dưới hạn mức, account thuộc maker, không force-approval; post once + hậu kiểm. |
+| `decide_financial_approval` | `income_expenses.approve` + approver eligibility | Maker-checker; approver có thể chọn account và thêm ảnh trước snapshot cuối; row lock; final post once. |
+| `emergency_approve_financial` | `approvals.emergency_override` + OWNER | Reason/re-auth; alert; post once; maker không dùng để né force-approval. |
 | `cancel_financial_draft` / `withdraw_financial_request` | cancel/withdraw | Draft chỉ DRAFT; withdraw chỉ PENDING_APPROVAL và đóng request có audit. |
-| `reverse_financial_posting` | `income_expenses.reverse` | Reversal pair; original immutable. |
-| `record_invoice_payment_atomic` | `invoices.record_payment` + cashbook post | Payment+voucher+items+credit+invoice recompute một transaction. |
-| `record_invoice_payments_bulk` | `invoices.record_payment` + quyền post cashbook cho từng invoice | Cho phép thành công một phần theo contract đã công bố; trả kết quả ổn định cho từng invoice. |
-| `reverse_invoice_payment` | `thu_tien.undo` | Reversal, không hard delete. |
+| `reverse_financial_posting` | `income_expenses.reverse` | Tạo chứng từ đối ứng; original immutable. |
+| `create_invoice_atomic` | `invoices.create` | Invoice+items+credit atomic; server áp setting `auto_approve_invoice` (mặc định bật). |
+| `revise_invoice` | `invoices.edit_approved_unpaid` hoặc `invoices.edit` | Approved-unpaid revision có lock, zero-payment check, expected version, reason, before/after audit và hậu kiểm. |
+| `record_invoice_payment_atomic` | `thu_tien.collect` + cashbook post | Payment+voucher+items+credit+invoice recompute một transaction. |
+| `record_invoice_payments_bulk` | `thu_tien.collect` + quyền post cashbook cho từng invoice | Per-invoice atomic, cho phép thành công một phần; trả kết quả ổn định cho từng invoice. |
+| `reverse_invoice_payment` | `thu_tien.undo` | Tạo payment/posting đối ứng, không hard delete; giữ liên kết bản gốc để truy vết. |
 | `request_settlement_refund` | `deposits.refund` | Luôn PENDING_APPROVAL. |
 | `request_salary_payout` | `salary.distribute` | Luôn PENDING_APPROVAL; post cập nhật paid atomically. |
 | `request_profit_distribution` | `shareholder_profit.distribute` | Luôn PENDING_APPROVAL. |
@@ -1254,14 +1278,22 @@ Reversal là posting mới với `reverses_posting_id UNIQUE` và số tiền/li
 | `lock_cashbook_period` / `unlock_cashbook_period` / `archive_cashbook` | exact elevated cashbook action | CAS + reason + dependency/reconciliation guard; mọi writer gọi shared period-open assertion. |
 | `generate_meter_reading_and_invoice` | `meter_readings.approve` + `invoices.create` | Reading+invoice+items/credit atomic; server pricing; idempotent. |
 | `submit_contract` | `contracts.create` + dependent exact actions | Core graph/room/deposit/first invoice atomic; durable outbox intent cho commission và side effects. |
-| `create_reservation_deposit` | `deposits.create` + cashbook post | Tenant/deposit voucher/item/room reservation cùng transaction; rule-enforced. |
+| `create_reservation_deposit` | `deposits.create` + cashbook post | Tenant/deposit voucher/item + hold phòng 24 giờ cùng transaction; rule-enforced. Duyệt/post chuyển hold thành reservation, reject/cancel/expiry giải phóng. |
 | `invite/update/suspend/remove_member` | exact `users.*` | Identity+membership+binding+audit atomic. |
 
 Client roles không được direct mutate các cột/tables thuộc state machine. RLS direct INSERT có thể chỉ cho DRAFT với trigger ép actor/org; an toàn hơn là revoke direct DML và chỉ RPC.
 
+#### Giải thích nghiệp vụ: “hoàn tác payment bằng giao dịch đối ứng”
+
+“Hoàn tác” **không phải** xóa payment cũ và cũng không sửa lịch sử như thể khách chưa từng trả. Hệ thống giữ payment gốc, sau đó tạo một operation mới mang số tiền đối ứng và liên kết `reverses_payment_id/reverses_posting_id` tới bản gốc. Ví dụ khách đã trả 1.000.000 đồng vào sổ A nhưng giao dịch cần hủy: bản gốc `+1.000.000` vẫn còn; operation hoàn tác ghi `-1.000.000` trên đúng account/các ledger legs, giảm lại `invoice.paid_amount` và recompute trạng thái hóa đơn trong cùng transaction. Kết quả ròng bằng 0 nhưng kế toán/owner vẫn thấy rõ ai thu, ai hoàn tác, thời gian, lý do và chứng từ.
+
+Chỉ full reversal một lần theo mặc định; retry cùng idempotency key trả kết quả cũ. Nếu payment đã được đổi phương thức, phân bổ credit, chốt kỳ hoặc phát sinh hoàn tiền thật cho khách, RPC phải derive toàn bộ chân đối ứng từ operation gốc, kiểm kỳ/scope và đưa qua approval khi rule yêu cầu. UI nên dùng nhãn dễ hiểu **“Hủy giao dịch thu tiền (tạo bút toán hoàn tác)”**, hiển thị cảnh báo “không xóa lịch sử” trước khi xác nhận.
+
 Tên/contract bulk phải rõ: “per-invoice savepoint/result” là **partial-success batch**, không atomic toàn batch. Nên đổi tên thành `record_invoice_payments_bulk` và trả item result ổn định, hoặc chọn all-or-nothing thật sự; không dùng hậu tố `_atomic` khi API cho phép một phần commit.
 
 `submit_contract` là authoritative create path: lock room/reservation/deposit theo thứ tự cố định, revalidate version/availability, rồi commit contract graph, customer/service links, room state, reservation conversion, deposit vouchers/items và first invoice cùng nhau. Commission request, notification, document generation và integration được ghi thành transactional outbox trong chính transaction đó, unique `(organization_id,event_type,aggregate_id,aggregate_version)`. Worker claim bằng `FOR UPDATE SKIP LOCKED`, at-least-once; handler idempotent, retry/backoff/dead-letter có alert. “Submit thành công” bảo đảm core state + durable intent, không tuyên bố side effect ngoài transaction đã hoàn tất.
+
+Reservation deposit tạo hold độc quyền **24 giờ tính từ thời điểm server nhận submission**. Hold có `expires_at`, subject/deposit/request id và unique exclusion/locking để một phòng không có hai hold hiệu lực. Approval/post trước hạn chuyển hold sang reservation chính thức trong cùng transaction. Reject, maker cancel hoặc job expiry giải phóng hold có audit; request được duyệt sau khi hold hết hạn phải re-lock và revalidate phòng, không tự chiếm lại phòng đã có người khác giữ. UI hiển thị trạng thái “Đang giữ — chờ duyệt cọc” và thời gian đếm ngược; job expiry idempotent và có cảnh báo khi approval SLA gần vượt 24 giờ.
 
 ---
 
@@ -1452,7 +1484,7 @@ Deliverables:
 9. Contain R2 Worker: disable upload ngoài public-sale allowlist hoặc triển khai upload intent + resource authorization; xác minh public origin không lộ private class.
 10. Khóa `api/salary-v5-cron.js`: POST + constant-time inbound cron auth; test unauthenticated không kích hoạt Edge job.
 11. Contain cashbook opening/lock/archive: cấm client sửa hồi tố `initial_amount/initial_date/user_id`; tách exact action cho lock/archive và tạm require reason/audit cho đến RPC Sprint 5.
-12. Contain meter/invoice/deposit/contract orchestration: không cho client tự ghi approver metadata/default APPROVED; nếu chưa có RPC atomic thì feature-flag flow rủi ro hoặc ép DRAFT + reconciliation queue, không tiếp tục fail-open.
+12. Contain meter/invoice/deposit/contract orchestration: không cho client tự ghi approver metadata hoặc hard-code `APPROVED`. Riêng invoice có thể mặc định `APPROVED` theo setting `auto_approve_invoice`, nhưng chỉ do RPC atomic phía server áp setting và ghi provenance; nếu chưa có RPC atomic thì feature-flag flow rủi ro hoặc ép DRAFT + reconciliation queue, không tiếp tục fail-open.
 
 Gate: P0 exploit paths đóng; production smoke test; rollback catalog snapshot sẵn.
 
@@ -1491,21 +1523,22 @@ Gate: zero null/cross-org; direct REST test matrix xanh; snapshot sums khớp.
 1. Rule sets/rules/steps/approvers/requests/decisions/audit.
 2. Rule admin UI với preview/simulation và publish version.
 3. Backfill legacy states/provenance.
-4. Maker-checker/emergency override.
-5. Generic create/update/submit/decide/reverse RPC.
+4. Maker-checker, policy self-approval theo hạn mức có hậu kiểm và emergency override tách riêng.
+5. Generic create/update/submit/self-approve/decide/reverse RPC; approver có thể chọn account và thêm evidence qua versioned snapshot trước post.
 
-Gate: deterministic rule simulation; no-rule=require approval; concurrency tests xanh.
+Gate: deterministic rule simulation; no-rule=require approval; force-approval không bị hạn mức lách; account ownership/self-approval/review queue và concurrency tests xanh.
 
 ### Sprint 5 — Hợp nhất mọi financial mutation
 
-1. Invoice payment single/bulk + mirror voucher atomic.
-2. Cancel/delete thành reversal.
-3. Salary/profit/refund/commission/utility/handover/termination/recurring đi canonical RPC.
-4. Internal auto-post allowlist và balanced constraint.
-5. Revoke direct DML/state columns từ client roles.
-6. Hợp nhất opening balance/lock/archive cashbook, meter+invoice generation, reservation deposit và contract-create orchestration; không chỉ voucher/payment hooks.
+1. Invoice create atomic áp `auto_approve_invoice`; revision `APPROVED` chưa từng thu có version/diff/audit/hậu kiểm.
+2. Invoice payment single/bulk + mirror voucher atomic; bulk per-invoice partial success có item result.
+3. Cancel/delete payment thành operation đối ứng, không hard-delete.
+4. Salary/profit/refund/commission/utility/handover/termination/recurring đi canonical RPC.
+5. Internal auto-post allowlist và balanced constraint.
+6. Revoke direct DML/state columns từ client roles.
+7. Hợp nhất opening balance/lock/archive cashbook, meter+invoice generation, reservation deposit hold 24 giờ và contract-create orchestration; không chỉ voucher/payment hooks.
 
-Gate: generated writer allowlist + runtime/direct-REST audit không còn mutation state/ledger ngoài canonical writer; grep không còn client direct `APPROVED`; end-to-end sums và retries xanh.
+Gate: generated writer allowlist + runtime/direct-REST audit không còn mutation state/ledger ngoài canonical writer; mọi direct `APPROVED` còn lại chỉ xuất phát từ server contract được allowlist; invoice revision/payment race, operation đối ứng, hold 24 giờ, end-to-end sums và retries xanh.
 
 ### Sprint 6 — Staff lifecycle, Storage, Edge và function hardening
 
@@ -1572,38 +1605,46 @@ Các case bắt buộc:
 2. Nhiều rule match; precedence deterministic.
 3. Không rule match => PENDING_APPROVAL.
 4. Commission/refund/salary/profit luôn require dù generic auto-post match.
-5. Maker tự approve => deny.
-6. Maker có hai role hoặc owner role => vẫn deny normal approval.
-7. Owner emergency thiếu/short reason => deny.
-8. Emergency valid => post một lần + decision + alert + audit.
-9. Approver bị suspend sau submit => deny decision.
-10. Payload thay sau submit => hash/version mismatch; invalidate request.
-11. Hai approver click đồng thời => đúng quorum, một posting.
-12. Reject và approve cạnh tranh => một terminal outcome.
-13. Rule set publish trong khi request pending => request giữ snapshot version.
-14. Suspend/revoke làm candidate thấp hơn quorum => escalate theo policy, không tự hạ quorum hoặc để request ở PENDING_APPROVAL mà không cảnh báo.
-15. Reassign candidate => payload/rule snapshot không đổi, version tăng, candidate cũ giữ history và audit actor/reason.
-16. Hai request đồng thời cùng subject => partial unique chỉ cho một PENDING_APPROVAL.
-17. Hai posting path cạnh tranh => unique posting-side guard chỉ cho một posting event/batch; multi-leg hợp lệ cùng batch.
-18. Rule `DENY` => request terminal DENIED, không step/decision/posting; retry cùng key trả cùng outcome.
-19. `AUTO_POST` => request terminal POSTED, không step; posting failure rollback cả request/subject effect.
-20. Multi-step: chỉ step thấp nhất PENDING; quorum promote đúng một next step; reject hủy các step sau.
-21. Rematerialize candidate tạo generation mới, decision cũ vẫn trỏ generation cũ; emergency không cần candidate nhưng phải gắn active step.
+5. Maker tự approve phiếu force-approval, phiếu vượt hạn mức, phiếu không có account hoặc account không thuộc binding maker => deny.
+6. Phiếu chi thông thường dưới hạn mức + account maker nắm giữ + đủ exact permissions => self-approve/post đúng một lần, gắn rule/limit version và vào hàng hậu kiểm.
+7. Chia nhỏ nhiều phiếu/correlation để lách hạn mức => deny/alert; tổng business event vượt ngưỡng phải chờ người khác duyệt.
+8. Maker có hai role hoặc owner role vẫn không được normal approve ngoài ngoại lệ hạn mức đã định nghĩa.
+9. Owner emergency thiếu/short reason hoặc dùng để né force-approval => deny.
+10. Emergency valid => post một lần + decision + alert + audit.
+11. Approver bị suspend sau submit => deny decision.
+12. Payload thay sau submit => hash/version mismatch; invalidate request. Approver chọn account/thêm ảnh phải tạo snapshot/version cuối có audit trước post.
+13. Hai approver click đồng thời => đúng quorum, một posting.
+14. Reject và approve cạnh tranh => một terminal outcome.
+15. Rule set publish trong khi request pending => request giữ snapshot version.
+16. Suspend/revoke làm candidate thấp hơn quorum => escalate theo policy, không tự hạ quorum hoặc để request ở PENDING_APPROVAL mà không cảnh báo.
+17. Reassign candidate => payload/rule snapshot không đổi, version tăng, candidate cũ giữ history và audit actor/reason.
+18. Hai request đồng thời cùng subject => partial unique chỉ cho một PENDING_APPROVAL.
+19. Hai posting path cạnh tranh => unique posting-side guard chỉ cho một posting event/batch; multi-leg hợp lệ cùng batch.
+20. Rule `DENY` => request terminal DENIED, không step/decision/posting; retry cùng key trả cùng outcome.
+21. `AUTO_POST` => request terminal POSTED, không step; posting failure rollback cả request/subject effect.
+22. Multi-step: chỉ step thấp nhất PENDING; quorum promote đúng một next step; reject hủy các step sau.
+23. Rematerialize candidate tạo generation mới, decision cũ vẫn trỏ generation cũ; emergency không cần candidate nhưng phải gắn active step.
 
 ### 18.4 Financial atomicity/idempotency
 
 - Network timeout sau commit rồi retry cùng key => cùng response/resource.
+- Tạo hóa đơn với `auto_approve_invoice` bật => server tạo invoice+items/credit atomic ở `APPROVED`, metadata cho biết auto-approved theo setting/version; client không giả actor.
+- Tắt `auto_approve_invoice` => cùng create path tạo `DRAFT`; chỉ RPC approve có permission mới chuyển `APPROVED`.
+- Sửa invoice `APPROVED` chưa thu => chỉ thành công khi `paid_amount=0` và không có payment hiệu lực dưới row lock; revision lưu before/after/reason/actor và vào hàng hậu kiểm.
+- Payment được tạo đồng thời với revision approved-unpaid => chỉ một transaction thắng theo lock/version; không sửa invoice dựa trên kiểm tra cũ.
+- Invoice đã từng có payment rồi hoàn tác => không được đi đường sửa approved-unpaid thông thường.
 - Hai collector thu cùng invoice => lock/remaining check; không overpay phantom.
 - Item insert failure => không còn voucher/payment orphan.
 - Voucher post failure => payment/invoice rollback.
-- Bulk payment một invoice lỗi => semantics rõ (per-item savepoint hoặc all-or-nothing được contract hóa).
-- Reverse payment hai lần => lần hai idempotent/no extra reversal.
+- Bulk payment một invoice lỗi => per-invoice atomic; các dòng khác có thể thành công và kết quả/retry từng dòng ổn định.
+- Hoàn tác payment hai lần => lần hai trả operation cũ, không tạo thêm bút toán đối ứng; payment/posting gốc không bị xóa.
 - Internal transfer một chân lỗi => toàn transaction rollback.
 - Salary payout post => voucher, salary paid, optional rent payment cùng commit.
 - Profit/refund approve => cashbook effect và subject status cùng commit.
 - Posted voucher direct update/delete qua REST => denied.
 - Direct sửa `accounts.initial_amount/initial_date/user_id`, lock/unlock/archive không exact action/reason/version => denied.
 - Generate reading+invoice lỗi ở bất kỳ leg nào => không còn APPROVED reading/invoice/credit orphan; retry không duplicate.
+- Reservation deposit submit => hold phòng đúng 24 giờ; concurrent deposit không tạo hai hold hiệu lực; approve chuyển reservation một lần; reject/cancel/expiry giải phóng; approve sau expiry phải revalidate availability.
 - Reservation deposit/contract submit lỗi giữa tenant/contract/voucher/item/room/invoice => rollback business event hoặc tạo item result/reconciliation theo contract đã công bố, không trạng thái im lặng.
 
 ### 18.5 RLS/RPC/Storage/Edge
@@ -1678,18 +1719,20 @@ Alert tức thời cho emergency override, cross-org probe, duplicate posting at
 2. **Orphan fail closed**: auth user không active membership nhận zero tenant permission; không sentinel owner/super-admin.
 3. **Cross-tenant zero access**: ma trận direct REST/RPC/Storage/Edge giữa A và B đều deny, kể cả biết UUID/path.
 4. **Backend exact action**: 100% mutation và elevated action trong catalog có server-side permission check tương ứng; frontend-only không được tính đạt.
-5. **No direct posting/balance mutation**: client không thể insert/update `APPROVED/POSTED`, approver metadata, payment ledger/posted items hoặc sửa opening balance/period lock/archive ngoài canonical RPC.
+5. **No direct posting/balance mutation**: client không thể tự insert/update trạng thái tài chính `APPROVED/POSTED`, approver metadata, payment ledger/posted items hoặc sửa opening balance/period lock/archive ngoài canonical RPC. Invoice `APPROVED` theo setting và self-approved ordinary expense chỉ được tạo/post bởi server RPC khi toàn bộ contract tương ứng đạt.
 6. **State machine**: DRAFT/PENDING_APPROVAL/POSTED/DENIED/REJECTED/CANCELLED/REVERSED tách nghĩa; rule-deny khác human-reject; posted immutable, sửa bằng reversal.
 7. **Rule correctness**: force categories luôn approval; no match=require; internal auto-post chỉ allowlist cân bằng.
-8. **Maker-checker**: maker không normal approve dưới mọi tổ hợp role; owner emergency cần reason/re-auth/audit/alert.
-9. **Atomic/idempotent money**: payment/voucher/items/account/invoice/subject commit một lần; retry không duplicate.
-10. **Audit provenance**: không giả mạo approver lịch sử; decision/state/security event không UPDATE/DELETE bởi app roles.
-11. **Definer/ACL hardening**: zero internal/helper/trigger function executable bởi anon/PUBLIC; public RPC đúng allowlist, search_path và guard.
-12. **Storage/Edge isolation**: object và service action cùng organization/resource scope; authenticated-wide PII read không còn.
+8. **Maker-checker có ngoại lệ đóng**: mặc định maker không normal approve. Chỉ phiếu chi thông thường dưới hạn mức, trên account maker nắm giữ và có exact permissions mới được self-approve; force-approval luôn chờ người khác; self-approval bắt buộc hậu kiểm. Owner emergency cần reason/re-auth/audit/alert và không được dùng để né force-approval.
+9. **Atomic/idempotent money**: payment/voucher/items/account/invoice/subject commit một lần; retry không duplicate. Payment sai được hoàn tác bằng operation đối ứng liên kết bản gốc, không hard-delete.
+10. **Invoice governance**: `auto_approve_invoice` mặc định bật nhưng có thể tắt; mọi create path áp setting phía server. Invoice `APPROVED` chưa từng có payment được revision bởi đúng permission với lock/version/reason/diff/audit và hàng hậu kiểm; invoice đã có lịch sử payment không đi đường sửa này.
+11. **Audit provenance**: không giả mạo approver lịch sử; decision/state/security event không UPDATE/DELETE bởi app roles.
+12. **Definer/ACL hardening**: zero internal/helper/trigger function executable bởi anon/PUBLIC; public RPC đúng allowlist, search_path và guard.
+13. **Storage/Edge isolation**: object và service action cùng organization/resource scope; authenticated-wide PII read không còn.
     Bao gồm Supabase Storage, Cloudflare R2/custom domain, Vercel API routes và long-running VPS workers; không chỉ `supabase/functions`.
-13. **Staff lifecycle**: invite/suspend/revoke thay browser signUp/hard delete; owner cuối được bảo vệ.
-14. **Data parity**: account/invoice/payment/KQKD/salary/profit reconciliation khớp baseline trước cutover.
-15. **Operational readiness**: metrics, alerts, freeze/reversal/runbook, catalog snapshot và rollback gate đã diễn tập.
+14. **Staff lifecycle**: invite/suspend/revoke thay browser signUp/hard delete; owner cuối được bảo vệ.
+15. **Data parity**: account/invoice/payment/KQKD/salary/profit reconciliation khớp baseline trước cutover.
+16. **Operational readiness**: metrics, alerts, freeze/reversal/runbook, catalog snapshot và rollback gate đã diễn tập.
+17. **Reservation hold**: cọc `PENDING_APPROVAL` hold phòng độc quyền 24 giờ, không double-hold; mọi approve/reject/cancel/expiry transition có lock, audit và idempotency.
 
 ---
 
@@ -1904,21 +1947,110 @@ Các query này là template; agent phải điều chỉnh theo schema live và 
 
 ---
 
-## 27. Kết luận
+## 27. Kết luận và kế hoạch thực thi đã hiệu chỉnh
 
-Không nên vá thêm action JSONB hoặc approval flag trên mô hình hiện tại rồi gọi đó là hoàn thiện. Hướng an toàn là dựng tenant boundary first-class, normalize permission/scope, khóa mọi mutation tài chính sau RPC state machine và đưa approval/posting vào một transaction có idempotency/audit.
+### 27.1 Phán quyết hiện tại
 
-Thứ tự ưu tiên không được đảo:
+| Phạm vi | Phán quyết |
+|---|---|
+| Tiếp tục audit, sửa tài liệu, thiết kế contract và viết test/harness không ghi production | **GO WITH CHANGES** |
+| Coi plan này là migration/runbook có thể áp ngay hoặc merge branch để triển khai tự động | **NO-GO** |
+| Wire `submit_financial_voucher`/`decide_financial_voucher` hiện tại vào UI | **NO-GO** |
+| Chuẩn bị artifact containment approval RPC đang mở | **GO — P0 ưu tiên** |
+| Áp containment, migration, callable RPC, RLS/ACL/Storage hoặc behavior flip lên production | Chỉ khi owner ra lệnh riêng cho đúng tranche, sau review bằng chứng/gate |
+
+Rà soát độc lập ngày 2026-07-14 xác nhận approval prototype hiện chưa đạt acceptance: RPC đang callable bởi `authenticated`, submit chỉ kiểm membership, tin classification client, chưa có idempotency DB đúng nghĩa, payload revalidation, audit events, resubmit contract hoặc reversal state hoàn chỉnh. `record_invoice_payment_v3` đã wire nhưng vẫn phải re-audit exact `thu_tien.collect`, same-org/scope foreign IDs và atomic idempotency. Vì vậy không được coi “0 UI caller”, “feature flag OFF” hoặc “RPC additive” là security boundary.
+
+### 27.2 Quyết định nghiệp vụ được owner duyệt ngày 2026-07-15
+
+Các quyết định dưới đây thay thế mọi câu mâu thuẫn ở phần thiết kế cũ:
+
+1. **Hóa đơn mới mặc định `APPROVED`**, có setting tổ chức `auto_approve_invoice` để bật/tắt. Setting được áp phía server cho mọi create path; tắt thì tạo `DRAFT` và cần duyệt.
+2. **Invoice `APPROVED` chưa từng có payment được phép sửa có kiểm soát** bởi nhân viên có permission riêng: lock + expected version + reason + revision trước/sau + audit + hàng hậu kiểm cho kế toán/owner. Invoice đã có lịch sử payment không đi đường sửa này.
+3. **Payment không bị xóa để hoàn tác.** Hệ thống tạo operation/bút toán đối ứng liên kết bản gốc, recompute hóa đơn và giữ cả hai để truy vết; UI dùng nhãn “Hủy giao dịch thu tiền (tạo bút toán hoàn tác)”.
+4. **Maker-checker có ngoại lệ đóng:** phiếu chi thông thường dưới hạn mức có thể được maker tự duyệt chỉ trên sổ quỹ maker nắm giữ, có exact permission và bắt buộc hậu kiểm. Force-approval (hoa hồng, thưởng, refund/cọc, lương, lợi nhuận, hợp đồng/thanh lý và rule bắt buộc khác) luôn chờ người khác, không xét hạn mức.
+5. Maker chỉ được chọn sổ quỹ mình nắm giữ khi tạo bất kỳ phiếu chi nào. Nếu không có sổ phù hợp, phiếu chờ duyệt được phép để trống sổ; tại final decision, kế toán/owner chọn sổ họ được post và bổ sung ảnh chứng từ, rồi hệ thống snapshot/version/audit lại trước khi ghi tiền. Maker không được chọn sổ của người khác chỉ vì phiếu sẽ chờ duyệt; phiếu thiếu sổ không đủ điều kiện maker tự duyệt.
+6. **Cọc `PENDING_APPROVAL` hold phòng độc quyền 24 giờ** theo giờ server. Approve/post chuyển thành reservation; reject/cancel/expiry giải phóng; approve sau expiry phải kiểm tra phòng lại.
+7. Bulk payment dùng **per-invoice atomic/partial success có kết quả từng dòng**; retry không thu lại dòng đã thành công.
+8. Điều chỉnh số dư đầu kỳ luôn qua approval; bàn giao tiền cần bên nhận xác nhận; suspend nhân viên deny backend ngay nhưng giữ identity/history; restore/force-cancel chỉ support repair; cutover theo domain; legacy mơ hồ vào review queue.
+9. Con số **51 hạng mục/163 ngày chỉ là baseline inventory ban đầu**, không phải tổng chương trình hay cam kết tiến độ.
+
+### 27.3 T1 thiết kế lại — không bắt đầu bằng reversal/wiring
 
 ```text
-Contain P0
-  -> explicit organization boundary
-  -> normalized authorization + shadow compare
-  -> RLS v2
-  -> approval engine
-  -> consolidate financial writes
-  -> Storage/Edge/ACL hardening
-  -> cutover + reconciliation + cleanup
+T1a containment exposed approval RPC
+  -> T1b re-audit/harden payment v3
+  -> T2 RBAC source-of-truth + dual-write + staff lifecycle + authorization version
+  -> T3 approval contract v2 + rule governance + self-limit policy + reversal, chưa wire
+  -> T4 direct REST/RPC/Storage + concurrency + reconciliation harness, observability/runbook
+  -> T5 canonical writer theo domain, callable grant review riêng
+  -> T6 RLS v2 shadow/read validation và cutover từng domain
+  -> T7+ B-money canary/flip/drain/revoke từng domain
+  -> T8 Storage/R2 và full SECURITY DEFINER ACL burn-down
+  -> T9 retention, cleanup và legacy removal
 ```
 
-Chỉ GO production khi agent audit độc lập xác minh live facts, toàn bộ P0/P1 đóng, cross-tenant negative suite xanh và reconciliation tiền khớp tuyệt đối.
+**T1a — containment:** phương án mặc định để review là revoke `EXECUTE` của `submit_financial_voucher` và `decide_financial_voucher` khỏi `authenticated` vì hiện chưa có UI caller. Chỉ áp live khi owner ra lệnh riêng. Chỉ grant lại sau contract v2 và direct REST negative tests.
+
+**T1b — payment v3:** đổi sang exact permission `thu_tien.collect`; authorize account/change/rounding/item IDs theo org/scope; idempotency operation phải unique atomically theo org+operation+subject+caller+key và payload hash; same key/different payload conflict; không lookup/trả ID xuyên tenant.
+
+**T3 — approval contract v2:** hoàn thiện state machine/constraints, subject lock/version, immutable/revalidated snapshot, submission number/resubmit, candidate generation và ANY/ALL/QUORUM, affected-row assertions, audit events, rule lifecycle/bootstrap/publish/retire, maker self-approval limit policy, approver chọn account/evidence, posting và operation đối ứng. Chưa expose/wire production trong tranche này.
+
+### 27.4 Cutover theo domain
+
+Không dùng một lần `REVOKE DML` khổng lồ. Mỗi domain — invoice, payment/credit, thu-chi, cashbook, meter/invoice, deposit/contract, salary/profit — phải đi qua cùng gate:
+
+1. Inventory mọi writer từ code/catalog/runtime và chứng minh canonical replacement.
+2. Shadow/dual-path khi có thể; direct API allow/deny tests bằng JWT thật.
+3. Chốt maintenance window, canary organization/transaction class và freeze procedure.
+4. Chụp reconciliation pre-state, catalog/function/policy/ACL hashes và xác nhận backup/PITR/restore procedure.
+5. Bật state-transition/RLS guard phía server; flip frontend dưới flag.
+6. Drain writer cũ, revoke direct DML đúng domain/signature, không dựa vào grep đơn thuần.
+7. Reconcile post-state, theo dõi deny rate/RPC error/idempotency conflict/approval SLA/drift và so abort threshold.
+8. Nếu ledger mới đã post, không rollback bằng xóa dữ liệu: freeze, forward-fix hoặc tạo operation đối ứng có audit.
+
+Với bảng dùng chung như `income_expenses`, có thể chặn direct `APPROVED/POSTED` trước nhưng tạm cho canonical/direct `DRAFT` có guard cho tới khi tất cả writer domain được migrate.
+
+### 27.5 Tracker chính thức
+
+| Tranche | Nội dung | Trạng thái |
+|---|---|---|
+| T0a | Inventory/dossier ban đầu | **Đã làm** |
+| T0b | Independent audit + hiệu chỉnh plan + quyết định nghiệp vụ owner | **Đã làm trong tài liệu; chưa triển khai runtime** |
+| T1a | Contain/harden exposed approval RPC | Chưa triển khai; cần review và lệnh owner riêng |
+| T1b | Re-audit payment v3 permission/scope/idempotency | Chưa |
+| T2 | RBAC synchronization, staff lifecycle, authorization-version | Chưa |
+| T3 | Approval contract/rule governance/self-limit/reversal, chưa wire | Chưa |
+| T4 | Authorization/API/concurrency/reconciliation harness + observability/runbook | Chưa |
+| T5 | Canonical writers theo domain; invoice setting/revision; hold 24h | Chưa |
+| T6 | RLS v2 shadow + per-domain read/write cutover | Chưa |
+| T7+ | B-money canary/flip/drain/revoke theo domain | Chưa |
+| T8 | Storage/R2 + full ACL baseline burn-down | Chưa |
+| T9 | Retention, cleanup, legacy removal, types/docs/training | Chưa |
+
+Không công bố estimate tổng mới trước khi T1–T9 được phân rã thành deliverable/dependency với schema/code inventory cập nhật. Baseline 51/163 chỉ dùng để truy nguồn inventory cũ.
+
+### 27.6 Cửa GO tối thiểu
+
+Chỉ được canary một tranche khi tất cả điều liên quan đều đạt:
+
+- Approval RPC không còn membership-only/client-classification bypass; callable grant có exact permission và direct REST negative tests.
+- Payment v3 dùng exact collect permission, same-org/scope validation và idempotency atomic có conflict semantics.
+- RBAC legacy/v2 không còn mismatch chưa giải thích; mọi mutation quyền bump invalidation; suspend/revoke có hiệu lực backend ngay mà không xóa lịch sử.
+- Approval engine revalidate payload/state/version, assert affected rows, resubmit/concurrency đúng và ghi append-only audit.
+- Force-approval không thể bị lách bởi hạn mức hoặc chia nhỏ phiếu; self-approval chỉ đúng account maker nắm giữ và luôn vào hậu kiểm.
+- Invoice create setting được server enforce; approved-unpaid revision không race với payment và có before/after audit/hậu kiểm.
+- Payment hoàn tác tạo đúng một operation đối ứng, giữ original và reconciliation invoice/account/credit bằng nhau.
+- Hold cọc 24 giờ không double-book; expiry/approval race có lock và kết quả xác định.
+- Cross-tenant REST/RPC/Storage/Edge tests pass trên hai organization thật, non-null org và JWT thật.
+- Mọi `SECURITY DEFINER` trong tranche có signature ACL explicit, pinned search path; baseline exposure không tăng và có burn-down plan.
+- Generated Supabase types không drift; view invoker check chạy khi đụng view.
+- Reconciliation pre/post khớp cho INCOME/EXPENSE, invoice/payment/credit/deposit, salary/profit, cashbook, meter/invoice và operation đối ứng.
+- Dashboard, alert, abort criteria, freeze/forward-fix/incident runbook, backup/PITR và maintenance window sẵn sàng.
+- Có lệnh owner rõ ràng cho **đúng tranche**; phê duyệt tài liệu không tự động là phê duyệt áp production.
+
+### 27.7 Kết luận cuối
+
+Không nên vá thêm action JSONB hoặc approval flag rồi gọi là hoàn thiện. Hướng đúng là explicit organization boundary, normalized authorization có đồng bộ, state machine/RPC canonical theo từng domain và approval/posting có transaction, idempotency, audit và reconciliation.
+
+Trạng thái hiện tại vẫn là **NO-GO cho runtime cutover**. Bước triển khai đầu tiên hợp lệ là chuẩn bị/review T1a containment và T1b payment-v3 hardening; chưa wire approval prototype, chưa bắt đầu `reverse_financial_posting`, chưa revoke DML/RLS/Storage/ACL trên production nếu thiếu artifact, gate và lệnh owner riêng.

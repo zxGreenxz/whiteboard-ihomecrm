@@ -1,5 +1,7 @@
 # AUTHORIZATION-PLAN — Dossier chuẩn bị để review (Sprint 5→7 còn lại)
 
+> **SUPERSEDED cho execution order và runtime status kể từ 2026-07-15.** Tài liệu này chỉ còn là inventory/hồ sơ lịch sử. Không dùng con số 51 hạng mục/163 ngày, nhãn “additive = inert”, hoặc trạng thái trong dossier để mở production gate. Nguồn chuẩn hiện tại: mục 27 của [AUTHORIZATION-PLAN.md](./AUTHORIZATION-PLAN.md) và [AUTHORIZATION-IMPLEMENTATION-STATUS.md](./AUTHORIZATION-IMPLEMENTATION-STATUS.md).
+>
 > Tạo: 2026-07-13. Branch: `security/authz-preparation` (KHÔNG merge vào `main` cho tới khi bạn duyệt).
 > Nguồn: [AUTHORIZATION-PLAN.md](./AUTHORIZATION-PLAN.md) + [AUTHORIZATION-IMPLEMENTATION-STATUS.md](./AUTHORIZATION-IMPLEMENTATION-STATUS.md) + inventory quét catalog toàn codebase (5 agent, 2026-07-13).
 >

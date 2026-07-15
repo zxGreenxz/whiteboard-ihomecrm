@@ -1,65 +1,77 @@
-# AUTHORIZATION-PLAN — Trạng thái triển khai (Sprint 0→7)
+# Authorization — Canonical implementation status
 
-> Cập nhật: 2026-07-13. Live DB `tryymsxyyckgbrmmvozx`. Nguồn: [AUTHORIZATION-PLAN.md](./AUTHORIZATION-PLAN.md).
-> **Nguyên tắc xuyên suốt**: mọi thay đổi enforcement đều *tightening-only* hoặc additive-inert, verify live + browser, và **giữ nguyên dữ liệu** (đối chiếu sums/counts trước-sau). Backup đầy đủ trước khi bắt đầu phần enforcement.
+> **Canonical runtime tracker.** Cập nhật: 2026-07-16. Live project: `tryymsxyyckgbrmmvozx`.
+>
+> Tài liệu này trả lời **“đã làm đến đâu trên runtime?”**. [AUTHORIZATION-PLAN.md](./AUTHORIZATION-PLAN.md), đặc biệt mục 27, là nguồn chuẩn cho nghiệp vụ, kiến trúc, dependency và GO/NO-GO. [Kết luận kiểm tra.md](./Kết%20luận%20kiểm%20tra.md) là bằng chứng audit độc lập theo thời điểm. Claim lịch sử không tự động trở thành trạng thái runtime.
 
-## Backup (điều kiện tiên quyết)
-- **Logical export**: `.backups/20260713_full/` — 142 bảng, 36.800 dòng, 32MB (gitignored). Manifest `_manifest.json`.
-- **Supabase**: daily physical backup (walg) — mới nhất trước phiên: 2026-07-12. (PITR off.)
+## Quy ước trạng thái
 
-## Reconciliation cuối (chứng minh KHÔNG mất dữ liệu)
-Đối chiếu sau toàn bộ Sprint 0–6 vs baseline Sprint 0:
+| Trạng thái | Nghĩa |
+|---|---|
+| `NOT_STARTED` | Chưa có thiết kế/implementation đủ để review. |
+| `IN_DESIGN` | Đang thiết kế hoặc inventory; chưa có artifact hoàn chỉnh. |
+| `PREPARED` | Code/SQL/test/evidence đã chuẩn bị nhưng chưa áp production. |
+| `APPLIED` | Đã có trên production, nhưng chưa vượt đủ gate xác minh/observation. |
+| `VERIFIED` | Đã áp và vượt test trực tiếp, security, reconciliation, browser, observation và evidence bắt buộc. **Chỉ trạng thái này được tính runtime complete.** |
+| `BLOCKED` | Không được tiến tiếp do thiếu dependency, recovery, credential, evidence hoặc owner gate. |
+| `SUPERSEDED` | Claim/thứ tự cũ đã bị nguồn chuẩn mới thay thế. |
 
-| Chỉ số | Baseline | Sau cùng | Ghi chú |
-|---|---|---|---|
-| INCOME APPROVED (n / sum) | 1016 / 4.726.473.718 | 1016 / 4.726.473.718 | **khớp tuyệt đối** |
-| EXPENSE APPROVED (n / sum) | 649 / 4.675.048.694 | 650 / 4.677.268.694 | +1 phiếu HH 2.220.000 — **nathan duyệt tay 06:05 UTC qua flow app** (organic, không phải migration) |
-| invoices total | 4.231.317.493 | 4.231.317.493 | khớp |
-| payments total | 3.855.366.563 | 3.855.366.563 | khớp |
-| income_expense_items / invoice_items / payments / accounts / contracts / customers (rows) | 1946/3236/945/50/319/496 | 1946/3236/945/50/319/496 | khớp backup manifest |
+## Quy tắc cập nhật
 
-Delta duy nhất = 1 phiếu hoa hồng nathan duyệt tay qua app **trong lúc enforcement đã live** ⇒ đồng thời chứng minh app vẫn hoạt động đúng (guard cho qua approved_by=self, org-boundary + RBAC không chặn).
+Mỗi lần đổi trạng thái phải ghi đủ: tranche/deliverable ID, dependency, commit SHA, migration hoặc signature hash, thời điểm apply UTC, recovery certification ID, test/security/reconciliation/browser evidence, production observation, người review/owner gate, blocker và next action. Thiếu bất kỳ evidence bắt buộc nào thì không được ghi `VERIFIED`.
 
----
+Markdown/source code chỉ chứng minh `IN_DESIGN` hoặc `PREPARED`; migration tồn tại trong repo không chứng minh `APPLIED`; claim “đã test” không kèm evidence định danh không chứng minh `VERIFIED`.
 
-## Sprint 0 — Containment P0 ✅ (deployed + verified production)
-Xem chi tiết [AUTHORIZATION-SPRINT0-STATUS.md](./AUTHORIZATION-SPRINT0-STATUS.md). Tóm tắt: fail-closed `get_my_permissions`/`ai_copilot_perms_for` (orphan⇒`{}`, `legacy_owner_allowlist`); revoke 8 internal/recompute helper; disable project signup (422); provisioning qua edge fn `admin-create-user`; R2 worker contained (cần wrangler deploy); salary-cron Bearer auth (401 verified).
+## Executive tracker T0a–T9
 
-## Sprint 1 — Organization foundation ✅ (additive)
-`organizations` (prod `ihome-prod` + demo `ihome-demo` tách qua `demo_user_ids()`), `organization_memberships` (nguyentamca OWNER, bosshuy PARTNER, joey/nathan STAFF, demo.chunha OWNER+5 demo STAFF; **phanboichauthcs orphan KHÔNG membership**), invitations, `legacy_owner_organization_map`, exceptions. `organization_id` NULLABLE + UNIQUE(org,id) cho buildings/areas/accounts/roles, backfill 0 null / 0 mismatch.
+| ID | Phạm vi | Trạng thái | Runtime/evidence hiện có | Blocker / next action |
+|---|---|---|---|---|
+| T0a | Recovery set local hiện tại | `BLOCKED` | Supabase Pro có 7 physical backup `COMPLETED` làm metadata phòng thủ. Local capture ngày 2026-07-15: public-data 165 relation/46.348 row; Supabase Storage 2.346/2.346 object, 1.126.216.628 byte, 0 lỗi; R2 referenced-only 172/172 object, 30.895.044 byte, 0 lỗi; source/Edge/runtime metadata đã capture. Ngày 2026-07-16 (local-only theo owner): 2.158/2.158 checksum khớp manifest (`ARTIFACT_INTEGRITY_VERIFIED_RECOVERY_STILL_PARTIAL`); sealed archive AES-256-GCM đã decrypt-verify, khóa bọc DPAPI CurrentUser, plaintext tar đã xóa; 3 replica hash-verified trên D:. | Portable PostgreSQL dump vẫn bị temporary CLI role từ chối đọc `auth`/một số bảng; R2 chưa exhaustive; capture online/unfrozen; 3 replica cùng một physical disk (không phải 3 fault domain); khóa DPAPI bound user/máy này; 2 secret-scan finding cần rotation review; không còn blank-target cloud restore trong phạm vi hiện tại. Recovery là `ONLINE_UNFROZEN/PARTIAL`, không phải full/certified backup. |
+| T0b | Deployment control | `PREPARED` | Workflow local đã bỏ trigger push, thêm exact commit/path/hash/recovery/window và protected environment. | Review workflow; cấu hình GitHub environment `supabase-production` với required reviewer và secret DB URL; merge riêng. Gate A chưa đạt trên remote cho đến khi commit/push và cấu hình environment. |
+| T1a | Contain approval RPC đang exposed | `BLOCKED` | Prototype approval RPC đã `APPLIED` từ Sprint 4; audit 2026-07-15 xác nhận submit/decide callable bởi `authenticated` với contract không đủ. | T0a phải `VERIFIED`; refresh live signatures/callers; chuẩn bị signature-specific revoke; test restore; owner duyệt exact production window/hash. |
+| T1b | Harden `record_invoice_payment_v3` | `BLOCKED` | V3 đang `APPLIED` và là active payment path; chưa đạt contract authz/idempotency mới. | T1a containment, caller inventory, exact `thu_tien.collect`, auth-before-idempotency, scoped payload hash/unique operation, concurrency/reconciliation suite. |
+| T4a | JWT/concurrency/reconciliation/observability harness | `IN_DESIGN` | Có các script legacy `test-cross-tenant`, `check-definer-acl`, `check-view-invoker`, `reconcile-money`; coverage chưa đủ gate mới. | Tạo fixture hai tổ chức, direct REST/RPC matrix, full money domains, writer map, alerts/runbook/CI. Bắt đầu song song sau T0. |
+| T2 | Normalized RBAC source of truth + lifecycle/version | `BLOCKED` | Schema/materialization/`authorize_v2` đã `APPLIED`; claim shadow-complete lịch sử không đủ sau audit mới. | ALLOW/DENY + scoped override, canonical admin RPC/dual-write, lifecycle, version invalidation và zero unexplained mismatch. |
+| T6a | Organization integrity + RLS v2 shadow | `BLOCKED` | `organization_id`, autofill và restrictive policies đã `APPLIED`; audit tìm thấy hard-coded fallback/exception semantics chưa đạt đích. | Classify tables; authoritative derivation; backfill/constraints; fail-closed exception queue; shadow-only RLS v2 và JWT tests. |
+| T3 | Approval contract v2, non-callable | `BLOCKED` | Approval schema/prototype engine đã `APPLIED`, nhưng audit bác claim production-ready. | T2/T6a; state machine/CAS/snapshot/idempotency/candidate/rule lifecycle/audit/reversal; helpers private, wrapper chưa grant. |
+| T5 | Canonical writers theo domain | `BLOCKED` | Payment V3 một phần đã `APPLIED`; phần lớn hook vẫn ghi trực tiếp hoặc dùng contract cũ. | Hoàn thành T1b/T3/T4a; chuẩn bị từng domain, flag mặc định OFF, regen types, view/financial checks. |
+| T6b/T7 | Canary, cutover, drain/revoke theo domain | `BLOCKED` | Chưa có domain nào vượt gate mới sau audit ngày 2026-07-15. | T0 `VERIFIED`, exact SHA/hash/window/canary/cap, direct tests, browser, reconciliation và observation từng domain. |
+| T8 | Storage/R2/Edge/service identity/ACL burn-down | `BLOCKED` | Public R2 `room-sale-images` đang live; Worker/Edge inventory đã capture; ACL baseline chỉ chống tăng exposure. | Object-link model, private delivery, key server-derived, direct cross-org tests, service identities, zero unexplained callable definer. |
+| T9 | Retention, cleanup, final restore certification | `NOT_STARTED` | Không có cleanup approval; phải giữ legacy/history. | Sau ít nhất 90 ngày + business cycle, zero legacy traffic, recovery set mới/restore, independent audit và owner approval theo tranche. |
 
-## Sprint 2 — Normalized RBAC ✅ (additive, shadow-verified)
-8 bảng (permission_definitions 208 key, organization_roles, role_permissions, role_bindings, authorization_scopes, role_binding_scopes, member_permission_overrides, member_override_scopes). Materialize từ roles+staff_assignments: 7 org_roles / 315 role_permissions / 61 bindings / 35 scopes / 55+ overrides. `authorize_v2` (scope-aware) + `effective_perms_v2` (shadow). **Shadow-compare vs get_my_permissions = 0 mismatch** trên 208 key × 8 staff.
+> **Design specs (2026-07-16):** mỗi tranche T2–T9 nay có một execution spec code-grounded theo `TRANCHE-TEMPLATE.md` dưới [docs/authorization/](./authorization/) (T2/T3/T4a/T5/T6a/T6b-T7/T8/T9), cùng [_TRANCHE-REVIEW-NOTES.md](./authorization/_TRANCHE-REVIEW-NOTES.md) đối chiếu cross-tranche. Có spec **không** nâng trạng thái runtime: tất cả vẫn `BLOCKED`/`IN_DESIGN` vì Markdown chỉ chứng minh `IN_DESIGN`. Cả 8 spec đều giữ production apply `BLOCKED` cho tới khi recovery `VERIFIED` + owner cấp exact SHA/hash/window/canary/VND cap. Trước khi bất kỳ tranche nào rời `IN_DESIGN`, owner phải chốt 5 mục (a)–(e) trong review notes: (a) dependency T2↔T6a hai chiều; (b) tồn tại/ownership `authorization_migration_exceptions` (T2 vs T6a) đối chiếu live catalog; (c) sign-off reorder §27.3/§27.5 (T6a-trước-T3, tách T4a/T6a/T6b); (d) unbuilt infra mà tranche sau ngầm giả định (seed permission-key của T3, feature-flag/canary infra của T6b-T7, table classification của T6a); (e) xung đột terminal-gate T9 giữa quyết định local-only và yêu cầu blank-restore/3 fault domain.
 
-## Sprint 3 — org_id rollout + org-boundary enforcement ✅ (verified)
-- **3a additive**: `organization_id` cho 132 bảng + profiles, derive theo dependency graph (parent > user_id-via-membership > PROD). 0 null, 0 parent-child mismatch, sums khớp baseline.
-- **3b enforcement (tightening-only)**: `_autofill_org` trigger BEFORE INSERT + RESTRICTIVE org-boundary policy `(org IS NULL OR super_admin OR org ∈ my_org_ids())` trên 28 bảng core financial/entity/PII. Impersonation: nathan thấy prod, 0 demo leak, không over-block; super_admin autofill INSERT pass; browser income-expense/invoices/contracts render đủ data, 0 console error.
+## Các claim lịch sử đã bị thay thế
 
-## Sprint 4 — Approval engine ✅ (additive, end-to-end tested)
-9 bảng approval (rule_sets/rules/steps/approvers/requests/request_steps/candidates/decisions/audit) + posting metadata trên income_expenses. Rule seed/org: AUTO_POST internal_settlement, force REQUIRE_APPROVAL SENSITIVE, fallback. RPCs `_eval_approval_rule` (precedence DENY>force>priority>fallback), `submit_financial_voucher`, `decide_financial_voucher` (maker-checker + quorum + post). **Test ROLLBACK**: fallback→PENDING→maker self-approve BỊ CHẶN→owner→POSTED; AUTO_POST→POSTED ngay.
+Những mô tả “Sprint 1–7 hoàn tất”, “approval engine complete”, “additive = inert”, “reconciliation core = cutover complete” trong tài liệu trước ngày 2026-07-15 là `SUPERSEDED` cho execution/status. Chúng vẫn có giá trị như hồ sơ lịch sử về artifact từng được áp, nhưng không được dùng để mở production gate.
 
-## Sprint 5 — Financial column guard ✅ (deployed, code-verified safe)
-Trigger SECURITY INVOKER phân biệt client (`current_user='authenticated'`) vs RPC (owner): client KHÔNG được đặt `approved_by ≠ auth.uid()` (chống giả mạo audit) / ghi posting metadata. Đối chiếu code: mọi flow client set approved_by ∈ {NULL, user.id} ⇒ không phá. Test: forge/posting BỊ CHẶN, normal PASS, RPC PASS.
+Cụ thể:
 
-## Sprint 6 — Hardening ✅ (một phần) + còn lại
-- **6a ✅**: revoke anon/auth `_autofill_org`/`_guard_*` (secdef anon-executable→100); **CI gate** `scripts/check-definer-acl.mjs` + baseline (§9.3.9) chống regress ACL.
-- Staff lifecycle (invite/suspend/revoke), R2/cron/edge separation: phần lớn đã ở Sprint 0.
+- Foundation/schema có thể đang `APPLIED`, nhưng audit mới phát hiện contract/exposure nên chưa `VERIFIED`.
+- `record_invoice_payment_v3` đang phục vụ production nhưng vẫn `BLOCKED` ở T1b cho đến khi authorization/idempotency/concurrency/reconciliation đạt contract mới.
+- Approval RPC đang live không phải bằng chứng approval workflow an toàn; exposure hiện tại là finding cần containment T1a.
+- Baseline khoảng 100 `SECURITY DEFINER` client-callable chỉ chứng minh exposure không tăng, không chứng minh 100 signature an toàn.
+- Reconciliation một vài tổng tiền không thay thế full-domain reconciliation và restore rehearsal.
 
-## Sprint 7 — Cutover/reconciliation ✅ (reconciliation core) + còn lại
-Reconciliation (bảng trên) = 0 mất dữ liệu. Observability/alert dashboard + drop legacy sau retention: còn lại.
+## Recovery gate hiện tại
 
----
+Recovery ID đang capture: `20260715T152622Z-online-unfrozen`.
 
-## Phần enforcement lớn CÒN LẠI (integration, cần staged + browser test từng flow)
-Các phần này đổi HÀNH VI write path của app ⇒ phải migrate hook→RPC rồi mới revoke, test từng flow trên browser (rủi ro availability nếu big-bang):
+| Thành phần | Trạng thái | Ghi chú |
+|---|---|---|
+| Supabase managed DB backups | `APPLIED` | 7/7 physical backup `COMPLETED`; PITR off. Đây không chứa Storage/R2 bytes. |
+| PostgreSQL portable logical dump | `BLOCKED` | Temporary CLI role không có quyền lock/read `auth` và một số table; artifact `full.custom` thất bại không được dùng. |
+| Public DB data defense-in-depth | `PREPARED` | 165 relation, 46.348 row, 0 lỗi qua service-level PostgREST; online/unfrozen, chưa restore. |
+| Catalog/schema/ACL inventories | `PREPARED` | Catalog/Management OpenAPI, relations/functions/policies/triggers/grants metadata đã capture một phần; cần portable dump/restore để chứng nhận. |
+| Supabase Storage bytes | `PREPARED` | Local capture online/unfrozen: 8 bucket, 2.346/2.346 object, 1.126.216.628 byte, 1.768 content hash duy nhất, 0 lỗi. Object bytes content-addressed bằng SHA-256; chưa restore/re-download độc lập. |
+| Cloudflare R2 bytes | `BLOCKED` | Đã local capture 172/172 object đang được DB reference, 30.895.044 byte, 0 lỗi; vẫn chỉ `REFERENCED_OBJECTS_ONLY` vì chưa có bucket-scoped list/read credential để enumerate orphan/unreferenced object. |
+| Source/runtime | `PREPARED` | Git bundle đã verify; lockfile/tool metadata; deployed Edge Function bundles/hashes; sanitized Supabase config/secret names; SQLite online backup 9Router đã capture. Vercel/Cloudflare account metadata chưa exhaustive. |
+| 3 local replicas | `PREPARED` | Đã tạo ngày 2026-07-16: sealed archive AES-256-GCM (tar 1.140.275.200 byte, enc SHA-256 `150767c3…52bac32`, decrypt-verify pass, khóa DPAPI CurrentUser, plaintext tar đã xóa) nhân 3 bản hash-verified: `D:\ihomecrm-recovery\sealed`, `D:\ihomecrm-recovery-replica2`, `D:\ihomecrm-recovery-replica3`. C: chỉ còn ~1,7 GiB nên cả ba nằm trên D: — ba replica cùng một physical fault domain, chống xóa nhầm chứ không chống hỏng ổ; khóa DPAPI bound user/máy này. |
+| Supabase project tạm / VPS copy | `SUPERSEDED` | Bỏ khỏi phạm vi theo quyết định owner ngày 2026-07-16; không tạo project, không upload VPS, không phát sinh mutation/chi phí cloud cho backup. |
+| Recovery certification | `BLOCKED` | Local capture chỉ có thể chốt `PARTIAL/CAPTURED_UNVERIFIED`; không được nâng `VERIFIED` khi thiếu portable Auth/Storage-aware PostgreSQL dump, exhaustive R2 và independent blank restore. |
 
-1. **Hợp nhất 20+ hook financial write** vào canonical RPC rồi **revoke direct DML** (§8.1, Sprint 5 core).
-   - ✅ **CỤM THU TIỀN HOÀN TẤT** (highest-volume path): `record_invoice_payment_v3` (payment+invoice+voucher+items ATOMIC + idempotency_key + p_receipt_number + p_voucher_owner_id validate). Wire `useRecordPaymentRPC` (dialog đơn), `useBulkRecordPayment` (thu hàng loạt, mỗi sub-line 1 v3, giữ owner-attribution), `useCreatePayment`. Gỡ dead `useInvoices::useRecordPayment`. Test DB (atomic+idempotent+owner-attribution+forge-blocked) + **browser production** (thu 10K qua UI → atomic voucher, 0 error, reverse sạch).
-   - CÒN (mỗi flow có domain nuance, cần phân tích+test riêng): salary/profit/refund/commission/utility/handover/termination/recurring; `useDeletePayment`→reversal; invoice-status hooks. Sau đó revoke direct DML. Engine Sprint 4 sẵn wire "luôn cần duyệt".
-2. **RLS v2 thay thế** 552 policy owner-graph bằng org-boundary thuần (hiện dùng RESTRICTIVE bổ sung — an toàn hơn, giữ policy cũ). §17 Sprint 3.
-3. **Storage**: re-path object theo `<org>/<resource>/…` + `storage_object_links` + scoped policy (7 bucket authenticated-wide). §14.
-4. **Function ACL allowlist toàn schema** + private impl schema + pinned search_path (§9.3). Hiện đã revoke các helper trọng yếu + CI gate.
-5. **Permission cache version** (`authorization_version` đã có ở organizations) wiring FE invalidation.
-6. **Emergency approve + reversal RPC** wiring (schema đã có).
+## Production gate đang áp dụng
 
-Toàn bộ foundation (org boundary, RBAC chuẩn hoá, approval engine, guard, CI gate) đã sẵn sàng để các integration trên bám vào, theo đúng thứ tự gate của plan.
+Hiện trạng chương trình: **NO-GO cho production authorization cutover**.
+
+Không apply T1a hoặc tranche tiền nào khi chưa có recovery `VERIFIED`. Mỗi tranche production vẫn cần exact SHA/hash, backup certification ID, maintenance window, canary organization/users, count/VND cap, owner approval và evidence. Phê duyệt tài liệu không phải blanket approval cho production mutation.
