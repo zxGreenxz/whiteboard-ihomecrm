@@ -53,6 +53,9 @@ console.log('Sheets đối chiếu:', monthSheets.map((x) => x.n).join(', '));
 // thì là carryover nội bộ giữa 2 sheet → skip kẻo đếm đôi; nếu X < FIRST_MONTH (vd tháng 4)
 // thì là tiền thật mang vào đầu kỳ (web cũng có phiếu) → GIỮ LẠI.
 const skipRow = (r) => {
+  // Dòng số liệu nhưng KHÔNG có nhãn toà (cột 0) lẫn nhãn phòng (cột 1) = dòng tổng kết
+  // tay không tên (án lệ: R185 sheet T7 mang "tiền Ihome" 20.799.001 tràn vào cột CKH).
+  if (r[0] === '' && String(r[1]).trim() === '') return true;
   const j = r.join('|').toLowerCase();
   const cf = /còn lại của (?:tháng\s*)?t?\s*(\d+)/.exec(j);
   if (cf) return Number(cf[1]) >= FIRST_MONTH;

@@ -24,6 +24,8 @@ ID sổ TKHIEP: `df6b5925-845d-48da-8000-c367d55d6c04`.
   - Dòng `Tổng`, `TK TCB + BVB`, `số dư`, `tiền Ihome`, `tiền Hiệp` (dòng tổng kết tay).
   - Dòng `tiền còn lại của T5/T6/...` — carryover **giữa các sheet đang cộng** (số dư cuối tháng trước mang sang).
 - **Dòng phải GIỮ**: `tiền còn lại của tháng 4` (8.739.307) — tiền thật mang vào đầu kỳ, web cũng có phiếu thu tương ứng.
+- **Dòng số liệu KHÔNG có nhãn toà lẫn nhãn phòng = dòng tổng kết tay → LOẠI** (án lệ 15/07:
+  R185 sheet T7 mang "tiền Ihome" 20.799.001 tràn vào cột CKH, không tên — script đã tự skip).
 - **4 khoản chi ghi ở GÓC sheet T5** (ngoài cột CHI) phải cộng thêm vào tổng chi: lương T4 17.705.000 + 162NVK T4 4.017.800 + 162NVK T5 4.464.800 + sổ quỹ Hiệp chi 7.708.515 (= 33.896.115).
 - Công thức "tiền Ihome" của Nathan: `Thu(CKH + BVB dương) − Chi(CHI + BVB âm) − 4 khoản góc`.
 - File hay bị Excel lock → **luôn copy ra temp rồi mới đọc**.
@@ -69,6 +71,7 @@ ID sổ TKHIEP: `df6b5925-845d-48da-8000-c367d55d6c04`.
 | Ngày chốt | Excel | Web TKHIEP | Chênh | Ghi chú |
 |---|---:|---:|---:|---|
 | 02/07/2026 | 75.322.263 | 75.321.463 | 800đ | Chi khớp 100%. 800đ = 1.000đ cọc lock 406 (sổ Chung) + 400đ lẻ L03 − 600đ Excel gõ thiếu 403PVB 403 |
+| 15/07/2026 | thu 1.064.224.748 / chi 1.043.425.747 | thu 1.062.123.948 / chi 1.038.067.947 | thu −2.100.800 / chi −5.357.800 | **THU** phân rã 100%: 2,1tr cọc 105-44TL web mới ghi 2tr/4,1tr + 800đ lẻ (406/1392 Excel dư 1.000; L03/405 +400; 403/403 −600). Cọc web tên chung chung khớp cụm phòng: "Khách cọc phòng"=403/1392 3,4tr; "Cọc phòng 3tr9"=306/102LVT; "renthouse"=103/1392 4tr; "HK house"=102/102LVT 4tr; "tiền cọc các nhà" 4 phiếu = L01 2,7tr + 401 1,9tr + 104 5tr + 10-481NVK 1,5tr. **CHI**: 4.157.800 hoàn cọc TL 205/1392 nằm sổ CỌC (PC2607070); 2,6tr hoàn cọc 103/1392 CHƯA có phiếu (khách mới HD-2026-00027 chưa TL HĐ cũ); 1,2tr HH L03-417LVT = PC2605015 UNAPPROVED (duyệt là khớp); ngược lại web-only 2,4tr HH 00027 (15/07 Excel chưa ghi) + 1,1tr PCCC 45/3TTT; còn ±~2tr chi vặt 100–500k hai chiều chưa rà tay. Điện lạnh T4/T5/T6 (25/26/18 phiếu con) + tiền nhà (72tr=46+26 ×2 đợt, 132tr=2×66tr) + mọi cụm HH+thưởng khớp từng đồng. |
 
 ## 8. Kênh TM ↔ sổ Hiệp Thu (TK000032)
 
