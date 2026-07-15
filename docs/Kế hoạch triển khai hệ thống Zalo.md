@@ -30,6 +30,45 @@ Kế hoạch này tuân thủ quyết định hiện tại “prepare all, revie
 
 ---
 
+## 0. Trạng thái review, phạm vi được phép và quyết định còn mở
+
+### 0.1 Phán quyết review 15/07/2026
+
+**Trạng thái tài liệu: REVIEWED DRAFT — chưa phải lệnh triển khai production.**
+
+- **GO ngay**: preflight read-only, test harness SQL/RLS, fake adapter, protocol contract, schema additive chưa cutover và rehearsal trên dữ liệu giả/ẩn danh.
+- **CONDITIONAL GO**: cutover một account canary sang bridge không có service-role key, chỉ sau khi các gate P0 bên dưới có bằng chứng PASS và có maintenance/rollback runbook.
+- **NO-GO hiện tại**: AI auto-send trên tài khoản cá nhân, proactive/bulk campaign, normalized authorization cutover, multi-organization rollout và mọi đường gửi chưa đi qua queue/policy v2.
+
+Stop-the-line, tự động **NO-GO/pause** nếu có một trong các sự kiện:
+
+- Cross-organization/cross-building access hoặc private disclosure khi identity chưa verified/group chat.
+- Tin gửi tới recipient đã suppression/opt-out; sensitive auto-send; financial/contract mutation từ AI.
+- Credential, QR, session, message body hoặc signed media URL xuất hiện trong log không được phép.
+- Stale connector generation vẫn claim/ack được; automatic retry một attempt có thể đã qua provider boundary.
+- Confirmed duplicate customer-visible send do hệ thống; account bị `LIMITED/challenged` có liên hệ với automation/campaign.
+
+### 0.2 Document control bắt buộc trước mỗi tranche
+
+Mỗi review packet phải ghi: document version, commit SHA, live snapshot time, migration list/checksum, reviewer security/product/operations/data protection, nguồn chính sách Zalo và ngày đối chiếu, open-decision count, GO approver và rollback owner. Con số quota/cap/rate không có nguồn chính thức phải ghi rõ là **guardrail nội bộ**, không mô tả như giới hạn Zalo chính thức.
+
+### 0.3 Sáu quyết định P0 phải chốt trước production traffic
+
+| ID | Quyết định cần chốt | Default an toàn khi chưa chốt | Bằng chứng/owner bắt buộc |
+|---|---|---|---|
+| D1 | Eligibility của `zca-js`/personal account cho automation và proactive send | Staff-assisted inbox + AI draft-only; campaign/auto-send off | Product/platform risk owner; điều khoản/nguồn Zalo có URL + ngày kiểm tra; account owner chấp thuận residual risk |
+| D2 | Capability matrix riêng cho Personal Chat, OA Messaging và ZNS | Không suy capability/UID/consent từ kênh khác | Channel owner; adapter contract + official-source register |
+| D3 | `zalo_conversations` là channel thread; care case là episode riêng | Không gắn một SLA/`resolved_at` duy nhất cho toàn bộ lịch sử thread | Product + data owner; state model reopen/close |
+| D4 | Outbound wake-up hay chấp nhận idle polling latency | SLO pickup theo poll floor, không hứa ≤2 giây | Operations owner; load/cost test và SLI đo `queued_at → claimed_at` |
+| D5 | Data classification, legal basis, retention/legal hold | Không ingest/cache thêm PII/media ngoài nhu cầu support tối thiểu | Data-protection owner; retention schedule/version + hold/deletion/export flow |
+| D6 | Transitional authorization trong lúc normalized RBAC còn NO-GO | Current effective authority + helper hẹp derive resource; không dùng shadow | Security owner; permission/resource matrix + negative tests |
+
+### 0.4 Trust boundary checklist
+
+Sáu vùng tin cậy phải được thể hiện trong architecture packet: browser; Supabase Auth/RLS/Postgres; privileged Edge Functions; connector VPS per-account; Zalo Personal/OA/ZNS; LLM/external services. Với mỗi đường gọi phải ghi caller identity, credential, resource scope, replay protection, schema/body limit, PII được phép, timeout/retry owner, audit event và kill switch. Edge Function có service role vẫn chỉ được gọi RPC hẹp; không được trở thành CRUD proxy tùy ý.
+
+---
+
 ## 1. Quyết định kiến trúc
 
 ### 1.1 Hướng duy nhất được đề xuất
@@ -88,15 +127,28 @@ interface ChannelAdapter {
 }
 ```
 
-- `ZcaPersonalAdapter` triển khai MVP.
+- `ZcaPersonalAdapter` triển khai staff-assisted MVP; auto-send/proactive mặc định off cho tới khi D1 được GO.
 - `FakeChannelAdapter` dùng cho test/staging.
-- `ZaloOfficialOaAdapter` có thể thêm sau mà không đổi identity, message, AI, campaign và queue domain.
-- Domain không import type từ `zca-js`.
+- Tách rõ `ZaloOfficialAccountMessagingAdapter` và `ZaloZnsNotificationAdapter`; không gom OA chat và ZNS vào một adapter vì webhook/token/template/quota/reply-window khác nhau.
+- Message/queue giữ được phần lõi channel-neutral, nhưng OA/ZNS onboarding vẫn bắt buộc capability matrix, identity re-link/re-consent và migration rehearsal. Không kế thừa verified link chỉ vì tên/phone trùng; personal UID và OA UID là namespace khác nhau.
+- Canonical identity key gồm `(organization_id, provider, product/channel, account_scope, subject_namespace, provider_subject_id)`.
+- Domain không import type từ `zca-js`; mọi behavior phải capability-gated thay vì mặc định adapter nào cũng hỗ trợ reaction/seen/group/media/proactive send.
+
+Capability matrix phải được điền bằng tài liệu chính thức/contract test trước khi enable; default là deny:
+
+| Capability | Personal (`zca-js`) | OA Messaging | ZNS |
+|---|---|---|---|
+| Inbound/staff reply | Unofficial, canary-only | Xác minh official webhook/reply rules | Không coi là chat |
+| Proactive send | NO-GO mặc định | Chỉ khi policy OA cho phép | Theo approved template/category |
+| Group/reaction/seen/media | Adapter-specific | Adapter-specific | Không giả định |
+| Identity/consent | Personal UID namespace | OA user namespace + OA consent | ZNS recipient/template basis |
+| Delivery/quota/SLO | Không có platform guarantee | Theo nguồn OA hiện hành | Theo nguồn ZNS hiện hành |
 
 ### 1.4 Quyết định nghiệp vụ quan trọng
 
 - `customers` và `contract_customers` là customer/occupancy canonical; không dùng legacy `tenants` làm identity chăm sóc khách hàng.
-- Hội thoại là support case; `jobs` là work order/yêu cầu vận hành được tạo từ hội thoại.
+- Dữ liệu Zalo/care là tài sản của organization. Các FK `user_id ... ON DELETE CASCADE` legacy phải được chuyển thành provenance (`created_by`/`legacy_owner_id`, nullable `ON DELETE SET NULL` hoặc `RESTRICT`); xóa/offboard creator không được xóa account, conversation, message, template, queue hay audit của tổ chức.
+- `zalo_conversations` là **channel thread sống lâu dài** theo `(account_id,thread_id)`, không phải một support case duy nhất. Thêm `zalo_care_cases`/episode cho từng lần mở–đóng–reopen, SLA, priority, assignee, opening/closing message, resolution và job link; conversation chỉ giữ inbox state/latest active case. `jobs` là work order/yêu cầu vận hành được tạo từ care case/conversation.
 - Không kích hoạt hoặc sửa toàn bộ `issues` trong MVP. Live `issues` = 0, trong khi `jobs` có UI desktop/mobile và dữ liệu thật; trigger SLA của `issues` còn có lỗi thứ tự `BEFORE UPDATE` đã xác minh.
 - AI không được sửa hợp đồng, hóa đơn, thanh toán, số dư, tiền cọc hoặc sổ quỹ.
 - Phone matching chỉ tạo gợi ý cho nhân viên; không bao giờ tự xác minh danh tính.
@@ -120,13 +172,13 @@ Tranche preflight phải:
 2. Derive org của conversation/message/queue/label từ `zalo_accounts.organization_id`; nếu mơ hồ thì đưa vào bảng anomaly/review, không gán mặc định.
 3. Đặt `organization_id NOT NULL` cho toàn bộ Zalo/care/AI/campaign rows sau khi mismatch = 0.
 4. Thêm composite integrity hoặc constraint trigger bảo đảm child và parent cùng organization.
-5. Thêm unique partial index: tối đa một account `kind='personal'` chưa disabled cho mỗi organization.
+5. Thêm unique partial index: tối đa một account `kind='personal'` có `lifecycle_status='ENABLED'` cho mỗi organization; health tạm thời không giải phóng slot.
 6. Không gắn generic `_autofill_org()` vào Zalo. Dùng trigger/RPC riêng derive từ parent tin cậy.
 7. Policy Zalo/care phải fail closed; tuyệt đối không giữ nhánh `organization_id IS NULL`.
-8. Chính xác hoá hiện trạng (đã xác minh live 15/07): `zalo_*` hiện **chưa có** org-boundary RESTRICTIVE policy nào — Migration A phải **THÊM MỚI** policy fail-closed cho cả 7 bảng, không phải sửa policy cũ.
+8. Chính xác hoá hiện trạng (đã xác minh live 15/07): `zalo_*` hiện **chưa có** org-boundary RESTRICTIVE policy nào — tranche A3 phải **THÊM MỚI** policy fail-closed cho cả 7 bảng, không phải sửa policy cũ.
 9. Attribution live hiện đã sạch (0 org NULL, 0 mismatch): artifact preflight expectation là PASS ngay với dữ liệu hiện tại; giá trị của gate là chống sai lệch tương lai khi thêm organization mới.
 10. Trước khi bật fail-closed policy: xác nhận mọi user có quyền `chat_zalo.*` đều có ACTIVE membership (live: toàn bộ staff trong `staff_assignments` OK; còn 1 profile chưa có membership ACTIVE cần rà).
-11. Unique partial index "một personal account/org" sẽ đụng dữ liệu thật: org PROD đang có 2 account `kind='personal'` (1 `connected`, 1 `error`); `status='error'` không phải disabled — preflight phải disable/resolve account lỗi trước và định nghĩa index theo tập status tường minh.
+11. Unique partial index "một personal account/org" sẽ đụng dữ liệu thật: org PROD đang có 2 account `kind='personal'` (1 `connected`, 1 `error`); `status='error'` không đồng nghĩa lifecycle disabled — preflight phải audit-disable/resolve account lỗi trước, rồi index theo `lifecycle_status='ENABLED'`.
 
 ### 2.2 Một authorization boundary ổn định cho care
 
@@ -134,8 +186,8 @@ Tạo helper nội bộ `zalo_authorize_conversation(p_conversation_id, p_action
 
 - Derive actor bằng `auth.uid()`.
 - Derive organization/account/building/room từ resource, không tin `organization_id` client gửi.
-- Yêu cầu active organization membership.
-- Map action sang permission key chính xác.
+- Yêu cầu `organizations.status='ACTIVE'`, membership `status='ACTIVE'`, `valid_from <= statement_timestamp()` và `valid_to IS NULL OR valid_to > statement_timestamp()`; organization suspended/closed hoặc membership chưa hiệu lực/hết hạn phải deny.
+- Map action sang permission key chính xác; key mới chưa tồn tại phải default-deny, không fallback sang quyền legacy rộng hơn.
 - Kiểm tra building/area bằng nguồn authorization đang effective (`staff_assignments`, `can_access_building`, `can_do_on_building`).
 - Normalized `authorize_v2` tiếp tục shadow cho tới khi parity/cutover trong authorization plan được review; care không được âm thầm coi helper shadow là production authority.
 - Assignment/routing chỉ chọn trong số nhân viên đã có quyền; assignment không cấp thêm quyền.
@@ -161,17 +213,25 @@ Mọi RPC `SECURITY DEFINER` phải:
 
 Không sửa các migration `20260626...` hoặc `20260713...` đã tồn tại. Tạo migration mới theo thứ tự sau; timestamp thực tế được chốt lúc triển khai để tránh collision.
 
-### 3.1 Migration A — `*_zalo_care_tenant_preflight.sql`
+### 3.1 Tranche A0–A3 — tenant preflight, correction và enforcement
 
-Mục tiêu: chỉ harden attribution và tạo gate an toàn.
+Không gộp read-only preflight, sửa dữ liệu, constraint và ACL cutover vào một transaction. Nếu migration vừa insert anomaly vừa `RAISE`, transaction rollback sẽ làm mất chính artifact cần review.
+
+- **A0 — read-only preflight ngoài migration transaction**: xuất artifact có timestamp/code SHA về org null/sai parent, orphan, duplicate personal account, queue stuck, legacy state không map được; không chứa chat body/PII không cần thiết. Artifact phải đếm cả **directory-only conversation** (chưa có message nào) làm input cho quyết định D5 — live 15/07: 1.756/1.832 (~96%, gồm 1.456 user + 300 group) là bản sao danh bạ từ `syncContacts`, chỉ 76 thread có tin thật; D5 chốt purge/quarantine hay giữ số này.
+- **A1 — reviewed correction/quarantine**: correct organization qua `zalo_accounts`; row không derive duy nhất phải quarantine/fail closed, tuyệt đối không fallback về org PROD.
+- **A2 — additive constraints**: thêm column/index/composite FK; với bảng lớn dùng backfill batch, `NOT VALID`/validate sau nếu cần giảm lock; chưa revoke legacy path.
+- **A3 — authorization/ACL cutover**: chỉ chạy sau khi bridge/RPC v2, frontend compatibility, Realtime/RLS negative tests và rollback rehearsal đều PASS; sau đó mới revoke direct writes/RPC cũ và bật org RESTRICTIVE policy.
+
+Deliverables chi tiết:
 
 - Tạo `zalo_migration_anomalies` cho row mơ hồ, reason, source table/id, resolution state; không chứa nội dung chat/PII không cần thiết.
 - Correct organization backfill qua `zalo_accounts`.
 - Validate account → conversation → message/queue/label cùng org.
 - Backfill `building_id` chỉ khi suy ra duy nhất từ room/current canonical contract; trường hợp nhiều hợp đồng/phòng giữ unresolved.
 - Đưa customer links cũ (nếu có) thành candidate `PENDING`, không coi là verified.
-- Resolve account `status='error'` (disable hoặc gỡ có audit) trước khi tạo unique partial index một-personal-account/org.
+- Resolve account `status='error'` bằng transition `lifecycle_status='DISABLED'` có audit (hoặc gỡ theo runbook đã duyệt) trước khi tạo unique partial index một-personal-account/org.
 - Thêm candidate key `(organization_id,id)` và composite FK/constraint tương ứng.
+- Chuyển ownership FK theo hai bước có thứ tự (đã xác minh 15/07: cả 7 bảng đang `user_id uuid NOT NULL REFERENCES auth.users ON DELETE CASCADE`): **A2** đổi `ON DELETE CASCADE → RESTRICT` (an toàn ngay — chỉ chặn xoá user, không đụng RLS owner-based đang chạy); sang **A3** (khi org RESTRICTIVE policy đã live và RPC v2 không còn key theo user_id) mới đổi semantics sang `created_by`/`legacy_owner_id` nullable `SET NULL`. Đổi sớm nullable sẽ vỡ RLS hiện hành vì mọi policy đang key `user_id = auth.uid()`.
 - Add fail-closed RLS — **thêm mới** org-boundary RESTRICTIVE cho cả 7 bảng `zalo_*` (gồm `zalo_automations`, `zalo_labels`; hiện chưa có policy org nào) — và revoke direct authenticated write theo từng tranche sau khi RPC v2 sẵn sàng.
 - Gate: anomaly chưa resolved hoặc mismatch > 0 thì migration cutover phải fail.
 
@@ -181,13 +241,19 @@ Mục tiêu: chỉ harden attribution và tạo gate an toàn.
 
 Thêm:
 
-- `organization_id NOT NULL` và unique active personal account/org.
-- `health_status`: `LOGIN_REQUIRED | CONNECTING | CONNECTED | DEGRADED | LIMITED | PAUSED | DISABLED`.
+- `organization_id NOT NULL`.
+- Tách lifecycle khỏi health: `lifecycle_status = ENABLED | DISABLED`; unique partial `(organization_id) WHERE kind='personal' AND lifecycle_status='ENABLED'`. Trạng thái login/limited/paused không giải phóng slot account. Thay account là transition audit: disable account cũ rồi mới enable account mới.
+- `health_status`: `LOGIN_REQUIRED | CONNECTING | CONNECTED | DEGRADED | LIMITED | PAUSED`.
 - `reauth_required`, `automation_paused`, `outbound_paused`, `pause_reason`.
 - `last_heartbeat_at`, `last_event_at`, `connected_at`, `disconnected_at`, `last_error_code`.
 - `state_version` để chống worker cũ quay lại.
 
-QR chỉ là state ngắn hạn, có `qr_expires_at` và cleanup; session cookie không được lưu DB.
+QR là credential/challenge ngắn hạn, **không lưu trong generic `zalo_accounts` và không publish Realtime**. Dùng login-challenge riêng: one-time ID, manager `manage_account` only, TTL ngắn, no-cache, chỉ caller tạo challenge được đọc, xóa ngay khi used/expired và rate-limit số lần tạo; staff chỉ có `view` chỉ thấy health metadata. Session cookie không được lưu DB.
+
+Số phận cột legacy trên `zalo_accounts` (hiện trạng đã xác minh 15/07: bảng đang nằm trong publication `supabase_realtime` → `qr_data` hiện phát qua Realtime cho mọi subscriber):
+
+- `status` CHECK cũ (`connected|disconnected|error|connecting|waiting_scan`) giữ nguyên cho worker cũ đọc/ghi tới cutover; `health_status`/`lifecycle_status` là nguồn sự thật mới (trigger sync một chiều nếu cần); drop `status` sau observation window.
+- `qr_data`/`qr_expires_at`: ngừng ghi ngay khi login-challenge flow hoạt động, xoá dữ liệu tồn đọng, DROP cột ở Migration F; đồng thời gỡ `zalo_accounts` khỏi publication hoặc bảo đảm cột QR không còn tồn tại trước khi giữ bảng trong publication.
 
 #### Mở rộng `zalo_messages`
 
@@ -217,8 +283,9 @@ Thêm trạng thái `queued | processing | retry_wait | paused | sent | failed |
 - `next_attempt_at`, `processed_at`, `dead_at`.
 - `provider_message_id`, `correlation_id`, `last_error_code`, detail redacted.
 - `created_control_version`, để claim recheck takeover race.
+- `queue_class`, `priority`, `conversation_sequence`, `claimed_at`; claim deterministic và không cho quá một outbound in-flight trên cùng account/conversation (hoặc peer). Support/manual reply ưu tiên hơn campaign, có aging/fairness để campaign không starvation.
 
-Thêm `zalo_outbound_attempts` append-only để lưu attempt, outcome, provider ID/hash và ambiguous outcome; không lưu credential/body thừa.
+Semantics bắt buộc: exactly-once cho state transition nội bộ; at-least-once processing; external delivery không guaranteed exactly-once. Attempt đã bắt đầu gọi provider nhưng mất ACK phải thành `unknown` và manual reconcile, không automatic retry. Thêm `zalo_outbound_attempts` append-only để lưu attempt, outcome, provider ID/hash và ambiguous outcome; không lưu credential/body thừa.
 
 Backfill 20 row queue hiện hữu sang state machine mới: `sent` → `sent`, `failed` → `dead` (kèm `dead_at`), có audit.
 
@@ -226,7 +293,7 @@ Backfill 20 row queue hiện hữu sang state machine mới: `sent` → `sent`, 
 
 - `zalo_inbound_events`: unique `(account_id,event_key)`, payload hash, metadata allowlist, occurred/received/processed time, linked message, retention timestamps. Nội dung tin ở `zalo_messages`, không nhân đôi raw payload lâu dài.
 - `zalo_care_work_queue`: durable work cho `INBOUND_POLICY`, `AI_ORCHESTRATION`, `STAFF_ALERT`, `CAMPAIGN_EXPAND`, `RETENTION`; claim bằng `FOR UPDATE SKIP LOCKED`, lease/retry/dead-letter như outbound.
-- `zalo_bridge_credentials`: credential key ID, account binding, hash, validity/revocation/last-used. Không giữ plaintext.
+- `zalo_bridge_credentials`: credential key ID, account binding, hash, validity/revocation/last-used. Không giữ plaintext. Request ghi dùng secret đủ entropy + key ID, account/lease-generation binding, timestamp window, unique nonce/request ID, body hash, replay cache, constant-time compare, rate limit và rotation overlap ngắn; TLS bắt buộc.
 - `zalo_account_leases`: một lease/generation/account để bảo đảm single listener/sender.
 - `zalo_audit_events`: append-only, actor type, object, action, correlation/policy version và detail đã redacted.
 
@@ -248,19 +315,21 @@ Backfill 20 row queue hiện hữu sang state machine mới: `sent` → `sent`, 
 - `zalo_fail_care_work`
 - `zalo_reap_expired_leases`
 
+Canonical protocol phải có `schema_version`, provider/product/account, capability set, provider event/command ID, deterministic versioned fallback key, provider-occurrence/connector-received/bridge-persisted timestamps, thread/sender namespace, connector generation và correlation ID. Bridge/connector handshake khai báo min/max protocol version; version/capability không tương thích phải reject rõ, không parse best-effort. Outbound dùng typed command (`SEND_TEXT`, `SEND_MEDIA`, `REACT`, `RECALL`, `MARK_PROVIDER_READ`) với validation/rate/retry policy riêng.
+
 `zalo_bridge_ingest_event` là một transaction: authenticate account binding → dedupe event → upsert peer/conversation → insert message → atomic unread increment/preview → routing → staff alert work → AI-policy work → audit. Duplicate phải trả message cũ và **không** tăng unread, push hay tạo work lần hai.
 
-Canonical event phải phủ đủ hành vi worker hiện có, kẻo mất tính năng khi cắt service-role key: `REACTION`, `UNDO`, `SEEN` đi qua `zalo_bridge_ingest_event` (idempotent theo event_key, cập nhật message hiện hữu, không tạo work AI); contact/label bulk sync (`getAllFriends`/`getAllGroups`/`getLabels` — hiện worker upsert trực tiếp trong `syncContacts`/`syncLabels`) đi qua `zalo_bridge_sync_contacts`/`zalo_bridge_sync_labels` dạng batch, giới hạn kích thước, chỉ metadata allowlist, không đụng unread/routing.
+Canonical event phải phủ đủ hành vi worker hiện có, kẻo mất tính năng khi cắt service-role key: `REACTION`, `UNDO`, `SEEN` đi qua `zalo_bridge_ingest_event` (idempotent theo event_key, cập nhật message hiện hữu, không tạo work AI). Contact/label sync đi qua `zalo_bridge_sync_contacts`/`zalo_bridge_sync_labels` dạng batch, giới hạn kích thước, chỉ metadata allowlist, không đụng unread/routing; mặc định sync delta/peer đã có business thread, không materialize toàn bộ `getAllFriends`/`getAllGroups` nếu chưa có D5 legal-purpose approval.
 
 ### 3.3 Migration C — `*_zalo_care_identity_routing.sql`
 
 #### Identity và privacy
 
-- `zalo_channel_identities`: `(account_id,peer_zalo_uid)` unique, direct/group kind, display metadata, first/last seen.
-- `zalo_customer_links`: identity, customer, `PENDING | VERIFIED | REJECTED | REVOKED`, evidence category/reference, requested/approved/revoked actor/timestamp, version.
+- `zalo_channel_identities`: provider/product/account scope/subject namespace/provider subject ID unique, direct/group kind, display metadata, first/last seen. Chỉ materialize identity đã xuất hiện trong business conversation hoặc được staff allowlist có căn cứ; không full-sync toàn bộ friends/groups mặc định.
+- `zalo_customer_links`: identity, customer, `PENDING | VERIFIED | REJECTED | REVOKED`, evidence category/reference, assurance level/purpose/expiry/reverification policy, requested/approved/revoked actor/timestamp, version.
 - `zalo_customer_link_events`: append-only transition history.
-- `zalo_contact_preferences`: support response và proactive transactional status; source/legal basis/effective/version.
-- `zalo_contact_preference_events`: append-only opt-in/opt-out history.
+- `zalo_contact_preferences`: support response và proactive transactional status; source/legal-basis enum, evidence, effective/expiry/revocation/version.
+- `zalo_contact_preference_events`: append-only opt-in/opt-out history. Opt-out rõ ràng như `STOP`/“đừng nhắn” phải tạo suppression proactive **có hiệu lực ngay** trong transaction ingest; staff chỉ review câu mơ hồ hoặc release suppression sau đó có reason/audit.
 - `zalo_suppressions`: `PROACTIVE_TRANSACTIONAL | ALL_OUTBOUND`, reason/effective/expiry/release.
 - Hàm immutable `normalize_phone_vn(text)` + generated column/index trên `customers.phone` (live đang lẫn 10 và 11 chữ số, chưa có chuẩn hóa server-side nào) — chỉ phục vụ candidate suggestion, không phải bằng chứng verify.
 
@@ -276,25 +345,25 @@ Revocation trong một transaction phải khóa private context, cancel sensitiv
 
 #### Conversation support state
 
-Mở rộng `zalo_conversations`:
+Mở rộng `zalo_conversations` cho **thread-level inbox state**:
 
 - `organization_id NOT NULL`, `channel_identity_id`, `building_id`.
-- `support_status`: `OPEN | WAITING_STAFF | WAITING_CUSTOMER | RESOLVED | CLOSED`.
 - `automation_mode`: `AUTO | DRAFT_ONLY | HUMAN | PAUSED`.
 - `control_version`, `context_version`.
-- `assigned_staff_id`, `assignment_source`.
-- `priority`, `first_inbound_at`, `first_response_at`, `first_response_due_at`, `resolution_due_at`, `resolved_at`.
+- `assigned_staff_id`, `assignment_source`, latest active case reference.
 - `identity_link_id`, customer/contract/room refs chỉ khi verified và canonical context hợp lệ (reuse các cột `customer_id/contract_id/room_id/assigned_staff_id` đã có sẵn nhưng đang trống — không tạo cột trùng).
 - `lead_id` và `kind` CHECK (`tenant|lead|broker|unknown`) hiện có: giữ read-only trong transition; Customer 360 chỉ dùng canonical `customers`; `LeadInfo`/`BrokerInfo` tiếp tục hiển thị từ `profile` jsonb cho tới khi có quyết định riêng cho leads/brokers.
 
 Thêm:
 
+- `zalo_care_cases`: một episode support có `OPEN | WAITING_STAFF | WAITING_CUSTOMER | RESOLVED | CLOSED`, priority, assignee, opening/closing message, first response/resolution SLA timestamps, resolution, reopen linkage, `control_version`; không ghi đè lịch sử case cũ khi thread có yêu cầu mới.
+- Vòng đời case mặc định (default an toàn cho D3, owner có thể chỉnh): ingest transaction tự mở case `OPEN` khi inbound đến mà thread không có case active; inbound trong ≤72h sau `RESOLVED` thì reopen chính case đó (ghi reopen linkage), quá 72h hoặc case đã `CLOSED` thì mở case mới; `RESOLVED` không có inbound sau 7 ngày được cron tự chuyển `CLOSED` (audit). Tối đa một case active/thread (unique partial index).
 - `zalo_routing_responsibilities`: org/building/optional room/staff/priority/effective dates; chỉ cho staff vốn đã có scope.
 - `zalo_assignment_events`: append-only.
 - `zalo_handoffs`: reason, AI/source, assignee, requested/ack/closed state.
 - `zalo_internal_notes`: nội bộ, retention 12 tháng, không phải message gửi khách.
 - `zalo_sla_policies` và `zalo_sla_events`; SLA update qua RPC explicit, không tái dùng trigger ordering của `issues`.
-- `zalo_job_links`: unique job, conversation, source message, AI run, idempotency/provenance.
+- `zalo_job_links`: unique job, conversation, care case, source message, AI run, idempotency/provenance.
 
 Routing priority:
 
@@ -303,7 +372,7 @@ Routing priority:
 3. Trách nhiệm building.
 4. Organization intake queue.
 
-Nếu approved customer có nhiều hợp đồng/phòng active và không suy ra duy nhất: conversation ở `WAITING_STAFF`, AI không tra cứu riêng tư cho tới khi staff chọn context.
+Nếu approved customer có nhiều hợp đồng/phòng active và không suy ra duy nhất: active care case ở `WAITING_STAFF`, conversation context giữ unresolved; AI không tra cứu riêng tư cho tới khi staff chọn context.
 
 #### RPC UI nghiệp vụ
 
@@ -321,9 +390,12 @@ Nếu approved customer có nhiều hợp đồng/phòng active và không suy r
 - `zalo_revoke_customer_link`
 - `zalo_add_internal_note`
 - `zalo_request_handoff`
+- `zalo_resolve_care_case`
+- `zalo_close_care_case`
+- `zalo_reopen_care_case`
 - `zalo_create_job_from_conversation`
 
-`zalo_create_job_from_conversation` phải validate identity/org/building/room, sanitize title/description, dedupe theo `(organization_id,source_message_id,operation)`, insert `jobs` + `zalo_job_links` + audit trong một transaction. AI chỉ được tạo job/note/handoff; không tạo material usage hoặc tác động tiền.
+`zalo_create_job_from_conversation` phải validate identity/org/building/room/care case, sanitize title/description, dedupe theo `(organization_id,source_message_id,operation)`, insert `jobs` + `zalo_job_links` + audit trong một transaction. Generator mã job (`generate_job_code`) đã được vá secdef + `pg_advisory_xact_lock` từ 20260527000001 (là reference pattern của 20260701000001) — không cần re-fix; phần còn thiếu là retry-on-unique-conflict ở RPC khi hy hữu trùng mã, vì exactly-once theo source không ngăn collision giữa hai source khác nhau. AI chỉ được tạo job/note/handoff; không tạo material usage hoặc tác động tiền.
 
 ### 3.4 Migration D — `*_zalo_care_ai_knowledge.sql`
 
@@ -378,6 +450,7 @@ Harden `zalo_message_templates` thành versioned/approved template:
 
 Thêm:
 
+- `organizations.timezone` dạng IANA canonical, `NOT NULL` trước khi enable campaign; quiet-hours/due scanner dùng timezone này. Thay đổi timezone sau approval phải re-evaluate dispatch window và có behavior/audit rõ.
 - `zalo_notification_events`: durable occurrence từ invoice/contract/job/service events; unique occurrence key.
 - `zalo_transactional_campaigns`: source event, account, template version, audience snapshot/hash, status, submit/approve/pause/cancel actors, approval expiry.
 - `zalo_campaign_recipients`: customer/verified identity/conversation/source fact/rendered body hash/status/suppression/message/idempotency.
@@ -409,10 +482,13 @@ Dispatch recheck identity, opt-out/suppression, source fact hash, quiet hours, a
 ### 3.6 Migration F — `*_zalo_care_retention_and_cutover.sql`
 
 - `zalo_retention_runs` và `zalo_run_retention(p_batch_size)`.
+- Retention schedule phải được data owner/privacy owner phê duyệt và version hóa trước production ingest; thời hạn dưới đây là default đề xuất, không phải kết luận pháp lý.
 - Chat body, AI draft, internal note và rendered recipient body: purge/anonymize sau 12 tháng.
 - Raw inbound diagnostic metadata: purge sau khoảng 30 ngày.
 - Attachment: default 90 ngày, trừ policy/legal hold được audit.
-- `media_url` hiện trỏ CDN Zalo (URL ngoài, hết hạn ngoài kiểm soát): từ cutover trở đi cache media vào bucket private + signed URL theo chuẩn repo (`StorageImage`/`useSignedUrl`/`signedUrlBatcher`); media cũ chấp nhận mất khi CDN hết hạn. Retention 90 ngày chỉ áp dụng cho media tự lưu.
+- Có `zalo_legal_holds`/classification và precedence rõ; retention hỗ trợ dry-run, batch resume, hold exclusion và audit counts. Legal hold thắng purge; deletion/export request có workflow riêng; backup/PITR erasure được tài liệu hóa.
+- `media_url` hiện trỏ CDN Zalo (URL ngoài, hết hạn ngoài kiểm soát): từ cutover trở đi cache chọn lọc vào Storage; media cũ chấp nhận mất khi CDN hết hạn. **Private bucket/signed URL không tự tạo tenant isolation**: browser không được tự ký chỉ vì role `authenticated`; RPC/Edge phải authorize conversation/org/building ngay lúc ký, kể cả khi caller biết chính xác object path. Path resource-scoped `(org/account/conversation/message/random-id)`, không list cross-org; negative test org B biết path org A vẫn không read/sign được.
+- Downloader là SSRF boundary: HTTPS + verified hostname allowlist, chặn private/loopback/link-local/metadata IP sau DNS và mọi redirect, timeout/stream size cap, MIME sniff, cấm active SVG/HTML, checksum/quarantine, không tự tải file lớn và không log signed/source URL. Retention 90 ngày chỉ áp dụng cho media tự lưu.
 - Scope `demo-reset`: org DEMO (`dddd…0001`) hiện chưa có dữ liệu zalo; nếu demo dùng `FakeChannelAdapter` thì toàn bộ `zalo_*`/care/AI/campaign phải nằm trong demo_reset scope.
 - Giữ content-free delivery/audit aggregates cần cho vận hành; audit bảo mật tối thiểu 24 tháng nếu chính sách tổ chức cho phép.
 - Purge phải tombstone content, không phá FK/delivery aggregate.
@@ -427,7 +503,7 @@ Cutover additive:
 3. Stop old worker trong maintenance window, ingest final delta.
 4. Start new connector bằng fake/staging trước rồi personal pilot.
 5. Switch frontend sang RPC v2.
-6. Revoke old direct table writes và old worker service-role credential.
+6. Xác nhận service-role credential của old worker đã bị revoke từ Phase 1; tại đây chỉ revoke nốt direct authenticated table writes/legacy UI path sau compatibility gate.
 7. Giữ legacy RPC/table path read-only trong observation window; không tự quay lại broad-service-role worker khi rollback.
 8. Sau observation, revoke old `zalo_send_message`, `zalo_broadcast`, `zalo_toggle_automation` hoặc bọc chúng về RPC v2; bảng `zalo_automations` deprecate sau khi config đã migrate sang `automation_mode` + AI policy org-level.
 
@@ -440,8 +516,8 @@ Sau mọi schema migration: regenerate `src/integrations/supabase/types.ts` và 
 ### 4.1 Inbound message
 
 1. Adapter nhận event và normalize thành canonical event.
-2. Tạo stable `event_key` từ provider IDs; fallback là hash canonical account/type/peer/time/payload.
-3. Gọi `zalo-bridge-api` với account-bound bearer credential, request ID và timestamp chống replay.
+2. Tạo stable `event_key` từ provider IDs; fallback là hash canonical account/type/peer/time/payload theo schema version và canonical serialization cố định.
+3. Gọi `zalo-bridge-api` với account-bound credential, request ID/nonce, timestamp, connector generation và body hash chống replay; bearer secret dài hạn đơn thuần là chưa đủ.
 4. Edge Function hash credential, derive account/org từ binding; payload không được đổi account/org.
 5. `zalo_bridge_ingest_event` transaction thực hiện dedupe, identity/conversation/message, unread/preview, routing, alert/work/audit.
 6. `HISTORY_SYNC`, group, unsupported media, recalled/stale event không trigger AI.
@@ -604,7 +680,8 @@ Fix kèm theo:
 
 - Template hook select `body` và picker chèn body, không chèn title.
 - Label identity phải scope theo `(account_id,label_id)`, không dedupe toàn cục bằng numeric `label_id`.
-- Push/handoff alert tới assigned/responsible staff, không chỉ account owner.
+- Push/handoff alert tới assigned/responsible staff, không chỉ account owner; payload lock-screen mặc định content-free, server derive recipient từ `conversation_id` và reauthorize ngay lúc gửi.
+- `ConnectZaloDialog` chuyển sang đọc QR qua login-challenge RPC (short-poll với TTL), KHÔNG nhận QR qua Realtime `zalo_accounts` như hiện tại; `useZaloRealtime`/poll accounts chỉ còn health metadata.
 
 ---
 
@@ -629,12 +706,13 @@ Baseline hardening VPS (bổ sung theo rà soát 15/07):
 
 ### 7.2 Session protection
 
-- Mã hóa session file bằng AES-256-GCM hoặc encrypted volume; key từ root-only runtime secret, không commit, không log.
+- Mã hóa session file bằng AES-256-GCM hoặc encrypted volume; key từ root-only runtime secret, không commit, không log. Chốt key source/rotation, nonce+tag file format, atomic temp-write+rename, startup fail-closed khi decrypt lỗi và revoke/delete runbook; không bao giờ fallback ghi plaintext.
 - Session dir permission tương đương `0700`, một account/volume.
 - Loại session/cookie khỏi logs, crash dumps, snapshots và backup thường.
 - Disaster restore yêu cầu QR/manual re-login; không restore cookie backup.
 - Chỉ một active lease/listener/account.
 - Session volume persist qua deploy/recreate container (named volume) — mất session file đồng nghĩa QR re-login = sự kiện "thiết bị mới" lặp với Zalo (xem hygiene 7.3); deploy code KHÔNG được đụng volume session.
+- Encryption at rest không bảo vệ được khi root/VPS đang bị compromise; đây là residual risk phải alert/rotate/re-login, không coi mã hóa volume là ranh giới tuyệt đối.
 
 ### 7.3 Health, retry và failure behavior
 
@@ -658,6 +736,8 @@ Default conservative limits:
 - 100 recipients/approved batch.
 - Proactive quiet hours 20:00–08:00 theo timezone tổ chức.
 
+Các số này là **guardrail nội bộ khởi tạo**, không phải quota Zalo được bảo đảm; phải tune giảm từ pilot và revalidate platform policy trước mỗi rollout.
+
 **Caps phải enforce ở DB claim (`available_at` + rate window trong `zalo_bridge_claim_outbound`), không phải sleep phía worker.** Worker hiện tại chỉ rải nhịp 0,7–1,5s giữa job → khi queue đầy đạt ~35–40 tin/phút, vượt xa ngưỡng an toàn tài khoản cá nhân; worker cũ/compromised bỏ sleep là mất lưới.
 
 Anti-spam hygiene (chống Zalo đánh dấu spam — bổ sung theo rà soát worker 15/07):
@@ -669,8 +749,8 @@ Anti-spam hygiene (chống Zalo đánh dấu spam — bổ sung theo rà soát w
 - **Chỉ gửi proactive cho peer đã có thread hiện hữu** (khách đã từng nhắn); TUYỆT ĐỐI không bulk lookup theo số điện thoại (`findUser`) để tạo peer mới — bulk phone lookup là vector khoá nick, và cũng bị cấm ở tầng nghiệp vụ (identity chỉ từ conversation).
 - **Per-peer proactive cap**: mặc định ≤1 proactive/ngày và ≤4/tháng mỗi peer (chuỗi nhắc nợ theo hoá đơn có cap riêng đã approve), đếm bằng counter DB.
 - **Biến thể nội dung**: campaign render template + variables per-recipient (tên, phòng, số liệu) — không gửi body y hệt hàng loạt như `zalo_broadcast` cũ; hạn chế URL trong tin bulk (link rút gọn hàng loạt là tín hiệu spam), ưu tiên text thuần.
-- **Circuit breaker theo error class**: phân loại lỗi send (bị chặn/không phải bạn/spam-limited vs lỗi mạng) — worker hiện chỉ mark `failed` không phân loại. Peer chặn → auto-suppress peer; error rate batch >5% hoặc gặp mã limit → pause campaign + account `LIMITED`, alert, chờ staff resume.
-- **Dừng ngay theo tín hiệu người dùng**: opt-out/từ chối trong nội dung tin (STOP, "đừng nhắn") → orchestrator tạo suppression đề xuất cho staff xác nhận.
+- **Circuit breaker theo error class**: phân loại lỗi send (bị chặn/không phải bạn/spam-limited vs lỗi mạng) — worker hiện chỉ mark `failed` không phân loại. Peer chặn → auto-suppress peer; gặp mã limit thì pause ngay. Ngưỡng error-rate khởi tạo `>5%` chỉ có hiệu lực khi đã chốt denominator, rolling window, minimum sample, included error classes, cooldown và resume approver; không dùng tỷ lệ mơ hồ để auto-pause/resume.
+- **Dừng ngay theo tín hiệu người dùng**: opt-out rõ ràng trong nội dung tin (STOP, "đừng nhắn") → upsert suppression proactive effective ngay; staff chỉ xác nhận trường hợp mơ hồ hoặc release sau đó có reason/audit. Claim luôn đọc suppression hiện thời, kể cả sau approval/enqueue.
 
 ### 7.4 Logs, metrics và alerts
 
@@ -697,7 +777,8 @@ Live hiện chỉ có **1 cron job** (`recurring_vouchers_daily`) và database w
 | Care work recovery sweep | Supabase Cron → `zalo-care-orchestrator` | mỗi 1 phút |
 | `zalo_reap_expired_leases` | Cron SQL | mỗi 1 phút |
 | Retention (`zalo_run_retention`) | Cron SQL | hằng ngày (đêm) |
-| QR cleanup (`qr_expires_at` quá hạn) | Cron SQL | mỗi 5 phút |
+| Login-challenge cleanup (challenge used/expired) | Cron SQL | mỗi 5 phút |
+| Auto-close care case `RESOLVED` quá 7 ngày | Cron SQL | hằng ngày |
 | `zalo_generate_due_events` | Cron SQL | hằng ngày theo timezone tổ chức |
 | Kích hoạt nhanh work mới | Database webhook (pg_net) → orchestrator | theo INSERT `zalo_care_work_queue` |
 
@@ -716,10 +797,10 @@ Hiện trạng đo được từ `worker/index.js`:
 Thiết kế đích phải đạt:
 
 - **Gộp call**: `zalo_bridge_claim_outbound` nhận batch (limit N) và kiêm luôn heartbeat/health report trong cùng invocation — không tách 2 call.
-- **Adaptive poll + jitter**: 2–3s khi vừa có việc/inbound, giãn dần 15–30s khi idle (±20% jitter). Mục tiêu ≤300–400K invocation/tháng/account. Có webhook wake-up (7.5) thì idle floor được phép cao hơn.
+- **Adaptive poll + jitter**: 2–3s khi vừa có việc/inbound, giãn dần 15–30s khi idle (±20% jitter). Mục tiêu ≤300–400K invocation/tháng/account. Webhook kích hoạt orchestrator không tự đánh thức process VPS; nếu yêu cầu outbound pickup ≤2s phải bổ sung authenticated outbound wake-up/long-poll/SSE/WebSocket + recovery poll. Nếu chưa có wake-up, SLO `queued_at → claimed_at` phải phản ánh idle floor 15–30s. Heartbeat/lease renewal tách khỏi work polling để backoff không làm mất lease.
 - **Batch ingest**: `zalo_bridge_ingest_events` (mảng, thứ tự bảo toàn, kết quả per-event) cho `old_messages`/history sync — không gọi per-event khi bulk. Dedupe phía RPC phải là INSERT-nếu-chưa-có (không UPDATE đè row cũ) để không phát Realtime churn.
 - **Push debounce**: STAFF_ALERT gộp theo conversation trong cửa sổ 30–60s (giữ tag `zalo-<conversation_id>` để SW collapse); không push từng tin trong cùng phiên chat.
-- **Sync delta**: full contact/label sync chỉ 1 lần/ngày (cron) hoặc khi staff bấm; reconnect chỉ sync khoảng trống từ `last_event_at`. Label sync phải diff (chỉ update conversation có thay đổi), friends paginate theo trang thay vì một mảng 20.000.
+- **Sync tối thiểu hóa dữ liệu**: reconnect chỉ sync khoảng trống từ `last_event_at`; label sync phải diff. Mặc định chỉ materialize peer/group đã xuất hiện trong business thread, không daily full-sync toàn bộ friend/group directory. Nếu full directory thật sự cần, phải có purpose/legal basis, allowlisted metadata, retention và staff-triggered/rate-limited flow; pagination chỉ giải quyết RAM, không giải quyết data minimization.
 - **Media (tải lên/tải xuống Zalo)**:
   - Inbound: KHÔNG tự tải media theo tin (giữ hành vi hiện tại chỉ lưu URL); job nền rate-limited cache chọn lọc vào bucket private — ảnh ≤5MB nén WebP (max 1600px), thumbnail-first; video/file lớn giữ URL CDN + metadata, không tải mặc định.
   - Outbound: nén ảnh trước khi gửi (≤2MB, max 1600px); campaign ưu tiên text thuần; đường đi media outbound là storage → VPS → Zalo (2 chiều băng thông VPS) — Vultr $5 có ~1TB/tháng, đủ nhưng phải meter.
@@ -731,14 +812,16 @@ Thiết kế đích phải đạt:
 
 Ước lượng tổng: **24–33 engineer-weeks**, tương đương khoảng **12–16 tuần lịch** với 2 kỹ sư chính + hỗ trợ security/infra. Pilot MVP tới safe auto-reply: khoảng 17–23 engineer-weeks; campaign và production hardening cộng 7–10 engineer-weeks. Hai tuần pilot observation là thời gian lịch, không chỉ coding.
 
-### Phase 0 — Preflight security/tenancy (2–3 engineer-weeks)
+### Phase 0 — Decision gates + preflight security/tenancy (2–3 engineer-weeks)
 
-- Audit live catalog, Zalo organization attribution, RLS/grants/RPC.
+- Chốt D1–D6: platform eligibility/capability, Personal–OA–ZNS matrix, thread-vs-case, wake/SLO, data protection/retention và transitional authz.
+- Audit live catalog, Zalo organization attribution, ownership FK cascade, Storage policies, RLS/grants/RPC.
 - Resolve/quarantine wrong/null/multiple account rows.
 - Chốt permission/resource matrix và SQL/RLS test harness.
 - Harden exact AI model/pricing/body limits.
+- Khóa server-side legacy `zalo_broadcast` trước khi mở bất kỳ automation/campaign; ẩn UI không đủ.
 
-Exit: mismatch/anomaly P0 = 0; không fixture nào cross-org/building đọc/ghi được; unknown model/zero price reject; security review chấp nhận narrow bridge.
+Exit: D1–D6 có owner/evidence/outcome; mismatch/anomaly P0 = 0; xóa creator không xóa dữ liệu org; user biết exact media object path cross-org vẫn không read/sign được; không fixture nào cross-org/building đọc/ghi được; unknown model/zero price reject; security review chấp nhận narrow bridge.
 
 ### Phase 1 — Durable transport + connector isolation (4–6 engineer-weeks)
 
@@ -746,8 +829,9 @@ Exit: mismatch/anomaly P0 = 0; không fixture nào cross-org/building đọc/ghi
 - Refactor worker thành adapters và bridge client.
 - Account-bound credentials, lease, heartbeat, retry/dead/unknown.
 - Per-account containers/session protection/health alerts.
+- Cắt service-role credential khỏi VPS ngay trong Phase 1 sau bridge compatibility; không chờ Migration F. Frontend/direct-authenticated-write cutover là gate riêng ở Phase 2.
 
-Exit: duplicate inbound chỉ có một side effect; kill/restart không duplicate send; session loss pause ≤60s; VPS không còn service-role key; fake adapter contract tests xanh.
+Exit: duplicate inbound chỉ có một normalized side effect; attempt có thể đã qua provider boundary không automatic retry mà vào `UNKNOWN`; queue bảo toàn per-conversation order và support preempt campaign; session loss pause ≤60s; VPS không còn service-role key; replay/stale generation bị reject; fake adapter contract tests xanh.
 
 ### Phase 2 — Inbox, identity, routing, jobs (3–4 engineer-weeks)
 
@@ -755,7 +839,7 @@ Exit: duplicate inbound chỉ có một side effect; kill/restart không duplica
 - RPC pagination và frontend update.
 - Fix composer/template/stat/label issues.
 
-Exit: staff xử lý full happy path; unverified/group locked; cross-building denied; revocation tức thì; create job exactly-once; failed send giữ draft.
+Exit: staff xử lý full happy path; unverified/group locked; cross-building denied; revocation tức thì; create job exactly-once; failed send giữ draft; case reopen/mở mới không ghi đè lịch sử case cũ (một active case/thread).
 
 ### Phase 3 — Knowledge + AI draft-only (4–5 engineer-weeks)
 
@@ -770,9 +854,13 @@ Exit: evaluation safety gates xanh; staff review/approve/reject; mọi run có p
 
 Scope: 1 organization, 1 personal account, một số building, chỉ FAQ + service intake allowlist; private finance/contract vẫn draft-only.
 
-Exit: 2 tuần không privacy/cross-tenant incident; reconnect/native fallback/ambiguous-send drills hoàn tất; staff chấp nhận routing/draft/360; KPI baseline có dữ liệu.
+Exit không chỉ dựa vào thời gian. Trước pilot phải chốt `N_min` cho eligible candidates/actual auto-sends, denominator và confidence interval; 100% auto-send được post-review trong pilot; có ngưỡng routing accuracy, unsupported answer, `unknown`/dead-letter và latency. Reconnect/native fallback/ambiguous-send drills phải có evidence artifact và named approvers security/operations/data protection. Hai tuần ít traffic không tự động PASS.
+
+Automatic NO-GO nếu có cross-org/unverified/group disclosure, sensitive auto-send, financial/contract write, opt-out violation, duplicate do automatic retry hoặc account `LIMITED` có attribution tới automation.
 
 ### Phase 5 — Transactional campaigns (3–4 engineer-weeks)
+
+Gate vào phase: D1 platform eligibility GO rõ cho kênh được chọn; data-protection sign-off đã có (không đợi Phase 6); ưu tiên OA/ZNS chính thức nếu capability phù hợp. Organization phải có timezone IANA canonical; quiet hours/scanner tính theo timezone này và thay đổi timezone sau approval có behavior được test.
 
 - Durable event/Cron, approved templates, recipient snapshot, opt-out, quiet hours/caps/dedupe.
 - Thay broadcast tự do bằng campaign wizard.
@@ -803,7 +891,11 @@ Test:
 - Conversation context room/building/contract/customer consistency.
 - Every RPC: same scope, other building, other org, revoked member, forged IDs.
 - Queue claim exclusivity, lease expiry/reaper, idempotency, campaign immutability, SLA transitions, audit append-only, retention tombstone.
-- Bridge credential/account không claim/ack account khác.
+- Bridge credential/account không claim/ack account khác; replay nonce, stale lease generation và body hash sai bị reject.
+- Offboard/xóa creator legacy không làm giảm row count account/conversation/message/template/audit của organization.
+- Membership chưa tới `valid_from`, đã qua `valid_to`, organization `SUSPENDED/CLOSED` đều deny.
+- Storage: user org B biết exact object path org A vẫn không list/read/sign được; downloader test SSRF/redirect/private IP/oversize/MIME mismatch.
+- QR challenge không nằm trong account Realtime; staff chỉ `chat_zalo.view` không đọc được QR.
 - Realtime chịu RLS: sau khi thêm RESTRICTIVE policy, 2 channel hiện có (`zalo-convs` gồm conversations/accounts/labels và `zalo-msg-<id>`) vẫn nhận event cho user hợp lệ và **không** nhận event cross-org; giữ nguyên debounce 400ms (fix egress 26/06, không được phá).
 
 ### Worker/adapter
@@ -813,9 +905,10 @@ Fake adapter trong CI, tuyệt đối không gọi real Zalo:
 - connect/disconnect/health;
 - duplicate/out-of-order/history/recall/reaction events;
 - lease loss, heartbeat timeout, credential rotate;
-- sent/retryable/non-retryable/ambiguous outcomes;
+- sent/retryable/non-retryable/ambiguous outcomes; attempt đã bắt đầu provider call rồi mất ACK vào `UNKNOWN`, không auto retry;
 - pause/resume, rate limit, caps, history sync không AI;
-- adaptive poll backoff + batch claim: worker idle không vượt ngân sách invocation (7.6); caps enforce ở claim RPC — worker bỏ sleep vẫn không gửi vượt rate;
+- per-conversation FIFO; campaign flood không chặn manual/support reply; fairness không starvation;
+- adaptive poll backoff + batch claim: worker idle không vượt ngân sách invocation (7.6); caps enforce ở claim RPC — worker bỏ sleep vẫn không gửi vượt rate; đo riêng `queue commit → claim` active/idle và kiểm outbound wake-up nếu SLO ≤2s;
 - warm-up caps sau connect mới; circuit breaker khi error class bị-chặn/limited vượt ngưỡng.
 
 ### AI
@@ -846,6 +939,7 @@ Trên staging/fake adapter trước, sau đó controlled production pilot:
 1. Receive inbound → route đúng staff.
 2. Approve identity → customer 360 mở; revoke → đóng ngay.
 3. Create job from message.
+3b. Resolve case → inbound trong 72h reopen đúng case; close hẳn → inbound mở case mới, lịch sử case cũ nguyên vẹn.
 4. Public FAQ auto reply.
 5. Sensitive reply draft → staff edit/approve.
 6. Takeover khi AI đang chạy → không có AI send.
@@ -910,7 +1004,8 @@ Initial SLO khi connector connected, không bị Zalo limit:
 
 - 99% inbound persisted ≤5 giây.
 - 95% safe AI decision ≤15 giây.
-- 99% staff outbound claimable ≤2 giây.
+- 99% `staff submit → durable queue commit` ≤2 giây.
+- `queued_at → claimed_at` đo riêng active/idle connector: ≤2 giây chỉ khi đã triển khai outbound wake-up; nếu dùng adaptive poll thì target phải theo poll floor đã load-test, không dùng từ “claimable” mơ hồ.
 - Connector loss detect/pause ≤60 giây.
 - Responsible staff alert ≤2 phút.
 - Không có normal inbound work quá 2 phút mà không alert.
@@ -929,11 +1024,11 @@ External Zalo availability/delivery phải báo riêng; personal unofficial brid
 - `supabase/functions/llm-proxy/index.ts` — internal care mode, exact model/pricing, body/schema limits, org quota/correlation.
 - `src/hooks/useZaloChat.ts` — thay direct broad queries bằng care RPC hooks/phân trang; sau đó tách hook theo domain.
 - `src/pages/chat-zalo/ChatZaloPage.tsx` — inbox shell, health/identity/AI/takeover/customer 360.
-- `src/components/chat-zalo/*` — evolve ConversationList, ChatThread, Composer, InfoPanel, AutomationPanel, BroadcastDialog, TemplatePicker.
+- `src/components/chat-zalo/*` — evolve ConversationList, ChatThread, Composer, InfoPanel, AutomationPanel, BroadcastDialog, TemplatePicker, ConnectZaloDialog (QR qua login-challenge RPC).
 - `src/lib/permissions.ts`, `src/lib/permissionPages.ts`, `src/App.tsx` — permission và subroutes.
 - `src/copilot/maskPii.ts`/server equivalent — common test corpus cho PII policy.
 - `src/hooks/useJobs.ts` và task components — reuse read/UI; AI path vẫn gọi atomic RPC, không browser hook.
-- `src/hooks/useNotifications.ts`, `supabase/functions/send-push/index.ts` — route alert đúng assigned/responsible staff sau hardening.
+- `src/hooks/useNotifications.ts`, `supabase/functions/send-push/index.ts` — care push mặc định content-free (“Có tin Zalo mới”); caller chỉ gửi `conversation_id`, server derive recipient + reauthorize membership/scope, không tin arbitrary `userId`/body; route đúng assigned/responsible staff sau hardening.
 - `src/integrations/supabase/types.ts` — regenerate sau schema.
 
 ### New representative files
@@ -947,7 +1042,7 @@ External Zalo availability/delivery phải báo riêng; personal unofficial brid
 - `supabase/functions/zalo-care-orchestrator/index.ts`
 - `supabase/functions/_shared/carePolicy.ts`
 - `supabase/functions/_shared/pii.ts`
-- Các migration A–F dưới `supabase/migrations/`.
+- Các tranche/migration A0–A3 và B–F dưới `supabase/migrations/` (A0 là artifact read-only ngoài migration transaction).
 - Focused hooks: `useZaloInbox`, `useZaloConversation`, `useZaloIdentity`, `useZaloAiDrafts`, `useZaloCampaigns`, `useZaloKnowledge`, `useZaloOperations`.
 - Components: `Customer360Panel`, `IdentityVerificationBanner`, `HumanTakeoverControl`, `AiDraftReviewCard`, `AssignmentMenu`, `SlaIndicator`, `AccountHealthBanner`, `TransactionalCampaignWizard`, KB/operations panels.
 - SQL/RLS, worker adapter, AI evaluation và frontend tests tương ứng.
@@ -981,3 +1076,25 @@ Residual risks phải chấp nhận/giám sát:
 - OA migration có thể cần re-link identity vì personal UID và official UID không chắc tương thích.
 
 Adapter seam, fail-closed identity/tenant policy, durable queues, takeover version và native-Zalo fallback giảm blast radius nhưng không loại bỏ các rủi ro này.
+
+---
+
+## 14. Risk register và traceability gate
+
+Risk register phải được review lại trước mỗi tranche, tối thiểu gồm:
+
+| Risk | Khả năng | Tác động | Mitigation/detection | Acceptance owner |
+|---|---|---|---|---|
+| Personal account bị challenge/khóa | Cao dài hạn | Cao | D1 eligibility, staff-only default, caps, health alert, native/OA fallback | Product/platform |
+| Cross-org/Storage leak | Trung bình | Critical | Resource-derived RPC/RLS, composite invariant, signer authorization, negative tests | Security |
+| Duplicate/ambiguous outbound | Trung bình | Cao | Lease/generation, FIFO, `UNKNOWN`, reconcile/manual decision | Engineering/operations |
+| Session/QR theft | Trung bình | Critical | Per-account isolation, login challenge, rotation, no logs/backups | Operations/security |
+| AI private disclosure | Trung bình | Critical | Verified-direct gate, deterministic policy, eval/post-review, kill switch | AI/security |
+| Protocol `zca-js` break | Cao dài hạn | Cao | Versioned adapter fixtures, canary, circuit breaker, OA roadmap | Connector owner |
+| Over-collection/retention error | Trung bình | Cao | Conversation-only identity materialization, classification/hold/dry-run purge | Data protection |
+
+Mỗi requirement quan trọng phải có traceability:
+
+`requirement → migration/schema invariant → RPC/Edge/connector module → UI → test → SLI/alert → runbook → owner`.
+
+Không được tuyên bố một tranche hoàn tất nếu requirement P0/P1 không có test hoặc evidence artifact tương ứng. Open question không được ẩn trong implementation detail; phải nằm trong D1–D6 hoặc risk register với owner và deadline.
