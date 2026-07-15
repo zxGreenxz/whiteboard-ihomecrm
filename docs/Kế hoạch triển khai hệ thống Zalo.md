@@ -236,8 +236,9 @@ Backfill 20 row queue hiện hữu sang state machine mới: `sent` → `sent`, 
 - `zalo_bridge_renew_account_lease`
 - `zalo_bridge_release_account_lease`
 - `zalo_bridge_ingest_event`
+- `zalo_bridge_ingest_events` — biến thể batch (mảng, thứ tự bảo toàn, kết quả per-event) cho history/bulk sync; dedupe kiểu INSERT-nếu-chưa-có, không UPDATE đè row cũ (tránh bão Realtime — xem 7.6)
 - `zalo_bridge_report_health`
-- `zalo_bridge_claim_outbound`
+- `zalo_bridge_claim_outbound` — nhận batch (p_limit) và kiêm heartbeat/health trong cùng call; enforce rate window/`available_at` tại đây (caps là luật DB, không phải sleep phía worker)
 - `zalo_bridge_ack_sent`
 - `zalo_bridge_ack_failed`
 - `zalo_bridge_sync_contacts`
@@ -576,6 +577,7 @@ Giữ route hiện tại và tiến hóa UI thay vì thay mới:
 - AI draft card có approve/edit/reject/handoff.
 - Human takeover control.
 - Composer giữ draft theo conversation, sinh UUID idempotency ổn định và chỉ clear sau RPC success; send fail không mất nội dung.
+- Media thumbnail-first lazy-load: chỉ tải ảnh khi vào viewport/bấm mở; media đã cache storage dùng signed URL batch (`signedUrlBatcher` sẵn có), media chưa cache dùng URL CDN còn sống + placeholder khi hết hạn (xem 7.6).
 
 ### Customer 360
 
@@ -618,6 +620,13 @@ Fix kèm theo:
 
 Khởi tạo resource cap khoảng 0,5 CPU/512 MB mỗi connector và tune theo metrics; không để Zalo burst làm nghẽn 9Router.
 
+Baseline hardening VPS (bổ sung theo rà soát 15/07):
+
+- SSH key-only + disable password auth, fail2ban, `unattended-upgrades` bật sẵn.
+- Docker image pin theo digest; healthcheck container + restart backoff (không restart-loop nhanh — mỗi restart kéo theo re-login/sync, vừa tốn băng thông vừa là tín hiệu bất thường với Zalo).
+- Log rotation content-free (logrotate/docker log-opts max-size), NTP sync (lệch giờ phá lease/timing).
+- RAM headroom: `getAllFriends(20000)` hiện tải một mảng lớn vào bộ nhớ — adapter mới phải paginate contact sync theo trang, và Node `--max-old-space-size` đặt khớp cap container để OOM fail rõ ràng thay vì treo.
+
 ### 7.2 Session protection
 
 - Mã hóa session file bằng AES-256-GCM hoặc encrypted volume; key từ root-only runtime secret, không commit, không log.
@@ -625,6 +634,7 @@ Khởi tạo resource cap khoảng 0,5 CPU/512 MB mỗi connector và tune theo 
 - Loại session/cookie khỏi logs, crash dumps, snapshots và backup thường.
 - Disaster restore yêu cầu QR/manual re-login; không restore cookie backup.
 - Chỉ một active lease/listener/account.
+- Session volume persist qua deploy/recreate container (named volume) — mất session file đồng nghĩa QR re-login = sự kiện "thiết bị mới" lặp với Zalo (xem hygiene 7.3); deploy code KHÔNG được đụng volume session.
 
 ### 7.3 Health, retry và failure behavior
 
@@ -647,6 +657,20 @@ Default conservative limits:
 - 10 auto-replies/peer/giờ.
 - 100 recipients/approved batch.
 - Proactive quiet hours 20:00–08:00 theo timezone tổ chức.
+
+**Caps phải enforce ở DB claim (`available_at` + rate window trong `zalo_bridge_claim_outbound`), không phải sleep phía worker.** Worker hiện tại chỉ rải nhịp 0,7–1,5s giữa job → khi queue đầy đạt ~35–40 tin/phút, vượt xa ngưỡng an toàn tài khoản cá nhân; worker cũ/compromised bỏ sleep là mất lưới.
+
+Anti-spam hygiene (chống Zalo đánh dấu spam — bổ sung theo rà soát worker 15/07):
+
+- **Thiết bị/phiên ổn định**: giữ UA + imei cố định per account (pattern `uaFor` hiện có), session volume persist qua deploy — KHÔNG xoá session file khi recreate container, vì mỗi lần quét QR lại = sự kiện "thiết bị mới" lặp. Hạn chế tối đa số lần QR re-login.
+- **IP ổn định lâu dài quan trọng hơn geo**: VPS hiện ở Seoul trong khi user dùng app tại VN — chấp nhận được nếu IP tĩnh và KHÔNG đổi region/IP sau khi phiên đã ổn định; nếu Zalo challenge lặp lại, cân nhắc chuyển connector về VPS VN (tách khỏi 9Router, adapter seam cho phép di dời độc lập).
+- **Warm-up account**: sau connect/reconnect mới, caps giảm còn ~1/3 trong 48–72h đầu rồi nâng dần; account vừa bị LIMITED thì reset warm-up.
+- **Auto-reply có floor delay** ngẫu nhiên 3–8s (trả lời <1s đều đặn 24/7 là tín hiệu bot); support reply được phép 24/7, chỉ proactive chịu quiet hours.
+- **Chỉ gửi proactive cho peer đã có thread hiện hữu** (khách đã từng nhắn); TUYỆT ĐỐI không bulk lookup theo số điện thoại (`findUser`) để tạo peer mới — bulk phone lookup là vector khoá nick, và cũng bị cấm ở tầng nghiệp vụ (identity chỉ từ conversation).
+- **Per-peer proactive cap**: mặc định ≤1 proactive/ngày và ≤4/tháng mỗi peer (chuỗi nhắc nợ theo hoá đơn có cap riêng đã approve), đếm bằng counter DB.
+- **Biến thể nội dung**: campaign render template + variables per-recipient (tên, phòng, số liệu) — không gửi body y hệt hàng loạt như `zalo_broadcast` cũ; hạn chế URL trong tin bulk (link rút gọn hàng loạt là tín hiệu spam), ưu tiên text thuần.
+- **Circuit breaker theo error class**: phân loại lỗi send (bị chặn/không phải bạn/spam-limited vs lỗi mạng) — worker hiện chỉ mark `failed` không phân loại. Peer chặn → auto-suppress peer; error rate batch >5% hoặc gặp mã limit → pause campaign + account `LIMITED`, alert, chờ staff resume.
+- **Dừng ngay theo tín hiệu người dùng**: opt-out/từ chối trong nội dung tin (STOP, "đừng nhắn") → orchestrator tạo suppression đề xuất cho staff xác nhận.
 
 ### 7.4 Logs, metrics và alerts
 
@@ -678,6 +702,28 @@ Live hiện chỉ có **1 cron job** (`recurring_vouchers_daily`) và database w
 | Kích hoạt nhanh work mới | Database webhook (pg_net) → orchestrator | theo INSERT `zalo_care_work_queue` |
 
 Webhook chỉ là tối ưu độ trễ; recovery sweep là đường bảo đảm (durable queue không phụ thuộc webhook). Cả hai idempotent nhờ claim lease.
+
+### 7.6 Băng thông & chi phí request (đo từ worker hiện tại, 15/07)
+
+Hiện trạng đo được từ `worker/index.js`:
+
+- `tick()` mỗi 2s luôn chạy 2 SELECT (accounts + queue) kể cả khi im lặng → ~86.400 request PostgREST/ngày ≈ **2,6 triệu request/tháng cho một worker rảnh**. Nếu bê nguyên nhịp này sang bridge, mỗi poll = 1 Edge invocation → ~1,3 triệu invocation/tháng, vượt xa quota (Free 500K, Pro 2M).
+- Mỗi tin đến = 4–5 round-trip (SELECT conv → INSERT conv → UPSERT msg → UPDATE conv → gọi `send-push`).
+- `notifyPush` bắn từng tin — burst 10 tin của một khách = 10 invocation + 10 push.
+- `syncContacts` chạy `getAllFriends(20000)` + `getGroupInfo` mỗi lần connect/re-login → restart nhiều = full-sync lặp (băng thông Zalo + RAM spike trong cap 512MB).
+- `syncLabels` wipe-regrant (`label_ids=[]` toàn bộ rồi gắn lại) và `old_messages` upsert với `ignoreDuplicates:false` (UPDATE đè) → mỗi reconnect tạo bão UPDATE → bão Realtime cho FE.
+
+Thiết kế đích phải đạt:
+
+- **Gộp call**: `zalo_bridge_claim_outbound` nhận batch (limit N) và kiêm luôn heartbeat/health report trong cùng invocation — không tách 2 call.
+- **Adaptive poll + jitter**: 2–3s khi vừa có việc/inbound, giãn dần 15–30s khi idle (±20% jitter). Mục tiêu ≤300–400K invocation/tháng/account. Có webhook wake-up (7.5) thì idle floor được phép cao hơn.
+- **Batch ingest**: `zalo_bridge_ingest_events` (mảng, thứ tự bảo toàn, kết quả per-event) cho `old_messages`/history sync — không gọi per-event khi bulk. Dedupe phía RPC phải là INSERT-nếu-chưa-có (không UPDATE đè row cũ) để không phát Realtime churn.
+- **Push debounce**: STAFF_ALERT gộp theo conversation trong cửa sổ 30–60s (giữ tag `zalo-<conversation_id>` để SW collapse); không push từng tin trong cùng phiên chat.
+- **Sync delta**: full contact/label sync chỉ 1 lần/ngày (cron) hoặc khi staff bấm; reconnect chỉ sync khoảng trống từ `last_event_at`. Label sync phải diff (chỉ update conversation có thay đổi), friends paginate theo trang thay vì một mảng 20.000.
+- **Media (tải lên/tải xuống Zalo)**:
+  - Inbound: KHÔNG tự tải media theo tin (giữ hành vi hiện tại chỉ lưu URL); job nền rate-limited cache chọn lọc vào bucket private — ảnh ≤5MB nén WebP (max 1600px), thumbnail-first; video/file lớn giữ URL CDN + metadata, không tải mặc định.
+  - Outbound: nén ảnh trước khi gửi (≤2MB, max 1600px); campaign ưu tiên text thuần; đường đi media outbound là storage → VPS → Zalo (2 chiều băng thông VPS) — Vultr $5 có ~1TB/tháng, đủ nhưng phải meter.
+- **Metric**: đếm invocation/request/bandwidth per account per ngày trong health report; alert khi vượt ngân sách (chặn hồi quy kiểu poll-2s).
 
 ---
 
@@ -768,7 +814,9 @@ Fake adapter trong CI, tuyệt đối không gọi real Zalo:
 - duplicate/out-of-order/history/recall/reaction events;
 - lease loss, heartbeat timeout, credential rotate;
 - sent/retryable/non-retryable/ambiguous outcomes;
-- pause/resume, rate limit, caps, history sync không AI.
+- pause/resume, rate limit, caps, history sync không AI;
+- adaptive poll backoff + batch claim: worker idle không vượt ngân sách invocation (7.6); caps enforce ở claim RPC — worker bỏ sleep vẫn không gửi vượt rate;
+- warm-up caps sau connect mới; circuit breaker khi error class bị-chặn/limited vượt ngưỡng.
 
 ### AI
 
@@ -855,6 +903,7 @@ KPI:
 - Unsupported/hallucinated auto-send: mục tiêu 0 trong pilot.
 - AI cost per assisted conversation.
 - Connector healthy time, queue oldest age, dead-letter rate.
+- Invocation/request + bandwidth per account/ngày so với ngân sách 7.6 (chặn hồi quy kiểu poll-2s).
 - Service intake → valid unique job conversion.
 
 Initial SLO khi connector connected, không bị Zalo limit:
