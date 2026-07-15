@@ -69,3 +69,28 @@ ID sổ TKHIEP: `df6b5925-845d-48da-8000-c367d55d6c04`.
 | Ngày chốt | Excel | Web TKHIEP | Chênh | Ghi chú |
 |---|---:|---:|---:|---|
 | 02/07/2026 | 75.322.263 | 75.321.463 | 800đ | Chi khớp 100%. 800đ = 1.000đ cọc lock 406 (sổ Chung) + 400đ lẻ L03 − 600đ Excel gõ thiếu 403PVB 403 |
+
+## 8. Kênh TM ↔ sổ Hiệp Thu (TK000032)
+
+Script riêng: `node scripts/doi-chieu-tm-hiepthu.mjs [file.xlsx] [YYYY-MM-DD]` — so cột
+`khách đưa` − `thối lại` (T5 dùng cột `khách đưa TM` ĐÃ ròng) với sổ **Hiệp Thu**
+(`e564eb1e-e47c-4c8f-92a1-76873b5bfb0e`).
+
+Quy tắc riêng kênh TM (khác kênh 686):
+
+- **Web ghi ĐỦ số hoá đơn, Excel ghi ròng-nghìn** (lẻ vào sổ "Làm tròn tiền thiếu") →
+  script có vòng khớp dung sai <1.000đ; tổng lệch lẻ vài nghìn đ là bình thường.
+- **Dòng ÂM ở cột khách đưa** = chi/bàn giao TM (bàn giao a Tâm/Huy, đóng điện nước…) →
+  so với phiếu CHI của Hiệp Thu, không trộn vào thu.
+- **Khoản nội bộ web có mà Excel không ghi (hợp lệ)**: nhận bàn giao TM từ quỹ khác
+  (BG từ Huy/Tâm — có phiếu chi đối ứng trả lại), đổi tiền mặt↔CK (đối ứng chi TKHIEP),
+  thu hộ người khác ("Thu dùm…", "…thu hộ" — người đó lấy lại bằng phiếu chi cùng cỡ tiền).
+- **Excel T5 không ghi chi TM** (Nathan chỉ itemize chi từ T6) → chi T5 chỉ so 1 chiều web.
+- Kiểm chứng vàng: **sheet đếm tiền mặt** (`Sheet2`/`kết tiền TX`, "ngày giờ chốt…") phải =
+  tồn web Hiệp Thu (thu − chi APPROVED) tại thời điểm chốt.
+
+### Lịch sử chốt TM
+
+| Ngày chốt | Đếm TM Excel | Tồn web Hiệp Thu | Chênh | Ghi chú |
+|---|---:|---:|---:|---|
+| 13/07/2026 13:20 | 129.991.000 | 129.991.000 | **0đ** | Thu khớp 100% (22 cặp lệch lẻ tổng 8.400đ + 303/405PVB lệch 2.600đ). T7 thu khớp tuyệt đối 408.160.000. Excel ghi "bàn giao a Tâm 129.991.000" (T7) — web CHƯA có phiếu bàn giao này; tạo phiếu thì quỹ về 0. Còn 4tr "Thu dùm Hiển 305+103/111PVC" (27/05) chưa có phiếu chi trả Hiển. 15 phiếu Hiệp Thu UNAPPROVED chờ xử lý (nghi trùng 3×1tr INV-2026-00055). |
