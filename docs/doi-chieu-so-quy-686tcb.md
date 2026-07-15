@@ -44,6 +44,11 @@ ID sổ TKHIEP: `df6b5925-845d-48da-8000-c367d55d6c04`.
 3. Đọc 2 danh sách **EXCEL-only / WEB-only**: phần lớn cặp lệch sẽ tự lộ (cùng phòng, cùng cỡ tiền, khác vài trăm đ hoặc khác ngày). Chỉ tin **dòng Net** — matcher tham lam có thể ghép nhầm cặp, nhưng tổng Net luôn đúng.
 4. Với từng khoản EXCEL-only: **tra khắp các sổ khác** (theo phòng + số tiền ±5%) trước khi kết luận "web thiếu" — 80% trường hợp tiền nằm ở sổ khác (xem mục 5).
 5. Sau khi sửa: chạy lại script đến khi Net thu/chi về ~0 (chấp nhận số lẻ <1.000đ đã định danh).
+6. **Khi residual còn "chi vặt" lắt nhắt không định danh được**: đừng kết luận vội — thường là
+   nhiễu phiếu-con-cụm che dòng khác cùng mức tiền. Cách xử: (a) kiểm tổng từng CỤM bằng SQL
+   (`sum(...) where name ilike 'cụm%'`) so với dòng gộp Excel; (b) cụm nào bằng nhau thì LOẠI
+   cả 2 phía rồi multiset-diff lại theo mức tiền → residual còn lại sẽ định danh được từng dòng
+   (án lệ 15/07: ±2tr "chi vặt" tan hết sau khi loại 3 cụm điện lạnh, chốt CHI phân rã 100%).
 
 ## 5. Bẫy thường gặp (đúc kết thực tế)
 
@@ -71,7 +76,7 @@ ID sổ TKHIEP: `df6b5925-845d-48da-8000-c367d55d6c04`.
 | Ngày chốt | Excel | Web TKHIEP | Chênh | Ghi chú |
 |---|---:|---:|---:|---|
 | 02/07/2026 | 75.322.263 | 75.321.463 | 800đ | Chi khớp 100%. 800đ = 1.000đ cọc lock 406 (sổ Chung) + 400đ lẻ L03 − 600đ Excel gõ thiếu 403PVB 403 |
-| 15/07/2026 | thu 1.064.224.748 / chi 1.043.425.747 | thu 1.062.123.948 / chi 1.038.067.947 | thu −2.100.800 / chi −5.357.800 | **THU** phân rã 100%: 2,1tr cọc 105-44TL web mới ghi 2tr/4,1tr + 800đ lẻ (406/1392 Excel dư 1.000; L03/405 +400; 403/403 −600). Cọc web tên chung chung khớp cụm phòng: "Khách cọc phòng"=403/1392 3,4tr; "Cọc phòng 3tr9"=306/102LVT; "renthouse"=103/1392 4tr; "HK house"=102/102LVT 4tr; "tiền cọc các nhà" 4 phiếu = L01 2,7tr + 401 1,9tr + 104 5tr + 10-481NVK 1,5tr. **CHI**: 4.157.800 hoàn cọc TL 205/1392 nằm sổ CỌC (PC2607070); 2,6tr hoàn cọc 103/1392 CHƯA có phiếu (khách mới HD-2026-00027 chưa TL HĐ cũ); 1,2tr HH L03-417LVT = PC2605015 UNAPPROVED (duyệt là khớp); ngược lại web-only 2,4tr HH 00027 (15/07 Excel chưa ghi) + 1,1tr PCCC 45/3TTT; còn ±~2tr chi vặt 100–500k hai chiều chưa rà tay. Điện lạnh T4/T5/T6 (25/26/18 phiếu con) + tiền nhà (72tr=46+26 ×2 đợt, 132tr=2×66tr) + mọi cụm HH+thưởng khớp từng đồng. |
+| 15/07/2026 | thu 1.064.224.748 / chi 1.043.425.747 | thu 1.062.123.948 / chi 1.038.067.947 | thu −2.100.800 / chi −5.357.800 | **THU** phân rã 100%: 2,1tr cọc 105-44TL web mới ghi 2tr/4,1tr + 800đ lẻ (406/1392 Excel dư 1.000; L03/405 +400; 403/403 −600). Cọc web tên chung chung khớp cụm phòng: "Khách cọc phòng"=403/1392 3,4tr; "Cọc phòng 3tr9"=306/102LVT; "renthouse"=103/1392 4tr; "HK house"=102/102LVT 4tr; "tiền cọc các nhà" 4 phiếu = L01 2,7tr + 401 1,9tr + 104 5tr + 10-481NVK 1,5tr. **CHI phân rã 100%** (loại cụm điện lạnh đã chứng minh bằng nhau rồi multiset lại — "±2tr chi vặt" chỉ là nhiễu phiếu con che nhau): +4.157.800 hoàn cọc TL 205/1392 nằm sổ CỌC (PC2607070); +2,6tr hoàn cọc 103/1392 CHƯA có phiếu (khách mới HD-2026-00027 chưa TL HĐ cũ); +1,2tr HH L03-417LVT = PC2605015 UNAPPROVED (duyệt là khớp); −2,4tr HH 00027 (PC2607017 15/07, Excel chưa ghi); −200k Thưởng deal (PC2607007 02/07, Excel không ghi). Kiểm: 4.157.800+2.600.000+1.200.000−2.400.000−200.000 = 5.357.800 ✓. Điện lạnh T4/T5/T6 (25/26/18 phiếu con = 5,3tr/8,52tr/5,66tr) + tiền nhà (72tr=46+26 ×2 đợt, 132tr=2×66tr) + mọi cụm HH+thưởng (HH tách thưởng nóng 500k) khớp từng đồng. |
 
 ## 8. Kênh TM ↔ sổ Hiệp Thu (TK000032)
 
