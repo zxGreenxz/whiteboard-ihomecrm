@@ -49,3 +49,6 @@ dataexcel/
 
 # Draft — file dư thừa gom lại để review trước khi xoá (KHÔNG commit)
 draft/
+
+# Supabase CLI local state (link/pooler metadata) — never commit
+supabase/.temp/
