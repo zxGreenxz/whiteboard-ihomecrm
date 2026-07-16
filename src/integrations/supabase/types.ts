@@ -11047,6 +11047,14 @@ export type Database = {
         Returns: number
       }
       bulk_create_meter_readings: { Args: { p_readings: Json }; Returns: Json }
+      bulk_create_meter_readings_v1: {
+        Args: { p_readings: Json }
+        Returns: Json
+      }
+      bulk_delete_meter_readings_v1: {
+        Args: { p_ids: string[] }
+        Returns: Json
+      }
       calculate_lead_score: { Args: { lead_id: string }; Returns: number }
       can_access_building: { Args: { _building_id: string }; Returns: boolean }
       can_access_org_entity: {
@@ -11140,6 +11148,47 @@ export type Database = {
         }
         Returns: Json
       }
+      create_meter_reading_v1: {
+        Args: {
+          p_current_reading: number
+          p_meter_id: string
+          p_meter_image_url?: string
+          p_notes?: string
+          p_reading_date: string
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          building_id: string | null
+          consumption: number | null
+          contract_id: string | null
+          created_at: string
+          current_reading: number
+          deleted_at: string | null
+          id: string
+          meter_id: string | null
+          meter_image_url: string | null
+          meter_type: Database["public"]["Enums"]["meter_type"]
+          notes: string | null
+          organization_id: string | null
+          previous_reading: number
+          reading_code: string | null
+          reading_date: string
+          recorded_by: string | null
+          room_id: string | null
+          service_id: string | null
+          settlement_month: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meter_readings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_new_contract_extension: {
         Args: {
           p_contract_id: string
@@ -11210,6 +11259,7 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_meter_reading_v1: { Args: { p_id: string }; Returns: undefined }
       delete_room_pass_listing: { Args: { p_id: string }; Returns: undefined }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
       delete_utility_account: { Args: { p_id: string }; Returns: Json }
@@ -12464,6 +12514,48 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "income_expenses"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_meter_reading_v1: {
+        Args: {
+          p_current_reading?: number
+          p_expected_updated_at?: string
+          p_id: string
+          p_meter_image_url?: string
+          p_notes?: string
+          p_reading_date?: string
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          building_id: string | null
+          consumption: number | null
+          contract_id: string | null
+          created_at: string
+          current_reading: number
+          deleted_at: string | null
+          id: string
+          meter_id: string | null
+          meter_image_url: string | null
+          meter_type: Database["public"]["Enums"]["meter_type"]
+          notes: string | null
+          organization_id: string | null
+          previous_reading: number
+          reading_code: string | null
+          reading_date: string
+          recorded_by: string | null
+          room_id: string | null
+          service_id: string | null
+          settlement_month: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "meter_readings"
           isOneToOne: true
           isSetofReturn: false
         }

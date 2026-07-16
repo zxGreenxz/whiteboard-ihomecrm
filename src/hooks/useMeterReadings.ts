@@ -265,28 +265,17 @@ export const useCreateMeterReading = () => {
 
   return useMutation({
     mutationFn: async (input: CreateMeterReadingInput) => {
-      const user = await getSessionUser();
-
-      if (!user) throw new Error("User not authenticated");
-
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .insert({
-          user_id: user.id,
-          meter_id: input.meter_id,
-          reading_date: input.reading_date,
-          current_reading: input.current_reading,
-          notes: input.notes ?? null,
-          meter_image_url: input.meter_image_url ?? null,
-          status: "APPROVED",
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-        } as any)
-        .select()
-        .single();
+      // Canonical writer (T5): RPC server-derive org/building + exact permission.
+      const { data, error } = await supabase.rpc("create_meter_reading_v1", {
+        p_meter_id: input.meter_id,
+        p_reading_date: input.reading_date,
+        p_current_reading: input.current_reading,
+        p_notes: input.notes ?? null,
+        p_meter_image_url: input.meter_image_url ?? null,
+      });
 
       if (error) {
-        toast.error("Không thể tạo chỉ số");
+        toast.error(error.message ?? "Không thể tạo chỉ số");
         throw error;
       }
 
@@ -312,38 +301,40 @@ export const useBulkCreateMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (inputs: BulkCreateMeterReadingInput[]) => {
-      const user = await getSessionUser();
-
-      if (!user) throw new Error("User not authenticated");
-
-      const approvedAt = new Date().toISOString();
-      const readingsToInsert = inputs.map((input) => ({
-        user_id: user.id,
-        meter_id: input.meter_id,
-        reading_date: input.reading_date,
-        current_reading: input.current_reading,
-        notes: input.notes ?? null,
-        meter_image_url: input.meter_image_url ?? null,
-        status: "APPROVED",
-        approved_by: user.id,
-        approved_at: approvedAt,
-      }));
-
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .insert(readingsToInsert as any)
-        .select();
+      // Canonical writer (T5): RPC server-derive org/building + exact permission,
+      // per-item atomic. Thay đường insert-thẳng-bảng cũ (client tự set status/approved_by).
+      const { data, error } = await supabase.rpc("bulk_create_meter_readings_v1", {
+        p_readings: inputs.map((i) => ({
+          meter_id: i.meter_id,
+          reading_date: i.reading_date,
+          current_reading: i.current_reading,
+          notes: i.notes ?? null,
+          meter_image_url: i.meter_image_url ?? null,
+        })) as unknown as Database["public"]["Functions"]["bulk_create_meter_readings_v1"]["Args"]["p_readings"],
+      });
 
       if (error) {
         toast.error("Không thể tạo chỉ số hàng loạt");
         throw error;
       }
 
-      return data;
+      const results = (data ?? []) as Array<{ success: boolean; error_message: string | null }>;
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0 && failed.length === results.length) {
+        toast.error(failed[0]?.error_message ?? "Không thể tạo chỉ số hàng loạt");
+        throw new Error(failed[0]?.error_message ?? "bulk create failed");
+      }
+      return results;
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
-      toast.success(`Đã tạo ${data?.length ?? 0} chỉ số thành công`);
+      const successCount = Array.isArray(data) ? data.filter((r) => r.success).length : 0;
+      const failCount = Array.isArray(data) ? data.filter((r) => !r.success).length : 0;
+      if (failCount === 0) {
+        toast.success(`Đã tạo ${successCount} chỉ số thành công`);
+      } else {
+        toast.warning(`Tạo xong: ${successCount} thành công, ${failCount} lỗi`);
+      }
     },
     onError: (error) => {
       console.error("Error bulk creating meter readings:", error);
@@ -419,17 +410,18 @@ export const useUpdateMeterReading = () => {
 
   return useMutation({
     mutationFn: async (input: UpdateMeterReadingInput) => {
-      const { id, ...updates } = input;
-
-      const { data, error } = await (supabase
-        .from("meter_readings")
-        .update(updates as any)
-        .eq("id", id)
-        .select()
-        .single() as any);
+      // Canonical writer (T5): RPC exact permission + org check + CAS.
+      const { data, error } = await supabase.rpc("update_meter_reading_v1", {
+        p_id: input.id,
+        p_current_reading: input.current_reading ?? null,
+        p_reading_date: input.reading_date ?? null,
+        p_notes: input.notes ?? null,
+        p_meter_image_url: input.meter_image_url ?? null,
+        p_expected_updated_at: null,
+      });
 
       if (error) {
-        toast.error("Không thể cập nhật chỉ số");
+        toast.error(error.message ?? "Không thể cập nhật chỉ số");
         throw error;
       }
 
@@ -455,13 +447,11 @@ export const useDeleteMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("meter_readings")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id);
+      // Canonical writer (T5): RPC exact permission + org check, idempotent.
+      const { error } = await supabase.rpc("delete_meter_reading_v1", { p_id: id });
 
       if (error) {
-        toast.error("Không thể xoá chỉ số");
+        toast.error(error.message ?? "Không thể xoá chỉ số");
         throw error;
       }
     },
@@ -485,23 +475,27 @@ export const useBulkDeleteMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      const { data, error } = await (supabase
-        .from("meter_readings")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .in("id", ids)
-        .select("id") as any);
+      // Canonical writer (T5): RPC per-item exact permission + org check.
+      const { data, error } = await supabase.rpc("bulk_delete_meter_readings_v1", {
+        p_ids: ids,
+      });
 
       if (error) {
         toast.error("Không thể xoá chỉ số hàng loạt");
         throw error;
       }
 
-      return data as { id: string }[] | null;
+      return (data ?? []) as Array<{ id: string; success: boolean; error_message?: string }>;
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
-      const deletedCount = data?.length ?? 0;
-      toast.success(`Đã xoá ${deletedCount} chỉ số thành công`);
+      const deletedCount = Array.isArray(data) ? data.filter((r) => r.success).length : 0;
+      const failCount = Array.isArray(data) ? data.filter((r) => !r.success).length : 0;
+      if (failCount === 0) {
+        toast.success(`Đã xoá ${deletedCount} chỉ số thành công`);
+      } else {
+        toast.warning(`Xoá xong: ${deletedCount} thành công, ${failCount} lỗi`);
+      }
     },
     onError: (error) => {
       console.error("Error bulk deleting meter readings:", error);
