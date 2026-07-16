@@ -14,7 +14,7 @@
   - T4a JWT/concurrency/reconciliation harness — `IN_DESIGN`; cần fixture hai organization thật cho cross-org tests của tranche này.
   - Đã `APPLIED` (nền, nhưng chưa `VERIFIED`): `20260713100000_sprint1_organization_foundation.sql` (bảng `organizations`, `organization_memberships`, `legacy_owner_organization_map`, seed 2 org `aaaa0000-…-000000000001` = `ihome-prod` và `dddd0000-…-000000000001` = `ihome-demo`, `is_super_admin`, `demo_user_ids`); `20260713120000_sprint3a_org_rollout_all_tables.sql` (ADD COLUMN `organization_id` nullable + backfill + index cho ~132 bảng); `20260713121000_sprint3b_org_autofill_and_boundary.sql` (`my_org_ids()`, `_autofill_org()`, `trg_autofill_org`, RESTRICTIVE `<t>_org_boundary` trên ~28 core tables).
 - **In scope**:
-  1. **Table classification**: phân loại mọi bảng đã gắn `organization_id` thành nhóm `TENANT_MONEY` / `TENANT_PII` / `TENANT_OTHER` / `SHARED_GLOBAL` / `PLATFORM` để chọn đúng chính sách derivation, constraint và shadow policy.
+  1. **Table classification — T6a là architectural owner**: sinh manifest machine-readable (`docs/authorization/table-organization-classification.json`) từ live catalog (không tin comment "132 bảng" — audit đếm 155 cột `organization_id`); mỗi bảng ghi 2 trục `tenant_scope` (`TENANT|SHARED_GLOBAL|PLATFORM`) × `data_class` (`MONEY|PII|OTHER|CONTROL`) + authoritative derivation source + parent-FK chain + nullability/constraint/RLS target. Bảng có parent chain xác định → T6a + domain reviewer chốt; `SHARED_GLOBAL`/`PLATFORM` cần positive rationale; **owner chỉ quyết bảng/row mơ hồ thật hoặc cố ý shared/cross-org** — không ký từng bảng của toàn catalog. Giá trị org PROD hiện tại KHÔNG được dùng làm bằng chứng phân loại (rollout cũ có hard-coded fallback).
   2. **Authoritative derivation** thay cho hard-coded PROD default: khi parent/membership không giải quyết được org, row vào `authorization_migration_exceptions` (fail-closed), KHÔNG mặc định `aaaa0000-…-000000000001`.
   3. **Integrity assertions + constraints (chuẩn bị, review-first)**: zero-null trên money/PII table; zero cross-org mismatch parent↔child; composite `UNIQUE(organization_id,id)` + scoped FK; `NOT NULL` sau khi assertion sạch. Không apply live trong tranche này.
   4. **Fail-closed exception queue**: bảng/quy trình cho row mơ hồ; owner classify; không tự đoán.
@@ -54,6 +54,8 @@ Không dùng branch name, "latest", glob migration hoặc broad `db push` làm r
 ## 4. Change contract
 
 - **Server-derived organization/actor/resources**: org của một row được suy theo thứ tự authoritative của §16.2: parent FK (building > room > contract > invoice > income_expense > account > customer) → `organization_memberships` ACTIVE của owner `user_id` → `legacy_owner_organization_map`. **Bỏ nhánh mặc định `aaaa0000-0000-4000-8000-000000000001`**; khi không resolve, ghi vào bảng Sprint-1 đã tồn tại `authorization_migration_exceptions(table_name, row_id, reason, details)` (cột thật đã applied; `resolved boolean DEFAULT false`) và không gán org đoán. Lưu ý: seed có cả `ihome-prod` và `ihome-demo` + `demo_user_ids()`, nên PROD default cũ có thể misattribute row của org demo — derivation mới phải tôn trọng split demo/prod.
+- **Nhánh membership chỉ hợp lệ khi ĐÚNG MỘT candidate:** `organization_memberships` unique theo `(organization_id, user_id)` nên một user có thể ACTIVE ở **nhiều** org (schema `20260713100000:48-72`). Derivation qua membership phải đếm distinct org: `= 1` → dùng; `= 0` hoặc `> 1` → **mơ hồ, vào exception queue**. CẤM `LIMIT 1` không có kiểm đếm — chọn org theo access plan là gán tenant ngẫu nhiên, vi phạm chính contract fail-closed của tranche này.
+- **Composite-key rows:** `row_id uuid` không định danh được bảng khoá ghép (vd `area_buildings(area_id,building_id)` — `20260611100000:17-23`; `income_expense_batch_items(batch_id,income_expense_id)` — `20260510000004:55-60`). Migration T6a bổ sung (forward, KHÔNG sửa migration Sprint-1 đã applied) cột `row_key jsonb` + partial unique `(table_name, row_key) WHERE resolved = false`; bảng có PK `id uuid` tiếp tục dùng `row_id`, bảng khoá ghép dùng `row_key` canonical (JSON các cột PK theo thứ tự định nghĩa). Claim "mọi row mơ hồ đều vào queue" chỉ đúng sau khi bổ sung này áp.
 - **Exact permission và resource scope**: shadow RLS v2 đánh giá bằng `my_org_ids()` (membership ACTIVE) + `is_super_admin()` bypass, giống boundary hiện tại nhưng **deny-default** (bỏ nhánh `organization_id IS NULL`). Không client-callable helper mới được grant trong tranche này.
 - **State/version/CAS rules**: không có state machine tiền trong T6a. Với sửa dữ liệu backfill/exception, dùng batch id để idempotent và có thể rebuild; không mutate `user_id` owner/audit hàng loạt (§16.1).
 - **Lock order**: backfill/constraint chạy trong maintenance window; `SET LOCAL statement_timeout`; thêm constraint theo thứ tự parent→child để tránh khóa chéo. Không lock money row ngoài phạm vi cần thiết.
@@ -78,7 +80,12 @@ Chỉ là fenced block minh hoạ; KHÔNG đặt dưới `supabase/migrations/` 
 
 -- (b) Authoritative derivation KHÔNG default PROD: ví dụ cho income_expenses.
 --     Row không resolve được -> exception, giữ organization_id NULL (chưa gán đoán).
-with derived as (
+--     Membership CHỈ dùng khi đúng 1 org candidate (0 hoặc >1 = mơ hồ, không LIMIT 1).
+with mem as (
+  select user_id, min(organization_id) as only_org, count(distinct organization_id) as n
+  from public.organization_memberships where status = 'ACTIVE' group by user_id
+),
+derived as (
   select x.id,
          coalesce(
            (select p.organization_id from public.buildings   p where p.id = x.building_id),
@@ -86,8 +93,7 @@ with derived as (
            (select p.organization_id from public.contracts   p where p.id = x.contract_id),
            (select p.organization_id from public.invoices    p where p.id = x.invoice_id),
            (select p.organization_id from public.accounts    p where p.id = x.account_id),
-           (select m.organization_id from public.organization_memberships m
-              where m.user_id = x.user_id and m.status='ACTIVE' limit 1)
+           (select m.only_org from mem m where m.user_id = x.user_id and m.n = 1)
          ) as org
   from public.income_expenses x
   where x.organization_id is null
@@ -95,18 +101,34 @@ with derived as (
 insert into public.authorization_migration_exceptions(table_name, row_id, reason, details)
 select 'income_expenses', d.id, 'org unresolved after authoritative derivation',
        jsonb_build_object('source','T6a-backfill')
-from derived d where d.org is null;
---   (dedup: có thể thêm unique index (table_name,row_id) WHERE resolved=false trong
---    migration T6a nếu muốn ON CONFLICT; bảng Sprint 1 gốc chưa có unique này.)
+from derived d
+where d.org is null
+  and not exists (
+    select 1 from public.authorization_migration_exceptions e
+    where e.table_name = 'income_expenses' and e.row_id = d.id and e.resolved = false
+  );
+--   Idempotency là BẮT BUỘC (contract §4): anti-join WHERE NOT EXISTS như trên,
+--   và migration T6a thêm partial unique index (table_name,row_id) WHERE resolved=false
+--   (+ (table_name,row_key) WHERE resolved=false cho bảng khoá ghép) để chống race
+--   double-insert. Không phải tùy chọn.
 
 -- (c) Shadow RLS v2: deny-default, LOG-ONLY (không attach làm policy enforce).
 --     Đánh giá và ghi mismatch, chưa deny production.
-create table if not exists public.authorization_rls_shadow_log (
+--     Evidence table đặt trong PRIVATE schema, KHÔNG public: chứa actor uuid +
+--     table/row key nên client đọc được là lộ metadata, client ghi được là bơm
+--     mismatch giả làm sai bằng chứng cutover.
+create schema if not exists authz_private;
+revoke all on schema authz_private from public, anon, authenticated;
+
+create table if not exists authz_private.authorization_rls_shadow_log (
   id bigint generated always as identity primary key,
   checked_at timestamptz not null default now(),
   table_name text not null, row_pk text, actor uuid,
   legacy_visible boolean not null, v2_would_allow boolean not null
 );
+revoke all on authz_private.authorization_rls_shadow_log from public, anon, authenticated;
+-- Chỉ evaluator server-side (SECURITY DEFINER, pinned search_path, ACL explicit,
+-- owner non-login) được ghi. Không ghi payload/PII — chỉ định danh row + verdict.
 -- so sánh: legacy policy cho thấy row, nhưng v2 (deny-default, không NULL-tolerant,
 --   không PROD default) sẽ deny -> ghi mismatch để phân loại (§16.6, 16.8).
 ```

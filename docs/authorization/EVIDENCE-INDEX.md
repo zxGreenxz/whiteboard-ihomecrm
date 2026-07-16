@@ -27,11 +27,22 @@
 | [T9-RETENTION-CLEANUP-RESTORE-CERT.md](./T9-RETENTION-CLEANUP-RESTORE-CERT.md) | `NOT_STARTED/BLOCKED` | Retention, cleanup, final restore certification. |
 | [_TRANCHE-REVIEW-NOTES.md](./_TRANCHE-REVIEW-NOTES.md) | `PREPARED` | Đối chiếu cross-tranche + 5 mục (a)–(e) owner phải chốt trước khi rời `IN_DESIGN`. |
 
-> Cả 8 spec T2–T9 (2026-07-16) đều PASS cửa an toàn không thương lượng: không spec nào cho phép production apply khi thiếu recovery `VERIFIED` + owner window/canary/VND cap, không spec nào đặt migration vào `supabase/migrations/`, SQL chỉ là fenced block. Các blocker còn lại (dependency T2↔T6a, tồn tại `authorization_migration_exceptions`, reorder §27.3, unbuilt infra, terminal-gate T9 local-only) là governance/consistency — xem [_TRANCHE-REVIEW-NOTES.md](./_TRANCHE-REVIEW-NOTES.md).
+> Cả 8 spec T2–T9 (2026-07-16) đều PASS cửa an toàn không thương lượng: không spec nào cho phép production apply khi thiếu recovery `VERIFIED` + owner window/canary/VND cap, không spec nào đặt migration vào `supabase/migrations/`, SQL chỉ là fenced block.
+>
+> **Vòng đối chiếu 2 (2026-07-16):** các blocker (a)–(e) đã reconcile — (a)/(b)/(d1)/(d2-default) sửa xong (spec drift); (c)/(d2-infra)/(d3) giải bằng safe default đúng plan (giữ thứ tự §27.3 + T6a-preflight/`ORG_READY`; T5-infra sở hữu flag schema; T6a sở hữu classification manifest); (e) thu hẹp còn 5 điều kiện kỹ thuật (extension-target, exhaustive R2, write-fence, fault-domain replica, independent reviewer). Chi tiết + sub-task harden: [_TRANCHE-REVIEW-NOTES.md](./_TRANCHE-REVIEW-NOTES.md) bảng cuối. Classification manifest (PROPOSED, chưa approve): [table-organization-classification.json](./table-organization-classification.json) — 155 bảng từ live catalog.
 
 ## Recovery evidence
 
 Recovery artifact plaintext/mã hóa nằm ngoài Git. Repo chỉ được ghi certification ID, aggregate count/hash và sanitized report. Phạm vi từ 2026-07-16 theo quyết định owner là **local-only**: không Supabase project tạm, không upload VPS/cloud, không blank-target cloud restore trong phạm vi hiện tại.
+
+### Recovery `20260716T045126Z-db-portable` — `PORTABLE_DUMP_PROVEN_RESTORABLE_CORE / PREPARED`
+
+Capture + restore rehearsal 2026-07-16 (sau khi owner cấp persistent database password; password đã rotate qua Management API ngay sau capture, verify 3/3 pooler node):
+
+- **Capture:** `pg_dump` 17.10 (custom format) qua Supavisor session pooler, role `postgres` — `database/full.custom` 7.227.674 byte, SHA-256 `9f750d9f3820174406f7b516e2a639475c1e5e1804dcfbf428e76f7ffa15604b`; TOC 4.687 dòng, 254 TABLE DATA gồm đủ `auth.*` (users/identities/sessions/refresh_tokens/…) + `storage.*` (buckets/objects/…) + toàn bộ `public`. Kèm `schema.sql` (1,96 MB), `globals.sql` (roles, no-passwords), 190 bảng/48.730 row counts, money sums nguồn.
+- **Restore rehearsal (blank local target):** cluster PostgreSQL 17.10 mới `initdb` trên port riêng, database trắng. Round 2 (sau khi pre-create 2 sort function do gap TOC-order của pg_dump với generated column `rooms.name_sort`): **187/190 bảng khớp row-count chính xác, 0 bảng thiếu**; 3 bảng lệch ±1 row (`auth.refresh_tokens` 618→617, `notifications` 954→953, `storage.objects` 2381→2380) = drift online-capture trên bảng hoạt động liên tục; **money sums khớp 100%** (income_expenses 10.464.227.240,00 / invoices 4.238.276.993,00 / payments 3.881.356.563,00 / excess 5.288.084,00); 149 lỗi còn lại toàn bộ do 3 extension không có trên Windows PG local (`vector`, `pg_cron`, `supabase_vault`) — bảng phụ thuộc (AI embeddings, cron ledger, vault) cần target Linux/Docker/project-tạm cho certification cuối.
+- **Artifact:** `MANIFEST.json` + `checksums/SHA256SUMS` (13 file, 9.582.134 byte) + `RESTORE-SUMMARY.json`; 3 bản hash-verified (`D:\ihomecrm-recovery\tryymsxyyckgbrmmvozx`, `…-replica2`, `…-replica3`) — vẫn cùng ổ D:, chưa phải fault domain độc lập.
+- **Ý nghĩa gate:** blocker "temporary CLI role không đọc được auth/một số bảng" đã đóng; "chưa có independent blank restore" đã đóng ở mức core-local. Certification tổng thể vẫn `BLOCKED` vì: extension-complete target, exhaustive R2, write-fence, fault-domain replica, independent reviewer.
 
 ### Recovery `20260715T152622Z-online-unfrozen` — `ONLINE_UNFROZEN / PARTIAL / BLOCKED`
 

@@ -1,0 +1,3353 @@
+{
+ "generated_at_utc": "2026-07-16T05:25:55Z",
+ "source": "live catalog tryymsxyyckgbrmmvozx via session pooler, read-only",
+ "method": "auto-PROPOSE from schema/FK/data evidence; NOTHING here is approved. Current org values NOT used as classification evidence (legacy PROD fallback taints them). Owner decides only ambiguous/shared/platform semantics per T6a spec.",
+ "axes": {
+  "tenant_scope": [
+   "TENANT",
+   "TENANT_CANDIDATE",
+   "SHARED_GLOBAL",
+   "PLATFORM_CANDIDATE",
+   "EMPTY_TABLE",
+   "UNRESOLVED"
+  ],
+  "data_class": [
+   "MONEY",
+   "PII",
+   "OTHER",
+   "CONTROL"
+  ]
+ },
+ "table_count": 155,
+ "composite_pk_tables": [
+  "area_buildings",
+  "income_expense_batch_items",
+  "member_override_scopes",
+  "role_binding_scopes",
+  "role_permissions"
+ ],
+ "org_null_hotspots": [
+  {
+   "table": "cash_handover_items",
+   "org_null_rows": 250,
+   "rows": 443
+  },
+  {
+   "table": "cash_handovers",
+   "org_null_rows": 1,
+   "rows": 6
+  },
+  {
+   "table": "cron_runs",
+   "org_null_rows": 9,
+   "rows": 41
+  },
+  {
+   "table": "income_expense_audit_log",
+   "org_null_rows": 5,
+   "rows": 31
+  },
+  {
+   "table": "income_expense_types",
+   "org_null_rows": 5,
+   "rows": 133
+  },
+  {
+   "table": "inspection_photos",
+   "org_null_rows": 61,
+   "rows": 223
+  },
+  {
+   "table": "inspection_sessions",
+   "org_null_rows": 10,
+   "rows": 62
+  },
+  {
+   "table": "invoice_audit_log",
+   "org_null_rows": 3535,
+   "rows": 17037
+  },
+  {
+   "table": "material_usage_items",
+   "org_null_rows": 1,
+   "rows": 34
+  },
+  {
+   "table": "material_usages",
+   "org_null_rows": 1,
+   "rows": 30
+  },
+  {
+   "table": "notifications",
+   "org_null_rows": 51,
+   "rows": 954
+  },
+  {
+   "table": "public_room_events",
+   "org_null_rows": 804,
+   "rows": 6097
+  },
+  {
+   "table": "room_pass_listings",
+   "org_null_rows": 2,
+   "rows": 3
+  },
+  {
+   "table": "salary_attendance_day",
+   "org_null_rows": 6,
+   "rows": 32
+  },
+  {
+   "table": "team_members",
+   "org_null_rows": 1,
+   "rows": 4
+  }
+ ],
+ "tables": [
+  {
+   "table": "account_shared_users",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 15,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "account_id→accounts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: account_id→accounts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "accounts",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 50,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "quick_default_building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: quick_default_building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_chat_messages",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 16,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_chat_threads",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_copilot_entitlements",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_copilot_settings",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_providers",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 10,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_usage_logs",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 124,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ai_write_audit",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_decisions",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 13
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_request_step_candidates",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 8
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_request_steps",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_requests",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 10
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_rule_sets",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_rule_steps",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 4,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_rules",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 6,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "approval_step_approvers",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 4,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "area_buildings",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 41,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "area_id→areas",
+     "building_id→buildings"
+    ],
+    "composite_pk": true,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: area_id→areas, building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "areas",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 7,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "asset_categories",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "asset_handovers",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "asset_maintenance",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "asset_movements",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "from_room_id→rooms",
+     "to_room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: from_room_id→rooms, to_room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "asset_warehouses",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "assets",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 588,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "authorization_audit_events",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 0
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "authorization_scopes",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 35,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "organization_id→areas",
+     "organization_id→areas",
+     "area_id→areas",
+     "area_id→areas",
+     "organization_id→buildings",
+     "organization_id→buildings",
+     "building_id→buildings",
+     "building_id→buildings",
+     "organization_id→accounts",
+     "organization_id→accounts",
+     "cashbook_id→accounts",
+     "cashbook_id→accounts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 12
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "auto_debt_config",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "building_fee_accounts",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 109,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "default_account_id→accounts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, default_account_id→accounts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "building_services",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 270,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "building_shareholders",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 30,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "building_utility_accounts",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 31,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "buildings",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 26,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "default_account_id_tt→accounts",
+     "default_account_id_tk→accounts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "tenant parent FK: default_account_id_tt→accounts, default_account_id_tk→accounts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "cash_handover_items",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 443,
+    "org_null_rows": 250,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "voucher_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: voucher_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "cash_handovers",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 6,
+    "org_null_rows": 1,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "transfer_expense_id→income_expenses",
+     "transfer_income_id→income_expenses",
+     "from_account_id→accounts",
+     "to_account_id→accounts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 7
+   },
+   "reasons": [
+    "tenant parent FK: transfer_expense_id→income_expenses, transfer_income_id→income_expenses, from_account_id→accounts, to_account_id→accounts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "cashbook_reconciliations",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "account_id→accounts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: account_id→accounts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "code_sequences",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 9,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contract_customers",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "PII",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 487,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "customer_id→customers"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, customer_id→customers"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contract_extensions",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "new_contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, new_contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contract_services",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 232,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contract_tenants",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "PII",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contract_terminations",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 22,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contract_transfers",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "old_room_id→rooms",
+     "new_room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 6
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, old_room_id→rooms, new_room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "contracts",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 319,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "room_id→rooms",
+     "parent_contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 6
+   },
+   "reasons": [
+    "tenant parent FK: room_id→rooms, parent_contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "cron_runs",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 41,
+    "org_null_rows": 9,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "ct01_declarations",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "customer_id→customers"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: customer_id→customers"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "customers",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "PII",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 496,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "demo_reset_log",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 8,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "demo_reset_tables",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 51,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "departments",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "deposits",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "room_id→rooms",
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: room_id→rooms, contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "document_templates",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 8,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "excess_amounts",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 81,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "source_invoice_id→invoices",
+     "source_payment_id→payments"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, source_invoice_id→invoices, source_payment_id→payments"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "expenses",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "floors",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "hotlines",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expense_audit_log",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 31,
+    "org_null_rows": 5,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "income_expense_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: income_expense_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expense_batch_items",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 201,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "income_expense_id→income_expenses"
+    ],
+    "composite_pk": true,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: income_expense_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expense_batches",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 35,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expense_items",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1979,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "income_expense_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: income_expense_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expense_templates",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expense_types",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 133,
+    "org_null_rows": 5,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "income_expenses",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1939,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "account_id→accounts",
+     "contract_id→contracts",
+     "invoice_id→invoices",
+     "payment_id→payments",
+     "change_account_id→accounts",
+     "rounding_account_id→accounts",
+     "building_id→buildings",
+     "room_id→rooms",
+     "repeat_parent_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 16
+   },
+   "reasons": [
+    "tenant parent FK: account_id→accounts, contract_id→contracts, invoice_id→invoices, payment_id→payments, change_account_id→accounts, rounding_account_id→accounts, building_id→buildings, room_id→rooms, repeat_parent_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "inspection_photos",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 223,
+    "org_null_rows": 61,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "inspection_sessions",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 62,
+    "org_null_rows": 10,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "paired_income_expense_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, paired_income_expense_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "invoice_audit_log",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 17037,
+    "org_null_rows": 3535,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "invoice_generation_settings",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "invoice_items",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 3239,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "invoice_id→invoices"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: invoice_id→invoices"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "invoices",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 863,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "issue_categories",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "issue_comments",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "issue_phase_history",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "issue_status_history",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "issues",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "room_id→rooms",
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 12
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, room_id→rooms, contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "job_groups",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "job_types",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 11,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "jobs",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 163,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "lead_activities",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "leads",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 5,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 6
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "legacy_owner_organization_map",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 7,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "manager_salary_config",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_adjustment_items",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_adjustments",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_categories",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 6,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_purchase_items",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 28,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_purchases",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 29,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_usage_items",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 34,
+    "org_null_rows": 1,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "material_usages",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 30,
+    "org_null_rows": 1,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "materials",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 32,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "member_override_scopes",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "PII",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": true,
+    "fk_out_count": 8
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "member_permission_overrides",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "PII",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 58,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "meter_readings",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1052,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "meter_id→meters",
+     "contract_id→contracts",
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 6
+   },
+   "reasons": [
+    "tenant parent FK: meter_id→meters, contract_id→contracts, building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "meters",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 299,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "notification_logs",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "notification_templates",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "notifications",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 954,
+    "org_null_rows": 51,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "organization_invitations",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "organization_memberships",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "PII",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 10,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "organization_roles",
+   "proposed_tenant_scope": "PLATFORM_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 7,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "platform/global naming pattern"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "payments",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 954,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "invoice_id→invoices"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: invoice_id→invoices"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "personal_transactions",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 3,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "phase_transitions",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profiles",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "PII",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 11,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profit_allocations",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 49,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profit_manager_allocations",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 7,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profit_manager_salaries",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profit_manager_salary_buildings",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 4,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profit_managers",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "profit_monthly",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 35,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "public_room_events",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 6097,
+    "org_null_rows": 804,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "public_room_settings",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "public_room_share_tokens",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "push_subscriptions",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "role_binding_scopes",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 61,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": true,
+    "fk_out_count": 8
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "role_bindings",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 61,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 8
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "role_permissions",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": false,
+    "rows": 315,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": true,
+    "fk_out_count": 5
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "roles",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 7,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "room_pass_listings",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 3,
+    "org_null_rows": 2,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "building_id→buildings",
+     "room_id→rooms"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings, room_id→rooms"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "rooms",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 293,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_adjustments",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 6,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "income_expense_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "tenant parent FK: income_expense_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_attendance_day",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 32,
+    "org_null_rows": 6,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_award_errors",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_bonus_rules",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_holidays",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 6,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_monthly",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "MONEY",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "payout_voucher_id→income_expenses"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "tenant parent FK: payout_voucher_id→income_expenses"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_streak_state",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "MONEY",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 5,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "salary_work_ledger_snapshot",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "MONEY",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "scheduled_jobs",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "service_quota_tiers",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "service_quotas",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "services",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 36,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "settings",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 5,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "shareholders",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 8,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "signature_templates",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "sla_configs",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 4,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "staff_assignments",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "PII",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 61,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "area_id→areas",
+     "building_id→buildings"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "tenant parent FK: area_id→areas, building_id→buildings"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "subscription_plans",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "super_admins",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "suppliers",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "task_flows",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "task_phases",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "task_types",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "team_members",
+   "proposed_tenant_scope": "UNRESOLVED",
+   "proposed_data_class": "PII",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 4,
+    "org_null_rows": 1,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "teams",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "tenants",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "PII",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 9,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "user_roles",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "user_subscriptions",
+   "proposed_tenant_scope": "EMPTY_TABLE",
+   "proposed_data_class": "OTHER",
+   "confidence": "LOW",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 0,
+    "org_null_rows": 0,
+    "distinct_orgs": 0,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "no rows — classify by design intent"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "vehicles",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "PII",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 253,
+    "org_null_rows": 0,
+    "distinct_orgs": 2,
+    "tenant_parent_fks": [
+     "customer_id→customers",
+     "building_id→buildings",
+     "room_id→rooms",
+     "contract_id→contracts"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 6
+   },
+   "reasons": [
+    "tenant parent FK: customer_id→customers, building_id→buildings, room_id→rooms, contract_id→contracts"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_accounts",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_automations",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_conversations",
+   "proposed_tenant_scope": "TENANT",
+   "proposed_data_class": "OTHER",
+   "confidence": "HIGH",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 1832,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [
+     "contract_id→contracts",
+     "room_id→rooms",
+     "customer_id→customers"
+    ],
+    "composite_pk": false,
+    "fk_out_count": 6
+   },
+   "reasons": [
+    "tenant parent FK: contract_id→contracts, room_id→rooms, customer_id→customers"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_labels",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 8,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 2
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_message_templates",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 4,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 1
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_messages",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 2883,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 3
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  },
+  {
+   "table": "zalo_send_queue",
+   "proposed_tenant_scope": "TENANT_CANDIDATE",
+   "proposed_data_class": "OTHER",
+   "confidence": "MEDIUM",
+   "evidence": {
+    "org_nullable": true,
+    "rows": 20,
+    "org_null_rows": 0,
+    "distinct_orgs": 1,
+    "tenant_parent_fks": [],
+    "composite_pk": false,
+    "fk_out_count": 4
+   },
+   "reasons": [
+    "org fully populated but no tenant parent FK — verify semantics"
+   ],
+   "review_state": "PROPOSED",
+   "reviewer": null
+  }
+ ]
+}
