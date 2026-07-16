@@ -1474,6 +1474,7 @@ export type Database = {
           reason: string
           resolved: boolean
           row_id: string | null
+          row_key: Json | null
           table_name: string
         }
         Insert: {
@@ -1483,6 +1484,7 @@ export type Database = {
           reason: string
           resolved?: boolean
           row_id?: string | null
+          row_key?: Json | null
           table_name: string
         }
         Update: {
@@ -1492,6 +1494,7 @@ export type Database = {
           reason?: string
           resolved?: boolean
           row_id?: string | null
+          row_key?: Json | null
           table_name?: string
         }
         Relationships: []
@@ -7121,6 +7124,38 @@ export type Database = {
             foreignKeyName: "organization_invitations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_invoice_settings: {
+        Row: {
+          auto_approve_invoice: boolean
+          organization_id: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          auto_approve_invoice?: boolean
+          organization_id: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          auto_approve_invoice?: boolean
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_invoice_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
