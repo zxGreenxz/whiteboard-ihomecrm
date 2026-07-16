@@ -53,11 +53,11 @@ Không dùng branch name, "latest", glob migration hoặc broad `db push` làm r
 
 ## 4. Change contract
 
-- **Server-derived organization/actor/resources**: org của một row được suy theo thứ tự authoritative của §16.2: parent FK (building > room > contract > invoice > income_expense > account > customer) → `organization_memberships` ACTIVE của owner `user_id` → `legacy_owner_organization_map`. **Bỏ nhánh mặc định `aaaa0000-0000-4000-8000-000000000001`**; khi không resolve, ghi `authorization_migration_exceptions(table_name, row_pk, candidate_orgs, reason, status='OPEN')` và không gán org đoán. Lưu ý: seed có cả `ihome-prod` và `ihome-demo` + `demo_user_ids()`, nên PROD default cũ có thể misattribute row của org demo — derivation mới phải tôn trọng split demo/prod.
+- **Server-derived organization/actor/resources**: org của một row được suy theo thứ tự authoritative của §16.2: parent FK (building > room > contract > invoice > income_expense > account > customer) → `organization_memberships` ACTIVE của owner `user_id` → `legacy_owner_organization_map`. **Bỏ nhánh mặc định `aaaa0000-0000-4000-8000-000000000001`**; khi không resolve, ghi vào bảng Sprint-1 đã tồn tại `authorization_migration_exceptions(table_name, row_id, reason, details)` (cột thật đã applied; `resolved boolean DEFAULT false`) và không gán org đoán. Lưu ý: seed có cả `ihome-prod` và `ihome-demo` + `demo_user_ids()`, nên PROD default cũ có thể misattribute row của org demo — derivation mới phải tôn trọng split demo/prod.
 - **Exact permission và resource scope**: shadow RLS v2 đánh giá bằng `my_org_ids()` (membership ACTIVE) + `is_super_admin()` bypass, giống boundary hiện tại nhưng **deny-default** (bỏ nhánh `organization_id IS NULL`). Không client-callable helper mới được grant trong tranche này.
 - **State/version/CAS rules**: không có state machine tiền trong T6a. Với sửa dữ liệu backfill/exception, dùng batch id để idempotent và có thể rebuild; không mutate `user_id` owner/audit hàng loạt (§16.1).
 - **Lock order**: backfill/constraint chạy trong maintenance window; `SET LOCAL statement_timeout`; thêm constraint theo thứ tự parent→child để tránh khóa chéo. Không lock money row ngoài phạm vi cần thiết.
-- **Idempotency scope, canonical payload hash và conflict behavior**: mọi backfill/exception job `WHERE organization_id IS NULL` hoặc theo batch id ⇒ chạy lại không đổi kết quả; exception insert dùng `ON CONFLICT (table_name, row_pk) DO NOTHING`.
+- **Idempotency scope, canonical payload hash và conflict behavior**: mọi backfill/exception job `WHERE organization_id IS NULL` hoặc theo batch id ⇒ chạy lại không đổi kết quả. Bảng exception Sprint-1 gốc chưa có unique `(table_name,row_id)`; nếu cần `ON CONFLICT DO NOTHING` thì migration T6a phải thêm partial unique index `(table_name,row_id) WHERE resolved=false` trước, hoặc drain bằng `WHERE NOT EXISTS`.
 - **Atomic effects**: mỗi phase (classify → assert → exception-drain → constraint) là transaction riêng có precheck/postcheck (§16.1); không gộp enforce vào cùng transaction với backfill.
 - **Audit/provenance**: ghi `MIGRATION_IMPORTED`/batch count+hash cho mỗi lần đổi org; exception queue giữ candidate + evidence, append-only.
 - **External outbox/side effects**: không.
@@ -69,18 +69,12 @@ Không dùng branch name, "latest", glob migration hoặc broad `db push` làm r
 Chỉ là fenced block minh hoạ; KHÔNG đặt dưới `supabase/migrations/` trước recovery gate + review.
 
 ```sql
--- (a) Exception queue fail-closed (thay cho hard-coded PROD default)
-create table if not exists public.authorization_migration_exceptions (
-  id uuid primary key default gen_random_uuid(),
-  table_name text not null,
-  row_pk text not null,
-  candidate_orgs uuid[] not null default '{}',
-  reason text not null,
-  status text not null default 'OPEN',   -- OPEN | RESOLVED | IGNORED
-  created_at timestamptz not null default now(),
-  resolved_by uuid, resolved_at timestamptz,
-  unique (table_name, row_pk)
-);
+-- (a) Exception queue fail-closed: bảng authorization_migration_exceptions ĐÃ TỒN TẠI
+--     (object nền móng Sprint 1, tạo ở 20260713100000_sprint1_organization_foundation.sql
+--     theo §17 + §16.1; đã APPLIED). T6a KHÔNG tạo bảng — chỉ GHI row mơ hồ vào hàng đợi.
+--     Schema thật (đã applied): (id uuid, table_name text, row_id uuid, reason text,
+--     details jsonb, resolved boolean, created_at timestamptz). Owner duyệt/classify
+--     exception theo gate Sprint 1 + §27.2.8 ("legacy mơ hồ vào review queue").
 
 -- (b) Authoritative derivation KHÔNG default PROD: ví dụ cho income_expenses.
 --     Row không resolve được -> exception, giữ organization_id NULL (chưa gán đoán).
@@ -98,10 +92,12 @@ with derived as (
   from public.income_expenses x
   where x.organization_id is null
 )
-insert into public.authorization_migration_exceptions(table_name,row_pk,reason)
-select 'income_expenses', d.id::text, 'org unresolved after authoritative derivation'
-from derived d where d.org is null
-on conflict (table_name,row_pk) do nothing;
+insert into public.authorization_migration_exceptions(table_name, row_id, reason, details)
+select 'income_expenses', d.id, 'org unresolved after authoritative derivation',
+       jsonb_build_object('source','T6a-backfill')
+from derived d where d.org is null;
+--   (dedup: có thể thêm unique index (table_name,row_id) WHERE resolved=false trong
+--    migration T6a nếu muốn ON CONFLICT; bảng Sprint 1 gốc chưa có unique này.)
 
 -- (c) Shadow RLS v2: deny-default, LOG-ONLY (không attach làm policy enforce).
 --     Đánh giá và ghi mismatch, chưa deny production.

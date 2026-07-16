@@ -14,7 +14,7 @@
   - Sprint 0 fail-closed permission RPC — `APPLIED` (`20260713090000_sprint0_fail_closed_permissions.sql`): `get_my_permissions()` và bản sao `ai_copilot_perms_for()` vẫn là **live path** duy nhất phục vụ FE.
   - T0a recovery certification — `BLOCKED` (recovery `20260715T152622Z-online-unfrozen`, `ONLINE_UNFROZEN/PARTIAL`).
   - T4a JWT/concurrency/reconciliation harness — `IN_DESIGN`; cần fixture hai org thật để chạy dual-read parity + direct REST negative tests của T2.
-  - T6a organization integrity + RLS v2 shadow — `BLOCKED`; T2 và T6a chia sẻ derivation `organization_id` nên phải nhất quán.
+  - T6a organization integrity + RLS v2 shadow — **không phải dependency chặn của T2** (sửa 2026-07-16 theo §27.3: chuỗi một chiều `T2 → … → T6`, T2 chạy trước). Chiều phụ thuộc thật là T6a → T2 (RLS v2 shadow của T6a dùng helper `authorize_v2`/`my_org_ids` của T2). Ở đây chỉ cần **phối hợp** để cùng một hàm derivation `organization_id` (nền Sprint-1 theo §16.2/§16.3, đã APPLIED), không có phụ thuộc runtime hai chiều.
 - **In scope:**
   1. Chốt normalized RBAC làm **source of truth** cho permission: `permission_definitions` (208 key đã seed ở `20260713110100_sprint2b_seed_permission_definitions.sql`), `organization_roles`, `role_permissions` (`effect ALLOW/DENY`), `role_bindings`, `authorization_scopes`, `role_binding_scopes`, `member_permission_overrides` (+ scoped `member_override_scopes`).
   2. **Canonical admin RPC + dual-write:** mọi mutation quyền (tạo/sửa role, gán/bỏ binding, thêm/xóa scope, đặt override, suspend/revoke membership) đi qua RPC tập trung ghi đồng thời legacy (`staff_assignments`/`roles`) **và** normalized, trong cùng transaction.
