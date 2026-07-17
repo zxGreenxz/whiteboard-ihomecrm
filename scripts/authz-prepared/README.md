@@ -43,18 +43,34 @@
 | `check-definer-acl.mjs` | PASS (100 khớp baseline, không exposure mới) |
 | Money reconciliation | payments sum khớp baseline 100%; income_expenses chỉ lệch do voucher test (harness-only residue, DB disposable) |
 
-**Tổng: 84 assertion PASS across 9 suite trên exact-source restore.**
+| `t3_96_candidate_tests.sql` | 7/7 PASS (materialize 3 candidates exclude maker, generation bump, close prior gen, current-gen eligibility, QUORUM(2) satisfaction, impossible-quorum fail-closed, zero-candidate fail-closed) |
+| `t3_97_emergency_tests.sql` | 6/6 PASS (short-reason deny, stale-reauth deny, non-owner deny, valid owner posts+bypass+event, event append-only, re-emergency-after-posted deny) — validates T2 resolver grants `approvals.emergency_override` via TENANT_OWNER binding |
+| `t3_98_rule_governance_tests.sql` | 7/7 PASS (publish-without-fallback deny, publish→ACTIVE, unique resolution, published-rule immutable, v2 retires v1 atomically, retired-set undeletable, no-ACTIVE fail-closed) |
+| `t3_99_transition_tests.sql` | 5/5 PASS (direct transition frozen, token-authorized posts, token no-leak, forged-token cannot alter payload, items stay frozen) |
 
-## Slice bổ sung (approval v2 + rollout)
+**Tổng: 101 assertion PASS across 14 suite trên exact-source restore.**
+
+## Slice bổ sung (approval engine đầy đủ + rollout)
 
 ```text
 → t3_06_approval_v2_statemachine.sql   -- REVERSED state, exactly-once posting (GET DIAGNOSTICS),
                                           snapshot revalidation, maker-checker, self-approve-within-limit
-                                          (held-cashbook + versioned limit), reversal link. TẤT CẢ private,
-                                          KHÔNG grant (non-callable theo T3 §4.16).
+                                          (held-cashbook + versioned limit), reversal link; posting
+                                          transition qua t3_10 cho canonical rows. Private, non-callable.
+→ t3_07_candidate_materialization.sql  -- materialize candidate từ approval_step_approvers (MEMBER/ROLE/
+                                          PERMISSION/CASHBOOK/AREA/BUILDING) qua T2 resolver; generation
+                                          bump; ANY/ALL/QUORUM satisfaction; fail-closed zero/impossible.
+→ t3_08_emergency_override.sql         -- emergency_approve_financial_v1: OWNER + reason≥20 + reauth +
+                                          resolver-checked + owner-không-là-maker; bypass steps; event ledger.
+→ t3_09_rule_governance.sql            -- publish_rule_set_v1 DRAFT→ACTIVE→RETIRED atomic; published
+                                          immutable; resolve_active_rule_set_v1 fail-closed unique.
+→ t3_10_canonical_transition.sql       -- freeze-exempt transition qua transaction-scoped token
+                                          (KHÔNG GUC/identity); payload vẫn frozen kể cả khi authorized.
 → t5_01_rollout_cas.sql                -- set_feature_route_v1 CAS + release-identity gate + event;
                                           cap/event ledger append-only + non-negative CHECK.
 ```
+
+> **Thứ tự cài thêm:** t3_10 (transition) TRƯỚC t3_06 (posting gọi nó); t3_07/08/09 độc lập sau t3_06. Trên harness reinstall theo dependency order — xem lệnh trong session log.
 
 ## Còn thiếu trước khi bất kỳ file nào thành migration
 

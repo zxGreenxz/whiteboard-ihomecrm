@@ -128,12 +128,20 @@ begin
     raise exception 'subject already posted' using errcode='55000';
   end if;
 
-  -- NOTE: on production the income_expenses freeze (t3_01) blocks this UPDATE;
-  -- the posting routine must run as the canonical writer role AND the transition
-  -- must go through a private state-machine UPDATE path exempt from the freeze
-  -- for canonical rows. For the harness we validate the assertion logic only,
-  -- so we update the request side (freeze-free) and simulate the subject write
-  -- via the ledger fields the freeze would otherwise mediate.
+  -- Transition the subject voucher through the freeze-exempt canonical path
+  -- (t3_10). Only lifecycle columns move; the financial payload stays frozen.
+  -- For canonical-marked subjects this is the ONLY legal write path; for legacy
+  -- unmarked subjects the plain UPDATE below applies (the guard is a no-op).
+  if app_private.is_income_expense_flow_owned(v_req.subject_id) then
+    perform app_private.transition_canonical_income_expense_v1(
+      v_req.subject_id, 'APPROVED', v_posting, null);
+  else
+    update public.income_expenses
+       set approval_status = 'APPROVED', posting_id = v_posting,
+           posted_at_v2 = clock_timestamp()
+     where id = v_req.subject_id;
+  end if;
+
   update public.approval_requests
      set state = 'POSTED', posted_at = clock_timestamp(),
          posted_event_id = v_posting, version = version + 1
