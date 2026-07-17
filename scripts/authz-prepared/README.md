@@ -38,10 +38,23 @@
 | `t3_93_audit_chain_tests.sql` | 6/6 PASS (chain link, verifier valid, unchained-INSERT reject, append-only, client RPC routes-through-chain + lifecycle-forge deny, subject-delete audit retention) |
 | `t3_94_receipt_tests.sql` | 5/5 PASS (atomic attach payment+voucher, idempotent no-dup, invalid-URL reject, canonical-voucher blocks receipt + direct payment UPDATE/DELETE, stranger deny) |
 | `t4a_01_security_matrix.mjs` | 8/8 PASS (cross-org, RBAC DML deny, app_private deny, claim/writer ACL, capability-role invariants, ENABLE ALWAYS, suspended-org) |
+| `t3_95_approval_v2_tests.sql` | 10/10 PASS (maker-checker deny self-approve, version-CAS conflict, snapshot-hash revalidation, exactly-once posting, re-decide-after-POSTED deny, reversal linked+negated+REVERSED-once, double-reversal deny, self-approve 0-limit deny, no-possession deny, possession+within-limit posts) |
+| `t5_90_rollout_cas_tests.sql` | 8/8 PASS (stale-CAS 40001, ON-without-identity deny, CANARY-without-window deny, valid ON bumps+events, monotonic reuse deny, event append-only, cap negative-amount deny, cap append-only) |
 | `check-definer-acl.mjs` | PASS (100 khớp baseline, không exposure mới) |
-| Money reconciliation | invoices/payments khớp baseline 100%; income_expenses +3 voucher test concurrency (harness-only residue, DB disposable) |
+| Money reconciliation | payments sum khớp baseline 100%; income_expenses chỉ lệch do voucher test (harness-only residue, DB disposable) |
 
-**Tổng: 58 assertion PASS across 7 suite trên exact-source restore.**
+**Tổng: 84 assertion PASS across 9 suite trên exact-source restore.**
+
+## Slice bổ sung (approval v2 + rollout)
+
+```text
+→ t3_06_approval_v2_statemachine.sql   -- REVERSED state, exactly-once posting (GET DIAGNOSTICS),
+                                          snapshot revalidation, maker-checker, self-approve-within-limit
+                                          (held-cashbook + versioned limit), reversal link. TẤT CẢ private,
+                                          KHÔNG grant (non-callable theo T3 §4.16).
+→ t5_01_rollout_cas.sql                -- set_feature_route_v1 CAS + release-identity gate + event;
+                                          cap/event ledger append-only + non-negative CHECK.
+```
 
 ## Còn thiếu trước khi bất kỳ file nào thành migration
 
