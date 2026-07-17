@@ -18,8 +18,14 @@
 → 20260716120200 (T5-infra, đã APPLIED prod) + 20260716180000 (artifact BLOCKED)
 → t3_01_role_sidecar_claim.sql             -- role ie_canonical_writer, sidecar, claim helper, full freeze
 → t3_02_wrapper_reown.sql                  -- re-own wrapper + grants/policies tối thiểu
-→ t3_03_writer_with_claim.sql              -- writer với T3 claim (GENERATED — sửa build-t3-03.mjs)
+→ t3_04_audit_chain.sql                    -- durable audit + SHA-256 hash chain (A.5) + writer-monopoly guard
+→ t3_05_receipt_rpc.sql                    -- attach_payment_receipt_v1 atomic (A.7) + payments canonical guard
+→ t3_03_writer_with_claim.sql              -- writer với T3 claim + audit qua chain primitive (GENERATED — sửa build-t3-03.mjs)
 ```
+
+> **Thứ tự:** t3_04 (audit chain) phải cài TRƯỚC t3_03 vì writer regenerated
+> gọi `append_income_expense_event_v1` thay cho direct audit INSERT (guard
+> writer-monopoly sẽ reject direct INSERT). build-t3-03.mjs đã sinh đúng lời gọi.
 
 ## Kết quả test trên harness (2026-07-17, exact-source restore)
 
@@ -29,9 +35,13 @@
 | `t3_90_containment_tests.sql` | 14/14 PASS (capability gate 42501, claim, double-claim, parent/item freeze mọi op, legacy approve không promote, sidecar immutable, replica-mode ALWAYS, upsert arm, legacy unmarked tự do, FK restrict) |
 | `t3_91_writer_e2e_tests.sql` | 8/8 PASS (create→claim atomic, marker+event, ledger exactly-once, replay immutable, different-payload 23505, row+items frozen, ACL deny) |
 | `t3_92_concurrency_tests.mjs` | 3/3 PASS (duplicate-key race 2 session → 1 voucher/1 op/1 marker; claimant-abort handover; freeze race cross-session 55000) |
+| `t3_93_audit_chain_tests.sql` | 6/6 PASS (chain link, verifier valid, unchained-INSERT reject, append-only, client RPC routes-through-chain + lifecycle-forge deny, subject-delete audit retention) |
+| `t3_94_receipt_tests.sql` | 5/5 PASS (atomic attach payment+voucher, idempotent no-dup, invalid-URL reject, canonical-voucher blocks receipt + direct payment UPDATE/DELETE, stranger deny) |
 | `t4a_01_security_matrix.mjs` | 8/8 PASS (cross-org, RBAC DML deny, app_private deny, claim/writer ACL, capability-role invariants, ENABLE ALWAYS, suspended-org) |
 | `check-definer-acl.mjs` | PASS (100 khớp baseline, không exposure mới) |
 | Money reconciliation | invoices/payments khớp baseline 100%; income_expenses +3 voucher test concurrency (harness-only residue, DB disposable) |
+
+**Tổng: 58 assertion PASS across 7 suite trên exact-source restore.**
 
 ## Còn thiếu trước khi bất kỳ file nào thành migration
 

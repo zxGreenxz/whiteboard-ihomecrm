@@ -910,13 +910,11 @@ BEGIN
     v_row.id, v_idempotency_key);
   SELECT * INTO v_row FROM public.income_expenses WHERE id = v_row.id;
 
-  INSERT INTO public.income_expense_audit_log (
-    income_expense_id, action, actor_id, actor_name,
-    old_status, new_status, note, organization_id
-  ) VALUES (
-    v_row.id, 'CREATED_DRAFT', v_actor, v_actor_name,
-    NULL, 'UNAPPROVED', 'Tạo phiếu nháp qua create_income_expense_v1', v_org
-  );
+  -- A.5: canonical audit goes through the single hash-chain primitive; the
+  -- audit-log writer-monopoly guard rejects any direct unchained INSERT.
+  PERFORM app_private.append_income_expense_event_v1(
+    v_org, v_row.id, 'CREATED_DRAFT', v_actor, v_actor_name,
+    NULL, 'UNAPPROVED', 'Tạo phiếu nháp qua create_income_expense_v1');
 
   UPDATE app_private.canonical_write_operations
      SET subject_id = v_row.id,

@@ -27,9 +27,16 @@ const nameRepl = `  -- A.9 smallest-shape: actor display name via postgres-owned
 if (!body.includes(nameAnchor)) throw new Error('name anchor not found');
 body = body.replace(nameAnchor, nameRepl);
 
-// 2. T3 claim at the A.2 integration point (before audit append).
-const claimAnchor = `  INSERT INTO public.income_expense_audit_log (`;
-const claimRepl = `  -- =========================================================================
+// 2. T3 claim at the A.2 integration point + audit via the A.5 chain
+//    primitive (direct audit INSERT is rejected by the writer-monopoly guard).
+const auditAnchor = `  INSERT INTO public.income_expense_audit_log (
+    income_expense_id, action, actor_id, actor_name,
+    old_status, new_status, note, organization_id
+  ) VALUES (
+    v_row.id, 'CREATED_DRAFT', v_actor, v_actor_name,
+    NULL, 'UNAPPROVED', 'Tạo phiếu nháp qua create_income_expense_v1', v_org
+  );`;
+const claimAndAudit = `  -- =========================================================================
   -- T3 CLAIM (A.2 integration point): after construction + invariants +
   -- canary time recheck; before audit append and operation completion.
   -- Runs as current_user = ie_canonical_writer (this wrapper's owner).
@@ -38,9 +45,13 @@ const claimRepl = `  -- ========================================================
     v_row.id, v_idempotency_key);
   SELECT * INTO v_row FROM public.income_expenses WHERE id = v_row.id;
 
-  INSERT INTO public.income_expense_audit_log (`;
-if (!body.includes(claimAnchor)) throw new Error('claim anchor not found');
-body = body.replace(claimAnchor, claimRepl);
+  -- A.5: canonical audit goes through the single hash-chain primitive; the
+  -- audit-log writer-monopoly guard rejects any direct unchained INSERT.
+  PERFORM app_private.append_income_expense_event_v1(
+    v_org, v_row.id, 'CREATED_DRAFT', v_actor, v_actor_name,
+    NULL, 'UNAPPROVED', 'Tạo phiếu nháp qua create_income_expense_v1');`;
+if (!body.includes(auditAnchor)) throw new Error('audit anchor not found');
+body = body.replace(auditAnchor, claimAndAudit);
 
 const header = `-- ============================================================================
 -- T3 PREPARED SQL 03 — create_income_expense_v1 WITH the T3 canonical claim.
