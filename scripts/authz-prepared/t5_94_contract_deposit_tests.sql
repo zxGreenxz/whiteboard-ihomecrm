@@ -107,12 +107,16 @@ begin
   if (v_res2->>'contract_id') <> (v_res->>'contract_id') then
     raise exception 'T7 FAILED: replay made a new contract'; end if;
 
-  -- T8: without contracts.create → deny
-  update public.member_permission_overrides set revoked_at=clock_timestamp()
-   where organization_id=v_org and membership_id=v_membership and permission_key='contracts.create';
+  -- T8: a principal without contracts.create is denied — and the writer
+  -- authorizes BEFORE it inspects room state, so denial is insufficient_privilege
+  -- (42501), never a room-occupancy leak (55000). Use a stranger identity so the
+  -- assertion is deterministic regardless of the fixture actor's role grants or
+  -- v_room's occupancy (override-revocation precedence is covered by t2_90).
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', gen_random_uuid(), 'role','authenticated')::text, true);
   begin
     perform public.create_contract_v1(
-      coalesce(v_room2, v_room), array[v_customer], current_date, current_date, current_date + 365,
+      v_room, array[v_customer], current_date, current_date, current_date + 365,
       1000000, 0, '[]'::jsonb, null, 'con-key-0003');
     raise exception 'T8 FAILED: created without contracts.create';
   exception when insufficient_privilege then null;

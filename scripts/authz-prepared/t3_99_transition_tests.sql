@@ -30,9 +30,11 @@ begin
     (organization_id, operation, subject_scope, actor_id, idempotency_key, payload_hash)
   values (v_org, 'income_expense.create_draft.v1', v_building::text, v_actor,
           'trans-key-1', v_hash);
-  set local role ie_canonical_writer;
-  perform app_private.claim_canonical_income_expense_draft_v1(v_subject, 'trans-key-1');
-  reset role;
+  declare v_cap text;
+  begin
+    v_cap := app_private.grant_ie_claim_capability_v1();
+    perform app_private.claim_canonical_income_expense_draft_v1(v_subject, 'trans-key-1', v_cap);
+  end;
 
   -- T1: direct UPDATE still frozen (no token)
   begin

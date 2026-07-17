@@ -13,6 +13,15 @@ const endIdx = lines.findIndex((l, i) => i > startIdx && l.trim() === '$function
 if (startIdx < 0 || endIdx < 0) throw new Error('function boundaries not found');
 let body = lines.slice(startIdx, endIdx + 1).join('\n');
 
+// 0. auth.uid() → DEFINER delegate + declare the capability-nonce local. The
+//    wrapper is postgres-owned SECURITY DEFINER, so app_private.current_uid_v1()
+//    (a DEFINER delegate) provides auth.uid() and v_claim_cap carries the token.
+const uidAnchor = `  v_actor uuid := auth.uid();`;
+const uidRepl = `  v_actor uuid := app_private.current_uid_v1();
+  v_claim_cap text;`;
+if (!body.includes(uidAnchor)) throw new Error('uid anchor not found');
+body = body.replace(uidAnchor, uidRepl);
+
 // 1. Actor display-name via delegate (A.9 smallest shape).
 const nameAnchor = `  SELECT COALESCE(NULLIF(btrim(p.full_name), ''), NULLIF(btrim(p.email), ''), u.email, 'Người dùng')
     INTO v_actor_name
@@ -39,10 +48,15 @@ const auditAnchor = `  INSERT INTO public.income_expense_audit_log (
 const claimAndAudit = `  -- =========================================================================
   -- T3 CLAIM (A.2 integration point): after construction + invariants +
   -- canary time recheck; before audit append and operation completion.
-  -- Runs as current_user = ie_canonical_writer (this wrapper's owner).
+  -- A.9 smallest-shape: this wrapper is SECURITY DEFINER owned by postgres (so
+  -- auth access + INVOKER triggers resolve on Supabase). Capability is proven by
+  -- a transaction-local token stamped by a postgres-owned DEFINER setter that no
+  -- app role can call, then echoed to the claim. (Replaces the unreachable
+  -- current_user='ie_canonical_writer' gate — see t3_12.)
   -- =========================================================================
+  v_claim_cap := app_private.grant_ie_claim_capability_v1();
   PERFORM app_private.claim_canonical_income_expense_draft_v1(
-    v_row.id, v_idempotency_key);
+    v_row.id, v_idempotency_key, v_claim_cap);
   SELECT * INTO v_row FROM public.income_expenses WHERE id = v_row.id;
 
   -- A.5: canonical audit goes through the single hash-chain primitive; the

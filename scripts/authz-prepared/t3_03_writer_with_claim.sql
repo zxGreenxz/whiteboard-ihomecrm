@@ -34,7 +34,8 @@ SECURITY DEFINER
 SET search_path TO 'pg_catalog', 'public', 'app_private'
 AS $function$
 DECLARE
-  v_actor uuid := auth.uid();
+  v_actor uuid := app_private.current_uid_v1();
+  v_claim_cap text;
   v_actor_name text;
   v_name text;
   v_org uuid;
@@ -904,10 +905,15 @@ BEGIN
   -- =========================================================================
   -- T3 CLAIM (A.2 integration point): after construction + invariants +
   -- canary time recheck; before audit append and operation completion.
-  -- Runs as current_user = ie_canonical_writer (this wrapper's owner).
+  -- A.9 smallest-shape: this wrapper is SECURITY DEFINER owned by postgres (so
+  -- auth access + INVOKER triggers resolve on Supabase). Capability is proven by
+  -- a transaction-local token stamped by a postgres-owned DEFINER setter that no
+  -- app role can call, then echoed to the claim. (Replaces the unreachable
+  -- current_user='ie_canonical_writer' gate — see t3_12.)
   -- =========================================================================
+  v_claim_cap := app_private.grant_ie_claim_capability_v1();
   PERFORM app_private.claim_canonical_income_expense_draft_v1(
-    v_row.id, v_idempotency_key);
+    v_row.id, v_idempotency_key, v_claim_cap);
   SELECT * INTO v_row FROM public.income_expenses WHERE id = v_row.id;
 
   -- A.5: canonical audit goes through the single hash-chain primitive; the

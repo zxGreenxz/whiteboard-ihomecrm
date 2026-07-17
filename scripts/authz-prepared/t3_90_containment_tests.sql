@@ -57,34 +57,37 @@ begin
     (v_org, 'income_expense.create_draft.v1', v_building::text, v_actor,
      'cont-test-key-001', v_hash);
 
-  -- T1: claim under wrong capability identity must 42501
+  -- T1: claim WITHOUT the capability token must 42501 (A.9 redesign: capability
+  -- is a transaction-local nonce, not a role identity).
   begin
     perform app_private.claim_canonical_income_expense_draft_v1(
-      v_voucher, 'cont-test-key-001');
-    raise exception 'T1 FAILED: claim succeeded as %', current_user;
+      v_voucher, 'cont-test-key-001', 'forged-nonce');
+    raise exception 'T1 FAILED: claim succeeded without capability';
   exception when insufficient_privilege then
     null; -- expected
   end;
 
-  -- T2: claim as ie_canonical_writer succeeds
-  set local role ie_canonical_writer;
-  perform app_private.claim_canonical_income_expense_draft_v1(
-    v_voucher, 'cont-test-key-001');
-  reset role;
+  -- T2: claim WITH a freshly granted capability token succeeds
+  declare v_cap text;
+  begin
+    v_cap := app_private.grant_ie_claim_capability_v1();
+    perform app_private.claim_canonical_income_expense_draft_v1(
+      v_voucher, 'cont-test-key-001', v_cap);
+  end;
 
   select app_private.is_income_expense_flow_owned(v_voucher) into v_ok;
   if not v_ok then raise exception 'T2 FAILED: marker missing'; end if;
 
   -- T3: double-claim must fail (PK)
-  set local role ie_canonical_writer;
+  declare v_cap2 text;
   begin
+    v_cap2 := app_private.grant_ie_claim_capability_v1();
     perform app_private.claim_canonical_income_expense_draft_v1(
-      v_voucher, 'cont-test-key-001');
+      v_voucher, 'cont-test-key-001', v_cap2);
     raise exception 'T3 FAILED: double claim';
   exception when unique_violation or no_data_found then
     null;
   end;
-  reset role;
 
   -- T4: parent UPDATE frozen (55000)
   begin

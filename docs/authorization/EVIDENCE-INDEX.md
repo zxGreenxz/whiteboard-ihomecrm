@@ -26,6 +26,7 @@
 | [T8-STORAGE-R2-EDGE-DEFINER-ACL.md](./T8-STORAGE-R2-EDGE-DEFINER-ACL.md) | `IN_DESIGN/BLOCKED` | Storage/R2/Edge/service identity + SECURITY DEFINER ACL burn-down. |
 | [T9-RETENTION-CLEANUP-RESTORE-CERT.md](./T9-RETENTION-CLEANUP-RESTORE-CERT.md) | `NOT_STARTED/BLOCKED` | Retention, cleanup, final restore certification. |
 | [_TRANCHE-REVIEW-NOTES.md](./_TRANCHE-REVIEW-NOTES.md) | `PREPARED` | Đối chiếu cross-tranche + 5 mục (a)–(e) owner phải chốt trước khi rời `IN_DESIGN`. |
+| [ON-TARGET-VALIDATION-2026-07-17.md](./ON-TARGET-VALIDATION-2026-07-17.md) | `PREPARED + ON-TARGET VALIDATED` | Integration evidence trên Supabase thật (staging tạm, postgres non-superuser): 4 defect chỉ-Supabase + redesign A.9 capability-token + 15/15 suite (117 assertion) trên cả staging & superuser local. |
 
 > Cả 8 spec T2–T9 (2026-07-16) đều PASS cửa an toàn không thương lượng: không spec nào cho phép production apply khi thiếu recovery `VERIFIED` + owner window/canary/VND cap, không spec nào đặt migration vào `supabase/migrations/`, SQL chỉ là fenced block.
 >
@@ -33,7 +34,17 @@
 
 ## Recovery evidence
 
-Recovery artifact plaintext/mã hóa nằm ngoài Git. Repo chỉ được ghi certification ID, aggregate count/hash và sanitized report. Phạm vi từ 2026-07-16 theo quyết định owner là **local-only**: không Supabase project tạm, không upload VPS/cloud, không blank-target cloud restore trong phạm vi hiện tại.
+Recovery artifact plaintext/mã hóa nằm ngoài Git. Repo chỉ được ghi certification ID, aggregate count/hash và sanitized report. Phạm vi 2026-07-16 là **local-only**; **cập nhật 2026-07-17: owner đã cấp một Supabase project tạm**, nên phạm vi mở rộng gồm restore vào một live Supabase target (extension-complete) — xem entry `20260717T095450Z` dưới.
+
+### Recovery `20260717T095450Z-db-portable` — `ROUND_TRIP_PROVEN_CROSS_VALIDATED / PREPARED`
+
+Bản dump production tươi 2026-07-17 (~09:54 UTC), `pg_dump` 17.10 custom-format qua Supavisor pooler, `-Z0` + TCP keepalive (2 bản trước — `092043Z`, `095310Z` — bị pooler idle-drop giữa stream → TOC hợp lệ nhưng `invoices/payments/rooms` rỗng; bắt bằng round-trip trên CẢ staging lẫn local, đã đánh dấu `TRUNCATED_DO_NOT_USE`).
+
+- **Artifact:** `database/full.custom` 43.014.738 byte, SHA-256 `3dcbc76da4f921ed9bc486389a0644f6b48f54488528b9b114d73672b8805983`; 3 bản hash-verified (vẫn cùng ổ D:, chưa phải fault domain độc lập).
+- **Cross-restore money invariant (2 target độc lập, cùng dump):** blank local PG 17.10 (`verify3`) và live Supabase staging (`qwxgygsewymkahiavslu`) khớp **exact**: `income_expenses` 10.492.190.716,00 · `invoices` 4.242.342.993,00 · `payments` 3.893.111.563,00 · `auth.users` 11/11.
+- **Caveat `storage.objects`:** blank local 2.418 (trung thực theo dump) vs live-Supabase 2.380 (rớt 38 row trỏ bucket không restore/ON CONFLICT do storage Supabase quản lý) — artifact của restore-vào-live, không phải mất dữ liệu nguồn; cần đối chiếu object-level trước certification.
+- **Extension-complete target:** gate cũ BLOCKED do local thiếu `vector`/`pg_cron`/`supabase_vault`; staging có `pg_cron 1.6.4`/`supabase_vault 0.3.1`/`pgcrypto 1.3` → toàn bộ authz stack compile+chạy trên target đủ extension.
+- **Còn `BLOCKED` cho certification tổng thể:** giải thích 38-row storage delta, fault-domain replica thật, independent reviewer, exhaustive R2/object bytes. Chi tiết + on-target findings: [ON-TARGET-VALIDATION-2026-07-17.md](./ON-TARGET-VALIDATION-2026-07-17.md).
 
 ### Recovery `20260716T045126Z-db-portable` — `PORTABLE_DUMP_PROVEN_RESTORABLE_CORE / PREPARED`
 

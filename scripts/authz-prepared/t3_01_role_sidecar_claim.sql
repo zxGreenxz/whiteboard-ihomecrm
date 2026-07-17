@@ -153,6 +153,21 @@ revoke all on function app_private.ie_lock_row_for_claim_v1(uuid)
 grant execute on function app_private.ie_lock_row_for_claim_v1(uuid)
   to ie_canonical_writer;
 
+-- Current-uid delegate: on Supabase the auth schema is owned by supabase_admin
+-- and the migration role CANNOT grant USAGE on it to ie_canonical_writer. A
+-- SECURITY DEFINER function owned by the migration role (which HAS auth usage)
+-- lets the NOBYPASSRLS writer role obtain auth.uid() without any auth grant.
+create or replace function app_private.current_uid_v1()
+returns uuid
+language sql
+stable
+security definer
+set search_path to 'pg_catalog', 'auth'
+as $fn$ select auth.uid() $fn$;
+revoke all on function app_private.current_uid_v1()
+  from public, anon, authenticated, service_role;
+grant execute on function app_private.current_uid_v1() to ie_canonical_writer;
+
 -- Actor display-name delegate: auth.users/profiles carry RLS owned by the
 -- auth admin; the writer role must not need policies there (A.9 smallest
 -- shape). postgres-owned DEFINER bypasses RLS; EXECUTE only for the role.
@@ -237,7 +252,7 @@ begin
     raise exception 'canonical claim capability required' using errcode = '42501';
   end if;
 
-  v_actor := auth.uid();
+  v_actor := app_private.current_uid_v1();  -- DEFINER delegate; role has no auth USAGE
   if v_actor is null then
     raise exception 'authentication required' using errcode = '42501';
   end if;

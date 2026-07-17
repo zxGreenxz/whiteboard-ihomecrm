@@ -86,9 +86,11 @@ begin
     (organization_id, operation, subject_scope, actor_id, idempotency_key, payload_hash)
   values (v_org, 'income_expense.create_draft.v1', v_building::text, v_actor,
           'receipt-canon-key', md5('receipt-canon'));
-  set local role ie_canonical_writer;
-  perform app_private.claim_canonical_income_expense_draft_v1(v_voucher, 'receipt-canon-key');
-  reset role;
+  declare v_cap text;
+  begin
+    v_cap := app_private.grant_ie_claim_capability_v1();
+    perform app_private.claim_canonical_income_expense_draft_v1(v_voucher, 'receipt-canon-key', v_cap);
+  end;
 
   begin
     perform public.attach_payment_receipt_v1(v_payment, v_url);

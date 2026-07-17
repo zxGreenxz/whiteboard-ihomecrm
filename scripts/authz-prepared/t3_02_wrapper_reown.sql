@@ -19,26 +19,32 @@ begin;
 
 do $reown$
 begin
-  -- transient membership for transfer (idempotent)
-  if not exists (
-    select 1 from pg_auth_members am
-      join pg_roles r on r.oid = am.roleid
-      join pg_roles g on g.oid = am.member
-     where r.rolname = 'ie_canonical_writer' and g.rolname = current_user
-  ) then
-    execute format('grant ie_canonical_writer to %I', current_user);
+  -- transient membership for transfer. On PG16+ (Supabase) a plain GRANT gives
+  -- ADMIN but NOT the ability to SET ROLE unless WITH SET TRUE is specified, and
+  -- ALTER FUNCTION ... OWNER TO requires the grantor to be able to become the new
+  -- owner. pg_has_role(...,'USAGE') is the version-portable check for "can SET ROLE".
+  if not pg_has_role(current_user, 'ie_canonical_writer', 'USAGE') then
+    begin
+      execute format('grant ie_canonical_writer to %I with set true', current_user);
+    exception when syntax_error then
+      execute format('grant ie_canonical_writer to %I', current_user); -- PG15 fallback
+    end;
   end if;
 end;
 $reown$;
 
-grant create on schema public to ie_canonical_writer;
+-- CREATE is transiently needed for the ownership transfer; USAGE is PERMANENT
+-- (a SECURITY DEFINER function running as this role must resolve objects in
+-- schema public — without USAGE it fails "permission denied for schema public"
+-- at first call on Supabase, where the role is not a superuser).
+grant usage, create on schema public to ie_canonical_writer;
 
 alter function public.create_income_expense_v1(
   text, text, uuid, uuid, uuid, uuid, text, text, text, uuid,
   jsonb, boolean, text, date, jsonb, text
 ) owner to ie_canonical_writer;
 
-revoke create on schema public from ie_canonical_writer;
+revoke create on schema public from ie_canonical_writer;  -- keep USAGE
 
 -- The wrapper (now owned by the writer role) needs to reach app_private
 -- helpers it already calls; USAGE + selective EXECUTE were granted in t3_01.
@@ -79,14 +85,18 @@ to ie_canonical_writer;
 grant insert on public.income_expense_audit_log to ie_canonical_writer;
 
 -- The current monolithic writer body reads auth.users + public.profiles for
--- the actor display name. The A.9 smallest-shape split would remove these
+-- the actor display name, and calls auth.uid(). On Supabase the role needs
+-- USAGE on schema auth (EXECUTE on auth.uid() alone is insufficient — object
+-- resolution requires schema USAGE, which surfaces as "permission denied for
+-- schema auth" at first call). The A.9 smallest-shape split would remove these
 -- grants; until then they are part of the reviewed capability set.
-do $auth_users_grant$
+do $auth_grants$
 begin
+  execute 'grant usage on schema auth to ie_canonical_writer';
   execute 'grant select on auth.users to ie_canonical_writer';
-exception when undefined_table or invalid_schema_name then null;
+exception when undefined_table or invalid_schema_name or insufficient_privilege then null;
 end;
-$auth_users_grant$;
+$auth_grants$;
 grant select on public.profiles to ie_canonical_writer;
 
 grant select, insert, update on
