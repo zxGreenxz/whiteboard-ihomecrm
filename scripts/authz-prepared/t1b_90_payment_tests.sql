@@ -119,7 +119,22 @@ begin
   exception when insufficient_privilege then null;
   end;
 
-  raise notice 'ALL 7 T1B PAYMENT TESTS PASSED';
+  -- T9: cross-ledger guard — a key already consumed by the LEGACY v3 path
+  -- (income_expenses.idempotency_key stamp) must 23505, never re-execute
+  -- canonically (client retry racing the canary flip would double-pay).
+  update public.income_expenses set idempotency_key='legacy-key-t9-0001'
+   where id = (select id from public.income_expenses
+                where organization_id=v_org and deleted_at is null
+                  and source_payload_hash is null limit 1);
+  begin
+    perform public.record_invoice_payment_v4(
+      v_invoice, 50000, 'TM', current_date, 'legacy-key-t9-0001',
+      null, null, null, null, null, null, null);
+    raise exception 'T9 FAILED: legacy-consumed key re-executed canonically';
+  exception when unique_violation then null;
+  end;
+
+  raise notice 'ALL 8 T1B PAYMENT TESTS PASSED';
 end;
 $tests$;
 

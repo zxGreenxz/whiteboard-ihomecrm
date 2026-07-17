@@ -172,6 +172,17 @@ begin
     'items', v_items));
   v_hash := md5(v_payload::text);
 
+  -- Cross-ledger guard (route-flip race): a key already consumed by the LEGACY
+  -- v3 path (income_expenses.idempotency_key stamp) must not re-execute
+  -- canonically — a client retry racing the canary flip would double-pay.
+  -- Surfaces as a visible 23505 conflict instead of a silent second payment.
+  -- Residual: v3 calls WITHOUT a voucher mirror leave no key stamp and cannot
+  -- be detected here (pre-existing v3 gap; documented in the payment runbook).
+  if exists (select 1 from public.income_expenses ie
+              where ie.idempotency_key = v_key and ie.deleted_at is null) then
+    raise exception 'idempotency_key đã dùng ở đường legacy (v3)' using errcode='23505';
+  end if;
+
   -- (4) durable idempotency claim = linearization point (AFTER authz).
   insert into app_private.canonical_write_operations
     (organization_id, operation, subject_scope, actor_id, idempotency_key, payload_hash)
