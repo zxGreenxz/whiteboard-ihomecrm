@@ -67,19 +67,17 @@ begin
         using errcode = '55000';
     end if;
 
-    -- Even authorized: financial payload columns must NOT change.
-    if new.id is distinct from old.id
-       or new.organization_id is distinct from old.organization_id
-       or new.total_amount is distinct from old.total_amount
-       or new.account_id is distinct from old.account_id
-       or new.building_id is distinct from old.building_id
-       or new.room_id is distinct from old.room_id
-       or new.contract_id is distinct from old.contract_id
-       or new.tenant_id is distinct from old.tenant_id
-       or new.type is distinct from old.type
-       or new.attachments is distinct from old.attachments
-       or new.source_payload_hash is distinct from old.source_payload_hash then
-      raise exception 'authorized transition cannot alter payload of %', old.id
+    -- Finding 1/2 fix: ALLOWLIST, not denylist. Even an authorized transition
+    -- may only move the lifecycle columns; EVERY other column of the row must be
+    -- NOT DISTINCT FROM its old value. A forged token, a second issuer, or a
+    -- trigger-driven update cannot smuggle any payload/ownership/period change.
+    -- to_jsonb(old) - lifecycle keys must equal to_jsonb(new) - lifecycle keys.
+    if (to_jsonb(old) - array['approval_status','posting_id','posted_at_v2',
+                              'reversed_by_posting_id','updated_at'])
+       is distinct from
+       (to_jsonb(new) - array['approval_status','posting_id','posted_at_v2',
+                              'reversed_by_posting_id','updated_at']) then
+      raise exception 'authorized transition may only change lifecycle columns of %', old.id
         using errcode = '55000';
     end if;
     return new;

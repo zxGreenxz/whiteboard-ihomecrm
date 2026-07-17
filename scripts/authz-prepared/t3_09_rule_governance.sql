@@ -36,12 +36,17 @@ begin
       using errcode='55000';
   end if;
 
-  -- exactly one fallback REQUIRE_APPROVAL rule
+  -- M7 fix: exactly one fallback rule OVERALL, and it must be REQUIRE_APPROVAL.
   select count(*) into v_fallbacks from public.approval_rules
-   where rule_set_id = p_rule_set_id and is_fallback and effect = 'REQUIRE_APPROVAL';
+   where rule_set_id = p_rule_set_id and is_fallback;
   if v_fallbacks <> 1 then
-    raise exception 'rule set must have exactly one fallback REQUIRE_APPROVAL rule (has %)',
+    raise exception 'rule set must have exactly one fallback rule (has %)',
       v_fallbacks using errcode='55000';
+  end if;
+  if not exists (
+    select 1 from public.approval_rules
+     where rule_set_id = p_rule_set_id and is_fallback and effect = 'REQUIRE_APPROVAL') then
+    raise exception 'the fallback rule must be REQUIRE_APPROVAL' using errcode='55000';
   end if;
 
   -- retire the current ACTIVE version for the same (org, domain)
@@ -77,14 +82,23 @@ declare
   v_status text;
 begin
   if tg_table_name = 'approval_rule_sets' then
-    -- allow the publish transition itself (DRAFT→ACTIVE, ACTIVE→RETIRED) but
-    -- forbid content edits once published. We detect content edits by checking
-    -- the OLD status: a published row may only change status/effective_to/
-    -- published_*.
+    -- H6 fix: ALLOWLIST. Once published (ACTIVE/RETIRED), the ONLY legal changes
+    -- are the retire transition (status ACTIVE→RETIRED + effective_to) driven by
+    -- publish_rule_set_v1. Everything else — including resurrecting RETIRED→ACTIVE,
+    -- moving effective_from, editing config — is rejected. We compare the whole
+    -- row minus the retire-transition columns.
     if tg_op = 'UPDATE' and old.status in ('ACTIVE','RETIRED') then
-      if new.transaction_domain is distinct from old.transaction_domain
-         or new.version is distinct from old.version
-         or new.organization_id is distinct from old.organization_id then
+      -- forbid resurrecting a RETIRED set to ACTIVE
+      if old.status = 'RETIRED' and new.status <> 'RETIRED' then
+        raise exception 'RETIRED rule set cannot be resurrected' using errcode='55000';
+      end if;
+      -- ACTIVE may only go to RETIRED; nothing else may change except the
+      -- retire bookkeeping columns.
+      if old.status = 'ACTIVE' and new.status not in ('ACTIVE','RETIRED') then
+        raise exception 'published rule set status transition illegal' using errcode='55000';
+      end if;
+      if (to_jsonb(old) - array['status','effective_to'])
+         is distinct from (to_jsonb(new) - array['status','effective_to']) then
         raise exception 'published rule set content is immutable' using errcode='55000';
       end if;
     end if;

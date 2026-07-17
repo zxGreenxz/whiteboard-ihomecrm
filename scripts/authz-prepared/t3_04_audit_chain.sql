@@ -62,6 +62,71 @@ begin
 end;
 $fn$;
 
+-- F1 fix: restore_income_expense also INSERTs directly into the audit log; once
+-- the writer-monopoly guard is installed that INSERT (no event_hash) is rejected
+-- and the restore feature dies. Re-point its audit write through the chain
+-- primitive, deriving org from the parent voucher. Body otherwise unchanged.
+create or replace function public.restore_income_expense(p_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'pg_catalog', 'public', 'app_private'
+as $function$
+declare
+  v_rec record; v_amount numeric(15,2); v_payment_id uuid;
+  v_existing_payment uuid; v_actor_name text; v_note text; v_org uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Bạn chưa đăng nhập' using errcode='42501';
+  end if;
+  if not public.is_super_admin() then
+    raise exception 'Chỉ Super Admin mới được khôi phục phiếu đã huỷ' using errcode='42501';
+  end if;
+  select id, type, invoice_id, payment_id, approval_status,
+         voucher_date, total_amount, user_id, organization_id
+    into v_rec from public.income_expenses where id = p_id;
+  if not found then raise exception 'Không tìm thấy phiếu' using errcode='P0002'; end if;
+  if v_rec.approval_status <> 'CANCELLED' then
+    raise exception 'Phiếu không ở trạng thái Đã huỷ' using errcode='P0001'; end if;
+  v_org := v_rec.organization_id;
+
+  update public.income_expenses
+     set approval_status='APPROVED', approved_by=auth.uid(), approved_at=now()
+   where id = p_id;
+
+  if v_rec.type='INCOME' and v_rec.invoice_id is not null and v_rec.payment_id is null then
+    v_amount := coalesce(v_rec.total_amount,0);
+    select id into v_existing_payment from public.payments
+     where invoice_id=v_rec.invoice_id and amount=v_amount and payment_date=v_rec.voucher_date
+     limit 1;
+    if v_existing_payment is not null then
+      v_payment_id := v_existing_payment;
+    elsif v_amount > 0 then
+      insert into public.payments (user_id, invoice_id, amount, payment_method, payment_date, notes)
+      values (v_rec.user_id, v_rec.invoice_id, v_amount, 'TM', v_rec.voucher_date,
+              'Khôi phục từ phiếu thu đã huỷ')
+      returning id into v_payment_id;
+    end if;
+    if v_payment_id is not null then
+      update public.income_expenses set payment_id=v_payment_id where id=p_id;
+    end if;
+  end if;
+
+  select full_name into v_actor_name from public.profiles where id=auth.uid();
+  v_note := case when v_payment_id is not null
+                 then 'Khôi phục phiếu + phục hồi thanh toán hoá đơn'
+                 else 'Khôi phục phiếu' end;
+  -- chained audit (was a direct INSERT that the monopoly guard now rejects)
+  if v_org is not null then
+    perform app_private.append_income_expense_event_v1(
+      v_org, p_id, 'RESTORED', auth.uid(), coalesce(v_actor_name,'Người dùng'),
+      'CANCELLED', 'APPROVED', v_note);
+  end if;
+
+  return jsonb_build_object('id', p_id, 'restored_payment_id', v_payment_id);
+end;
+$function$;
+
 -- ---------------------------------------------------------------------------
 -- 1. Schema upgrade (chain columns; FK de-cascade; org NOT NULL)
 -- ---------------------------------------------------------------------------

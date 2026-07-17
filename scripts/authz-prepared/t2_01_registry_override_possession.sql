@@ -315,8 +315,14 @@ create table if not exists app_private.cashbook_possession_candidates (
   updated_at timestamptz not null default clock_timestamp(),
   created_at timestamptz not null default clock_timestamp(),
   check (
+    -- PENDING_REVIEW: awaiting a human; no review columns.
     (status = 'PENDING_REVIEW' and reviewed_at is null)
-    or (status <> 'PENDING_REVIEW' and reviewed_at is not null
+    -- AMBIGUOUS: SYSTEM-detected (e.g. owner without ACTIVE membership); it has
+    -- a machine review_reason + timestamp but NO human reviewer (F13 fix — the
+    -- backfill inserts these with reviewed_by NULL by design).
+    or (status = 'AMBIGUOUS' and reviewed_at is not null and review_reason is not null)
+    -- APPROVED/REJECTED: a human reviewer is mandatory.
+    or (status in ('APPROVED','REJECTED') and reviewed_at is not null
         and reviewed_by is not null and review_reason is not null)
   ),
   -- APPROVED must be materializable and maker-checker'd

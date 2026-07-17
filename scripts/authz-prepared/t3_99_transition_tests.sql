@@ -58,16 +58,29 @@ begin
   exception when object_not_in_prerequisite_state then null;
   end;
 
-  -- T4: authorized transition still cannot alter payload
+  -- T4: authorized transition is an ALLOWLIST — NO non-lifecycle column may
+  -- change under a token. Probe several columns the old denylist missed.
+  declare v_col text;
   begin
-    -- craft a transition that also tries to change amount via a manual token
-    insert into app_private.ie_transition_authorization (income_expense_id, xid, purpose)
-    values (v_subject, pg_current_xact_id(), 'test');
-    update public.income_expenses set total_amount = 1 where id=v_subject;
-    raise exception 'T4 FAILED: payload changed under token';
-  exception when object_not_in_prerequisite_state then null;
+    foreach v_col in array array[
+      'total_amount = 1',
+      'voucher_date = ''2099-01-01''',
+      'deleted_at = now()',
+      'user_id = gen_random_uuid()',
+      'change_amount = 500',
+      'rounding_amount = 500',
+      'notes = ''smuggled'''
+    ] loop
+      begin
+        insert into app_private.ie_transition_authorization (income_expense_id, xid, purpose)
+        values (v_subject, pg_current_xact_id(), 'test');
+        execute format('update public.income_expenses set %s where id=%L', v_col, v_subject);
+        raise exception 'T4 FAILED: allowlist let through %', v_col;
+      exception when object_not_in_prerequisite_state then
+        delete from app_private.ie_transition_authorization where income_expense_id=v_subject;
+      end;
+    end loop;
   end;
-  delete from app_private.ie_transition_authorization where income_expense_id=v_subject;
 
   -- T5: items remain frozen throughout (freeze on items unchanged)
   begin

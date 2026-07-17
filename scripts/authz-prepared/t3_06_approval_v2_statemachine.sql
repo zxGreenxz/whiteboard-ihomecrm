@@ -175,9 +175,9 @@ as $fn$
 declare
   v_req public.approval_requests;
   v_ie public.income_expenses;
-  v_recomputed_hash text;
   v_posting uuid;
-  v_step uuid;
+  v_step public.approval_request_steps;
+  v_next_pending uuid;
 begin
   if p_decision not in ('APPROVE','REJECT') then
     raise exception 'invalid decision %', p_decision using errcode='22023';
@@ -198,44 +198,72 @@ begin
     raise exception 'maker cannot approve own request' using errcode='42501';
   end if;
 
-  -- snapshot revalidation: recompute the subject hash and compare
+  -- snapshot revalidation FAIL-CLOSED (H2): a request always has a payload_hash
+  -- (NOT NULL column). If the subject lost its hash or drifted, reject.
   select * into v_ie from public.income_expenses
    where id = v_req.subject_id and organization_id = v_req.organization_id
    for update;
   if not found then raise exception 'subject missing' using errcode='P0002'; end if;
-  v_recomputed_hash := md5(coalesce(v_ie.source_payload_hash, ''));
-  -- (in the real writer the request stores the canonical payload_hash of the
-  -- submitted snapshot; here we assert equality of the stored vs current hash)
-  if v_req.payload_hash is not null
-     and v_ie.source_payload_hash is not null
-     and v_req.payload_hash <> v_ie.source_payload_hash then
-    raise exception 'subject changed since submission (hash mismatch)'
+  if v_ie.source_payload_hash is null
+     or v_req.payload_hash is null
+     or v_req.payload_hash <> v_ie.source_payload_hash then
+    raise exception 'subject changed or lost its snapshot hash (fail-closed)'
       using errcode='55000';
   end if;
 
-  -- resolve the open step for this request (candidate/step materialization
-  -- is T3 §4.7 scope; here we take the lowest-numbered PENDING step)
-  select id into v_step from public.approval_request_steps
-   where request_id = p_request_id
-   order by (status = 'PENDING') desc, step_no
-   limit 1;
+  -- the CURRENT open step is the lowest step_no still PENDING; a request in
+  -- PENDING_APPROVAL always has exactly one (submit sets step 1 PENDING, later
+  -- steps WAITING, and each satisfied step promotes the next).
+  select * into v_step from public.approval_request_steps
+   where request_id = p_request_id and status = 'PENDING'
+   order by step_no limit 1;
+  if not found then
+    raise exception 'no PENDING step to decide' using errcode='55000';
+  end if;
+
+  -- ELIGIBILITY (C1/H5): the decider must be a current-generation candidate of
+  -- THIS step. Non-candidates cannot approve or reject.
+  if not app_private.is_eligible_current_candidate_v1(v_step.id, p_actor_membership) then
+    raise exception 'actor is not an eligible candidate for this step'
+      using errcode='42501';
+  end if;
 
   insert into public.approval_decisions
     (organization_id, request_id, request_step_id, actor_membership_id,
      actor_user_id, decision, reason, request_version)
   values
-    (v_req.organization_id, p_request_id, v_step, p_actor_membership,
+    (v_req.organization_id, p_request_id, v_step.id, p_actor_membership,
      p_actor_user,
      case p_decision when 'APPROVE' then 'CHECKER_APPROVE' else 'CHECKER_REJECT' end,
      p_reason, v_req.version);
 
+  -- REJECT: any single reject terminates the request.
   if p_decision = 'REJECT' then
+    update public.approval_request_steps set status = 'REJECTED' where id = v_step.id;
     update public.approval_requests
        set state = 'REJECTED', version = version + 1
      where id = p_request_id and version = p_expected_version;
     return null;
   end if;
 
+  -- APPROVE: only advance when the step's mode/min_approvals are satisfied by
+  -- current-generation candidate approvals (H5 counts correctly).
+  if not app_private.step_is_satisfied_v1(v_step.id) then
+    -- step not yet satisfied (e.g. QUORUM needs more approvals) — record and stop.
+    return null;
+  end if;
+  update public.approval_request_steps set status = 'APPROVED' where id = v_step.id;
+
+  -- promote the next WAITING step to PENDING, if any (multi-step).
+  select id into v_next_pending from public.approval_request_steps
+   where request_id = p_request_id and status = 'WAITING'
+   order by step_no limit 1;
+  if v_next_pending is not null then
+    update public.approval_request_steps set status = 'PENDING' where id = v_next_pending;
+    return null; -- more approvals required at the next step; not posted yet
+  end if;
+
+  -- all steps approved → post exactly once.
   v_posting := app_private.post_financial_request_v1(
     p_request_id, v_req.version, p_actor_user);
   return v_posting;
@@ -263,6 +291,9 @@ declare
   v_limit numeric(15,2);
   v_posting uuid;
   v_holds boolean;
+  v_is_force boolean;
+  v_batch_total numeric(15,2);
+  v_allowed boolean;
 begin
   select * into v_req from public.approval_requests
    where id = p_request_id for update;
@@ -276,10 +307,34 @@ begin
   if p_actor_membership <> v_req.maker_membership_id then
     raise exception 'self-approve requires maker' using errcode='42501';
   end if;
-  -- force-approval categories can never self-approve
-  if v_req.rule_effect = 'REQUIRE_APPROVAL' and v_req.system_source is not null
-     and v_req.system_source <> 'manual' then
+
+  -- H3 fix: force-approval class is derived from the SUBJECT'S item types
+  -- (schema-owned is_deposit + commission/bonus names), NOT from a client-
+  -- settable system_source. Force categories can never self-approve.
+  select bool_or(coalesce(t.is_deposit,false)
+                 or public.nrm_vn(t.name) in ('hoa hong moi gioi','thuong nong sale'))
+    into v_is_force
+    from public.income_expense_items i
+    join public.income_expense_types t on t.id = i.income_expense_type_id
+   where i.income_expense_id = v_req.subject_id;
+  if coalesce(v_is_force,false) then
     raise exception 'force-approval class cannot self-approve' using errcode='42501';
+  end if;
+
+  -- M8 fix: exact permissions via the T2 resolver (self_approve_within_limit
+  -- AND cashbooks.post), not just possession.
+  perform app_private.lock_org_for_decision_v1(v_req.organization_id);
+  select allowed into v_allowed from app_private.authorize_tenant_action_v3(
+    p_actor_user, v_req.organization_id,
+    'income_expenses.self_approve_within_limit', v_req.building_id, v_req.cashbook_id);
+  if not coalesce(v_allowed,false) then
+    raise exception 'actor lacks income_expenses.self_approve_within_limit' using errcode='42501';
+  end if;
+  select allowed into v_allowed from app_private.authorize_tenant_action_v3(
+    p_actor_user, v_req.organization_id, 'cashbooks.post',
+    v_req.building_id, v_req.cashbook_id);
+  if not coalesce(v_allowed,false) then
+    raise exception 'actor lacks cashbooks.post' using errcode='42501';
   end if;
 
   -- versioned limit (default 0 disables self-approval entirely)
@@ -288,9 +343,22 @@ begin
    where organization_id = v_req.organization_id
    order by version desc limit 1;
   v_limit := coalesce(v_limit, 0);
-  if v_limit = 0 or coalesce(v_req.amount, 0) > v_limit then
-    raise exception 'amount exceeds self-approve limit (% > %)',
-      v_req.amount, v_limit using errcode='42501';
+  if v_limit = 0 then
+    raise exception 'self-approve disabled (limit 0)' using errcode='42501';
+  end if;
+  -- H4 fix: anti-split. Sum this maker's OTHER self-approved-or-pending requests
+  -- for the SAME subject (correlation) plus this one; the aggregate must be
+  -- within the limit, so splitting one business event into N vouchers is caught.
+  select coalesce(sum(r.amount),0) into v_batch_total
+    from public.approval_requests r
+   where r.organization_id = v_req.organization_id
+     and r.subject_id = v_req.subject_id
+     and r.maker_membership_id = v_req.maker_membership_id
+     and r.state in ('PENDING_APPROVAL','POSTED')
+     and r.id <> v_req.id;
+  if coalesce(v_req.amount,0) + v_batch_total > v_limit then
+    raise exception 'aggregate self-approve amount exceeds limit (% > %)',
+      coalesce(v_req.amount,0) + v_batch_total, v_limit using errcode='42501';
   end if;
 
   -- must hold the cashbook the request posts to

@@ -44,6 +44,11 @@ begin
   v_rule_step_id := nullif(v_step.rule_step_snapshot->>'rule_step_id','')::uuid;
   v_gen := v_step.current_generation + 1;
 
+  -- F12 fix: take the org share-lock in a PRIOR statement before the resolver is
+  -- evaluated as a scalar subquery below, so PERMISSION-type candidate matching
+  -- reads a witness snapshot taken after any concurrent mutation's lock wait.
+  perform app_private.lock_org_for_decision_v1(v_req.organization_id);
+
   -- close prior generation (valid_to set; history preserved)
   update public.approval_request_step_candidates
      set valid_to = clock_timestamp()
@@ -63,7 +68,10 @@ begin
   join public.organization_memberships m
     on m.organization_id = v_req.organization_id and m.status = 'ACTIVE'
   where sa.step_id = v_rule_step_id
+    -- M10 fix: exclude the maker by BOTH membership AND user_id (a maker with a
+    -- second ACTIVE membership must not inflate candidate_count or self-approve).
     and m.id <> v_req.maker_membership_id
+    and m.user_id <> v_req.maker_user_id
     and (
       -- MEMBER: the exact membership
       (sa.approver_type = 'MEMBER' and sa.membership_id = m.id)
@@ -174,19 +182,34 @@ stable
 security definer
 set search_path to 'pg_catalog', 'public'
 as $fn$
+  -- H5 fix: count only DISTINCT approvals by members who are current-generation
+  -- candidates of THIS step (a member removed on rematerialize no longer counts,
+  -- and non-candidate approvals never counted). candidate_count is recomputed
+  -- from live current-generation candidates so ALL cannot be satisfied by a
+  -- stale ceiling.
   select case s.mode
     when 'ANY' then approvals >= 1
-    when 'ALL' then approvals >= s.candidate_count
+    when 'ALL' then approvals >= live_candidates and live_candidates > 0
     when 'QUORUM' then approvals >= s.min_approvals
     else false
   end
   from public.approval_request_steps s
   cross join lateral (
-    select count(distinct d.actor_membership_id) as approvals
+    select
+      count(distinct d.actor_membership_id) filter (
+        where d.decision in ('APPROVE','CHECKER_APPROVE')
+          and exists (
+            select 1 from public.approval_request_step_candidates c
+             where c.request_step_id = s.id
+               and c.membership_id = d.actor_membership_id
+               and c.generation = s.current_generation
+               and c.valid_to is null)) as approvals,
+      (select count(*) from public.approval_request_step_candidates c
+        where c.request_step_id = s.id
+          and c.generation = s.current_generation
+          and c.valid_to is null) as live_candidates
       from public.approval_decisions d
      where d.request_step_id = p_request_step_id
-       and d.decision in ('APPROVE','CHECKER_APPROVE')
-       and d.request_version >= 0
   ) a
   where s.id = p_request_step_id;
 $fn$;
