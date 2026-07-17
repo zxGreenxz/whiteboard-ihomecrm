@@ -48,7 +48,28 @@
 | `t3_98_rule_governance_tests.sql` | 7/7 PASS (publish-without-fallback deny, publish→ACTIVE, unique resolution, published-rule immutable, v2 retires v1 atomically, retired-set undeletable, no-ACTIVE fail-closed) |
 | `t3_99_transition_tests.sql` | 5/5 PASS (direct transition frozen, token-authorized posts, token no-leak, forged-token cannot alter payload, items stay frozen) |
 
-**Tổng: 132 assertion PASS across 16 suite (14 SQL + 2 JS) trên exact-source restore.**
+**Tổng: 143 assertion PASS across 19 suite (17 SQL + 2 JS) trên exact-source restore.**
+
+## Slice T5 domain còn lại (2026-07-17, vòng 3)
+
+3 domain T5 cuối, grounded qua workflow rồi build + harness-test tuần tự:
+
+```text
+→ t5_03_cashbook_writers.sql           -- create_cashbook_v1 (opening balance server-controlled,
+                                          code auto), request_opening_balance_adjustment_v1
+                                          (FORWARD-FIX: voucher điều chỉnh, KHÔNG overwrite initial_amount),
+                                          lock/unlock_cashbook_period_v1 (monotonic, dùng live check-lock
+                                          trigger), archive_cashbook_v1 (guard còn phiếu). 8/8.
+→ t5_04_salary_payout_writers.sql      -- salary_payout_v1 FORCE-APPROVAL: tạo phiếu lương UNAPPROVED
+                                          rồi submit qua T3 engine (KHÔNG self-approve — test chứng minh
+                                          maker=approver → zero-candidate → fail-closed); rent-offset
+                                          delegate record_invoice_payment_v4 (loại double-writer). 5/5.
+→ t5_05_contract_deposit_writers.sql   -- create_reservation_deposit_v1 (24h exclusive hold server-time,
+                                          btree_gist exclusion = no-double-hold, self-expiring) +
+                                          create_contract_v1 (atomic contract + customers + services +
+                                          first invoice qua create_invoice_v1 + room OCCUPIED là mutation
+                                          CUỐI để tránh reconcile deadlock). 8/8.
+```
 
 ## Slice bổ sung vòng 2 (2026-07-17, sau audit đối kháng 10-luồng)
 
