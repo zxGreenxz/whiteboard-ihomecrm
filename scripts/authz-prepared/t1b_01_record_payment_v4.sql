@@ -55,6 +55,7 @@ declare
   v_hash text;
   v_op app_private.canonical_write_operations%rowtype;
   v_route text;
+  v_flag app_private.server_feature_flags%rowtype;
   v_payment_id uuid;
   v_voucher_id uuid;
   v_new_paid numeric(15,2);
@@ -172,17 +173,6 @@ begin
     'items', v_items));
   v_hash := md5(v_payload::text);
 
-  -- Cross-ledger guard (route-flip race): a key already consumed by the LEGACY
-  -- v3 path (income_expenses.idempotency_key stamp) must not re-execute
-  -- canonically — a client retry racing the canary flip would double-pay.
-  -- Surfaces as a visible 23505 conflict instead of a silent second payment.
-  -- Residual: v3 calls WITHOUT a voucher mirror leave no key stamp and cannot
-  -- be detected here (pre-existing v3 gap; documented in the payment runbook).
-  if exists (select 1 from public.income_expenses ie
-              where ie.idempotency_key = v_key and ie.deleted_at is null) then
-    raise exception 'idempotency_key đã dùng ở đường legacy (v3)' using errcode='23505';
-  end if;
-
   -- (4) durable idempotency claim = linearization point (AFTER authz).
   insert into app_private.canonical_write_operations
     (organization_id, operation, subject_scope, actor_id, idempotency_key, payload_hash)
@@ -201,11 +191,50 @@ begin
     return v_op.response_payload::json; -- replay original; survives OFF/freeze
   end if;
 
+  -- (4b) Cross-ledger guard (route-flip race), NEW CLAIMANTS ONLY — phải đứng
+  -- SAU replay-return: voucher do chính v4 tạo cũng stamp idempotency_key, nên
+  -- đặt guard trước replay sẽ 23505 nhầm chính op đã hoàn tất của v4 (bắt được
+  -- nhờ canary live 2026-07-18, t1b_90 replay-không-voucher không lộ). Với claim
+  -- MỚI: key đã bị đường LEGACY v3 tiêu thụ (stamp trên income_expenses) mà
+  -- re-execute canonical thì retry vắt qua flip sẽ double-pay → 23505 hiển thị.
+  -- Residual: v3 không voucher-mirror không stamp key (gap có sẵn của v3).
+  if exists (select 1 from public.income_expenses ie
+              where ie.idempotency_key = v_key and ie.deleted_at is null) then
+    raise exception 'idempotency_key đã dùng ở đường legacy (v3)' using errcode='23505';
+  end if;
+
   -- (5) rollout admission — new claimant only. Default OFF ⇒ blocked.
   v_route := app_private.evaluate_feature_route(c_op, v_org);
   if v_route <> 'CANONICAL' then
     raise exception 'Writer thu tiền chưa bật cho tổ chức này' using errcode='55000';
   end if;
+
+  -- (5b) rollout cap accounting + enforcement. FOR UPDATE serializes concurrent
+  -- admits per feature; ops row rolls back with the tx nếu effects fail.
+  -- Count-cap enforce ở evaluate_feature_route lần gọi SAU (count >= max →
+  -- FROZEN → thông điệp "chưa bật" → client coexistence-fallback về legacy).
+  -- Amount-caps enforce tại đây cho mode CANARY; thông điệp giữ cụm "chưa bật"
+  -- để adapter route giao dịch vượt hạn mức về legacy thay vì fail user.
+  select * into v_flag from app_private.server_feature_flags
+   where feature_key = c_op for update;
+  if v_flag.mode = 'CANARY' then
+    if v_amount > v_flag.max_single_amount_vnd then
+      raise exception 'Writer thu tiền chưa bật cho giao dịch này (vượt hạn mức đơn lẻ canary)'
+        using errcode='55000';
+    end if;
+    if coalesce((select sum(o.amount_vnd)
+                   from app_private.server_feature_flag_operations o
+                  where o.feature_key = c_op
+                    and o.config_version = v_flag.config_version), 0) + v_amount
+       > v_flag.max_total_amount_vnd then
+      raise exception 'Writer thu tiền chưa bật cho giao dịch này (vượt tổng hạn mức canary)'
+        using errcode='55000';
+    end if;
+  end if;
+  insert into app_private.server_feature_flag_operations
+    (feature_key, config_version, operation_key, organization_id, amount_vnd)
+  values (c_op, v_flag.config_version, v_key || ':' || p_invoice_id::text, v_org, v_amount)
+  on conflict do nothing;
 
   -- (6) effects — atomic, all org-stamped (v3 omits org).
   insert into public.payments

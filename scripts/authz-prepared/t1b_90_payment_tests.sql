@@ -92,6 +92,32 @@ begin
    where invoice_id=v_invoice and amount=100000;
   if v_cnt <> 1 then raise exception 'T5 FAILED: % payments (double-collect)', v_cnt; end if;
 
+  -- T5b: replay VỚI voucher-mirror — voucher do v4 tạo stamp idempotency_key
+  -- lên income_expenses; replay vẫn phải trả original (KHÔNG được 23505 nhầm
+  -- bởi cross-ledger guard — guard chỉ áp cho claim MỚI). Case lộ ở canary live.
+  declare v_res3 json; v_res4 json;
+  begin
+    v_res3 := public.record_invoice_payment_v4(
+      v_invoice, 40000, 'TM', current_date, 'pay-key-0003b', v_account, null, null,
+      jsonb_build_object('name','T5b voucher','payer_name','t5b','notes','t5b',
+                         'attachments','[]'::jsonb,'creator_name','t5b',
+                         'change_amount',0,'rounding_amount',0),
+      null, null, null);
+    if (select count(*) from public.income_expenses
+         where idempotency_key='pay-key-0003b' and deleted_at is null) < 1 then
+      raise exception 'T5b FIXTURE: voucher không stamp key (đổi thiết kế?)';
+    end if;
+    v_res4 := public.record_invoice_payment_v4(
+      v_invoice, 40000, 'TM', current_date, 'pay-key-0003b', v_account, null, null,
+      jsonb_build_object('name','T5b voucher','payer_name','t5b','notes','t5b',
+                         'attachments','[]'::jsonb,'creator_name','t5b',
+                         'change_amount',0,'rounding_amount',0),
+      null, null, null);
+    if (v_res4->>'payment_id') <> (v_res3->>'payment_id') then
+      raise exception 'T5b FAILED: replay-with-voucher không trả original';
+    end if;
+  end;
+
   -- T6: same key + different payload → 23505 conflict
   begin
     perform public.record_invoice_payment_v4(
@@ -134,7 +160,35 @@ begin
   exception when unique_violation then null;
   end;
 
-  raise notice 'ALL 8 T1B PAYMENT TESTS PASSED';
+  -- T10: canary cap accounting + enforcement. CAS sang CANARY với cap thấp;
+  -- op hợp lệ phải ghi ops-row (đếm count-cap); op vượt single-cap phải 55000
+  -- với cụm "chưa bật" (client coexistence-fallback, không fail user).
+  update app_private.server_feature_flags
+     set mode='CANARY', starts_at=now()-interval '1 hour', ends_at=now()+interval '1 day',
+         max_operation_count=5, max_single_amount_vnd=60000, max_total_amount_vnd=100000,
+         config_version=config_version+1,
+         commit_sha=repeat('a',40), migration_sha256=repeat('b',64),
+         maintenance_window_id='W', approval_reference='A', updated_at=clock_timestamp()
+   where feature_key='invoice.record_payment.v1';
+  insert into app_private.server_feature_flag_canary_orgs (feature_key, organization_id)
+  values ('invoice.record_payment.v1', v_org)
+  on conflict do nothing;
+  v_res := public.record_invoice_payment_v4(
+    v_invoice, 50000, 'TM', current_date, 'pay-key-cap-0001', null, null, null, null, null, null, null);
+  if (select count(*) from app_private.server_feature_flag_operations o
+       where o.feature_key='invoice.record_payment.v1'
+         and o.amount_vnd = 50000) < 1 then
+    raise exception 'T10 FAILED: admitted op không ghi ops-row (count-cap chết)';
+  end if;
+  begin
+    perform public.record_invoice_payment_v4(
+      v_invoice, 70000, 'TM', current_date, 'pay-key-cap-0002', null, null, null, null, null, null, null);
+    raise exception 'T10 FAILED: vượt single-cap vẫn được thu';
+  exception when others then
+    if sqlstate <> '55000' or position('chưa bật' in sqlerrm) = 0 then raise; end if;
+  end;
+
+  raise notice 'ALL 10 T1B PAYMENT TESTS PASSED';
 end;
 $tests$;
 
