@@ -48,7 +48,34 @@
 | `t3_98_rule_governance_tests.sql` | 7/7 PASS (publish-without-fallback deny, publish→ACTIVE, unique resolution, published-rule immutable, v2 retires v1 atomically, retired-set undeletable, no-ACTIVE fail-closed) |
 | `t3_99_transition_tests.sql` | 5/5 PASS (direct transition frozen, token-authorized posts, token no-leak, forged-token cannot alter payload, items stay frozen) |
 
-**Tổng: 101 assertion PASS across 14 suite trên exact-source restore.**
+**Tổng: 132 assertion PASS across 16 suite (14 SQL + 2 JS) trên exact-source restore.**
+
+## Slice bổ sung vòng 2 (2026-07-17, sau audit đối kháng 10-luồng)
+
+Vòng re-audit tìm ra bug mà test xanh bỏ sót — đã sửa + thêm slice:
+
+```text
+→ t3_11_submit_request.sql             -- submit_financial_request_v1: front-half approval engine
+                                          (rule eval AUTO_POST/DENY/REQUIRE_APPROVAL, submission_no,
+                                          steps + candidate materialization, idempotent). e2e 7/7.
+→ t1b_01_record_payment_v4.sql         -- T1b hardened payment: authorize (thu_tien.collect) TRƯỚC
+                                          idempotency, org-derived-from-building, durable ledger claim,
+                                          same-key/diff-payload 23505, org-stamp mọi effect, atomic. 7/7.
+→ t5_02_invoice_reversal_writers.sql   -- create_invoice_v1 (server-decide APPROVED/DRAFT từ
+                                          auto_approve_invoice, live partial-unique period) +
+                                          reverse_invoice_payment_v3 (FORWARD-FIX: không hard-delete —
+                                          refund voucher 'Tiền thối' mà recompute trừ; payments có
+                                          CHECK amount>0 nên không dùng negative payment; anti-double +
+                                          idempotent replay). 6/6.
+```
+
+**Defect audit đã sửa (test cũ bỏ sót):** decide bỏ qua quorum/eligibility/multi-step
+(C1/F2/H5) → giờ enforce đầy đủ; transition guard denylist→allowlist (Finding 1/2);
+self-approve force-class từ item type + exact permission + anti-split (H3/H4/M8);
+snapshot fail-closed (H2); rule-set immutability allowlist + fallback-đúng-một (H6/M7);
+AMBIGUOUS candidate CHECK (F13, sẽ abort trên prod data); restore_income_expense
+audit qua chain (F1); resolver pre-lock trong materialize (F12); maker exclude theo
+user_id (M10).
 
 ## Slice bổ sung (approval engine đầy đủ + rollout)
 
