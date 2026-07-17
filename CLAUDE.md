@@ -34,6 +34,14 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`, `fix(scope): mô tả`). Stage file cụ thể, **không** dùng `git add -A`.
 6. **Push** lên `origin/main` ngay khi commit (repo này deploy thẳng từ main qua Vercel).
 
+### NGOẠI LỆ — chương trình authorization (security/authz-*)
+
+Quy trình mặc định trên KHÔNG áp dụng cho công việc thuộc chương trình authorization (docs/AUTHORIZATION-PLAN.md, docs/authorization/**, branch `security/authz-*`):
+
+- Commit/push chỉ lên branch preparation (`security/authz-preparation` hoặc branch domain tách từ nó), **không merge/push main** khi chưa có lệnh owner riêng — main auto-deploy Vercel nên merge = production cutover.
+- Không seed/cleanup/mutate dữ liệu production, không apply SQL production, không grant/revoke, không bật flag/canary nếu tranche tương ứng chưa đạt gate trong docs/AUTHORIZATION-IMPLEMENTATION-STATUS.md và chưa có lệnh owner cho đúng slice.
+- Test bằng disposable/local PostgreSQL hoặc môi trường restore; bước "test trực tiếp trên web production" chỉ dành cho tính năng ngoài chương trình authorization hoặc khi owner yêu cầu tường minh.
+
 ## Quy ước commit
 
 Xem `git log --oneline` để theo style. Tóm tắt:

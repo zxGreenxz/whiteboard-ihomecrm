@@ -1,9 +1,9 @@
 # Authorization tranche `T5` — Canonical writers per domain (flags default OFF)
 
-> Trạng thái: `IN_DESIGN`
-> Production mutation / canary / flag flip: **BLOCKED** — không được apply khi thiếu bất kỳ trường bắt buộc ở §2, khi recovery chưa `VERIFIED`, hoặc khi owner chưa ra lệnh riêng cho đúng domain-slice (SHA + migration SHA-256 + maintenance window + canary count + VND cap). Default khi chưa chốt: canary = `0`, VND cap = `0`, mọi flag = `OFF`, không apply/flip.
+> Trạng thái: `BLOCKED` overall. T5-infra và backend meter-reading five-RPC partial slice đã `APPLIED`; frontend meter wiring mới `PREPARED` trên branch; full meter domain và các domain còn lại vẫn `BLOCKED/IN_DESIGN`.
+> Production mutation / canary / flag flip **mới**: **BLOCKED** — không được apply khi thiếu bất kỳ trường bắt buộc ở §2, khi recovery chưa `VERIFIED`, hoặc khi owner chưa ra lệnh riêng cho đúng domain-slice (SHA + migration SHA-256 + maintenance window + canary count + VND cap). Default khi chưa chốt: canary = `0`, VND cap = `0`, mọi flag = `OFF`, không apply/flip. Backend meter partial slice đã áp là ngoại lệ hiện hữu được ghi rõ tại §4.4; nó không chứng minh full-domain cutover, frontend production deployment hoặc feature-flag enforcement.
 
-Nguồn chuẩn nghiệp vụ: [AUTHORIZATION-PLAN.md](../AUTHORIZATION-PLAN.md) mục 27 (đặc biệt 27.2 quyết định owner, 27.4 cutover theo domain). Tracker runtime: [AUTHORIZATION-IMPLEMENTATION-STATUS.md](./../AUTHORIZATION-IMPLEMENTATION-STATUS.md) (T5 = `BLOCKED`). Tài liệu này KHÔNG phải migration được duyệt; SQL chỉ xuất hiện dưới dạng code block minh hoạ contract, không được đặt vào `supabase/migrations/`.
+Nguồn chuẩn nghiệp vụ: [AUTHORIZATION-PLAN.md](../AUTHORIZATION-PLAN.md) mục 27 (đặc biệt 27.2 quyết định owner, 27.4 cutover theo domain). Tracker runtime: [AUTHORIZATION-IMPLEMENTATION-STATUS.md](./../AUTHORIZATION-IMPLEMENTATION-STATUS.md) (T5 = `BLOCKED`). Tài liệu này KHÔNG phải migration được duyệt. Source SQL domain-writer có thể tồn tại như artifact `BLOCKED/IN_DESIGN` để review, nhưng không vì nằm dưới `supabase/migrations/` mà được phép apply; production chỉ nhận exact replacement artifact sau khi dependency và evidence bên dưới đạt gate.
 
 ---
 
@@ -12,9 +12,9 @@ Nguồn chuẩn nghiệp vụ: [AUTHORIZATION-PLAN.md](../AUTHORIZATION-PLAN.md)
 - **Deliverable/tranche ID:** T5 — Canonical writers theo domain, callable grant review riêng, flag mặc định OFF (plan 27.3/27.5 dòng T5).
 - **Domain:** invoice (create/edit/approve/lifecycle), payment reversal (thu tiền hoàn tác), income/expense voucher (thu-chi), meter reading, deposit/contract create + first-invoice, salary/profit payout. Payment *collect* (single + bulk) KHÔNG thuộc T5 — đã tách sang T1b (`record_invoice_payment_v3`).
 - **Normative plan section:** mục 27.2 (quyết định 1–8), 27.4 (8 bước cutover theo domain), 27.6 (cửa GO tối thiểu).
-- **Dependencies và trạng thái (bắt buộc `VERIFIED` trước khi T5 rời `IN_DESIGN`):**
-  - T0a recovery — `BLOCKED` (ONLINE_UNFROZEN/PARTIAL). Gate cứng: không apply bất kỳ domain-slice nào khi recovery chưa `VERIFIED`.
-  - T1a containment approval RPC — `BLOCKED`.
+- **Dependencies và trạng thái:**
+  - Recovery local — `ACCEPTED_LOCAL` theo owner gate 2026-07-16; strict `VERIFIED` chưa đạt. Trạng thái này cho phép tiếp tục preparation theo lệnh owner nhưng không tự mở writer/canary/cutover tiền.
+  - T1a containment prototype submit/decide — `APPLIED`, còn observation trước `VERIFIED`; không được re-grant prototype.
   - T1b `record_invoice_payment_v3` hardening — `BLOCKED`. T5 reversal/payout tái dùng contract collect của T1b nên phụ thuộc trực tiếp.
   - T2 RBAC source-of-truth + authorization-version — `BLOCKED` (permission `hoa_don.*`, `thu_chi.*`, `luong.*`, `cong_to.*`, `hop_dong.*` chưa chuẩn hoá).
   - T3 approval contract v2 (maker-checker, self-limit, held cashbook, reversal) — `BLOCKED`. Mọi phiếu chi force-approval + self-approve sub-limit của T5 phải chạy qua engine T3.
@@ -35,8 +35,8 @@ Nguồn chuẩn nghiệp vụ: [AUTHORIZATION-PLAN.md](../AUTHORIZATION-PLAN.md)
   - `src/hooks/useDeletePayment.ts` — **hard-delete** `payments` (`.delete()`), hard-delete `excess_amounts` theo `source_payment_id`, soft-delete `income_expenses` theo `payment_id`; dựa `count===0` để suy "không có quyền".
   - `src/hooks/useContracts.ts` — `useCreateContract` insert `contracts` (`status='ACTIVE'`) + `contract_customers` + `contract_services` + update `rooms.status='OCCUPIED'` + `createFirstInvoiceForContract()` insert `invoices` (`APPROVED`, approved_by client) + `invoice_items`; guard cọc/đơn-HĐ là client-side; legacy `useApproveTermination` viết `contract_terminations` + `contracts` + `cash_book`; không có hold cọc.
   - `src/hooks/useManagerSalary.ts` — `useSalaryPayout` insert `income_expenses` (EXPENSE lương) + `income_expense_items`, rồi insert `payments` (method `CT`) + `income_expenses` (INCOME, `approval_status='APPROVED'`) + items để gạch nợ tiền phòng, rồi update `salary_monthly.paid`; `useLockSalaryMonth` bulk-update `income_expenses.approval_status='APPROVED', approved_by=user.id` (tự duyệt phiếu hoa hồng) + upsert `salary_monthly` LOCKED + snapshot; `useSaveSalaryAdjustment`/`ensureMonthly` insert `salary_monthly`/`salary_adjustments`.
-  - `src/hooks/useMeterReadings.ts` — insert/update/soft-delete `meter_readings` (`status='APPROVED'`, `approved_by=user.id` client) + RPC `approve_meter_reading`/`bulk_approve_meter_readings`/`bulk_create_meter_readings`.
-  - `src/components/invoices/GenerateInvoiceDialog.tsx` — insert `meter_readings` thẳng (`status='APPROVED'`, approved client) rồi gọi `useCreateInvoice`.
+  - `src/hooks/useMeterReadings.ts` — trạng thái partial routing (2026-07-16): create/bulk-create/update/delete/bulk-delete đã gọi 5 RPC v1 (`4511a72`, trên branch); import vẫn gọi RPC legacy `bulk_create_meter_readings`; approve/bulk-approve vẫn RPC legacy; unapprove vẫn direct-UPDATE `meter_readings`.
+  - `src/components/invoices/GenerateInvoiceDialog.tsx` — vẫn insert `meter_readings` thẳng (`status='APPROVED'`, approved client) rồi gọi `useCreateInvoice`; `src/hooks/invoices/useExcelInvoiceData.ts` (`useSubmitExcelInvoices`) cũng direct-INSERT `meter_readings` APPROVED.
 - **Business behavior sau thay đổi:** mỗi domain có RPC canonical duy nhất; permission chính xác + org/scope server-derived; invoice `APPROVED`/`DRAFT` do server quyết theo `auto_approve_invoice`; edit approved-unpaid qua locked revision; reversal thay hard-delete; salary payout + commission self-approve đi qua maker-checker/force-approval của T3 với held cashbook; hold cọc 24h server-time. UI cũ vẫn hoạt động dưới flag OFF cho tới canary từng domain.
 - **Ảnh hưởng nghiệp vụ/người dùng:** người không đủ quyền bị backend deny dù UI cho thao tác; approve/version/owner không còn client-spoof; xoá phiếu thu chuyển thành "Hủy giao dịch thu tiền (tạo bút toán hoàn tác)" giữ bản gốc; phiếu chi lương/hoa hồng phải qua checker (trừ ngoại lệ sub-limit trên sổ maker giữ); cọc giữ chỗ 24h không bị double-book. Under flag OFF: **không thay đổi trải nghiệm hiện tại**.
 
@@ -44,14 +44,14 @@ Nguồn chuẩn nghiệp vụ: [AUTHORIZATION-PLAN.md](../AUTHORIZATION-PLAN.md)
 
 ## 2. Immutable release identity
 
-Chưa có — T5 ở `IN_DESIGN`. Mỗi **domain-slice** (invoice / reversal / thu-chi / meter / contract-deposit / salary) apply riêng và phải điền đủ trước khi owner duyệt:
+Chưa hoàn chỉnh theo từng slice. Meter backend partial slice có migration path `20260716160000` + hotfix `20260716170000`; frontend branch wiring có commit `4511a72` — nhưng spec này chưa ghi đủ full commit SHA, migration SHA-256, deployed frontend SHA, maintenance window và approval/evidence reference để đạt `VERIFIED`. Income/expense current artifact chưa có accepted release identity (BB0C chỉ là identity của revision đã bị supersede). Mỗi **domain-slice** (invoice / reversal / thu-chi / meter / contract-deposit / salary) apply riêng và phải điền đủ trước khi owner duyệt:
 
 - Full commit SHA: _chưa có_
 - Exact migration path/signature (một file / một RPC signature, không glob, không `db push`): _chưa có_
 - Migration SHA-256: _chưa có_
 - Generated-types SHA-256 (`src/integrations/supabase/types.ts` sau regen): _chưa có_
 - Deployed frontend SHA (Vercel): _chưa có_
-- Recovery certification ID (`VERIFIED`): _chưa có — T0a `BLOCKED`_
+- Recovery reference: `20260715T152622Z-online-unfrozen` + `20260716T045126Z-db-portable`, owner state `ACCEPTED_LOCAL`; strict `VERIFIED`: _chưa có_
 - Maintenance-window ID: _chưa có_
 - Operator / Reviewer / Owner approval reference: _chưa có_
 
@@ -59,7 +59,9 @@ Không dùng branch name (`security/authz-preparation`), "latest", glob migratio
 
 ---
 
-## 3. Live precheck (chạy read-only ngay trước mỗi slice; chưa thực hiện)
+## 3. Live precheck theo từng slice (chạy read-only ngay trước mỗi slice)
+
+Meter partial slice có một phần catalog/JWT evidence theo tracker, nhưng chưa có full writer-map, feature-route, frontend-production, drain và canary evidence — không được coi là đã hoàn tất toàn bộ precheck §3. Template dưới vẫn bắt buộc cho mọi slice mới.
 
 - UTC/local start time.
 - Exact live signatures/owners/search_path/grants của mọi RPC đụng tới: `record_invoice_payment_v3`, `super_admin_force_cancel_invoice`, `update_income_expense_quick`, `approve_meter_reading`, `bulk_approve_meter_readings`, `bulk_create_meter_readings`, `get_invoice_statistics_v2` + RPC canonical mới. Lấy từ live catalog, không dùng tên trần.
@@ -69,7 +71,7 @@ Không dùng branch name (`security/authz-preparation`), "latest", glob migratio
   - excess_amounts: `useCreateInvoice` (áp credit), `useDeletePayment` (hard-delete).
   - payments: `record_invoice_payment_v3` (T1b), `useDeletePayment` (hard-delete), `useSalaryPayout` (insert method `CT`).
   - income_expenses / income_expense_items: `useCreateIncomeExpense`, `useUpdateIncomeExpense`, `useQuickUpdateIncomeExpense`(RPC), `useDeletePayment`(soft-delete), `useSalaryPayout`, `useLockSalaryMonth`.
-  - meter_readings: `useCreateMeterReading`, `useBulkCreateMeterReadings`(x2 — cả `useMeterReadings.ts` và `useInvoices.ts`), `useImportMeterReadings`(RPC), `useUpdateMeterReading`, `useDeleteMeterReading`, `useBulkDeleteMeterReadings`, `GenerateInvoiceDialog`.
+  - meter_readings: `useCreateMeterReading`, `useBulkCreateMeterReadings`(x2 — cả `useMeterReadings.ts` và `useInvoices.ts`), `useImportMeterReadings`(RPC legacy), `useUpdateMeterReading`, `useDeleteMeterReading`, `useBulkDeleteMeterReadings`, `useUnapproveMeterReading`(direct-UPDATE), `GenerateInvoiceDialog`(direct-INSERT), `useSubmitExcelInvoices` trong `useExcelInvoiceData.ts`(direct-INSERT). Phân biệt hook chỉ còn định nghĩa với caller đang hoạt động trước khi chốt writer map.
   - contracts / contract_customers / contract_services / rooms: `useCreateContract`, `useUpdateContract`, `useSyncContractCustomers`, `useSyncContractServices`, `useDeleteContract`, legacy `useApproveTermination`/`useBulkCreateContracts`.
   - salary_monthly / salary_adjustments / salary_work_ledger_snapshot: `ensureMonthly`, `useSaveSalaryAdjustment`, `useDeleteSalaryAdjustment`, `useLockSalaryMonth`, `useUnlockSalaryMonth`, `useSalaryPayout`.
   - cash_book: legacy `useApproveTermination`.
@@ -81,7 +83,7 @@ Không dùng branch name (`security/authz-preparation`), "latest", glob migratio
 
 ---
 
-## 4. Change contract (đích — chưa apply)
+## 4. Change contract (đích — T5-infra và meter five-RPC subset đã apply; phần còn lại chưa apply)
 
 ### 4.0 Nguyên tắc chung mọi domain-slice
 
@@ -93,7 +95,7 @@ Không dùng branch name (`security/authz-preparation`), "latest", glob migratio
 - **Atomic:** mọi effect của một hành động commit/rollback cùng nhau.
 - **Audit/provenance:** append-only (actor, org, subject, key, payload hash, before/after, timestamp).
 - **Forward-fix/reversal:** không rollback bằng xoá row tiền; freeze + forward-fix + compensating reversal.
-- **Feature flag mặc định OFF** cho mọi slice; grant `EXECUTE` cho RPC canonical review riêng, không grant kèm migration schema.
+- **Feature flag mặc định OFF** cho mọi slice mới; grant `EXECUTE` cho RPC canonical review riêng, không grant kèm migration schema. **Ngoại lệ hiện hữu / technical debt:** meter five-RPC partial slice (`20260716160000`) grant thẳng cho `authenticated` trong migration và KHÔNG gọi `evaluate_feature_route` — không được mô tả là flag-gated hoặc canary-ready cho tới khi có forward fix + direct tests.
 
 ### 4.1 Invoice domain
 
@@ -115,9 +117,66 @@ Không dùng branch name (`security/authz-preparation`), "latest", glob migratio
 - `create_income_expense_v1` / `update_income_expense_v1`: server set `user_id`/`creator_name`; validate `building_id`/`room_id`/`tenant_id`/`contract_id`/`account_id` cùng org; update chỉ khi UNAPPROVED (CAS). Giữ `update_income_expense_quick` nhưng re-audit exact permission/scope.
 - **Maker-checker + self-limit (27.2.4/27.2.5):** phiếu chi thông thường dưới hạn mức → maker tự duyệt **chỉ trên sổ quỹ maker đang giữ**, exact permission + bắt buộc hậu kiểm; force-approval (hoa hồng, thưởng, refund/cọc, lương, lợi nhuận, HĐ/thanh lý) luôn chờ người khác, **không xét hạn mức**. Maker chỉ chọn cashbook mình giữ; không sổ phù hợp → phiếu chờ duyệt để trống cashbook; tại final decision accountant/owner chọn cashbook được post + bổ sung ảnh chứng từ, hệ thống snapshot/version/audit trước khi ghi tiền. Engine ở T3; T5 route canonical writer vào engine đó.
 
-### 4.4 Meter reading domain (thay `useMeterReadings.ts` + insert trong `GenerateInvoiceDialog`)
+#### 4.3.1 Artifact create draft hiện tại: `BLOCKED`, không phải `PREPARED`
 
-- `create_meter_reading_v1` / `bulk_create_meter_readings` (re-audit) / `update`/`delete`: server set `user_id`/`recorded_by`; `approved_by`/`approved_at` chỉ do path duyệt server-side (không client `status='APPROVED'`); validate `meter_id`/`room_id` cùng org + no-duplicate theo `settlement_month`. `GenerateInvoiceDialog` gọi RPC thay vì insert trực tiếp. Re-audit `approve_meter_reading`/`bulk_approve_meter_readings`.
+`supabase/migrations/20260716180000_t5_income_expense_create_draft_writer.sql` là source review-only: **không apply, không grant, không route frontend, giữ feature `OFF`**. Bằng chứng concurrency 18/18 từng bind vào SHA-256 `BB0CDE6B…C2691E7` chỉ chứng minh một phần hành vi của revision đó; mọi chỉnh sửa sau revision này làm evidence cũ mất hiệu lực và không chữa các blocker contract.
+
+**T2 phải có trước khi thay bridge tạm trong writer:**
+
+- active tenant `OWNER` được materialize bằng system-role/binding ổn định dù không có `staff_assignments`; OWNER chỉ có tenant capability, không có platform/tenant-khác capability;
+- resolver một-statement derive scope từ resource, lock đúng witness graph và áp precedence: emergency deny/suspended org → member DENY → role DENY → member ALLOW → role ALLOW → default deny;
+- `member_override_scopes`, membership/binding validity window và `authorization_version` lifecycle đầy đủ;
+- scope `CASHBOOK` chỉ giới hạn permission; possession là relation canonical riêng (`CUSTODIAN|OPERATOR`) có lifecycle/version. Permission không possession và possession không permission đều deny; `accounts.user_id`/`account_shared_users` chỉ sinh candidate review, không là authority cuối;
+- platform super-admin không bypass tenant membership hoặc permission; emergency/platform operation là path riêng có audit.
+
+**T3/containment phải có trước khi canonical draft có thể callable:**
+
+- canonical draft được đánh dấu atomically ngay lúc tạo bằng marker/state server-owned độc lập với `approval_request_id` và ledger idempotency; revision hiện tại vẫn ghi `approval_request_id=NULL`, `system_source=NULL`, `approval_status='UNAPPROVED'` nên chưa được bảo vệ;
+- legacy `approve_voucher`/`unapprove_voucher`/`pay_draft_fee_voucher`/`restore_income_expense`, direct cancel/update và mọi promotion writer đã inventory phải reject row canonical trước effect; creator shortcut `ie.user_id=auth.uid()` không còn là approval authority cho canonical flow;
+- containment phải bao phủ cả `update_income_expense_quick(uuid,uuid,jsonb,text)` và direct payload update: RPC quick-edit hiện chỉ kiểm creator/super-admin rồi có thể gắn `account_id` bất kỳ, nên một draft canonical `account_id=NULL` có thể bị nối sang cashbook khác tenant nếu guard chỉ bảo vệ `approval_status`;
+- legacy **unmarked** rows chỉ giữ compatibility trong path đã review; containment provenance-scoped, không global-break tùy tiện;
+- state phân biệt `DRAFT`, `PENDING_APPROVAL`, `POSTED`, `DENIED`, `REJECTED`, `CANCELLED`, `REVERSED`;
+- final decision revalidate cashbook possession + `cashbooks.post`, kỳ khóa, số tiền, evidence, maker-checker và force-approval class;
+- pending draft được `account_id = NULL`; cashbook chỉ bắt buộc khi transition sang posting hoặc self-approve hợp lệ. Trong khi chưa có `update_income_expense_v1` canonical, row marked phải đóng băng khỏi mọi legacy/direct payload mutation chứ không chỉ lifecycle transition.
+
+**Writer-local replacement còn phải đóng:**
+
+- bỏ legacy staff/role JSON bridge và mọi `v_is_super OR ...` tenant bypass;
+- đóng các nhánh NULL-organization fail-open trong writer hiện tại: `account_shared_users.organization_id IS NULL` đang được chấp nhận như authority dùng cashbook và `contract_tenants.organization_id IS NULL` như proof membership — mâu thuẫn T2 §4.2 ("zero ambiguous legacy cashbook grant được auto-allow") và doctrine fail-closed T6a; claim "mọi foreign resource close về org của building" hiện SAI cho hai witness này;
+- idempotency conflict hiện chỉ trong phạm vi MỘT building (PK có `subject_scope=building_id`): same key + different building tạo operation thứ hai và voucher thứ hai, KHÔNG conflict — hoặc mở rộng conflict detection cross-scope hoặc ghi tường minh giới hạn này vào contract;
+- force-approval class boundary hiện dựa trên display name tenant-editable (`nrm_vn(t.name) IN ('hoa hong moi gioi','thuong nong sale')`) — rename/duplicate type sẽ lách khỏi classification; phải chuyển sang cột schema-owned (như `is_deposit`) trước khi coi classification là server-owned; lookup type cũng phải kiểm soft-delete/active;
+- artifact hiện `CREATE OR REPLACE` evaluator + constraint của shared infra ĐÃ APPLIED (`20260716120200`) bên trong một domain slice — thay đổi rollout semantics cho MỌI domain tương lai không có release identity riêng; phải tách thành migration T5-infra riêng có identity/review độc lập;
+- **writer map §3 THIẾU modality cron:** `generate_recurring_vouchers` (pg_cron, `20260603000011` + `20260710120300`) là scheduled server-side writer INSERT `income_expenses` không người giám sát; template pre-existing `repeat_auto_approve=true` chưa được phân tích force-approval; ~35 migration files có `INSERT INTO income_expenses` — baseline frontend-hook-only là chưa đủ; inventory/drain plan phải bao phủ cron + migration DML;
+- claim/conflict-wait full idempotency identity trước admission của operation mới; completed replay vẫn recheck current tenant authority nhưng không chạy lại rollout/effect-only hoặc mutable payload/resource validation. Revision hiện tại đã claim-before-admission nhưng vẫn validate building/org/type/room/tenant/contract/account/item types trước claim, nên replay có thể hỏng sau archive/reclassification và vẫn `BLOCKED`; first claimant abort phải cho second claimant trở thành claimant thật;
+- lock order thống nhất parent-before-child (`contract → room`, role/binding/scope theo contract T2); final authority/deadline/canary recheck phải sau **mọi** điểm có thể block (kể cả voucher-code trigger/audit lock) và ngay trước complete operation. Row lock không ngăn `valid_to`/`ends_at` tự hết hạn theo thời gian; contract activation phải định nghĩa lease margin hoặc commit-time protocol đủ để không có khoảng chờ không giới hạn sau recheck;
+- với generic non-commission path, validate contract trước nhưng insert header `contract_id = NULL`, insert item đã chứng minh non-deposit/non-commission, rồi attach contract atomically để tránh item trigger churn `contracts.updated_at`; không áp ordering này cho commission writer;
+- JSON type/date/money validation fail-closed, kiểm raw negative trước rounding, canonical text normalization nhất quán và budget tổng accrual bucket;
+- **attachment validation contract (review 2026-07-17):** SQL hiện chỉ kiểm shape/length/cntrl/HTTPS-regex — CHƯA kiểm: (a) ownership — URL phải thuộc bucket `income-expense-attachments` đúng project + folder actor (hoặc member cùng org, chọn một và ghi rõ) + object tồn tại trong `storage.objects` (FOR SHARE) + strict percent-decode canonical; (b) charset RFC-3986 allowlist thay vì `[:cntrl:]`/`[:space:]` locale-sensitive (U+200B/U+202E/U+FEFF/U+00AD hiện lọt); (c) MIME/size enforce ở bucket (`file_size_limit`, `allowed_mime_types`) — hiện chỉ client-side; (d) dedupe + canonical encoding để attachments không phá idempotency hash (hiện là field duy nhất hash theo raw spelling — retry đổi thứ tự/encoding → 23505 giả); (e) TS adapter mirror validation fail-fast trước khi build args;
+- rollout config dùng exact release identity + CAS generation/event; cap ledger non-negative, finite và append-only; seed/reapply không được giữ im lặng một row cùng key đang bật;
+- audit/provenance append-only và không biến mất do subject hard-delete.
+
+Chỉ replacement source mới, có commit SHA + migration SHA-256 + installed-function fingerprints, fresh disposable rollback/concurrency suite và zero-residue độc lập, mới được xét `PREPARED`. Passing test của revision cũ không được chuyển trạng thái cho revision mới.
+
+**Bổ sung từ vòng review đối kháng 2026-07-17 (40-luồng) — defect writer/rollout xác nhận:**
+
+*Final authority/deadline (trace đầy đủ các điểm block sau final decision):*
+
+- Sau final recheck (dòng ~1122–1163) writer còn các điểm CÓ THỂ block: (B1) insert cap-operation; (B2) insert header — RI `FOR KEY SHARE` trên `auth.users` CHƯA pre-lock + AFTER trigger `trg_ie_reconcile_room_ins` → `recompute_room_reservation` có thể `UPDATE rooms` cần `FOR NO KEY UPDATE`, xung đột với chính `FOR SHARE` writer đang giữ trên rooms → **hai invocation đồng thời cùng room = mutual lock-upgrade deadlock 40P01**; (B3) insert items — reconcile-room lặp tới 200 lần; (B4) attach contract — fire reconcile-room lần ba. Mọi wait xảy ra khi đang giữ advisory lock + ledger FOR UPDATE + flag FOR SHARE (nghĩa là **block cả `force_freeze` của admin**) + toàn bộ witness locks.
+- Protocol đích: (1) KHÔNG acquire lock mới sau final decision — pre-lock `auth.users FOR KEY SHARE`, rooms/contracts `FOR NO KEY UPDATE` thay `FOR SHARE` (diệt upgrade-deadlock), hoặc suppress reconcile triggers cho writer + gọi recompute tường minh trước decision; (2) `set_config('lock_timeout','2s',true)` + statement_timeout — 55P03/40P01 thuộc retry contract nhờ ledger; (3) lease: `clock_timestamp() + margin < LEAST(membership.valid_to, canary ends_at)` tại decision; (4) final recheck chuyển xuống NGAY TRƯỚC RETURN (sau audit + completion) — recheck hiện tại ở 1298 đứng trước hai statement còn có thể block; (5) thu hẹp advisory-lock window hoặc thay count-cap bằng atomic reservation `UPDATE ... SET used_count = used_count+1 WHERE used_count < max RETURNING`; cân nhắc bỏ FOR SHARE flag row để force_freeze không bị queue.
+- Test spec (isolationtester/2-connection): duplicate-key race; claimant-abort handover; deadlock repro same-room (fail hiện tại → pass sau fix); revocation-by-write fence; time-expiry hole (`valid_to` hết hạn khi bị block — hiện commit sai); window-close mid-flight.
+
+*Rollout/T5-infra — claim vs thực tế applied:*
+
+- `config_version` "CAS" chỉ là cột DEFAULT 1 — KHÔNG có RPC/trigger nào bump/compare-and-swap; UPDATE mode/window/cap trực tiếp không bump → cap ledger cũ được tái dùng; bump lại re-arm cap từ 0. Retry qua config-bump ăn cap hai lần (unique theo `(feature_key, config_version, operation_key)`).
+- `server_feature_flag_events` chưa có writer nào và KHÔNG có trigger append-only; `server_feature_flag_operations` không CHECK non-negative và không immutability guard.
+- Evaluator APPLIED (`20260716120200`) khác evaluator trong artifact BLOCKED: bản applied KHÔNG kiểm release identity, `ON` → CANONICAL vô điều kiện, CANARY chấp nhận NULL window (unbounded), chỉ kiểm count cap — **VND cap không bao giờ được đánh giá** → "VND cap 0 = không flip" hiện KHÔNG được enforce trên live; một row ON/CANARY với identity trống + VND 0 vẫn route CANONICAL (khi count cap > 0). Bản artifact silently REPLACE function với semantics chặt (identity bắt buộc, half-open finite window, count+VND caps) và ON là uncapped-by-design — divergence phải được ghi/quyết định tường minh.
+- Seed artifact dùng `ON CONFLICT (feature_key) DO NOTHING` — vi phạm chính blocker "seed/reapply không giữ im lặng row cùng key đang bật".
+- Không code live nào consume evaluator (meter không gọi; frontend không gọi) — mô tả "cả canonical endpoint lẫn legacy guard cùng consume" là aspirational, chưa delivered.
+
+### 4.4 Meter reading domain — backend partial `APPLIED`, frontend `PREPARED`, domain `BLOCKED`
+
+- Đã cài (`20260716160000`): 5 RPC v1 create/bulk-create/update/delete/bulk-delete; 5 hook tương ứng đã wire trên branch (`4511a72`). Server set `user_id`/`recorded_by`; validate `meter_id`/`room_id` cùng org.
+- Còn phải đóng trước khi domain rời `BLOCKED`: route import (`useImportMeterReadings` → legacy `bulk_create_meter_readings`), approve/bulk-approve (RPC legacy `approve_meter_reading`/`bulk_approve_meter_readings` — re-audit), unapprove (direct-UPDATE), `GenerateInvoiceDialog` và `useSubmitExcelInvoices` (direct-INSERT APPROVED); xác định feature-route semantics cho 5 RPC đã grant thẳng `authenticated`; inventory hidden callers; rồi mới drain/revoke direct DML ở T6b/T7. Full-domain target: `approved_by`/`approved_at` chỉ do path duyệt server-side (không client `status='APPROVED'`), no-duplicate theo `settlement_month`. Không gọi five-RPC subset là canonical writer duy nhất của toàn domain.
 
 ### 4.5 Contract + deposit domain (thay `useCreateContract`)
 
@@ -131,9 +190,9 @@ Không dùng branch name (`security/authz-preparation`), "latest", glob migratio
 
 ---
 
-## 5. Test evidence trước production (chưa chạy — kế hoạch)
+## 5. Test evidence theo từng slice — hiện chỉ partial/historical
 
-Mỗi domain-slice phải đạt toàn bộ trước khi rời `IN_DESIGN`:
+Meter backend có direct JWT evidence được tracker ghi nhận, nhưng chưa có full writer-drain, frontend-production, feature-route, canary và observation evidence. Income/expense BB0C concurrency evidence đã stale sau khi source đổi; adapter/lint pass source-local không thay thế fresh exact-source PostgreSQL compile/concurrency/hash evidence. Mỗi slice chỉ được nâng trạng thái theo evidence bind vào exact release identity của chính slice đó. Mỗi domain-slice phải đạt toàn bộ danh sách dưới trước khi rời `IN_DESIGN`:
 
 - Project restore/staging ID (từ T0a recovery `VERIFIED`).
 - Unit/property tests (Vitest + fast-check): rounding tiền (`roundInvoiceTotal`), phân bổ cọc, recompute invoice sau reversal, per-invoice atomic bulk.
@@ -202,4 +261,4 @@ Evidence không chứa credential, JWT, signed URL, private object path hay PII.
 
 ### Ghi chú đóng
 
-T5 gom nhiều domain; theo 27.4 phải cutover **từng domain một qua cùng gate**, không một lần đổi tất cả. Không "vá thêm flag rồi gọi là xong": mỗi domain-slice cần RPC canonical explicit org boundary + state machine + idempotency + audit + reconciliation, dependency T1b/T2/T3/T4a/T6a `VERIFIED`, và lệnh owner riêng cho đúng slice. Trạng thái hiện tại: **NO-GO cho production**.
+T5 gom nhiều domain; theo 27.4 phải cutover **từng domain một qua cùng gate**, không một lần đổi tất cả. Không "vá thêm flag rồi gọi là xong": mỗi domain-slice cần RPC canonical explicit org boundary + state machine + idempotency + audit + reconciliation. Dependency xác định theo đúng subject/effect của slice: meter CRUD partial không phụ thuộc T1b/T3 như money posting, nhưng money/reversal/salary slices phải đạt các dependency tương ứng (T1b/T2/T3/T4a/T6a). Không slice nào được gọi là full-domain cutover hoặc `VERIFIED` nếu chưa có T4a evidence, ORG/domain closure, complete writer map, rollout/canary, drain proof và owner approval của chính slice. Trạng thái hiện tại: **NO-GO cho mọi production activation mới**.

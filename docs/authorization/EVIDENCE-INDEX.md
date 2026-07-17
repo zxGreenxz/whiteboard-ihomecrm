@@ -56,3 +56,14 @@ Aggregate đã xác minh local ngày 2026-07-16:
 Vẫn `BLOCKED` cho certification vì: thiếu portable Auth/Storage-aware PostgreSQL dump; R2 chỉ referenced-only; capture online/unfrozen (không write fence); chưa có independent blank restore. Không dùng recovery này làm production gate.
 
 Nếu sau này owner mở lại restore rehearsal, dòng certification phải gồm: certification ID; capture cutoff UTC; managed backup reference; aggregate counts/manifest hash; trạng thái các bản sao; kết quả blank restore; schema/ACL/security/money/object/browser verdict; reviewer và timestamp; đường dẫn evidence sanitized trong repo (nếu có).
+
+## Preparation source identities — vòng review 40-luồng 2026-07-17 (branch `security/authz-preparation`)
+
+Ràng buộc: các claim review/adapter-test của ngày 2026-07-17 chỉ có hiệu lực với ĐÚNG các hash sau. Mọi edit làm hash đổi ⇒ evidence stale, phải review/test lại.
+
+- Base commit HEAD lúc review: `ac0bdaf6f89606f10ec6a0223eb09c817f544ba4` (các file dưới là working-tree changes/untracked TRÊN commit này, chưa được pin bằng commit riêng cho tới commit preparation kế tiếp).
+- `supabase/migrations/20260716180000_t5_income_expense_create_draft_writer.sql` — 52.491 byte, SHA-256 `caae2097e4ece91e1b3867e57433a6cacf699f5f8b73da8f46a64a7cc881b8dd` (revision hiện tại; BB0C đã stale). Trạng thái: BLOCKED/IN_DESIGN, chưa apply/grant/route, chưa có compile/concurrency evidence cho revision này.
+- `src/lib/incomeExpenseCreateRpc.ts` — SHA-256 `65d6b5f6929c7d75…` (adapter thuần build-args, không route write; importer duy nhất là test của nó).
+- `src/lib/__tests__/incomeExpenseCreateRpc.test.ts` — SHA-256 `2ff0eda99e6ea2f1…` (31 case).
+- Review program: 34 read-only agent (T2 registry/override/allowlist/binding/resolver/deadline/candidates/lifecycle/version-bump; T3 sidecar/capability/guards/truncate/claim-binding/audit-DDL/audit-chain/inventory/receipt; cross T2↔T3, T3↔T5; writer marker/attachments/final-auth/audit-integration; rollout consistency; harness/fixture/security-matrix/concurrency-matrix/evidence-manifest; secret-scan; multi-machine; frontend writer map; completeness critic) — workflow run `wf_98011a71-4ce`, 34/34 hoàn thành, 0 lỗi. Kết quả đã được hợp nhất vào T2/T3/T5 docs + tracker cùng ngày; đây là REVIEW evidence (design), KHÔNG phải compile/test/production evidence.
+- Gate đã chạy trên working tree này (2026-07-17): `npm run typecheck:baseline` PASS (32 fingerprint khớp, không tăng); secret-scan toàn bộ staged diff: 0 hit; `npx vitest run --dir src/lib/__tests__ incomeExpenseCreateRpc` PASS 31/31 (lưu ý vận hành: vitest quét từ repo root sẽ treo do ~1.395 worktree agent trong `.claude/worktrees` — phải scope `--dir`). Các pass này là source-local; KHÔNG thay thế fresh PostgreSQL compile/concurrency evidence cho artifact SQL.
