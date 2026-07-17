@@ -10,6 +10,10 @@ import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 import { allocateDepositPortion } from '@/lib/invoiceHelpers';
+import {
+  recordInvoicePaymentWithFallback,
+  type PaymentMethod,
+} from '@/lib/paymentRecordRpc';
 
 // =============================================
 // Types
@@ -234,22 +238,26 @@ export const useRecordPaymentRPC = () => {
         ];
       }
 
-      const { data: result, error } = await (supabase.rpc as any)(
-        'record_invoice_payment_v3',
+      // W1 payment cutover: v4 canonical trước, server quyết route theo org —
+      // v4 chưa deploy/flag OFF/coexistence-denied thì adapter tự chạy v3.
+      const { result, route, legacyReason } = await recordInvoicePaymentWithFallback(
+        (fn, args) => (supabase.rpc as any)(fn, args),
         {
-          p_invoice_id: data.invoice_id,
-          p_amount: data.amount,
-          p_payment_method: data.payment_method,
-          p_payment_date: data.payment_date,
-          p_idempotency_key: idempotencyKey,
-          p_account_id: data.account_id ?? null,
-          p_notes: data.notes ?? null,
-          p_receipt_image_url: data.receipt_image_url ?? null,
-          p_voucher: voucherPayload,
-          p_items: itemsPayload,
+          invoice_id: data.invoice_id,
+          amount: data.amount,
+          payment_method: data.payment_method as PaymentMethod,
+          payment_date: data.payment_date,
+          account_id: data.account_id ?? null,
+          notes: data.notes ?? null,
+          receipt_image_url: data.receipt_image_url ?? null,
+          voucher: voucherPayload,
+          items: itemsPayload,
         },
+        idempotencyKey,
       );
-      if (error) throw error;
+      if (route === 'LEGACY' && legacyReason === 'v4-denied') {
+        console.info('[payment-w1] v4 denied → v3 coexistence', data.invoice_id);
+      }
 
       return result;
     },

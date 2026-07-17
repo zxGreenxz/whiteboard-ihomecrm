@@ -27,6 +27,10 @@ import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 import { planConflictsWithRemaining } from '@/lib/collectPlan';
+import {
+  recordInvoicePaymentWithFallback,
+  type PaymentMethod,
+} from '@/lib/paymentRecordRpc';
 
 export interface BulkPaymentItem {
   invoice_id: string;
@@ -269,19 +273,20 @@ export const useBulkRecordPayment = () => {
             // + voucher + item + idempotency) thay vì 3 insert rời. p_voucher_owner_id
             // = ownerId (GIỮ attribution user_id=owner cho báo cáo LN, không lệch).
             const shortTitle = getInvoiceShortTitle(inv as any);
-            const { data: res, error: rpcErr } = await (supabase.rpc as any)(
-              'record_invoice_payment_v3',
+            // W1 payment cutover: v4 canonical trước; adapter tự fallback v3 khi
+            // v4 chưa deploy/flag OFF/coexistence-denied (server quyết route).
+            const { result: res, route, legacyReason } = await recordInvoicePaymentWithFallback(
+              (fn, args) => (supabase.rpc as any)(fn, args),
               {
-                p_invoice_id: item.invoice_id,
-                p_amount: effectiveAmount,
-                p_payment_method: line.method,
-                p_payment_date: params.payment_date,
-                p_idempotency_key: crypto.randomUUID(),
-                p_account_id:
-                  item.accounts?.[line.method as 'TM' | 'TK' | 'TT'] ?? item.account_id,
-                p_notes: item.notes ?? null,
-                p_receipt_image_url: isFirst ? (item.receipt_image_url ?? null) : null,
-                p_voucher: {
+                invoice_id: item.invoice_id,
+                amount: effectiveAmount,
+                payment_method: line.method as PaymentMethod,
+                payment_date: params.payment_date,
+                account_id:
+                  item.accounts?.[line.method as 'TM' | 'TK' | 'TT'] ?? item.account_id ?? null,
+                notes: item.notes ?? null,
+                receipt_image_url: isFirst ? (item.receipt_image_url ?? null) : null,
+                voucher: {
                   name: `Thu tiền theo HĐ ${shortTitle}`,
                   room_id: (inv as any).room_id ?? null,
                   payer_name: item.notes ?? null,
@@ -294,7 +299,7 @@ export const useBulkRecordPayment = () => {
                   rounding_amount: isRoundingLine ? rounding : 0,
                   rounding_account_id: isRoundingLine ? roundingAccountId : null,
                 },
-                p_items: [{
+                items: [{
                   income_expense_type_id: incomeTypeId,
                   description: `Thanh toán HĐ ${shortTitle}`,
                   quantity: 1,
@@ -302,10 +307,13 @@ export const useBulkRecordPayment = () => {
                   start_date: params.payment_date,
                   end_date: params.payment_date,
                 }],
-                p_voucher_owner_id: ownerId,
+                voucher_owner_id: ownerId,
               },
+              crypto.randomUUID(),
             );
-            if (rpcErr) throw rpcErr;
+            if (route === 'LEGACY' && legacyReason === 'v4-denied') {
+              console.info('[payment-w1] v4 denied → v3 coexistence', item.invoice_id);
+            }
             const newVoucherId = (res as any)?.voucher_id ?? null;
             if (newVoucherId) voucherIds.push(newVoucherId); // v5: GPS thu-tại-chỗ
             if (isCreditLine) creditSourcePaymentId = (res as any)?.payment_id ?? null;

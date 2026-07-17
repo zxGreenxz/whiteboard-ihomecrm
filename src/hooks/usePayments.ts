@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { recordInvoicePaymentWithFallback } from "@/lib/paymentRecordRpc";
 
 type Payment = Database["public"]["Tables"]["payments"]["Row"];
 type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
@@ -125,20 +126,24 @@ export const useCreatePayment = () => {
       // trong 1 transaction + idempotency) thay vì insert-rồi-read-modify-write
       // (lost update giữa 2 collector, không check lỗi update — §8.1).
       if (data.invoice_id) {
-        const { data: result, error } = await (supabase.rpc as any)(
-          "record_invoice_payment_v3",
+        // W1 payment cutover: v4 canonical trước; adapter tự fallback v3 khi
+        // v4 chưa deploy/flag OFF/coexistence-denied (server quyết route).
+        const { result, route, legacyReason } = await recordInvoicePaymentWithFallback(
+          (fn, args) => (supabase.rpc as any)(fn, args),
           {
-            p_invoice_id: data.invoice_id,
-            p_amount: data.amount,
-            p_payment_method: data.payment_method,
-            p_payment_date: data.payment_date,
-            p_idempotency_key: crypto.randomUUID(),
-            p_receipt_number: (data as any).receipt_number ?? null,
-            p_notes: data.notes ?? null,
-            p_receipt_image_url: (data as any).receipt_image_url ?? null,
+            invoice_id: data.invoice_id,
+            amount: data.amount,
+            payment_method: data.payment_method,
+            payment_date: data.payment_date,
+            receipt_number: (data as any).receipt_number ?? null,
+            notes: data.notes ?? null,
+            receipt_image_url: (data as any).receipt_image_url ?? null,
           },
+          crypto.randomUUID(),
         );
-        if (error) throw error;
+        if (route === 'LEGACY' && legacyReason === 'v4-denied') {
+          console.info('[payment-w1] v4 denied → v3 coexistence', data.invoice_id);
+        }
         return result;
       }
 
