@@ -42,11 +42,17 @@ target độc lập restore từ CÙNG một dump**:
 
 - **Money invariant khớp 100%** trên cả hai restore độc lập — chỉ số tài chính
   trọng yếu được cross-validate, không chỉ một lần.
-- **`storage.objects` delta (2.418 vs 2.380):** blank local (2.418) là bản trung
-  thực theo dump; restore vào **Supabase project đang sống** rớt 38 row (object trỏ
-  tới bucket không được restore / ON CONFLICT với storage do Supabase quản lý). Đây
-  là artifact của restore-vào-live-Supabase, KHÔNG phải mất dữ liệu nguồn. Cần giải
-  thích/đối chiếu object-level trước khi certify recovery tổng thể.
+- **`storage.objects` delta (2.418 vs 2.380) — ĐÃ GIẢI THÍCH + RECONCILE (cùng ngày):**
+  điều tra id-level 3 chiều chứng minh: id-set staging == id-set backup **16/07**
+  (khớp 2.380/2.380 tuyệt đối), trong khi cả dump tốt 17/07 LẪN dump truncated
+  095310Z đều chứa đủ 2.418. Nguyên nhân: staging được restore backup 16/07 trước;
+  khi restore dump 17/07 đè lên, schema `public` thay được trọn (nên tiền khớp giá
+  trị 17/07 exact) nhưng `storage` do Supabase quản lý không drop được → COPY
+  `storage.objects` đụng trùng PK → PostgreSQL hủy **toàn bảng** COPY → staging kẹt
+  bản 16/07, thiếu đúng 38 object tạo trong 16/07 04:51 → 17/07 09:54 UTC.
+  **Kết luận: dump 17/07 hoàn chỉnh, không mất dữ liệu nguồn; delta là artifact
+  vận hành restore-đè.** Đã reconcile: insert 38 row từ dump (ON CONFLICT DO
+  NOTHING) → staging = verify3 = dump, **2.418/2.418 khớp id-level**.
 - **Extension-complete target (gate cũ BLOCKED):** gate 2026-07-16 để `BLOCKED` vì
   local Windows PG thiếu `vector`/`pg_cron`/`supabase_vault`. Staging Supabase có
   `pg_cron 1.6.4`, `supabase_vault 0.3.1`, `pgcrypto 1.3` present → **toàn bộ
@@ -54,10 +60,18 @@ target độc lập restore từ CÙNG một dump**:
   chưa xác nhận trên project tạm; không phụ thuộc bởi authz stack.)
 
 **Trạng thái recovery:** round-trip PROVEN trên blank target với money 100% exact
-+ cross-validate trên second independent restore. Vẫn CHƯA `VERIFIED` tổng thể:
-cần (a) giải thích 38-row storage delta, (b) fault-domain replica thật (hiện cùng
-ổ D:), (c) independent reviewer, (d) exhaustive R2/object bytes. KHÔNG dùng làm
-production gate cho tới khi các mục này đóng.
++ cross-validate trên second independent restore; storage delta đã explained +
+reconciled (id-level 2.418/2.418). **Off-machine copy (cùng ngày):** tar toàn bộ
+artifact 095450Z (44.615.680 byte, plain SHA-256 `67a4e9ff…28ddea`) → seal
+AES-256-GCM (cipher SHA-256 `bdae2c0f…1b02df`) → upload VPS
+`/root/ihomecrm-recovery/` (chmod 600) → remote `sha256sum` khớp local. Khóa 32B
+bọc DPAPI CurrentUser tại `D:\ihomecrm-recovery\keys\`, raw key + plaintext tar
+đã wipe. **Caveat key-escrow (trung thực):** bản VPS là ciphertext off-machine
+chống hỏng ổ D:, nhưng khóa giải mã CHỈ unwrap được trên máy/user này — nếu mất
+máy thì bản VPS không tự giải mã được. Muốn fault-domain trọn vẹn, owner cần
+export key escrow theo thủ tục riêng (vd password manager). Vẫn CHƯA `VERIFIED`
+tổng thể: cần (a) key escrow như trên, (b) independent reviewer, (c) exhaustive
+R2/object bytes. KHÔNG dùng làm production gate cho tới khi các mục này đóng.
 
 ## 3. Bốn defect chỉ-Supabase mà harness superuser che mất
 

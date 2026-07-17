@@ -27,6 +27,7 @@
 | [T9-RETENTION-CLEANUP-RESTORE-CERT.md](./T9-RETENTION-CLEANUP-RESTORE-CERT.md) | `NOT_STARTED/BLOCKED` | Retention, cleanup, final restore certification. |
 | [_TRANCHE-REVIEW-NOTES.md](./_TRANCHE-REVIEW-NOTES.md) | `PREPARED` | Đối chiếu cross-tranche + 5 mục (a)–(e) owner phải chốt trước khi rời `IN_DESIGN`. |
 | [ON-TARGET-VALIDATION-2026-07-17.md](./ON-TARGET-VALIDATION-2026-07-17.md) | `PREPARED + ON-TARGET VALIDATED` | Integration evidence trên Supabase thật (staging tạm, postgres non-superuser): 4 defect chỉ-Supabase + redesign A.9 capability-token + 15/15 suite (117 assertion) trên cả staging & superuser local. |
+| [RUNBOOK-CUTOVER-PAYMENT.md](./RUNBOOK-CUTOVER-PAYMENT.md) | `DRAFT — chờ owner điền window/gật canary` | Runbook cutover domain #1 payment/credit: OWNER-GATE, 5 prerequisite (P1 merge-main, P2 T1a close, P3 tách ledger DDL, P4 frontend adapter v4, P5 dump-tại-window), artifact hash-pinned, trình tự W1–W10, observation, ABORT + forward-fix. |
 
 > Cả 8 spec T2–T9 (2026-07-16) đều PASS cửa an toàn không thương lượng: không spec nào cho phép production apply khi thiếu recovery `VERIFIED` + owner window/canary/VND cap, không spec nào đặt migration vào `supabase/migrations/`, SQL chỉ là fenced block.
 >
@@ -42,9 +43,10 @@ Bản dump production tươi 2026-07-17 (~09:54 UTC), `pg_dump` 17.10 custom-for
 
 - **Artifact:** `database/full.custom` 43.014.738 byte, SHA-256 `3dcbc76da4f921ed9bc486389a0644f6b48f54488528b9b114d73672b8805983`; 3 bản hash-verified (vẫn cùng ổ D:, chưa phải fault domain độc lập).
 - **Cross-restore money invariant (2 target độc lập, cùng dump):** blank local PG 17.10 (`verify3`) và live Supabase staging (`qwxgygsewymkahiavslu`) khớp **exact**: `income_expenses` 10.492.190.716,00 · `invoices` 4.242.342.993,00 · `payments` 3.893.111.563,00 · `auth.users` 11/11.
-- **Caveat `storage.objects`:** blank local 2.418 (trung thực theo dump) vs live-Supabase 2.380 (rớt 38 row trỏ bucket không restore/ON CONFLICT do storage Supabase quản lý) — artifact của restore-vào-live, không phải mất dữ liệu nguồn; cần đối chiếu object-level trước certification.
+- **`storage.objects` delta — ĐÃ ĐÓNG (điều tra id-level cùng ngày):** id-set staging == id-set backup 16/07 (2.380/2.380 tuyệt đối); cả dump tốt 17/07 lẫn dump truncated 095310Z đều đủ 2.418 → nguyên nhân là restore-đè: `public` thay trọn (tiền khớp 17/07 exact) nhưng `storage` live-Supabase không drop được → COPY đụng trùng PK → hủy toàn bảng → staging kẹt bản 16/07 (thiếu đúng 38 object tạo 16/07 04:51→17/07 09:54 UTC). Dump hoàn chỉnh, không mất dữ liệu nguồn. Đã reconcile 38 row (ON CONFLICT DO NOTHING) → staging = dump **2.418/2.418 id-level**.
+- **Off-machine copy (2026-07-17):** tar artifact 44.615.680 byte (plain SHA-256 `67a4e9ff…28ddea`) → AES-256-GCM (cipher SHA-256 `bdae2c0f…1b02df`) → VPS `/root/ihomecrm-recovery/` chmod 600, remote sha256sum khớp. Khóa DPAPI CurrentUser tại `D:\ihomecrm-recovery\keys\`; raw key + plaintext wipe. **Caveat:** ciphertext off-machine chống hỏng ổ D:, nhưng khóa chỉ unwrap trên máy/user này — cần owner export key escrow (password manager/in giấy) cho fault-domain trọn vẹn.
 - **Extension-complete target:** gate cũ BLOCKED do local thiếu `vector`/`pg_cron`/`supabase_vault`; staging có `pg_cron 1.6.4`/`supabase_vault 0.3.1`/`pgcrypto 1.3` → toàn bộ authz stack compile+chạy trên target đủ extension.
-- **Còn `BLOCKED` cho certification tổng thể:** giải thích 38-row storage delta, fault-domain replica thật, independent reviewer, exhaustive R2/object bytes. Chi tiết + on-target findings: [ON-TARGET-VALIDATION-2026-07-17.md](./ON-TARGET-VALIDATION-2026-07-17.md).
+- **Còn `BLOCKED` cho certification tổng thể:** key escrow (trên), independent reviewer, exhaustive R2/object bytes. Chi tiết + on-target findings: [ON-TARGET-VALIDATION-2026-07-17.md](./ON-TARGET-VALIDATION-2026-07-17.md). Runbook cutover domain #1: [RUNBOOK-CUTOVER-PAYMENT.md](./RUNBOOK-CUTOVER-PAYMENT.md).
 
 ### Recovery `20260716T045126Z-db-portable` — `PORTABLE_DUMP_PROVEN_RESTORABLE_CORE / PREPARED`
 
