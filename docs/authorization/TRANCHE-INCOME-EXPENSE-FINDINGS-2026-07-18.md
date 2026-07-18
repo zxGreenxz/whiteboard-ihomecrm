@@ -90,6 +90,53 @@ tạo phiếu mới prefill toàn bộ thông tin phiếu cũ **kể cả hình 
   thuộc domain payment (phiếu mirror sinh bởi record_invoice_payment_v3/v4, chưa
   claim canonical) — xử lý ở tranche payment-mirror riêng, KHÔNG trộn vào đây.
 
+## 6. ✅ EVIDENCE CANARY + BROWSER (2026-07-18, cùng ngày — VERIFIED demo org)
+
+**REST full-cycle (demo.ketoan, org demo, flag v4 CANARY 6h caps 30/20M/100M):**
+PT2607001: create 200 → flow-owned=1 + ledger completed → legacy PATCH bị freeze
+55000 ✓ → approve 204 (APPROVED + approved_by/at) → verify 204 (verified_by_name)
+→ cancel 204 → restore legacy 403 ✓. Audit chain
+`CREATED_DRAFT→APPROVED→VERIFIED→CANCELLED`, `verify_..._audit_chain_v1` = (t).
+Cross-org item-type bị chặn 42501 ✓ ("không thuộc tổ chức").
+
+**Browser UI (bundle cad322c, demo.ketoan):** PT2607002 (có ảnh, REST) đã huỷ →
+nút **Tạo bản sao** hiện đúng chỉ ở phiếu huỷ → form prefill ĐẦY ĐỦ kể cả ảnh →
+Lưu → `create_income_expense_v1` **200** (PT2607003 canonical, giữ ảnh) → UI Duyệt
+→ `approve_income_expense_v1` **204** → UI Huỷ → `cancel_income_expense_v1`
+**204**. 0 console error toàn phiên demo.
+
+**Browser regression org THẬT (user thật, flag OFF — Opus 4.8 agent lái):**
+tạo phiếu → rpc 403(42501) → fallback insert legacy **201** + items 201 → toast
+success; huỷ → rpc 500(55000 marker) → fallback PATCH **204** → Đã huỷ. Không
+app-exception. Phiếu test đã huỷ dọn sạch. Tiền real-org bất biến 3.886.037.563.
+
+### Phát hiện từ browser test + phân tích + xử lý
+
+1. **Real-org create bị 42501 "không có quyền tạo cho toà này" TRƯỚC khi tới flag**
+   — xác nhận cảnh báo khảo sát: authority graph canonical (staff_assignment do
+   OWNER cấp) **hẹp hơn RLS legacy** với chính super-admin user thật trên toà
+   102LVT. Coexistence không sao (42501 là fallback-signal của create). **GATE
+   kích hoạt real-org:** audit parity permission-graph (ai đang tạo phiếu qua RLS
+   vs ai canonical cho phép) + materialize assignment thiếu, TRƯỚC khi bật CANARY
+   org thật. Chưa bật real-org ở tranche này.
+2. **Fallback marker 55000 map HTTP 500** (PostgREST) — mỗi thao tác phiếu legacy
+   trong coexistence sẽ có 1 dòng 500 noise ở console/log. Classifier client match
+   `body.code` nên hoạt động đúng (đã chứng minh PATCH nối tiếp thành công).
+   Chấp nhận noise, KHÔNG đổi errcode giữa chừng.
+3. **Legacy cancel mất entry nhật ký**: `log_income_expense_action` (T3 audit-
+   monopoly) allowlist `NOTE/CANCELLED_NOTE/MANUAL_LOG`, từ chối client tự dập
+   `CANCELLED`. ĐÃ FIX frontend 4371f29: legacy cancel ghi `CANCELLED_NOTE`
+   (alias T3 dựng sẵn) — verify REST 204 + chain (t).
+4. Phiếu legacy có sổ quỹ → auto-APPROVED (hành vi legacy giữ nguyên, không phải bug).
+
+**UX-note Phương án A:** dialog Duyệt cho "đổi sổ quỹ trước khi duyệt" — với phiếu
+canonical, ĐỔI sổ tại đó sẽ đụng freeze (quick-update). Giữ nguyên sổ thì không
+gọi update (đã chứng minh network). Hướng dẫn nhân viên: muốn đổi sổ → Huỷ + Tạo
+bản sao.
+
+**Trạng thái tranche: demo org VERIFIED. Real org: legacy (fallback) — chờ gate
+permission-parity trước khi canary.**
+
 ## 5-cũ. Fork đã trình owner (giữ để tham chiếu)
 
 **Mô hình vòng đời phiếu income-expense khi lên canonical:**
