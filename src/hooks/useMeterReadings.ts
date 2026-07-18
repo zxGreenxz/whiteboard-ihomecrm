@@ -365,12 +365,15 @@ export const useImportMeterReadings = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      // FIX (2026-07-18): hàm prod là bulk_create_meter_readings(p_readings jsonb)
+      // — tự resolve meter_code→meter_id + dùng auth.uid() nội bộ. Trước đây gọi
+      // kèm p_user_id (thừa) + JSON.stringify (biến array thành jsonb-string vô
+      // dụng) → PostgREST PGRST202 không resolve được → import Excel HỎNG.
+      // Sửa: truyền thẳng array, bỏ p_user_id. (user vẫn dùng làm auth pre-guard.)
+      void user;
       const { data, error } = await supabase.rpc(
         "bulk_create_meter_readings" as any,
-        {
-          p_readings: JSON.stringify(input.readings),
-          p_user_id: user.id,
-        }
+        { p_readings: input.readings }
       );
 
       if (error) {
@@ -519,17 +522,18 @@ export const useApproveMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase.rpc(
-        "approve_meter_reading" as any,
-        { p_reading_id: id }
-      );
-
-      if (error) {
+      // Canonical approve_meter_reading_v1 (permission-checked qua building);
+      // fallback legacy approve_meter_reading nếu writer chưa deploy (PGRST202).
+      let res = await supabase.rpc("approve_meter_reading_v1" as any, { p_id: id });
+      if (res.error && (res.error as { code?: string }).code === "PGRST202") {
+        res = await supabase.rpc("approve_meter_reading" as any, { p_reading_id: id });
+      }
+      if (res.error) {
         toast.error("Không thể duyệt chỉ số");
-        throw error;
+        throw res.error;
       }
 
-      return data;
+      return res.data;
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
@@ -551,17 +555,18 @@ export const useBulkApproveMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      const { data, error } = await supabase.rpc(
-        "bulk_approve_meter_readings" as any,
-        { p_reading_ids: ids }
-      );
-
-      if (error) {
+      // Canonical bulk_approve_meter_readings_v1 (per-item permission); fallback
+      // legacy nếu chưa deploy. Cả hai trả integer số chỉ số đã duyệt.
+      let res = await supabase.rpc("bulk_approve_meter_readings_v1" as any, { p_ids: ids });
+      if (res.error && (res.error as { code?: string }).code === "PGRST202") {
+        res = await supabase.rpc("bulk_approve_meter_readings" as any, { p_reading_ids: ids });
+      }
+      if (res.error) {
         toast.error("Không thể duyệt hàng loạt chỉ số");
-        throw error;
+        throw res.error;
       }
 
-      return data;
+      return res.data;
     },
     onSuccess: (data) => {
       invalidateMeterReadingQueries(queryClient);
@@ -584,23 +589,23 @@ export const useUnapproveMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .update({
-          status: "UNAPPROVED",
-          approved_by: null,
-          approved_at: null,
-        } as any)
-        .eq("id", id)
-        .select()
-        .single();
-
-      if (error) {
+      // Canonical unapprove_meter_reading_v1 (permission-checked); thay direct-DML
+      // (cửa hở cũ). Fallback direct-DML chỉ khi writer chưa deploy (PGRST202).
+      let res = await supabase.rpc("unapprove_meter_reading_v1" as any, { p_id: id });
+      if (res.error && (res.error as { code?: string }).code === "PGRST202") {
+        res = await supabase
+          .from("meter_readings")
+          .update({ status: "UNAPPROVED", approved_by: null, approved_at: null } as any)
+          .eq("id", id)
+          .select()
+          .single();
+      }
+      if (res.error) {
         toast.error("Không thể bỏ duyệt chỉ số");
-        throw error;
+        throw res.error;
       }
 
-      return data;
+      return res.data;
     },
     onSuccess: () => {
       invalidateMeterReadingQueries(queryClient);
