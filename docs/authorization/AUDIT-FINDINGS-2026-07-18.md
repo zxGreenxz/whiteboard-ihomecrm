@@ -14,6 +14,10 @@
 | A3 | **accounts org-boundary** (§14/§20.3 T6a, W1-F4): demo user đọc 37 account org thật → thêm RESTRICTIVE org-boundary. | `t6a_01_accounts_org_boundary.sql` | demo cross-read 37→0; own 3 + real 47 giữ nguyên |
 | A4 | **TENANT_OWNER full materialization** (§11 T2, owner parity): role owner chỉ 12/213 perm → owner bị resolver DEFAULT_DENY. Cấp đủ 213. | `t2_04_owner_full_materialization.sql` | owner DEFAULT_DENY→ROLE_ALLOW; shadow mismatch 135→75 |
 | A5 | **Audit-log immutability** (§3.4): invoice/income_expense_audit_log GRANT TRUNCATE/DELETE/UPDATE cho client → xoá sạch audit. Revoke + append-only trigger. | `t3_13_audit_log_immutability.sql` | client TRUNCATE/DELETE/UPDATE revoked; INSERT/SELECT giữ |
+| A6 | **T8 storage org-isolation** (§14/§1.2 — DEFECT sống): 7 bucket PII đọc chéo tenant. Link-table + backfill (2422/2423 map, 1 quarantine) + RESTRICTIVE SELECT policy qua SECURITY DEFINER + INSERT trigger. | `t8_storage_01_object_isolation.sql` | demo user thấy 0/994 idcards + 0/512 receipts org thật; live REST signed-URL → 404; owner giữ đủ |
+| A7 | **authorization_version auto-bump** (§11.7): version không bao giờ bump → client cache quyền cũ. AFTER trigger trên 7 bảng RBAC. | `t2_05_authz_version_and_last_owner.sql` | đổi override → version 2→3 |
+| A8 | **last-owner guard** (§11.2): suspend/revoke OWNER cuối không bị chặn. Constraint trigger. | `t2_05_…` | suspend owner cuối → 23514 chặn |
+| A9 | **money org NOT NULL + composite** (§16.8/§20.1): 5 bảng tiền set NOT NULL (0 vi phạm) + UNIQUE(org,id). | `t6a_02_money_org_notnull.sql` | payments.organization_id attnotnull=t |
 
 Money invariant real-org == baseline TUYỆT ĐỐI xuyên suốt (payments 3.886.037.563 /
 invoices 4.112.182.330 / IE 10.390.345.149). Live payment smoke sau mọi fix: OK.
