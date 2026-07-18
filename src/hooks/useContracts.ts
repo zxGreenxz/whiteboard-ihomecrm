@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
 import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
@@ -1385,6 +1386,16 @@ export const useApproveTermination = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Canonical: atomic 5 bước server-side + BUG-FIX (legacy bước 4 ghi vào
+      // public.cash_book đã KHÔNG tồn tại → vỡ giữa chừng khi có hoàn tiền).
+      // Writer ghi tiền bằng phiếu thu/chi NHÁP để kế toán chọn sổ quỹ & duyệt.
+      const canonical = await (supabase.rpc as any)("approve_contract_termination_v1", {
+        p_termination_id: data.termination_id,
+        p_note: data.notes ?? null,
+      });
+      if (!canonical.error) return { success: true };
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       const { error: termError } = await supabase
         .from("contract_terminations")
         .update({
@@ -1483,6 +1494,14 @@ export const useRejectTermination = () => {
     }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
+
+      // Canonical reject (mirror legacy: về DRAFT + prefix lý do), fallback cũ.
+      const canonical = await (supabase.rpc as any)("reject_contract_termination_v1", {
+        p_termination_id: data.termination_id,
+        p_reason: data.rejection_reason ?? null,
+      });
+      if (!canonical.error) return { success: true };
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { error } = await supabase
         .from("contract_terminations")
