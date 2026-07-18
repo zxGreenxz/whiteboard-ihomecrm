@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 
 // --- Types ---
 
@@ -173,6 +174,26 @@ export const useCreateAccount = () => {
         quick_default_building_id: values.quick_default_building_id ?? null,
       };
 
+      // Canonical create_cashbook_v1 (parity: description/is_default/owner giữ
+      // nguyên); fallback legacy insert khi writer chưa bật cho org (server route).
+      const canonical = await (supabase.rpc as any)("create_cashbook_v1", {
+        p_name: values.name,
+        p_initial_amount: values.initial_amount,
+        p_initial_date: values.initial_date,
+        p_bank_name: null,
+        p_account_number: null,
+        p_quick_default_building_id: values.quick_default_building_id ?? null,
+        p_idempotency_key: crypto.randomUUID(),
+        p_description: values.description ?? null,
+        p_is_default: values.is_default ?? false,
+        p_owner_user_id: values.user_id || null,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể tạo sổ quỹ");
+        throw canonical.error;
+      }
+
       const { data, error } = await supabase
         .from("accounts" as any)
         .insert(payload)
@@ -211,6 +232,23 @@ export const useUpdateAccount = () => {
       // → tránh sửa sổ làm mất cờ "sổ thu mặc định" đã set cho auto-pick TM.
       if (input.values.is_default !== undefined) patch.is_default = input.values.is_default;
 
+      // Canonical update_cashbook_metadata_v1; fallback legacy update khi chưa bật.
+      const canonical = await (supabase.rpc as any)("update_cashbook_metadata_v1", {
+        p_cashbook_id: input.id,
+        p_name: input.values.name,
+        p_description: input.values.description ?? null,
+        p_initial_amount: input.values.initial_amount,
+        p_initial_date: input.values.initial_date,
+        p_quick_default_building_id: input.values.quick_default_building_id ?? null,
+        p_is_default: input.values.is_default !== undefined ? input.values.is_default : null,
+        p_owner_user_id: input.values.user_id || null,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể cập nhật sổ quỹ");
+        throw canonical.error;
+      }
+
       const { data, error } = await supabase
         .from("accounts" as any)
         .update(patch)
@@ -239,6 +277,14 @@ export const useDeleteAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      // Canonical archive_cashbook_v1 (từ chối nếu còn phiếu); fallback legacy.
+      const canonical = await (supabase.rpc as any)("archive_cashbook_v1", { p_cashbook_id: id });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể xoá sổ quỹ");
+        throw canonical.error;
+      }
+
       const { data, error } = await supabase
         .from("accounts" as any)
         .update({ deleted_at: new Date().toISOString() })
@@ -267,6 +313,16 @@ export const useLockAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; lock_date: string }) => {
+      // Canonical lock_cashbook_period_v1 (monotonic guard); fallback legacy.
+      const canonical = await (supabase.rpc as any)("lock_cashbook_period_v1", {
+        p_cashbook_id: input.id, p_lock_date: input.lock_date, p_unlock: false,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể khoá sổ");
+        throw canonical.error;
+      }
+
       const { data, error } = await supabase
         .from("accounts" as any)
         .update({ lock_date: input.lock_date })
@@ -294,6 +350,16 @@ export const useUnlockAccount = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      // Canonical unlock qua lock_cashbook_period_v1(unlock=true); fallback legacy.
+      const canonical = await (supabase.rpc as any)("lock_cashbook_period_v1", {
+        p_cashbook_id: id, p_lock_date: null, p_unlock: true,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể mở khoá sổ");
+        throw canonical.error;
+      }
+
       const { data, error } = await supabase
         .from("accounts" as any)
         .update({ lock_date: null })

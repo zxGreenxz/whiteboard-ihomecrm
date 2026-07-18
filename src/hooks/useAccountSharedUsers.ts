@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 
 export interface AccountSharedUser {
   id: string;
@@ -65,6 +66,17 @@ export const useSyncAccountSharedUsers = () => {
     mutationFn: async (input: { accountId: string; userIds: string[] }) => {
       const authData = { user: await getSessionUser() };
       const creator = authData.user?.id ?? null;
+
+      // Canonical set_cashbook_shared_users_v1 (set-semantics server-side, validate
+      // same-org); fallback client diff (delete+insert) khi writer chưa bật.
+      const canonical = await (supabase.rpc as any)("set_cashbook_shared_users_v1", {
+        p_cashbook_id: input.accountId,
+        p_user_ids: input.userIds,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        throw canonical.error;
+      }
 
       // 1. Lấy hiện trạng
       const { data: existing, error: selErr } = await (supabase
