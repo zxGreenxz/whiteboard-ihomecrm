@@ -126,9 +126,12 @@ export const useCancelIncomeExpense = () => {
       }
 
       // Ghi nhật ký thao tác HUỶ (best-effort — không chặn nếu log lỗi).
+      // T3 audit-monopoly: RPC log chỉ nhận NOTE/CANCELLED_NOTE/MANUAL_LOG —
+      // client không được tự dập sự kiện lifecycle 'CANCELLED' (chỉ transition
+      // engine được ghi). CANCELLED_NOTE là alias chuẩn cho huỷ-đường-legacy.
       await (supabase as any).rpc("log_income_expense_action", {
         p_id: id,
-        p_action: "CANCELLED",
+        p_action: "CANCELLED_NOTE",
         p_note: null,
       });
     },
