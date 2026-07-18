@@ -104,6 +104,9 @@ const IncomeExpenseDesktopPage = () => {
     useState<IncomeExpenseWithRelations | null>(null);
   const [editingVoucher, setEditingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  // Tạo bản sao từ phiếu đã huỷ: mở form TẠO MỚI prefill toàn bộ (kể cả ảnh).
+  const [copyVoucher, setCopyVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
   const [quickEditVoucher, setQuickEditVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [verifyVoucher, setVerifyVoucher] =
@@ -516,6 +519,7 @@ const IncomeExpenseDesktopPage = () => {
             onApprove={handleApproveVoucher}
             onUnapprove={handleUnapproveVoucher}
             onVerify={handleVerifyVoucher}
+            onCopy={(v) => setCopyVoucher(v)}
             pagination={pagination}
             totalCount={totalCount}
           />
@@ -543,6 +547,16 @@ const IncomeExpenseDesktopPage = () => {
         onOpenChange={handleEditFormClose}
         voucher={editingVoucher}
       />
+      {/* Form "Tạo bản sao" từ phiếu đã huỷ — chế độ tạo mới, prefill toàn bộ */}
+      <IncomeExpenseForm
+        open={!!copyVoucher}
+        onOpenChange={(o) => {
+          if (!o) setCopyVoucher(null);
+        }}
+        voucher={null}
+        copyFrom={copyVoucher}
+        defaultType={copyVoucher?.type}
+      />
       <IncomeExpenseBatchForm
         open={isBatchFormOpen}
         onOpenChange={setIsBatchFormOpen}
@@ -560,6 +574,7 @@ const IncomeExpenseDesktopPage = () => {
         onQuickEdit={handleQuickEditVoucher}
         onApprove={handleApproveVoucher}
         onUnapprove={handleUnapproveVoucher}
+        onCopy={(v) => setCopyVoucher(v)}
       />
       <IncomeExpenseQuickEditDialog
         open={!!quickEditVoucher}

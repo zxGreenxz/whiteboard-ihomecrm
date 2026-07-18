@@ -38,6 +38,7 @@ import {
   CalendarX,
   Undo2,
   RotateCcw,
+  CopyPlus,
 } from 'lucide-react';
 import {
   HoverCard,
@@ -64,6 +65,8 @@ interface IncomeExpenseListProps {
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
   onVerify?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
+  onCopy?: (voucher: IncomeExpenseWithRelations) => void;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -167,6 +170,7 @@ const IncomeExpenseList = ({
   onApprove,
   onUnapprove,
   onVerify,
+  onCopy,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -348,6 +352,22 @@ const IncomeExpenseList = ({
                         title="Huỷ phiếu"
                       >
                         <Ban className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Tạo bản sao từ phiếu đã huỷ: mở form tạo mới prefill
+                        toàn bộ thông tin (kể cả hình ảnh) — sửa nhanh chỗ sai
+                        rồi lưu thành phiếu mới. Thay cho "sửa" phiếu canonical
+                        (bất biến sau khi tạo). */}
+                    {isCancelled && onCopy && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        onClick={() => onCopy(voucher)}
+                        title="Tạo bản sao (phiếu mới với thông tin phiếu này)"
+                      >
+                        <CopyPlus className="h-4 w-4" />
                       </Button>
                     )}
 

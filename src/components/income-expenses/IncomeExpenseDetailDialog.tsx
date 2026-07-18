@@ -19,6 +19,7 @@ import {
   Undo2,
   RotateCcw,
   History,
+  CopyPlus,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,6 +49,8 @@ interface Props {
   onUnapprove?: (id: string) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
+  /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
+  onCopy?: (voucher: IncomeExpenseWithRelations) => void;
 }
 
 // "2026-05" → "05/2026" (nhãn kỳ hoá đơn)
@@ -83,6 +86,7 @@ export function IncomeExpenseDetailDialog({
   onApprove,
   onUnapprove,
   onRestore,
+  onCopy,
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -255,6 +259,21 @@ export function IncomeExpenseDetailDialog({
                   }}
                 >
                   <RotateCcw className="h-4 w-4 text-white" />
+                </Button>
+              )}
+              {/* Tạo bản sao: phiếu đã huỷ → form tạo mới prefill toàn bộ */}
+              {isCancelled && onCopy && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8 bg-blue-600 hover:bg-blue-700"
+                  title="Tạo bản sao (phiếu mới với thông tin phiếu này)"
+                  onClick={() => {
+                    onCopy(voucher);
+                    onOpenChange(false);
+                  }}
+                >
+                  <CopyPlus className="h-4 w-4 text-white" />
                 </Button>
               )}
               <Button

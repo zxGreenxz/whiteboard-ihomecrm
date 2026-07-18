@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
+import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
 import type {
   CreateIncomeExpenseInput,
   UpdateIncomeExpenseInput,
@@ -10,6 +11,22 @@ import type {
 } from "./types";
 
 // --- Mutation Hooks ---
+
+/**
+ * Phiếu đủ điều kiện đi đường canonical create_income_expense_v1?
+ * Writer chỉ nhận: non-recurring, item có đủ start/end date, attachments là
+ * URL https tuyệt đối. Ngoài phạm vi đó → đi thẳng legacy (không thử canonical
+ * để khỏi ăn lỗi validation writer thành lỗi user).
+ */
+const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): boolean => {
+  if ((input.repeat_cycle ?? "NONE") !== "NONE") return false;
+  if (input.repeat_infinity) return false;
+  if ((input.repeat_count ?? 0) !== 0) return false;
+  if (!input.items.length) return false;
+  if (input.items.some((it) => !it.start_date || !it.end_date)) return false;
+  if ((input.attachments ?? []).some((url) => !/^https:\/\//.test(url))) return false;
+  return true;
+};
 
 // Tạo phiếu thu/chi mới (phiếu + items)
 export const useCreateIncomeExpense = () => {
@@ -20,6 +37,42 @@ export const useCreateIncomeExpense = () => {
       const user = await getSessionUser();
 
       if (!user) throw new Error("User not authenticated");
+
+      // Canonical trước (phiếu thường, non-recurring): writer server-side tự
+      // authorize + claim + audit hash-chain. Fallback legacy CHỈ theo tín hiệu
+      // hợp lệ (chưa deploy / chưa bật / coexistence / lớp phiếu không hỗ trợ).
+      if (isCanonicalCreateEligible(input)) {
+        const canonical = await (supabase.rpc as any)("create_income_expense_v1", {
+          p_type: input.type,
+          p_name: input.name,
+          p_building_id: input.building_id,
+          p_room_id: input.room_id ?? null,
+          p_tenant_id: input.tenant_id ?? null,
+          p_contract_id: input.contract_id ?? null,
+          p_payer_name: input.payer_name ?? null,
+          p_receive_bank_account: input.receive_bank_account || null,
+          p_receive_bank_name: input.receive_bank_name || null,
+          p_account_id: input.account_id ?? null,
+          p_attachments: input.attachments ?? [],
+          p_business_result_accounting: input.business_result_accounting ?? null,
+          p_notes: null,
+          p_voucher_date: input.voucher_date,
+          p_items: input.items.map((item) => ({
+            income_expense_type_id: item.income_expense_type_id,
+            description: item.description ?? null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            start_date: item.start_date,
+            end_date: item.end_date,
+          })),
+          p_idempotency_key: `ie-create-${crypto.randomUUID()}`,
+        });
+        if (!canonical.error) return canonical.data;
+        if (!isIeCreateFallbackSignal(canonical.error)) {
+          toast.error(canonical.error.message || "Không thể tạo phiếu thu/chi");
+          throw canonical.error;
+        }
+      }
 
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =

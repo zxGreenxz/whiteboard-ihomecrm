@@ -149,6 +149,9 @@ export default function IncomeExpenseMobilePage() {
     useState<IncomeExpenseWithRelations | null>(null);
   const [editingVoucher, setEditingVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  // Tạo bản sao từ phiếu đã huỷ: form TẠO MỚI prefill toàn bộ (kể cả ảnh).
+  const [copyVoucher, setCopyVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
   const [quickEditVoucher, setQuickEditVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -580,6 +583,7 @@ export default function IncomeExpenseMobilePage() {
               onApprove={(v) => setApproveTarget(v)}
               onCancel={(id) => setCancelTarget(id)}
               onRestore={(id) => setRestoreTarget(id)}
+              onCopy={(v) => setCopyVoucher(v)}
             />
           )}
 
@@ -727,6 +731,16 @@ export default function IncomeExpenseMobilePage() {
           if (!o) setEditingVoucher(null);
         }}
         voucher={editingVoucher}
+      />
+      {/* Form "Tạo bản sao" từ phiếu đã huỷ — chế độ tạo mới, prefill toàn bộ */}
+      <IncomeExpenseForm
+        open={!!copyVoucher}
+        onOpenChange={(o) => {
+          if (!o) setCopyVoucher(null);
+        }}
+        voucher={null}
+        copyFrom={copyVoucher}
+        defaultType={copyVoucher?.type}
       />
       <IncomeExpenseQuickEditDialog
         open={!!quickEditVoucher}

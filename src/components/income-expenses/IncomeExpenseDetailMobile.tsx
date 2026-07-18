@@ -11,6 +11,7 @@ import {
   FileText,
   RotateCcw,
   History,
+  CopyPlus,
 } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -36,6 +37,8 @@ interface Props {
   onCancel?: (id: string) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
+  /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
+  onCopy?: (v: IncomeExpenseWithRelations) => void;
 }
 
 const fmtVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -66,6 +69,7 @@ export function IncomeExpenseDetailMobile({
   onApprove,
   onCancel,
   onRestore,
+  onCopy,
 }: Props) {
   const navigate = useNavigate();
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -204,6 +208,20 @@ export function IncomeExpenseDetailMobile({
                 }}
               >
                 <RotateCcw size={15} />
+              </button>
+            )}
+            {/* Tạo bản sao: phiếu đã huỷ → form tạo mới prefill toàn bộ */}
+            {isCancelled && onCopy && (
+              <button
+                className="vd-act"
+                style={{ background: "#2563eb" }}
+                aria-label="Tạo bản sao"
+                onClick={() => {
+                  onCopy(v);
+                  onClose();
+                }}
+              >
+                <CopyPlus size={15} />
               </button>
             )}
             <button

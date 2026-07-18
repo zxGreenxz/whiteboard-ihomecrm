@@ -69,6 +69,13 @@ interface IncomeExpenseFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher?: IncomeExpenseWithRelations | null;
+  /**
+   * "Tạo bản sao" từ phiếu đã HUỶ: mở form ở chế độ TẠO MỚI nhưng prefill
+   * toàn bộ thông tin phiếu cũ (kể cả hình ảnh đính kèm — copy URL, không
+   * duplicate file). Nhân viên sửa lại chỗ sai rồi Lưu thành phiếu mới.
+   * Bỏ qua khi `voucher` (chế độ sửa) đang set.
+   */
+  copyFrom?: IncomeExpenseWithRelations | null;
   defaultType?: 'INCOME' | 'EXPENSE';
   /**
    * Khi mở dialog ở chế độ "tạo mới" (không có voucher), prefill các field
@@ -128,11 +135,15 @@ const IncomeExpenseForm = ({
   open,
   onOpenChange,
   voucher,
+  copyFrom,
   defaultType,
   defaultPrefill,
   onSaved,
 }: IncomeExpenseFormProps) => {
   const isEditing = !!voucher;
+  // Nguồn dữ liệu đổ vào form: phiếu đang SỬA, hoặc phiếu gốc khi TẠO BẢN SAO.
+  // isEditing vẫn chỉ theo `voucher` → copy mode submit qua đường TẠO MỚI.
+  const populateSource = voucher ?? copyFrom ?? null;
   const createMutation = useCreateIncomeExpense();
   const updateMutation = useUpdateIncomeExpense();
   const { data: authUser } = useAuth();
@@ -224,13 +235,16 @@ const IncomeExpenseForm = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voucherType]);
 
-  // Populate form when editing or reset when adding
+  // Populate form when editing/copying or reset when adding
   useEffect(() => {
     if (!open) return;
 
-    if (voucher) {
-      setSelectedBuildingId(voucher.building_id);
-      setSelectedRoomId(voucher.room_id ?? undefined);
+    if (populateSource) {
+      // Chế độ SỬA (voucher) hoặc TẠO BẢN SAO (copyFrom): đổ toàn bộ dữ liệu
+      // phiếu nguồn vào form — bản sao giữ nguyên cả attachments (copy URL).
+      const src = populateSource;
+      setSelectedBuildingId(src.building_id);
+      setSelectedRoomId(src.room_id ?? undefined);
 
       // Kỳ áp dụng mặc định (chỉ dùng khi item cũ chưa có start/end) = tháng hiện tại.
       // KHÔNG ghi đè giá trị có sẵn của item — chỉ fallback khi null.
@@ -238,32 +252,32 @@ const IncomeExpenseForm = ({
       const defPeriodEnd = monthToEndDate(currentMonth());
 
       form.reset({
-        type: voucher.type,
-        name: voucher.name,
-        building_id: voucher.building_id,
-        room_id: voucher.room_id ?? null,
-        tenant_id: voucher.tenant_id ?? null,
-        contract_id: voucher.contract_id ?? null,
-        payer_name: voucher.payer_name ?? '',
-        receive_bank_account: voucher.receive_bank_account ?? '',
+        type: src.type,
+        name: src.name,
+        building_id: src.building_id,
+        room_id: src.room_id ?? null,
+        tenant_id: src.tenant_id ?? null,
+        contract_id: src.contract_id ?? null,
+        payer_name: src.payer_name ?? '',
+        receive_bank_account: src.receive_bank_account ?? '',
         // Bank cũ là text gõ tay ("VIETTINBANK") → chuẩn hoá về shortName
         // trong danh sách dropdown; không nhận diện được thì giữ nguyên.
         receive_bank_name: (() => {
-          const legacy = voucher.receive_bank_name ?? '';
+          const legacy = src.receive_bank_name ?? '';
           const code = matchRecipientBankCode(legacy);
           return code
             ? RECIPIENT_BANKS.find((b) => b.code === code)!.shortName
             : legacy;
         })(),
-        account_id: voucher.account_id ?? '',
-        voucher_date: voucher.voucher_date,
-        business_result_accounting: voucher.business_result_accounting ?? null,
-        repeat_cycle: (voucher.repeat_cycle as any) ?? 'NONE',
-        repeat_infinity: voucher.repeat_infinity ?? false,
-        repeat_count: voucher.repeat_count ?? 0,
-        repeat_auto_approve: (voucher as any).repeat_auto_approve ?? true,
-        attachments: voucher.attachments ?? [],
-        items: voucher.items.map((item) => ({
+        account_id: src.account_id ?? '',
+        voucher_date: src.voucher_date,
+        business_result_accounting: src.business_result_accounting ?? null,
+        repeat_cycle: (src.repeat_cycle as any) ?? 'NONE',
+        repeat_infinity: src.repeat_infinity ?? false,
+        repeat_count: src.repeat_count ?? 0,
+        repeat_auto_approve: (src as any).repeat_auto_approve ?? true,
+        attachments: src.attachments ?? [],
+        items: src.items.map((item) => ({
           income_expense_type_id: item.income_expense_type_id,
           description: item.description,
           quantity: item.quantity,
@@ -274,7 +288,7 @@ const IncomeExpenseForm = ({
       });
 
       setItemRows(
-        voucher.items.map((item) => ({
+        src.items.map((item) => ({
           income_expense_type_id: item.income_expense_type_id,
           type_name: item.type_name,
           description: item.description,
@@ -333,7 +347,8 @@ const IncomeExpenseForm = ({
       });
       setItemRows(prefillItemsRows);
     }
-  }, [voucher, open, defaultType, defaultPrefill, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [populateSource, open, defaultType, defaultPrefill, form]);
 
   // Cascade: when building changes → clear room, tenant, contract
   const handleBuildingChange = (buildingId: string) => {
@@ -379,7 +394,7 @@ const IncomeExpenseForm = ({
   // cọc (vụ PT2607014). HĐ active còn THIẾU cọc thì vẫn auto-gắn (thu bổ
   // sung cọc của chính khách đó).
   useEffect(() => {
-    if (voucher) return; // edit mode → giữ value cũ
+    if (voucher || copyFrom) return; // edit/copy mode → giữ value cũ/đã copy
     const activeContracts = roomContracts.filter(
       (c: any) => c.status === 'ACTIVE',
     );

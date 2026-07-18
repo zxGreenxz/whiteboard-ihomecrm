@@ -1,14 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
 
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
+// Canonical approve_income_expense_v1 (phiếu flow-owned) trước; phiếu legacy
+// nhận tín hiệu 'chưa thuộc luồng canonical' → dùng approve_voucher như cũ.
 export const useApproveVoucher = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
+      const canonical = await (supabase.rpc as any)("approve_income_expense_v1", {
+        p_voucher_id: id,
+      });
+      if (!canonical.error) return;
+      if (!isIeLifecycleFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể duyệt phiếu");
+        throw canonical.error;
+      }
+
       const { error } = await (supabase as any).rpc("approve_voucher", {
         voucher_id: id,
       });
@@ -40,7 +52,14 @@ export const useUnapproveVoucher = () => {
         voucher_id: id,
       });
       if (error) {
-        toast.error(error.message || "Không thể huỷ duyệt phiếu");
+        // Phiếu canonical bị đóng băng vòng đời (Phương án A): không quay về
+        // Nháp được — hướng dẫn Huỷ + Tạo bản sao thay vì lỗi kỹ thuật khó hiểu.
+        const frozen = (error.message ?? "").includes("frozen");
+        toast.error(
+          frozen
+            ? "Phiếu canonical không thể huỷ duyệt — hãy Huỷ phiếu rồi bấm Tạo bản sao"
+            : error.message || "Không thể huỷ duyệt phiếu",
+        );
         throw error;
       }
     },
@@ -63,6 +82,19 @@ export const useCancelIncomeExpense = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
+      // server-side, KHÔNG đụng payments (phiếu canonical không gắn payment).
+      // Phiếu legacy → tín hiệu fallback → giữ nguyên đường cũ bên dưới.
+      const canonical = await (supabase.rpc as any)("cancel_income_expense_v1", {
+        p_voucher_id: id,
+        p_reason: null,
+      });
+      if (!canonical.error) return;
+      if (!isIeLifecycleFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
+        throw canonical.error;
+      }
+
       const { data: voucher, error: fetchErr } = await supabase
         .from("income_expenses")
         .select("id, type, payment_id, approval_status")
@@ -132,7 +164,13 @@ export const useRestoreIncomeExpense = () => {
         p_id: id,
       });
       if (error) {
-        toast.error(error.message || "Không thể khôi phục phiếu");
+        // Phiếu canonical đã huỷ là terminal (Phương án A) → dùng Tạo bản sao.
+        const frozen = (error.message ?? "").includes("frozen");
+        toast.error(
+          frozen
+            ? "Phiếu canonical đã huỷ không khôi phục được — hãy bấm Tạo bản sao để lập phiếu mới"
+            : error.message || "Không thể khôi phục phiếu",
+        );
         throw error;
       }
     },
@@ -158,6 +196,17 @@ export const useVerifyIncomeExpense = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: { id: string; note: string | null }) => {
+      // Canonical verify (phiếu flow-owned, token-wrapped); legacy fallback.
+      const canonical = await (supabase.rpc as any)("verify_income_expense_v1", {
+        p_id: input.id,
+        p_note: input.note,
+      });
+      if (!canonical.error) return;
+      if (!isIeLifecycleFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể đánh dấu đã kiểm");
+        throw canonical.error;
+      }
+
       const { error } = await (supabase as any).rpc("verify_income_expense", {
         p_id: input.id,
         p_note: input.note,
