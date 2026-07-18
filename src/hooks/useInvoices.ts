@@ -1547,6 +1547,15 @@ export const useForceCancelInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
+      // v2 theo LUẬT OWNER (D3): KHÔNG xoá payment — chỉ huỷ được khi mọi phiếu
+      // thu đã huỷ/hoàn; còn phiếu thu → lỗi hướng dẫn. Fallback v1 (hard-delete)
+      // CHỈ khi v2 chưa deploy (PGRST202) — mọi lỗi khác nổi lên nguyên trạng.
+      const v2 = await (supabase.rpc as any)('super_admin_force_cancel_invoice_v2', {
+        p_invoice_id: invoiceId,
+      });
+      if (!v2.error) return;
+      if (v2.error.code !== 'PGRST202') throw v2.error;
+
       const { error } = await (supabase.rpc as any)('super_admin_force_cancel_invoice', {
         p_invoice_id: invoiceId,
       });
