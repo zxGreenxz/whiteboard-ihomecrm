@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import type {
   CreateProfitDistributionInput,
@@ -14,6 +15,23 @@ export const useCreateProfitDistribution = () => {
     mutationFn: async (input: CreateProfitDistributionInput) => {
       const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
+
+      // Canonical distribute_shareholder_profit_v1: server-side idempotency (vá
+      // double-submit) + qua engine duyệt (PENDING_APPROVAL). Flag OFF hiện tại →
+      // "chưa bật" → fallback legacy (tạo phiếu APPROVED-ngay như cũ, 0 đổi UX).
+      const canonical = await (supabase.rpc as any)("distribute_shareholder_profit_v1", {
+        p_shareholder_id: input.shareholder_id,
+        p_amount: input.amount,
+        p_account_id: input.account_id,
+        p_voucher_date: input.voucher_date,
+        p_note: input.note ?? null,
+        p_idempotency_key: `profit-dist-${crypto.randomUUID()}`,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể tạo phiếu chia lợi nhuận");
+        throw canonical.error;
+      }
 
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
@@ -130,6 +148,22 @@ export const useCreateManagerSalaryPayout = () => {
     mutationFn: async (input: CreateManagerSalaryPayoutInput) => {
       const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
+
+      // Canonical manager_salary_payout_v1 (quyền shareholder_profit.pay_manager,
+      // qua engine duyệt); flag OFF → "chưa bật" → fallback legacy.
+      const canonical = await (supabase.rpc as any)("manager_salary_payout_v1", {
+        p_manager_id: input.manager_id,
+        p_amount: input.amount,
+        p_account_id: input.account_id,
+        p_voucher_date: input.voucher_date,
+        p_note: input.note ?? null,
+        p_idempotency_key: `mgr-payout-${crypto.randomUUID()}`,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể tạo phiếu lương điều hành");
+        throw canonical.error;
+      }
 
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
