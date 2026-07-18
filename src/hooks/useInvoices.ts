@@ -7,6 +7,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
+import { isCanonicalFallbackSignal } from '@/lib/canonicalFallback';
 import { useToast } from '@/hooks/use-toast';
 import type { PaginatedData } from '@/hooks/usePagination';
 import type {
@@ -849,6 +850,12 @@ export const useDeleteInvoice = () => {
         throw new Error('Không thể xoá hoá đơn ở trạng thái này');
       }
 
+      const canonical = await (supabase.rpc as any)('soft_delete_invoice_v1', {
+        p_invoice_id: invoiceId,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       const { error } = await supabase
         .from('invoices')
         .update({ deleted_at: new Date().toISOString() } as any)
@@ -893,6 +900,12 @@ export const useBulkDeleteInvoices = () => {
 
       if (invoiceIds.length === 0) return;
 
+      const canonical = await (supabase.rpc as any)('bulk_soft_delete_invoices_v1', {
+        p_invoice_ids: invoiceIds,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       const { error } = await supabase
         .from('invoices')
         .update({ deleted_at: new Date().toISOString() } as any)
@@ -933,6 +946,14 @@ export const useApproveInvoice = () => {
     mutationFn: async (invoiceId: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
+
+      // Canonical approve_invoice_v1 (server-side state-guard + permission
+      // parity RLS); fallback legacy update khi writer chưa deploy/không quyền.
+      const canonical = await (supabase.rpc as any)('approve_invoice_v1', {
+        p_invoice_id: invoiceId,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data, error } = await supabase
         .from('invoices')
@@ -983,6 +1004,12 @@ export const useUnapproveInvoice = () => {
     mutationFn: async (invoiceId: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
+
+      const canonical = await (supabase.rpc as any)('unapprove_invoice_v1', {
+        p_invoice_id: invoiceId,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data, error } = await supabase
         .from('invoices')
@@ -1036,6 +1063,14 @@ export const useBulkApproveInvoices = () => {
 
       if (invoiceIds.length === 0) return;
 
+      // Canonical trả về SỐ LƯỢNG đã duyệt; legacy trả mảng row → chuẩn hoá
+      // cả hai thành mảng-tương-đương qua count ở onSuccess (xem dưới).
+      const canonical = await (supabase.rpc as any)('bulk_approve_invoices_v1', {
+        p_invoice_ids: invoiceIds,
+      });
+      if (!canonical.error) return { count: canonical.data as number };
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       const { data, error } = await supabase
         .from('invoices')
         .update({
@@ -1048,7 +1083,7 @@ export const useBulkApproveInvoices = () => {
         .select();
 
       if (error) throw error;
-      return data;
+      return { count: data?.length ?? 0 };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -1056,7 +1091,7 @@ export const useBulkApproveInvoices = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
 
-      const count = data?.length ?? 0;
+      const count = data?.count ?? 0;
       toast({
         title: 'Duyệt hàng loạt thành công',
         description: `Đã duyệt ${count} hoá đơn.`,
@@ -1176,6 +1211,11 @@ export const useCheckOverdueInvoices = () => {
     mutationFn: async (): Promise<number> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
+
+      // Canonical sweep server-side (phạm vi toà được phép), trả số lượng.
+      const canonical = await (supabase.rpc as any)('mark_overdue_invoices_v1', {});
+      if (!canonical.error) return (canonical.data as number) ?? 0;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const today = new Date().toISOString().split('T')[0];
 
@@ -1447,6 +1487,14 @@ export const useRestoreInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // 23505 (đã có HĐ khác cùng HĐ+kỳ) KHÔNG phải fallback signal — bong lên
+      // để onError hiển thị friendly như cũ.
+      const canonical = await (supabase.rpc as any)('restore_invoice_v1', {
+        p_invoice_id: invoiceId,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       const { data, error } = await supabase
         .from('invoices')
         .update({
@@ -1535,6 +1583,12 @@ export const useCancelInvoice = () => {
     mutationFn: async (invoiceId: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
+
+      const canonical = await (supabase.rpc as any)('cancel_invoice_v1', {
+        p_invoice_id: invoiceId,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       const { data, error } = await supabase
         .from('invoices')
