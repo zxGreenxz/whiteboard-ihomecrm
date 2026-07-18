@@ -595,6 +595,47 @@ export const useCreateInvoice = () => {
         + (invoiceFields.previous_debt || 0),
       );
 
+      // Canonical create_invoice_v1: server ATOMIC (hoá đơn + items + tiêu credit),
+      // tự sinh số hoá đơn (nguồn duy nhất), đối chiếu làm tròn, quyền invoices.create.
+      // Flag OFF → "chưa bật" → fallback legacy insert (giữ số client-gen bên dưới).
+      const canonical = await (supabase.rpc as any)('create_invoice_v1', {
+        p_contract_id: invoiceFields.contract_id,
+        p_building_id: invoiceFields.building_id,
+        p_room_id: invoiceFields.room_id ?? null,
+        p_billing_month: invoiceFields.billing_month,
+        p_issue_date: invoiceFields.issue_date,
+        p_due_date: invoiceFields.due_date,
+        p_kind: 'MONTHLY',
+        p_subtotal: subtotal,
+        p_discount_amount: invoiceFields.discount_amount || 0,
+        p_total_amount: total_amount,
+        p_previous_debt: invoiceFields.previous_debt || 0,
+        p_items: items.map((item) => ({
+          service_id: item.service_id || null,
+          type: item.type,
+          description: item.description,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          coefficient: item.coefficient,
+          amount: item.unit_price * item.quantity * item.coefficient,
+          previous_reading: item.previous_reading ?? null,
+          current_reading: item.current_reading ?? null,
+          from_date: item.from_date || null,
+          to_date: item.to_date || null,
+          sort_order: item.sort_order,
+        })),
+        p_idempotency_key: `inv-create-${crypto.randomUUID()}`,
+        p_prepaid_amount: invoiceFields.prepaid_amount || 0,
+        p_discount_notes: invoiceFields.discount_notes || null,
+        p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
+        p_previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
+        p_template_id: invoiceFields.template_id || null,
+        p_notes: invoiceFields.notes || null,
+        p_applied_credit: invoiceFields.applied_credit ?? 0,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       // Generate invoice number
       const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
       const invoice_number = await generateInvoiceNumber(user.id);
@@ -743,6 +784,44 @@ export const useUpdateInvoice = () => {
         - (invoiceFields.discount_amount || 0)
         + (invoiceFields.previous_debt || 0),
       );
+
+      // Canonical update_invoice_v1: guard server (DRAFT|APPROVED, paid=0) + replace
+      // items atomic; fallback legacy khi chưa deploy/coexistence.
+      const canonical = await (supabase.rpc as any)('update_invoice_v1', {
+        p_invoice_id: id,
+        p_contract_id: invoiceFields.contract_id,
+        p_building_id: invoiceFields.building_id,
+        p_room_id: invoiceFields.room_id ?? null,
+        p_billing_month: invoiceFields.billing_month,
+        p_issue_date: invoiceFields.issue_date,
+        p_due_date: invoiceFields.due_date,
+        p_subtotal: subtotal,
+        p_discount_amount: invoiceFields.discount_amount || 0,
+        p_total_amount: total_amount,
+        p_previous_debt: invoiceFields.previous_debt || 0,
+        p_items: items.map((item) => ({
+          service_id: item.service_id || null,
+          type: item.type,
+          description: item.description,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          coefficient: item.coefficient,
+          amount: item.unit_price * item.quantity * item.coefficient,
+          previous_reading: item.previous_reading ?? null,
+          current_reading: item.current_reading ?? null,
+          from_date: item.from_date || null,
+          to_date: item.to_date || null,
+          sort_order: item.sort_order,
+        })),
+        p_prepaid_amount: invoiceFields.prepaid_amount || 0,
+        p_discount_notes: invoiceFields.discount_notes || null,
+        p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
+        p_previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
+        p_template_id: invoiceFields.template_id || null,
+        p_notes: invoiceFields.notes || null,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       // Update invoice
       const { data: invoice, error: updateError } = await supabase
