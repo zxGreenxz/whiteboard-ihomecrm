@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { useBuildings } from "@/hooks/useBuildings";
 import { monthDateRange } from "@/components/shareholders/shareholderUtils";
@@ -348,6 +349,58 @@ async function writeLockedMonth(
   // 0) Lương điều hành: khoản trừ mỗi nhà TRƯỚC khi chia cổ đông + chi tiết theo quản lý.
   const mgmt = await computeMonthManagementSalaries(rows);
 
+  // 0b) Tỷ lệ cổ đông (đọc TRƯỚC để dựng payload canonical; legacy tái dùng).
+  const buildingIdsAll = rows.map((r) => r.building_id);
+  const { data: sharesPre, error: shPreErr } = await (supabase
+    .from("building_shareholders")
+    .select("building_id, shareholder_id, percent") as any)
+    .in("building_id", buildingIdsAll);
+  if (shPreErr) throw shPreErr;
+  const { data: activeShPre, error: aShPreErr } = await (supabase
+    .from("shareholders")
+    .select("id") as any)
+    .is("deleted_at", null);
+  if (aShPreErr) throw aShPreErr;
+  const activeShIdsPre = new Set(((activeShPre || []) as any[]).map((s) => s.id));
+
+  // 0c) Canonical lock_profit_month_v1: server ghi ATOMIC + stamp organization_id
+  // (vá bug khoá-tháng-mới thiếu org). Client vẫn là nơi TÍNH (parity giữ nguyên);
+  // fallback legacy đúng tín hiệu chung khi writer chưa có/không quyền.
+  const canonicalRows = rows.map((r) => {
+    const salary = mgmt.perBuilding.get(r.building_id) ?? 0;
+    const distributable = r.adjusted_profit - salary;
+    const allocations = ((sharesPre || []) as any[])
+      .filter((s) => s.building_id === r.building_id && activeShIdsPre.has(s.shareholder_id))
+      .map((s) => ({
+        shareholder_id: s.shareholder_id,
+        percent: Number(s.percent) || 0,
+        amount: Math.round((distributable * (Number(s.percent) || 0)) / 100),
+      }));
+    const manager_allocations = mgmt.perManager
+      .filter((e) => e.building_id === r.building_id && e.amount)
+      .map((e) => ({ manager_id: e.manager_id, amount: e.amount }));
+    return {
+      building_id: r.building_id,
+      computed_profit: r.computed_profit,
+      adjusted_profit: r.adjusted_profit,
+      management_salary: salary,
+      allocations,
+      manager_allocations,
+    };
+  });
+  const canonical = await (supabase.rpc as any)("lock_profit_month_v1", {
+    p_period_month: period_month,
+    p_rows: canonicalRows,
+  });
+  if (!canonical.error) {
+    const c = canonical.data as any;
+    return { locked: c?.locked ?? rows.length, allocations: c?.allocations ?? 0 };
+  }
+  if (!isCanonicalFallbackSignal(canonical.error)) {
+    toast.error(canonical.error.message || "Không thể chốt lợi nhuận");
+    throw canonical.error;
+  }
+
   // 1) Upsert profit_monthly (LOCKED) cho từng nhà (kèm management_salary)
   const pmPayload = rows.map((r) => ({
     user_id: uid,
@@ -373,21 +426,11 @@ async function writeLockedMonth(
   const buildingIds = pm.map((r) => r.building_id);
   const pmIds = pm.map((r) => r.id);
 
-  // 2) Lấy tỷ lệ cổ đông của các nhà này — CHỈ cổ đông còn hiệu lực.
-  // building_shareholders KHÔNG bị xoá khi cổ đông soft-delete → phải lọc theo
-  // shareholders.deleted_at, nếu không sẽ tạo phân bổ "ma" cho cổ đông đã xoá
-  // (vd "Green") làm tổng được chia phồng so với danh sách cổ đông hiển thị.
-  const { data: shares, error: shErr } = await (supabase
-    .from("building_shareholders")
-    .select("building_id, shareholder_id, percent") as any)
-    .in("building_id", buildingIds);
-  if (shErr) throw shErr;
-  const { data: activeSh, error: aShErr } = await (supabase
-    .from("shareholders")
-    .select("id") as any)
-    .is("deleted_at", null);
-  if (aShErr) throw aShErr;
-  const activeShIds = new Set(((activeSh || []) as any[]).map((s) => s.id));
+  // 2) Tỷ lệ cổ đông: tái dùng dữ liệu đã đọc ở 0b (lọc cổ đông còn hiệu lực —
+  // building_shareholders không bị xoá khi cổ đông soft-delete).
+  const shares = sharesPre;
+  const activeShIds = activeShIdsPre;
+  void buildingIds;
 
   // 3) Xoá allocations cũ (cổ đông + lương điều hành) rồi insert lại (snapshot)
   if (pmIds.length > 0) {
@@ -555,6 +598,22 @@ export const useUnlockProfitMonth = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (profitMonthlyId: string) => {
+      // Canonical: tra (building, period) từ id rồi gọi unlock_profit_month_v1
+      // (atomic + giữ organization_id); fallback legacy 3 bước như cũ.
+      const { data: pmRow } = await (supabase
+        .from("profit_monthly")
+        .select("building_id, period_month") as any)
+        .eq("id", profitMonthlyId)
+        .maybeSingle();
+      if (pmRow?.building_id && pmRow?.period_month) {
+        const canonical = await (supabase.rpc as any)("unlock_profit_month_v1", {
+          p_period_month: String(pmRow.period_month).slice(0, 10),
+          p_building_ids: [pmRow.building_id],
+        });
+        if (!canonical.error) return;
+        if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+      }
+
       const { error: delErr } = await (supabase
         .from("profit_allocations")
         .delete() as any)
