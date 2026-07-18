@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import {
   type SalManager,
@@ -640,6 +641,41 @@ export const useLockSalaryMonth = () => {
       if (!user) throw new Error("Chưa đăng nhập");
       const nowIso = new Date().toISOString();
 
+      // Canonical lock_salary_month_v1: server ATOMIC + 2 guard (D2b) — chặn khi
+      // lợi nhuận tháng chưa chốt (phần đầu tư), và liệt kê phiếu HH thiếu sổ quỹ.
+      // Duyệt HH qua writer chuẩn (không raw UPDATE). Flag OFF → fallback legacy.
+      const canonicalManagers = managers.map((m) => {
+        const c = m.calc || salCalc(m);
+        const contractBonus = m.bonusAuto.filter((b) => b.icon === "FileClock").reduce((s, b) => s + b.amount, 0);
+        return {
+          staff_id: m.id,
+          base_salary: m.base,
+          work_bonus: c.autoSum - contractBonus,
+          contract_bonus: contractBonus,
+          commission_total: m.commission,
+          investment_profit: m.investment,
+          adjustments_total: c.adjSum,
+          advances_total: m.advance,
+          room_rent: m.roomRent,
+          gross_total: c.gross,
+          take_home: c.takehome,
+          paid: m.paid,
+          commission_voucher_ids: (m.commissionItems || [])
+            .map((x) => x.voucherId).filter(Boolean),
+          ledger: m.ledger,
+        };
+      });
+      const canonical = await (supabase.rpc as any)("lock_salary_month_v1", {
+        p_period_month: periodMonth,
+        p_managers: canonicalManagers,
+        p_idempotency_key: `sal-lock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể chốt lương");
+        throw canonical.error;
+      }
+
       // Chốt lương → DUYỆT (đã thanh toán) luôn các phiếu hoa hồng CHƯA DUYỆT đang
       // tính vào HH Sale (commissionItems mang voucherId của phiếu nháp).
       const commVoucherIds = Array.from(new Set(
@@ -726,6 +762,15 @@ export const useUnlockSalaryMonth = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => {
+      // Canonical unlock (atomic + giữ organization_id); fallback legacy.
+      const canonical = await (supabase.rpc as any)("unlock_salary_month_v1", {
+        p_period_month: periodMonth,
+        p_staff_ids: staffIds,
+        p_idempotency_key: `sal-unlock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
+      });
+      if (!canonical.error) return;
+      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
+
       const { data: rows } = await (supabase
         .from("salary_monthly")
         .select("id") as any)
