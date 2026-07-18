@@ -24,6 +24,21 @@ Verified trực tiếp prod + đọc code. Trạng thái: **SURVEY xong, chưa b
 Lưu ý: bảng `cash_book` (bảng cũ) ≠ `accounts` — writer termination phải làm rõ nguồn
 chuẩn ghi tiền hoàn/thu thanh lý (đối chiếu với luồng thu chi hiện đại trước khi build).
 
+## ⚠️ BẰNG CHỨNG MỚI (cùng ngày, verified prod): luồng duyệt thanh lý CÓ HOÀN TIỀN đang HỎNG THẬT
+
+`public.cash_book` **không tồn tại trên prod** (đã bị drop/thay thế), trong khi
+`useApproveTermination` bước 4 insert vào đó khi `refund_amount ≠ 0`. Hệ quả mỗi
+lần duyệt thanh lý có hoàn/thu thêm: bước 1-3 ĐÃ commit (terminations
+APPROVED→COMPLETED, contracts TERMINATED) rồi throw ở bước 4 → **phòng kẹt
+OCCUPIED, không có bút toán tiền hoàn cọc**. Chỉ đường refund_amount=0 chạy trọn.
+⇒ Writer `approve_contract_termination_v1` không chỉ là hardening mà là **bug-fix
+sản xuất**: ghi tiền qua luồng hiện đại (phiếu income_expenses loại "Hoàn cọc
+thanh lý"/"Thu thanh lý (khách trả thêm)" — type đã tồn tại) thay cash_book chết,
+atomic cả 5 bước + trả phòng AVAILABLE.
+
+RLS contract_terminations UPDATE: permissive `update_rbac` + super_admin_all,
+restrictive org_boundary (mirror như invoice). Cột có đủ organization_id.
+
 ## Thứ tự đề xuất nhịp build contract
 
 1. `approve_contract_termination_v1` + `reject_contract_termination_v1` (atomic, permission parity, giữ nguyên side-effect thứ tự hiện tại).
