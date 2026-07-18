@@ -194,7 +194,14 @@ export const useUpdateIncomeExpense = () => {
         .single();
 
       if (voucherError) {
-        toast.error(voucherError.message || "Không thể cập nhật phiếu thu/chi");
+        // Phiếu canonical (Phương án A) bất biến sau khi tạo — freeze trigger
+        // trả 55000 'frozen'. Hướng dẫn đường đúng thay vì lỗi kỹ thuật.
+        const frozen = (voucherError.message ?? "").includes("frozen");
+        toast.error(
+          frozen
+            ? "Phiếu canonical không sửa được — hãy Huỷ phiếu rồi bấm Tạo bản sao"
+            : voucherError.message || "Không thể cập nhật phiếu thu/chi",
+        );
         throw voucherError;
       }
 
