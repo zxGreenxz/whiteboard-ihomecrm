@@ -1,5 +1,8 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from "@/components/layout/MainLayout";
+import { supabase } from '@/integrations/supabase/client';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt, MapPin } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -311,6 +314,91 @@ function SettingsTabContent({ title, description, items, settings, onSettingChan
 }
 
 // =============================================
+// Ngưỡng tự duyệt phiếu CHI (t5_23 — org-wide, chỉ Chủ sở hữu đổi được)
+// Nguồn sự thật: app_private.ie_auto_approve_config qua RPC get/set.
+// Bỏ trống = tự duyệt mọi phiếu chi thường; đặt số = chi >= ngưỡng sinh ở NHÁP.
+// =============================================
+
+function IeAutoApproveThresholdCard() {
+  const qc = useQueryClient();
+  const { data: threshold, isLoading } = useQuery({
+    queryKey: ['ie-auto-approve-threshold'],
+    queryFn: async (): Promise<number | null> => {
+      const { data, error } = await (supabase as any).rpc('get_ie_auto_approve_threshold_v1');
+      if (error) throw new Error(error.message);
+      return data === null || data === undefined ? null : Number(data);
+    },
+  });
+  const [value, setValue] = useState<number>(0);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setValue(threshold ?? 0);
+  }, [threshold]);
+
+  const save = async (v: number | null) => {
+    setSaving(true);
+    try {
+      const { error } = await (supabase as any).rpc('set_ie_auto_approve_threshold_v1', {
+        p_threshold: v,
+      });
+      if (error) throw new Error(error.message);
+      qc.invalidateQueries({ queryKey: ['ie-auto-approve-threshold'] });
+      toast.success(
+        v === null
+          ? 'Đã bỏ ngưỡng — mọi phiếu chi thường tự duyệt khi tạo'
+          : `Đã đặt ngưỡng ${v.toLocaleString('vi-VN')}đ — phiếu chi từ mức này sinh ở NHÁP chờ duyệt`,
+      );
+    } catch (e) {
+      toast.error((e as Error).message || 'Không lưu được ngưỡng');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Ngưỡng tự duyệt phiếu chi</CardTitle>
+        <CardDescription>
+          Phiếu CHI thường DƯỚI ngưỡng tự duyệt ngay khi tạo; từ ngưỡng trở lên sinh ở
+          trạng thái Nháp chờ duyệt. Hạng mục đặc biệt (hoàn cọc, thanh lý, lương, lợi
+          nhuận, hoa hồng, thưởng…) luôn phải duyệt bất kể số tiền. Phiếu thu không áp
+          ngưỡng. Chỉ Chủ sở hữu tổ chức thay đổi được.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-3">
+          <CurrencyInput value={value} onChange={(v: number) => setValue(v)} />
+          <span className="text-sm text-muted-foreground">đ</span>
+          <Button
+            size="sm"
+            disabled={saving || isLoading || !value || value <= 0}
+            onClick={() => save(value)}
+          >
+            Lưu ngưỡng
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={saving || isLoading || threshold == null}
+            onClick={() => save(null)}
+          >
+            Bỏ ngưỡng (tự duyệt tất cả)
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {isLoading
+            ? 'Đang tải…'
+            : threshold == null
+              ? 'Hiện chưa đặt ngưỡng — mọi phiếu chi thường đang tự duyệt.'
+              : `Ngưỡng hiện tại: ${Number(threshold).toLocaleString('vi-VN')}đ.`}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =============================================
 // Main Page Component
 // =============================================
 
@@ -523,13 +611,16 @@ const GeneralSettingsPage = () => {
 
           {/* Tab: Thu chi */}
           <TabsContent value="payment">
-            <SettingsTabContent
-              title="Cấu hình thu chi"
-              description="Các tùy chọn liên quan đến quản lý thu chi"
-              items={PAYMENT_SETTINGS}
-              settings={settings}
-              onSettingChange={handleSettingChange}
-            />
+            <div className="space-y-4">
+              <SettingsTabContent
+                title="Cấu hình thu chi"
+                description="Các tùy chọn liên quan đến quản lý thu chi"
+                items={PAYMENT_SETTINGS}
+                settings={settings}
+                onSettingChange={handleSettingChange}
+              />
+              <IeAutoApproveThresholdCard />
+            </div>
           </TabsContent>
 
           {/* Tab: Thông báo */}

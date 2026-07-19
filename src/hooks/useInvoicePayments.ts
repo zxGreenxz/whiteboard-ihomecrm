@@ -376,7 +376,9 @@ export const useRecordRefundRPC = () => {
           voucher_date: data.payment_date,
           total_amount: data.amount,
           attachments: [],
-          approval_status: 'APPROVED',
+          // t5_24: hoàn trả khách thuộc nhóm "hoàn" BẮT BUỘC DUYỆT (phương án
+          // org) → sinh ở NHÁP; recompute chỉ tính refund khi phiếu APPROVED.
+          approval_status: 'UNAPPROVED',
           creator_name: creatorName,
           notes: voucherNotes,
         } as any)
@@ -410,8 +412,9 @@ export const useRecordRefundRPC = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-payments-summary'] });
 
       toast({
-        title: 'Hoàn trả đã được ghi nhận',
-        description: 'Phiếu chi đã được lập trong Thu chi.',
+        title: 'Đã lập phiếu hoàn trả (chờ duyệt)',
+        description:
+          'Phiếu chi hoàn trả đang ở trạng thái Nháp trong Thu chi — cần duyệt trước khi tính vào sổ.',
       });
     },
     onError: (error: Error) => {

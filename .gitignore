@@ -52,3 +52,5 @@ draft/
 
 # E2E parallel browser fleet (test tooling, @playwright/test cài --no-save)
 .e2e-fleet/
+supabase/.temp/
+test-results/

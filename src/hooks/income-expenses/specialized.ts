@@ -92,6 +92,9 @@ export const useCreateProfitDistribution = () => {
           creator_name: creatorName,
           type: "EXPENSE",
           name,
+          // t5_24: chia lợi nhuận = hạng mục đặc biệt → fallback legacy cũng
+          // phải sinh NHÁP chờ duyệt (DB default là APPROVED nên set tường minh).
+          approval_status: "UNAPPROVED",
           building_id: (chung as any).id,
           account_id: input.account_id,
           shareholder_id: input.shareholder_id,
@@ -224,6 +227,9 @@ export const useCreateManagerSalaryPayout = () => {
           creator_name: creatorName,
           type: "EXPENSE",
           name,
+          // t5_24: lương điều hành = hạng mục đặc biệt → fallback legacy cũng
+          // phải sinh NHÁP chờ duyệt (DB default là APPROVED nên set tường minh).
+          approval_status: "UNAPPROVED",
           building_id: (chung as any).id,
           account_id: input.account_id,
           profit_manager_id: input.manager_id,
