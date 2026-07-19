@@ -820,6 +820,28 @@ export const useSalaryPayout = () => {
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string = meta.full_name || meta.name || user.email || "Người dùng";
 
+      // Canonical salary_payout_v1 (t5_12): ATOMIC toàn chuỗi — phiếu chi (tách
+      // 2 dòng khi gạch nợ) + payment CT + phiếu thu đối ứng + stamp payout_voucher,
+      // đi qua ENGINE DUYỆT (state PENDING_APPROVAL — người duyệt ký mới thành chi
+      // thật; trigger a70 tự gạch paid khi duyệt). Server tự clamp tiền phòng theo
+      // nợ còn lại. Flag OFF → "chưa bật" → fallback legacy cascade bên dưới.
+      const canonical = await (supabase.rpc as any)("salary_payout_v1", {
+        p_staff_id: input.staffId,
+        p_period_month: input.periodMonth,
+        p_take_home: input.amount,
+        p_account_id: input.account_id,
+        p_voucher_date: input.voucher_date,
+        p_note: input.note ?? null,
+        p_idempotency_key: `sal-pay-${input.staffId.slice(0, 8)}-${input.periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
+        p_rent_invoice_id: input.rentInvoice?.invoiceId ?? null,
+        p_rent_amount: input.rentInvoice ? num(input.rentInvoice.amount) : null,
+      });
+      if (!canonical.error) return canonical.data;
+      if (!isCanonicalFallbackSignal(canonical.error)) {
+        toast.error(canonical.error.message || "Không thể chi lương");
+        throw canonical.error;
+      }
+
       // --- Tiền phòng gạch nợ: đọc lại hoá đơn (remaining tươi) để chốt số thu ---
       let rentCollect = 0;
       let rentInv: any = null;

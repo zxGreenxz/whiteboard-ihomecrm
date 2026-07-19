@@ -52,28 +52,33 @@ begin
              new.total_amount, 0)
       into v_take_home;
 
-    -- Kỳ lương: bản ghi salary_monthly của staff đúng tháng voucher_date, else gần nhất ≤.
-    select id, period_month into v_sm_id, v_period
-      from public.salary_monthly
-     where staff_id = new.salary_staff_id
-       and period_month <= date_trunc('month', new.voucher_date)::date
-     order by period_month desc
-     limit 1;
+    -- KỲ LƯƠNG — nguồn đúng là DẤU payout_voucher_id do writer đóng lúc submit
+    -- (chi-trước lương tháng sau: voucher_date KHÔNG suy ra được kỳ — bug bắt được
+    -- test B2 2026-07-19: phiếu kỳ 08 trả ngày 19/07 bị gạch nhầm kỳ 06).
+    -- Fallback heuristic theo voucher_date CHỈ cho phiếu legacy (không có dấu).
+    select id into v_sm_id from public.salary_monthly
+     where payout_voucher_id = new.id limit 1;
+    if v_sm_id is null then
+      select id into v_sm_id
+        from public.salary_monthly
+       where staff_id = new.salary_staff_id
+         and period_month <= date_trunc('month', new.voucher_date)::date
+       order by period_month desc
+       limit 1;
+    end if;
 
     if v_sm_id is not null then
-      -- Idempotent: đã gạch cho chính phiếu này → thôi.
-      if not exists (select 1 from public.salary_monthly
-                      where id = v_sm_id and payout_voucher_id = new.id) then
-        update public.salary_monthly
-           set paid = coalesce(paid,0) + coalesce(v_take_home,0),
-               payout_voucher_id = coalesce(payout_voucher_id, new.id)
-         where id = v_sm_id;
-      end if;
+      -- Chuyển-trạng-thái thuần: mỗi lần VÀO APPROVED cộng đúng 1 lần (WHEN đã
+      -- chặn APPROVED→APPROVED). Stamp chỉ bổ sung khi trống (phiếu legacy).
+      update public.salary_monthly
+         set paid = coalesce(paid,0) + coalesce(v_take_home,0),
+             payout_voucher_id = coalesce(payout_voucher_id, new.id)
+       where id = v_sm_id;
     end if;
     return new;
   end if;
 
-  -- ── Rời APPROVED (bỏ duyệt / huỷ) mà phiếu này đang là payout ────────
+  -- ── Rời APPROVED (bỏ duyệt / huỷ): trừ lại — đối xứng với nhánh cộng ──
   if coalesce(old.approval_status,'') = 'APPROVED'
      and new.approval_status is distinct from 'APPROVED' then
     select coalesce(
@@ -82,10 +87,24 @@ begin
                  and it.description = 'Tiền thực nhận'),
              new.total_amount, 0)
       into v_take_home;
-    update public.salary_monthly
-       set paid = greatest(coalesce(paid,0) - coalesce(v_take_home,0), 0),
-           payout_voucher_id = null
-     where payout_voucher_id = new.id;
+    -- Trừ trên CÙNG row nhánh cộng đã chọn: ưu tiên DẤU, fallback heuristic.
+    -- KHÔNG xoá dấu (writer sở hữu linkage; trigger chỉ mirror tiền) — nhờ đó
+    -- duyệt lại sau khi bỏ duyệt vẫn tìm đúng kỳ.
+    select id into v_sm_id from public.salary_monthly
+     where payout_voucher_id = new.id limit 1;
+    if v_sm_id is null then
+      select id into v_sm_id
+        from public.salary_monthly
+       where staff_id = new.salary_staff_id
+         and period_month <= date_trunc('month', new.voucher_date)::date
+       order by period_month desc
+       limit 1;
+    end if;
+    if v_sm_id is not null then
+      update public.salary_monthly
+         set paid = greatest(coalesce(paid,0) - coalesce(v_take_home,0), 0)
+       where id = v_sm_id;
+    end if;
     return new;
   end if;
 
