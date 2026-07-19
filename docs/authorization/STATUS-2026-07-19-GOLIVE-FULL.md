@@ -68,6 +68,34 @@ Tiền org thật bất biến `3.891.819.563` sau toàn bộ test.
   khoá sổ": tính chênh + set lock_date); canonical chỉ ghi phiếu chênh theo
   delta. Chuyển UI cần tách/ghép op — để T7.
 
+## Đợt 3 (tối) — hotfix AUTO-DUYỆT phiếu thu/chi (t5_21 + t5_22)
+
+Owner báo: "đã chốt phương án tất cả phiếu thu chi đều TỰ ĐỘNG DUYỆT trừ hạng
+mục chi đặc biệt đã liệt kê, mà tạo phiếu chi bất kỳ thì không auto duyệt".
+
+**Chẩn đoán (xác nhận bằng bằng chứng):**
+- Phương án nằm sẵn trong hệ: cột `income_expenses.approval_status` DEFAULT
+  `'APPROVED'` (legacy sinh phiếu = duyệt luôn); comment `recurring.ts` "phiếu
+  mặc định APPROVED khi tạo"; luật engine P200 "Bắt buộc duyệt
+  (HH/thưởng/hoàn/lương/LN)" là danh sách đặc biệt.
+- Thủ phạm 1: `create_income_expense_v1` hard-code `'UNAPPROVED', NULL, NULL`
+  → mọi phiếu canonical thành nháp chờ duyệt tay (regression UX so với phương án).
+- Thủ phạm 2 (lộ ra khi vá 1): `app_private.claim_canonical_income_expense_draft_v1`
+  (2 overload) đòi `UNAPPROVED` tuyệt đối lúc claim flow-ownership → 23514.
+
+**Vá (đã apply prod, sinh từ pg_get_functiondef bản sống — đúng chỗ, không đổi gì khác):**
+- `t5_21_ie_auto_approve.sql`: INSERT → `'APPROVED', v_actor, now()`; audit
+  event status APPROVED + reason "TỰ DUYỆT".
+- `t5_22_claim_accept_self_approved.sql`: claim chấp nhận thêm đúng 1 hình dạng
+  "APPROVED + approved_by = maker" (self-approved-at-birth); mọi trạng thái đi
+  xa hơn (request/posting/reversed/system_source) vẫn từ chối.
+
+**Test sống:** demo ketoan chi 15k → born-APPROVED (PC2607002), freeze vẫn chặn
+sửa raw (55000 frozen), cancel từ APPROVED OK (204); real owner thu 1000đ →
+born-APPROVED (PT2607020) → cancel 204. Danh sách đặc biệt không ảnh hưởng
+(cọc/HH/thưởng vẫn 0A000 → flow riêng; lương/LN qua engine PENDING_APPROVAL;
+hoàn tác qua thu_tien.undo). Tiền real bất biến `3.891.819.563`.
+
 ## Punch-list sau go-live
 
 1. Contract-create parity (writer 10-arg → full form) rồi wire `useCreateContract`.
