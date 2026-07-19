@@ -121,13 +121,22 @@ begin
   if p_rent_amount is not null and round(p_rent_amount,2) <> p_rent_amount then
     raise exception 'Tiền phòng khấu trừ không hợp lệ'; end if;
 
-  -- org from the virtual "chung" building (salary vouchers are org-level).
-  select b.id, b.organization_id into v_building, v_org
+  -- R3-FIX (đồng bộ t5_11): org SUBJECT-DERIVED từ nhân viên nhận lương —
+  -- KHÔNG global-scan toà ảo (đa tenant sẽ trỏ nhầm org). Toà ảo lấy TRONG org đó.
+  select organization_id into v_org from public.manager_salary_config
+   where staff_id = p_staff_id and organization_id is not null
+   order by is_active desc, created_at desc limit 1;
+  if v_org is null then
+    select organization_id into v_org from public.organization_memberships
+     where user_id = p_staff_id and status='ACTIVE' limit 1;
+  end if;
+  if v_org is null then raise exception 'Không xác định được tổ chức của nhân viên' using errcode='42501'; end if;
+  select b.id into v_building
     from public.buildings b
     join public.organizations o on o.id=b.organization_id and o.status='ACTIVE'
-   where b.is_virtual=true and b.deleted_at is null and b.organization_id is not null
+   where b.organization_id = v_org and b.is_virtual=true and b.deleted_at is null
    order by b.created_at limit 1 for share of o,b;
-  if v_org is null then raise exception 'Thiếu toà chung cho tổ chức' using errcode='55000'; end if;
+  if v_building is null then raise exception 'Tổ chức chưa có toà ảo (Chung) để hạch toán phiếu lương' using errcode='55000'; end if;
 
   -- exact permission salary.distribute; require actor membership.
   perform app_private.lock_org_for_decision_v1(v_org);
