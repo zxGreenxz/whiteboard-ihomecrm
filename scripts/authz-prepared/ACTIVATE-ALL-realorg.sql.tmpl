@@ -1,0 +1,33 @@
+-- ACTIVATE-ALL-realorg — BẬT TOÀN BỘ canonical cho ORG THẬT (một lần, theo chỉ đạo owner)
+-- ⚠️ TEMPLATE: {{SHA}} {{MIG}} thay lúc chạy. CHỈ chạy SAU khi preflight-30 xanh +
+--    a04-perm-final xác nhận không ai bị chặn (vá gap trước nếu có).
+-- Mỗi flag: enroll org thật vào canary_orgs + CAS sang CANARY cửa sổ 30 ngày, cap rộng.
+-- (Dùng CANARY-org-scoped thay ON toàn cục để org khác/tương lai không bị kéo theo.)
+
+begin;
+
+-- 1) Enroll org thật vào MỌI flag canonical
+insert into app_private.server_feature_flag_canary_orgs (feature_key, organization_id, added_by)
+select f.feature_key, 'aaaa0000-0000-4000-8000-000000000001', null
+  from (values
+    ('income_expense.create_draft.v1'),
+    ('invoice.create.v1'),
+    ('salary.lock.v1'), ('salary.unlock.v1'), ('salary.payout.v1'),
+    ('shareholder_profit.distribute.v1'), ('shareholder_profit.pay_manager.v1'),
+    ('cashbook.create.v1'), ('cashbook.archive.v1'),
+    ('cashbook.lock_period.v1'), ('cashbook.opening_adjust.v1')
+  ) f(feature_key)
+on conflict do nothing;
+
+commit;
+
+-- 2) CAS từng flag → CANARY (chạy từng dòng; config_version đọc động).
+--    invoice.record_payment.v1 đã ON (giữ nguyên). income_expense.create_draft.v1
+--    đã CANARY real (giữ). Các flag còn lại bật mới.
+-- Lặp mẫu (thay <KEY>):
+--   select app_private.set_feature_route_v1('<KEY>',
+--     (select config_version from app_private.server_feature_flags where feature_key='<KEY>'),
+--     'CANARY', now(), now()+interval '30 days',
+--     100000, 5000000000, 50000000000,
+--     '{{SHA}}','{{MIG}}','MW-FULL-GOLIVE','OWNER-GOLIVE-ONESHOT', null,
+--     'Go-live toàn bộ real org theo chỉ đạo owner');

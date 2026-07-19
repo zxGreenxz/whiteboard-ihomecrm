@@ -49,3 +49,6 @@ dataexcel/
 
 # Draft — file dư thừa gom lại để review trước khi xoá (KHÔNG commit)
 draft/
+
+# E2E parallel browser fleet (test tooling, @playwright/test cài --no-save)
+.e2e-fleet/
