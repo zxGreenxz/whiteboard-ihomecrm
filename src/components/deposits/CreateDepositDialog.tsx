@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { tryPlaceRoomHold } from "@/lib/reservationHold";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
 import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
@@ -125,6 +126,10 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       if (!room) throw new Error("Không tìm thấy căn hộ");
       const buildingId = (room as any).building_id ?? room.building?.id;
       if (!buildingId) throw new Error("Căn hộ chưa gắn toà nhà");
+
+      // Khoá giữ-phòng 24h (canonical deposit.hold.v1): chặn 2 nhân viên thu
+      // cọc đè cùng phòng; throw nếu người khác đang giữ, cho qua nếu writer tắt.
+      await tryPlaceRoomHold(data.room_id, data.amount);
 
       // Khách hàng (tuỳ chọn): tạo mới hoặc chọn sẵn → payer_name + tenant_id.
       let tenantId: string | null = data.tenant_id || null;

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
 import { useAccounts } from "@/hooks/useAccounts";
 import { getSessionUser } from "@/lib/authSession";
+import { tryPlaceRoomHold } from "@/lib/reservationHold";
 import { Icon } from "./icons";
 import { fmtPrice, type Room } from "./sampleData";
 import { useTrack } from "./useTracking";
@@ -108,6 +109,10 @@ export function QuickDepositModal({
       // Số tiền: để trống / không hợp lệ → 1đ (giữ chỗ).
       const parsed = Number(digitsOnly(amount));
       const unitPrice = parsed > 0 ? parsed : 1;
+
+      // Khoá giữ-phòng 24h (canonical deposit.hold.v1): chặn 2 nhân viên thu
+      // cọc đè cùng phòng; throw nếu người khác đang giữ, cho qua nếu writer tắt.
+      await tryPlaceRoomHold(room.id, unitPrice);
 
       // RPC: hạng mục "Tiền cọc" (is_deposit=TRUE) + sổ "CỌC (giữ hộ khách)".
       const rpc = (supabase as unknown as {

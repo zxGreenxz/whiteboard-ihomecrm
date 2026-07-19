@@ -1,6 +1,11 @@
 // =============================================
 // useDeletePayment
-// Xóa 1 phiếu thanh toán (payments row) cùng với phiếu Thu/Chi
+// T5_20: mặc định đi CANONICAL reverse_invoice_payment_v3 — "xoá" = HOÀN TÁC
+// (bút toán đối ứng, giữ nguyên payment + voucher gốc, paid_amount tự trừ).
+// Fallback legacy (xoá thật) khi: payment cũ có phiếu cặp [THU TACH COC] hoặc
+// tín hiệu fallback hợp lệ (writer chưa bật / 42501 coexistence).
+//
+// Đường LEGACY: xóa 1 phiếu thanh toán (payments row) cùng với phiếu Thu/Chi
 // liên kết (income_expenses) và credit excess_amounts (nếu có).
 //
 // Quy trình:
@@ -19,17 +24,50 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { isCanonicalFallbackSignal } from '@/lib/canonicalFallback';
 
 interface DeletePaymentInput {
   payment_id: string;
 }
+
+type DeletePaymentResult = { payment_id: string; mode: 'REVERSED' | 'DELETED' };
 
 export const useDeletePayment = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ payment_id }: DeletePaymentInput) => {
+    mutationFn: async ({ payment_id }: DeletePaymentInput): Promise<DeletePaymentResult> => {
+      // ===== T5_20 canonical: HOÀN TÁC thay vì xoá (giữ lịch sử tiền) =====
+      // reverse_invoice_payment_v3 tạo bút toán hoàn tác (EXPENSE đối ứng) +
+      // negate credit thừa; payment gốc GIỮ NGUYÊN, paid_amount tự trừ lại.
+      // NGOẠI LỆ đi legacy: payment CŨ có phiếu cặp "[THU TACH COC ...]" —
+      // canonical không xử lý cặp, xoá legacy mới gỡ được cả phiếu cọc kèm.
+      const { data: pairRows, error: pairChkErr } = await (supabase as any)
+        .from('income_expenses')
+        .select('id')
+        .like('notes', `%[THU TACH COC ${payment_id}]%`)
+        .is('deleted_at', null)
+        .limit(1);
+      const hasLegacyPair = !pairChkErr && ((pairRows as unknown[])?.length ?? 0) > 0;
+
+      if (!hasLegacyPair) {
+        const { error: revErr } = await (supabase as any).rpc('reverse_invoice_payment_v3', {
+          p_payment_id: payment_id,
+          p_reason: 'Hoàn tác thu tiền (xoá phiếu thanh toán từ giao diện)',
+          p_idempotency_key: `revpay-${payment_id}`,
+        });
+        if (!revErr) return { payment_id, mode: 'REVERSED' };
+        if (!isCanonicalFallbackSignal(revErr)) {
+          // Lỗi nghiệp vụ thật từ canonical (vd "Giao dịch đã được hoàn tác")
+          // — hiển thị thẳng, KHÔNG rơi xuống xoá legacy.
+          throw new Error(
+            String((revErr as { message?: string })?.message ?? 'Không thể hoàn tác phiếu thu'),
+          );
+        }
+        // Tín hiệu fallback hợp lệ (writer chưa bật / không quyền canonical)
+        // → tiếp tục đường xoá legacy bên dưới.
+      }
       // 1. Soft-delete voucher Thu/Chi liên kết (nếu có).
       //    Trigger trg_ie_handover_guard chặn nếu phiếu đang nằm trong
       //    phiên bàn giao tiền mặt chưa hủy ([HANDOVER_LOCKED]).
@@ -78,9 +116,9 @@ export const useDeletePayment = () => {
         throw new Error('Bạn không có quyền xoá phiếu thu này.');
       }
 
-      return { payment_id };
+      return { payment_id, mode: 'DELETED' };
     },
-    onSuccess: () => {
+    onSuccess: (res: DeletePaymentResult) => {
       queryClient.invalidateQueries({ queryKey: ['invoice-payments-summary'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
@@ -95,8 +133,14 @@ export const useDeletePayment = () => {
       queryClient.invalidateQueries({ queryKey: ['contract-deposit-vouchers'] });
 
       toast({
-        title: 'Đã xoá phiếu thanh toán',
-        description: 'Phiếu Thu liên kết đã được xoá khỏi sổ Thu/Chi.',
+        title:
+          res.mode === 'REVERSED'
+            ? 'Đã hoàn tác phiếu thanh toán'
+            : 'Đã xoá phiếu thanh toán',
+        description:
+          res.mode === 'REVERSED'
+            ? 'Đã tạo bút toán hoàn tác (giữ lịch sử); số đã thu của hoá đơn được trừ lại.'
+            : 'Phiếu Thu liên kết đã được xoá khỏi sổ Thu/Chi.',
       });
     },
     onError: (error: Error) => {
