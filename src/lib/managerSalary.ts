@@ -22,6 +22,7 @@ export interface SalLedgerRow {
   has_photo: boolean | null;
   bonus_amount: number | null;
   reason: string;
+  excluded?: boolean; // chủ đánh dấu việc này không tính thưởng (jobs.exclude_from_salary)
 }
 
 export interface SalBonusLine {
@@ -268,4 +269,14 @@ export function latestVisibleStaffYm(
     m = shiftYm(m, -1);
   }
   return autoYm;
+}
+
+// Engine lương áp cho MỘT kỳ. v5 chỉ đúng từ tháng có dữ liệu chấm công v5
+// (`system_v5.effective_from`); tháng trước mốc đó phải rơi về legacy — nếu không
+// v5_month_money trả 0 và màn lương mất trắng lương cứng lẫn thưởng việc.
+export function resolveSalaryEngine(cfg: any, periodMonth: string): "legacy" | "v5" {
+  if (cfg?.system_v5?.salary_engine !== "v5") return "legacy";
+  const from = cfg?.system_v5?.effective_from;
+  if (from && periodMonth && periodMonth < String(from)) return "legacy";
+  return "v5";
 }

@@ -136,7 +136,9 @@ function StatTiles({ m }: { m: SalManager }) {
 }
 
 function EnergyFeed({ m, onOpenLedger }: { m: SalManager; onOpenLedger?: () => void }) {
-  const rows = m.ledger.slice(0, 6);
+  // Chỉ hiện việc THỰC SỰ có thưởng — việc 0đ (bị loại khỏi thưởng, checkin
+  // trong giờ, thiếu ảnh) không thuộc mục "Mỗi việc một khoản thưởng".
+  const rows = m.ledger.filter((r) => (r.bonus_amount || 0) > 0).slice(0, 6);
   const earned = rows.reduce((s, r) => s + (r.bonus_amount || 0), 0);
   const TINT: Record<string, string> = { JOB: "success", DAY_BONUS: "warning", CONTRACT: "info", CASH: "neutral" };
   const ICON: Record<string, string> = { JOB: "Wrench", DAY_BONUS: "CalendarCheck", CONTRACT: "FileClock", CASH: "Banknote" };

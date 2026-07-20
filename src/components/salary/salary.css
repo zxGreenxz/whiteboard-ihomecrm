@@ -545,3 +545,26 @@ textarea.sal-input { height: auto; padding: 10px 12px; resize: vertical; min-hei
 @media (max-width: 620px) {
   .sal-self-stats { grid-template-columns: 1fr; }
 }
+
+/* Nút bật/tắt "không tính thưởng" cho từng việc trong bảng kê (admin) */
+.sal-exbtn {
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.sal-exbtn:hover:not(:disabled) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.sal-exbtn.on {
+  border-color: hsl(var(--status-warning-fg) / .4);
+  color: hsl(var(--status-warning-fg));
+}
+.sal-exbtn:disabled { opacity: .45; cursor: default; }

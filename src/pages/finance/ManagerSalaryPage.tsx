@@ -9,7 +9,7 @@ import { canUse } from "@/lib/permissionPages";
 import {
   useManagerSalary, useMyManagerConfig, useStaffDisplayMonth,
   useSaveSalaryAdjustment, useDeleteSalaryAdjustment,
-  useLockSalaryMonth, useUnlockSalaryMonth, useSalaryPayout,
+  useLockSalaryMonth, useUnlockSalaryMonth, useSalaryPayout, useToggleJobExcluded,
 } from "@/hooks/useManagerSalary";
 import { useBonusRules } from "@/hooks/useSalaryConfig";
 import { usePendingLeaveRequests } from "@/hooks/useMyDay";
@@ -24,6 +24,7 @@ import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import "@/components/salary/salary.css";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
+import { resolveSalaryEngine } from "@/lib/managerSalary";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -96,7 +97,8 @@ export default function ManagerSalaryPage() {
     },
     staleTime: 60_000,
   });
-  const salaryEngine: "legacy" | "v5" = v5cfg?.system_v5?.salary_engine === "v5" ? "v5" : "legacy";
+  // v5 chỉ áp từ system_v5.effective_from trở đi — tháng trước đó rơi về legacy.
+  const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 
   const { data, isLoading, refetch } = useManagerSalary(effPeriod, salaryEngine);
   const { data: rulesData } = useBonusRules();
@@ -120,6 +122,9 @@ export default function ManagerSalaryPage() {
   const lockM = useLockSalaryMonth();
   const unlockM = useUnlockSalaryMonth();
   const payout = useSalaryPayout();
+  const toggleExcluded = useToggleJobExcluded();
+  const onToggleExclude = (jobId: string, next: boolean) =>
+    toggleExcluded.mutate({ jobId, excluded: next });
 
   const managers = data?.managers || [];
   const period = data?.period || { label: "", year: 0, periodMonth, lockedAt: null };
@@ -279,6 +284,8 @@ export default function ManagerSalaryPage() {
                   key={ledgerFilter?.who || "all"}
                   ledger={ledgerAll} managers={managers} buildings={buildingsList}
                   period={period} requirePhoto={requirePhoto} initialFilter={ledgerFilter}
+                  onToggleExclude={isAdmin && !monthLocked ? onToggleExclude : undefined}
+                  busyJobId={toggleExcluded.isPending ? (toggleExcluded.variables as any)?.jobId : null}
                 />
               </>
             ) : (

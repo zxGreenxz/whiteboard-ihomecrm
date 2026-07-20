@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import SalarySelfDesktop from "@/components/salary/SalarySelfDesktop";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
+import { resolveSalaryEngine } from "@/lib/managerSalary";
 
 // Khung trọn-màn nền tối cho trạng thái tải / chưa cấu hình (đồng bộ theme QUEST).
 function Shell({ children }: { children: React.ReactNode }) {
@@ -41,7 +42,8 @@ export default function MySalaryPage() {
     },
     staleTime: 60_000,
   });
-  const salaryEngine: "legacy" | "v5" = v5cfg?.system_v5?.salary_engine === "v5" ? "v5" : "legacy";
+  // v5 chỉ áp từ system_v5.effective_from trở đi — tháng trước đó rơi về legacy.
+  const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 
   const { data, isLoading } = useManagerSalary(effPeriod, salaryEngine);
 

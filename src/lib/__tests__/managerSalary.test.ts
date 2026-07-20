@@ -6,6 +6,7 @@ import {
   buildBonusAuto,
   computeStats,
   computeStreak,
+  resolveSalaryEngine,
   shiftYm,
   autoStaffYm,
   isStaffMonthVisible,
@@ -160,5 +161,34 @@ describe("tháng hiển thị cho nhân viên (lùi tháng + override)", () => {
     // không override → theo auto
     expect(isStaffMonthVisible("2026-06", auto, {})).toBe(false);
     expect(isStaffMonthVisible("2026-05", auto, {})).toBe(true);
+  });
+});
+
+describe("resolveSalaryEngine", () => {
+  const v5 = { system_v5: { salary_engine: "v5", effective_from: "2026-07-01" } };
+
+  it("tháng TRƯỚC mốc hiệu lực → legacy (tháng 6 không có dữ liệu chấm công v5)", () => {
+    expect(resolveSalaryEngine(v5, "2026-06-01")).toBe("legacy");
+    expect(resolveSalaryEngine(v5, "2026-05-01")).toBe("legacy");
+  });
+
+  it("tháng TỪ mốc hiệu lực trở đi → v5", () => {
+    expect(resolveSalaryEngine(v5, "2026-07-01")).toBe("v5");
+    expect(resolveSalaryEngine(v5, "2026-08-01")).toBe("v5");
+  });
+
+  it("engine legacy thì luôn legacy dù tháng nào", () => {
+    const cfg = { system_v5: { salary_engine: "legacy", effective_from: "2026-07-01" } };
+    expect(resolveSalaryEngine(cfg, "2026-09-01")).toBe("legacy");
+  });
+
+  it("chưa đặt effective_from → giữ hành vi cũ (v5 áp mọi tháng)", () => {
+    const cfg = { system_v5: { salary_engine: "v5" } };
+    expect(resolveSalaryEngine(cfg, "2026-06-01")).toBe("v5");
+  });
+
+  it("config rỗng/null → legacy, không nổ", () => {
+    expect(resolveSalaryEngine(null, "2026-07-01")).toBe("legacy");
+    expect(resolveSalaryEngine({}, "2026-07-01")).toBe("legacy");
   });
 });

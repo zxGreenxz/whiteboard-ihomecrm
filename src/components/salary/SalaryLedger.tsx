@@ -22,6 +22,7 @@ function dm(iso: string): string {
 
 export default function SalaryLedger({
   ledger, managers, buildings, period, requirePhoto, initialFilter, onlyWho, compact,
+  onToggleExclude, busyJobId,
 }: {
   ledger: SalLedgerRow[];
   managers: SalManager[] | LedgerManager[];
@@ -31,6 +32,9 @@ export default function SalaryLedger({
   initialFilter?: { who?: string } | null;
   onlyWho?: string;
   compact?: boolean;
+  // Chỉ admin truyền vào → hiện nút bật/tắt "không tính thưởng" cho từng việc.
+  onToggleExclude?: (jobId: string, next: boolean) => void;
+  busyJobId?: string | null;
 }) {
   const I = SAL_ICONS;
   const mgr = managers as LedgerManager[];
@@ -40,17 +44,20 @@ export default function SalaryLedger({
   const [fWho, setFWho] = useState(onlyWho || initialFilter?.who || "all");
   const [fBld, setFBld] = useState("all");
   const [fType, setFType] = useState("all");
+  const [fBonus, setFBonus] = useState<"all" | "yes" | "no">("all");
 
   const rowBonus = (r: SalLedgerRow): { val: number | null; warn?: boolean } => {
     if (r.item_type === "CASH") return { val: null };
     if (r.item_type === "JOB" && requirePhoto && r.has_photo === false) return { val: 0, warn: true };
     return { val: r.bonus_amount };
   };
+  const bonusOf = (r: SalLedgerRow) => rowBonus(r).val || 0;
 
   let rows = ledger.filter((r) =>
     (fWho === "all" || r.staff_id === fWho) &&
     (fBld === "all" || (r.place || "").indexOf(fBld) === 0) &&
-    (fType === "all" || TYPE[r.item_type]?.key === fType)
+    (fType === "all" || TYPE[r.item_type]?.key === fType) &&
+    (fBonus === "all" || (fBonus === "yes" ? bonusOf(r) > 0 : bonusOf(r) <= 0))
   );
   if (onlyWho) rows = rows.filter((r) => r.staff_id === onlyWho);
   const total = rows.reduce((s, r) => { const b = rowBonus(r); return s + (b.val || 0); }, 0);
@@ -81,6 +88,11 @@ export default function SalaryLedger({
             <option value="contract">Hợp đồng</option>
             <option value="cash">Thu tiền</option>
             <option value="day">Ngày CN/Lễ</option>
+          </select>
+          <select className="sal-select" value={fBonus} onChange={(e) => setFBonus(e.target.value as "all" | "yes" | "no")}>
+            <option value="all">Có &amp; không thưởng</option>
+            <option value="yes">Chỉ việc có thưởng</option>
+            <option value="no">Chỉ việc không thưởng</option>
           </select>
           <select className="sal-select" value="cur" onChange={() => {}}><option value="cur">{period.label}/{period.year}</option></select>
           <span style={{ marginLeft: "auto", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>{rows.length} dòng · minh bạch từng đồng</span>
@@ -123,11 +135,24 @@ export default function SalaryLedger({
                     ? (r.has_photo ? <I.CheckCircle size={16} className="sal-photo-ok" /> : <I.AlertTriangle size={16} className="sal-photo-warn" />)
                     : <span style={{ color: "hsl(var(--muted-foreground) / .5)" }}>—</span>}</td>
                   <td className="r">
-                    {b.val === null
-                      ? <span style={{ color: "hsl(var(--muted-foreground) / .6)" }}>—</span>
-                      : b.warn
-                        ? <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}><span className="sal-num" style={{ fontWeight: 700 }}>0₫</span><span className="sal-warn">Thiếu ảnh — chưa tính</span></div>
-                        : <span className="sal-num" style={{ fontWeight: 700, color: "hsl(var(--status-success-fg))" }}>{salFmt(b.val)}</span>}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                      {b.val === null
+                        ? <span style={{ color: "hsl(var(--muted-foreground) / .6)" }}>—</span>
+                        : b.warn
+                          ? <><span className="sal-num" style={{ fontWeight: 700 }}>0₫</span><span className="sal-warn">Thiếu ảnh — chưa tính</span></>
+                          : <span className="sal-num" style={{ fontWeight: 700, color: r.excluded ? "hsl(var(--muted-foreground))" : "hsl(var(--status-success-fg))" }}>{salFmt(b.val)}</span>}
+                      {onToggleExclude && r.item_type === "JOB" && r.source_id && (
+                        <button
+                          type="button"
+                          className={"sal-exbtn" + (r.excluded ? " on" : "")}
+                          disabled={busyJobId === r.source_id}
+                          onClick={() => onToggleExclude(r.source_id as string, !r.excluded)}
+                          title={r.excluded ? "Tính thưởng lại cho việc này" : "Bỏ việc này khỏi thưởng"}
+                        >
+                          {r.excluded ? "Tính lại" : "Không tính"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

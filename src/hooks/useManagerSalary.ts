@@ -253,6 +253,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         has_photo: r.has_photo,
         bonus_amount: r.bonus_amount == null ? null : num(r.bonus_amount),
         reason: r.reason || "",
+        excluded: !!r.excluded,
       }));
 
       const monthlyByStaff = new Map<string, any>(
@@ -629,6 +630,27 @@ export const useDeleteSalaryAdjustment = () => {
       qc.invalidateQueries({ queryKey: ["manager-salary"] });
       toast.success("Đã xoá");
     },
+  });
+};
+
+// Bật/tắt cờ "không tính thưởng" cho MỘT việc. Dòng vẫn hiện trong bảng kê
+// nhưng thưởng về 0đ (và không kích hoạt phụ cấp CN/Lễ nữa) — xem migration
+// 20260720140000_jobs_exclude_from_salary.
+export const useToggleJobExcluded = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ jobId, excluded }: { jobId: string; excluded: boolean }) => {
+      const { error } = await (supabase.from("jobs") as any)
+        .update({ exclude_from_salary: excluded })
+        .eq("id", jobId);
+      if (error) throw error;
+      return excluded;
+    },
+    onSuccess: (excluded) => {
+      qc.invalidateQueries({ queryKey: ["manager-salary"] });
+      toast.success(excluded ? "Đã bỏ việc này khỏi thưởng" : "Đã tính thưởng lại cho việc này");
+    },
+    onError: (e: any) => toast.error(e?.message || "Không thể cập nhật"),
   });
 };
 
