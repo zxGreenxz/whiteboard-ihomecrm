@@ -16,7 +16,7 @@ import { useCountUp } from "./salaryCommon";
 import SalaryConfig from "./SalaryConfig";
 import SalarySelfMobile from "./SalarySelfMobile";
 import { usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } from "@/hooks/useMyDay";
-import type { SalManager, SalAdjustment, SalLedgerRow } from "@/lib/managerSalary";
+import { isUnqualifiedContractRow, type SalManager, type SalAdjustment, type SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -383,7 +383,11 @@ function LogScreen({ ledger, managers, nameById, period }: {
   ledger: SalLedgerRow[]; managers: SalManager[]; nameById: Map<string, string>; period: { label: string; year: number };
 }) {
   const [filter, setFilter] = useState<string | null>(null); // null = tất cả
-  const sorted = useMemo(() => [...ledger].sort((a, b) => (a.occurred_date < b.occurred_date ? 1 : -1)), [ledger]);
+  // Ẩn việc ký HĐ làm trong giờ — sai điều kiện từ đầu, không bao giờ có thưởng.
+  const sorted = useMemo(
+    () => ledger.filter((r) => !isUnqualifiedContractRow(r)).sort((a, b) => (a.occurred_date < b.occurred_date ? 1 : -1)),
+    [ledger],
+  );
   const rows = useMemo(() => (filter ? sorted.filter((r) => r.staff_id === filter) : sorted), [sorted, filter]);
   const total = rows.reduce((s, r) => s + (r.bonus_amount || 0), 0);
   const ranked = [...managers].sort((a, b) => pctOf(b) - pctOf(a));

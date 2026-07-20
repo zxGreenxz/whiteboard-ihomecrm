@@ -291,3 +291,16 @@ export function zeroBonusReason(r: SalLedgerRow, requirePhoto = false): string |
   if (requirePhoto && r.item_type === "JOB" && r.has_photo === false) return "Thiếu ảnh — chưa tính";
   return "Không tính";
 }
+
+// Dòng bảng kê CHẮC CHẮN không bao giờ có thưởng vì sai điều kiện ngay từ đầu:
+// việc ký HĐ (checkin) hoàn thành TRONG GIỜ — quy tắc chỉ thưởng khi sau
+// afterHourMark hoặc CN/Lễ. Hiện ra chỉ gây nhiễu nên ẩn khỏi bảng kê.
+// KHÔNG ẩn dòng chủ tự tay loại (excluded) — phải thấy mới bấm "Tính lại" được.
+export function isUnqualifiedContractRow(r: SalLedgerRow): boolean {
+  return (
+    r.item_type === "JOB" &&
+    !!r.is_contract &&
+    (r.bonus_amount ?? 0) === 0 &&
+    !r.excluded
+  );
+}

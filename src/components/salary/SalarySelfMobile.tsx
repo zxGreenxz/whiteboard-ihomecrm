@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
-import type { SalManager, SalLedgerRow } from "@/lib/managerSalary";
+import { isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
 
 
 // Hạng suy từ số mốc "chặng nhiệm vụ tháng" đã đạt (0..4) — bám dữ liệu thật
@@ -99,7 +99,8 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, 
     { v: m.stats.workdays, l: "Chuyên cần", x: `${m.stats.workdays} ngày công`, Icon: CalendarCheck, bg: "rgba(255,210,63,.16)", fg: "#FFD23F" },
   ];
 
-  const feed = m.ledger.slice(0, 5);
+  // Chỉ việc THỰC SỰ có thưởng — đồng bộ với bản desktop.
+  const feed = m.ledger.filter((r) => (r.bonus_amount || 0) > 0).slice(0, 5);
   const feedSum = feed.reduce((s, r) => s + (r.bonus_amount || 0), 0);
 
   return (
@@ -317,7 +318,8 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, 
 
 // ──────────────────────────── màn LIST (Nhiệm vụ) ────────────────────────────
 function ListScreen({ m, period, onBack }: ScreenProps & { onBack: () => void }) {
-  const rows = m.ledger;
+  // Ẩn việc ký HĐ làm trong giờ — sai điều kiện từ đầu, không bao giờ có thưởng.
+  const rows = m.ledger.filter((r) => !isUnqualifiedContractRow(r));
   const total = rows.reduce((s, r) => s + (r.bonus_amount || 0), 0);
   return (
     <div className="px-[14px] pt-3 pb-6">

@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { SAL_ICONS } from "./salaryIcons";
 import { tint } from "./salaryCommon";
 import { salFmt, salShort } from "./salaryFormat";
-import { zeroBonusReason, type SalLedgerRow, type SalManager } from "@/lib/managerSalary";
+import { zeroBonusReason, isUnqualifiedContractRow, type SalLedgerRow, type SalManager } from "@/lib/managerSalary";
 
 interface LedgerManager { id: string; short: string; alias: string; tone: "primary" | "info"; }
 
@@ -55,6 +55,7 @@ export default function SalaryLedger({
   const bonusOf = (r: SalLedgerRow) => rowBonus(r).val || 0;
 
   let rows = ledger.filter((r) =>
+    !isUnqualifiedContractRow(r) &&
     (fWho === "all" || r.staff_id === fWho) &&
     (fBld === "all" || (r.place || "").indexOf(fBld) === 0) &&
     (fType === "all" || TYPE[r.item_type]?.key === fType) &&

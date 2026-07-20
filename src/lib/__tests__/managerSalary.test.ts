@@ -8,6 +8,7 @@ import {
   computeStreak,
   resolveSalaryEngine,
   zeroBonusReason,
+  isUnqualifiedContractRow,
   shiftYm,
   autoStaffYm,
   isStaffMonthVisible,
@@ -225,5 +226,36 @@ describe("zeroBonusReason", () => {
 
   it("dòng CASH (bonus null) → không chú thích gì", () => {
     expect(zeroBonusReason(job({ item_type: "CASH", bonus_amount: null }), true)).toBeNull();
+  });
+});
+
+describe("isUnqualifiedContractRow", () => {
+  const row = (over: Partial<SalLedgerRow> = {}): SalLedgerRow => ({
+    staff_id: "s", item_type: "JOB", source_id: "j", occurred_date: "2026-06-12",
+    day_label: "", content: "checkin làm hợp đồng", place: "", job_type_name: "checkin",
+    is_repair: false, is_contract: true, base_amount: 50000, weekend_amount: 0,
+    after_amount: 0, cash_amount: null, has_photo: false, bonus_amount: 0,
+    reason: "checkin", ...over,
+  });
+
+  it("checkin trong giờ (0đ) → ẩn", () => {
+    expect(isUnqualifiedContractRow(row())).toBe(true);
+  });
+
+  it("checkin ngoài giờ (có thưởng) → KHÔNG ẩn", () => {
+    expect(isUnqualifiedContractRow(row({ bonus_amount: 50000 }))).toBe(false);
+  });
+
+  it("checkin bị chủ tự tay loại → KHÔNG ẩn (còn phải bấm Tính lại được)", () => {
+    expect(isUnqualifiedContractRow(row({ excluded: true }))).toBe(false);
+  });
+
+  it("việc sửa 0đ (không phải ký HĐ) → KHÔNG ẩn", () => {
+    expect(isUnqualifiedContractRow(row({ is_contract: false, is_repair: true }))).toBe(false);
+  });
+
+  it("dòng CN/Lễ và dòng thu tiền → KHÔNG ẩn", () => {
+    expect(isUnqualifiedContractRow(row({ item_type: "DAY_BONUS", is_contract: false }))).toBe(false);
+    expect(isUnqualifiedContractRow(row({ item_type: "CASH", bonus_amount: null }))).toBe(false);
   });
 });

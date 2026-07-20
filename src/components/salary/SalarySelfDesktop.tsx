@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
-import { zeroBonusReason, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
+import { zeroBonusReason, isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
 
 const plus = (v: number) => Math.round(Math.abs(v)).toLocaleString("vi-VN");
 
@@ -302,7 +302,8 @@ function BonusCell({ r, requirePhoto }: { r: SalLedgerRow; requirePhoto?: boolea
 }
 
 function Ledger({ m, requirePhoto }: { m: SalManager; requirePhoto?: boolean }) {
-  const rows = m.ledger;
+  // Ẩn việc ký HĐ làm trong giờ — sai điều kiện từ đầu nên không bao giờ có thưởng.
+  const rows = m.ledger.filter((r) => !isUnqualifiedContractRow(r));
   return (
     <div style={{ borderRadius: 22, background: C.card, border: `1px solid ${C.border}`, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 22px", borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}>
