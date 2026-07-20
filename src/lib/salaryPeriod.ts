@@ -9,9 +9,25 @@
 export { ymOf, shiftYm } from "@/lib/managerSalary";
 import { ymOf, shiftYm } from "@/lib/managerSalary";
 
-/** Kỳ lương hiện tại theo giờ máy: "YYYY-MM-01". */
+/**
+ * "YYYY-MM" của thời điểm `d` theo GIỜ VIỆT NAM (không theo giờ máy).
+ * Máy đặt lệch múi giờ (hoặc CI chạy UTC) từng làm màn lương mặc định về KỲ
+ * TRƯỚC trong vài giờ đầu ngày 1 — xem audit 2026-07-20.
+ */
+export function vnYmOf(d: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === "year")!.value;
+  const m = parts.find((p) => p.type === "month")!.value;
+  return `${y}-${m}`;
+}
+
+/** Kỳ lương hiện tại theo GIỜ VIỆT NAM: "YYYY-MM-01". */
 export function currentPeriodMonth(): string {
-  return ymOf(new Date()) + "-01";
+  return vnYmOf() + "-01";
 }
 
 /**

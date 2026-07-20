@@ -16,13 +16,12 @@ import {
   computeStreak,
   firstName,
   initialsOf,
-  ymOf,
   shiftYm,
   autoStaffYm,
   latestVisibleStaffYm,
 } from "@/lib/managerSalary";
 // YYYY-MM-01 cho tháng lệch n so với mốc — canonical ở lib/salaryPeriod (10E).
-import { shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
+import { shiftPeriodMonth as shiftMonth, vnYmOf } from "@/lib/salaryPeriod";
 
 export interface SalPeriod {
   periodMonth: string; // YYYY-MM-01
@@ -531,7 +530,7 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
     queryKey: ["salary-staff-month", staffId],
     enabled: !!staffId && enabled,
     queryFn: async () => {
-      const cur = ymOf(new Date());
+      const cur = vnYmOf(); // giờ VN, không phải giờ máy (audit 2026-07-20)
       let overrides: Record<string, boolean> = {};
       try {
         const { data } = await (supabase.rpc as any)("salary_staff_months");

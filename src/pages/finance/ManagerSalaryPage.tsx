@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { todayISO } from "@/lib/collect";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Wallet, Eye, Settings, CalendarCheck } from "lucide-react";
@@ -26,7 +27,9 @@ import "@/components/salary/salary.css";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 import { resolveSalaryEngine, isUnqualifiedContractRow } from "@/lib/managerSalary";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
+// sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
+const today = todayISO;
 
 // Màn chờ / rỗng MOBILE (shell tối khớp SalaryAdminMobile/SalarySelfMobile).
 // Dùng trong lúc chưa biết quyền để KHÔNG nháy khung MainLayout desktop.

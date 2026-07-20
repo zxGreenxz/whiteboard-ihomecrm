@@ -144,6 +144,19 @@ export function TaskFiltersPanel({
           ]}
         />
 
+        {/* Trục ngày — lương tính theo NGÀY HOÀN THÀNH, nên muốn đối chiếu
+            bảng lương thì phải đổi sang "Ngày hoàn thành". */}
+        <SearchableSelect
+          value={filters.date_field ?? "created_at"}
+          onValueChange={(v) => handleChange({ date_field: v as any })}
+          className="h-9 text-sm"
+          placeholder="Lọc theo ngày"
+          options={[
+            { value: "created_at", label: "Theo ngày tạo" },
+            { value: "completion_time", label: "Theo ngày hoàn thành" },
+          ]}
+        />
+
         {/* Từ ngày */}
         <DateInput
           value={filters.start_date ?? ""}

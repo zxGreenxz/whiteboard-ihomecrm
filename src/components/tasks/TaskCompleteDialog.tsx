@@ -8,8 +8,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Camera, Loader2, MapPin } from "lucide-react";
+import { Camera, Clock, Loader2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompleteJob } from "@/hooks/useJobs";
@@ -31,12 +30,23 @@ interface TaskCompleteDialogProps {
   onSuccess: () => void;
 }
 
-function nowLocalDatetimeValue(): string {
-  const d = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-    d.getDate(),
-  )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/**
+ * Đồng hồ hiển thị theo GIỜ VIỆT NAM — chỉ để nhân viên thấy mốc sắp được ghi.
+ * KHÔNG còn ô nhập tay: `completion_time` do SERVER đóng dấu `now()` qua trigger
+ * `jobs_stamp_completion_time` (migration 20260720180000). Trước đây ô
+ * <input type="datetime-local"> cho phép nhân viên tự chọn kỳ lương và hệ số
+ * nhân (ngoài giờ / CN / Lễ) — xem audit 2026-07-20.
+ */
+function vnClockLabel(d: Date): string {
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }
 
 export default function TaskCompleteDialog({
@@ -50,16 +60,23 @@ export default function TaskCompleteDialog({
   const completeJob = useCompleteJob();
   const isMobile = useIsMobile();
   const { data: geofence } = useAcceptanceGeofenceConfig();
-  const [completionTime, setCompletionTime] = useState("");
+  const [nowTick, setNowTick] = useState(() => new Date());
   const [cameraOpen, setCameraOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setCompletionTime(nowLocalDatetimeValue());
+      setNowTick(new Date());
       setCameraOpen(false);
       setProcessing(false);
     }
+  }, [open]);
+
+  // Đồng hồ chạy để mốc hiển thị không bị "đứng hình" khi dialog mở lâu.
+  useEffect(() => {
+    if (!open) return;
+    const t = setInterval(() => setNowTick(new Date()), 30_000);
+    return () => clearInterval(t);
   }, [open]);
 
   if (!job) return null;
@@ -88,7 +105,7 @@ export default function TaskCompleteDialog({
       const merged = [...existingAttachments, url];
       await completeJob.mutateAsync({
         id: job.id,
-        completion_time: new Date(completionTime).toISOString(),
+        completion_captured_at: result.capturedAt,
         completion_attachments: merged,
         completion_lat: result.lat,
         completion_lng: result.lng,
@@ -133,15 +150,15 @@ export default function TaskCompleteDialog({
         {job.code} — {job.title}
       </div>
       <div className="space-y-1">
-        <label htmlFor="completion-time" className="text-[13px] font-medium block">
-          Thời gian hoàn thành <span className="text-red-500">*</span>
-        </label>
-        <Input
-          id="completion-time"
-          type="datetime-local"
-          value={completionTime}
-          onChange={(e) => setCompletionTime(e.target.value)}
-        />
+        <label className="text-[13px] font-medium block">Thời gian hoàn thành</label>
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+          <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="text-[13px] font-medium tabular-nums">{vnClockLabel(nowTick)}</span>
+          <span className="ml-auto text-[11px] text-muted-foreground">giờ hệ thống</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Mốc này do máy chủ ghi lúc bấm hoàn thành — dùng để tính lương, thưởng ngoài giờ và CN/Lễ.
+        </p>
       </div>
 
       {existingAttachments.length > 0 && (

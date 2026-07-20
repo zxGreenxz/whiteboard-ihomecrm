@@ -30,6 +30,13 @@ export interface JobCaptureResult {
   status: GeofenceStatus;
   /** Địa chỉ reverse-geocode từ GPS (null nếu chưa lấy được). */
   address: string | null;
+  /**
+   * Moc bam nut CHUP — CÙNG biến `at` đã vẽ vào watermark, nên ảnh và cột DB
+   * khớp nhau by construction. Chỉ để ĐỐI CHIẾU/audit: đây là đồng hồ thiết bị,
+   * giả mạo được. Tiền luôn tính theo `jobs.completion_time` do server đóng dấu
+   * (trigger jobs_stamp_completion_time — migration 20260720180000).
+   */
+  capturedAt: string;
 }
 
 interface JobCaptureCameraProps {
@@ -306,6 +313,7 @@ export default function JobCaptureCamera({
         distanceM: frozenDistance,
         status,
         address: address ?? null,
+        capturedAt: at.toISOString(), // cùng `at` đã vẽ watermark ở dòng trên
       },
     });
   }, [gps, geoAddress, building, buildingHasCoords, geofenceEnabled, radiusM]);

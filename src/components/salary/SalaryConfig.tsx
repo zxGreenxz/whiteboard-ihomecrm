@@ -11,7 +11,8 @@ import {
   useSalaryHolidays, useAddHoliday, useDeleteHoliday,
   useStaffMonthOverrides, useSaveStaffMonthOverride, useSalaryLockedMonths,
 } from "@/hooks/useSalaryConfig";
-import { ymOf, shiftYm, autoStaffYm, isStaffMonthVisible, latestVisibleStaffYm } from "@/lib/managerSalary";
+import { shiftYm, autoStaffYm, isStaffMonthVisible, latestVisibleStaffYm } from "@/lib/managerSalary";
+import { vnYmOf } from "@/lib/salaryPeriod";
 
 const I = SAL_ICONS;
 const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
@@ -117,7 +118,7 @@ function StaffMonthsCard() {
   const { data: lockedMonths } = useSalaryLockedMonths();
   const saveOverride = useSaveStaffMonthOverride();
 
-  const cur = ymOf(new Date());
+  const cur = vnYmOf(); // giờ VN, không phải giờ máy (audit 2026-07-20)
   const prevLocked = lockedMonths?.has(shiftYm(cur, -1)) ?? false;
   const auto = autoStaffYm(cur, prevLocked);
   const staffViewing = latestVisibleStaffYm(cur, auto, overrides);

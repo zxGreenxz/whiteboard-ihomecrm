@@ -133,8 +133,14 @@ export default function SalaryLedger({
                   <td className="r"><span className="sal-num">{r.base_amount ? salShort(r.base_amount) : ""}</span></td>
                   <td className="r"><span className="sal-num" style={{ color: r.weekend_amount ? "hsl(var(--status-warning-fg))" : "" }}>{r.weekend_amount ? "+" + salShort(r.weekend_amount) : ""}</span></td>
                   <td className="r"><span className="sal-num" style={{ color: r.after_amount ? "hsl(var(--status-info-fg))" : "" }}>{r.after_amount ? "+" + salShort(r.after_amount) : ""}</span></td>
+                  {/* Cảnh báo "thiếu ảnh" chỉ có nghĩa khi requirePhoto BẬT — trước đây
+                      hiện đỏ cho mọi việc, làm chủ hiểu nhầm về bằng chứng hoàn thành. */}
                   <td className="c">{r.item_type === "JOB"
-                    ? (r.has_photo ? <I.CheckCircle size={16} className="sal-photo-ok" /> : <I.AlertTriangle size={16} className="sal-photo-warn" />)
+                    ? (r.has_photo
+                        ? <I.CheckCircle size={16} className="sal-photo-ok" />
+                        : requirePhoto
+                          ? <I.AlertTriangle size={16} className="sal-photo-warn" />
+                          : <span style={{ color: "hsl(var(--muted-foreground) / .5)" }}>—</span>)
                     : <span style={{ color: "hsl(var(--muted-foreground) / .5)" }}>—</span>}</td>
                   <td className="r">
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>

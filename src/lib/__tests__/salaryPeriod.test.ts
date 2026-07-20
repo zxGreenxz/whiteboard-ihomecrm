@@ -2,7 +2,7 @@
 // Chốt: output GIỐNG TỪNG KÝ TỰ các bản copy-paste cũ ở MySalaryPage/
 // ManagerSalaryPage/useManagerSalary (đã xoá), kể cả rollover tháng 12→1.
 import { describe, expect, it } from "vitest";
-import { currentPeriodMonth, shiftPeriodMonth } from "@/lib/salaryPeriod";
+import { currentPeriodMonth, shiftPeriodMonth, vnYmOf } from "@/lib/salaryPeriod";
 import { bigNum, salFmt } from "@/components/salary/salaryFormat";
 
 // Bản cũ (copy nguyên văn từ MySalaryPage trước 10E) làm oracle so sánh.
@@ -32,11 +32,24 @@ describe("shiftPeriodMonth — tương đương bản copy-paste cũ", () => {
   });
 });
 
-describe("currentPeriodMonth", () => {
-  it("dạng YYYY-MM-01 theo giờ máy (khớp bản cũ)", () => {
-    const d = new Date();
-    const expected = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+describe("currentPeriodMonth / vnYmOf — neo GIỜ VIỆT NAM", () => {
+  // Trước 2026-07-20 hàm này dùng getFullYear()/getMonth() (giờ MÁY), nên trên
+  // runner UTC hoặc máy đặt lệch múi giờ, vài giờ đầu ngày 1 nó trả về KỲ TRƯỚC.
+  it("dạng YYYY-MM-01 theo giờ VN", () => {
+    const expected = `${vnYmOf()}-01`;
     expect(currentPeriodMonth()).toBe(expected);
+  });
+
+  it("00:30 ngày 01/08 giờ VN (= 31/07 17:30Z) vẫn là kỳ 2026-08", () => {
+    expect(vnYmOf(new Date("2026-07-31T17:30:00Z"))).toBe("2026-08");
+  });
+
+  it("23:30 ngày 31/07 giờ VN (= 31/07 16:30Z) vẫn là kỳ 2026-07", () => {
+    expect(vnYmOf(new Date("2026-07-31T16:30:00Z"))).toBe("2026-07");
+  });
+
+  it("rollover năm: 00:10 ngày 01/01/2027 giờ VN", () => {
+    expect(vnYmOf(new Date("2026-12-31T17:10:00Z"))).toBe("2027-01");
   });
 });
 

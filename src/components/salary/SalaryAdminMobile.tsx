@@ -4,6 +4,7 @@
 // desktop (SalaryMonthly); chỉ khác cách trình bày. Rẽ nhánh desktop ↔ mobile
 // bằng usePhoneViewport ở ManagerSalaryPage.
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { todayISO } from "@/lib/collect";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -19,7 +20,9 @@ import { usePendingLeaveRequests, useApproveLeave, type PendingLeaveRequest } fr
 import { isUnqualifiedContractRow, type SalManager, type SalAdjustment, type SalLedgerRow } from "@/lib/managerSalary";
 import type { SalaryAccount, SalAdjustPayload } from "./SalaryMonthly";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
+// sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
+const today = todayISO;
 const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
 
 interface AdminMobileProps {

@@ -1,5 +1,6 @@
 // Tab 1 — Bảng lương tháng. Port từ kit SalaryMonthly.jsx, nối callback thật.
 import React, { useState } from "react";
+import { todayISO } from "@/lib/collect";
 import { SAL_ICONS } from "./salaryIcons";
 import { salFmt, salShort } from "./salaryFormat";
 import { ClickNum, Popover, Menu, Modal, Ring, useCountUp } from "./salaryCommon";
@@ -8,7 +9,9 @@ import { SalChartModal } from "./salaryChart";
 import type { SalManager, SalAdjustment } from "@/lib/managerSalary";
 
 const I = SAL_ICONS;
-const today = () => new Date().toISOString().slice(0, 10);
+// Ngày chi theo GIỜ LOCAL — toISOString() là UTC, chi lương lúc 00:00-07:00 VN
+// sẽ rơi vào THÁNG TRƯỚC (audit 2026-07-20). Dùng helper canonical ở lib/collect.
+const today = todayISO;
 const parseNum = (s: string) => parseInt((s || "").replace(/\D/g, ""), 10) || 0;
 
 export interface SalaryAccount { id: string; name: string; }

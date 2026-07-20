@@ -88,6 +88,11 @@ export interface TaskFilters {
   status: JobStatus | null;
   start_date: string | null;
   end_date: string | null;
+  /**
+   * Cột ngày để lọc. Mặc định "created_at" (ngày tạo). Chọn "completion_time"
+   * khi cần đối chiếu với bảng lương — lương bucket theo NGÀY HOÀN THÀNH.
+   */
+  date_field?: "created_at" | "completion_time" | null;
 }
 
 export const defaultTaskFilters: TaskFilters = {
@@ -99,4 +104,5 @@ export const defaultTaskFilters: TaskFilters = {
   status: null,
   start_date: null,
   end_date: null,
+  date_field: "created_at",
 };

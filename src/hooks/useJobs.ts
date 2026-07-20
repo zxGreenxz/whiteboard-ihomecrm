@@ -4,6 +4,13 @@ import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import { TaskFilters } from "@/types/jobs";
 
+/** 'YYYY-MM-DD' → ngày kế tiếp, để dựng cận trên nửa mở [start, next). */
+const nextDayISO = (d: string): string => {
+  const [y, m, day] = d.split("-").map((x) => parseInt(x, 10));
+  const t = new Date(Date.UTC(y, m - 1, day + 1));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+};
+
 // Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
 // — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
 export const jobsQuery = (filters?: TaskFilters) => ({
@@ -41,11 +48,18 @@ export const jobsQuery = (filters?: TaskFilters) => ({
       if (filters?.status) {
         query = query.eq("status", filters.status);
       }
+      // Trục ngày: mặc định "ngày tạo" (giữ hành vi cũ), đổi được sang "ngày
+      // hoàn thành" để đối chiếu với bảng lương — lương bucket theo
+      // completion_time nên lọc theo created_at cho ra danh sách LỆCH.
+      const dateCol = filters?.date_field === "completion_time" ? "completion_time" : "created_at";
+      // Neo mốc vào +07:00. Trước đây so cột TIMESTAMPTZ với chuỗi 'YYYY-MM-DD'
+      // trần → Postgres đọc là UTC midnight: .gte mất 7h đầu ngày, .lte mất 17h
+      // cuối ngày (tức cả ngày làm việc cuối kỳ). Dùng .lt ngày-kế-tiếp.
       if (filters?.start_date) {
-        query = query.gte("created_at", filters.start_date);
+        query = query.gte(dateCol, `${filters.start_date}T00:00:00+07:00`);
       }
       if (filters?.end_date) {
-        query = query.lte("created_at", filters.end_date);
+        query = query.lt(dateCol, `${nextDayISO(filters.end_date)}T00:00:00+07:00`);
       }
 
       const { data, error } = await query;
@@ -169,7 +183,8 @@ export const useCompleteJob = () => {
   return useMutation({
     mutationFn: async (input: {
       id: string;
-      completion_time: string;
+      /** Mốc bấm nút chụp trên máy NV — chỉ để đối chiếu, KHÔNG tính lương. */
+      completion_captured_at: string;
       completion_attachments: string[] | null;
       completion_lat?: number | null;
       completion_lng?: number | null;
@@ -177,18 +192,26 @@ export const useCompleteJob = () => {
       completion_geofence_status?: string | null;
       completion_address?: string | null;
     }) => {
+      // KHÔNG gửi `completion_time`: server đóng dấu now() qua trigger
+      // `jobs_stamp_completion_time` (20260720180000). Trước đây FE gửi giá trị
+      // từ một ô datetime-local gõ tay → nhân viên tự chọn được kỳ lương.
+      // Ảnh ghi CẢ HAI cột: `attachments` (lịch sử) và `completion_attachments`
+      // (cột mà cổng requirePhoto của ledger đọc — xem job_photo_ok).
       const { data, error } = await supabase
         .from("jobs")
         .update({
           status: "COMPLETED",
-          completion_time: input.completion_time,
           attachments: input.completion_attachments,
+          completion_attachments: input.completion_attachments,
+          completion_captured_at: input.completion_captured_at,
           completion_lat: input.completion_lat ?? null,
           completion_lng: input.completion_lng ?? null,
           completion_distance_m: input.completion_distance_m ?? null,
           completion_geofence_status: input.completion_geofence_status ?? null,
+          // `completion_captured_at` chưa có trong types.ts sinh tự động
+          // (không regen để tránh vỡ build — xem CLAUDE.md).
           completion_address: input.completion_address ?? null,
-        })
+        } as any)
         .eq("id", input.id)
         .select()
         .single();
