@@ -14,6 +14,7 @@ import ProfitLockTab from "@/components/shareholders/ProfitLockTab";
 import ShareConfigTab from "@/components/shareholders/ShareConfigTab";
 import ShareholderSelfView from "@/components/shareholders/ShareholderSelfView";
 import ProfitManagerSelfView from "@/components/shareholders/ProfitManagerSelfView";
+import { useProfitCloseOrganizations } from "@/hooks/useShareholderProfit";
 
 /**
  * Trang gộp "Báo cáo Lợi Nhuận" (/reports/finance/profit-distribution).
@@ -28,13 +29,19 @@ export default function ProfitHubPage() {
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const { data: me, isLoading: meLoading } = useMyShareholder();
   const { data: myManager, isLoading: mgrLoading } = useMyProfitManager();
+  const {
+    data: profitCloseOrganizations = [],
+    isLoading: profitCloseOrganizationsLoading,
+  } = useProfitCloseOrganizations();
   const phone = usePhoneViewport();
 
   const canReport = canUse(perms, "reports_finance", "profit_distribution");
-  const canLock = canUse(perms, "shareholder_profit", "lock");
+  const canViewManagedProfit = canUse(perms, "shareholder_profit", "view");
+  const canLock = profitCloseOrganizations.some((organization) => organization.can_lock);
+  const canUnlock = profitCloseOrganizations.some((organization) => organization.can_unlock);
   const canDistribute = canUse(perms, "shareholder_profit", "distribute");
   const canManageShareholders = canUse(perms, "shareholder_profit", "manage_shareholders");
-  const isManager = !!perms?.__superadmin || canLock || canDistribute || canManageShareholders;
+  const isManager = !!perms?.__superadmin || canLock || canUnlock || canDistribute || canManageShareholders;
 
   // Cổ đông-partner (B.Huy…) được cấp quyền xem báo cáo LN → thêm tab "Tổng quan"
   // xem phần lợi nhuận của CHÍNH MÌNH (RLS tự lọc, không lộ cổ đông khác). Quản lý
@@ -67,8 +74,13 @@ export default function ProfitHubPage() {
   if (canSeeOwnShare && me) tabs.push({ value: "my-overview", label: "Tổng quan", node: <ShareholderSelfView me={me} /> });
   if (canReport) tabs.push({ value: "report", label: "BC Doanh Thu Chi Phí", node: <ProfitDistributionContent /> });
   if (isManager) {
-    tabs.push({ value: "overview", label: "Tổng quan", node: <ProfitOverviewTab /> });
-    if (canLock) tabs.push({ value: "lock", label: "Chốt LN tháng", node: <ProfitLockTab />, secret: true });
+    if (canViewManagedProfit) tabs.push({ value: "overview", label: "Tổng quan", node: <ProfitOverviewTab /> });
+    if (canLock || canUnlock) tabs.push({
+      value: "lock",
+      label: "Chốt LN tháng",
+      node: <ProfitLockTab organizations={profitCloseOrganizations} />,
+      secret: true,
+    });
     if (canManageShareholders) tabs.push({ value: "config", label: "Cổ đông & tỷ lệ", node: <ShareConfigTab />, secret: true });
   }
   // Quản lý điều hành đang đăng nhập: thêm tab tự xem lương của mình.
@@ -80,7 +92,7 @@ export default function ProfitHubPage() {
 
   // Chờ cả perms + me + manager trước khi dựng tab để thứ tự tab (và tab mặc định)
   // ổn định — tránh "Tổng quan" nhảy vào sau khiến trang mở nhầm tab.
-  const loading = permsLoading || meLoading || mgrLoading;
+  const loading = permsLoading || meLoading || mgrLoading || profitCloseOrganizationsLoading;
 
   // PHONE: shell riêng (header + bottom tab bar, thiết kế ProfitMobileC) — KHÔNG
   // dùng MainLayout desktop, kể cả lúc quyền đang tải (chờ bằng shell kem).
@@ -89,7 +101,7 @@ export default function ProfitHubPage() {
     return (
       <ProfitHubMobile
         canReport={canReport}
-        isManager={isManager}
+        isManager={isManager && canViewManagedProfit}
         me={me ?? null}
         myManager={myManager ?? null}
       />

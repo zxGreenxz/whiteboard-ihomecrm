@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { IncomeExpenseBatchFormValues } from "@/lib/incomeExpenseValidation";
+import { requireBuildingOrganizationId } from "@/lib/buildingOrganization";
 import type { ImportIncomeExpenseRow } from "./types";
 
 // Import phiếu thu/chi hàng loạt từ Excel
@@ -28,6 +29,7 @@ export const useImportIncomeExpenses = () => {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         try {
+          const organizationId = await requireBuildingOrganizationId(row.building_id);
           // 1. Create the voucher
           const { data: voucher, error: voucherError } = await supabase
             .from("income_expenses")
@@ -36,6 +38,7 @@ export const useImportIncomeExpenses = () => {
               type: row.type,
               name: row.name,
               building_id: row.building_id,
+              organization_id: organizationId,
               voucher_date: row.voucher_date,
             })
             .select()
@@ -127,6 +130,7 @@ export const useCreateIncomeExpenseBatch = () => {
       const childVouchers: any[] = [];
       try {
         for (const item of input.items) {
+          const organizationId = await requireBuildingOrganizationId(item.building_id);
           const { data: voucher, error: voucherError } = await supabase
             .from("income_expenses")
             .insert({
@@ -135,6 +139,7 @@ export const useCreateIncomeExpenseBatch = () => {
               type: input.type,
               name: `${input.shared_name} - ${item.type_name ?? ""}`.trim(),
               building_id: item.building_id,
+              organization_id: organizationId,
               room_id: item.room_id ?? null,
               account_id: input.account_id,
               payer_name: input.payer_name ?? null,

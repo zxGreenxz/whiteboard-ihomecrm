@@ -886,7 +886,7 @@ export const useSalaryPayout = () => {
 
       // toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung")
       const { data: chung } = await (supabase
-        .from("buildings").select("id") as any)
+        .from("buildings").select("id, organization_id") as any)
         .eq("is_virtual", true).is("deleted_at", null)
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
 
@@ -914,6 +914,7 @@ export const useSalaryPayout = () => {
           type: "EXPENSE",
           name,
           building_id: chung ? (chung as any).id : null,
+          organization_id: chung ? (chung as any).organization_id : null,
           account_id: input.account_id,
           salary_staff_id: input.staffId,
           business_result_accounting: false,

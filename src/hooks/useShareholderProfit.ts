@@ -1,19 +1,13 @@
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { getSessionUser } from "@/lib/authSession";
-import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { useBuildings } from "@/hooks/useBuildings";
-import { monthDateRange, periodToLabel } from "@/components/shareholders/shareholderUtils";
 import {
   computeShareholderSummary,
   type ShareholderSummaryRow,
 } from "@/lib/shareholderProfit";
-import {
-  computeManagementSalaries,
-  type SalaryRule,
-} from "@/lib/managementSalary";
+import type { ProfitCloseAdjustmentPayload } from "@/lib/profitClose";
 
 export { computeShareholderSummary };
 export type { ShareholderSummaryRow };
@@ -39,6 +33,55 @@ export interface ProfitMonthly {
   note: string | null;
   locked_at: string | null;
   locked_by: string | null;
+}
+
+export interface ProfitCloseSnapshot {
+  id: string;
+  status: "DRAFT" | "LOCKED";
+  computed_profit: number;
+  adjustment_amount: number;
+  adjustment_reason: string | null;
+  adjusted_profit: number;
+  management_salary: number;
+  distributable_profit: number;
+  source_hash: string | null;
+  locked_at: string | null;
+}
+
+export interface ProfitClosePreviewRow {
+  building_id: string;
+  building_name: string;
+  revenue: number;
+  expense: number;
+  computed_profit: number;
+  adjustment_amount: number;
+  management_salary: number;
+  distributable_profit: number;
+  source_hash: string;
+  is_stale: boolean;
+  stale_reason: string | null;
+  delta_profit: number;
+  shareholder_allocations: Array<{
+    shareholder_id: string;
+    shareholder_name: string;
+    percent: number;
+    amount: number;
+  }>;
+  manager_allocations: Array<{
+    manager_id: string;
+    manager_name: string;
+    amount: number;
+  }>;
+  current_snapshot: ProfitCloseSnapshot | null;
+}
+
+export interface ProfitClosePreview {
+  organization_id: string;
+  period_month: string;
+  source_hash: string;
+  is_locked: boolean;
+  is_stale: boolean;
+  rows: ProfitClosePreviewRow[];
 }
 
 // Snapshot phần lương điều hành của 1 quản lý tại 1 nhà/tháng.
@@ -298,352 +341,383 @@ export const useManagerSalaryPayouts = () => {
   });
 };
 
-// --- Lock mutation: chốt LN 1 tháng → ghi profit_monthly (LOCKED) + snapshot allocations ---
-export interface LockProfitInput {
-  period_month: string; // YYYY-MM-01
-  rows: Array<{ building_id: string; computed_profit: number; adjusted_profit: number }>;
+// --- Canonical V2 close workflow. All calculations and writes stay server-side. ---
+
+export const PROFIT_CLOSE_RPC = {
+  scopes: "profit_close_scopes_v2",
+  state: "profit_close_state_v2",
+  preview: "profit_close_preview_v2",
+  close: "profit_close_v2",
+  reclose: "profit_reclose_v2",
+  reset: "profit_reset_checked_v2",
+} as const;
+
+export interface ProfitCloseOrganizationScope {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
+  can_lock: boolean;
+  can_unlock: boolean;
 }
 
-// Lấy quy tắc lương điều hành CÒN HIỆU LỰC + tính khoản trừ theo nhà cho 1 tháng.
-// base = adjusted_profit từng nhà (rows). Chỉ tính quản lý chưa xoá + quy tắc is_active.
-async function computeMonthManagementSalaries(rows: LockProfitInput["rows"]) {
-  const { data: activeMgrs, error: mErr } = await (supabase
-    .from("profit_managers")
-    .select("id") as any)
-    .is("deleted_at", null);
-  if (mErr) throw mErr;
-  const activeMgrIds = new Set(((activeMgrs || []) as any[]).map((m) => m.id));
-
-  const { data: salaryRows, error: sErr } = await (supabase
-    .from("profit_manager_salaries")
-    .select("manager_id, form, basis, amount, percent, profit_manager_salary_buildings(building_id)") as any)
-    .eq("is_active", true);
-  if (sErr) throw sErr;
-
-  const rules: SalaryRule[] = ((salaryRows || []) as any[])
-    .filter((r) => activeMgrIds.has(r.manager_id))
-    .map((r) => ({
-      manager_id: r.manager_id,
-      form: r.form,
-      basis: r.basis,
-      amount: Number(r.amount) || 0,
-      percent: Number(r.percent) || 0,
-      building_ids: ((r.profit_manager_salary_buildings || []) as any[]).map((b) => b.building_id),
-    }));
-
-  const buildingBase = rows.map((r) => ({ building_id: r.building_id, base: r.adjusted_profit }));
-  return computeManagementSalaries(buildingBase, rules);
+export interface ProfitCloseStateRow {
+  id: string;
+  building_id: string;
+  building_name: string;
+  is_virtual: boolean;
+  building_deleted: boolean;
+  status: "DRAFT" | "LOCKED";
+  computed_profit: number;
+  adjusted_profit: number;
+  adjustment_amount: number;
+  adjustment_reason: string | null;
+  management_salary: number;
+  distributable_profit: number;
+  source_revenue: number;
+  source_expense: number;
+  source_hash: string;
+  is_stale: boolean;
+  stale_reason: string | null;
+  revision_number: number;
+  locked_at: string | null;
 }
 
-// Ghi-khoá 1 tháng: upsert profit_monthly (LOCKED) + snapshot lại profit_allocations
-// theo tỷ lệ building_shareholders, ĐÃ TRỪ lương điều hành trước khi chia.
-// Tách riêng để cả chốt thủ công lẫn resync dùng chung.
-async function writeLockedMonth(
-  uid: string,
-  period_month: string,
-  rows: LockProfitInput["rows"]
-): Promise<{ locked: number; allocations: number }> {
-  if (rows.length === 0) return { locked: 0, allocations: 0 };
-  const nowIso = new Date().toISOString();
+export interface ProfitCloseState {
+  organization_id: string;
+  period_month: string;
+  can_lock: boolean;
+  can_unlock: boolean;
+  state_hash: string;
+  snapshot_ids: string[];
+  snapshot_count: number;
+  locked_count: number;
+  draft_count: number;
+  real_building_count: number;
+  active_real_snapshot_count: number;
+  has_out_of_scope_snapshots: boolean;
+  rows: ProfitCloseStateRow[];
+}
 
-  // 0) Lương điều hành: khoản trừ mỗi nhà TRƯỚC khi chia cổ đông + chi tiết theo quản lý.
-  const mgmt = await computeMonthManagementSalaries(rows);
+function money(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-  // 0b) Tỷ lệ cổ đông (đọc TRƯỚC để dựng payload canonical; legacy tái dùng).
-  const buildingIdsAll = rows.map((r) => r.building_id);
-  const { data: sharesPre, error: shPreErr } = await (supabase
-    .from("building_shareholders")
-    .select("building_id, shareholder_id, percent") as any)
-    .in("building_id", buildingIdsAll);
-  if (shPreErr) throw shPreErr;
-  const { data: activeShPre, error: aShPreErr } = await (supabase
-    .from("shareholders")
-    .select("id") as any)
-    .is("deleted_at", null);
-  if (aShPreErr) throw aShPreErr;
-  const activeShIdsPre = new Set(((activeShPre || []) as any[]).map((s) => s.id));
-
-  // 0c) Canonical lock_profit_month_v1: server ghi ATOMIC + stamp organization_id
-  // (vá bug khoá-tháng-mới thiếu org). Client vẫn là nơi TÍNH (parity giữ nguyên);
-  // fallback legacy đúng tín hiệu chung khi writer chưa có/không quyền.
-  const canonicalRows = rows.map((r) => {
-    const salary = mgmt.perBuilding.get(r.building_id) ?? 0;
-    const distributable = r.adjusted_profit - salary;
-    const allocations = ((sharesPre || []) as any[])
-      .filter((s) => s.building_id === r.building_id && activeShIdsPre.has(s.shareholder_id))
-      .map((s) => ({
-        shareholder_id: s.shareholder_id,
-        percent: Number(s.percent) || 0,
-        amount: Math.round((distributable * (Number(s.percent) || 0)) / 100),
+export const useProfitCloseOrganizations = () => {
+  return useQuery({
+    queryKey: ["profit-close-scopes"],
+    queryFn: async (): Promise<ProfitCloseOrganizationScope[]> => {
+      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.scopes);
+      if (error) throw error;
+      const rows = Array.isArray(data?.organizations) ? data.organizations : [];
+      return rows.map((row: any) => ({
+        organization_id: String(row.organization_id),
+        organization_name: String(row.organization_name ?? ""),
+        organization_slug: String(row.organization_slug ?? ""),
+        can_lock: Boolean(row.can_lock),
+        can_unlock: Boolean(row.can_unlock),
       }));
-    const manager_allocations = mgmt.perManager
-      .filter((e) => e.building_id === r.building_id && e.amount)
-      .map((e) => ({ manager_id: e.manager_id, amount: e.amount }));
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+function normalizeProfitCloseState(value: any): ProfitCloseState {
+  const root = value && typeof value === "object" ? value : {};
+  const rows = Array.isArray(root.rows) ? root.rows : [];
+  return {
+    organization_id: String(root.organization_id ?? ""),
+    period_month: String(root.period_month ?? ""),
+    can_lock: Boolean(root.can_lock),
+    can_unlock: Boolean(root.can_unlock),
+    state_hash: String(root.state_hash ?? ""),
+    snapshot_ids: Array.isArray(root.snapshot_ids)
+      ? root.snapshot_ids.map((id: unknown) => String(id)).sort()
+      : [],
+    snapshot_count: money(root.snapshot_count),
+    locked_count: money(root.locked_count),
+    draft_count: money(root.draft_count),
+    real_building_count: money(root.real_building_count),
+    active_real_snapshot_count: money(root.active_real_snapshot_count),
+    has_out_of_scope_snapshots: Boolean(root.has_out_of_scope_snapshots),
+    rows: rows.map((row: any) => ({
+      id: String(row.id),
+      building_id: String(row.building_id),
+      building_name: String(row.building_name ?? ""),
+      is_virtual: Boolean(row.is_virtual),
+      building_deleted: Boolean(row.building_deleted),
+      status: row.status === "LOCKED" ? "LOCKED" : "DRAFT",
+      computed_profit: money(row.computed_profit),
+      adjusted_profit: money(row.adjusted_profit),
+      adjustment_amount: money(row.adjustment_amount),
+      adjustment_reason: row.adjustment_reason ?? null,
+      management_salary: money(row.management_salary),
+      distributable_profit: money(row.distributable_profit),
+      source_revenue: money(row.source_revenue),
+      source_expense: money(row.source_expense),
+      source_hash: String(row.source_hash ?? ""),
+      is_stale: Boolean(row.is_stale),
+      stale_reason: row.stale_reason ?? null,
+      revision_number: money(row.revision_number),
+      locked_at: row.locked_at ?? null,
+    })),
+  };
+}
+
+export const useProfitCloseState = (
+  organizationId?: string,
+  periodMonth?: string,
+) => {
+  return useQuery({
+    queryKey: ["profit-close-state", organizationId, periodMonth],
+    enabled: !!organizationId && !!periodMonth,
+    queryFn: async (): Promise<ProfitCloseState> => {
+      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.state, {
+        p_organization_id: organizationId,
+        p_period_month: periodMonth,
+      });
+      if (error) throw error;
+      return normalizeProfitCloseState(data);
+    },
+  });
+};
+
+function normalizeSnapshot(value: any): ProfitCloseSnapshot | null {
+  if (!value) return null;
+  const computed = money(value.computed_profit);
+  const adjustment = money(value.adjustment_amount);
+  const adjusted = money(value.adjusted_profit ?? computed + adjustment);
+  const salary = money(value.management_salary);
+  return {
+    id: String(value.id ?? ""),
+    status: value.status === "LOCKED" ? "LOCKED" : "DRAFT",
+    computed_profit: computed,
+    adjustment_amount: adjustment,
+    adjustment_reason: value.adjustment_reason ?? null,
+    adjusted_profit: adjusted,
+    management_salary: salary,
+    distributable_profit: money(value.distributable_profit ?? adjusted - salary),
+    source_hash: value.source_hash ?? null,
+    locked_at: value.locked_at ?? null,
+  };
+}
+
+function normalizeProfitClosePreview(
+  value: any,
+  fallbackOrganizationId: string,
+  fallbackPeriod: string,
+): ProfitClosePreview {
+  const root = value && typeof value === "object" ? value : {};
+  const rows = Array.isArray(root.buildings)
+    ? root.buildings
+    : Array.isArray(root.rows)
+      ? root.rows
+      : Array.isArray(value)
+        ? value
+        : [];
+  const rootSourceHash = String(root.source_hash ?? "");
+  const normalizedRows = rows.map((row: any): ProfitClosePreviewRow => {
+    const snapshot = normalizeSnapshot(row.current_snapshot ?? row.snapshot);
+    if (snapshot && row.current_status) {
+      snapshot.status = row.current_status === "LOCKED" ? "LOCKED" : "DRAFT";
+    }
+    const computed = money(row.computed_profit ?? row.net_profit);
+    const adjustment = money(row.adjustment_amount);
+    const salary = money(row.management_salary);
+    const distributable = money(
+      row.distributable_profit ?? computed + adjustment - salary,
+    );
+    const rowSourceHash = String(
+      row.building_source_hash ?? row.source_hash ?? rootSourceHash,
+    );
+    const explicitStale =
+      typeof row.current_is_stale === "boolean"
+        ? row.current_is_stale
+        : typeof row.is_stale === "boolean"
+          ? row.is_stale
+          : null;
+    const stale = Boolean(
+      snapshot &&
+        (explicitStale ??
+          (snapshot.source_hash && rowSourceHash
+            ? snapshot.source_hash !== rowSourceHash
+            : false)),
+    );
     return {
-      building_id: r.building_id,
-      computed_profit: r.computed_profit,
-      adjusted_profit: r.adjusted_profit,
+      building_id: String(row.building_id),
+      building_name: String(row.building_name ?? ""),
+      revenue: money(row.source_revenue ?? row.revenue ?? row.total_income),
+      expense: money(row.source_expense ?? row.expense ?? row.total_expense),
+      computed_profit: computed,
+      adjustment_amount: adjustment,
       management_salary: salary,
-      allocations,
-      manager_allocations,
+      distributable_profit: distributable,
+      source_hash: rowSourceHash,
+      is_stale: stale,
+      stale_reason: row.current_stale_reason ?? row.stale_reason ?? null,
+      delta_profit: money(row.delta_profit ?? (snapshot ? computed - snapshot.computed_profit : 0)),
+      shareholder_allocations: Array.isArray(row.shareholder_allocations)
+        ? row.shareholder_allocations.map((allocation: any) => ({
+            shareholder_id: String(allocation.shareholder_id),
+            shareholder_name: String(allocation.shareholder_name ?? ""),
+            percent: money(allocation.percent),
+            amount: money(allocation.amount),
+          }))
+        : [],
+      manager_allocations: Array.isArray(row.manager_allocations)
+        ? row.manager_allocations.map((allocation: any) => ({
+            manager_id: String(allocation.manager_id),
+            manager_name: String(allocation.manager_name ?? ""),
+            amount: money(allocation.amount),
+          }))
+        : [],
+      current_snapshot: snapshot,
     };
   });
-  const canonical = await (supabase.rpc as any)("lock_profit_month_v1", {
-    p_period_month: period_month,
-    p_rows: canonicalRows,
-  });
-  if (!canonical.error) {
-    const c = canonical.data as any;
-    return { locked: c?.locked ?? rows.length, allocations: c?.allocations ?? 0 };
-  }
-  if (!isCanonicalFallbackSignal(canonical.error)) {
-    toast.error(canonical.error.message || "Không thể chốt lợi nhuận");
-    throw canonical.error;
-  }
 
-  // 1) Upsert profit_monthly (LOCKED) cho từng nhà (kèm management_salary)
-  const pmPayload = rows.map((r) => ({
-    user_id: uid,
-    building_id: r.building_id,
-    period_month,
-    computed_profit: r.computed_profit,
-    adjusted_profit: r.adjusted_profit,
-    management_salary: mgmt.perBuilding.get(r.building_id) ?? 0,
-    status: "LOCKED",
-    locked_at: nowIso,
-    locked_by: uid,
-  }));
-  const { data: pmRows, error: pmErr } = await supabase
-    .from("profit_monthly")
-    .upsert(pmPayload, { onConflict: "building_id,period_month" })
-    .select("id, building_id, adjusted_profit, management_salary");
-  if (pmErr) {
-    toast.error(pmErr.message || "Không thể chốt lợi nhuận");
-    throw pmErr;
-  }
-
-  const pm = (pmRows || []) as any[];
-  const buildingIds = pm.map((r) => r.building_id);
-  const pmIds = pm.map((r) => r.id);
-
-  // 2) Tỷ lệ cổ đông: tái dùng dữ liệu đã đọc ở 0b (lọc cổ đông còn hiệu lực —
-  // building_shareholders không bị xoá khi cổ đông soft-delete).
-  const shares = sharesPre;
-  const activeShIds = activeShIdsPre;
-  void buildingIds;
-
-  // 3) Xoá allocations cũ (cổ đông + lương điều hành) rồi insert lại (snapshot)
-  if (pmIds.length > 0) {
-    const { error: delErr } = await (supabase
-      .from("profit_allocations")
-      .delete() as any)
-      .in("profit_monthly_id", pmIds);
-    if (delErr) throw delErr;
-    const { error: delMgrErr } = await (supabase
-      .from("profit_manager_allocations")
-      .delete() as any)
-      .in("profit_monthly_id", pmIds);
-    if (delMgrErr) throw delMgrErr;
-  }
-
-  const pmByBuilding = new Map<string, { id: string; adjusted: number; salary: number }>();
-  for (const r of pm) {
-    pmByBuilding.set(r.building_id, {
-      id: r.id,
-      adjusted: Number(r.adjusted_profit) || 0,
-      salary: Number(r.management_salary) || 0,
-    });
-  }
-
-  // Cổ đông chia trên distributable = LN sau điều chỉnh − lương điều hành.
-  const allocPayload: any[] = [];
-  for (const s of (shares || []) as any[]) {
-    if (!activeShIds.has(s.shareholder_id)) continue; // bỏ cổ đông đã xoá
-    const target = pmByBuilding.get(s.building_id);
-    if (!target) continue;
-    const percent = Number(s.percent) || 0;
-    const distributable = target.adjusted - target.salary;
-    const amount = Math.round((distributable * percent) / 100);
-    allocPayload.push({
-      user_id: uid,
-      profit_monthly_id: target.id,
-      shareholder_id: s.shareholder_id,
-      percent,
-      amount,
-    });
-  }
-
-  if (allocPayload.length > 0) {
-    const { error: insErr } = await supabase
-      .from("profit_allocations")
-      .insert(allocPayload);
-    if (insErr) throw insErr;
-  }
-
-  // Snapshot phần lương điều hành theo từng quản lý/nhà.
-  const mgrAllocPayload: any[] = [];
-  for (const e of mgmt.perManager) {
-    const target = pmByBuilding.get(e.building_id);
-    if (!target || !e.amount) continue;
-    mgrAllocPayload.push({
-      user_id: uid,
-      profit_monthly_id: target.id,
-      manager_id: e.manager_id,
-      amount: e.amount,
-    });
-  }
-  if (mgrAllocPayload.length > 0) {
-    const { error: insMgrErr } = await supabase
-      .from("profit_manager_allocations")
-      .insert(mgrAllocPayload);
-    if (insMgrErr) throw insMgrErr;
-  }
-
-  return { locked: pm.length, allocations: allocPayload.length };
+  return {
+    organization_id: String(root.organization_id ?? fallbackOrganizationId),
+    period_month: String(root.period_month ?? fallbackPeriod),
+    source_hash: rootSourceHash,
+    is_locked: Boolean(
+      root.is_locked ?? normalizedRows.some((row) => row.current_snapshot?.status === "LOCKED"),
+    ),
+    is_stale: Boolean(root.is_stale ?? normalizedRows.some((row) => row.is_stale)),
+    rows: normalizedRows,
+  };
 }
 
-export const useLockProfitMonth = () => {
+export const useProfitClosePreview = (
+  organizationId?: string,
+  periodMonth?: string,
+  adjustments: ProfitCloseAdjustmentPayload[] = [],
+  buildingIds: string[] | null = null,
+  enabled = true,
+) => {
+  const previewAdjustments = adjustments;
+  const query = useQuery({
+    queryKey: [
+      "profit-close-preview",
+      organizationId,
+      periodMonth,
+      buildingIds,
+      previewAdjustments,
+    ],
+    enabled:
+      enabled &&
+      !!organizationId &&
+      !!periodMonth &&
+      (buildingIds === null || buildingIds.length > 0),
+    queryFn: async (): Promise<ProfitClosePreview> => {
+      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.preview, {
+        p_organization_id: organizationId,
+        p_period_month: periodMonth,
+        p_building_ids: buildingIds,
+        p_adjustments: previewAdjustments,
+      });
+      if (error) throw error;
+      return normalizeProfitClosePreview(data, organizationId, periodMonth!);
+    },
+  });
+
+  return {
+    ...query,
+    organizationId,
+  };
+};
+
+export interface CloseProfitPeriodInput {
+  organizationId: string;
+  periodMonth: string;
+  buildingIds: string[];
+  adjustments: ProfitCloseAdjustmentPayload[];
+  expectedSourceHash: string;
+  reason: string;
+  reclose: boolean;
+}
+
+function invalidateProfitCloseQueries(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["profit-close-preview"] });
+  qc.invalidateQueries({ queryKey: ["profit-close-state"] });
+  qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
+  qc.invalidateQueries({ queryKey: ["profit-monthly"] });
+  qc.invalidateQueries({ queryKey: ["profit-allocations"] });
+  qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
+}
+
+export const useCloseProfitPeriod = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: LockProfitInput) => {
-      const uid = (await getSessionUser())?.id;
-      if (!uid) throw new Error("User not authenticated");
-      if (input.rows.length === 0) throw new Error("Không có dữ liệu để chốt");
-      return writeLockedMonth(uid, input.period_month, input.rows);
+    mutationFn: async (input: CloseProfitPeriodInput) => {
+      if (!input.organizationId) throw new Error("Không xác định được tổ chức");
+      if (!input.expectedSourceHash) throw new Error("Thiếu mã nguồn dữ liệu để chốt");
+      if (input.buildingIds.length === 0) throw new Error("Không có nhà để chốt");
+      const rpcName = input.reclose ? PROFIT_CLOSE_RPC.reclose : PROFIT_CLOSE_RPC.close;
+      const submittedReason = input.reason.trim();
+      if (
+        input.reclose &&
+        (submittedReason.length < 8 || submittedReason.length > 1000)
+      ) {
+        throw new Error("Lý do chốt lại phải có 8–1000 ký tự");
+      }
+      const reason = submittedReason || `Chốt lợi nhuận lần đầu ${input.periodMonth}`;
+      const { data, error } = await (supabase.rpc as any)(rpcName, {
+        p_organization_id: input.organizationId,
+        p_period_month: input.periodMonth,
+        p_building_ids: input.buildingIds,
+        p_adjustments: input.adjustments,
+        p_reason: reason,
+        p_idempotency_key: `profit-${input.reclose ? "reclose" : "close"}-${crypto.randomUUID()}`,
+        p_expected_source_hash: input.expectedSourceHash,
+      });
+      if (error) throw error;
+      return data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["profit-monthly"] });
-      qc.invalidateQueries({ queryKey: ["profit-allocations"] });
-      qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
-      toast.success("Đã chốt lợi nhuận tháng");
+    onSuccess: (_data, input) => {
+      invalidateProfitCloseQueries(qc);
+      toast.success(input.reclose ? "Đã chốt lại lợi nhuận tháng" : "Đã chốt lợi nhuận tháng");
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || "Không thể chốt lợi nhuận");
     },
   });
 };
 
-// Chốt LẠI tháng đang LOCKED theo số accrual mới (đồng bộ với Phân bổ lợi nhuận).
-// Truyền `period` (YYYY-MM-01) để chỉ chốt lại đúng 1 tháng; bỏ trống = mọi tháng.
-// Chỉ cập nhật đúng các toà đã chốt của từng tháng; GIỮ "LN sau điều chỉnh" nếu
-// trước đó user đã sửa tay (adjusted_profit ≠ computed_profit), còn lại lấy số mới.
-export const useResyncLockedMonths = () => {
+export interface ResetProfitPeriodInput {
+  organizationId: string;
+  periodMonth: string;
+  expectedStateHash: string;
+  expectedSnapshotIds: string[];
+  reason: string;
+}
+
+export const useResetProfitPeriod = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (period?: string) => {
-      const uid = (await getSessionUser())?.id;
-      if (!uid) throw new Error("User not authenticated");
-
-      let q = (supabase
-        .from("profit_monthly")
-        .select("building_id, period_month, computed_profit, adjusted_profit") as any)
-        .eq("status", "LOCKED");
-      if (period) q = q.eq("period_month", period);
-      const { data: lockedRows, error } = await q;
+    mutationFn: async (input: ResetProfitPeriodInput) => {
+      if (!input.organizationId) throw new Error("Không xác định được tổ chức");
+      if (!input.expectedStateHash) throw new Error("Thiếu mã trạng thái snapshot để đặt lại");
+      if (input.expectedSnapshotIds.length === 0) throw new Error("Không có snapshot để đặt lại");
+      if (input.reason.trim().length < 8 || input.reason.trim().length > 1000) {
+        throw new Error("Lý do đặt lại phải có 8–1000 ký tự");
+      }
+      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.reset, {
+        p_organization_id: input.organizationId,
+        p_period_month: input.periodMonth,
+        p_reason: input.reason.trim(),
+        p_idempotency_key: `profit-reset-${crypto.randomUUID()}`,
+        p_expected_state_hash: input.expectedStateHash,
+        p_expected_snapshot_ids: [...input.expectedSnapshotIds].sort(),
+      });
       if (error) throw error;
-
-      const locked = (lockedRows || []) as any[];
-      if (locked.length === 0) return { months: 0, buildings: 0 };
-
-      // Gom các dòng đã chốt theo tháng.
-      const byMonth = new Map<string, any[]>();
-      for (const r of locked) {
-        const arr = byMonth.get(r.period_month) ?? [];
-        arr.push(r);
-        byMonth.set(r.period_month, arr);
-      }
-
-      let months = 0;
-      let buildings = 0;
-      for (const [periodMonth, lrows] of byMonth) {
-        const { start, end } = monthDateRange(periodMonth);
-        const { data: acc, error: accErr } = await (supabase.rpc as any)(
-          "fa_monthly_pnl_accrual",
-          { p_start_date: start, p_end_date: end, p_building_ids: null }
-        );
-        if (accErr) throw accErr;
-
-        const accNet = new Map<string, number>();
-        for (const a of aggregateAccrualByBuilding(acc as any[])) {
-          accNet.set(a.building_id, a.net_profit);
-        }
-
-        const rows = lrows.map((lr) => {
-          const newComputed = accNet.get(lr.building_id) ?? 0;
-          const hadManualEdit =
-            Number(lr.adjusted_profit) !== Number(lr.computed_profit);
-          return {
-            building_id: lr.building_id,
-            computed_profit: newComputed,
-            adjusted_profit: hadManualEdit ? Number(lr.adjusted_profit) : newComputed,
-          };
-        });
-
-        await writeLockedMonth(uid, periodMonth, rows);
-        months += 1;
-        buildings += rows.length;
-      }
-      return { months, buildings };
-    },
-    onSuccess: (res, period) => {
-      qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
-      qc.invalidateQueries({ queryKey: ["profit-monthly"] });
-      qc.invalidateQueries({ queryKey: ["profit-allocations"] });
-      qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
-      if (res.months === 0) {
-        toast.info(
-          period
-            ? `Tháng ${periodToLabel(period)} chưa chốt — không có gì để cập nhật`
-            : "Không có tháng đã chốt để cập nhật"
-        );
-      } else if (period) {
-        toast.success(`Đã chốt lại tháng ${periodToLabel(period)} theo số mới`);
-      } else {
-        toast.success(`Đã chốt lại ${res.months} tháng theo số mới`);
-      }
-    },
-  });
-};
-
-// Mở khoá 1 tháng (xoá allocations + set DRAFT) cho 1 nhà.
-export const useUnlockProfitMonth = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (profitMonthlyId: string) => {
-      // Canonical: tra (building, period) từ id rồi gọi unlock_profit_month_v1
-      // (atomic + giữ organization_id); fallback legacy 3 bước như cũ.
-      const { data: pmRow } = await (supabase
-        .from("profit_monthly")
-        .select("building_id, period_month") as any)
-        .eq("id", profitMonthlyId)
-        .maybeSingle();
-      if (pmRow?.building_id && pmRow?.period_month) {
-        const canonical = await (supabase.rpc as any)("unlock_profit_month_v1", {
-          p_period_month: String(pmRow.period_month).slice(0, 10),
-          p_building_ids: [pmRow.building_id],
-        });
-        if (!canonical.error) return;
-        if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-      }
-
-      const { error: delErr } = await (supabase
-        .from("profit_allocations")
-        .delete() as any)
-        .eq("profit_monthly_id", profitMonthlyId);
-      if (delErr) throw delErr;
-      const { error: delMgrErr } = await (supabase
-        .from("profit_manager_allocations")
-        .delete() as any)
-        .eq("profit_monthly_id", profitMonthlyId);
-      if (delMgrErr) throw delMgrErr;
-      const { error } = await supabase
-        .from("profit_monthly")
-        .update({ status: "DRAFT", management_salary: 0, locked_at: null, locked_by: null })
-        .eq("id", profitMonthlyId);
-      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["profit-monthly"] });
-      qc.invalidateQueries({ queryKey: ["profit-allocations"] });
-      qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
-      toast.success("Đã mở khoá tháng");
+      invalidateProfitCloseQueries(qc);
+      toast.success("Đã đặt lại trạng thái chốt lợi nhuận");
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || "Không thể đặt lại tháng");
     },
   });
 };

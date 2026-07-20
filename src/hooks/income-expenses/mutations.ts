@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { requireBuildingOrganizationId } from "@/lib/buildingOrganization";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
 import type {
@@ -77,6 +78,7 @@ export const useCreateIncomeExpense = () => {
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
+      const organizationId = await requireBuildingOrganizationId(input.building_id);
 
       // 1. Insert the voucher
       const { data: voucher, error: voucherError } = await supabase
@@ -87,6 +89,7 @@ export const useCreateIncomeExpense = () => {
           type: input.type,
           name: input.name,
           building_id: input.building_id,
+          organization_id: organizationId,
           room_id: input.room_id ?? null,
           tenant_id: input.tenant_id ?? null,
           contract_id: input.contract_id ?? null,

@@ -41,7 +41,7 @@ export const useCreateProfitDistribution = () => {
       //    RLS tự cắt theo tenant; chỉ còn 1 toà ảo non-deleted nên không mơ hồ.
       const { data: chung, error: bErr } = await (supabase
         .from("buildings")
-        .select("id") as any)
+        .select("id, organization_id") as any)
         .eq("is_virtual", true)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
@@ -96,6 +96,7 @@ export const useCreateProfitDistribution = () => {
           // phải sinh NHÁP chờ duyệt (DB default là APPROVED nên set tường minh).
           approval_status: "UNAPPROVED",
           building_id: (chung as any).id,
+          organization_id: (chung as any).organization_id,
           account_id: input.account_id,
           shareholder_id: input.shareholder_id,
           business_result_accounting: false,
@@ -176,7 +177,7 @@ export const useCreateManagerSalaryPayout = () => {
       //    RLS tự cắt theo tenant; chỉ còn 1 toà ảo non-deleted nên không mơ hồ.
       const { data: chung, error: bErr } = await (supabase
         .from("buildings")
-        .select("id") as any)
+        .select("id, organization_id") as any)
         .eq("is_virtual", true)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
@@ -231,6 +232,7 @@ export const useCreateManagerSalaryPayout = () => {
           // phải sinh NHÁP chờ duyệt (DB default là APPROVED nên set tường minh).
           approval_status: "UNAPPROVED",
           building_id: (chung as any).id,
+          organization_id: (chung as any).organization_id,
           account_id: input.account_id,
           profit_manager_id: input.manager_id,
           business_result_accounting: false,
