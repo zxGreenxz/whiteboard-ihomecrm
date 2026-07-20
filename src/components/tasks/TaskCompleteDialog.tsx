@@ -33,7 +33,7 @@ interface TaskCompleteDialogProps {
 /**
  * Đồng hồ hiển thị theo GIỜ VIỆT NAM — chỉ để nhân viên thấy mốc sắp được ghi.
  * KHÔNG còn ô nhập tay: `completion_time` do SERVER đóng dấu `now()` qua trigger
- * `jobs_stamp_completion_time` (migration 20260720180000). Trước đây ô
+ * `jobs_stamp_completion_time` (migration 20260720181000). Trước đây ô
  * <input type="datetime-local"> cho phép nhân viên tự chọn kỳ lương và hệ số
  * nhân (ngoài giờ / CN / Lễ) — xem audit 2026-07-20.
  */

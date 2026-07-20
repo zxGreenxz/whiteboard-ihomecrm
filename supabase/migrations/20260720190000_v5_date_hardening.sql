@@ -4,7 +4,7 @@
 -- 4 loi doc lap, deu lien quan "moc thoi gian nao duoc dung":
 --
 -- (1) v5_tick_from_job — bo fallback `COALESCE(completion_time, created_at)`.
---     Sau 20260720180000 da co CHECK bao dam COMPLETED => completion_time NOT
+--     Sau 20260720181000 da co CHECK bao dam COMPLETED => completion_time NOT
 --     NULL, nen fallback la code chet. Bo di de neu co gi sai thi no LOI TO
 --     thay vi am tham cham cong theo NGAY TAO.
 --

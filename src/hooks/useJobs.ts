@@ -193,7 +193,7 @@ export const useCompleteJob = () => {
       completion_address?: string | null;
     }) => {
       // KHÔNG gửi `completion_time`: server đóng dấu now() qua trigger
-      // `jobs_stamp_completion_time` (20260720180000). Trước đây FE gửi giá trị
+      // `jobs_stamp_completion_time` (20260720181000). Trước đây FE gửi giá trị
       // từ một ô datetime-local gõ tay → nhân viên tự chọn được kỳ lương.
       // Ảnh ghi CẢ HAI cột: `attachments` (lịch sử) và `completion_attachments`
       // (cột mà cổng requirePhoto của ledger đọc — xem job_photo_ok).

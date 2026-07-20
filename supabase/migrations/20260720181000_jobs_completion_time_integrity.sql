@@ -129,7 +129,7 @@ $$;
 
 COMMENT ON FUNCTION public.job_photo_ok(jsonb, jsonb) IS
   'Bang chung anh hoan thanh: FE tung ghi vao `attachments` thay vi '
-  '`completion_attachments` nen phai chap nhan ca hai (xem 20260720180000).';
+  '`completion_attachments` nen phai chap nhan ca hai (xem 20260720181000).';
 
 -- ---------------------------------------------------------------------------
 -- (5a) salary_work_ledger — cong anh 2-cot + bo fallback created_at

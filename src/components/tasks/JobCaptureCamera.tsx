@@ -34,7 +34,7 @@ export interface JobCaptureResult {
    * Moc bam nut CHUP — CÙNG biến `at` đã vẽ vào watermark, nên ảnh và cột DB
    * khớp nhau by construction. Chỉ để ĐỐI CHIẾU/audit: đây là đồng hồ thiết bị,
    * giả mạo được. Tiền luôn tính theo `jobs.completion_time` do server đóng dấu
-   * (trigger jobs_stamp_completion_time — migration 20260720180000).
+   * (trigger jobs_stamp_completion_time — migration 20260720181000).
    */
   capturedAt: string;
 }

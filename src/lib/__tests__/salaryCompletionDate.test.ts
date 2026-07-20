@@ -38,7 +38,7 @@ describe("bất biến: engine lương đọc completion_time, KHÔNG đọc cre
     const { file, sql } = liveDefinitionOf(fn);
     // Bắt cả `vn_local_date(j.created_at)` lẫn fallback
     // `COALESCE(j.completion_time, j.created_at)` — sau migration
-    // 20260720180000 đã có CHECK bảo đảm COMPLETED ⇒ completion_time NOT NULL,
+    // 20260720181000 đã có CHECK bảo đảm COMPLETED ⇒ completion_time NOT NULL,
     // nên fallback là code chết và phải bị gỡ để lỗi nổ to.
     const offenders = [
       /vn_local_(date|dow|time)\s*\(\s*[a-z_]*\.?created_at/i,
