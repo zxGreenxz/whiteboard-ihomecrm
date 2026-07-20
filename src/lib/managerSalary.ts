@@ -280,3 +280,14 @@ export function resolveSalaryEngine(cfg: any, periodMonth: string): "legacy" | "
   if (from && periodMonth && periodMonth < String(from)) return "legacy";
   return "v5";
 }
+
+// Chú thích cho dòng bảng kê KHÔNG có thưởng (hiện dưới số 0₫ ở cột Thưởng).
+// null = dòng có thưởng bình thường / dòng CASH → không cần chú thích.
+// Chỉ nói "thiếu ảnh" khi quy tắc bắt buộc ảnh ĐANG BẬT và đúng là thiếu ảnh;
+// mọi lý do khác (chủ loại khỏi thưởng, checkin trong giờ…) chỉ ghi "Không tính".
+export function zeroBonusReason(r: SalLedgerRow, requirePhoto = false): string | null {
+  if (r.bonus_amount == null) return null;
+  if ((r.bonus_amount ?? 0) > 0) return null;
+  if (requirePhoto && r.item_type === "JOB" && r.has_photo === false) return "Thiếu ảnh — chưa tính";
+  return "Không tính";
+}

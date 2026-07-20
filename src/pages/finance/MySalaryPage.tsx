@@ -12,6 +12,7 @@ import SalarySelfDesktop from "@/components/salary/SalarySelfDesktop";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
 import { resolveSalaryEngine } from "@/lib/managerSalary";
+import { useBonusRules } from "@/hooks/useSalaryConfig";
 
 // Khung trọn-màn nền tối cho trạng thái tải / chưa cấu hình (đồng bộ theme QUEST).
 function Shell({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,8 @@ export default function MySalaryPage() {
   const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 
   const { data, isLoading } = useManagerSalary(effPeriod, salaryEngine);
+  const { data: rulesData } = useBonusRules();
+  const requirePhoto = !!rulesData?.rules?.requirePhoto;
 
   if (myLoading || (!data && isLoading)) {
     return <Shell><div><Loader2 className="animate-spin" style={{ margin: "0 auto 10px", color: "#FFD23F" }} /><p style={{ fontSize: 14, color: "#9A8FC4" }}>Đang tải bảng lương…</p></div></Shell>;
@@ -76,6 +79,7 @@ export default function MySalaryPage() {
       period={period}
       canPrev
       canNext={canNext}
+      requirePhoto={requirePhoto}
       onPrevMonth={() => setOverride(shiftMonth(effPeriod, -1))}
       onNextMonth={() => { if (canNext) setOverride(shiftMonth(effPeriod, 1)); }}
     />

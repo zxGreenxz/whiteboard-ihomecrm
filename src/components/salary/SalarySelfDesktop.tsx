@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
-import type { SalManager, SalLedgerRow } from "@/lib/managerSalary";
+import { zeroBonusReason, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
 
 const plus = (v: number) => Math.round(Math.abs(v)).toLocaleString("vi-VN");
 
@@ -36,6 +36,7 @@ type DeskProps = {
   onNextMonth?: () => void;
   canPrev?: boolean;
   canNext?: boolean;
+  requirePhoto?: boolean;
 };
 
 // ─────────────── meta loại dòng ledger ───────────────
@@ -286,21 +287,21 @@ function PhotoCell({ r }: { r: SalLedgerRow }) {
   return <span style={{ color: C.muted }}>—</span>;
 }
 
-function BonusCell({ r }: { r: SalLedgerRow }) {
+function BonusCell({ r, requirePhoto }: { r: SalLedgerRow; requirePhoto?: boolean }) {
   if (r.bonus_amount == null) return <span style={{ color: C.muted }}>—</span>;
   if (r.bonus_amount === 0) {
-    const thieuAnh = r.has_photo === false && r.item_type === "JOB";
+    const note = zeroBonusReason(r, requirePhoto);
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
         <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, color: C.soft }}>0₫</span>
-        {thieuAnh && <span style={{ fontSize: 10, color: C.goldDim }}>Thiếu ảnh — chưa tính</span>}
+        {note && <span style={{ fontSize: 10, color: C.goldDim }}>{note}</span>}
       </div>
     );
   }
   return <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 700, color: C.green }}>+{plus(r.bonus_amount)}</span>;
 }
 
-function Ledger({ m }: { m: SalManager }) {
+function Ledger({ m, requirePhoto }: { m: SalManager; requirePhoto?: boolean }) {
   const rows = m.ledger;
   return (
     <div style={{ borderRadius: 22, background: C.card, border: `1px solid ${C.border}`, overflow: "hidden" }}>
@@ -350,7 +351,7 @@ function Ledger({ m }: { m: SalManager }) {
                       : <span style={{ color: C.sub, fontSize: 11.5 }}>{r.reason || "—"}</span>}
                   </td>
                   <td style={{ padding: "12px 10px", textAlign: "center" }}><PhotoCell r={r} /></td>
-                  <td style={{ padding: "12px 16px", textAlign: "right" }}><BonusCell r={r} /></td>
+                  <td style={{ padding: "12px 16px", textAlign: "right" }}><BonusCell r={r} requirePhoto={requirePhoto} /></td>
                 </tr>
               );
             })}
@@ -633,7 +634,7 @@ function CategoryDetailModal({ m, period, cat, onClose }: { m: SalManager; perio
 
 // ─────────────── ROOT ───────────────
 export default function SalarySelfDesktop(props: DeskProps) {
-  const { m, period } = props;
+  const { m, period, requirePhoto } = props;
   const [modal, setModal] = useState<{ kind: "break" } | { kind: "detail"; cat: CatKey } | null>(null);
 
   // Khoá cuộn nền + nạp font QUEST (Be Vietnam Pro / Space Grotesk / Space Mono).
@@ -665,7 +666,7 @@ export default function SalarySelfDesktop(props: DeskProps) {
         <Hero m={m} onOpenBreak={() => setModal({ kind: "break" })} onOpenDetail={(cat) => setModal({ kind: "detail", cat })} />
         <Achievements m={m} />
         <div style={{ display: "grid", gridTemplateColumns: "1.9fr 1fr", gap: 18, marginTop: 18, alignItems: "start" }}>
-          <Ledger m={m} />
+          <Ledger m={m} requirePhoto={requirePhoto} />
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <InvestmentCard m={m} />
             <HistoryCard m={m} />

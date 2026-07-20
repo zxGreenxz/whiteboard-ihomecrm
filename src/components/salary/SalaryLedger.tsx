@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { SAL_ICONS } from "./salaryIcons";
 import { tint } from "./salaryCommon";
 import { salFmt, salShort } from "./salaryFormat";
-import type { SalLedgerRow, SalManager } from "@/lib/managerSalary";
+import { zeroBonusReason, type SalLedgerRow, type SalManager } from "@/lib/managerSalary";
 
 interface LedgerManager { id: string; short: string; alias: string; tone: "primary" | "info"; }
 
@@ -46,10 +46,11 @@ export default function SalaryLedger({
   const [fType, setFType] = useState("all");
   const [fBonus, setFBonus] = useState<"all" | "yes" | "no">("all");
 
-  const rowBonus = (r: SalLedgerRow): { val: number | null; warn?: boolean } => {
+  const rowBonus = (r: SalLedgerRow): { val: number | null; note?: string | null } => {
     if (r.item_type === "CASH") return { val: null };
-    if (r.item_type === "JOB" && requirePhoto && r.has_photo === false) return { val: 0, warn: true };
-    return { val: r.bonus_amount };
+    if (r.item_type === "JOB" && requirePhoto && r.has_photo === false)
+      return { val: 0, note: zeroBonusReason({ ...r, bonus_amount: 0 }, requirePhoto) };
+    return { val: r.bonus_amount, note: zeroBonusReason(r, requirePhoto) };
   };
   const bonusOf = (r: SalLedgerRow) => rowBonus(r).val || 0;
 
@@ -138,9 +139,9 @@ export default function SalaryLedger({
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                       {b.val === null
                         ? <span style={{ color: "hsl(var(--muted-foreground) / .6)" }}>—</span>
-                        : b.warn
-                          ? <><span className="sal-num" style={{ fontWeight: 700 }}>0₫</span><span className="sal-warn">Thiếu ảnh — chưa tính</span></>
-                          : <span className="sal-num" style={{ fontWeight: 700, color: r.excluded ? "hsl(var(--muted-foreground))" : "hsl(var(--status-success-fg))" }}>{salFmt(b.val)}</span>}
+                        : b.note
+                          ? <><span className="sal-num" style={{ fontWeight: 700 }}>0₫</span><span className="sal-warn">{b.note}</span></>
+                          : <span className="sal-num" style={{ fontWeight: 700, color: "hsl(var(--status-success-fg))" }}>{salFmt(b.val)}</span>}
                       {onToggleExclude && r.item_type === "JOB" && r.source_id && (
                         <button
                           type="button"

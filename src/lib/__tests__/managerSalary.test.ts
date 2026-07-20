@@ -7,6 +7,7 @@ import {
   computeStats,
   computeStreak,
   resolveSalaryEngine,
+  zeroBonusReason,
   shiftYm,
   autoStaffYm,
   isStaffMonthVisible,
@@ -190,5 +191,39 @@ describe("resolveSalaryEngine", () => {
   it("config rỗng/null → legacy, không nổ", () => {
     expect(resolveSalaryEngine(null, "2026-07-01")).toBe("legacy");
     expect(resolveSalaryEngine({}, "2026-07-01")).toBe("legacy");
+  });
+});
+
+describe("zeroBonusReason", () => {
+  const job = (over: Partial<SalLedgerRow> = {}): SalLedgerRow => ({
+    staff_id: "s", item_type: "JOB", source_id: "j", occurred_date: "2026-06-15",
+    day_label: "", content: "sửa", place: "", job_type_name: "sửa",
+    is_repair: true, is_contract: false, base_amount: 30000, weekend_amount: 0,
+    after_amount: 0, cash_amount: null, has_photo: false, bonus_amount: 0,
+    reason: "sửa", ...over,
+  });
+
+  it("việc bị loại khỏi thưởng → 'Không tính', KHÔNG đổ cho thiếu ảnh", () => {
+    expect(zeroBonusReason(job({ excluded: true }), false)).toBe("Không tính");
+  });
+
+  it("không bắt buộc ảnh thì dù thiếu ảnh vẫn chỉ ghi 'Không tính'", () => {
+    expect(zeroBonusReason(job({ has_photo: false }), false)).toBe("Không tính");
+  });
+
+  it("bắt buộc ảnh + đúng là thiếu ảnh → 'Thiếu ảnh — chưa tính'", () => {
+    expect(zeroBonusReason(job({ has_photo: false }), true)).toBe("Thiếu ảnh — chưa tính");
+  });
+
+  it("bắt buộc ảnh nhưng CÓ ảnh (0đ vì lý do khác) → 'Không tính'", () => {
+    expect(zeroBonusReason(job({ has_photo: true }), true)).toBe("Không tính");
+  });
+
+  it("dòng có thưởng → không chú thích gì", () => {
+    expect(zeroBonusReason(job({ bonus_amount: 30000 }), true)).toBeNull();
+  });
+
+  it("dòng CASH (bonus null) → không chú thích gì", () => {
+    expect(zeroBonusReason(job({ item_type: "CASH", bonus_amount: null }), true)).toBeNull();
   });
 });
