@@ -86,6 +86,7 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Bảng lương quản lý', link: '/03-quan-ly-van-hanh/bang-luong/' },
           { text: 'Lương của tôi', link: '/03-quan-ly-van-hanh/luong-cua-toi/' },
           { text: 'Ví thu chi cá nhân', link: '/03-quan-ly-van-hanh/vi-ca-nhan/' },
+          { text: 'Chờ duyệt', link: '/03-quan-ly-van-hanh/cho-duyet/' },
         ],
       },
       {
@@ -164,6 +165,7 @@ export const sidebar: DefaultTheme.Sidebar = [
       { text: 'Nhân viên & Đội ngũ', link: '/05-cai-dat/nhan-vien-doi-ngu/' },
       { text: 'Phân quyền theo trang', link: '/05-cai-dat/phan-quyen/' },
       { text: 'Quản trị người dùng', link: '/05-cai-dat/admin-users/' },
+      { text: 'Trợ lý AI', link: '/05-cai-dat/tro-ly-ai/' },
     ],
   },
   {
@@ -183,6 +185,15 @@ export const sidebar: DefaultTheme.Sidebar = [
       { text: 'Câu hỏi thường gặp (FAQ)', link: '/07-thong-tin-khac/faq/' },
       { text: 'Ghi chú phiên bản', link: '/07-thong-tin-khac/ghi-chu-phien-ban/' },
       { text: 'Kênh hỗ trợ', link: '/07-thong-tin-khac/kenh-ho-tro/' },
+    ],
+  },
+  {
+    text: '8. Demo kế hoạch phát triển',
+    collapsed: false,
+    items: [
+      { text: 'Phòng trình bày kế hoạch', link: '/08-ke-hoach-phat-trien/' },
+      { text: 'Kế hoạch AI Copilot', link: '/08-ke-hoach-phat-trien/ai-copilot/' },
+      { text: 'Mẫu kế hoạch dự án mới', link: '/08-ke-hoach-phat-trien/mau-plan/' },
     ],
   },
 ]

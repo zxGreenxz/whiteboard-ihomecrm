@@ -2,6 +2,7 @@ import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
 import DemoResetButton from './DemoResetButton.vue'
 import SandboxTry from './SandboxTry.vue'
+import './plan-artifact.css'
 
 export default {
   extends: DefaultTheme,

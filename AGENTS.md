@@ -1,6 +1,20 @@
-# CLAUDE.md — Workflow mặc định cho dự án
+# AGENTS.md — Workflow mặc định cho Codex
 
-File này áp dụng cho mọi session Claude Code làm việc trên repo này.
+File này áp dụng cho mọi session Codex làm việc trên repo này.
+
+## Codex Subagent Routing
+
+Use the project custom agents for substantial work:
+
+- `architect`: plan complex, risky, cross-cutting, migration, authorization, or data-model changes before implementation.
+- `scout_mini`: perform focused repository exploration and trace relevant files, symbols, flows, and tests.
+- `mini`: handle small read-only research or diagnostic tasks; it is the lightweight alias for the scout tier.
+- `implementer`: make scoped code changes and run relevant tests after the approach is clear.
+- `reviewer`: independently review non-trivial changes after implementation, with findings ordered by severity.
+
+The main agent owns task decomposition, integrates all results, resolves conflicts, and delivers the final answer. Delegate only concrete bounded tasks, avoid delegation for trivial work, and do not run multiple write-capable agents against overlapping files.
+
+When spawning a custom agent, select it with the exact registered `agent_type`; `task_name` is only the task label. Do not combine a different `agent_type` with a full-history fork. Always pass `fork_turns = "none"` explicitly so the selected agent can load its own model and instructions; omitting this field currently defaults to a full-history fork. For substantial implementation, prefer the flow `architect` or `scout_mini` -> `implementer` -> `reviewer`.
 
 ## Stack ngắn gọn
 
@@ -13,17 +27,17 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
   `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
 - **Regen Supabase types**: sau khi apply migration đổi schema, chạy
   `npm run gen:types > src/integrations/supabase/types.ts` rồi thêm lại dòng
-  comment header đầu file. ĐỪNG để types.ts trôi sau migration (gây `as any` lan
+  comment header đầu file. ĐỪNG để `types.ts` trôi sau migration (gây `as any` lan
   rộng). PAT đọc từ `CLAUDE.local.md`.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.
 - **Đối chiếu tiền**: `node scripts/reconcile-money.mjs [YYYY-MM]` so SUM SQL thật
-  vs tổng-1000-dòng-đầu — chạy ở mọi thay đổi đụng số tiền để bắt bug cap-1000.
+  với tổng 1000 dòng đầu — chạy ở mọi thay đổi đụng số tiền để bắt bug cap-1000.
 
 ## Quy trình mặc định khi làm xong một thay đổi
 
-1. **Chạy type check & test liên quan** — phải xanh trước khi đi tiếp.
+1. **Chạy type check và test liên quan** — phải xanh trước khi đi tiếp.
 2. **Test trực tiếp trên web** — **MẶC ĐỊNH CHẠY ẨN (headless), KHÔNG mở cửa sổ trình duyệt.**
 
    Ưu tiên hạm đội headless ở `.e2e-fleet/` (Playwright Test Runner) vì nhanh nhất
@@ -57,10 +71,18 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 
    Giữ `FLEET_WORKERS` nhỏ (1–2) cho user nhìn kịp; config đã bật `slowMo` sẵn ở
    chế độ headed. **Không tự ý mở cửa sổ trình duyệt khi user không yêu cầu.**
-3. **Tự động hoàn thiện dữ liệu nếu cần**: nếu tính năng cần seed/cleanup dữ liệu (vd phải có meter trước mới test ghi chỉ số được), dùng Supabase Management API với PAT trong `CLAUDE.local.md` để chuẩn bị state đủ test, không hỏi user.
-4. **Sửa lỗi → re-test → lặp lại** đến khi tính năng chạy đúng. Không tuyên bố "đã xong" khi chưa thấy nó hoạt động trong browser.
-5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`, `fix(scope): mô tả`). Stage file cụ thể, **không** dùng `git add -A`.
-6. **Push** lên `origin/main` ngay khi commit (repo này deploy thẳng từ main qua Vercel).
+3. **Tự động hoàn thiện dữ liệu test nếu cần**: nếu tính năng cần seed/cleanup dữ
+   liệu (ví dụ phải có meter trước mới test ghi chỉ số được), dùng Supabase
+   Management API với PAT trong `CLAUDE.local.md` để chuẩn bị state đủ test trong
+   phạm vi dữ liệu test được phép, không hỏi user.
+4. **Sửa lỗi → re-test → lặp lại** đến khi tính năng chạy đúng. Không tuyên bố
+   "đã xong" khi chưa thấy nó hoạt động trong browser; nếu không thể test browser,
+   phải nói rõ chưa xác minh phần nào.
+5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`,
+   `fix(scope): mô tả`). Stage file cụ thể, **không** dùng `git add -A` và không
+   đưa thay đổi không liên quan của user vào commit.
+6. **Push** lên `origin/main` ngay khi commit (repo này deploy thẳng từ main qua
+   Vercel), trừ khi user yêu cầu không push hoặc môi trường không cho phép.
 
 ## Quy ước commit
 
@@ -70,21 +92,24 @@ Xem `git log --oneline` để theo style. Tóm tắt:
 - `fix(scope): ...` — sửa bug
 - `chore(scope): ...` — build/deps/config
 - Body (nếu có) viết bullet `- ...` mô tả "what + why"
-- Luôn kèm trailer:
+- Thay đổi do Codex thực hiện dùng trailer:
 
   ```text
-  Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+  Co-Authored-By: Codex <noreply@openai.com>
   ```
 
 ## Cảnh báo về secrets
 
-- **KHÔNG bao giờ commit** `CLAUDE.local.md`, `.env.local`, hay bất kỳ token/password/PAT nào vào repo. Cả hai đã có trong `.gitignore`.
-- Khi cần Supabase admin access, đọc PAT từ `CLAUDE.local.md` trong runtime — không in ra console/log/commit message.
+- **KHÔNG bao giờ commit** `CLAUDE.local.md`, `.env.local`, hay bất kỳ
+  token/password/PAT nào vào repo. Các file secret phải nằm trong `.gitignore`.
+- Khi cần Supabase admin access, đọc PAT từ `CLAUDE.local.md` trong runtime —
+  không in giá trị secret ra console/log/commit message.
 
 ## Cấu trúc nhanh
 
 - `src/pages/` — route entry
-- `src/components/<domain>/` — UI theo domain (income-expenses, meter-readings, invoices, customers…)
+- `src/components/<domain>/` — UI theo domain (income-expenses, meter-readings,
+  invoices, customers…)
 - `src/hooks/` — React Query data hooks
 - `src/lib/` — pure utils + zod schemas (`*Validation.ts`)
 - `supabase/migrations/` — SQL migrations theo timestamp

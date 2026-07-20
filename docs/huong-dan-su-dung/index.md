@@ -12,6 +12,9 @@ hero:
     - theme: alt
       text: Quy trình nghiệp vụ
       link: /01-bat-dau/gioi-thieu
+    - theme: alt
+      text: Demo kế hoạch phát triển
+      link: /08-ke-hoach-phat-trien/
 
 features:
   - icon: 🚀
@@ -27,4 +30,8 @@ features:
   - icon: ⚙️
     title: Cài đặt hệ thống
     details: Danh mục, mẫu biểu, nhân viên, đội ngũ và ma trận phân quyền theo trang.
+  - icon: 🧭
+    title: Demo kế hoạch phát triển
+    details: Các bản plan dùng để họp, thuyết trình và duyệt trước — có quy trình doanh nghiệp, sơ đồ, lộ trình, rủi ro và phụ lục kỹ thuật.
+    link: /08-ke-hoach-phat-trien/
 ---

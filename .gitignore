@@ -50,7 +50,14 @@ dataexcel/
 # Draft — file dư thừa gom lại để review trước khi xoá (KHÔNG commit)
 draft/
 
-# E2E parallel browser fleet (test tooling, @playwright/test cài --no-save)
-.e2e-fleet/
+# E2E parallel browser fleet: COMMIT config + specs (đường test mặc định, xem
+# CLAUDE.md/AGENTS.md); chỉ bỏ qua thư mục sinh ra khi chạy. Mật khẩu tài khoản
+# test KHÔNG nằm trong repo — đọc từ env FLEET_PASS_* (giá trị ở CLAUDE.local.md).
+.e2e-fleet/node_modules/
+.e2e-fleet/test-results/
+.e2e-fleet/playwright-report/
 supabase/.temp/
 test-results/
+
+# Bản sao repo do hạm đội subagent tạo (harness tự sinh) — KHÔNG bao giờ commit
+.claude/worktrees/
