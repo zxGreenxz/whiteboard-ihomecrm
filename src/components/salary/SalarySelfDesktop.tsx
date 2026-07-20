@@ -13,6 +13,18 @@ import { salFmt, salShort, bigNum } from "./salaryFormat";
 import { useCountUp } from "./salaryCommon";
 import { zeroBonusReason, isUnqualifiedContractRow, type SalManager, type SalLedgerRow } from "@/lib/managerSalary";
 
+// Nhãn + ghi chú cho khoản thưởng, đọc từ CHÍNH nguồn tiền thay vì hardcode.
+// Chế độ v5 trả thưởng CHUỖI, chế độ cũ trả thưởng theo VIỆC — gọi cả hai là
+// "Thưởng việc · N việc" là sai: tháng 7 hiện "31 việc +1.400.000" trong khi
+// 1.400.000 là tiền chuỗi, không đến từ việc nào.
+function bonusLabelOf(m: SalManager): { label: string; note: string } {
+  if (m.bonusAuto.length === 1) {
+    return { label: m.bonusAuto[0].label, note: m.bonusAuto[0].note || "" };
+  }
+  const earned = m.ledger.filter((r) => (r.bonus_amount || 0) > 0).length;
+  return { label: "Thưởng việc", note: `${earned} việc` };
+}
+
 const plus = (v: number) => Math.round(Math.abs(v)).toLocaleString("vi-VN");
 
 const RANK_NAMES = ["Tân binh", "Đồng", "Bạc", "Vàng", "Vô địch"];
@@ -193,7 +205,7 @@ function Hero({ m, onOpenBreak, onOpenDetail }: { m: SalManager; onOpenBreak: ()
   // bảng tổng hợp đầy đủ (onOpenBreak).
   const allChips: { cat: CatKey; label: string; v: number; minus: boolean; color: string; bg: string }[] = [
     { cat: "luong", label: "Lương cứng", v: m.base, minus: false, color: C.text, bg: "rgba(255,255,255,.12)" },
-    { cat: "thuong", label: "Thưởng việc", v: c.bonus, minus: false, color: C.gold, bg: "rgba(255,210,63,.16)" },
+    { cat: "thuong", label: bonusLabelOf(m).label, v: c.bonus, minus: false, color: C.gold, bg: "rgba(255,210,63,.16)" },
     { cat: "dautu", label: "Đầu tư", v: m.investment, minus: false, color: C.greenMint, bg: "rgba(52,211,153,.18)" },
     { cat: "hh", label: "HH Sale", v: m.commission, minus: false, color: C.purpleSoft, bg: "rgba(139,92,246,.22)" },
     { cat: "ung", label: "Đã ứng", v: m.advance, minus: true, color: C.pinkSoft, bg: "rgba(255,122,160,.2)" },
@@ -304,6 +316,10 @@ function BonusCell({ r, requirePhoto }: { r: SalLedgerRow; requirePhoto?: boolea
 function Ledger({ m, requirePhoto }: { m: SalManager; requirePhoto?: boolean }) {
   // Ẩn việc ký HĐ làm trong giờ — sai điều kiện từ đầu nên không bao giờ có thưởng.
   const rows = m.ledger.filter((r) => !isUnqualifiedContractRow(r));
+  // Chân bảng phải cộng ĐÚNG các dòng ngay trên nó. Trước đây dùng m.calc.bonus
+  // (tổng thưởng cả tháng) → ở chế độ v5, thưởng là CHUỖI chứ không phải thưởng
+  // việc, nên chân bảng ghi 1.400.000 trong khi 29 dòng chỉ cộng ra 930.000.
+  const rowsTotal = rows.reduce((s, r) => s + (r.bonus_amount || 0), 0);
   return (
     <div style={{ borderRadius: 22, background: C.card, border: `1px solid ${C.border}`, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 22px", borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}>
@@ -360,7 +376,7 @@ function Ledger({ m, requirePhoto }: { m: SalManager; requirePhoto?: boolean }) 
           <tfoot>
             <tr style={{ borderTop: `2px solid ${C.border}`, background: "rgba(23,19,42,.5)" }}>
               <td colSpan={6} style={{ padding: 14, textAlign: "right", textTransform: "uppercase", fontSize: 11, letterSpacing: ".05em", color: C.sub, fontWeight: 700 }}>Tổng thưởng việc (kỳ này)</td>
-              <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "'Space Mono',monospace", fontWeight: 800, fontSize: 14, color: C.gold }}>+{plus(m.calc!.bonus)}</td>
+              <td style={{ padding: "14px 16px", textAlign: "right", fontFamily: "'Space Mono',monospace", fontWeight: 800, fontSize: 14, color: C.gold }}>+{plus(rowsTotal)}</td>
             </tr>
           </tfoot>
         </table>
@@ -500,7 +516,7 @@ function BreakdownModal({ m, period, onClose }: { m: SalManager; period: PeriodL
         </div>
         <div style={{ padding: "6px 22px 16px" }}>
           <BreakRow label="Lương cứng" amount={m.base} />
-          <BreakRow label="Thưởng việc" note={`${m.stats.jobs} việc`} amount={c.bonus} color={C.gold} />
+          <BreakRow label={bonusLabelOf(m).label} note={bonusLabelOf(m).note || undefined} amount={c.bonus} color={C.gold} />
           {m.investment > 0 && <BreakRow label="Đầu tư" note="LN cổ đông" amount={m.investment} color={C.green} />}
           {m.commission > 0 && <BreakRow label="Hoa hồng Sale" amount={m.commission} color={C.purpleSoft} />}
           {m.advance > 0 && <BreakRow label="Đã ứng trước" amount={m.advance} color={C.pink} neg />}
