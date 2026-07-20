@@ -49,47 +49,58 @@ ngày, xem §3) + 2 claim bị bác (hệ thống thực tế ổn hơn báo cá
 | Hạng mục thanh lý sinh động bị **thiếu organization_id** (3 dòng mới sinh trong ngày) | `_termination_ensure_type` giờ resolve org từ membership + backfill → 0 dòng NULL ✅ |
 | Residue test demo: 2 yêu cầu duyệt treo + 1 dòng lương paid=300k không có bút toán hiệu lực | REJECT 2 request, reset paid=0, huỷ voucher mồ côi ✅ |
 
-## 4. CẦN BỔ SUNG — P0 (làm trước chu kỳ lương/lợi nhuận/chi-lớn kế tiếp)
+## 4. P0 — ✅ ĐÃ LÀM HẾT 4/4 (2026-07-19/20, verified sống)
 
-1. **Lỗ maker tự duyệt phiếu engine (CONFIRMED, không chủ-đích):** 19/19 phiếu
-   lương/LN do engine tạo KHÔNG được nhận vào flow-ownership → không bị freeze →
-   nút Duyệt cũ (`approve_voucher`, nhánh "người tạo") cho phép **maker tự duyệt
-   phiếu đang chờ engine**; UI còn tự rơi vào đúng đường đó. Vá: claim ownership
-   trong 3 writer engine + backfill 19 phiếu, hoặc guard mọi đường duyệt từ chối
-   phiếu có approval_request mở. **Phải đi kèm mục 2** (nếu chặn mà chưa có UI
-   duyệt engine thì phiếu lương kẹt).
-2. **Chưa có màn hình DUYỆT engine trong sản phẩm:** decide chỉ gọi được bằng
-   SQL admin. Cần: RPC wrapper decide (authorize + map membership) + trang
-   "Chờ duyệt" (Approvals inbox) + withdraw/tự-đóng request khi phiếu bị huỷ.
-3. **Hai hệ quyền không có cầu đồng bộ + off-boarding gãy:** UI sửa quyền chỉ ghi
-   hệ cũ (staff_assignments) — gỡ quyền trên UI KHÔNG thu hồi hệ mới
-   (role_bindings); nút xoá nhân viên đang gãy (FK RESTRICT 23503). Cần admin RPC
-   dual-write + suspend/revoke + job đối chiếu định kỳ (đang lệch 112 key).
-4. **Chốt artifact prod → repo (disaster-recovery!):** engine duyệt v2, payment
-   v4, lá chắn storage (`storage_object_links` + policy RESTRICTIVE), RBAC t2_*,
-   org t6a_*, 3 RPC meter — đang sống ở DB nhưng **không có file nào trên main**.
-   Khôi phục từ migrations hiện tại sẽ MẤT các lớp này.
+1. ✅ **Lỗ maker tự duyệt phiếu engine — VÁ (t5_26):** `assert_no_engine_request_v1`
+   gắn vào `approve_voucher`/`unapprove_voucher`/`approve_income_expense_v1` →
+   phiếu có approval_request PENDING/POSTED bị chặn 55000. Test sống: maker tự
+   duyệt → CHẶN, unapprove POSTED → CHẶN, huỷ phiếu → request tự đóng (trigger a75).
+2. ✅ **Màn "Chờ duyệt" — XONG (t5_26 backend + FE):** `list_my_pending_approvals_v1`
+   + `decide_financial_request_v2` (tự map membership + CAS) + `withdraw_financial_
+   request_v1`. FE: `src/pages/approvals/ApprovalsPage.tsx` + `useApprovals.ts` +
+   route `/approvals` + menu "Chờ duyệt". Test backend PASS (inbox→decide→POSTED,
+   withdraw→CANCELLED).
+3. ✅ **Đồng bộ 2 hệ quyền + off-boarding — VÁ (t5_27):** trigger a80/a81 xoá/đổi
+   staff_assignment ⇒ đóng role_binding (fail-closed) + bump authorization_version;
+   `is_actor_offboarded_v1` gắn vào 3 hàm gác legacy ⇒ đình chỉ/thu hồi chặn cả
+   đường cũ; `set_membership_status_v1` (chặn tự đổi + chặn hạ chủ-sở-hữu-cuối);
+   `delete_staff_member` → off-boarding mềm (hết 23503). Test: suspend 30/2→0/0,
+   phục hồi đúng, **10 người trước/sau 0 LỆCH**.
+4. ✅ **Artifact prod → repo (DR) — XONG:** `scripts/authz-prepared/prod-snapshot/`
+   PS01 engine duyệt · PS02 payment/invoice · PS03 storage shield · PS04 RBAC/org/
+   meter/threshold · PS05 phần còn lại · README (thứ tự chạy lại từ DB trắng).
 
-## 5. P1 (sớm, không khẩn)
+## 5. P1 — ✅ ĐÃ LÀM (2026-07-20)
 
-- **Storage policies GHI** còn bucket-wide (đọc đã cách ly org, nhưng ghi đè/xoá
-  chéo org về lý thuyết vẫn được) → nối storage_object_links sang INSERT/UPDATE/DELETE.
-- **NULL-org sinh mới hằng ngày** ở 14 bảng phụ (invoice_audit_log,
-  public_room_events, notifications…) → autofill/DEFAULT + backfill đợt.
-- 2 phiếu demo đang trỏ **sổ quỹ của org thật** (PT2607007/PT2607008 — nghi fixture
-  cũ): owner quyết reassign hay huỷ, xong mới thêm FK same-org.
-- `pay_utility_bill` + `generate_recurring_vouchers_v2` chưa đọc cờ/ngưỡng
-  (recurring đã bị revoke anon ở t5_25).
-- Emergency break-glass (`emergency_approve_financial_v1`) chưa có endpoint + alert.
-- CI gates (typecheck/definer-acl/view-invoker/vitest/cross-tenant) chưa có
-  workflow tự động; alert + audit pipeline trống.
-- R2 Worker bản hardened đã deploy chưa — không xác minh được bằng read-only
-  (cần `wrangler deployments list`).
+- ✅ **Storage GHI chéo-org — VÁ (t5_29):** thêm 2 policy RESTRICTIVE UPDATE+DELETE
+  dùng `can_read_storage_object_v1` (bucket non-PII luôn pass; 0/2448 object PII
+  thiếu link nên không gãy xoá hợp lệ). Test: ketoan→false (chặn), super-admin→true.
+- ✅ **NULL-org — VÁ (t5_30):** backfill từ cha (building/invoice/user/parent) +
+  3 autofill trigger (public_room_events 1553→1004, notifications 76→6, invoice_
+  audit_log dòng mới); material/inspection/salary/building_utility **sạch hết**.
+  Còn cron_runs (log hệ thống) + building null-org / user đa-org = NULL hợp lệ.
+- ✅ **2 phiếu demo trỏ sổ org thật — VÁ (t5_29):** reassign PT2607007/PT2607008
+  sang sổ demo → **0 phiếu demo còn trỏ sổ org thật**.
+- ✅ **`pay_utility_bill` né ngưỡng — VÁ (t5_28):** giờ đọc ngưỡng org; điện 2tr
+  → tự duyệt, nước 8tr → Nháp. (`generate_recurring_vouchers` xác minh **đúng
+  thiết kế** — chỉ tự duyệt khi template bật `repeat_auto_approve`.)
+- ✅ **Emergency break-glass — XONG (t5_29):** wrapper `emergency_approve_request_v1`
+  (map OWNER membership + version → inner fn). Test 3 guard: thiếu reauth→42501,
+  reason<20→22023, maker tự-emergency→42501. Log qua `emergency_override_events`.
+- ✅ **CI gates — XONG (`.github/workflows/ci-gates.yml`):** quality-gates
+  (typecheck/lint/build/vitest, không cần secret, xanh ngay) + security-gates
+  (definer-acl/view-invoker, bật khi có SUPABASE_PAT) + 3 job optional. Dùng
+  preflight-job pattern (GitHub cấm `secrets.*` trong `if:` cấp job).
+- ⏳ **R2 Worker bản hardened đã deploy chưa** — vẫn cần `wrangler deployments list`
+  (không xác minh được read-only). CÒN LẠI duy nhất của P1.
 
 ## 6. P2 / đúng lộ trình (T7–T9, chưa tới hạn)
 
-- T7 drain: thu hồi direct DML 4 bảng tiền khỏi client (đang mở chủ-đích
-  coexistence), gỡ fallback FE, revoke v2/v3 legacy.
+- **T7 drain — ĐÃ CHUẨN BỊ, CHƯA ÁP** (`scripts/authz-prepared/T7_PREPARED_drain_
+  legacy_dml.sql`): rút DML trực tiếp 4 bảng tiền khỏi client. KHÔNG áp vì FE còn
+  fallback → rút bây giờ sẽ gãy việc thật. File ghi rõ điều kiện go/no-go (≥1 chu
+  kỳ vận hành 100% canonical + recovery set + owner duyệt) + Pha A (revoke anon,
+  an toàn sớm) / Pha B (revoke authenticated, sau chu kỳ) + rollback khẩn.
 - T9: retention 90 ngày + cleanup + audit độc lập cuối.
 - RLS v2 shadow (T6b) chưa bắt đầu; route-inventory §6, matrix ngoài-tài-chính §7,
   5/8 edge function §15, suite bền vững §18 (persisted/perf/property) — cần đợt

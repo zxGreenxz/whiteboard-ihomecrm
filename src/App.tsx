@@ -76,6 +76,7 @@ const IncomeExpensePage = lazy(() => import("./pages/payments/IncomeExpensePage"
 const IncomeExpensePrintPage = lazy(() => import("./pages/payments/IncomeExpensePrintPage"));
 const VoucherDetailPage = lazy(() => import("./pages/payments/VoucherDetailPage"));
 const RefundLogPage = lazy(() => import("./pages/payments/RefundLogPage"));
+const ApprovalsPage = lazy(() => import("./pages/approvals/ApprovalsPage"));
 
 // Tài sản & vật tư
 const AssetsPage = lazy(() => import("./pages/assets/AssetsPage"));
@@ -324,6 +325,9 @@ const App = () => (
           <Route path="/income-expense/print/:id" element={<ProtectedRoute><RequirePermission module="income_expenses" action="print"><IncomeExpensePrintPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/income-expense/voucher/:id" element={<ProtectedRoute><RequirePermission module="income_expenses"><VoucherDetailPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/finance/refund-log" element={<ProtectedRoute><RequirePermission module="deposits"><RefundLogPage /></RequirePermission></ProtectedRoute>} />
+          {/* Hộp thư duyệt: KHÔNG gate RequirePermission — RPC đã lọc theo auth.uid(),
+              ai vào cũng chỉ thấy yêu cầu chờ chính mình duyệt (rỗng nếu không phải người duyệt). */}
+          <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
           <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />
           <Route path="/payments/income-expense" element={<Navigate to="/income-expense" replace />} />

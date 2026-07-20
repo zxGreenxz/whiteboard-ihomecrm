@@ -1,0 +1,207 @@
+# CI Gates — bật tự động các cổng kiểm chất lượng/bảo mật hiện chỉ chạy TAY
+# (P1 từ đợt tổng kiểm authorization). Không sửa/tạo gì khác ngoài file này.
+#
+# Job "quality-gates" là bắt buộc, chạy trên mọi PR/push KHÔNG cần secret nào
+# (typecheck/lint/build/vitest) và KHÔNG dùng continue-on-error — lệnh fail thì
+# job fail. Nhờ vậy CI XANH ngay khi merge file này, không đỏ vì thiếu secret.
+#
+# Các gate cần Supabase PAT / Management API / tài khoản test được tách RIÊNG và
+# chỉ chạy khi maintainer đã cấu hình secret. GitHub Actions KHÔNG cho tham chiếu
+# `secrets.*` trực tiếp trong `if:` cấp job → dùng job "preflight" đọc secret ra
+# output rồi các job optional `needs: preflight` + `if: needs.preflight.outputs.*`.
+#
+# Secrets cần cấu hình (Settings → Secrets and variables → Actions):
+#   - SUPABASE_PAT            : Supabase Management API personal access token
+#                                → BẬT "security-gates" (definer-acl, view-invoker)
+#                                + cross-tenant-isolation + (cùng test creds) reconcile.
+#   - SUPABASE_ACCESS_TOKEN   : access token cho Supabase CLI (job gen:types drift —
+#                                cùng cơ chế .github/workflows/supabase-migrate.yml).
+#   - SUPABASE_TEST_EMAIL / SUPABASE_TEST_PASSWORD : tài khoản test (JWT thật, RLS)
+#                                dùng cho reconcile-money (nguồn B/C).
+#
+# GỢI Ý: thêm SUPABASE_PAT sớm để 2 gate ACL/view-invoker (chống drift quyền anon
+# + lộ view xuyên-tenant) có hiệu lực trên mọi PR.
+
+name: CI Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'release/*'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Preflight: kiểm secret nào đã cấu hình, xuất ra output cho các job optional.
+  # (Không thể dùng secrets.* trong `if:` cấp job → phải qua bước này.)
+  # ─────────────────────────────────────────────────────────────────────────
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      has_pat: ${{ steps.check.outputs.has_pat }}
+      has_cli_token: ${{ steps.check.outputs.has_cli_token }}
+      has_test_creds: ${{ steps.check.outputs.has_test_creds }}
+    steps:
+      - id: check
+        env:
+          PAT: ${{ secrets.SUPABASE_PAT }}
+          CLI: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          TE: ${{ secrets.SUPABASE_TEST_EMAIL }}
+          TP: ${{ secrets.SUPABASE_TEST_PASSWORD }}
+        run: |
+          echo "has_pat=$([ -n "$PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_cli_token=$([ -n "$CLI" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_test_creds=$([ -n "$PAT" ] && [ -n "$TE" ] && [ -n "$TP" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Gate bắt buộc (KHÔNG cần secret): typecheck, lint, build, test.
+  # Luôn chạy, xanh được ngay — không phụ thuộc PAT.
+  # ─────────────────────────────────────────────────────────────────────────
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node (khớp engines >=20 trong package.json)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cài dependency (npm ci — khớp package-lock.json)
+        run: npm ci
+
+      - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
+        run: npm run typecheck:baseline
+
+      - name: Lint (eslint .)
+        run: npm run lint
+
+      - name: Build (vite build — bắt lỗi build-time không lộ ở tsc/eslint)
+        run: npm run build
+
+      # 65 file test rải khắp nhiều thư mục (src/components/*/__tests__,
+      # src/hooks/__tests__, src/lib/__tests__, src/lib/*.test.ts,
+      # src/copilot/__tests__…) — không gom về 1 path con nên chạy toàn bộ suite.
+      - name: Vitest (toàn bộ suite — property-based + unit)
+        run: npx vitest run
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Gate BẢO MẬT (cần SUPABASE_PAT): definer-acl + view-invoker gọi Management
+  # API. THÊM secret SUPABASE_PAT → 2 gate này tự động có hiệu lực mọi PR/push.
+  # ─────────────────────────────────────────────────────────────────────────
+  security-gates:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.has_pat == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cài dependency
+        run: npm ci
+
+      # Gate ACL (AUTHORIZATION-PLAN §9.3 điểm 9): chặn SECURITY DEFINER function
+      # mới anon-executable ngoài allowlist baseline (chống drift quyền anon).
+      - name: Definer ACL drift (SECURITY DEFINER anon-executable)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-definer-acl.mjs
+
+      # Gate view: mọi VIEW public phải security_invoker=true — án lệ
+      # CREATE OR REPLACE VIEW làm rớt cờ này, lộ dữ liệu tenant khác.
+      - name: View security_invoker (chống lộ dữ liệu xuyên tenant qua view)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-view-invoker.mjs
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
+  # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).
+  # ─────────────────────────────────────────────────────────────────────────
+  generated-types-drift:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.has_cli_token == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cài dependency
+        run: npm ci
+
+      - name: Gen types từ DB thật rồi so với src/integrations/supabase/types.ts đã commit
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          npm run gen:types > /tmp/types.generated.ts
+          # Dòng đầu file committed là comment header thêm tay (xem CLAUDE.md) — bỏ qua khi so.
+          diff -u <(tail -n +2 src/integrations/supabase/types.ts) <(tail -n +2 /tmp/types.generated.ts) \
+            && echo "✅ types.ts khớp schema DB — không trôi." \
+            || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types > src/integrations/supabase/types.ts (rồi thêm lại header)"; exit 1; }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Optional: đối chiếu tiền 3 nguồn độc lập (bug class cap-1000 PostgREST).
+  # Cần SUPABASE_PAT + tài khoản test thật (JWT/RLS).
+  # ─────────────────────────────────────────────────────────────────────────
+  reconcile-money:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.has_test_creds == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cài dependency (cần @supabase/supabase-js)
+        run: npm ci
+
+      # VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY đọc từ file .env đã
+      # commit trong repo (anon key công khai theo thiết kế) — không cần secret.
+      - name: Đối chiếu tiền — 3 nguồn độc lập (SQL SUM / RPC RLS / phân trang FE)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+          SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
+          SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
+        run: node scripts/reconcile-money.mjs
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Optional: ma trận âm bản cách ly tenant (integration test chống rò rỉ
+  # xuyên-tenant). Cần SUPABASE_PAT. Thao tác trong BEGIN…ROLLBACK.
+  # ─────────────────────────────────────────────────────────────────────────
+  cross-tenant-isolation:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.has_pat == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Ma trận âm bản cách ly tenant (OWNER/ADMIN/FULL-SCOPE staff)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/test-cross-tenant.mjs

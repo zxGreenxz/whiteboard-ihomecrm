@@ -1,0 +1,52 @@
+-- ╔══════════════════════════════════════════════════════════════════════════╗
+-- ║  T7 — RÚT QUYỀN GHI TRỰC TIẾP (DRAIN LEGACY DML)  —  *** CHƯA ÁP ***       ║
+-- ║  KHÔNG chạy file này cho tới khi ĐỦ điều kiện go/no-go bên dưới.           ║
+-- ╚══════════════════════════════════════════════════════════════════════════╝
+--
+-- Bối cảnh: sau go-live 15/15 flag canonical, 4 bảng tiền chính vẫn để anon +
+-- authenticated giữ TOÀN BỘ DML (INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/
+-- TRIGGER). Đây là CHỦ ĐÍCH coexistence: FE còn fallback legacy (isCanonical
+-- FallbackSignal → ghi thẳng bảng) cho tới khi mọi domain chạy canonical ổn định.
+--
+-- ⚠️ TẠI SAO CHƯA ÁP: rút quyền ghi trong khi FE còn rơi fallback sẽ làm GÃY
+-- nghiệp vụ thật (vd thu tiền của Quản Lý Tòa hiện vẫn fallback v3 khi thiếu
+-- thu_tien.collect trên vài sổ). Plan §K yêu cầu: chỉ drain sau khi có BẰNG
+-- CHỨNG RUNTIME rằng không còn caller legacy trong ≥1 chu kỳ vận hành.
+--
+-- ĐIỀU KIỆN GO (đủ MỚI chạy):
+--   1. ≥1 chu kỳ nghiệp vụ (tháng chốt/lương/LN) chạy 100% canonical, 0 fallback.
+--      Kiểm: log fallback FE = 0 + app_private.canonical_write_operations phủ mọi
+--      phiếu tiền mới; không phiếu nào ghi thẳng bảng (so income_expenses.
+--      source_payload_hash IS NULL cho phiếu tạo trong kỳ = 0).
+--   2. Đã có recovery set mới + restore rehearsal (plan §B/§M).
+--   3. Owner phê duyệt cửa sổ bảo trì + tranche hash-locked.
+--
+-- ── PHA A (an toàn có thể áp SỚM, RLS đã chặn anon nên tác động 0): ──────────
+-- anon KHÔNG có đường ghi tiền hợp lệ nào (RLS đòi auth.uid()); gỡ grant là
+-- defense-in-depth, không gãy gì. Có thể tách chạy trước Pha B.
+--
+-- revoke insert, update, delete, truncate, references, trigger
+--   on public.income_expenses, public.payments, public.invoices, public.contracts
+--   from anon;
+--
+-- ── PHA B (drain thật — CHỈ sau ĐIỀU KIỆN GO): ──────────────────────────────
+-- Rút quyền ghi trực tiếp của authenticated → mọi ghi BẮT BUỘC qua canonical
+-- writer (SECURITY DEFINER). Giữ SELECT (đọc vẫn qua RLS). Giữ REFERENCES nếu
+-- có FK động; TRUNCATE/TRIGGER gỡ luôn.
+--
+-- revoke insert, update, delete, truncate, trigger
+--   on public.income_expenses, public.payments, public.invoices, public.contracts
+--   from authenticated;
+--
+-- ── SAU KHI ÁP: kiểm hồi quy ──────────────────────────────────────────────
+--   • Chạy lại toàn bộ retest tiền (preflight): tạo phiếu/thu/hoàn/lương/LN/sổ
+--     quỹ đều PHẢI đi canonical 200, KHÔNG rơi 42501-legacy.
+--   • Nếu 1 flow gãy → thiếu grant/parity ở writer đó → VÁ writer, KHÔNG
+--     re-grant bảng (forward-fix, plan §K).
+--   • Đối chiếu tiền 3 nguồn = 0 lệch.
+--
+-- ── ROLLBACK khẩn (nếu drain gây gãy diện rộng): ───────────────────────────
+-- grant insert, update, delete on public.income_expenses, public.payments,
+--   public.invoices, public.contracts to authenticated;  -- tạm mở lại, điều tra
+--
+-- (Hết — file PREPARED, không có lệnh thực thi nào ngoài comment.)

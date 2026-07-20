@@ -143,6 +143,10 @@ const navigationGroups: NavGroup[] = [
           { title: 'Hoá đơn', href: '/invoices', icon: Receipt, module: 'invoices' },
           { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
+          // Hộp thư duyệt: không khai `module` → luôn hiện, khớp route /approvals
+          // (không bọc RequirePermission). RPC lọc theo auth.uid() nên người không
+          // phải bước duyệt nào chỉ thấy danh sách rỗng.
+          { title: 'Chờ duyệt', href: '/approvals', icon: ClipboardList },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
           { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary', selfHref: '/finance/my-salary' },
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
