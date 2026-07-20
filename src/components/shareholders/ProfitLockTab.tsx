@@ -64,6 +64,9 @@ export default function ProfitLockTab() {
   const lockMut = useLockProfitMonth();
   const unlockMut = useUnlockProfitMonth();
   const resyncMut = useResyncLockedMonths();
+  // Phân biệt spinner: chốt lại 1 tháng (có variables) vs chốt lại tất cả (undefined).
+  const resyncingPeriod = resyncMut.isPending && resyncMut.variables === period;
+  const resyncingAll = resyncMut.isPending && !resyncMut.variables;
 
   // Số tháng đang LOCKED (để hiện nút "Chốt lại theo số mới").
   const lockedMonthCount = useMemo(() => {
@@ -71,6 +74,12 @@ export default function ProfitLockTab() {
     for (const p of profitMonthly) if (p.status === "LOCKED") s.add(p.period_month);
     return s.size;
   }, [profitMonthly]);
+
+  // Tháng đang lọc đã chốt chưa (để hiện nút "Chốt lại tháng MM/YYYY").
+  const isPeriodLocked = useMemo(
+    () => profitMonthly.some((p) => p.period_month === period && p.status === "LOCKED"),
+    [profitMonthly, period]
+  );
 
   const lockedByBuilding = useMemo(() => {
     const m = new Map<string, { id: string; status: string; adjusted_profit: number }>();
@@ -175,12 +184,39 @@ export default function ProfitLockTab() {
           </SelectContent>
         </Select>
         <div className="ml-auto flex items-center gap-2">
+          {isPeriodLocked && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" disabled={resyncMut.isPending}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${resyncingPeriod ? "animate-spin" : ""}`} />
+                  {resyncingPeriod ? "Đang chốt lại..." : `Chốt lại tháng ${periodToLabel(period)}`}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Chốt lại tháng {periodToLabel(period)}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Chỉ cập nhật <strong>riêng tháng {periodToLabel(period)}</strong> theo số dồn tích
+                    (accrual) mới nhất — các tháng đã chốt khác giữ nguyên. Giữ nguyên các giá trị
+                    "LN sau điều chỉnh" bạn đã sửa tay. Thao tác ghi đè số đã chốt và{" "}
+                    <strong>không hoàn tác được</strong>.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Huỷ</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => resyncMut.mutate(period)}>
+                    Chốt lại tháng này
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           {lockedMonthCount > 0 && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" disabled={resyncMut.isPending}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${resyncMut.isPending ? "animate-spin" : ""}`} />
-                  {resyncMut.isPending ? "Đang chốt lại..." : `Chốt lại ${lockedMonthCount} tháng đã chốt`}
+                  <RefreshCw className={`h-4 w-4 mr-2 ${resyncingAll ? "animate-spin" : ""}`} />
+                  {resyncingAll ? "Đang chốt lại..." : `Chốt lại ${lockedMonthCount} tháng đã chốt`}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -194,7 +230,7 @@ export default function ProfitLockTab() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Huỷ</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => resyncMut.mutate()}>
+                  <AlertDialogAction onClick={() => resyncMut.mutate(undefined)}>
                     Chốt lại
                   </AlertDialogAction>
                 </AlertDialogFooter>

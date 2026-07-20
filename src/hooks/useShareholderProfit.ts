@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/authSession";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { useBuildings } from "@/hooks/useBuildings";
-import { monthDateRange } from "@/components/shareholders/shareholderUtils";
+import { monthDateRange, periodToLabel } from "@/components/shareholders/shareholderUtils";
 import {
   computeShareholderSummary,
   type ShareholderSummaryRow,
@@ -520,20 +520,23 @@ export const useLockProfitMonth = () => {
   });
 };
 
-// Chốt LẠI mọi tháng đang LOCKED theo số accrual mới (đồng bộ với Phân bổ lợi nhuận).
+// Chốt LẠI tháng đang LOCKED theo số accrual mới (đồng bộ với Phân bổ lợi nhuận).
+// Truyền `period` (YYYY-MM-01) để chỉ chốt lại đúng 1 tháng; bỏ trống = mọi tháng.
 // Chỉ cập nhật đúng các toà đã chốt của từng tháng; GIỮ "LN sau điều chỉnh" nếu
 // trước đó user đã sửa tay (adjusted_profit ≠ computed_profit), còn lại lấy số mới.
 export const useResyncLockedMonths = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (period?: string) => {
       const uid = (await getSessionUser())?.id;
       if (!uid) throw new Error("User not authenticated");
 
-      const { data: lockedRows, error } = await (supabase
+      let q = (supabase
         .from("profit_monthly")
         .select("building_id, period_month, computed_profit, adjusted_profit") as any)
         .eq("status", "LOCKED");
+      if (period) q = q.eq("period_month", period);
+      const { data: lockedRows, error } = await q;
       if (error) throw error;
 
       const locked = (lockedRows || []) as any[];
@@ -549,8 +552,8 @@ export const useResyncLockedMonths = () => {
 
       let months = 0;
       let buildings = 0;
-      for (const [period, lrows] of byMonth) {
-        const { start, end } = monthDateRange(period);
+      for (const [periodMonth, lrows] of byMonth) {
+        const { start, end } = monthDateRange(periodMonth);
         const { data: acc, error: accErr } = await (supabase.rpc as any)(
           "fa_monthly_pnl_accrual",
           { p_start_date: start, p_end_date: end, p_building_ids: null }
@@ -573,19 +576,25 @@ export const useResyncLockedMonths = () => {
           };
         });
 
-        await writeLockedMonth(uid, period, rows);
+        await writeLockedMonth(uid, periodMonth, rows);
         months += 1;
         buildings += rows.length;
       }
       return { months, buildings };
     },
-    onSuccess: (res) => {
+    onSuccess: (res, period) => {
       qc.invalidateQueries({ queryKey: ["monthly-building-profit"] });
       qc.invalidateQueries({ queryKey: ["profit-monthly"] });
       qc.invalidateQueries({ queryKey: ["profit-allocations"] });
       qc.invalidateQueries({ queryKey: ["profit-manager-allocations"] });
       if (res.months === 0) {
-        toast.info("Không có tháng đã chốt để cập nhật");
+        toast.info(
+          period
+            ? `Tháng ${periodToLabel(period)} chưa chốt — không có gì để cập nhật`
+            : "Không có tháng đã chốt để cập nhật"
+        );
+      } else if (period) {
+        toast.success(`Đã chốt lại tháng ${periodToLabel(period)} theo số mới`);
       } else {
         toast.success(`Đã chốt lại ${res.months} tháng theo số mới`);
       }
