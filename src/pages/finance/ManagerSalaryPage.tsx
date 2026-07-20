@@ -24,7 +24,7 @@ import { usePhoneViewport } from "@/hooks/use-mobile";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import "@/components/salary/salary.css";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
-import { resolveSalaryEngine } from "@/lib/managerSalary";
+import { resolveSalaryEngine, isUnqualifiedContractRow } from "@/lib/managerSalary";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -131,7 +131,11 @@ export default function ManagerSalaryPage() {
   const ownerId = data?.ownerId || "";
   const monthLocked = managers.length > 0 && managers.every((m) => m.status === "LOCKED");
 
-  const ledgerAll = useMemo(() => managers.flatMap((m) => m.ledger), [managers]);
+  // Ẩn việc ký HĐ làm trong giờ ngay từ nguồn → badge trên tab khớp số dòng thật.
+  const ledgerAll = useMemo(
+    () => managers.flatMap((m) => m.ledger).filter((r) => !isUnqualifiedContractRow(r)),
+    [managers],
+  );
   const buildingsList = useMemo(() => {
     const s = new Set<string>();
     for (const r of ledgerAll) {
