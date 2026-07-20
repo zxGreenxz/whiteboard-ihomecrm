@@ -129,8 +129,6 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Phân tích tài chính', link: '/04-bao-cao/phan-tich-tai-chinh/' },
           { text: 'Sổ quỹ theo ngày', link: '/04-bao-cao/so-quy-ngay/' },
           { text: 'Dòng tiền', link: '/04-bao-cao/dong-tien/' },
-          { text: 'Công nợ hợp đồng mới', link: '/04-bao-cao/cong-no-hd-moi/' },
-          { text: 'Khách nợ tiền', link: '/04-bao-cao/khach-no-tien/' },
           { text: 'Lịch thanh toán', link: '/04-bao-cao/lich-thanh-toan/' },
           { text: 'Danh sách tiền cọc', link: '/04-bao-cao/danh-sach-coc/' },
           { text: 'Chu kỳ Thu → Bàn giao', link: '/04-bao-cao/thu-ban-giao/' },

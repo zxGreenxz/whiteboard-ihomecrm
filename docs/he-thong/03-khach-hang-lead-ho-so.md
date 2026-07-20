@@ -21,7 +21,7 @@ Domain này quản lý **danh tính con người** ở 3 giai đoạn vòng đ�
 
 - Ban đầu hệ thống dùng `tenants` làm hồ sơ người thuê. Hợp đồng (`contracts.tenant_id`), cọc (`deposits.tenant_id`), hoá đơn/thu chi (`income_expenses.tenant_id`), công việc (`issues.reported_by_tenant_id`) đều FK tới `tenants`.
 - Sau này refactor sang `customers` làm hồ sơ chuẩn (45 cột, đầy đủ giấy tờ/địa chỉ/tổ chức). Liên kết khách ↔ hợp đồng chuyển sang junction `contract_customers` (xem [useContracts.ts](src/hooks/useContracts.ts) — `contracts.tenant_id` để NULL trên row mới, link thật nằm ở `contract_customers`).
-- UI hợp nhất về "Khách hàng": route `/tenants` → `Navigate` sang `/customers`, `/tenants/:id` → `/customers/:id` (xem [App.tsx](src/App.tsx) `TenantToCustomerRedirect`). `TenantsPage` là **dead code hoàn toàn**: file còn nhưng **không nơi nào import nữa** (App.tsx đã bỏ cả import); nút "Xem" trong page trỏ `/customers/{tenant.id}` — dùng id của bảng `tenants` tra vào bảng `customers` nên nếu page được gắn lại route sẽ luôn ra "Không tìm thấy khách hàng".
+- UI hợp nhất về "Khách hàng": route `/tenants` → `Navigate` sang `/customers`, `/tenants/:id` → `/customers/:id` (xem [App.tsx](../../src/App.tsx) `TenantToCustomerRedirect`). Màn `TenantsPage` cũ đã được gỡ khỏi code; mọi hướng dẫn và liên kết mới phải dùng `/customers`.
 - **Hệ quả tài liệu hoá:** `tenants` là *legacy nhưng còn sống* (nhiều FK đang trỏ vào). `customers` là *hồ sơ chính của UI hiện tại*. Hai bảng KHÔNG đồng bộ tự động; chúng tồn tại song song.
 
 **Hai trục trạng thái của customers (đừng nhầm):**
@@ -88,7 +88,7 @@ Cột chủ chốt (45 cột — chỉ nêu nhóm có ý nghĩa nghiệp vụ):
 
 Cột chủ chốt: `full_name` (NOT NULL), `phone` (NOT NULL), `email`, `id_number`/`id_type`, `date_of_birth`, `gender`, `permanent_address`, `status` (`tenant_status`: `PROSPECT/DEPOSITED/ACTIVE/INACTIVE/BLACKLIST`), `emergency_contact_*`, `avatar_url`, `id_images` (jsonb), `notes`. `user_id`, soft delete qua `deleted_at`.
 
-> Lưu ý: enum DB `tenant_status` chỉ có `PROSPECT/DEPOSITED/ACTIVE/INACTIVE/BLACKLIST`, nhưng `TenantsPage` còn render tab `MOVED_OUT`/`BLACKLISTED` (giá trị không khớp enum → count luôn 0). Đây là tàn dư UI cũ.
+> Lưu ý: các trạng thái và bộ lọc hiện hành lấy từ màn Khách hàng (`CustomersPage`) và enum generated types; không dùng các tab `MOVED_OUT`/`BLACKLISTED` của UI cũ.
 
 **Được tham chiếu bởi:** `contracts.tenant_id`, `deposits.tenant_id`, `income_expenses.tenant_id`, `issues.reported_by_tenant_id`, `contract_tenants.tenant_id`, `contract_transfers.old_tenant_id`/`new_tenant_id`, `vehicles.tenant_id`.
 
@@ -336,7 +336,9 @@ flowchart TD
 - Edge case: không có khách → "Không tìm thấy khách hàng".
 - **Lịch sử tờ khai:** mỗi lần "Lưu & In" insert bản ghi mới vào `ct01_declarations`, nhưng hook đọc lịch sử `useCT01Declarations(customerId)` ([useCT01Declarations.ts](src/hooks/useCT01Declarations.ts)) là **dead code — không UI nào dùng** ⇒ tờ khai lưu xong không có chỗ xem/in lại (chỉ in lại được trong session hiện tại qua nút "Chỉ in"); dữ liệu tích tụ một chiều.
 
-### 5.6. `/tenants` (legacy) — [TenantsPage.tsx](src/pages/tenants/TenantsPage.tsx)
+### 5.6. `/tenants` (legacy)
+
+Route này chỉ là alias chuyển hướng sang `/customers`; không còn page riêng để cập nhật. Khi kiểm thử hoặc viết tài liệu mới, dùng `/customers` và `src/pages/customers/**`.
 
 **Mục đích:** trang người-thuê cũ — hiện là **dead code hoàn toàn**: [App.tsx](src/App.tsx) đã bỏ cả import, không route nào render nó (`/tenants` → `Navigate` `/customers`, `/tenants/:id` → `TenantToCustomerRedirect`).
 

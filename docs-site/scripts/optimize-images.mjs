@@ -18,7 +18,6 @@ import { readdir, readFile, mkdir, stat, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import sharp from 'sharp'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DOCS_SITE = path.resolve(__dirname, '..')
@@ -49,6 +48,7 @@ function fmtKB(bytes) {
 }
 
 async function convert() {
+  const { default: sharp } = await import('sharp')
   const pngs = []
   for await (const p of walk(INBOX, ['.png'])) pngs.push(p)
   if (!pngs.length) {

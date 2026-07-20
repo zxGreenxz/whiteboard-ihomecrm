@@ -1,12 +1,0 @@
-﻿# Mã code Hóa đơn
-
-<table><thead><tr><th width="125" align="center">STT</th><th width="221" align="center">TÊN TRƯỜNG</th><th align="center">MÃ CODE</th></tr></thead><tbody><tr><td align="center">1</td><td align="center">Logo thương hiệu</td><td align="center">+++IMAGE LOGO()+++</td></tr><tr><td align="center">2</td><td align="center">Tên căn hộ</td><td align="center">{APARTMENT_NAME}</td></tr><tr><td align="center">3</td><td align="center">Số phòng</td><td align="center">{ROOM_NAME}</td></tr><tr><td align="center">4</td><td align="center">Tên khách thuê</td><td align="center">{CONTRACT_NAME}</td></tr><tr><td align="center">5</td><td align="center">Số hóa đơn</td><td align="center">{INVOICE_CODE}</td></tr><tr><td align="center">6</td><td align="center">Ngày lập hóa đơn</td><td align="center">{ISSUE_DATE}</td></tr><tr><td align="center">7</td><td align="center">Hạn thanh toán</td><td align="center">{DUE_DATE}</td></tr><tr><td align="center">8</td><td align="center">Tổng tiền tạm tính</td><td align="center">{SUBTOTAL}</td></tr><tr><td align="center">9</td><td align="center">Giảm giá/Khuyến mại</td><td align="center">{DISCOUNT_WITH_PROM<br>OTION}</td></tr><tr><td align="center">10</td><td align="center">Nợ cũ</td><td align="center">{DEBT}</td></tr><tr><td align="center">11</td><td align="center">Tổng cộng</td><td align="center">{TOTAL_WITH_DEBT}</td></tr><tr><td align="center">12</td><td align="center">Đã thanh toán</td><td align="center">{PAID}</td></tr><tr><td align="center">13</td><td align="center">Phải thanh toán</td><td align="center">{REMAIN}</td></tr><tr><td align="center"></td><td align="center">Bằng chữ</td><td align="center">{AMOUNT_IN_WORDS_WITH_DEBT}</td></tr><tr><td align="center">14</td><td align="center">Ghi chú</td><td align="center">{NOTE}</td></tr></tbody></table>
-
-**Bảng hóa đơn tiền phòng:**
-
-| STT/ No                              | Nội dung/ Description | Đơn giá/ Unit price | Số lượng/ Quantity     | Hệ số/ Coefficient        | Thành tiền/ Total |
-| ------------------------------------ | --------------------- | ------------------- | ---------------------- | ------------------------- | ----------------- |
-| <p>{#FE<br>ES}<br>{inde<br>x}</p> | {name}                | {price}             | <p>{quantity<br>}</p> | <p>{coefficient<br>}</p> | {total}{/FEES}    |
-
-Mọi thắc mắc xin liên hệ ngay tới hotline **0355.430.074** hoặc gửi về email: **Contact@resident.vn** để được tư vấn và giải đáp. Chúc các bạn thành công!
-

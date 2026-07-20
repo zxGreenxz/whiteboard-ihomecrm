@@ -6,7 +6,7 @@ permissions: [{module: income_expenses, action: view}]
 viewport: desktop
 audience: [ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-07-20"
   account: demo
 status: published
 ---
@@ -45,8 +45,8 @@ Mặc định danh sách hiển thị cả phiếu **Đã duyệt** lẫn phiế
 
 Ấn **Lưu** để ghi phiếu.
 
-::: danger Lưu phiếu là thao tác ghi tiền vào sổ quỹ
-Phiếu tạo qua form mặc định là **Đã duyệt ngay** — nghĩa là nó **lập tức cộng/trừ vào số dư sổ quỹ** và đi vào báo cáo. Hãy kiểm tra kỹ **loại phiếu, sổ quỹ, hạng mục và số tiền** trước khi bấm Lưu. Đây là tiền thật.
+::: danger Lưu phiếu có thể tạo tác động tiền
+Phiếu **Đã duyệt/POSTED** mới cộng hoặc trừ số dư sổ quỹ. Phiếu chi từ ngưỡng trở lên và hạng mục đặc biệt thường được tạo ở trạng thái **Nháp/Chờ duyệt**, chưa tác động tiền cho tới khi được quyết định. Luôn kiểm tra **trạng thái, loại phiếu, sổ quỹ, hạng mục và số tiền** trước khi rời màn hình.
 :::
 
 **Bước 5**: Chọn hoặc tạo hạng mục. Ô **Hạng mục** là combobox gõ-để-tìm; nếu chưa có, bạn gõ tên rồi **tạo mới** ngay trong form — khi tạo mới **bắt buộc chọn Nhóm** (category) để báo cáo gom nhóm đúng. Lưu ý về hạch toán:
@@ -58,12 +58,16 @@ Với phiếu **đã duyệt**, người tạo thường chỉ được **Sửa 
 :::
 
 **Bước 6**: Duyệt hoặc huỷ phiếu. Mở phiếu để xem chi tiết:
-- **Duyệt** một phiếu còn ở trạng thái Nháp (ví dụ phiếu chi hoa hồng chờ thực chi) để nó được tính vào tồn quỹ.
+- **Duyệt** một phiếu còn ở trạng thái Nháp (ví dụ phiếu chi hoa hồng chờ thực chi) để nó được tính vào tồn quỹ. Nếu request đã vào engine nhiều bước, xử lý tại [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
 - **Huỷ** một phiếu sai — phiếu chuyển sang **Đã huỷ**, không còn tính vào số dư; nếu là phiếu thu sinh ra từ thanh toán hoá đơn, hệ thống gỡ luôn khoản thu tương ứng khỏi hoá đơn. Mọi lần huỷ/khôi phục đều được ghi **Nhật ký thao tác**; khôi phục phiếu đã huỷ chỉ Super Admin làm được.
 
 ::: danger Duyệt phiếu = đưa phiếu vào tồn quỹ
 Khi bạn **Duyệt**, phiếu lập tức cộng/trừ vào số dư sổ quỹ và vào báo cáo. Ngược lại, **Huỷ** một phiếu thu đã ghi nhận sẽ **rút khoản tiền đó khỏi sổ quỹ** (và khỏi hoá đơn nếu là phiếu thu hoá đơn). Chỉ thao tác khi chắc chắn.
 :::
+
+## Hàng chờ phê duyệt
+
+Người lập không tự duyệt request của mình. Khi phiếu cần maker-checker, người duyệt mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/), kiểm tra chứng từ rồi **Duyệt** hoặc **Từ chối** (từ chối phải nêu lý do). Không sửa trực tiếp `approval_status` hoặc sổ quỹ bằng công cụ ngoài màn hình.
 
 **Bước 7**: In phiếu. Từ một phiếu, chọn **In** để mở trang in **A5** (`/income-expense/print/:id`) — trang tự gọi hộp in sau khoảng nửa giây, hiển thị mã phiếu, người gửi/nhận, tài khoản nhận, các hạng mục và tổng tiền. Bạn có thể cấu hình **mẫu thu chi** riêng cho phiếu thu và phiếu chi ở phần **Cài đặt => Mẫu thu chi**.
 
@@ -108,7 +112,7 @@ Thực hành lập và duyệt một phiếu chi để thấy tiền chảy vào
 1. Xem danh sách: đã có sẵn **phiếu chi sửa chữa 500.000đ** và **phiếu thu phí phạt 200.000đ**.
 2. Ấn **Tạo phiếu chi**. Chọn một **sổ quỹ** trong 3 sổ demo, chọn **Toà DEMO A**, người nhận **Nguyễn Văn A**, ngày hôm nay.
 3. Thêm một hạng mục: chọn **DEMO Chi Đặc Biệt**, số lượng **1**, đơn giá **300.000** — tổng phiếu tự thành **300.000đ**. Ấn **Lưu**.
-4. Mở phiếu vừa tạo và ấn **Duyệt** (nếu phiếu chưa ở trạng thái Đã duyệt) để nó được tính vào tồn quỹ. Để ý số dư của sổ bạn vừa chọn **giảm 300.000đ**.
+4. Mở phiếu vừa tạo. Nếu phiếu ở **Nháp/Chờ duyệt**, dùng **Duyệt** hoặc mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) theo vai trò được giao; chỉ sau đó số dư sổ mới giảm **300.000đ**.
 5. Xong bấm **Reset** để trả sandbox về trạng thái ban đầu.
 
 Kết quả mong đợi: bạn hiểu rằng lập/duyệt một phiếu thu hoặc chi là ghi trực tiếp vào **sổ quỹ** — tổng phiếu bằng tổng các hạng mục, và chỉ phiếu **Đã duyệt** mới đổi số dư sổ.

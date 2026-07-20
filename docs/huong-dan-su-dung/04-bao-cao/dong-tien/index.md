@@ -1,7 +1,7 @@
 ---
 title: "Báo cáo: Dòng tiền"
 description: "Xem tiền thực vào/ra theo tháng và quý trong một năm, tách Thu vào — Chi ra — Chênh lệch, lọc theo tòa nhà."
-routes: ["/report/finance/cash-flow"]
+routes: ["/reports/finance/cash-flow"]
 permissions: [{module: reports_finance, action: view}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
@@ -73,7 +73,7 @@ Vì mọi lần thu tiền hóa đơn đã tự sinh một phiếu thu tương �
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/report/finance/cash-flow" app-label="Mở báo cáo Dòng tiền" fixtures="Tòa DEMO A/B, phiếu thu/chi năm 2026 (thu tiền phòng khách Nguyễn Văn A, chi sửa chữa, cọc giữ chỗ A301/A302)" view-only>
+<SandboxTry account="demo.chunha" app-path="/reports/finance/cash-flow" app-label="Mở báo cáo Dòng tiền" fixtures="Tòa DEMO A/B, phiếu thu/chi năm 2026 (thu tiền phòng khách Nguyễn Văn A, chi sửa chữa, cọc giữ chỗ A301/A302)" view-only>
 
 Bài này **chỉ xem** — bạn quan sát dòng tiền, không ghi tiền:
 

@@ -1,7 +1,7 @@
 ---
 title: "Báo cáo: Sổ quỹ theo ngày"
 description: "Xem số dư từng sổ quỹ theo ngày (as-of): số dư đầu ngày, tổng thu, tổng chi trong ngày và tồn cuối ngày, lọc theo tòa và tài khoản."
-routes: ["/report/finance/cashbook"]
+routes: ["/reports/finance/daily-cashbook"]
 permissions: [{module: reports_finance, action: view}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
@@ -70,7 +70,7 @@ Chi tiết nghiệp vụ sổ quỹ và loại thu chi xem trang [Sổ quỹ & l
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/report/finance/cashbook" view-only>
+<SandboxTry account="demo.chunha" app-path="/reports/finance/daily-cashbook" view-only>
 
 Bài này **chỉ xem** — bạn quan sát số dư sổ quỹ theo ngày, không ghi tiền:
 

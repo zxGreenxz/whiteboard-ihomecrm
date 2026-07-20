@@ -154,7 +154,7 @@ commit 8b01507 + UI 25d176d):
 
 Hàm: `terminate_contract_forfeit_impl(p_contract_id, p_forfeit_date, p_extra_charges)`
 ([impl hiện hành — +thu thêm](../../supabase/migrations/20260627000001_termination_extra_charges.sql)).
-Dòng lịch sử: [20260617000001](../../supabase/migrations/20260617000001_forfeit_full_settlement.sql)
+Dòng lịch sử: `20260617000001` (bản superseded trong `supabase/migrations-archive/`). Bản đang chạy: [20260627000001](../../supabase/migrations/20260627000001_termination_extra_charges.sql).
 dựng mô hình "hạch toán đầy đủ + cặp phiếu chờ duyệt" (kèm trigger duyệt) →
 [20260618000001](../../supabase/migrations/20260618000001_forfeit_use_paid_deposit.sql) đổi sang
 `LEAST(total, paid)` → [20260627000001] thêm `p_extra_charges` (giữ nguyên trigger duyệt).
@@ -190,7 +190,7 @@ dựng mô hình "hạch toán đầy đủ + cặp phiếu chờ duyệt" (kèm
 ### 3.2. Bước DUYỆT (trigger `trg_forfeit_settle_on_approve`)
 
 `AFTER UPDATE OF approval_status ON income_expenses`, chỉ xử lý phiếu nhãn `[CẤN CỌC BỎ CỌC %`
-(tạo ở [20260617000001](../../supabase/migrations/20260617000001_forfeit_full_settlement.sql),
+(tạo ở migration lịch sử `20260617000001`,
 đổi payment `TM→CT` ở [20260619000001](../../supabase/migrations/20260619000001_payment_method_cantru.sql),
 **giữ nguyên** qua 20260627000001):
 

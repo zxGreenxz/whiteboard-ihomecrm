@@ -1,7 +1,7 @@
 ---
 title: "Báo cáo: Phân tích tài chính"
 description: "Bảng phân tích 5 tab: kết quả kinh doanh (P&L), cơ cấu thu chi, phát hành vs thực thu, lấp đầy và công nợ theo tuổi — gom 13 tháng để so cùng kỳ năm trước."
-routes: ["/report/finance/analysis"]
+routes: ["/reports/finance/analysis"]
 permissions: [{module: reports_finance, action: view}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
@@ -82,7 +82,7 @@ Vài đặc điểm về nguồn cần nhớ khi đối chiếu:
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/report/finance/analysis" app-label="Mở báo cáo Phân tích tài chính" fixtures="Tòa DEMO A/B: 8 phòng đang thuê; A102 còn nợ 2.570.000đ; A105 quá hạn 6.070.000đ; cọc giữ chỗ A301/A302" view-only>
+<SandboxTry account="demo.chunha" app-path="/reports/finance/analysis" app-label="Mở báo cáo Phân tích tài chính" fixtures="Tòa DEMO A/B: 8 phòng đang thuê; A102 còn nợ 2.570.000đ; A105 quá hạn 6.070.000đ; cọc giữ chỗ A301/A302" view-only>
 
 1. Mở tab **Tổng quan**: hãy nhìn thấy dải KPI cho **Tòa DEMO A/B** với **8 phòng đang thuê**, phần **cọc đang giữ** ứng với hai phòng cọc giữ chỗ **A301/A302**, và khối **phải thu theo tuổi nợ** đang gánh khoản của **A102 (2.570.000đ)** và **A105 quá hạn (6.070.000đ)** — A105 rơi vào bậc quá hạn cao hơn A102.
 2. Sang tab **Lợi nhuận**: hãy nhìn thấy P&L **Doanh thu − Chi phí = Lãi/lỗ** theo tháng, và để ý doanh thu **không** bao gồm cọc của A301/A302 (cọc không tính vào kết quả kinh doanh).

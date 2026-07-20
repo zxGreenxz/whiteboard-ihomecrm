@@ -1,5 +1,7 @@
 # V5-PLAN-THUC-HIEN.md — PLAN GIAO HÀNG HỆ THỐNG LƯƠNG-THƯỞNG v5
 
+> **Trạng thái:** plan đã được thực thi; các quyết định từng treo trước S1 đã chốt theo [implementation log](V5-IMPLEMENTATION-LOG.md). Không dùng các câu hỏi lịch sử dưới đây làm chỉ báo rằng hệ thống đang chờ phê duyệt.
+
 > **Tài liệu đi kèm:** `V5-HE-THONG-LUONG-THUONG-THONG-NHAT.md` (đặc tả hợp nhất — nguồn chân lý nghiệp vụ). Plan này là bản thực thi của đội PM/BA/UX/Dev, **đã áp dụng toàn bộ 16 mục sửa từ nghiệm thu chéo** (A1–A4, B5–B11, C12–C16).
 > **Ngày:** 02/07/2026 · **Phạm vi bất biến:** Phần A + C1–C10 của Biên bản Hội đồng Tầng 1 — không bàn lại trong sprint; mọi đề xuất đổi cơ chế đưa ngược lên chủ.
 

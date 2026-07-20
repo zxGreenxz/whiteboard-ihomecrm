@@ -1,5 +1,7 @@
 # V5 — NHẬT KÝ THỰC HIỆN + BẢN ĐỒ REVERT
 
+> **Reviewed:** 2026-07-20. Đây là nhật ký triển khai và rollback, không phải bảng trạng thái live; stage/feature flags phải đọc từ UI hoặc DB lúc vận hành.
+
 > Theo dõi từng phase của [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). **Mọi phase đều revert được**:
 > - **Code:** mỗi phase 1 commit prefix `feat(salary-v5): S<n>` — revert bằng `git revert <sha>` hoặc reset về tag **`pre-v5-salary`** (mốc trước khi bắt đầu, đã push).
 > - **DB:** mỗi phase có file rollback SQL trong `scripts/` — chạy qua `node scripts/apply-sql.mjs scripts/v5_rollback_s<n>.sql` (Node UTF-8).

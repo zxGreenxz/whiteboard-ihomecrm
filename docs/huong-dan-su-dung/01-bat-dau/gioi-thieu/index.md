@@ -5,11 +5,9 @@ routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: null
-  commit: null
-  account: null
-  manifest: null
-status: draft
+  date: "2026-07-20"
+  account: production
+status: published
 ---
 
 # Giới thiệu hệ thống

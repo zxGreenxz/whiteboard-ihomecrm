@@ -8,7 +8,8 @@
 --   remaining_amount generated chỉ tham chiếu total_amount).
 -- Chỉ 1 RPC tham chiếu cột thuế: get_public_latest_invoice_by_contract
 --   (nhúng 'tax_amount' vào jsonb) → recreate trước khi DROP.
--- File khôi phục chi tiết: morong.md (root repo).
+-- Không còn runbook khôi phục riêng trong docs; nếu cần khôi phục phải mở change request
+-- mới dựa trên schema/types hiện hành và migration forward-fix, không replay tài liệu cũ.
 -- =============================================
 
 -- 1) Recreate RPC public (QR hợp đồng) — BỎ dòng 'tax_amount', i.tax_amount.

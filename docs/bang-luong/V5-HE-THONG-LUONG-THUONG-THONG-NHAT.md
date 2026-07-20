@@ -1,6 +1,6 @@
 # V5 — HỆ THỐNG LƯƠNG-THƯỞNG-KPI THỐNG NHẤT (Chuyên cần + Streak + Coverage + My Day)
 
-> v5 HỢP NHẤT + THAY THẾ [BAN-TRON-CO-CHE-LUONG-THUONG-V4.md](BAN-TRON-CO-CHE-LUONG-THUONG-V4.md) và [V4-KIEM-TRA-NHA-XOAY-TUA.md](V4-KIEM-TRA-NHA-XOAY-TUA.md) (2 file cũ giữ làm lịch sử). Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Ngày 2026-07-02.
+> v5 là đặc tả hợp nhất và thay thế toàn bộ bản thiết kế tiền-v5 đã được dọn khỏi repository. Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Đối chiếu triển khai: [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md). Reviewed 2026-07-20.
 
 ---
 

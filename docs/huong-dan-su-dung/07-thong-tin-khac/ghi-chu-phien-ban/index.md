@@ -6,7 +6,7 @@ permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-07-20"
   account: demo
 status: published
 ---
@@ -18,7 +18,7 @@ Bộ tài liệu hướng dẫn này được biên soạn bám sát **phiên b�
 ## Tài liệu bám theo phiên bản nào
 
 - Mỗi trang hướng dẫn được **chụp lại theo một mốc thời gian cụ thể**. Bạn thấy điều này ở đầu mỗi trang: ảnh minh hoạ và các bước thao tác phản ánh giao diện tại thời điểm được ghi.
-- Bản tài liệu hiện tại được chốt theo hệ thống ngày **03/07/2026**. Các tính năng ra sau mốc này sẽ được cập nhật dần vào từng trang tương ứng.
+- Bản tài liệu hiện tại được rà soát theo hệ thống ngày **20/07/2026**. Các trang mới nhất gồm **Chờ duyệt**, **Trợ lý AI**, mô hình approval/RBAC và trung tâm báo cáo 9 mục.
 - Khi giao diện thật khác một chút so với ảnh trong tài liệu (ví dụ thêm một nút, đổi tên nhãn), đó là dấu hiệu trang đang chờ cập nhật — hãy ưu tiên làm theo những gì bạn thấy trên màn hình, phần mô tả nghiệp vụ vẫn đúng.
 
 ## Khi nào tài liệu được cập nhật
@@ -29,14 +29,14 @@ Bộ tài liệu hướng dẫn này được biên soạn bám sát **phiên b�
 
 ## Xem Lịch sử cập nhật trong ứng dụng
 
-Ngoài bộ tài liệu này, chính ứng dụng ptcrm có sẵn trang **Lịch sử cập nhật** liệt kê những thay đổi đã phát hành theo từng đợt.
+Ứng dụng có trang **Lịch sử cập nhật**, nhưng nội dung trong app có thể ngắn hơn hoặc chậm hơn source docs. Dùng trang này để xem ghi chú UI; dùng bộ tài liệu và commit hiện hành làm nguồn mô tả nghiệp vụ.
 
-- Mở đường dẫn **/changelog** trong ứng dụng để xem danh sách các bản cập nhật, sắp theo thời gian mới nhất ở trên.
+- Mở đường dẫn **/changelog** trong ứng dụng để xem các ghi chú phát hành đang được hiển thị.
 - Mỗi mục nêu ngắn gọn những gì được thêm, sửa hoặc cải thiện trong đợt phát hành đó.
-- Dùng trang này để đối chiếu: nếu bạn thấy một tính năng trên màn hình mà chưa có trong tài liệu, rất có thể nó vừa xuất hiện trong một mục ở Lịch sử cập nhật.
+- Nếu có khác biệt, ưu tiên hành vi thật trên màn hình và tài liệu có `captured.date` mới hơn; báo lại qua [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/).
 
 ::: tip Kết hợp hai nguồn
-**Lịch sử cập nhật (/changelog)** cho bạn biết *hệ thống vừa đổi gì*; còn *bộ tài liệu hướng dẫn* này giải thích *cách dùng* từng tính năng. Khi có bản cập nhật mới, hãy liếc qua /changelog trước, rồi mở trang hướng dẫn tương ứng để làm theo.
+**Lịch sử cập nhật (/changelog)** là ghi chú trong app; bộ tài liệu này giải thích *cách dùng* và được rà soát theo mốc code/documentation. Khi có khác biệt, dùng ngày `captured` để chọn bản đáng tin hơn.
 :::
 
 ## Thử trực tiếp trên sandbox

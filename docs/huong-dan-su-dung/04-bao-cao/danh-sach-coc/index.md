@@ -1,7 +1,7 @@
 ---
 title: "Báo cáo: Danh sách tiền cọc"
 description: "Xem các khoản tiền cọc theo từng phòng/khách và phân loại (đang giữ chỗ, đã chuyển hợp đồng, đã hoàn, mất cọc), lọc theo tòa nhà."
-routes: ["/report/finance/deposit"]
+routes: ["/reports/finance/deposits"]
 permissions: [{module: reports_finance, action: view}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
@@ -83,7 +83,7 @@ Hệ quả thực dụng: nếu bảng **trống hoặc thiếu** những khoả
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/report/finance/deposit" app-label="Mở báo cáo Danh sách tiền cọc" fixtures="Tòa DEMO A/B, 8 phòng đang thuê, cọc giữ chỗ A301/A302, khách Nguyễn Văn A, cọc mẫu 1.000.000đ" view-only>
+<SandboxTry account="demo.chunha" app-path="/reports/finance/deposits" app-label="Mở báo cáo Danh sách tiền cọc" fixtures="Tòa DEMO A/B, 8 phòng đang thuê, cọc giữ chỗ A301/A302, khách Nguyễn Văn A, cọc mẫu 1.000.000đ" view-only>
 
 Bài này **chỉ xem** — bạn quan sát danh sách cọc, không ghi/sửa cọc:
 
